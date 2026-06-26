@@ -234,12 +234,44 @@ registry, applique les politiques d'auth et branche l'observabilité — **sans 
 
 Chaque module : **rôle · brique OSS · contrat avec le noyau · équivalent ArcGIS · maturité**.
 
+### 5.0 Projets phares de l'écosystème (dépôts GitHub de référence)
+
+Carte des **meilleurs projets open-source** sur lesquels s'appuyer, par domaine. C'est la base réelle
+d'OGE : on ne réécrit pas ces briques, on les **intègre derrière les contrats C1–C4**.
+
+| Domaine | Projet phare | Dépôt GitHub | Note |
+|---|---|---|---|
+| Base spatiale | **PostGIS** | `postgis/postgis` | Référence absolue, 20+ ans |
+| Services OGC | **GeoServer** / **GeoServer Cloud** | `geoserver/geoserver` · `geoserver/geoserver-cloud` | Cloud = microservices |
+| Serveur SDI modulaire | **geOrchestra** | `georchestra/georchestra` | **Modèle « core + modules »**, INSPIRE |
+| Portail / CMS géo | **GeoNode** | `GeoNode/geonode` | Django + GeoServer + MapStore |
+| Viewer / apps | **MapStore** | `geosolutions-it/MapStore2` | Maps, dashboards, stories |
+| Explorateur 2D/3D | **TerriaJS** | `TerriaJS/terriajs` | Cesium+WebGL 3D, fallback Leaflet 2D |
+| Tuiles vecteur (dyn.) | **Martin** | `maplibre/martin` | **2–3× plus rapide** que les autres (bench 2025) |
+| Tuiles vecteur (alt.) | **Tegola** · **TiPg** · **pg_tileserv** | `go-spatial/tegola` · `developmentseed/tipg` · `CrunchyData/pg_tileserv` | Go / Python OGC / Go |
+| Génération de tuiles | **planetiler** · **tippecanoe** | `onthegomap/planetiler` · `felt/tippecanoe` | Planète OSM en heures / GeoJSON→MVT |
+| Tuiles « single-file » | **PMTiles** | `protomaps/PMTiles` | CDN/offline sans serveur |
+| Raster / imagery | **TiTiler** | `developmentseed/titiler` | COG dynamiques, STAC |
+| Rendu web | **MapLibre GL JS** · **deck.gl** | `maplibre/maplibre-gl-js` · `visgl/deck.gl` | WebGL2, 3D massif |
+| 3D globe | **CesiumJS** | `CesiumGS/cesium` | 3D Tiles |
+| Analytique distribuée | **Apache Sedona** | `apache/sedona` | Vecteur **+** raster sur Spark |
+| Analytique embarquée | **DuckDB** (+spatial) | `duckdb/duckdb` · `duckdb/duckdb-spatial` | GeoParquet, zéro infra |
+| BI spatiale | **Apache Superset** | `apache/superset` | deck.gl, H3 |
+| Dashboards | **Grafana** | `grafana/grafana` | Geomap, alerting |
+| Catalogue/métadonnées | **GeoNetwork** · **pycsw** | `geonetwork/core-geonetwork` · `geopython/pycsw` | ISO 19115, OGC API Records |
+| Desktop | **QGIS** | `qgis/QGIS` | Équivalent ArcGIS Pro |
+| Identité | **Keycloak** | `keycloak/keycloak` | OIDC/OAuth2 |
+
+> **Conséquence design :** OGE est d'abord un **travail d'intégration et de « liant »** (noyau, contrats,
+> admin console), pas une réécriture. La valeur ajoutée propre est le noyau `GeoCore` et l'expérience
+> unifiée — voir §9 (recommandation : *bâtir sur une fondation existante type geOrchestra*).
+
 ### 5.1 Modules « publication & diffusion »
 
 | Module | Rôle | Brique OSS | Contrat noyau | Équivalent ArcGIS | Maturité |
 |---|---|---|---|---|---|
 | **Services OGC** | WMS/WFS/WCS/WMTS/WPS + OGC API | **GeoServer Cloud**, QGIS Server | C1·C2·C3·C4 | ArcGIS Server | ⭐⭐⭐⭐⭐ |
-| **Tuiles vecteur** | MVT dynamiques < 5 ms | **Martin** (Rust), pg_tileserv | C2·C3 | Vector Tile / Feature Service | ⭐⭐⭐⭐ |
+| **Tuiles vecteur** | MVT dynamiques < 5 ms | **Martin** (Rust) ; alt. **Tegola** (Go), **TiPg**, pg_tileserv | C2·C3 | Vector Tile / Feature Service | ⭐⭐⭐⭐ |
 | **Tuiles statiques** | PMTiles sans serveur (CDN/offline) | **PMTiles** + tippecanoe/planetiler | C3 (S3) | Tile packages | ⭐⭐⭐⭐ |
 | **OGC API Features** | API REST features légère | **pg_featureserv** | C1·C2·C3 | Feature Service | ⭐⭐⭐⭐ |
 | **Raster / Imagery** | COG dynamiques (NDVI à la volée), STAC | **TiTiler**, **STAC** | C3 (S3) | Image Server | ⭐⭐⭐⭐ |
@@ -249,8 +281,8 @@ Chaque module : **rôle · brique OSS · contrat avec le noyau · équivalent Ar
 
 | Module | Rôle | Brique OSS | Contrat noyau | Équivalent ArcGIS | Maturité |
 |---|---|---|---|---|---|
-| **Web App Builder** | Cartes web WebGL, 3D, offline | **MapLibre GL JS v3** + **deck.gl** | C1·C3 | Experience Builder / JS SDK | ⭐⭐⭐⭐ |
-| **Portail / catalogue** | Comptes, partage, métadonnées, viewer | **GeoNode**, MapStore2 | C1·C2·C4 | Portal for ArcGIS | ⭐⭐⭐⭐ |
+| **Web App Builder** | Cartes web WebGL, 3D, offline | **TerriaJS** (clé-en-main 2D/3D) · **MapLibre GL JS v3** + **deck.gl** (sur-mesure) | C1·C3 | Experience Builder / JS SDK | ⭐⭐⭐⭐ |
+| **Portail / catalogue** | Comptes, partage, métadonnées, viewer | **GeoNode** + **MapStore** (viewer) | C1·C2·C4 | Portal for ArcGIS | ⭐⭐⭐⭐ |
 | **Dashboards opérationnels** | KPI, alertes, temps réel | **Grafana** (Geomap) | C1·C3 | ArcGIS Dashboards | ⭐⭐⭐⭐⭐ |
 | **BI spatiale** | Exploration, choroplèthes, deck.gl, H3 | **Apache Superset** | C1·C3 | ArcGIS Insights | ⭐⭐⭐⭐ |
 | **3D** | Globe/scènes, tilesets 3D | **CesiumJS** + **3D Tiles**, deck.gl | C3 | Scene Viewer / CityEngine | ⭐⭐⭐⭐ |
@@ -292,7 +324,7 @@ Chaque module : **rôle · brique OSS · contrat avec le noyau · équivalent Ar
 | Image Server | TiTiler + COG + STAC | ⭐⭐⭐⭐ | **▲** NDVI à la volée gratuit ; ▼ mosaïques avancées clé-en-main |
 | Portal for ArcGIS | GeoNode / MapStore2 | ⭐⭐⭐⭐ | ▼ UX clé-en-main < Portal ; **=** catalogue INSPIRE ▲ |
 | Dashboards | Grafana | ⭐⭐⭐⭐⭐ | **=/▲** alerting, temps réel |
-| Experience Builder | MapLibre + deck.gl (code) ou MapStore | ⭐⭐⭐⭐ | ▼ no-code < ExB ; **▲** perf/3D/offline |
+| Experience Builder | TerriaJS / MapStore (clé-en-main) · MapLibre+deck.gl (code) | ⭐⭐⭐⭐ | ▼ no-code < ExB ; **▲** perf/3D/offline |
 | Insights | Superset + DuckDB | ⭐⭐⭐⭐ | **=** ; ▲ H3, SQL ouvert |
 | GeoAnalytics Server (**retiré 11.4**) | Apache Sedona / SedonaDB / Wherobots | ⭐⭐⭐⭐ | **▲ Dépasse** (scale + raster + Rust) |
 | Notebook Server | JupyterHub | ⭐⭐⭐⭐⭐ | **=/▲** écosystème PyData complet |
@@ -332,12 +364,29 @@ serveur lourd, indexés, parallélisables :
 
 ### 7.2 Benchmarks — tuiles vectorielles
 
-| Métrique (zoom 10) | Martin (MVT/PostGIS) | ArcGIS Feature Service | Ratio |
+**a) vs ArcGIS** (Martin MVT/PostGIS, zoom 10) :
+
+| Métrique | Martin (MVT/PostGIS) | ArcGIS Feature Service | Ratio |
 |---|---|---|---|
 | Latence P50 | 3 ms | 180 ms | **60×** |
 | Latence P95 | 12 ms | 850 ms | **70×** |
 | Throughput max | 8 000 req/s | 400 req/s | **20×** |
 | Taille réponse | 45 KB | 320 KB | **7×** |
+
+**b) Comparatif des serveurs de tuiles open-source** (benchmark public 2025, 6 serveurs PostGIS
+conteneurisés — *vectormap.ch* / `FabianRechsteiner/vector-tiles-benchmark`) :
+
+| Serveur | Langage | Standard | Performance relative |
+|---|---|---|---|
+| **Martin** | Rust | MVT / OGC Tiles | **Le plus rapide (2–3× le 2ᵉ)** ✅ choix par défaut OGE |
+| **Tegola** | Go | MVT | Rapide (proche de BBOX) |
+| **BBOX** | Rust | OGC Tiles | Rapide |
+| **pg_tileserv** | Go | MVT | Bon, simple |
+| **TiPg** | Python | OGC Tiles/Features | Correct, très standard OGC |
+| **Ldproxy** | Java | OGC API | 4–70× plus lent que Martin |
+
+→ **Martin** reste le choix par défaut ; **Tegola/TiPg** sont de bonnes alternatives selon l'écosystème
+(Go vs Python, conformité OGC Tiles).
 
 ### 7.3 Benchmarks — spatial SQL (choix du moteur analytique)
 
@@ -364,18 +413,33 @@ massif → Sedona/Wherobots. Les résultats persistent en **GeoParquet** (échan
 
 ## 8. Modèle de déploiement
 
-OGE se décline en **profils**, du plus simple au plus scalable. Le **même noyau**, on **ajoute des
-modules**.
+OGE se décline en **6 options de déploiement**, du plus simple au plus scalable. Le **même noyau** et les
+**mêmes modules** ; seule la mécanique d'installation/exploitation change. Le modèle s'inspire directement
+des cibles réelles de **geOrchestra** (Docker, Ansible, paquets, Helm) et **GeoNode** (Docker).
 
-### 8.1 Profil « Single-node » (MVP / évaluation)
+### 8.1 Tableau comparatif des options
+
+| # | Option | Cible | Complexité | Scalabilité | HA | Outils / dépôts réels |
+|---|---|---|---|---|---|---|
+| 1 | **Docker Compose** | Éval, MVP, petite prod | Faible | Verticale | ➖ | `georchestra/docker`, `geonode/geonode` (compose) |
+| 2 | **Ansible** | Petit/moyen serveur on-prem | Faible-moy. | Verticale | ➖ | Playbooks geOrchestra (« le plus simple pour un petit serveur ») |
+| 3 | **Paquets OS (Debian/RPM)** | Prod classique maîtrisée | Moyenne | Verticale+ | Manuel | Paquets Debian geOrchestra ; middleware à installer |
+| 4 | **Kubernetes + Helm** | Grande org, SLA élevé | Élevée | **Horizontale (HPA)** | ✅ | `georchestra/helm-georchestra`, `geoserver/geoserver-cloud`, CloudNativePG, ingress NGINX/Traefik |
+| 5 | **Cloud managé / IaC** | Cloud-first, élasticité | Moyenne-élevée | Horizontale | ✅ | **Terraform/OpenTofu** + EKS/GKE/AKS, RDS-PostGIS, S3, services managés |
+| 6 | **Air-gapped / souverain** | Défense, OIV, secret | Élevée | Selon socle | ✅ | Registre d'images interne + (Compose\|K8s) déconnecté, miroirs APT |
+
+> Variantes d'exécution : **Podman** (rootless, sans démon) en remplacement drop-in de Docker ;
+> **Nix/NixOS** pour des déploiements reproductibles bit-à-bit (option avancée).
+
+### 8.2 Profil « Single-node » (Docker Compose — MVP / évaluation)
 
 ```
 Docker Compose : Traefik · Keycloak · PostGIS · MinIO · Redis
-  + modules choisis (GeoServer Cloud, Martin, TiTiler, GeoNode, Grafana)
+  + modules choisis (GeoServer Cloud, Martin, TiTiler, GeoNode/MapStore, TerriaJS, Grafana)
 ```
-- Cible : collectivité, évaluation, dev. **1–2 serveurs**. Déploiement **< 1 jour**.
+- Cible : collectivité, évaluation, dev. **1–2 serveurs** (8 Go RAM mini). Déploiement **< 1 jour** (~10 min pour le socle, façon geOrchestra).
 
-### 8.2 Profil « Cloud-native » (production scalable)
+### 8.3 Profil « Cloud-native » (Kubernetes — production scalable)
 
 ```
 Kubernetes :
@@ -387,20 +451,46 @@ Kubernetes :
 ```
 - Cible : grande organisation, SLA 99.9 %+. **Auto-scaling**, zéro downtime, multi-tenant.
 
-### 8.3 Matrice profils × modules
+### 8.4 Profil « Cloud managé / IaC » (Terraform)
 
-| Module | Single-node | Cloud-native |
-|---|---|---|
-| Noyau (Keycloak, PostGIS, MinIO, Gateway) | ✅ | ✅ HA |
-| Services OGC / Tuiles / Raster | ✅ | ✅ HPA |
-| Portail / Dashboards / BI | ✅ | ✅ |
-| Analytique distribuée (Sedona) | ➖ (DuckDB suffit) | ✅ cluster Spark |
-| Streaming (Kafka/Flink) | ➖ optionnel | ✅ |
-| Knowledge graph / 3D / Reality | optionnel | optionnel |
+```
+Terraform/OpenTofu :
+  - Cluster managé   : EKS / GKE / AKS  (modules OGE en pods)
+  - Base             : RDS/Cloud SQL PostgreSQL + PostGIS  (ou CloudNativePG self-managed)
+  - Object store     : S3 / GCS / Azure Blob  (COG, GeoParquet, PMTiles)
+  - CDN              : CloudFront / Cloud CDN  pour PMTiles & tuiles cachées
+  - Secrets/Identity : Keycloak ou IdP managé (OIDC)
+```
+- Cible : organisations cloud-first cherchant l'élasticité sans gérer le socle. **IaC versionnée**, environnements reproductibles (dev/staging/prod).
+
+### 8.5 Matrice profils × modules
+
+| Module | Compose (1) | Ansible/Paquets (2-3) | K8s / Cloud (4-5) |
+|---|---|---|---|
+| Noyau (Keycloak, PostGIS, MinIO, Gateway) | ✅ | ✅ | ✅ HA |
+| Services OGC / Tuiles / Raster | ✅ | ✅ | ✅ HPA |
+| Portail / Dashboards / BI / Web App | ✅ | ✅ | ✅ |
+| Analytique distribuée (Sedona) | ➖ (DuckDB suffit) | ➖/optionnel | ✅ cluster Spark |
+| Streaming (Kafka/Flink) | ➖ optionnel | optionnel | ✅ |
+| Knowledge graph / 3D / Reality | optionnel | optionnel | optionnel |
 
 ---
 
 ## 9. Gouvernance, licences & roadmap projet
+
+### 9.0 Recommandation stratégique : bâtir sur une fondation existante
+
+Plutôt que de repartir de zéro, OGE devrait **forker/étendre une SDI modulaire déjà éprouvée** et y
+ajouter le noyau `GeoCore` (admin console, contrats C1–C4, app builder). Options :
+
+| Fondation | Pour | Contre | Verdict |
+|---|---|---|---|
+| **geOrchestra** (`georchestra/georchestra`) | Déjà « core (SSO/GeoFence) + modules », microservices, Helm/Ansible, INSPIRE | Java/Spring, communauté plus petite | ✅ **Meilleure base** pour le modèle core+modules |
+| **GeoNode** (`GeoNode/geonode`) | Portail/CMS clé-en-main, Django, gros écosystème | Plus monolithique, modularité moindre | ✅ Base si priorité = portail |
+| **From-scratch** | Liberté totale d'architecture | Coût énorme, réinvente l'intégration | ❌ À éviter |
+
+→ **Recommandation : partir de geOrchestra** (le plus proche du modèle cible), packager les modules
+manquants (Martin, TiTiler, Superset, TerriaJS…) et développer le **liant `GeoCore`** par-dessus.
 
 ### 9.1 Stratégie de licence (point critique)
 
@@ -491,6 +581,16 @@ Ces trois chantiers sont la **valeur ajoutée propre d'OGE** par-dessus l'écosy
 - MapLibre GL JS : https://maplibre.org/projects/gl-js/ · deck.gl + MapLibre : https://deck.gl/docs/developer-guide/base-maps/using-with-maplibre
 - DuckDB geospatial / GeoParquet : https://medium.com/radiant-earth-insights/performance-explorations-of-geoparquet-and-duckdb-84c0185ed399
 - Geoportal alternatives to Esri : https://geomatics-expert.com/articles/geoportal-alternatives-to-esri/
+- Benchmark serveurs de tuiles 2025 : https://vectormap.ch · https://github.com/FabianRechsteiner/vector-tiles-benchmark
+- geOrchestra déploiement : https://github.com/georchestra/docker · https://github.com/georchestra/helm-georchestra · https://docs.georchestra.org/georchestra/install_guide/
+
+**Dépôts GitHub de référence cités :** `postgis/postgis` · `geoserver/geoserver` ·
+`geoserver/geoserver-cloud` · `georchestra/georchestra` · `GeoNode/geonode` ·
+`geosolutions-it/MapStore2` · `TerriaJS/terriajs` · `maplibre/martin` · `go-spatial/tegola` ·
+`developmentseed/tipg` · `CrunchyData/pg_tileserv` · `onthegomap/planetiler` · `felt/tippecanoe` ·
+`protomaps/PMTiles` · `developmentseed/titiler` · `maplibre/maplibre-gl-js` · `visgl/deck.gl` ·
+`CesiumGS/cesium` · `apache/sedona` · `duckdb/duckdb` · `apache/superset` · `grafana/grafana` ·
+`geonetwork/core-geonetwork` · `geopython/pycsw` · `qgis/QGIS` · `keycloak/keycloak`.
 
 ---
 
