@@ -1181,3 +1181,16 @@ git commit -m "feat(builder-service): add Dockerfile and docker-compose service"
 ## Notes for SP-0b → SP-0d
 
 The frontend `item-client` façade (SP-0b) will consume this service's `POST/GET/PUT /configs` plus `GET /configs/{id}/revisions` and `POST /configs/{id}/rollback`, and GeoNode's API v2 for catalog/sharing. Keep the `ConfigRead` shape stable as the contract.
+
+---
+
+## Deferred follow-ups (from final whole-branch review)
+
+These were triaged as non-blocking for SP-0a and deferred to later sub-projects / a hardening pass:
+
+- **Auth & exposure (SP-0b + Traefik):** the API is currently unauthenticated and publishes port 8200 (consistent with the rest of the dev compose, which fronts auth via Keycloak/Traefik in a later phase). Add token validation + ingress when the shell `auth` unit lands.
+- **Concurrency:** add a DB unique constraint on `config_revisions (config_id, version)`; the `new_version = current_version + 1` path is race-prone under concurrent writes.
+- **Schema hardening:** `models.py` timestamps should use `DateTime(timezone=True)` for PostgreSQL; `_latest_revision` could add `.limit(1)`; tighten `make_engine` guard from `"memory" in url` to `":memory:" in url`.
+- **Dependency truth:** have the Dockerfile install from `pyproject.toml` (`uv pip install --system .`) instead of a duplicated literal list.
+- **Contract polish:** `GET /configs/{id}/revisions` returns `[]` for a missing config (consider 404); the stored revision JSON keeps the client-supplied `itemId` which can diverge from `Config.item_id`; add a `rollback_config` test for a missing `config_id`.
+- **Logging:** use `logging.getLogger(__name__)` instead of `"uvicorn.error"` for the stub-fallback warning so it isn't dropped outside uvicorn.
