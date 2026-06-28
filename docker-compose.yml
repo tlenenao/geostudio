@@ -150,6 +150,18 @@ services:
       pgbouncer:
         condition: service_started
 
+  # Set GEONODE_BASE_URL and GEONODE_TOKEN env vars to enable real GeoNode item
+  # creation via GeoNodeItemClient; without them the in-memory stub is used.
+  builder-service:
+    build: ./builder-service
+    environment:
+      DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+    ports:
+      - "8200:8200"
+    networks: [gis-net]
+    depends_on: [pgbouncer]
+    restart: unless-stopped
+
   # ─── Auth ──────────────────────────────────────────────
 
   keycloak:
