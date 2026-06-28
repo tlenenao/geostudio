@@ -1,0 +1,194 @@
+networks:
+  gis-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  minio-data:
+  keycloak-data:
+
+services:
+
+  # ─── Base de données ───────────────────────────────────
+
+  postgis:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: gis
+      POSTGRES_USER: gis
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks: [gis-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+        -c shared_buffers=2GB
+        -c effective_cache_size=6GB
+        -c work_mem=64MB
+        -c max_connections=200
+        -c random_page_cost=1.1
+        -c max_parallel_workers_per_gather=4
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22
+    environment:
+      DB_HOST: postgis
+      DB_NAME: gis
+      DB_USER: gis
+      DB_PASSWORD: ${PG_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 50
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks: [gis-net]
+
+  # ─── Cache ─────────────────────────────────────────────
+
+  redis:
+    image: redis:7.2-alpine
+    volumes: [redis-data:/data]
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru
+    networks: [gis-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─── Stockage objet ────────────────────────────────────
+
+  minio:
+    image: minio/minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes: [minio-data:/data]
+    ports:
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    networks: [gis-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── Serveurs de tuiles ────────────────────────────────
+
+  martin:
+    image: ghcr.io/maplibre/martin:v0.13
+    environment:
+      DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+    volumes:
+      - ./martin-config.yaml:/config.yaml
+    command: --config /config.yaml
+    ports:
+      - "3000:3000"
+    networks: [gis-net]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  titiler:
+    image: developmentseed/titiler:0.18
+    environment:
+      CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF,.tiff
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES
+      GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8000:8000"
+    networks: [gis-net]
+
+  pg-featureserv:
+    image: pramsey/pg_featureserv:latest
+    environment:
+      DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+    ports:
+      - "9000:9000"
+    networks: [gis-net]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  # ─── Applications ──────────────────────────────────────
+
+  superset:
+    image: apache/superset:3.1.0
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET}
+      DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+    ports:
+      - "8088:8088"
+    networks: [gis-net]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  geonode:
+    image: geonode/geonode:4.2
+    environment:
+      DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      DJANGO_SETTINGS_MODULE: geonode.settings
+    ports:
+      - "8080:8080"
+    networks: [gis-net]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  # ─── Auth ──────────────────────────────────────────────
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgis:5432/gis
+      KC_DB_USERNAME: gis
+      KC_DB_PASSWORD: ${PG_PASSWORD}
+    command: start-dev
+    ports:
+      - "8180:8080"
+    networks: [gis-net]
+    volumes: [keycloak-data:/opt/keycloak/data]
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  # ─── Ingress ───────────────────────────────────────────
+
+  traefik:
+    image: traefik:v3.0
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/certs/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/certs
+    networks: [gis-net]
