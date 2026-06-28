@@ -150,6 +150,15 @@ services:
       pgbouncer:
         condition: service_started
 
+  builder-service:
+    build: ./builder-service
+    environment:
+      DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+    ports:
+      - "8200:8200"
+    networks: [gis-net]
+    depends_on: [pgbouncer]
+
   # ─── Auth ──────────────────────────────────────────────
 
   keycloak:
