@@ -1,0 +1,29 @@
+listen_addresses: '0.0.0.0:3000'
+keep_alive: 75
+worker_processes: 4
+
+cache:
+  redis:
+    url: redis://redis:6379/0
+    ttl: 3600
+    max_size: 536870912  # 512 MB
+
+postgres:
+  connection_string: ${DATABASE_URL}
+  pool_size: 20
+  default_srid: 4326
+
+# Ajouter vos tables PostGIS ici
+# tables:
+#   communes:
+#     schema: public
+#     table: communes
+#     srid: 4326
+#     geometry_column: geom
+#     geometry_type: MULTIPOLYGON
+#     minzoom: 5
+#     maxzoom: 14
+#     properties:
+#       - code_insee
+#       - nom
+#       - population
