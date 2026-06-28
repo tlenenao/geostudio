@@ -1,5 +1,6 @@
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
@@ -7,6 +8,14 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str) -> Engine:
+    if "memory" in url and url.startswith("sqlite"):
+        # StaticPool ensures all threads share the single in-memory connection,
+        # which is required when TestClient runs the ASGI handler in a worker thread.
+        return create_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     return create_engine(url, connect_args=connect_args)
 

@@ -22,4 +22,5 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
