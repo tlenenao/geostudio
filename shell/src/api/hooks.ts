@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "./ItemClientProvider";
-import type { ListItemsParams } from "./types";
+import type { CreateKind, ListItemsParams } from "./types";
 
 export function useItems(params: ListItemsParams) {
   const client = useItemClient();
@@ -21,4 +21,16 @@ export function useItem(pk: string) {
 export function useMe() {
   const client = useItemClient();
   return useQuery({ queryKey: ["me"], queryFn: () => client.getMe() });
+}
+
+export function useCreateItem() {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { kind: CreateKind; title: string; owner: string }) =>
+      client.createConfigItem(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
 }
