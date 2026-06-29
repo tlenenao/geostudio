@@ -9,7 +9,23 @@ export type AuthState = {
   signOut: () => void;
 };
 
+let mockMode = false;
+export function enableMockAuth() {
+  mockMode = true;
+}
+
+const MOCK_STATE: AuthState = {
+  isLoading: false,
+  isAuthenticated: true,
+  username: "mockuser",
+  getAccessToken: () => "mock-token",
+  signIn: () => {},
+  signOut: () => {},
+};
+
 export function useAuth(): AuthState {
+  if (mockMode) return MOCK_STATE;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const oidc = useOidcAuth();
   return {
     isLoading: oidc.isLoading,
