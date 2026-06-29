@@ -45,7 +45,7 @@ export function createItemClient(opts: {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
       if (params.q) q.set("search", params.q);
-      if (params.type) q.set("filter{resource_type}", params.type);
+      if (params.type) q.set("filter{resource_type.in}", params.type);
       q.set("page", String(params.page ?? 1));
       q.set("page_size", String(params.pageSize ?? 12));
       const data = await get<{
