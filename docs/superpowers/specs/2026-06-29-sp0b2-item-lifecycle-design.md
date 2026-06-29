@@ -145,3 +145,11 @@ Chaque phase est testable seule ; `writing-plans` produira d'abord le plan de **
   on ajoute uniquement `DELETE /configs/{id}` et `ItemClient.delete_item`.
 - Upload miniature borné côté client : image/* et ≤ 2 Mo.
 - Pas de token en localStorage (inchangé depuis SP-0b.1).
+
+---
+
+## Notes pour SP-0b.2-c (issues de la revue finale 0b.2-a)
+
+- **Surface 404 vs 500 sur delete :** si l'item GeoNode a été supprimé hors-bande, `GeoNodeItemClient.delete_item` fait `raise_for_status()` sur le 404 GeoNode → la route `DELETE /configs/{id}` renvoie alors **500**, pas 404. Le spec §6 prévoit que le front traite un **404** comme « déjà supprimé ». Donc le `deleteItem` du front (0b.2-c) doit gérer **500** séparément (message générique + invalidation), et/ou on durcira la route plus tard pour tolérer un 404 GeoNode (traiter comme déjà-supprimé puis poursuivre `delete_config`).
+- **Fenêtre d'orphelin inverse (improbable) :** si `delete_item` réussit mais `delete_config` échoue (panne DB après l'appel GeoNode), l'item GeoNode est parti mais la config subsiste. `delete_config` est une transaction unique (tout-ou-rien) ; pas de compensation — comportement distribué accepté.
+- **Couverture mineure différée :** ajouter un test route du cas `item_id = None` (config sans item lié) ; le cas est déjà couvert au niveau repository.
