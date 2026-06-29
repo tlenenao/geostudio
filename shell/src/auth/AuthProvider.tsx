@@ -1,6 +1,6 @@
 import { AuthProvider as OidcProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
-import { createContext } from "react";
+import { createContext, useRef } from "react";
 import type { AppConfig } from "../config";
 
 // Mock context value mirrors the react-oidc-context User minimally; only used in tests/E2E.
@@ -13,10 +13,25 @@ export function AuthProvider({
   config: AppConfig;
   children: React.ReactNode;
 }) {
+  // Stabilize the in-memory stores so they are created exactly once per
+  // AuthProvider instance. Constructing them inline in the render body would
+  // recreate them on every render, causing react-oidc-context to reinitialize
+  // its UserManager with a fresh (empty) store and lose in-flight tokens.
+  const storesRef = useRef<{
+    userStore: WebStorageStateStore;
+    stateStore: WebStorageStateStore;
+  } | null>(null);
+  if (!storesRef.current) {
+    const store = new InMemoryStore();
+    storesRef.current = {
+      userStore: new WebStorageStateStore({ store }),
+      stateStore: new WebStorageStateStore({ store }),
+    };
+  }
+
   if (config.authMode === "mock") {
     return <MockAuthContext.Provider value={true}>{children}</MockAuthContext.Provider>;
   }
-  const store = new InMemoryStore();
   return (
     <OidcProvider
       authority={config.oidcAuthority}
@@ -25,8 +40,8 @@ export function AuthProvider({
       response_type="code"
       scope="openid profile email"
       // In-memory store: nothing persisted to localStorage.
-      userStore={new WebStorageStateStore({ store })}
-      stateStore={new WebStorageStateStore({ store })}
+      userStore={storesRef.current.userStore}
+      stateStore={storesRef.current.stateStore}
     >
       {children}
     </OidcProvider>
