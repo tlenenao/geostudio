@@ -1,0 +1,38 @@
+export type ResourceType = "app" | "dashboard" | "map";
+
+export type Item = {
+  pk: string;
+  resourceType: ResourceType;
+  title: string;
+  abstract: string;
+  owner: string;
+  thumbnailUrl: string | null;
+  date: string;
+  configId: string | null;
+};
+
+export type ItemPage = {
+  items: Item[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type Me = {
+  username: string;
+  firstName: string;
+  lastName: string;
+};
+
+export type ListItemsParams = {
+  q?: string;
+  type?: ResourceType;
+  page?: number;
+  pageSize?: number;
+};
+
+export interface ItemClient {
+  listItems(params?: ListItemsParams): Promise<ItemPage>;
+  getItem(pk: string): Promise<Item>;
+  getMe(): Promise<Me>;
+}
