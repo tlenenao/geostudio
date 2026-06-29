@@ -1,5 +1,7 @@
 export type ResourceType = "app" | "dashboard" | "map";
 
+export type CreateKind = "app" | "dashboard";
+
 export type Item = {
   pk: string;
   resourceType: ResourceType;
@@ -35,4 +37,5 @@ export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getMe(): Promise<Me>;
+  createConfigItem(input: { kind: CreateKind; title: string; owner: string }): Promise<Item>;
 }

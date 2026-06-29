@@ -1,4 +1,4 @@
-import type { Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType } from "./types";
+import type { CreateKind, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType } from "./types";
 
 type GeoNodeResource = {
   pk: number | string;
@@ -28,7 +28,7 @@ export function createItemClient(opts: {
   builderUrl: string;
   getToken: () => string | undefined;
 }): ItemClient {
-  const { geonodeUrl, getToken } = opts;
+  const { geonodeUrl, builderUrl, getToken } = opts;
 
   async function get<T>(path: string): Promise<T> {
     const token = getToken();
@@ -75,6 +75,44 @@ export function createItemClient(opts: {
         username: data.user.username,
         firstName: data.user.first_name ?? "",
         lastName: data.user.last_name ?? "",
+      };
+    },
+
+    async createConfigItem(input: { kind: CreateKind; title: string; owner: string }): Promise<Item> {
+      const config = {
+        version: 1,
+        kind: input.kind,
+        theme: {},
+        dataSources: [],
+        layout: { type: "grid", breakpoints: {}, items: [] },
+        messages: [],
+      };
+      const token = getToken();
+      const res = await fetch(`${builderUrl}/configs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ title: input.title, owner: input.owner, config }),
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status} /configs`);
+      }
+      const data = (await res.json()) as {
+        id: string | number;
+        kind: string;
+        itemId: string | null;
+      };
+      return {
+        pk: String(data.itemId ?? ""),
+        resourceType: data.kind as ResourceType,
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
       };
     },
   };

@@ -65,3 +65,40 @@ test("getMe maps the current user", async () => {
   const me = await makeClient().getMe();
   expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin" });
 });
+
+test("createConfigItem posts a skeleton config and maps to Item", async () => {
+  const item = await makeClient().createConfigItem({
+    kind: "dashboard",
+    title: "My Dash",
+    owner: "alice",
+  });
+  expect(item).toMatchObject({
+    pk: "99",
+    resourceType: "dashboard",
+    title: "My Dash",
+    owner: "alice",
+    configId: "cfg-1",
+    thumbnailUrl: null,
+  });
+});
+
+test("createConfigItem sends title, owner and an empty grid layout", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        id: "c",
+        kind: body.config.kind,
+        itemId: "1",
+        version: 1,
+        config: body.config,
+      });
+    }),
+  );
+  await makeClient("abc").createConfigItem({ kind: "app", title: "T", owner: "o" });
+  expect(body.title).toBe("T");
+  expect(body.owner).toBe("o");
+  expect(body.config.kind).toBe("app");
+  expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
+});
