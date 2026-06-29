@@ -14,14 +14,24 @@ export function NewItemButton() {
   const navigate = useNavigate();
   const create = useCreateItem();
 
+  function close() {
+    setOpen(false);
+    setTitle("");
+    setKind("app");
+    create.reset();
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const clean = title.trim();
     if (!clean) return;
-    const item = await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
-    setOpen(false);
-    setTitle("");
-    navigate(`/items/${item.pk}`);
+    try {
+      const item = await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
+      close();
+      navigate(`/items/${item.pk}`);
+    } catch {
+      // error surfaced via create.isError
+    }
   }
 
   return (
@@ -29,7 +39,7 @@ export function NewItemButton() {
       <Button size="sm" onClick={() => setOpen(true)}>
         Nouveau
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Nouvel élément">
+      <Dialog open={open} onClose={close} title="Nouvel élément">
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Type
@@ -57,7 +67,7 @@ export function NewItemButton() {
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" size="sm" onClick={close}>
               Annuler
             </Button>
             <Button type="submit" size="sm" disabled={create.isPending}>
