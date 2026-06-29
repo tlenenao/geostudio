@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Config, ConfigRevision
@@ -104,3 +104,13 @@ def rollback_config(session: Session, config_id: str, version: int) -> ConfigRea
     session.commit()
     session.refresh(record)
     return _to_read(record, revision)
+
+
+def delete_config(session: Session, config_id: str) -> bool:
+    record = session.get(Config, config_id)
+    if record is None:
+        return False
+    session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
+    session.delete(record)
+    session.commit()
+    return True
