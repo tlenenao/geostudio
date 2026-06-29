@@ -2,6 +2,7 @@ import { AuthProvider as OidcProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
 import { createContext, useRef } from "react";
 import type { AppConfig } from "../config";
+import { enableMockAuth } from "./useAuth";
 
 // Mock context value mirrors the react-oidc-context User minimally; only used in tests/E2E.
 export const MockAuthContext = createContext(true);
@@ -30,6 +31,7 @@ export function AuthProvider({
   }
 
   if (config.authMode === "mock") {
+    enableMockAuth();
     return <MockAuthContext.Provider value={true}>{children}</MockAuthContext.Provider>;
   }
   return (
