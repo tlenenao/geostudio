@@ -98,3 +98,19 @@ def test_rollback_missing_returns_404(client):
     assert client.post(
         f"/configs/{created['id']}/rollback", json={"version": 99}
     ).status_code == 404
+
+
+def test_delete_config_removes_it_and_deletes_linked_item(client):
+    created = _create(client)
+    config_id = created["id"]
+    item_id = created["itemId"]
+
+    response = client.delete(f"/configs/{config_id}")
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.stub.deleted == [item_id]
+    assert client.get(f"/configs/{config_id}").status_code == 404
+
+
+def test_delete_missing_config_returns_404(client):
+    assert client.delete("/configs/nope").status_code == 404
