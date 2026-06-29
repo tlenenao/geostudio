@@ -39,6 +39,18 @@ test("listItems sends the bearer token", async () => {
   expect(auth).toBe("Bearer abc");
 });
 
+test("listItems forwards the type filter param", async () => {
+  let captured: URL | null = null;
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+      captured = new URL(request.url);
+      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+    }),
+  );
+  await makeClient().listItems({ type: "app" });
+  expect(captured!.searchParams.get("filter{resource_type.in}")).toBe("app");
+});
+
 test("getItem maps a single resource", async () => {
   const item = await makeClient().getItem("7");
   expect(item.pk).toBe("7");
