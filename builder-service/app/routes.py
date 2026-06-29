@@ -1,11 +1,12 @@
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import repository as repo
 from app.geonode import ItemClient, StubItemClient
+from app.models import Config
 from app.repository import ConfigRead, RevisionInfo
 from app.schemas import BuilderConfig
 
@@ -83,3 +84,18 @@ def rollback_config(
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")
     return result
+
+
+@router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_config(
+    config_id: str,
+    session: Session = Depends(get_session),
+    items: ItemClient = Depends(get_item_client),
+) -> Response:
+    record = session.get(Config, config_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    if record.item_id:
+        items.delete_item(record.item_id)
+    repo.delete_config(session, config_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
