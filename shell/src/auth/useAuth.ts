@@ -4,6 +4,7 @@ export type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   username: string | null;
+  error: string | null;
   getAccessToken: () => string | undefined;
   signIn: () => void;
   signOut: () => void;
@@ -18,6 +19,7 @@ const MOCK_STATE: AuthState = {
   isLoading: false,
   isAuthenticated: true,
   username: "mockuser",
+  error: null,
   getAccessToken: () => "mock-token",
   signIn: () => {},
   signOut: () => {},
@@ -31,6 +33,7 @@ export function useAuth(): AuthState {
     isLoading: oidc.isLoading,
     isAuthenticated: oidc.isAuthenticated,
     username: (oidc.user?.profile.preferred_username as string) ?? null,
+    error: oidc.error ? oidc.error.message : null,
     getAccessToken: () => oidc.user?.access_token,
     signIn: () => void oidc.signinRedirect(),
     signOut: () => void oidc.signoutRedirect(),
