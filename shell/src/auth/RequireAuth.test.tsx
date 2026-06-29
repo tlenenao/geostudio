@@ -6,6 +6,7 @@ const authState: AuthState = {
   isLoading: false,
   isAuthenticated: false,
   username: null,
+  error: null,
   getAccessToken: () => undefined,
   signIn: vi.fn(),
   signOut: vi.fn(),
@@ -19,6 +20,7 @@ const { RequireAuth } = await import("./RequireAuth");
 afterEach(() => {
   authState.isLoading = false;
   authState.isAuthenticated = false;
+  authState.error = null;
   (authState.signIn as ReturnType<typeof vi.fn>).mockClear();
 });
 
@@ -40,4 +42,13 @@ test("renders children when authenticated", () => {
   authState.isAuthenticated = true;
   render(<RequireAuth><div>secret</div></RequireAuth>);
   expect(screen.getByText("secret")).toBeInTheDocument();
+});
+
+test("renders an error and does not signIn when auth errored", () => {
+  authState.isAuthenticated = false;
+  authState.error = "boom";
+  render(<RequireAuth><div>secret</div></RequireAuth>);
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+  expect(authState.signIn).not.toHaveBeenCalled();
+  expect(screen.queryByText("secret")).not.toBeInTheDocument();
 });

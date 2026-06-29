@@ -26,7 +26,7 @@ export function AuthProvider({
     const store = new InMemoryStore();
     storesRef.current = {
       userStore: new WebStorageStateStore({ store }),
-      stateStore: new WebStorageStateStore({ store }),
+      stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
     };
   }
 

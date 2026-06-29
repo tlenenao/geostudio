@@ -8,6 +8,7 @@ const authState: AuthState = {
   isLoading: false,
   isAuthenticated: true,
   username: "alice",
+  error: null,
   getAccessToken: () => "t",
   signIn: vi.fn(),
   signOut: vi.fn(),
