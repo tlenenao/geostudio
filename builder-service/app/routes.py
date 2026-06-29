@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app import repository as repo
 from app.geonode import ItemClient, StubItemClient
-from app.models import Config
 from app.repository import ConfigRead, RevisionInfo
 from app.schemas import BuilderConfig
 
@@ -92,10 +91,13 @@ def delete_config(
     session: Session = Depends(get_session),
     items: ItemClient = Depends(get_item_client),
 ) -> Response:
-    record = session.get(Config, config_id)
-    if record is None:
+    result = repo.get_config(session, config_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="config not found")
-    if record.item_id:
-        items.delete_item(record.item_id)
+    # GeoNode item is deleted before the DB config; if delete_item raises, the
+    # config is preserved (no silent orphan). The reverse (GeoNode gone, DB write
+    # fails) is an accepted, unlikely distributed-systems window.
+    if result.itemId:
+        items.delete_item(result.itemId)
     repo.delete_config(session, config_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
