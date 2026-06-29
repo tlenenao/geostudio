@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
+import { NewItemButton } from "./NewItemButton";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { username, signOut } = useAuth();
@@ -9,6 +10,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
         <span className="text-lg font-bold">GeoStudio</span>
         <div className="flex items-center gap-3 text-sm">
+          <NewItemButton />
           <span>{username}</span>
           <Button size="sm" variant="outline" onClick={signOut}>
             Déconnexion

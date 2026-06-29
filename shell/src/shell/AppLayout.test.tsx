@@ -14,6 +14,9 @@ const authState: AuthState = {
   signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
+vi.mock("./NewItemButton", () => ({
+  NewItemButton: () => <button>Nouveau</button>,
+}));
 
 const { AppLayout } = await import("./AppLayout");
 
@@ -25,6 +28,7 @@ test("shows brand, username and sign-out", async () => {
   );
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
   expect(screen.getByText("alice")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Nouveau" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /déconnexion/i }));
   expect(authState.signOut).toHaveBeenCalled();
 });

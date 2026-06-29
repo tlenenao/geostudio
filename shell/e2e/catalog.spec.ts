@@ -12,3 +12,13 @@ test("login (mock) → list → open item", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await expect(page.getByRole("button", { name: /éditeur/i })).toBeDisabled();
 });
+
+test("create an App → lands on its detail page", async ({ page }) => {
+  await mockGeoNode(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  await page.getByLabel("Titre").fill("Créée");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/items\/9$/);
+  await expect(page.getByRole("heading", { name: "Créée" })).toBeVisible();
+});
