@@ -159,3 +159,7 @@ Chaque phase est testable seule ; `writing-plans` produira d'abord le plan de **
 - **Garde `itemId` null à la création :** `createConfigItem` mappe `pk = String(itemId ?? "")`. Si le Builder Service renvoie `itemId: null` (GeoNode non câblé / `StubItemClient` renvoyant None), `pk` devient `""` et `navigate("/items/")` ne matche pas la route → écran vide silencieux. En 0b.2-c : faire **lever** `createConfigItem` quand `itemId` est absent (déclenche le chemin d'erreur), ou garder dans `NewItemButton` (`if (!item.pk) return;`).
 - **Polish a11y du `Dialog` (pass dédié ou 0b.2-c)** : `aria-modal="true"` sur le panneau, focus initial à l'ouverture, `aria-haspopup="dialog"` sur le bouton déclencheur ; mémoïser `close` (useCallback) pour éviter le churn du listener keydown ; `aria-label` redondant sur l'Input enveloppé d'un `<label>`.
 - **E2E** : couvrir aussi la branche « Dashboard » du sélecteur de type (actuellement seul « app » est testé en E2E).
+
+### Amendement (0b.2-c) — résolution par item
+
+Décision validée : la suppression (et plus tard l'ouverture éditeur) se résout par le **pk GeoNode**, pas par le configId. Le Builder Service expose `GET /configs/by-item/{itemId}` et `DELETE /configs/by-item/{itemId}`. Le front utilise donc `deleteItem(pk)` (et non `deleteItem(configId)` comme écrit en §4.1). Le reste de §4.1 (updateItem/uploadThumbnail via GeoNode) est inchangé.
