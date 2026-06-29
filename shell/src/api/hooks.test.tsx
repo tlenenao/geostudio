@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
-import { useItems, useMe } from "./hooks";
+import { useCreateItem, useItems, useMe } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -31,4 +31,13 @@ test("useMe returns the current user", async () => {
   const { result } = renderHook(() => useMe(), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.username).toBe("alice");
+});
+
+test("useCreateItem creates an item and returns it", async () => {
+  const { result } = renderHook(() => useCreateItem(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ kind: "app", title: "X", owner: "alice" });
+  });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.pk).toBe("99");
 });
