@@ -2059,3 +2059,17 @@ git commit -m "feat(shell): add Dockerfile, nginx and docker-compose service"
 - 0b.2 will add `createConfigItem`/`updateItem`/`deleteItem` to `ItemClient` (calling Builder Service `POST /configs` + GeoNode), plus mutation hooks with optimistic update/rollback, and the create/rename/delete/metadata UI.
 - 0b.3 will add `setSharing`/`listGroups` and the ShareDialog.
 - Keep `ItemClient` and the `Item` shape stable as the contract; extend, don't break.
+
+---
+
+## Deferred follow-ups (from final whole-branch review)
+
+Non-blocking for SP-0b.1; triaged for later sub-projects / a hardening pass:
+
+- **Deploy config (before any non-local deploy):** the compose `shell` service has no `build.args`, so the image bakes the Dockerfile's `http://localhost:*` VITE_* defaults — only usable for local/dev. Add `build.args` reading `${VITE_*}`. Also wire the `shell` service through the Traefik ingress (labels) like sibling services instead of publishing `8300:8300` directly.
+- **Resilience:** add an ErrorBoundary; `loadConfig` runs at module top-level so a missing env var yields a blank screen — surface a friendly error.
+- **nginx:** enable `gzip` for the static SPA.
+- **Router:** pass `future={{ v7_startTransition, v7_relativeSplatPath }}` to silence React Router v6 deprecation warnings.
+- **E2E:** assert `toHaveURL(/\/items\/1/)` after navigation; dedupe env between `playwright.config.ts` and `.env.e2e`.
+- **Wiring:** `getMe`/`useMe` are implemented + tested but unused (AppLayout reads username from the OIDC profile) — consume in a later sub-project or drop.
+- **Cosmetic:** `useMemo([getAccessToken])` rebuilds the client each render (harmless); unreachable `?? "map"` in `toItem`; unstable `signIn`/`signOut` refs; devDependencies ordering.
