@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
+import { http, HttpResponse } from "msw";
+import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { NewItemButton } from "./NewItemButton";
@@ -67,5 +69,21 @@ test("does not submit an empty title", async () => {
   );
   await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(screen.queryByText(/^detail-/)).not.toBeInTheDocument();
+});
+
+test("shows an alert and stays on the page when creation fails", async () => {
+  server.use(
+    http.post("https://builder.test/configs", () => new HttpResponse(null, { status: 500 })),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.type(screen.getByLabelText("Titre"), "Boom");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.queryByText(/^detail-/)).not.toBeInTheDocument();
 });
