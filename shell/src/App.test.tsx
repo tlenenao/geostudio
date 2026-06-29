@@ -1,9 +1,26 @@
 import { render, screen } from "@testing-library/react";
-import App from "./App";
+import { vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import type { AuthState } from "./auth/useAuth";
 
-test("renders the GeoStudio heading", () => {
-  render(<App />);
-  expect(
-    screen.getByRole("heading", { name: /geostudio/i }),
-  ).toBeInTheDocument();
+const authState: AuthState = {
+  isLoading: false,
+  isAuthenticated: true,
+  username: "alice",
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+};
+vi.mock("./auth/useAuth", () => ({ useAuth: () => authState }));
+const { AppLayout } = await import("./shell/AppLayout");
+
+test("shell layout shows the GeoStudio brand", () => {
+  render(
+    <MemoryRouter>
+      <AppLayout>
+        <div>x</div>
+      </AppLayout>
+    </MemoryRouter>,
+  );
+  expect(screen.getByText("GeoStudio")).toBeInTheDocument();
 });
