@@ -63,6 +63,16 @@ def get_config(session: Session, config_id: str) -> ConfigRead | None:
     return _to_read(record, revision)
 
 
+def get_config_by_item(session: Session, item_id: str) -> ConfigRead | None:
+    record = session.scalar(select(Config).where(Config.item_id == item_id))
+    if record is None:
+        return None
+    revision = _latest_revision(session, record.id)
+    if revision is None:
+        return None
+    return _to_read(record, revision)
+
+
 def update_config(session: Session, config_id: str, config: BuilderConfig) -> ConfigRead | None:
     record = session.get(Config, config_id)
     if record is None:
