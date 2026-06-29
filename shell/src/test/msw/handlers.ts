@@ -41,4 +41,15 @@ export const handlers = [
       user: { username: "alice", first_name: "Alice", last_name: "Martin" },
     }),
   ),
+
+  http.post("https://builder.test/configs", async ({ request }) => {
+    const body = (await request.json()) as { config: { kind: string } };
+    return HttpResponse.json({
+      id: "cfg-1",
+      kind: body.config.kind,
+      itemId: "99",
+      version: 1,
+      config: body.config,
+    });
+  }),
 ];
