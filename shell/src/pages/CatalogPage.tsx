@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useItems } from "../api/hooks";
 import type { ResourceType } from "../api/types";
 import { ItemCard } from "../ui/ItemCard";
+import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 
@@ -70,7 +71,12 @@ export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string) => void }
       {query.isSuccess && query.data.items.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {query.data.items.map((item) => (
-            <ItemCard key={item.pk} item={item} onOpen={onOpenItem} />
+            <ItemCard
+              key={item.pk}
+              item={item}
+              onOpen={onOpenItem}
+              actions={<ItemActions item={item} />}
+            />
           ))}
         </div>
       )}

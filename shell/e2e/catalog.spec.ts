@@ -22,3 +22,13 @@ test("create an App → lands on its detail page", async ({ page }) => {
   await expect(page).toHaveURL(/\/items\/9$/);
   await expect(page.getByRole("heading", { name: "Créée" })).toBeVisible();
 });
+
+test("delete an item from the catalog", async ({ page }) => {
+  await mockGeoNode(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+  await page.getByRole("button", { name: "Actions" }).first().click();
+  await page.getByRole("button", { name: /^supprimer$/i }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
+});
