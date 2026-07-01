@@ -52,6 +52,16 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const appliedRef = useRef<Set<string>>(new Set());
+  // Keep the latest callback/layers reachable from the mount-time closures so
+  // the async "load" and "moveend" handlers never read stale values.
+  const onViewChangeRef = useRef(onViewChange);
+  const layersRef = useRef(config.layers);
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  }, [onViewChange]);
+  useEffect(() => {
+    layersRef.current = config.layers;
+  });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -62,13 +72,13 @@ export function MapView({
       zoom: config.view.zoom,
     });
     mapRef.current = map;
-    map.on("load", () => applyLayers(map, config.layers, appliedRef.current));
-    if (onViewChange) {
-      map.on("moveend", () => {
-        const c = map.getCenter();
-        onViewChange({ center: [c.lng, c.lat], zoom: map.getZoom() });
-      });
-    }
+    map.on("load", () => applyLayers(map, layersRef.current, appliedRef.current));
+    map.on("moveend", () => {
+      const cb = onViewChangeRef.current;
+      if (!cb) return;
+      const c = map.getCenter();
+      cb({ center: [c.lng, c.lat], zoom: map.getZoom() });
+    });
     return () => {
       map.remove();
       mapRef.current = null;
