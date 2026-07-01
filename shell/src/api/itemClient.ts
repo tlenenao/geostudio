@@ -1,4 +1,4 @@
-import type { CreateKind, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType, UpdatePatch } from "./types";
+import type { CreateKind, Group, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType, Sharing, UpdatePatch } from "./types";
 
 type GeoNodeResource = {
   pk: number | string;
@@ -158,6 +158,47 @@ export function createItemClient(opts: {
       });
       if (!res.ok && res.status !== 404) {
         throw new Error(`Request failed: ${res.status} DELETE /configs/by-item/${pk}`);
+      }
+    },
+
+    async listGroups(): Promise<Group[]> {
+      const data = await get<{ group_profiles: { pk: number | string; title: string }[] }>(
+        `/api/v2/groups`,
+      );
+      return data.group_profiles.map((g) => ({ id: String(g.pk), title: g.title }));
+    },
+
+    async getSharing(pk: string): Promise<Sharing> {
+      const data = await get<{ groups: { id: string; permissions: string }[] }>(
+        `/api/v2/resources/${pk}/permissions`,
+      );
+      return {
+        public: data.groups.some((g) => g.id === "anonymous"),
+        groups: data.groups
+          .filter((g) => g.id !== "anonymous")
+          .map((g) => ({ groupId: g.id, role: g.permissions === "edit" ? "editor" : "viewer" })),
+      };
+    },
+
+    async setSharing(pk: string, sharing: Sharing): Promise<void> {
+      const token = getToken();
+      const groups = [
+        ...(sharing.public ? [{ id: "anonymous", permissions: "view" }] : []),
+        ...sharing.groups.map((g) => ({
+          id: g.groupId,
+          permissions: g.role === "editor" ? "edit" : "view",
+        })),
+      ];
+      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}/permissions`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ groups }),
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status} PUT permissions`);
       }
     },
   };

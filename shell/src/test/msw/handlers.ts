@@ -75,4 +75,26 @@ export const handlers = [
   http.delete("https://builder.test/configs/by-item/:pk", () =>
     new HttpResponse(null, { status: 204 }),
   ),
+
+  http.get(`${GEONODE}/api/v2/groups`, () =>
+    HttpResponse.json({
+      group_profiles: [
+        { pk: 10, title: "Équipe A" },
+        { pk: 11, title: "Équipe B" },
+      ],
+    }),
+  ),
+
+  http.get(`${GEONODE}/api/v2/resources/:pk/permissions`, () =>
+    HttpResponse.json({
+      groups: [
+        { id: "anonymous", permissions: "view" },
+        { id: "10", permissions: "edit" },
+      ],
+    }),
+  ),
+
+  http.put(`${GEONODE}/api/v2/resources/:pk/permissions`, () =>
+    new HttpResponse(null, { status: 200 }),
+  ),
 ];
