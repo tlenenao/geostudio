@@ -140,3 +140,52 @@ def test_delete_by_item_removes_config_and_item(client):
 
 def test_delete_by_item_missing_returns_404(client):
     assert client.delete("/configs/by-item/nope").status_code == 404
+
+
+def _map_config() -> dict:
+    return {
+        "kind": "map",
+        "map": {
+            "basemap": {"style": "https://demotiles.maplibre.org/style.json"},
+            "view": {"center": [2.35, 48.85], "zoom": 5},
+            "layers": [
+                {"id": "l1", "title": "Communes", "visible": True,
+                 "kind": "vector", "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
+                 "sourceLayer": "communes"},
+            ],
+        },
+    }
+
+
+def test_map_config_round_trips_through_create_and_get(client):
+    response = client.post(
+        "/configs",
+        json={"title": "Ma carte", "owner": "alice", "config": _map_config()},
+    )
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["kind"] == "map"
+
+    fetched = client.get(f"/configs/{created['id']}")
+    assert fetched.status_code == 200
+    body = fetched.json()
+    assert body["config"]["kind"] == "map"
+    assert body["config"]["map"]["layers"][0]["sourceLayer"] == "communes"
+
+    # by-item GET (used by the front's getMapConfig) also returns the map
+    item_id = created["itemId"]
+    by_item = client.get(f"/configs/by-item/{item_id}")
+    assert by_item.status_code == 200
+    assert by_item.json()["config"]["map"]["view"]["zoom"] == 5
+
+
+def test_map_config_can_be_updated(client):
+    created = client.post(
+        "/configs",
+        json={"title": "Ma carte", "owner": "alice", "config": _map_config()},
+    ).json()
+    updated = _map_config()
+    updated["map"]["view"]["zoom"] = 9
+    response = client.put(f"/configs/{created['id']}", json=updated)
+    assert response.status_code == 200
+    assert response.json()["config"]["map"]["view"]["zoom"] == 9
