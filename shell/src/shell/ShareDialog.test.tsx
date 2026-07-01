@@ -62,3 +62,20 @@ test("saves the sharing payload for a checked group", async () => {
     ]),
   );
 });
+
+test("keeps the dialog open and shows an alert when saving fails", async () => {
+  server.use(
+    http.put("https://geonode.test/api/v2/resources/:pk/permissions", () =>
+      new HttpResponse(null, { status: 500 }),
+    ),
+  );
+  const onClose = vi.fn();
+  render(
+    <Harness>
+      <ShareDialog item={item} open onClose={onClose} />
+    </Harness>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /enregistrer/i }));
+  expect(await screen.findByText(/échec du partage/i)).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+});
