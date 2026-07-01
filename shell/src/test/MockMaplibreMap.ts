@@ -4,7 +4,7 @@ export const mapInstances: MockMap[] = [];
 
 export class MockMap {
   opts: { style: string; center: [number, number]; zoom: number };
-  handlers: Record<string, () => void> = {};
+  handlers: Record<string, Array<() => void>> = {};
   sources: Recorded[] = [];
   layers: { id: string; [k: string]: unknown }[] = [];
   removed = false;
@@ -15,12 +15,12 @@ export class MockMap {
   }
 
   on(event: string, cb: () => void) {
-    this.handlers[event] = cb;
+    (this.handlers[event] ??= []).push(cb);
     if (event === "load") cb();
     return this;
   }
   fire(event: string) {
-    this.handlers[event]?.();
+    this.handlers[event]?.forEach((cb) => cb());
   }
   addSource(id: string, spec: unknown) {
     this.sources.push({ id, spec });
