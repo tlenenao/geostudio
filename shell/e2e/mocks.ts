@@ -9,9 +9,19 @@ export async function mockGeoNode(page: Page) {
   const deleted = new Set<string>();
 
   await page.route("**/api/v2/resources*", async (route) => {
-    const resources = ALL.filter((r) => !deleted.has(r.pk));
+    const url = new URL(route.request().url());
+    const owner = url.searchParams.get("filter{owner.username.in}");
+    const visible = ALL.filter((r) => !deleted.has(r.pk));
+    // Alpha/Beta are owned by "alice"; the mock user is "mockuser".
+    const resources = owner ? visible.filter((r) => r.owner.username === owner) : visible;
     await route.fulfill({
       json: { total: resources.length, page: 1, page_size: 12, resources },
+    });
+  });
+
+  await page.route("**/api/v2/users/me", async (route) => {
+    await route.fulfill({
+      json: { user: { username: "mockuser", first_name: "Mock", last_name: "User" } },
     });
   });
 

@@ -194,3 +194,58 @@ test("setSharing omits the anonymous group when private", async () => {
   });
   expect(body.groups).toEqual([{ id: "5", permissions: "edit" }]);
 });
+
+test("listItems scope=mine sends the owner filter", async () => {
+  let url = "";
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+    }),
+  );
+  await makeClient().listItems({ scope: "mine", me: "alice" });
+  expect(new URL(url).searchParams.get("filter{owner.username.in}")).toBe("alice");
+});
+
+test("listItems scope=public sends the published filter", async () => {
+  let url = "";
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+    }),
+  );
+  await makeClient().listItems({ scope: "public" });
+  expect(new URL(url).searchParams.get("filter{is_published}")).toBe("true");
+});
+
+test("listItems scope=shared drops items owned by me", async () => {
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", () =>
+      HttpResponse.json({
+        total: 2,
+        page: 1,
+        page_size: 12,
+        resources: [
+          { pk: "1", resource_type: "app", title: "Mine", owner: { username: "alice" }, date: "" },
+          { pk: "2", resource_type: "app", title: "Theirs", owner: { username: "bob" }, date: "" },
+        ],
+      }),
+    ),
+  );
+  const page = await makeClient().listItems({ scope: "shared", me: "alice" });
+  expect(page.items.map((i) => i.pk)).toEqual(["2"]);
+  expect(page.total).toBe(1);
+});
+
+test("listItems scope=mine without me does not send the owner filter", async () => {
+  let url = "";
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+    }),
+  );
+  await makeClient().listItems({ scope: "mine" });
+  expect(new URL(url).searchParams.has("filter{owner.username.in}")).toBe(false);
+});
