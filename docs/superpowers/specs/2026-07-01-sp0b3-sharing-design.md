@@ -139,3 +139,9 @@ Chaque phase est testable seule ; `writing-plans` produira d'abord le plan de **
 - Les clés du payload permissions GeoNode et les paramètres de filtre de portée sont
   best-effort (confinés à la façade, définis par les mocks) ; à ajuster contre la version
   GeoNode réelle sans impacter les consommateurs.
+
+### Notes différées (revue finale 0b.3-a)
+
+- **Test d'invalidation `useSetSharing`** (`["sharing",pk]` + `["items"]`) à ajouter (couvert par le comportement, pas par un test dédié).
+- **Risques payload GeoNode (confinés à `item-client`)** : le PUT n'envoie que `{ groups }` (sans `users`/`organizations`) — vérifier que GeoNode ne réinitialise pas les permissions utilisateur ; les clés `group_profiles` / `"view"`/`"edit"` dépendent de la version GeoNode.
+- **Pagination `listGroups`** : seule la première page de `/api/v2/groups` est lue ; gérer la pagination si > page par défaut.
