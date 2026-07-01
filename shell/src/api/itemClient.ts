@@ -1,4 +1,4 @@
-import type { CreateKind, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType } from "./types";
+import type { CreateKind, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType, UpdatePatch } from "./types";
 
 type GeoNodeResource = {
   pk: number | string;
@@ -104,8 +104,11 @@ export function createItemClient(opts: {
         kind: string;
         itemId: string | null;
       };
+      if (!data.itemId) {
+        throw new Error("createConfigItem: builder returned no itemId");
+      }
       return {
-        pk: String(data.itemId ?? ""),
+        pk: String(data.itemId),
         resourceType: data.kind as ResourceType,
         title: input.title,
         abstract: "",
@@ -114,6 +117,48 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
       };
+    },
+
+    async updateItem(pk: string, patch: UpdatePatch): Promise<Item> {
+      const token = getToken();
+      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status} PATCH /resources/${pk}`);
+      }
+      const data = (await res.json()) as { resource: GeoNodeResource };
+      return toItem(data.resource);
+    },
+
+    async uploadThumbnail(pk: string, file: File): Promise<void> {
+      const token = getToken();
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}/set_thumbnail`, {
+        method: "PUT",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status} PUT thumbnail`);
+      }
+    },
+
+    async deleteItem(pk: string): Promise<void> {
+      const token = getToken();
+      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok && res.status !== 404) {
+        throw new Error(`Request failed: ${res.status} DELETE /configs/by-item/${pk}`);
+      }
     },
   };
 }
