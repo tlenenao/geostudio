@@ -44,3 +44,12 @@ test("delete from the detail page returns to the catalog", async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
 });
+
+test("filters the catalog to my items (empty for the mock user)", async ({ page }) => {
+  await mockGeoNode(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+  await page.getByLabel("Portée").selectOption("mine");
+  await expect(page.getByText("Aucun élément")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
+});

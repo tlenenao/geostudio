@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useItems } from "../api/hooks";
-import type { ResourceType } from "../api/types";
+import { useItems, useMe } from "../api/hooks";
+import type { ItemScope, ResourceType } from "../api/types";
 import { ItemCard } from "../ui/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/input";
@@ -11,14 +11,24 @@ const PAGE_SIZE = 12;
 export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string) => void }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState<ResourceType | "">("");
+  const [scope, setScope] = useState<ItemScope>("all");
   const [page, setPage] = useState(1);
+  const me = useMe();
 
-  const query = useItems({
-    q: q || undefined,
-    type: type || undefined,
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  // "mine"/"shared" need the current username; gate the query until it's known
+  // so the grid never briefly shows unfiltered results under those scopes.
+  const requiresMe = scope === "mine" || scope === "shared";
+  const query = useItems(
+    {
+      q: q || undefined,
+      type: type || undefined,
+      page,
+      pageSize: PAGE_SIZE,
+      scope,
+      me: requiresMe ? me.data?.username : undefined,
+    },
+    { enabled: !requiresMe || !!me.data },
+  );
 
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
 
@@ -51,6 +61,23 @@ export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string) => void }
             <option value="app">App</option>
             <option value="dashboard">Dashboard</option>
             <option value="map">Map</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          Portée
+          <select
+            aria-label="Portée"
+            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            value={scope}
+            onChange={(e) => {
+              setScope(e.target.value as ItemScope);
+              setPage(1);
+            }}
+          >
+            <option value="all">Tous</option>
+            <option value="mine">Mes éléments</option>
+            <option value="shared">Partagés avec moi</option>
+            <option value="public">Publics</option>
           </select>
         </label>
       </div>

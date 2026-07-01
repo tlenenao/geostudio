@@ -26,11 +26,15 @@ export type Me = {
   lastName: string;
 };
 
+export type ItemScope = "all" | "mine" | "shared" | "public";
+
 export type ListItemsParams = {
   q?: string;
   type?: ResourceType;
   page?: number;
   pageSize?: number;
+  scope?: ItemScope;
+  me?: string;
 };
 
 export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[] };

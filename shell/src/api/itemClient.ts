@@ -46,6 +46,12 @@ export function createItemClient(opts: {
       const q = new URLSearchParams();
       if (params.q) q.set("search", params.q);
       if (params.type) q.set("filter{resource_type.in}", params.type);
+      if (params.scope === "mine" && params.me) {
+        q.set("filter{owner.username.in}", params.me);
+      }
+      if (params.scope === "public") {
+        q.set("filter{is_published}", "true");
+      }
       q.set("page", String(params.page ?? 1));
       q.set("page_size", String(params.pageSize ?? 12));
       const data = await get<{
@@ -54,12 +60,17 @@ export function createItemClient(opts: {
         page_size: number;
         resources: GeoNodeResource[];
       }>(`/api/v2/resources?${q.toString()}`);
-      return {
-        items: data.resources.map(toItem),
-        total: data.total,
-        page: data.page,
-        pageSize: data.page_size,
-      };
+      let items = data.resources.map(toItem);
+      let total = data.total;
+      if (params.scope === "shared" && params.me) {
+        // Page-local exclusion of owned items (GeoNode has no "shared with me"
+        // param). `total` is only corrected for this page, so multi-page totals
+        // are approximate — documented limitation. Never let it go negative.
+        const before = items.length;
+        items = items.filter((i) => i.owner !== params.me);
+        total = Math.max(0, total - (before - items.length));
+      }
+      return { items, total, page: data.page, pageSize: data.page_size };
     },
 
     async getItem(pk: string): Promise<Item> {
