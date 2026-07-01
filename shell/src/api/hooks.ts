@@ -108,14 +108,22 @@ export function useUploadThumbnail(pk: string) {
   });
 }
 
-export function useGroups() {
+export function useGroups(options?: { enabled?: boolean }) {
   const client = useItemClient();
-  return useQuery({ queryKey: ["groups"], queryFn: () => client.listGroups() });
+  return useQuery({
+    queryKey: ["groups"],
+    queryFn: () => client.listGroups(),
+    enabled: options?.enabled ?? true,
+  });
 }
 
-export function useSharing(pk: string) {
+export function useSharing(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClient();
-  return useQuery({ queryKey: ["sharing", pk], queryFn: () => client.getSharing(pk) });
+  return useQuery({
+    queryKey: ["sharing", pk],
+    queryFn: () => client.getSharing(pk),
+    enabled: options?.enabled ?? true,
+  });
 }
 
 export function useSetSharing(pk: string) {

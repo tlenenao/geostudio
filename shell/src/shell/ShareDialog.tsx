@@ -13,25 +13,25 @@ export function ShareDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const groupsQuery = useGroups();
-  const sharingQuery = useSharing(item.pk);
+  const groupsQuery = useGroups({ enabled: open });
+  const sharingQuery = useSharing(item.pk, { enabled: open });
   const setSharing = useSetSharing(item.pk);
 
   const [isPublic, setIsPublic] = useState(false);
   const [roles, setRoles] = useState<Record<string, ShareRole | undefined>>({});
 
   useEffect(() => {
-    if (sharingQuery.data) {
-      setIsPublic(sharingQuery.data.public);
-      const map: Record<string, ShareRole> = {};
-      sharingQuery.data.groups.forEach((g) => {
-        map[g.groupId] = g.role;
-      });
-      setRoles(map);
-    }
-  }, [sharingQuery.data]);
+    if (!open || !sharingQuery.data) return;
+    setIsPublic(sharingQuery.data.public);
+    const map: Record<string, ShareRole> = {};
+    sharingQuery.data.groups.forEach((g) => {
+      map[g.groupId] = g.role;
+    });
+    setRoles(map);
+  }, [open, sharingQuery.data]);
 
   async function submit() {
+    setSharing.reset();
     const groups = Object.entries(roles)
       .filter(([, role]) => role)
       .map(([groupId, role]) => ({ groupId, role: role as ShareRole }));
