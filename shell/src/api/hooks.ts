@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "./ItemClientProvider";
 import type { CreateKind, Item, ItemPage, ListItemsParams, Sharing, UpdatePatch } from "./types";
 
-export function useItems(params: ListItemsParams) {
+export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) {
   const client = useItemClient();
   return useQuery({
     queryKey: ["items", params],
     queryFn: () => client.listItems(params),
+    enabled: opts?.enabled ?? true,
   });
 }
 

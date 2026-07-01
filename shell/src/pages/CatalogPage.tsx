@@ -15,14 +15,20 @@ export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string) => void }
   const [page, setPage] = useState(1);
   const me = useMe();
 
-  const query = useItems({
-    q: q || undefined,
-    type: type || undefined,
-    page,
-    pageSize: PAGE_SIZE,
-    scope,
-    me: me.data?.username,
-  });
+  // "mine"/"shared" need the current username; gate the query until it's known
+  // so the grid never briefly shows unfiltered results under those scopes.
+  const requiresMe = scope === "mine" || scope === "shared";
+  const query = useItems(
+    {
+      q: q || undefined,
+      type: type || undefined,
+      page,
+      pageSize: PAGE_SIZE,
+      scope,
+      me: requiresMe ? me.data?.username : undefined,
+    },
+    { enabled: !requiresMe || !!me.data },
+  );
 
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
 

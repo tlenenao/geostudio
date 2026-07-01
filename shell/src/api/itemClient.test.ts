@@ -237,3 +237,15 @@ test("listItems scope=shared drops items owned by me", async () => {
   expect(page.items.map((i) => i.pk)).toEqual(["2"]);
   expect(page.total).toBe(1);
 });
+
+test("listItems scope=mine without me does not send the owner filter", async () => {
+  let url = "";
+  server.use(
+    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+    }),
+  );
+  await makeClient().listItems({ scope: "mine" });
+  expect(new URL(url).searchParams.has("filter{owner.username.in}")).toBe(false);
+});
