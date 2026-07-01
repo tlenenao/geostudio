@@ -6,8 +6,9 @@ import { Dialog } from "../ui/dialog";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { MetadataForm } from "../ui/MetadataForm";
 import { ThumbnailUpload } from "../ui/ThumbnailUpload";
+import { ShareDialog } from "./ShareDialog";
 
-type Panel = null | "menu" | "edit" | "thumbnail" | "delete";
+type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
   const [panel, setPanel] = useState<Panel>(null);
@@ -57,6 +58,9 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("thumbnail")}>
             Miniature
           </button>
+          <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("share")}>
+            Partager
+          </button>
           <button className="px-3 py-1 text-left text-red-600 hover:bg-slate-100" onClick={() => setPanel("delete")}>
             Supprimer
           </button>
@@ -85,6 +89,8 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           </p>
         )}
       </Dialog>
+
+      <ShareDialog item={item} open={panel === "share"} onClose={() => setPanel(null)} />
 
       <ConfirmDialog
         open={panel === "delete"}
