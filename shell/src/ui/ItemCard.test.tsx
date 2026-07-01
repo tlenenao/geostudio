@@ -27,3 +27,8 @@ test("calls onOpen with the pk", async () => {
   await userEvent.click(screen.getByRole("button", { name: /ouvrir/i }));
   expect(onOpen).toHaveBeenCalledWith("42");
 });
+
+test("renders the actions slot when provided", () => {
+  render(<ItemCard item={item} onOpen={() => {}} actions={<span>ACTIONS</span>} />);
+  expect(screen.getByText("ACTIONS")).toBeInTheDocument();
+});
