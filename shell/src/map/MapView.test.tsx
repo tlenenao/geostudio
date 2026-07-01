@@ -89,3 +89,20 @@ test("re-applies layers when config.layers changes", () => {
   expect(map.getLayer("b")).toMatchObject({ type: "fill", source: "b" });
   expect(map.getSource("b")).toMatchObject({ spec: { type: "geojson", data: "https://fs/b" } });
 });
+
+test("reports view changes on moveend", () => {
+  const onViewChange = vi.fn();
+  render(<MapView config={config} onViewChange={onViewChange} />);
+  mapInstances[0].fire("moveend");
+  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5 });
+});
+
+test("renders a legend of visible layers", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "Communes", visible: true, kind: "vector", tilesUrl: "u", sourceLayer: "c" }],
+  };
+  render(<MapView config={cfg} />);
+  // MapLegend renders the title
+  expect(document.body.textContent).toContain("Communes");
+});
