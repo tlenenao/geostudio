@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
-import { useCreateItem, useDeleteItem, useItems, useMe, useUpdateItem } from "./hooks";
+import { useCreateItem, useDeleteItem, useGroups, useItems, useMe, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -79,4 +79,16 @@ test("useUpdateItem updates the cached item title", async () => {
   });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.title).toBe("Renamed");
+});
+
+test("useGroups returns the mapped groups", async () => {
+  const { result } = renderHook(() => useGroups(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.[0]).toEqual({ id: "10", title: "Équipe A" });
+});
+
+test("useSharing returns the item sharing", async () => {
+  const { result } = renderHook(() => useSharing("7"), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.public).toBe(true);
 });

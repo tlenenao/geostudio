@@ -35,6 +35,13 @@ export type ListItemsParams = {
 
 export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[] };
 
+export type Group = { id: string; title: string };
+export type ShareRole = "viewer" | "editor";
+export type Sharing = {
+  public: boolean;
+  groups: { groupId: string; role: ShareRole }[];
+};
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
@@ -43,4 +50,7 @@ export interface ItemClient {
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
+  listGroups(): Promise<Group[]>;
+  getSharing(pk: string): Promise<Sharing>;
+  setSharing(pk: string, sharing: Sharing): Promise<void>;
 }

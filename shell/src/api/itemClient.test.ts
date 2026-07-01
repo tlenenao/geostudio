@@ -147,3 +147,50 @@ test("createConfigItem throws when builder returns no itemId", async () => {
     makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" }),
   ).rejects.toThrow(/itemId/);
 });
+
+test("listGroups maps GeoNode group_profiles", async () => {
+  const groups = await makeClient().listGroups();
+  expect(groups).toEqual([
+    { id: "10", title: "Équipe A" },
+    { id: "11", title: "Équipe B" },
+  ]);
+});
+
+test("getSharing maps public flag and group roles", async () => {
+  const sharing = await makeClient().getSharing("7");
+  expect(sharing.public).toBe(true);
+  expect(sharing.groups).toEqual([{ groupId: "10", role: "editor" }]);
+});
+
+test("setSharing sends the mapped GeoNode payload", async () => {
+  let body: any = null;
+  server.use(
+    http.put("https://geonode.test/api/v2/resources/:pk/permissions", async ({ request }) => {
+      body = await request.json();
+      return new HttpResponse(null, { status: 200 });
+    }),
+  );
+  await makeClient().setSharing("7", {
+    public: true,
+    groups: [{ groupId: "5", role: "viewer" }],
+  });
+  expect(body.groups).toEqual([
+    { id: "anonymous", permissions: "view" },
+    { id: "5", permissions: "view" },
+  ]);
+});
+
+test("setSharing omits the anonymous group when private", async () => {
+  let body: any = null;
+  server.use(
+    http.put("https://geonode.test/api/v2/resources/:pk/permissions", async ({ request }) => {
+      body = await request.json();
+      return new HttpResponse(null, { status: 200 });
+    }),
+  );
+  await makeClient().setSharing("7", {
+    public: false,
+    groups: [{ groupId: "5", role: "editor" }],
+  });
+  expect(body.groups).toEqual([{ id: "5", permissions: "edit" }]);
+});

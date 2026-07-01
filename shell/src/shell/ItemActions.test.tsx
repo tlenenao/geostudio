@@ -50,6 +50,17 @@ test("renames an item via the edit dialog", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
 
+test("opens the share dialog from the menu", async () => {
+  render(
+    <Harness>
+      <ItemActions item={item} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /actions/i }));
+  await userEvent.click(screen.getByRole("button", { name: /partager/i }));
+  expect(await screen.findByRole("dialog", { name: /partager/i })).toBeInTheDocument();
+});
+
 test("deletes an item after confirmation and calls onDeleted", async () => {
   const onDeleted = vi.fn();
   render(
