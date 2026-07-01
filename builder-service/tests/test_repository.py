@@ -68,3 +68,30 @@ def test_rollback_restores_old_revision_as_new(session):
 def test_rollback_missing_version_returns_none(session):
     created = repo.create_config(session, _config(), item_id=None)
     assert repo.rollback_config(session, created.id, version=99) is None
+
+
+def test_delete_config_removes_config_and_revisions(session):
+    created = repo.create_config(session, _config(widget="map"), item_id="item-1")
+    repo.update_config(session, created.id, _config(widget="table"))
+
+    assert repo.delete_config(session, created.id) is True
+    assert repo.get_config(session, created.id) is None
+    assert repo.list_revisions(session, created.id) == []
+
+
+def test_delete_missing_config_returns_false(session):
+    assert repo.delete_config(session, "nope") is False
+
+
+def test_get_config_by_item_returns_latest(session):
+    created = repo.create_config(session, _config(widget="map"), item_id="item-7")
+    repo.update_config(session, created.id, _config(widget="table"))
+    found = repo.get_config_by_item(session, "item-7")
+    assert found is not None
+    assert found.id == created.id
+    assert found.itemId == "item-7"
+    assert found.config.layout.items[0].widget == "table"
+
+
+def test_get_config_by_item_missing_returns_none(session):
+    assert repo.get_config_by_item(session, "nope") is None

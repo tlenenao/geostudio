@@ -182,6 +182,13 @@ services:
       postgis:
         condition: service_healthy
 
+  shell:
+    build: ./shell
+    ports:
+      - "8300:8300"
+    networks: [gis-net]
+    restart: unless-stopped
+
   # ─── Ingress ───────────────────────────────────────────
 
   traefik:
