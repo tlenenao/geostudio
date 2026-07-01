@@ -98,3 +98,45 @@ def test_rollback_missing_returns_404(client):
     assert client.post(
         f"/configs/{created['id']}/rollback", json={"version": 99}
     ).status_code == 404
+
+
+def test_delete_config_removes_it_and_deletes_linked_item(client):
+    created = _create(client)
+    config_id = created["id"]
+    item_id = created["itemId"]
+
+    response = client.delete(f"/configs/{config_id}")
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.stub.deleted == [item_id]
+    assert client.get(f"/configs/{config_id}").status_code == 404
+
+
+def test_delete_missing_config_returns_404(client):
+    assert client.delete("/configs/nope").status_code == 404
+
+
+def test_get_config_by_item(client):
+    created = _create(client)
+    item_id = created["itemId"]
+    response = client.get(f"/configs/by-item/{item_id}")
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+
+def test_get_config_by_item_missing_returns_404(client):
+    assert client.get("/configs/by-item/nope").status_code == 404
+
+
+def test_delete_by_item_removes_config_and_item(client):
+    created = _create(client)
+    item_id = created["itemId"]
+    response = client.delete(f"/configs/by-item/{item_id}")
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.stub.deleted == [item_id]
+    assert client.get(f"/configs/{created['id']}").status_code == 404
+
+
+def test_delete_by_item_missing_returns_404(client):
+    assert client.delete("/configs/by-item/nope").status_code == 404

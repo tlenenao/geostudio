@@ -25,3 +25,23 @@ def test_geonode_client_posts_and_returns_pk():
     assert item_id == "42"
     assert captured["url"] == "https://geonode.example/api/v2/resources"
     assert captured["auth"] == "Bearer t0ken"
+
+
+def test_geonode_client_delete_item_issues_delete_with_auth():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["auth"] = request.headers.get("authorization")
+        return httpx.Response(204)
+
+    transport = httpx.MockTransport(handler)
+    http = httpx.Client(transport=transport)
+    client = GeoNodeItemClient(base_url="https://geonode.example", token="t0ken", http=http)
+
+    client.delete_item("42")
+
+    assert captured["method"] == "DELETE"
+    assert captured["url"] == "https://geonode.example/api/v2/resources/42"
+    assert captured["auth"] == "Bearer t0ken"

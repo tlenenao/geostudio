@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -83,3 +83,48 @@ def rollback_config(
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")
     return result
+
+
+@router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_config(
+    config_id: str,
+    session: Session = Depends(get_session),
+    items: ItemClient = Depends(get_item_client),
+) -> Response:
+    result = repo.get_config(session, config_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    # GeoNode item is deleted before the DB config; if delete_item raises, the
+    # config is preserved (no silent orphan). The reverse (GeoNode gone, DB write
+    # fails) is an accepted, unlikely distributed-systems window.
+    if result.itemId:
+        items.delete_item(result.itemId)
+    repo.delete_config(session, config_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
+def get_config_by_item(
+    item_id: str, session: Session = Depends(get_session)
+) -> ConfigRead:
+    result = repo.get_config_by_item(session, item_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    return result
+
+
+@router.delete(
+    "/configs/by-item/{item_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_config_by_item(
+    item_id: str,
+    session: Session = Depends(get_session),
+    items: ItemClient = Depends(get_item_client),
+) -> Response:
+    result = repo.get_config_by_item(session, item_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    if result.itemId:
+        items.delete_item(result.itemId)
+    repo.delete_config(session, result.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
