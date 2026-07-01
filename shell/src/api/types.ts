@@ -33,9 +33,14 @@ export type ListItemsParams = {
   pageSize?: number;
 };
 
+export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[] };
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getMe(): Promise<Me>;
   createConfigItem(input: { kind: CreateKind; title: string; owner: string }): Promise<Item>;
+  updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
+  uploadThumbnail(pk: string, file: File): Promise<void>;
+  deleteItem(pk: string): Promise<void>;
 }

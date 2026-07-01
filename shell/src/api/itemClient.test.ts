@@ -102,3 +102,48 @@ test("createConfigItem sends title, owner and an empty grid layout", async () =>
   expect(body.config.kind).toBe("app");
   expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
 });
+
+test("updateItem PATCHes GeoNode and maps the result", async () => {
+  const item = await makeClient().updateItem("7", { title: "Renamed", abstract: "New" });
+  expect(item.pk).toBe("7");
+  expect(item.title).toBe("Renamed");
+  expect(item.abstract).toBe("New");
+});
+
+test("uploadThumbnail PUTs multipart without throwing", async () => {
+  const file = new File(["x"], "t.png", { type: "image/png" });
+  await expect(makeClient().uploadThumbnail("7", file)).resolves.toBeUndefined();
+});
+
+test("deleteItem DELETEs the by-item endpoint", async () => {
+  let url: string | null = null;
+  server.use(
+    http.delete("https://builder.test/configs/by-item/:pk", ({ request }) => {
+      url = new URL(request.url).pathname;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().deleteItem("42");
+  expect(url).toBe("/configs/by-item/42");
+});
+
+test("deleteItem treats 404 as success", async () => {
+  server.use(
+    http.delete("https://builder.test/configs/by-item/:pk", () =>
+      new HttpResponse(null, { status: 404 }),
+    ),
+  );
+  await expect(makeClient().deleteItem("gone")).resolves.toBeUndefined();
+});
+
+test("createConfigItem throws when builder returns no itemId", async () => {
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      const body = (await request.json()) as { config: { kind: string } };
+      return HttpResponse.json({ id: "c", kind: body.config.kind, itemId: null, version: 1, config: body.config });
+    }),
+  );
+  await expect(
+    makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" }),
+  ).rejects.toThrow(/itemId/);
+});

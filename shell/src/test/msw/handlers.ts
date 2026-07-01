@@ -52,4 +52,27 @@ export const handlers = [
       config: body.config,
     });
   }),
+
+  http.patch(`${GEONODE}/api/v2/resources/:pk`, async ({ params, request }) => {
+    const patch = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({
+      resource: {
+        pk: String(params.pk),
+        resource_type: "app",
+        title: (patch.title as string) ?? "Item",
+        abstract: (patch.abstract as string) ?? "",
+        owner: { username: "alice" },
+        thumbnail_url: null,
+        date: "2026-01-01T00:00:00Z",
+      },
+    });
+  }),
+
+  http.put(`${GEONODE}/api/v2/resources/:pk/set_thumbnail`, () =>
+    new HttpResponse(null, { status: 200 }),
+  ),
+
+  http.delete("https://builder.test/configs/by-item/:pk", () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
 ];
