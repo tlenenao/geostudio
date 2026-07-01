@@ -56,3 +56,40 @@ def test_message_from_alias_round_trips():
     config = BuilderConfig.model_validate(_valid_payload())
     dumped = config.model_dump(by_alias=True)
     assert dumped["messages"][0]["from"] == "map"
+
+
+def _valid_map_payload() -> dict:
+    return {
+        "version": 1,
+        "kind": "map",
+        "map": {
+            "basemap": {"style": "https://demotiles.maplibre.org/style.json"},
+            "view": {"center": [2.35, 48.85], "zoom": 5},
+            "layers": [
+                {"id": "l1", "title": "Communes", "visible": True,
+                 "kind": "vector", "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
+                 "sourceLayer": "communes"},
+            ],
+        },
+    }
+
+
+def test_valid_map_config_parses():
+    config = BuilderConfig.model_validate(_valid_map_payload())
+    assert config.kind == "map"
+    assert config.layout is None
+    assert config.map is not None
+    assert config.map.layers[0].kind == "vector"
+    assert config.map.view.center == (2.35, 48.85)
+
+
+def test_map_config_requires_map_field():
+    payload = _valid_map_payload()
+    del payload["map"]
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(payload)
+
+
+def test_app_config_still_requires_layout():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate({"kind": "app"})

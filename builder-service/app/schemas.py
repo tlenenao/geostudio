@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DataSource(BaseModel):
@@ -35,13 +35,52 @@ class Message(BaseModel):
     action: str
 
 
+class MapView(BaseModel):
+    center: tuple[float, float]
+    zoom: float
+
+
+class BaseMap(BaseModel):
+    style: str
+
+
+class MapLayer(BaseModel):
+    id: str
+    title: str
+    visible: bool = True
+    kind: Literal["vector", "raster", "feature", "deck"]
+    tilesUrl: str | None = None
+    sourceLayer: str | None = None
+    url: str | None = None
+    opacity: float | None = None
+    deckType: str | None = None
+    dataUrl: str | None = None
+    paint: dict | None = None
+    props: dict | None = None
+
+
+class MapConfig(BaseModel):
+    basemap: BaseMap
+    view: MapView
+    layers: list[MapLayer] = Field(default_factory=list)
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard"]
+    kind: Literal["app", "dashboard", "map"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
-    layout: Layout
+    layout: Layout | None = None
     messages: list[Message] = Field(default_factory=list)
+    map: MapConfig | None = None
+
+    @model_validator(mode="after")
+    def _require_kind_payload(self) -> "BuilderConfig":
+        if self.kind in ("app", "dashboard") and self.layout is None:
+            raise ValueError(f"{self.kind} config requires a layout")
+        if self.kind == "map" and self.map is None:
+            raise ValueError("map config requires a map")
+        return self
