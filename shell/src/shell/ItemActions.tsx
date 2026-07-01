@@ -44,7 +44,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
   }
 
   return (
-    <>
+    <div className="relative">
       <Button size="sm" variant="ghost" aria-label="Actions" onClick={() => setPanel("menu")}>
         ⋯
       </Button>
@@ -95,6 +95,11 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         onConfirm={confirmDelete}
         onCancel={() => setPanel(null)}
       />
-    </>
+      {remove.isError && panel === "delete" && (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          Échec de la suppression.
+        </p>
+      )}
+    </div>
   );
 }
