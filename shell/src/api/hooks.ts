@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "./ItemClientProvider";
-import type { CreateKind, Item, ItemPage, ListItemsParams, UpdatePatch } from "./types";
+import type { CreateKind, Item, ItemPage, ListItemsParams, Sharing, UpdatePatch } from "./types";
 
 export function useItems(params: ListItemsParams) {
   const client = useItemClient();
@@ -103,6 +103,28 @@ export function useUploadThumbnail(pk: string) {
     mutationFn: (file: File) => client.uploadThumbnail(pk, file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["item", pk] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+
+export function useGroups() {
+  const client = useItemClient();
+  return useQuery({ queryKey: ["groups"], queryFn: () => client.listGroups() });
+}
+
+export function useSharing(pk: string) {
+  const client = useItemClient();
+  return useQuery({ queryKey: ["sharing", pk], queryFn: () => client.getSharing(pk) });
+}
+
+export function useSetSharing(pk: string) {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sharing: Sharing) => client.setSharing(pk, sharing),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sharing", pk] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
