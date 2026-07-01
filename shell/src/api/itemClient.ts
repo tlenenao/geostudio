@@ -63,9 +63,12 @@ export function createItemClient(opts: {
       let items = data.resources.map(toItem);
       let total = data.total;
       if (params.scope === "shared" && params.me) {
+        // Page-local exclusion of owned items (GeoNode has no "shared with me"
+        // param). `total` is only corrected for this page, so multi-page totals
+        // are approximate — documented limitation. Never let it go negative.
         const before = items.length;
         items = items.filter((i) => i.owner !== params.me);
-        total = total - (before - items.length);
+        total = Math.max(0, total - (before - items.length));
       }
       return { items, total, page: data.page, pageSize: data.page_size };
     },
