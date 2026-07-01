@@ -163,3 +163,10 @@ Chaque phase est testable seule ; `writing-plans` produira d'abord le plan de **
 ### Amendement (0b.2-c) — résolution par item
 
 Décision validée : la suppression (et plus tard l'ouverture éditeur) se résout par le **pk GeoNode**, pas par le configId. Le Builder Service expose `GET /configs/by-item/{itemId}` et `DELETE /configs/by-item/{itemId}`. Le front utilise donc `deleteItem(pk)` (et non `deleteItem(configId)` comme écrit en §4.1). Le reste de §4.1 (updateItem/uploadThumbnail via GeoNode) est inchangé.
+
+### Notes différées (revue finale 0b.2-c)
+
+- **Menu ItemActions** : pas de fermeture au clic extérieur ni de toggle ; ajouter `aria-haspopup`/`aria-expanded` + Escape (candidat à une primitive `Menu` partagée).
+- **Reset erreur de mutation** à la réouverture d'un dialog (update/thumbnail conservent `isError`) → appeler `reset()` à la fermeture.
+- **GeoNode 404 dans `delete_item`** : tolérer le 404 GeoNode (traiter comme déjà supprimé) pour éviter un 5xx + config orpheline ; durcissement backend.
+- **A11y Dialog** : `aria-modal="true"` + focus trap (s'applique à MetadataForm/ThumbnailUpload/ConfirmDialog).
