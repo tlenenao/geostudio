@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { MapConfig } from "../api/types";
+import { MapLegend } from "./MapLegend";
 
 function applyLayers(
   map: maplibregl.Map,
@@ -43,7 +44,7 @@ function applyLayers(
 
 export function MapView({
   config,
-  onViewChange: _onViewChange,
+  onViewChange,
 }: {
   config: MapConfig;
   onViewChange?: (v: { center: [number, number]; zoom: number }) => void;
@@ -62,6 +63,12 @@ export function MapView({
     });
     mapRef.current = map;
     map.on("load", () => applyLayers(map, config.layers, appliedRef.current));
+    if (onViewChange) {
+      map.on("moveend", () => {
+        const c = map.getCenter();
+        onViewChange({ center: [c.lng, c.lat], zoom: map.getZoom() });
+      });
+    }
     return () => {
       map.remove();
       mapRef.current = null;
@@ -76,5 +83,10 @@ export function MapView({
     applyLayers(map, config.layers, appliedRef.current);
   }, [config.layers]);
 
-  return <div ref={containerRef} className="h-full w-full" data-testid="map-container" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
+      <MapLegend layers={config.layers} />
+    </div>
+  );
 }
