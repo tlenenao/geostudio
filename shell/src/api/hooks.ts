@@ -43,18 +43,21 @@ export function useDeleteItem() {
     onMutate: async (pk: string) => {
       await queryClient.cancelQueries({ queryKey: ["items"] });
       const previous = queryClient.getQueriesData<ItemPage>({ queryKey: ["items"] });
-      queryClient.setQueriesData<ItemPage>({ queryKey: ["items"] }, (old) =>
-        old
-          ? { ...old, items: old.items.filter((i) => i.pk !== pk), total: old.total - 1 }
-          : old,
-      );
+      queryClient.setQueriesData<ItemPage>({ queryKey: ["items"] }, (old) => {
+        if (!old) return old;
+        const items = old.items.filter((i) => i.pk !== pk);
+        // Only decrement total on the page that actually contained the item.
+        const removed = old.items.length - items.length;
+        return { ...old, items, total: old.total - removed };
+      });
       return { previous };
     },
     onError: (_err, _pk, ctx) => {
       ctx?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
     },
-    onSettled: () => {
+    onSettled: (_data, _err, pk) => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["item", pk] });
     },
   });
 }

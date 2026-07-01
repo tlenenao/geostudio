@@ -9,7 +9,8 @@ function CatalogRoute() {
 
 function ItemDetailRoute() {
   const { pk } = useParams();
-  return <ItemDetailPage pk={pk!} />;
+  const navigate = useNavigate();
+  return <ItemDetailPage pk={pk!} onDeleted={() => navigate("/")} />;
 }
 
 export function AppRoutes() {
