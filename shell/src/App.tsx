@@ -20,6 +20,8 @@ function AuthedApp() {
       createItemClient({
         geonodeUrl: config.geonodeUrl,
         builderUrl: config.builderUrl,
+        martinUrl: config.martinUrl,
+        featureservUrl: config.featureservUrl,
         getToken: getAccessToken,
       }),
     [getAccessToken],

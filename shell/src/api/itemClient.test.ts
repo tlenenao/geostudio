@@ -6,6 +6,8 @@ function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
     geonodeUrl: "https://geonode.test",
     builderUrl: "https://builder.test",
+    martinUrl: "https://martin.test",
+    featureservUrl: "https://featureserv.test",
     getToken: () => token,
   });
 }
@@ -248,4 +250,60 @@ test("listItems scope=mine without me does not send the owner filter", async () 
   );
   await makeClient().listItems({ scope: "mine" });
   expect(new URL(url).searchParams.has("filter{owner.username.in}")).toBe(false);
+});
+
+test("listLayerSources aggregates Martin vector sources and featureserv collections", async () => {
+  server.use(
+    http.get("https://martin.test/catalog", () =>
+      HttpResponse.json({
+        tiles: {
+          communes: { content_type: "application/x-protobuf", description: "Communes" },
+          routes: { content_type: "application/x-protobuf" },
+        },
+      }),
+    ),
+    http.get("https://featureserv.test/collections.json", () =>
+      HttpResponse.json({
+        collections: [{ id: "public.parcs", title: "Parcs" }],
+      }),
+    ),
+  );
+  const sources = await makeClient().listLayerSources();
+  const martin = sources.find((s) => s.id === "communes");
+  expect(martin).toMatchObject({
+    title: "Communes",
+    service: "martin",
+    kind: "vector",
+    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
+    sourceLayer: "communes",
+  });
+  // Martin source without a description falls back to its id for the title.
+  expect(sources.find((s) => s.id === "routes")?.title).toBe("routes");
+  const feature = sources.find((s) => s.id === "public.parcs");
+  expect(feature).toMatchObject({
+    title: "Parcs",
+    service: "featureserv",
+    kind: "feature",
+    url: "https://featureserv.test/collections/public.parcs/items.json",
+  });
+});
+
+test("listLayerSources still returns one service when the other fails", async () => {
+  server.use(
+    http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://featureserv.test/collections.json", () =>
+      HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
+    ),
+  );
+  const sources = await makeClient().listLayerSources();
+  expect(sources).toHaveLength(1);
+  expect(sources[0].service).toBe("featureserv");
+});
+
+test("listLayerSources throws when both services fail", async () => {
+  server.use(
+    http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://featureserv.test/collections.json", () => new HttpResponse(null, { status: 500 })),
+  );
+  await expect(makeClient().listLayerSources()).rejects.toThrow();
 });

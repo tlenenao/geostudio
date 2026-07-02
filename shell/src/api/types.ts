@@ -55,6 +55,16 @@ export type MapLayer =
   | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> };
 export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[] };
 
+export type LayerSource = {
+  id: string;
+  title: string;
+  service: "martin" | "featureserv";
+  kind: "vector" | "feature";
+  tilesUrl?: string;
+  sourceLayer?: string;
+  url?: string;
+};
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
@@ -66,4 +76,5 @@ export interface ItemClient {
   listGroups(): Promise<Group[]>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
+  listLayerSources(): Promise<LayerSource[]>;
 }
