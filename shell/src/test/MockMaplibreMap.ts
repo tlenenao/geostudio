@@ -9,6 +9,7 @@ export class MockMap {
   layers: { id: string; [k: string]: unknown }[] = [];
   controls: unknown[] = [];
   removed = false;
+  throwOnAddLayer = new Set<string>();
 
   constructor(opts: MockMap["opts"]) {
     this.opts = opts;
@@ -27,6 +28,7 @@ export class MockMap {
     this.sources.push({ id, spec });
   }
   addLayer(layer: { id: string; [k: string]: unknown }) {
+    if (this.throwOnAddLayer.has(layer.id)) throw new Error(`boom ${layer.id}`);
     this.layers.push(layer);
   }
   getLayer(id: string) {
@@ -48,6 +50,9 @@ export class MockMap {
     return this.opts.zoom;
   }
   loaded() {
+    return true;
+  }
+  isStyleLoaded() {
     return true;
   }
   addControl(control: unknown) {

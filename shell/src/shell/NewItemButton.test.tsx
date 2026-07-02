@@ -72,6 +72,42 @@ test("does not submit an empty title", async () => {
   expect(screen.queryByText(/^detail-/)).not.toBeInTheDocument();
 });
 
+test("creates a Map and navigates to the editor route", async () => {
+  server.use(
+    http.post("https://builder.test/configs", () =>
+      HttpResponse.json({ id: "cfg-77", kind: "map", itemId: "77", version: 1, config: {} }),
+    ),
+  );
+  function MapProbe() {
+    const { pk } = useParams();
+    return <div>map-{pk}</div>;
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({
+    geonodeUrl: "https://geonode.test",
+    builderUrl: "https://builder.test",
+    getToken: () => "t",
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+          <Routes>
+            <Route path="/items/:pk" element={<DetailProbe />} />
+            <Route path="/maps/:pk" element={<MapProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "map");
+  await userEvent.type(screen.getByLabelText("Titre"), "Ma Carte");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(await screen.findByText("map-77")).toBeInTheDocument();
+});
+
 test("shows an alert and stays on the page when creation fails", async () => {
   server.use(
     http.post("https://builder.test/configs", () => new HttpResponse(null, { status: 500 })),

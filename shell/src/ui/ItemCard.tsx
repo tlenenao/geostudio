@@ -1,4 +1,4 @@
-import type { Item } from "../api/types";
+import type { Item, ResourceType } from "../api/types";
 import { Button } from "./button";
 import { Card } from "./card";
 
@@ -8,7 +8,7 @@ export function ItemCard({
   actions,
 }: {
   item: Item;
-  onOpen: (pk: string) => void;
+  onOpen: (pk: string, type: ResourceType) => void;
   actions?: React.ReactNode;
 }) {
   return (
@@ -21,7 +21,7 @@ export function ItemCard({
       </div>
       <h3 className="text-base font-semibold">{item.title}</h3>
       <p className="line-clamp-2 text-sm text-slate-500">{item.abstract}</p>
-      <Button size="sm" className="mt-2 w-fit" onClick={() => onOpen(item.pk)}>
+      <Button size="sm" className="mt-2 w-fit" onClick={() => onOpen(item.pk, item.resourceType)}>
         Ouvrir
       </Button>
     </Card>

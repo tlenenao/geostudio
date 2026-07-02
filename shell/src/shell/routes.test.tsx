@@ -3,9 +3,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
+import { vi } from "vitest";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRoutes } from "./routes";
+
+vi.mock("../pages/MapEditorPage", () => ({
+  MapEditorPage: ({ pk }: { pk: string }) => <div>map-editor-{pk}</div>,
+}));
 
 function wrap(children: ReactNode, initial = "/") {
   const queryClient = new QueryClient({
