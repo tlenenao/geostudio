@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "./ItemClientProvider";
-import type { CreateKind, Item, ItemPage, ListItemsParams, Sharing, UpdatePatch } from "./types";
+import type { CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
 export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) {
   const client = useItemClient();
@@ -145,5 +145,36 @@ export function useLayerSources(options?: { enabled?: boolean }) {
     queryKey: ["layer-sources"],
     queryFn: () => client.listLayerSources(),
     enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateMap() {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { title: string; owner: string }) => client.createMapItem(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+
+export function useMapConfig(pk: string, options?: { enabled?: boolean }) {
+  const client = useItemClient();
+  return useQuery({
+    queryKey: ["map", pk],
+    queryFn: () => client.getMapConfig(pk),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useSaveMap(pk: string) {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (config: MapConfig) => client.saveMapConfig(pk, config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["map", pk] });
+    },
   });
 }

@@ -3,7 +3,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
-import { useCreateItem, useDeleteItem, useGroups, useItems, useMe, useSharing, useUpdateItem } from "./hooks";
+import type { ItemClient } from "./types";
+import { useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -91,4 +92,41 @@ test("useSharing returns the item sharing", async () => {
   const { result } = renderHook(() => useSharing("7"), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.public).toBe(true);
+});
+
+function makeWrapper(client: ItemClient) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>{children}</ItemClientProvider>
+      </QueryClientProvider>
+    );
+  };
+}
+
+test("useCreateMap creates a map and invalidates items", async () => {
+  const client = {
+    createMapItem: vi.fn().mockResolvedValue({ pk: "77", resourceType: "map", title: "C" }),
+  } as unknown as ItemClient;
+  const { result } = renderHook(() => useCreateMap(), { wrapper: makeWrapper(client) });
+  await result.current.mutateAsync({ title: "C", owner: "alice" });
+  expect(client.createMapItem).toHaveBeenCalledWith({ title: "C", owner: "alice" });
+});
+
+test("useMapConfig loads a map config", async () => {
+  const cfg = { basemap: { style: "s" }, view: { center: [0, 0], zoom: 1 }, layers: [] };
+  const client = { getMapConfig: vi.fn().mockResolvedValue(cfg) } as unknown as ItemClient;
+  const { result } = renderHook(() => useMapConfig("77"), { wrapper: makeWrapper(client) });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual(cfg);
+  expect(client.getMapConfig).toHaveBeenCalledWith("77");
+});
+
+test("useSaveMap saves a map config", async () => {
+  const client = { saveMapConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
+  const { result } = renderHook(() => useSaveMap("77"), { wrapper: makeWrapper(client) });
+  const cfg = { basemap: { style: "s" }, view: { center: [0, 0] as [number, number], zoom: 1 }, layers: [] };
+  await result.current.mutateAsync(cfg);
+  expect(client.saveMapConfig).toHaveBeenCalledWith("77", cfg);
 });
