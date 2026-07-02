@@ -121,8 +121,10 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    const overlay = overlayRef.current;
+    if (!map || !map.loaded() || !overlay) return;
     applyLayers(map, config.layers, appliedRef.current);
+    applyDeckLayers(overlay, config.layers);
   }, [config.layers]);
 
   return (

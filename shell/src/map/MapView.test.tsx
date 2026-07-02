@@ -150,3 +150,36 @@ test("mounts a Deck.gl overlay and adds a HeatmapLayer for a heatmap deck layer"
     radiusPixels: 30,
   });
 });
+
+test("maps hexbin to HexagonLayer and column to ColumnLayer, excluding hidden deck layers", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      { id: "hex", title: "Hex", visible: true, kind: "deck", deckType: "hexbin", dataUrl: "https://fs/a" },
+      { id: "col", title: "Col", visible: true, kind: "deck", deckType: "column", dataUrl: "https://fs/b" },
+      { id: "off", title: "Off", visible: false, kind: "deck", deckType: "heatmap", dataUrl: "https://fs/c" },
+    ],
+  };
+  render(<MapView config={cfg} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers.map((l) => l.deckType)).toEqual(["HexagonLayer", "ColumnLayer"]);
+  expect(layers.map((l) => l.props.id)).toEqual(["hex", "col"]);
+});
+
+test("re-applies deck layers when config.layers changes", () => {
+  const first: MapConfig = {
+    ...config,
+    layers: [{ id: "d1", title: "D1", visible: true, kind: "deck", deckType: "heatmap", dataUrl: "https://fs/1" }],
+  };
+  const { rerender } = render(<MapView config={first} />);
+  const overlay = overlayInstances[0];
+  expect(overlay.props.layers.map((l) => l.props.id)).toEqual(["d1"]);
+
+  const second: MapConfig = {
+    ...config,
+    layers: [{ id: "d2", title: "D2", visible: true, kind: "deck", deckType: "column", dataUrl: "https://fs/2" }],
+  };
+  rerender(<MapView config={second} />);
+  expect(overlay.props.layers.map((l) => l.props.id)).toEqual(["d2"]);
+  expect(overlay.props.layers[0].deckType).toBe("ColumnLayer");
+});
