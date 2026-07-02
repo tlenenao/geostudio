@@ -44,7 +44,10 @@ function applyLayers(
       }
       applied.add(layer.id);
     } catch (err) {
-      // Per spec §8: one bad layer must not break the whole map.
+      // Per spec §8: one bad layer must not break the whole map. Roll back any
+      // half-added source/layer so it can't orphan or clash on the next apply.
+      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+      if (map.getSource(layer.id)) map.removeSource(layer.id);
       console.error(`MapView: skipping layer ${layer.id}`, err);
     }
   }
