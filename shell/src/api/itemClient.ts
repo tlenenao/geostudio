@@ -1,4 +1,4 @@
-import type { CreateKind, Group, Item, ItemClient, ItemPage, ListItemsParams, Me, ResourceType, Sharing, UpdatePatch } from "./types";
+import type { CreateKind, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, Me, ResourceType, Sharing, UpdatePatch } from "./types";
 
 type GeoNodeResource = {
   pk: number | string;
@@ -26,9 +26,11 @@ function toItem(r: GeoNodeResource): Item {
 export function createItemClient(opts: {
   geonodeUrl: string;
   builderUrl: string;
+  martinUrl?: string;
+  featureservUrl?: string;
   getToken: () => string | undefined;
 }): ItemClient {
-  const { geonodeUrl, builderUrl, getToken } = opts;
+  const { geonodeUrl, builderUrl, martinUrl, featureservUrl, getToken } = opts;
 
   async function get<T>(path: string): Promise<T> {
     const token = getToken();
@@ -39,6 +41,39 @@ export function createItemClient(opts: {
       throw new Error(`Request failed: ${res.status} ${path}`);
     }
     return (await res.json()) as T;
+  }
+
+  async function fetchMartinSources(): Promise<LayerSource[]> {
+    if (!martinUrl) return [];
+    const res = await fetch(`${martinUrl}/catalog`);
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /catalog`);
+    const data = (await res.json()) as {
+      tiles?: Record<string, { description?: string }>;
+    };
+    return Object.entries(data.tiles ?? {}).map(([id, meta]) => ({
+      id,
+      title: meta.description ?? id,
+      service: "martin" as const,
+      kind: "vector" as const,
+      tilesUrl: `${martinUrl}/${id}/{z}/{x}/{y}`,
+      sourceLayer: id,
+    }));
+  }
+
+  async function fetchFeatureservSources(): Promise<LayerSource[]> {
+    if (!featureservUrl) return [];
+    const res = await fetch(`${featureservUrl}/collections.json`);
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections.json`);
+    const data = (await res.json()) as {
+      collections?: { id: string; title?: string }[];
+    };
+    return (data.collections ?? []).map((c) => ({
+      id: c.id,
+      title: c.title ?? c.id,
+      service: "featureserv" as const,
+      kind: "feature" as const,
+      url: `${featureservUrl}/collections/${c.id}/items.json`,
+    }));
   }
 
   return {
@@ -211,6 +246,20 @@ export function createItemClient(opts: {
       if (!res.ok) {
         throw new Error(`Request failed: ${res.status} PUT permissions`);
       }
+    },
+
+    async listLayerSources(): Promise<LayerSource[]> {
+      const results = await Promise.allSettled([
+        fetchMartinSources(),
+        fetchFeatureservSources(),
+      ]);
+      const fulfilled = results.filter(
+        (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",
+      );
+      if (fulfilled.length === 0) {
+        throw new Error("listLayerSources: all layer services failed");
+      }
+      return fulfilled.flatMap((r) => r.value);
     },
   };
 }
