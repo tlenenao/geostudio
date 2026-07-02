@@ -31,9 +31,19 @@ export async function mockGeoNode(page: Page) {
 
   await page.route("**/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
-    await route.fulfill({
-      json: { id: "cfg-9", kind: "app", itemId: "9", version: 1, config: {} },
-    });
+    const body = await route.request().postDataJSON();
+    if (body?.config?.kind === "map") {
+      // Map creation path — return itemId "77" so the test lands on /maps/77.
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-1", kind: "map", itemId: "77" },
+      });
+    } else {
+      // App/dashboard creation path — keep the existing response unchanged.
+      await route.fulfill({
+        json: { id: "cfg-9", kind: "app", itemId: "9", version: 1, config: {} },
+      });
+    }
   });
 
   await page.route("**/api/v2/resources/9", async (route) => {
@@ -46,9 +56,54 @@ export async function mockGeoNode(page: Page) {
   });
 
   await page.route("**/configs/by-item/**", async (route) => {
-    if (route.request().method() !== "DELETE") return route.fallback();
-    const pk = route.request().url().split("/").pop() ?? "";
-    deleted.add(pk);
-    await route.fulfill({ status: 204, body: "" });
+    const method = route.request().method();
+    if (method === "DELETE") {
+      const pk = route.request().url().split("/").pop() ?? "";
+      deleted.add(pk);
+      await route.fulfill({ status: 204, body: "" });
+    } else if (method === "GET") {
+      // Return a minimal map ConfigRead; `config.map` is the MapConfig payload.
+      await route.fulfill({
+        json: {
+          id: "cfg-1",
+          itemId: "77",
+          kind: "map",
+          config: {
+            kind: "map",
+            map: {
+              basemap: { style: "https://demotiles.maplibre.org/style.json" },
+              view: { center: [2.4, 46.6], zoom: 5 },
+              layers: [],
+            },
+          },
+        },
+      });
+    } else if (method === "PUT") {
+      const body = await route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          id: "cfg-1",
+          itemId: "77",
+          kind: "map",
+          config: { kind: "map", map: body.map },
+        },
+      });
+    } else {
+      await route.fallback();
+    }
+  });
+
+  // Martin vector-tile catalog — exposes the "Communes" layer source.
+  await page.route("**/catalog", async (route) => {
+    await route.fulfill({
+      json: { tiles: { communes: { description: "Communes" } } },
+    });
+  });
+
+  // Feature-serv OGC API collections — return empty list (no feature layers needed).
+  await page.route("**/collections.json", async (route) => {
+    await route.fulfill({
+      json: { collections: [] },
+    });
   });
 }
