@@ -7,6 +7,7 @@ export class MockMap {
   handlers: Record<string, Array<() => void>> = {};
   sources: Recorded[] = [];
   layers: { id: string; [k: string]: unknown }[] = [];
+  controls: unknown[] = [];
   removed = false;
 
   constructor(opts: MockMap["opts"]) {
@@ -48,6 +49,14 @@ export class MockMap {
   }
   loaded() {
     return true;
+  }
+  addControl(control: unknown) {
+    this.controls.push(control);
+    return this;
+  }
+  removeControl(control: unknown) {
+    this.controls = this.controls.filter((c) => c !== control);
+    return this;
   }
   remove() {
     this.removed = true;

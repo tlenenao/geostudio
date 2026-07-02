@@ -2,16 +2,31 @@ import { render } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig } from "../api/types";
 import { mapInstances } from "../test/MockMaplibreMap";
+import { overlayInstances } from "../test/MockDeckgl";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
   return { default: { Map: MockMap } };
 });
 
+vi.mock("@deck.gl/mapbox", async () => {
+  const { MockMapboxOverlay } = await import("../test/MockDeckgl");
+  return { MapboxOverlay: MockMapboxOverlay };
+});
+vi.mock("@deck.gl/aggregation-layers", async () => {
+  const { HeatmapLayer, HexagonLayer } = await import("../test/MockDeckgl");
+  return { HeatmapLayer, HexagonLayer };
+});
+vi.mock("@deck.gl/layers", async () => {
+  const { ColumnLayer } = await import("../test/MockDeckgl");
+  return { ColumnLayer };
+});
+
 const { MapView } = await import("./MapView");
 
 beforeEach(() => {
   mapInstances.length = 0;
+  overlayInstances.length = 0;
 });
 
 const config: MapConfig = {
@@ -105,4 +120,33 @@ test("renders a legend of visible layers", () => {
   render(<MapView config={cfg} />);
   // MapLegend renders the title
   expect(document.body.textContent).toContain("Communes");
+});
+
+test("mounts a Deck.gl overlay and adds a HeatmapLayer for a heatmap deck layer", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "heat",
+        title: "Heat",
+        visible: true,
+        kind: "deck",
+        deckType: "heatmap",
+        dataUrl: "https://fs/points",
+        props: { radiusPixels: 30 },
+      },
+    ],
+  };
+  render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  expect(map.controls).toContain(overlayInstances[0]);
+  expect(overlayInstances).toHaveLength(1);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers).toHaveLength(1);
+  expect(layers[0].deckType).toBe("HeatmapLayer");
+  expect(layers[0].props).toMatchObject({
+    id: "heat",
+    data: "https://fs/points",
+    radiusPixels: 30,
+  });
 });
