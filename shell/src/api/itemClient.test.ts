@@ -307,3 +307,66 @@ test("listLayerSources throws when both services fail", async () => {
   );
   await expect(makeClient().listLayerSources()).rejects.toThrow();
 });
+
+test("createMapItem posts a map skeleton and returns a map Item", async () => {
+  let body: any;
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: "map", itemId: "77" }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createMapItem({ title: "Carte", owner: "alice" });
+  expect(body.config.kind).toBe("map");
+  expect(body.config.map.layers).toEqual([]);
+  expect(item).toMatchObject({ pk: "77", resourceType: "map", title: "Carte", configId: "cfg-1" });
+});
+
+test("getMapConfig reads and maps the builder map config", async () => {
+  // ConfigRead nests the builder config under "config"; the map is config.map.
+  server.use(
+    http.get("https://builder.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              { id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a",
+                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.view.zoom).toBe(8);
+  expect(cfg.layers[0]).toEqual({ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" });
+});
+
+test("getMapConfig throws when the config has no map payload", async () => {
+  server.use(
+    http.get("https://builder.test/configs/by-item/77", () =>
+      HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "app", config: { kind: "app", map: null } }),
+    ),
+  );
+  await expect(makeClient().getMapConfig("77")).rejects.toThrow();
+});
+
+test("saveMapConfig PUTs the map config by item", async () => {
+  let method = ""; let body: any;
+  server.use(
+    http.put("https://builder.test/configs/by-item/77", async ({ request }) => {
+      method = request.method; body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", map: body.map });
+    }),
+  );
+  const cfg = { basemap: { style: "s" }, view: { center: [0, 0] as [number, number], zoom: 3 }, layers: [] };
+  await makeClient().saveMapConfig("77", cfg);
+  expect(method).toBe("PUT");
+  expect(body.kind).toBe("map");
+  expect(body.map.view.zoom).toBe(3);
+});
