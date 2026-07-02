@@ -33,7 +33,7 @@ export function NewItemButton() {
           ? await createMap.mutateAsync({ title: clean, owner: username ?? "" })
           : await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
       close();
-      navigate(kind === "map" ? `/maps/${item.pk}` : `/items/${item.pk}`);
+      navigate(kind === "map" ? `/maps/${item.pk}` : `/apps/${item.pk}/edit`);
     } catch {
       // error surfaced via isError
     }

@@ -12,6 +12,14 @@ vi.mock("../pages/MapEditorPage", () => ({
   MapEditorPage: ({ pk }: { pk: string }) => <div>map-editor-{pk}</div>,
 }));
 
+vi.mock("../pages/AppBuilderPage", () => ({
+  AppBuilderPage: ({ pk }: { pk: string }) => <div>app-builder-{pk}</div>,
+}));
+
+vi.mock("../pages/AppRuntimePage", () => ({
+  AppRuntimePage: ({ pk }: { pk: string }) => <div>app-runtime-{pk}</div>,
+}));
+
 function wrap(children: ReactNode, initial = "/") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -30,8 +38,18 @@ function wrap(children: ReactNode, initial = "/") {
   );
 }
 
-test("navigates from catalog to item detail on open", async () => {
+test("navigates from catalog to app builder on open (app item)", async () => {
   wrap(<AppRoutes />);
   await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
-  expect(await screen.findByRole("heading", { name: /item 1/i })).toBeInTheDocument();
+  expect(await screen.findByText("app-builder-1")).toBeInTheDocument();
+});
+
+test("renders the app builder route at /apps/:pk/edit", () => {
+  wrap(<AppRoutes />, "/apps/42/edit");
+  expect(screen.getByText("app-builder-42")).toBeInTheDocument();
+});
+
+test("renders the app runtime route at /apps/:pk", () => {
+  wrap(<AppRoutes />, "/apps/42");
+  expect(screen.getByText("app-runtime-42")).toBeInTheDocument();
 });
