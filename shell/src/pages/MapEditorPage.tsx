@@ -15,7 +15,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
     if (query.data) setDraft(query.data);
   }, [query.data]);
 
-  if (query.isLoading) return <p role="status">Chargement…</p>;
+  // `draft` lags one render behind a successful load (it is synced in the
+  // effect above), so keep showing the loader during that gap instead of
+  // flashing the error.
+  if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
   if (query.isError || !draft)
     return (
       <p role="alert" className="text-sm text-red-600">
