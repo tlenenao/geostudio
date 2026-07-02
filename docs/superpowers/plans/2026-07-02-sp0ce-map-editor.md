@@ -74,12 +74,13 @@ def test_put_config_by_item_updates_map(client):
     )
     assert put.status_code == 200
     body = put.json()
-    assert body["map"]["view"]["zoom"] == 8
-    assert len(body["map"]["layers"]) == 1
+    # ConfigRead nests the builder config under "config"; the map payload is config.map.
+    assert body["config"]["map"]["view"]["zoom"] == 8
+    assert len(body["config"]["map"]["layers"]) == 1
 
     # Confirm persistence via GET by-item.
     got = client.get(f"/configs/by-item/{item_id}")
-    assert got.json()["map"]["layers"][0]["id"] == "a"
+    assert got.json()["config"]["map"]["layers"][0]["id"] == "a"
 
 
 def test_put_config_by_item_404_when_missing(client):
@@ -199,17 +200,21 @@ test("createMapItem posts a map skeleton and returns a map Item", async () => {
 });
 
 test("getMapConfig reads and maps the builder map config", async () => {
+  // ConfigRead nests the builder config under "config"; the map is config.map.
   server.use(
     http.get("https://builder.test/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1", itemId: "77", kind: "map",
-        map: {
-          basemap: { style: "https://demo/s.json" },
-          view: { center: [1, 47], zoom: 8 },
-          layers: [
-            { id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a",
-              tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
-          ],
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              { id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a",
+                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+            ],
+          },
         },
       }),
     ),
@@ -222,7 +227,7 @@ test("getMapConfig reads and maps the builder map config", async () => {
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
     http.get("https://builder.test/configs/by-item/77", () =>
-      HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "app", map: null }),
+      HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "app", config: { kind: "app", map: null } }),
     ),
   );
   await expect(makeClient().getMapConfig("77")).rejects.toThrow();
@@ -318,12 +323,16 @@ Add the three methods to the returned client object (after `listLayerSources`). 
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status} GET /configs/by-item/${pk}`);
-      const data = (await res.json()) as { map: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null };
-      if (!data.map) throw new Error("getMapConfig: config has no map payload");
+      // ConfigRead nests the builder config under "config"; the map is config.map.
+      const data = (await res.json()) as {
+        config?: { map?: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null };
+      };
+      const map = data.config?.map;
+      if (!map) throw new Error("getMapConfig: config has no map payload");
       return {
-        basemap: data.map.basemap,
-        view: data.map.view,
-        layers: (data.map.layers ?? []).map(toFrontLayer),
+        basemap: map.basemap,
+        view: map.view,
+        layers: (map.layers ?? []).map(toFrontLayer),
       };
     },
 
@@ -1106,7 +1115,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 Edit `shell/e2e/mocks.ts`. Add route handlers (using Playwright `page.route`) for the builder and layer services the map flow hits. Mirror the file's existing style. Cover:
 - `POST **/configs` → `{ id: "cfg-1", kind: "map", itemId: "77" }` (201)
-- `GET **/configs/by-item/77` → a map `ConfigRead` with a France view and empty layers
+- `GET **/configs/by-item/77` → a map `ConfigRead` shaped `{ id:"cfg-1", itemId:"77", kind:"map", config: { kind:"map", map: { basemap, view (France), layers: [] } } }` (the map payload MUST be under `config.map`)
 - `PUT **/configs/by-item/77` → echo `{ id:"cfg-1", itemId:"77", kind:"map", map: <body.map> }`
 - `GET **/catalog` → `{ tiles: { communes: { description: "Communes" } } }`
 - `GET **/collections.json` → `{ collections: [] }`
