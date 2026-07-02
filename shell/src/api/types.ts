@@ -81,3 +81,29 @@ export interface ItemClient {
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
 }
+
+export type RenderMode = "edit" | "preview" | "runtime";
+
+export type WidgetItem = {
+  id: string;
+  widget: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  props: Record<string, unknown>;
+};
+
+export type AppLayout = {
+  type: "grid";
+  breakpoints: Record<string, unknown>;
+  items: WidgetItem[];
+};
+
+export type AppConfig = {
+  kind: "app" | "dashboard";
+  theme: Record<string, unknown>;
+  dataSources: unknown[];
+  messages: unknown[];
+  layout: AppLayout;
+};
