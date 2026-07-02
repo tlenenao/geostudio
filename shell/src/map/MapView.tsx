@@ -48,7 +48,9 @@ function applyLayers(
 type DeckLayer = Extract<MapConfig["layers"][number], { kind: "deck" }>;
 
 function buildDeckLayer(layer: DeckLayer) {
-  const props = { id: layer.id, data: layer.dataUrl, ...(layer.props ?? {}) };
+  // Canonical fields last so user props can't shadow the id Deck.gl uses for
+  // layer reconciliation, nor the data source.
+  const props = { ...(layer.props ?? {}), id: layer.id, data: layer.dataUrl };
   switch (layer.deckType) {
     case "heatmap":
       return new HeatmapLayer(props);
@@ -56,6 +58,9 @@ function buildDeckLayer(layer: DeckLayer) {
       return new HexagonLayer(props);
     case "column":
       return new ColumnLayer(props);
+    default:
+      // Exhaustiveness guard: a new deckType turns into a compile error here.
+      return layer.deckType satisfies never;
   }
 }
 
@@ -111,6 +116,7 @@ export function MapView({
       cb({ center: [c.lng, c.lat], zoom: map.getZoom() });
     });
     return () => {
+      map.removeControl(overlay);
       map.remove();
       mapRef.current = null;
       overlayRef.current = null;
