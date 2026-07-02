@@ -12,6 +12,7 @@ class DataSource(BaseModel):
 
 
 class LayoutItem(BaseModel):
+    id: str | None = None
     widget: str
     x: int
     y: int

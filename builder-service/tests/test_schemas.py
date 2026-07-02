@@ -93,3 +93,18 @@ def test_map_config_requires_map_field():
 def test_app_config_still_requires_layout():
     with pytest.raises(ValidationError):
         BuilderConfig.model_validate({"kind": "app"})
+
+
+from app.schemas import LayoutItem
+
+
+def test_layout_item_accepts_optional_id():
+    item = LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2, props={"text": "Hi"})
+    assert item.id == "w1"
+    dumped = item.model_dump()
+    assert dumped["id"] == "w1"
+
+
+def test_layout_item_id_defaults_to_none():
+    item = LayoutItem(widget="text", x=0, y=0, w=4, h=2)
+    assert item.id is None
