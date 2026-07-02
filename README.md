@@ -214,7 +214,8 @@ docker compose ps
 
 ## Documentation détaillée
 
-- [`synthese.md`](synthese.md) — Vue d'ensemble de toute la stack open-source GIS
+- **[`plateforme-modulaire.md`](plateforme-modulaire.md)** — 📌 **Document maître** : conception du produit OGE (noyau `GeoCore` + modules enfichables), parité ArcGIS 11.4, performance, gouvernance & roadmap
+- [`synthese.md`](synthese.md) — Vue d'ensemble de toute la stack open-source GIS (correspondance ArcGIS ↔ FOSS4G)
 - [`stack3-modern-web-gis.md`](stack3-modern-web-gis.md) — Guide complet Modern Web GIS (MapLibre, Deck.gl, PMTiles)
 - [`stacks-production.md`](stacks-production.md) — Comparatif des 5 stacks de production
 - [`stacks-comparatif.md`](stacks-comparatif.md) — Tableau comparatif approfondi
