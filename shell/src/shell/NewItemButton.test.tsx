@@ -22,9 +22,9 @@ vi.mock("../auth/useAuth", () => ({
   }),
 }));
 
-function DetailProbe() {
+function AppBuilderProbe() {
   const { pk } = useParams();
-  return <div>detail-{pk}</div>;
+  return <div>app-builder-{pk}</div>;
 }
 
 function Harness({ children }: { children: ReactNode }) {
@@ -40,7 +40,7 @@ function Harness({ children }: { children: ReactNode }) {
         <MemoryRouter initialEntries={["/"]}>
           {children}
           <Routes>
-            <Route path="/items/:pk" element={<DetailProbe />} />
+            <Route path="/apps/:pk/edit" element={<AppBuilderProbe />} />
           </Routes>
         </MemoryRouter>
       </ItemClientProvider>
@@ -48,7 +48,7 @@ function Harness({ children }: { children: ReactNode }) {
   );
 }
 
-test("creates an item and navigates to its detail", async () => {
+test("creates an App and navigates to the app builder", async () => {
   render(
     <Harness>
       <NewItemButton />
@@ -58,7 +58,7 @@ test("creates an item and navigates to its detail", async () => {
   expect(screen.getByRole("dialog", { name: /nouvel/i })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Titre"), "My App");
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
-  expect(await screen.findByText("detail-99")).toBeInTheDocument();
+  expect(await screen.findByText("app-builder-99")).toBeInTheDocument();
 });
 
 test("does not submit an empty title", async () => {
@@ -69,7 +69,7 @@ test("does not submit an empty title", async () => {
   );
   await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
-  expect(screen.queryByText(/^detail-/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^app-builder-/)).not.toBeInTheDocument();
 });
 
 test("creates a Map and navigates to the editor route", async () => {
@@ -94,7 +94,7 @@ test("creates a Map and navigates to the editor route", async () => {
         <MemoryRouter initialEntries={["/"]}>
           <NewItemButton />
           <Routes>
-            <Route path="/items/:pk" element={<DetailProbe />} />
+            <Route path="/apps/:pk/edit" element={<AppBuilderProbe />} />
             <Route path="/maps/:pk" element={<MapProbe />} />
           </Routes>
         </MemoryRouter>
@@ -121,5 +121,5 @@ test("shows an alert and stays on the page when creation fails", async () => {
   await userEvent.type(screen.getByLabelText("Titre"), "Boom");
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
   expect(await screen.findByRole("alert")).toBeInTheDocument();
-  expect(screen.queryByText(/^detail-/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^app-builder-/)).not.toBeInTheDocument();
 });

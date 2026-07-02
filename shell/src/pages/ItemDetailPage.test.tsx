@@ -27,7 +27,8 @@ function wrapper({ children }: { children: ReactNode }) {
 test("shows the item detail", async () => {
   render(<ItemDetailPage pk="7" />, { wrapper });
   expect(await screen.findByRole("heading", { name: "Item 7" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /éditeur/i })).toBeDisabled();
+  // item 7 has resourceType "app" (default mock) — editor button is now enabled for app/dashboard/map
+  expect(screen.getByRole("button", { name: /éditeur/i })).not.toBeDisabled();
   expect(screen.getByText("actions")).toBeInTheDocument();
 });
 

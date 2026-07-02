@@ -1,0 +1,94 @@
+import { useEffect, useMemo, useState } from "react";
+import { useAppConfig, useSaveApp } from "../api/hooks";
+import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
+import { AppRenderer } from "../builder/AppRenderer";
+import { WidgetPalette } from "../builder/WidgetPalette";
+import { PropsPanel } from "../builder/PropsPanel";
+import { registerBuiltinWidgets } from "../builder/widgets";
+import { getWidget } from "../builder/registry";
+import { Button } from "../ui/button";
+
+registerBuiltinWidgets();
+
+export function AppBuilderPage({ pk }: { pk: string }) {
+  const query = useAppConfig(pk);
+  const save = useSaveApp(pk);
+  const [draft, setDraft] = useState<AppConfig | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<RenderMode>("edit");
+
+  useEffect(() => {
+    if (query.data) setDraft(query.data);
+  }, [query.data]);
+
+  const selected = useMemo(
+    () => draft?.layout.items.find((i) => i.id === selectedId) ?? null,
+    [draft, selectedId],
+  );
+
+  if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
+  if (query.isError || !draft)
+    return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
+
+  function addWidget(type: string) {
+    const def = getWidget(type);
+    if (!def || !draft) return;
+    const item: WidgetItem = {
+      id: crypto.randomUUID(),
+      widget: type,
+      x: 0,
+      y: 0,
+      w: def.defaultSize.w,
+      h: def.defaultSize.h,
+      props: { ...def.defaultProps },
+    };
+    setDraft({ ...draft, layout: { ...draft.layout, items: [...draft.layout.items, item] } });
+    setSelectedId(item.id);
+  }
+
+  function updateSelectedProps(props: Record<string, unknown>) {
+    if (!draft || !selectedId) return;
+    setDraft({
+      ...draft,
+      layout: {
+        ...draft.layout,
+        items: draft.layout.items.map((i) => (i.id === selectedId ? { ...i, props } : i)),
+      },
+    });
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b p-2">
+        <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
+        <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+        <div className="flex-1" />
+        <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>Enregistrer</Button>
+        {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
+      </div>
+      <div className="flex flex-1 overflow-hidden">
+        {mode === "edit" && (
+          <aside className="w-48 overflow-auto border-r p-2">
+            <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
+            <WidgetPalette onAdd={addWidget} />
+          </aside>
+        )}
+        <main className="flex-1 overflow-auto p-2">
+          <AppRenderer
+            config={draft}
+            mode={mode}
+            onChange={setDraft}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </main>
+        {mode === "edit" && (
+          <aside className="w-64 overflow-auto border-l p-2">
+            <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
+            <PropsPanel item={selected} onChange={updateSelectedProps} />
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}

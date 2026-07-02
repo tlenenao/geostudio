@@ -1,6 +1,7 @@
-import { registerWidget } from "../registry";
+import { getWidget, registerWidget } from "../registry";
 
 export function registerBuiltinWidgets(): void {
+  if (getWidget("text")) return;
   registerWidget({
     type: "text",
     label: "Texte",
