@@ -189,3 +189,58 @@ def test_map_config_can_be_updated(client):
     response = client.put(f"/configs/{created['id']}", json=updated)
     assert response.status_code == 200
     assert response.json()["config"]["map"]["view"]["zoom"] == 9
+
+
+def test_put_config_by_item_updates_map(client):
+    # Create a map item via the normal flow.
+    create = client.post(
+        "/configs",
+        json={
+            "title": "Ma carte",
+            "owner": "alice",
+            "config": {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "https://demo/style.json"},
+                    "view": {"center": [2.4, 46.6], "zoom": 5},
+                    "layers": [],
+                },
+            },
+        },
+    )
+    assert create.status_code == 201
+    item_id = create.json()["itemId"]
+
+    # Update it by item id.
+    put = client.put(
+        f"/configs/by-item/{item_id}",
+        json={
+            "kind": "map",
+            "map": {
+                "basemap": {"style": "https://demo/style.json"},
+                "view": {"center": [1.0, 47.0], "zoom": 8},
+                "layers": [
+                    {"id": "a", "title": "A", "visible": True, "kind": "feature",
+                     "url": "https://fs/a"}
+                ],
+            },
+        },
+    )
+    assert put.status_code == 200
+    body = put.json()
+    # ConfigRead nests the builder config under "config"; the map payload is config.map.
+    assert body["config"]["map"]["view"]["zoom"] == 8
+    assert len(body["config"]["map"]["layers"]) == 1
+
+    # Confirm persistence via GET by-item.
+    got = client.get(f"/configs/by-item/{item_id}")
+    assert got.json()["config"]["map"]["layers"][0]["id"] == "a"
+
+
+def test_put_config_by_item_404_when_missing(client):
+    resp = client.put(
+        "/configs/by-item/does-not-exist",
+        json={"kind": "map", "map": {
+            "basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []}},
+    )
+    assert resp.status_code == 404
