@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { MapboxOverlay } from "@deck.gl/mapbox";
+import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
+import { ColumnLayer } from "@deck.gl/layers";
 import type { MapConfig } from "../api/types";
 import { MapLegend } from "./MapLegend";
 
@@ -42,6 +45,27 @@ function applyLayers(
   }
 }
 
+type DeckLayer = Extract<MapConfig["layers"][number], { kind: "deck" }>;
+
+function buildDeckLayer(layer: DeckLayer) {
+  const props = { id: layer.id, data: layer.dataUrl, ...(layer.props ?? {}) };
+  switch (layer.deckType) {
+    case "heatmap":
+      return new HeatmapLayer(props);
+    case "hexbin":
+      return new HexagonLayer(props);
+    case "column":
+      return new ColumnLayer(props);
+  }
+}
+
+function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
+  const deckLayers = layers
+    .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
+    .map(buildDeckLayer);
+  overlay.setProps({ layers: deckLayers });
+}
+
 export function MapView({
   config,
   onViewChange,
@@ -51,6 +75,7 @@ export function MapView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const overlayRef = useRef<MapboxOverlay | null>(null);
   const appliedRef = useRef<Set<string>>(new Set());
   // Keep the latest callback/layers reachable from the mount-time closures so
   // the async "load" and "moveend" handlers never read stale values.
@@ -72,7 +97,13 @@ export function MapView({
       zoom: config.view.zoom,
     });
     mapRef.current = map;
-    map.on("load", () => applyLayers(map, layersRef.current, appliedRef.current));
+    const overlay = new MapboxOverlay({ layers: [] });
+    overlayRef.current = overlay;
+    map.addControl(overlay);
+    map.on("load", () => {
+      applyLayers(map, layersRef.current, appliedRef.current);
+      applyDeckLayers(overlay, layersRef.current);
+    });
     map.on("moveend", () => {
       const cb = onViewChangeRef.current;
       if (!cb) return;
@@ -82,6 +113,7 @@ export function MapView({
     return () => {
       map.remove();
       mapRef.current = null;
+      overlayRef.current = null;
     };
     // Initialize once; style/view changes are out of scope for this phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
