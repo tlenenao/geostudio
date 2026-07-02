@@ -1,4 +1,4 @@
-import type { CreateKind, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CreateKind, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 
 type GeoNodeResource = {
@@ -335,6 +335,49 @@ export function createItemClient(opts: {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ version: 1, kind: "map", map: config }),
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} PUT /configs/by-item/${pk}`);
+    },
+
+    async getAppConfig(pk: string): Promise<AppConfig> {
+      const token = getToken();
+      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} GET /configs/by-item/${pk}`);
+      const data = (await res.json()) as {
+        config?: {
+          kind?: "app" | "dashboard";
+          theme?: Record<string, unknown>;
+          dataSources?: unknown[];
+          messages?: unknown[];
+          layout?: AppConfig["layout"] | null;
+        };
+      };
+      const c = data.config;
+      if (!c?.layout) throw new Error("getAppConfig: config has no layout");
+      return {
+        kind: c.kind ?? "app",
+        theme: c.theme ?? {},
+        dataSources: c.dataSources ?? [],
+        messages: c.messages ?? [],
+        layout: c.layout,
+      };
+    },
+
+    async saveAppConfig(pk: string, config: AppConfig): Promise<void> {
+      const token = getToken();
+      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          version: 1,
+          kind: config.kind,
+          theme: config.theme,
+          dataSources: config.dataSources,
+          messages: config.messages,
+          layout: config.layout,
+        }),
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status} PUT /configs/by-item/${pk}`);
     },

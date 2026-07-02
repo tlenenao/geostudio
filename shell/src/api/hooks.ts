@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient } from "./ItemClientProvider";
-import type { CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
 export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) {
   const client = useItemClient();
@@ -175,6 +175,26 @@ export function useSaveMap(pk: string) {
     mutationFn: (config: MapConfig) => client.saveMapConfig(pk, config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["map", pk] });
+    },
+  });
+}
+
+export function useAppConfig(pk: string, options?: { enabled?: boolean }) {
+  const client = useItemClient();
+  return useQuery({
+    queryKey: ["app", pk],
+    queryFn: () => client.getAppConfig(pk),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useSaveApp(pk: string) {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (config: AppConfig) => client.saveAppConfig(pk, config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app", pk] });
     },
   });
 }

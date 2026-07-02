@@ -80,6 +80,8 @@ export interface ItemClient {
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
+  getAppConfig(pk: string): Promise<AppConfig>;
+  saveAppConfig(pk: string, config: AppConfig): Promise<void>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
