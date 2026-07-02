@@ -113,6 +113,21 @@ def get_config_by_item(
     return result
 
 
+@router.put("/configs/by-item/{item_id}", response_model=ConfigRead)
+def update_config_by_item(
+    item_id: str,
+    config: BuilderConfig,
+    session: Session = Depends(get_session),
+) -> ConfigRead:
+    existing = repo.get_config_by_item(session, item_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    result = repo.update_config(session, existing.id, config)
+    if result is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    return result
+
+
 @router.delete(
     "/configs/by-item/{item_id}", status_code=status.HTTP_204_NO_CONTENT
 )
