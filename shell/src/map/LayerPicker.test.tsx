@@ -1,0 +1,68 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test, vi } from "vitest";
+import type { ItemClient, LayerSource, MapLayer } from "../api/types";
+import { ItemClientProvider } from "../api/ItemClientProvider";
+import { LayerPicker } from "./LayerPicker";
+
+const sources: LayerSource[] = [
+  { id: "communes", title: "Communes", service: "martin", kind: "vector",
+    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}", sourceLayer: "communes" },
+  { id: "public.parcs", title: "Parcs", service: "featureserv", kind: "feature",
+    url: "https://fs.test/collections/public.parcs/items.json" },
+];
+
+function renderPicker(onAdd: (l: MapLayer) => void) {
+  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <LayerPicker onAdd={onAdd} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+test("lists sources and emits a vector MapLayer on click", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const btn = await screen.findByRole("button", { name: /Communes/ });
+  await userEvent.click(btn);
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "vector",
+    title: "Communes",
+    visible: true,
+    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
+    sourceLayer: "communes",
+  });
+  expect(typeof layer.id).toBe("string");
+  expect(layer.id.length).toBeGreaterThan(0);
+});
+
+test("emits a feature MapLayer for a featureserv source", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  await userEvent.click(await screen.findByRole("button", { name: /Parcs/ }));
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "feature",
+    title: "Parcs",
+    visible: true,
+    url: "https://fs.test/collections/public.parcs/items.json",
+  });
+});
+
+test("gives each added layer a distinct id", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const btn = await screen.findByRole("button", { name: /Communes/ });
+  await userEvent.click(btn);
+  await userEvent.click(btn);
+  const id1 = (onAdd.mock.calls[0][0] as MapLayer).id;
+  const id2 = (onAdd.mock.calls[1][0] as MapLayer).id;
+  expect(id1).not.toBe(id2);
+});
