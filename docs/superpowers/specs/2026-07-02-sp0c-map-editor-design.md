@@ -167,3 +167,10 @@ Chaque phase est testable seule ; `writing-plans` produira d'abord le plan de **
 - Pas de token en localStorage (inchangé).
 - Les endpoints Martin `/catalog` et pg_featureserv `/collections` sont best-effort (confinés
   à la façade, définis par les mocks) ; à ajuster contre les versions réelles.
+
+### Notes différées (revue finale 0c-b)
+
+- **Isolation par couche (spec §8)** : `applyLayers` n'entoure pas encore chaque couche d'un try/catch (MapLibre réel jette sur id dupliqué / spec invalide). À ajouter en 0c-e quand des couches réelles arrivent (log + couche omise, le reste rend).
+- **`CreateKind`** : ajouter `"map"` en 0c-e (avec `createMapItem`).
+- **Garde de rendu** : en 0c-e, préférer `map.isStyleLoaded()` à `map.loaded()` pour la garde d'application des couches (loaded() est false tant que des tuiles chargent).
+- Naming `MapViewport` (vs spec `MapView`) et double-apply au montage (mock sync, inoffensif) : documentés, sans action.
