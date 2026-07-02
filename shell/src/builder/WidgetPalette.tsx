@@ -1,0 +1,19 @@
+import { listWidgets } from "./registry";
+
+export function WidgetPalette({ onAdd }: { onAdd: (type: string) => void }) {
+  return (
+    <ul className="flex flex-col gap-1">
+      {listWidgets().map((def) => (
+        <li key={def.type}>
+          <button
+            type="button"
+            className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+            onClick={() => onAdd(def.type)}
+          >
+            {def.label}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
