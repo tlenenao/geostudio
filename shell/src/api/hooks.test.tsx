@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import { useAppConfig, useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -129,4 +129,22 @@ test("useSaveMap saves a map config", async () => {
   const cfg = { basemap: { style: "s" }, view: { center: [0, 0] as [number, number], zoom: 1 }, layers: [] };
   await result.current.mutateAsync(cfg);
   expect(client.saveMapConfig).toHaveBeenCalledWith("77", cfg);
+});
+
+test("useAppConfig loads an app config", async () => {
+  const cfg = { kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] } };
+  const client = { getAppConfig: vi.fn().mockResolvedValue(cfg) } as unknown as ItemClient;
+  const { result } = renderHook(() => useAppConfig("5"), { wrapper: makeWrapper(client) });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual(cfg);
+});
+
+test("useSaveApp saves an app config", async () => {
+  const client = { saveAppConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
+  const { result } = renderHook(() => useSaveApp("5"), { wrapper: makeWrapper(client) });
+  const cfg = { kind: "app" as const, theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid" as const, breakpoints: {}, items: [] } };
+  await result.current.mutateAsync(cfg);
+  expect(client.saveAppConfig).toHaveBeenCalledWith("5", cfg);
 });

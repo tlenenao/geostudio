@@ -370,3 +370,47 @@ test("saveMapConfig PUTs the map config by item", async () => {
   expect(body.kind).toBe("map");
   expect(body.map.view.zoom).toBe(3);
 });
+
+test("getAppConfig reads the app config (kind/theme/layout)", async () => {
+  server.use(
+    http.get("https://builder.test/configs/by-item/5", () =>
+      HttpResponse.json({
+        id: "cfg-5", itemId: "5", kind: "app",
+        config: {
+          kind: "app", theme: { primary: "#123" }, dataSources: [], messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [
+            { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+          ] },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getAppConfig("5");
+  expect(cfg.kind).toBe("app");
+  expect(cfg.layout.items[0]).toMatchObject({ id: "w1", widget: "text" });
+});
+
+test("getAppConfig throws when the config has no layout", async () => {
+  server.use(
+    http.get("https://builder.test/configs/by-item/5", () =>
+      HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "map", config: { kind: "map", layout: null } }),
+    ),
+  );
+  await expect(makeClient().getAppConfig("5")).rejects.toThrow();
+});
+
+test("saveAppConfig PUTs the app config by item", async () => {
+  let body: any;
+  server.use(
+    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
+    }),
+  );
+  await makeClient().saveAppConfig("5", {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  });
+  expect(body.kind).toBe("app");
+  expect(body.layout.type).toBe("grid");
+});
