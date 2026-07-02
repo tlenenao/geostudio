@@ -77,4 +77,7 @@ export interface ItemClient {
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(): Promise<LayerSource[]>;
+  createMapItem(input: { title: string; owner: string }): Promise<Item>;
+  getMapConfig(pk: string): Promise<MapConfig>;
+  saveMapConfig(pk: string, config: MapConfig): Promise<void>;
 }
