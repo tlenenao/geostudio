@@ -2,7 +2,7 @@ import { useItem } from "../api/hooks";
 import { Button } from "../ui/button";
 import { ItemActions } from "../shell/ItemActions";
 
-export function ItemDetailPage({ pk, onDeleted }: { pk: string; onDeleted?: () => void }) {
+export function ItemDetailPage({ pk, onDeleted, onOpenEditor }: { pk: string; onDeleted?: () => void; onOpenEditor?: () => void }) {
   const query = useItem(pk);
 
   if (query.isLoading) return <p role="status">Chargement…</p>;
@@ -25,9 +25,13 @@ export function ItemDetailPage({ pk, onDeleted }: { pk: string; onDeleted?: () =
       <h2 className="text-xl font-semibold">{item.title}</h2>
       <p className="text-sm text-slate-500">Propriétaire : {item.owner}</p>
       <p className="text-sm">{item.abstract}</p>
-      <Button className="w-fit" disabled title="Disponible avec l'éditeur (SP-0d)">
-        Ouvrir dans l'éditeur
-      </Button>
+      {item.resourceType === "map" ? (
+        <Button className="w-fit" onClick={onOpenEditor}>Ouvrir dans l'éditeur</Button>
+      ) : (
+        <Button className="w-fit" disabled title="Disponible avec l'éditeur (SP-0d)">
+          Ouvrir dans l'éditeur
+        </Button>
+      )}
     </article>
   );
 }

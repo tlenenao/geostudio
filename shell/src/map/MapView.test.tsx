@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
-import type { MapConfig } from "../api/types";
+import type { MapConfig, MapLayer } from "../api/types";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 
@@ -164,6 +164,19 @@ test("maps hexbin to HexagonLayer and column to ColumnLayer, excluding hidden de
   const layers = overlayInstances[0].props.layers;
   expect(layers.map((l) => l.deckType)).toEqual(["HexagonLayer", "ColumnLayer"]);
   expect(layers.map((l) => l.props.id)).toEqual(["hex", "col"]);
+});
+
+test("isolates a failing layer and still renders the others", () => {
+  const good1: MapLayer = { id: "ok1", title: "OK1", visible: true, kind: "feature", url: "u1" };
+  const bad: MapLayer = { id: "bad", title: "BAD", visible: true, kind: "feature", url: "u2" };
+  const good2: MapLayer = { id: "ok2", title: "OK2", visible: true, kind: "feature", url: "u3" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good1] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("bad");
+  rerender(<MapView config={{ ...config, layers: [good1, bad, good2] }} />);
+  expect(map.getLayer("ok1")).toBeDefined();
+  expect(map.getLayer("ok2")).toBeDefined();
+  expect(map.getLayer("bad")).toBeUndefined();
 });
 
 test("re-applies deck layers when config.layers changes", () => {

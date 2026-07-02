@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCreateItem } from "../api/hooks";
+import { useCreateItem, useCreateMap } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -8,17 +8,19 @@ import { Dialog } from "../ui/dialog";
 
 export function NewItemButton() {
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<"app" | "dashboard">("app");
+  const [kind, setKind] = useState<"app" | "dashboard" | "map">("app");
   const [title, setTitle] = useState("");
   const { username } = useAuth();
   const navigate = useNavigate();
   const create = useCreateItem();
+  const createMap = useCreateMap();
 
   function close() {
     setOpen(false);
     setTitle("");
     setKind("app");
     create.reset();
+    createMap.reset();
   }
 
   async function submit(e: React.FormEvent) {
@@ -26,11 +28,14 @@ export function NewItemButton() {
     const clean = title.trim();
     if (!clean) return;
     try {
-      const item = await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
+      const item =
+        kind === "map"
+          ? await createMap.mutateAsync({ title: clean, owner: username ?? "" })
+          : await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
       close();
-      navigate(`/items/${item.pk}`);
+      navigate(kind === "map" ? `/maps/${item.pk}` : `/items/${item.pk}`);
     } catch {
-      // error surfaced via create.isError
+      // error surfaced via isError
     }
   }
 
@@ -47,10 +52,11 @@ export function NewItemButton() {
               aria-label="Type"
               className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={kind}
-              onChange={(e) => setKind(e.target.value as "app" | "dashboard")}
+              onChange={(e) => setKind(e.target.value as "app" | "dashboard" | "map")}
             >
               <option value="app">App</option>
               <option value="dashboard">Dashboard</option>
+              <option value="map">Map</option>
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -61,7 +67,7 @@ export function NewItemButton() {
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
-          {create.isError && (
+          {(create.isError || createMap.isError) && (
             <p role="alert" className="text-sm text-red-600">
               Échec de la création.
             </p>
@@ -70,7 +76,7 @@ export function NewItemButton() {
             <Button type="button" variant="outline" size="sm" onClick={close}>
               Annuler
             </Button>
-            <Button type="submit" size="sm" disabled={create.isPending}>
+            <Button type="submit" size="sm" disabled={create.isPending || createMap.isPending}>
               Créer
             </Button>
           </div>

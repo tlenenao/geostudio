@@ -20,28 +20,33 @@ function applyLayers(
 
   for (const layer of layers) {
     if (!layer.visible || layer.kind === "deck") continue;
-    if (layer.kind === "vector") {
-      map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
-      map.addLayer({
-        id: layer.id,
-        type: "fill",
-        source: layer.id,
-        "source-layer": layer.sourceLayer,
-        paint: layer.paint ?? {},
-      });
-    } else if (layer.kind === "raster") {
-      map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
-      map.addLayer({
-        id: layer.id,
-        type: "raster",
-        source: layer.id,
-        paint: { "raster-opacity": layer.opacity ?? 1 },
-      });
-    } else if (layer.kind === "feature") {
-      map.addSource(layer.id, { type: "geojson", data: layer.url });
-      map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+    try {
+      if (layer.kind === "vector") {
+        map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
+        map.addLayer({
+          id: layer.id,
+          type: "fill",
+          source: layer.id,
+          "source-layer": layer.sourceLayer,
+          paint: layer.paint ?? {},
+        });
+      } else if (layer.kind === "raster") {
+        map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
+        map.addLayer({
+          id: layer.id,
+          type: "raster",
+          source: layer.id,
+          paint: { "raster-opacity": layer.opacity ?? 1 },
+        });
+      } else if (layer.kind === "feature") {
+        map.addSource(layer.id, { type: "geojson", data: layer.url });
+        map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+      }
+      applied.add(layer.id);
+    } catch (err) {
+      // Per spec §8: one bad layer must not break the whole map.
+      console.error(`MapView: skipping layer ${layer.id}`, err);
     }
-    applied.add(layer.id);
   }
 }
 
@@ -128,7 +133,7 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     const overlay = overlayRef.current;
-    if (!map || !map.loaded() || !overlay) return;
+    if (!map || !map.isStyleLoaded() || !overlay) return;
     applyLayers(map, config.layers, appliedRef.current);
     applyDeckLayers(overlay, config.layers);
   }, [config.layers]);

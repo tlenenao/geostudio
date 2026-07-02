@@ -8,7 +8,7 @@ import { Button } from "../ui/button";
 
 const PAGE_SIZE = 12;
 
-export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string) => void }) {
+export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string, type: ResourceType) => void }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState<ResourceType | "">("");
   const [scope, setScope] = useState<ItemScope>("all");
