@@ -1,29 +1,52 @@
 import { getWidget, registerWidget } from "../registry";
+import { DataSourceSelect } from "../DataSourceSelect";
+import type { DataRecord } from "../../api/types";
 import { registerDataWidgets } from "./data";
 import { registerIndicatorWidget } from "./indicator";
 import { registerMapWidget } from "./mapWidget";
 import { registerFilterWidget } from "./filter";
 import { registerChartWidget } from "./chart";
 
+// Replace {{champ}} tokens with the record's property values (empty if absent).
+function interpolate(text: string, record: DataRecord | undefined): string {
+  if (!record) return text;
+  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
+    const v = record.properties[key];
+    return v === null || v === undefined ? "" : String(v);
+  });
+}
+
 export function registerBuiltinWidgets(): void {
   if (getWidget("text")) return;
   registerWidget({
     type: "text",
     label: "Texte",
-    defaultProps: { text: "Nouveau texte" },
+    defaultProps: { text: "Nouveau texte", dataSourceId: "" },
     defaultSize: { w: 4, h: 2 },
-    PropsPanel: ({ props, onChange }) => (
-      <label className="flex flex-col gap-1 text-sm">
-        Texte
-        <textarea
-          aria-label="Texte du widget"
-          className="rounded-md border border-slate-300 p-2 text-sm"
-          value={String(props.text ?? "")}
-          onChange={(e) => onChange({ ...props, text: e.target.value })}
+    PropsPanel: ({ props, onChange, dataSources }) => (
+      <div className="flex flex-col gap-2 text-sm">
+        <label className="flex flex-col gap-1">
+          Texte
+          <textarea
+            aria-label="Texte du widget"
+            className="rounded-md border border-slate-300 p-2 text-sm"
+            value={String(props.text ?? "")}
+            onChange={(e) => onChange({ ...props, text: e.target.value })}
+          />
+        </label>
+        <DataSourceSelect
+          value={String(props.dataSourceId ?? "")}
+          dataSources={dataSources}
+          onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-      </label>
+        <p className="text-[10px] text-slate-400">Utilisez {"{{champ}}"} pour insérer une valeur de la source liée.</p>
+      </div>
     ),
-    Component: ({ props }) => <p className="whitespace-pre-wrap">{String(props.text ?? "")}</p>,
+    Component: ({ props, ctx }) => {
+      const raw = String(props.text ?? "");
+      const text = ctx.data ? interpolate(raw, ctx.data.records[0]) : raw;
+      return <p className="whitespace-pre-wrap">{text}</p>;
+    },
   });
 
   registerWidget({
