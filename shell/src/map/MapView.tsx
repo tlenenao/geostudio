@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
@@ -6,6 +6,13 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import type { MapConfig } from "../api/types";
 import { MapLegend } from "./MapLegend";
+
+const HIGHLIGHT_ID = "__highlight__";
+
+export type MapViewHandle = {
+  flyTo: (opts: { center: [number, number]; zoom?: number }) => void;
+  highlight: (geometry: unknown | null) => void;
+};
 
 function applyLayers(
   map: maplibregl.Map,
@@ -79,13 +86,10 @@ function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
   overlay.setProps({ layers: deckLayers });
 }
 
-export function MapView({
-  config,
-  onViewChange,
-}: {
-  config: MapConfig;
-  onViewChange?: (v: { center: [number, number]; zoom: number }) => void;
-}) {
+export const MapView = forwardRef<
+  MapViewHandle,
+  { config: MapConfig; onViewChange?: (v: { center: [number, number]; zoom: number }) => void }
+>(function MapView({ config, onViewChange }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
@@ -114,6 +118,8 @@ export function MapView({
     overlayRef.current = overlay;
     map.addControl(overlay);
     map.on("load", () => {
+      map.addSource(HIGHLIGHT_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
       applyLayers(map, layersRef.current, appliedRef.current);
       applyDeckLayers(overlay, layersRef.current);
     });
@@ -141,10 +147,24 @@ export function MapView({
     applyDeckLayers(overlay, config.layers);
   }, [config.layers]);
 
+  useImperativeHandle(ref, () => ({
+    flyTo: (opts) => {
+      mapRef.current?.flyTo(opts);
+    },
+    highlight: (geometry) => {
+      const src = mapRef.current?.getSource(HIGHLIGHT_ID) as { setData?: (d: unknown) => void } | undefined;
+      src?.setData?.(
+        geometry
+          ? { type: "Feature", geometry, properties: {} }
+          : { type: "FeatureCollection", features: [] },
+      );
+    },
+  }), []);
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
       <MapLegend layers={config.layers} />
     </div>
   );
-}
+});

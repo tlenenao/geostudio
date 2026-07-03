@@ -10,6 +10,7 @@ export class MockMap {
   controls: unknown[] = [];
   removed = false;
   throwOnAddLayer = new Set<string>();
+  flyToArgs: unknown[] = [];
 
   constructor(opts: MockMap["opts"]) {
     this.opts = opts;
@@ -25,7 +26,14 @@ export class MockMap {
     this.handlers[event]?.forEach((cb) => cb());
   }
   addSource(id: string, spec: unknown) {
-    this.sources.push({ id, spec });
+    const rec: Recorded & { setData?: (d: unknown) => void } = { id, spec };
+    rec.setData = (d: unknown) => {
+      rec.spec = { ...(rec.spec as object), data: d };
+    };
+    this.sources.push(rec);
+  }
+  flyTo(opts: unknown) {
+    this.flyToArgs.push(opts);
   }
   addLayer(layer: { id: string; [k: string]: unknown }) {
     if (this.throwOnAddLayer.has(layer.id)) throw new Error(`boom ${layer.id}`);
