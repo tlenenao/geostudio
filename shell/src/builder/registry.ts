@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { DataSourceState, RenderMode } from "../api/types";
+import type { DataSource, DataSourceState, RenderMode } from "../api/types";
 
 export type WidgetContext = {
   mode: RenderMode;
@@ -13,7 +13,7 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
   icon?: ReactNode;
   defaultProps: P;
   defaultSize: { w: number; h: number };
-  PropsPanel: (p: { props: P; onChange: (props: P) => void }) => ReactNode;
+  PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };
 

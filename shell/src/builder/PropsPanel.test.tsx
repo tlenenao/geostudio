@@ -12,7 +12,7 @@ const item: WidgetItem = { id: "t", widget: "text", x: 0, y: 0, w: 4, h: 2, prop
 
 test("edits the selected widget's props", async () => {
   const onChange = vi.fn();
-  render(<PropsPanel item={item} onChange={onChange} />);
+  render(<PropsPanel item={item} dataSources={[]} onChange={onChange} />);
   const area = screen.getByLabelText("Texte du widget");
   await userEvent.type(area, "!");
   expect(onChange).toHaveBeenCalled();
@@ -21,6 +21,6 @@ test("edits the selected widget's props", async () => {
 });
 
 test("shows a placeholder when nothing is selected", () => {
-  render(<PropsPanel item={null} onChange={vi.fn()} />);
+  render(<PropsPanel item={null} dataSources={[]} onChange={vi.fn()} />);
   expect(screen.getByText(/aucun widget/i)).toBeInTheDocument();
 });
