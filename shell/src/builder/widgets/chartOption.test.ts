@@ -1,0 +1,101 @@
+import { expect, test } from "vitest";
+import { buildOption } from "./chartOption";
+import type { DataRecord } from "../../api/types";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const series = (o: unknown): any[] => {
+  const s = (o as { series?: unknown }).series;
+  return Array.isArray(s) ? s : s ? [s] : [];
+};
+
+const wide: DataRecord[] = [
+  { id: "Nord", properties: { region: "Nord", "2025": 10, "2026": 12 } },
+  { id: "Sud", properties: { region: "Sud", "2025": 5, "2026": 7 } },
+];
+
+test("bar builds one series per non-category column", () => {
+  const opt = buildOption({ chartType: "bar", categoryField: "region" }, wide);
+  expect(series(opt)).toHaveLength(2);
+  expect(series(opt)[0].type).toBe("bar");
+  expect(series(opt).map((s) => s.name)).toEqual(["2025", "2026"]);
+  // dataset carries the rows so encode can map category → value.
+  expect((opt as { dataset?: { source?: unknown[] } }).dataset?.source).toHaveLength(2);
+});
+
+test("defaults the category to the first non-numeric column", () => {
+  const opt = buildOption({ chartType: "bar" }, wide);
+  expect(series(opt)).toHaveLength(2);
+  expect(series(opt).map((s) => s.name)).toEqual(["2025", "2026"]);
+});
+
+test("stacked bars set a shared stack id", () => {
+  const opt = buildOption({ chartType: "bar", categoryField: "region", stack: true }, wide);
+  expect(series(opt)[0].stack).toBeTruthy();
+  expect(series(opt)[0].stack).toBe(series(opt)[1].stack);
+});
+
+test("area is a line series with an areaStyle", () => {
+  const opt = buildOption({ chartType: "area", categoryField: "region" }, wide);
+  expect(series(opt)[0].type).toBe("line");
+  expect(series(opt)[0].areaStyle).toBeDefined();
+});
+
+test("pie/doughnut build a single pie series", () => {
+  const pie = buildOption({ chartType: "pie", categoryField: "region", valueField: "2025" }, wide);
+  expect(series(pie)).toHaveLength(1);
+  expect(series(pie)[0].type).toBe("pie");
+  const doughnut = buildOption({ chartType: "doughnut", categoryField: "region", valueField: "2025" }, wide);
+  expect(Array.isArray(series(doughnut)[0].radius)).toBe(true);
+});
+
+test("axis types are configurable (time / log)", () => {
+  const opt = buildOption({ chartType: "line", categoryField: "region", xAxisType: "time", yAxisType: "log" }, wide);
+  expect((opt as { xAxis?: { type?: string } }).xAxis?.type).toBe("time");
+  expect((opt as { yAxis?: { type?: string } }).yAxis?.type).toBe("log");
+});
+
+test("tooltip and legend are on by default; zoom adds dataZoom", () => {
+  const base = buildOption({ chartType: "bar", categoryField: "region" }, wide);
+  expect((base as { tooltip?: unknown }).tooltip).toBeDefined();
+  expect((base as { legend?: unknown }).legend).toBeDefined();
+  expect((base as { dataZoom?: unknown }).dataZoom).toBeUndefined();
+  const zoomed = buildOption({ chartType: "bar", categoryField: "region", zoom: true }, wide);
+  expect((zoomed as { dataZoom?: unknown }).dataZoom).toBeDefined();
+});
+
+test("advanced option JSON deep-merges over the built option", () => {
+  const opt = buildOption(
+    { chartType: "bar", categoryField: "region", title: "Base", advancedOption: JSON.stringify({ backgroundColor: "#000", title: { text: "Override" } }) },
+    wide,
+  );
+  expect((opt as { backgroundColor?: string }).backgroundColor).toBe("#000");
+  expect((opt as { title?: { text?: string } }).title?.text).toBe("Override");
+  // untouched built keys survive the merge
+  expect(series(opt)).toHaveLength(2);
+});
+
+test("invalid advanced JSON is ignored, not thrown", () => {
+  const opt = buildOption({ chartType: "bar", categoryField: "region", advancedOption: "{ not json" }, wide);
+  expect(series(opt)).toHaveLength(2);
+});
+
+test("heatmap encodes category × series into cells with a visualMap", () => {
+  const opt = buildOption({ chartType: "heatmap", categoryField: "region" }, wide);
+  expect(series(opt)[0].type).toBe("heatmap");
+  expect((opt as { visualMap?: unknown }).visualMap).toBeDefined();
+  // 2 categories × 2 series = 4 cells
+  expect(series(opt)[0].data).toHaveLength(4);
+});
+
+test("gauge shows a single value", () => {
+  const opt = buildOption({ chartType: "gauge", categoryField: "region", valueField: "2025" }, wide);
+  expect(series(opt)[0].type).toBe("gauge");
+  expect(series(opt)[0].data[0].value).toBe(10);
+});
+
+test("radar builds one radar series per column", () => {
+  const opt = buildOption({ chartType: "radar", categoryField: "region" }, wide);
+  expect(series(opt)[0].type).toBe("radar");
+  expect(series(opt)[0].data).toHaveLength(2);
+  expect((opt as { radar?: { indicator?: unknown[] } }).radar?.indicator).toHaveLength(2);
+});
