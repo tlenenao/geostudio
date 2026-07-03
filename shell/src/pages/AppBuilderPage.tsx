@@ -87,7 +87,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         {mode === "edit" && (
           <aside className="w-64 overflow-auto border-l p-2">
             <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
-            <PropsPanel item={selected} onChange={updateSelectedProps} />
+            <PropsPanel item={selected} dataSources={draft.dataSources} onChange={updateSelectedProps} />
           </aside>
         )}
       </div>

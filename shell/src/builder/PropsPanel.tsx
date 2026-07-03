@@ -1,11 +1,13 @@
-import type { WidgetItem } from "../api/types";
+import type { DataSource, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 
 export function PropsPanel({
   item,
+  dataSources,
   onChange,
 }: {
   item: WidgetItem | null;
+  dataSources: DataSource[];
   onChange: (props: Record<string, unknown>) => void;
 }) {
   if (!item) {
@@ -16,5 +18,5 @@ export function PropsPanel({
     return <p className="text-xs text-slate-400">Widget inconnu : {item.widget}</p>;
   }
   const Panel = def.PropsPanel;
-  return <Panel props={item.props} onChange={(p) => onChange(p)} />;
+  return <Panel props={item.props} dataSources={dataSources} onChange={(p) => onChange(p)} />;
 }
