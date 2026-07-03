@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { DataSource } from "../api/types";
@@ -29,4 +29,42 @@ test("edits a source layer", async () => {
   await userEvent.type(screen.getByLabelText("Collection de la source d1"), "parcs");
   const last = onChange.mock.calls.at(-1)![0] as DataSource[];
   expect(last[0].layer.endsWith("s")).toBe(true);
+});
+
+test("offers a statistics type option", () => {
+  const sources: DataSource[] = [{ id: "d1", type: "features", service: "featureserv", layer: "", query: {} }];
+  render(<DataSourcePanel sources={sources} onChange={vi.fn()} />);
+  const typeSelect = screen.getByLabelText("Type de la source d1");
+  expect(within(typeSelect).getByRole("option", { name: "Statistiques" })).toBeInTheDocument();
+});
+
+test("edits a statistics source's group-by and split", async () => {
+  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={sources} onChange={onChange} />);
+  // onChange is a spy, so the controlled inputs stay frozen at "" — each
+  // keystroke emits the single typed char (as with "edits a source layer").
+  await userEvent.type(screen.getByLabelText("Grouper par (source d1)"), "r");
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.groupBy).toBe("r");
+  await userEvent.type(screen.getByLabelText("Séparer par (source d1)"), "a");
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.split).toBe("a");
+});
+
+test("adds and configures a measure on a statistics source", async () => {
+  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={sources} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une mesure à d1" }));
+  const afterAdd = (onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.measures as unknown[];
+  expect(afterAdd).toHaveLength(1);
+});
+
+test("edits the default aggregation of a statistics source", async () => {
+  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: { groupBy: "region" } }];
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={sources} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Agrégation (source d1)"), "sum");
+  const last = (onChange.mock.calls.at(-1)![0] as DataSource[])[0];
+  expect(last.query.agg).toBe("sum");
+  expect(last.query.groupBy).toBe("region");
 });
