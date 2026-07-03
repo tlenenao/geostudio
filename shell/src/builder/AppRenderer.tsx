@@ -2,6 +2,7 @@ import type { AppConfig, RenderMode } from "../api/types";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
 import { moveItem } from "./grid";
+import { DataProvider } from "./DataContext";
 
 export function AppRenderer({
   config,
@@ -30,13 +31,15 @@ export function AppRenderer({
   }
 
   return (
-    <GridCanvas
-      items={config.layout.items}
-      editable={editable}
-      selectedId={selectedId}
-      onSelect={(id) => onSelect?.(id)}
-      onMoveItem={handleMove}
-      renderItem={(item) => <WidgetHost item={item} mode={mode} />}
-    />
+    <DataProvider sources={config.dataSources}>
+      <GridCanvas
+        items={config.layout.items}
+        editable={editable}
+        selectedId={selectedId}
+        onSelect={(id) => onSelect?.(id)}
+        onMoveItem={handleMove}
+        renderItem={(item) => <WidgetHost item={item} mode={mode} />}
+      />
+    </DataProvider>
   );
 }
