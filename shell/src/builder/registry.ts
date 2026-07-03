@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import type { RenderMode } from "../api/types";
+import type { DataSourceState, RenderMode } from "../api/types";
 
 export type WidgetContext = {
   mode: RenderMode;
   navigate?: (pageId: string) => void;
+  data?: DataSourceState;
 };
 
 export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {

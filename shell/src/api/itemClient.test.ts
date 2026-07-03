@@ -414,3 +414,44 @@ test("saveAppConfig PUTs the app config by item", async () => {
   expect(body.kind).toBe("app");
   expect(body.layout.type).toBe("grid");
 });
+
+test("featuresUrl builds the featureserv items url", () => {
+  const url = makeClient().featuresUrl({ id: "d", type: "features", service: "featureserv", layer: "public.parcs", query: {} });
+  expect(url).toBe("https://featureserv.test/collections/public.parcs/items.json");
+});
+
+test("queryDataSource maps a feature collection to records", async () => {
+  server.use(
+    http.get("https://featureserv.test/collections/public.parcs/items.json", () =>
+      HttpResponse.json({
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } },
+          { type: "Feature", properties: { nom: "Parc B" }, geometry: null },
+        ],
+      }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({ id: "d", type: "features", service: "featureserv", layer: "public.parcs", query: {} });
+  expect(records).toHaveLength(2);
+  expect(records[0]).toMatchObject({ id: 1, properties: { nom: "Parc A" } });
+  // Missing feature id falls back to the index.
+  expect(records[1].id).toBe(1);
+});
+
+test("queryDataSource returns inline records for a static source", async () => {
+  const records = await makeClient().queryDataSource({
+    id: "s", type: "static", service: "", layer: "",
+    query: { records: [{ id: "a", properties: { v: 1 } }] },
+  });
+  expect(records).toEqual([{ id: "a", properties: { v: 1 } }]);
+});
+
+test("queryDataSource throws when the feature request fails", async () => {
+  server.use(
+    http.get("https://featureserv.test/collections/x/items.json", () => new HttpResponse(null, { status: 500 })),
+  );
+  await expect(
+    makeClient().queryDataSource({ id: "d", type: "features", service: "featureserv", layer: "x", query: {} }),
+  ).rejects.toThrow();
+});

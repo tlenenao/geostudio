@@ -82,6 +82,8 @@ export interface ItemClient {
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
   getAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  featuresUrl(source: DataSource): string;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
@@ -102,10 +104,31 @@ export type AppLayout = {
   items: WidgetItem[];
 };
 
+export type DataSource = {
+  id: string;
+  type: "features" | "static";
+  service: string;
+  layer: string;
+  query: Record<string, unknown>;
+};
+
+export type DataRecord = {
+  id: string | number;
+  properties: Record<string, unknown>;
+  geometry?: unknown;
+};
+
+export type DataSourceState = {
+  loading: boolean;
+  error: boolean;
+  records: DataRecord[];
+  url?: string;
+};
+
 export type AppConfig = {
   kind: "app" | "dashboard";
   theme: Record<string, unknown>;
-  dataSources: unknown[];
+  dataSources: DataSource[];
   messages: unknown[];
   layout: AppLayout;
 };
