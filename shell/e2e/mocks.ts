@@ -5,8 +5,27 @@ const ALL = [
   { pk: "2", resource_type: "dashboard", title: "Beta", abstract: "B", owner: { username: "alice" }, thumbnail_url: null, date: "2026-01-01" },
 ];
 
+const DEFAULT_MAP_CONFIG = {
+  kind: "map",
+  map: {
+    basemap: { style: "https://demotiles.maplibre.org/style.json" },
+    view: { center: [2.4, 46.6], zoom: 5 },
+    layers: [],
+  },
+} as const;
+
+const DEFAULT_APP_CONFIG = {
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  layout: { type: "grid", breakpoints: {}, items: [] },
+} as const;
+
 export async function mockGeoNode(page: Page) {
   const deleted = new Set<string>();
+  // Stateful store: keyed by item id, holds the last PUT body per item.
+  const savedConfigs = new Map<string, unknown>();
 
   await page.route("**/api/v2/resources*", async (route) => {
     const url = new URL(route.request().url());
@@ -57,37 +76,54 @@ export async function mockGeoNode(page: Page) {
 
   await page.route("**/configs/by-item/**", async (route) => {
     const method = route.request().method();
+    const itemId = route.request().url().split("/").pop() ?? "";
+
     if (method === "DELETE") {
-      const pk = route.request().url().split("/").pop() ?? "";
-      deleted.add(pk);
+      deleted.add(itemId);
       await route.fulfill({ status: 204, body: "" });
     } else if (method === "GET") {
-      // Return a minimal map ConfigRead; `config.map` is the MapConfig payload.
-      await route.fulfill({
-        json: {
-          id: "cfg-1",
-          itemId: "77",
-          kind: "map",
-          config: {
+      if (itemId === "77") {
+        // Map item — return stored config if present, else default map config.
+        const stored = savedConfigs.get("77");
+        await route.fulfill({
+          json: {
+            id: "cfg-1",
+            itemId: "77",
             kind: "map",
-            map: {
-              basemap: { style: "https://demotiles.maplibre.org/style.json" },
-              view: { center: [2.4, 46.6], zoom: 5 },
-              layers: [],
-            },
+            config: stored ?? DEFAULT_MAP_CONFIG,
           },
-        },
-      });
+        });
+      } else {
+        // App/dashboard items (9, 1, …) — return stored config if present, else empty app config.
+        const stored = savedConfigs.get(itemId);
+        await route.fulfill({
+          json: {
+            id: `cfg-${itemId}`,
+            itemId,
+            kind: "app",
+            config: stored ?? DEFAULT_APP_CONFIG,
+          },
+        });
+      }
     } else if (method === "PUT") {
       const body = await route.request().postDataJSON();
-      await route.fulfill({
-        json: {
-          id: "cfg-1",
-          itemId: "77",
-          kind: "map",
-          config: { kind: "map", map: body.map },
-        },
-      });
+      if (itemId === "77") {
+        savedConfigs.set("77", body);
+        await route.fulfill({
+          json: {
+            id: "cfg-1",
+            itemId: "77",
+            kind: "map",
+            config: { kind: "map", map: body.map },
+          },
+        });
+      } else {
+        // App/dashboard items — echo the full PUT body back as the config, store for future GETs.
+        savedConfigs.set(itemId, body);
+        await route.fulfill({
+          json: { id: `cfg-${itemId}`, itemId, kind: "app", config: body },
+        });
+      }
     } else {
       await route.fallback();
     }
