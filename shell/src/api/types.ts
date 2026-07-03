@@ -125,10 +125,18 @@ export type DataSourceState = {
   url?: string;
 };
 
+export type ActionMessage = {
+  id: string;
+  from: string;
+  event: string;
+  to: string;
+  action: string;
+};
+
 export type AppConfig = {
   kind: "app" | "dashboard";
   theme: Record<string, unknown>;
   dataSources: DataSource[];
-  messages: unknown[];
+  messages: ActionMessage[];
   layout: AppLayout;
 };

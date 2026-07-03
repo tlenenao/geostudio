@@ -1,4 +1,4 @@
-import type { AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
+import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 
 type GeoNodeResource = {
@@ -355,7 +355,7 @@ export function createItemClient(opts: {
           kind?: "app" | "dashboard";
           theme?: Record<string, unknown>;
           dataSources?: DataSource[];
-          messages?: unknown[];
+          messages?: ActionMessage[];
           layout?: AppConfig["layout"] | null;
         };
       };
