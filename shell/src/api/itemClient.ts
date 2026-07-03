@@ -1,4 +1,4 @@
-import type { AppConfig, CreateKind, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, UpdatePatch } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 
 type GeoNodeResource = {
@@ -349,7 +349,7 @@ export function createItemClient(opts: {
         config?: {
           kind?: "app" | "dashboard";
           theme?: Record<string, unknown>;
-          dataSources?: unknown[];
+          dataSources?: DataSource[];
           messages?: unknown[];
           layout?: AppConfig["layout"] | null;
         };
@@ -380,6 +380,29 @@ export function createItemClient(opts: {
         }),
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status} PUT /configs/by-item/${pk}`);
+    },
+
+    featuresUrl(source: DataSource): string {
+      return `${featureservUrl}/collections/${source.layer}/items.json`;
+    },
+
+    async queryDataSource(source: DataSource): Promise<DataRecord[]> {
+      if (source.type === "static") {
+        return (source.query.records as DataRecord[] | undefined) ?? [];
+      }
+      const token = getToken();
+      const res = await fetch(this.featuresUrl(source), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} features ${source.layer}`);
+      const data = (await res.json()) as {
+        features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
+      };
+      return (data.features ?? []).map((f, i) => ({
+        id: f.id ?? i,
+        properties: f.properties ?? {},
+        geometry: f.geometry,
+      }));
     },
   };
 }
