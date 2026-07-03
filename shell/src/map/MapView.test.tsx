@@ -1,8 +1,10 @@
 import { render } from "@testing-library/react";
+import { createRef } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig, MapLayer } from "../api/types";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
+import type { MapViewHandle } from "./MapView";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -195,4 +197,25 @@ test("re-applies deck layers when config.layers changes", () => {
   rerender(<MapView config={second} />);
   expect(overlay.props.layers.map((l) => l.props.id)).toEqual(["d2"]);
   expect(overlay.props.layers[0].deckType).toBe("ColumnLayer");
+});
+
+test("exposes an imperative flyTo that drives the map", () => {
+  const ref = createRef<MapViewHandle>();
+  render(<MapView ref={ref} config={config} />);
+  ref.current!.flyTo({ center: [5, 6], zoom: 12 });
+  expect(mapInstances[0].flyToArgs).toContainEqual({ center: [5, 6], zoom: 12 });
+});
+
+test("highlight sets the highlight source data and clears it on null", () => {
+  const ref = createRef<MapViewHandle>();
+  render(<MapView ref={ref} config={config} />);
+  const map = mapInstances[0];
+  ref.current!.highlight({ type: "Point", coordinates: [1, 2] });
+  expect(map.getSource("__highlight__")).toMatchObject({
+    spec: { data: { type: "Feature", geometry: { type: "Point", coordinates: [1, 2] } } },
+  });
+  ref.current!.highlight(null);
+  expect(map.getSource("__highlight__")).toMatchObject({
+    spec: { data: { type: "FeatureCollection", features: [] } },
+  });
 });
