@@ -143,6 +143,22 @@ export async function mockGeoNode(page: Page) {
     });
   });
 
+  // Feature-serv items for the "villes" collection — a statistics source
+  // aggregates these client-side (groupBy region, split annee → 2 series).
+  await page.route("**/collections/villes/items.json*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, properties: { region: "Nord", annee: "2025", pop: 10 } },
+          { id: 2, properties: { region: "Nord", annee: "2026", pop: 12 } },
+          { id: 3, properties: { region: "Sud", annee: "2025", pop: 5 } },
+          { id: 4, properties: { region: "Sud", annee: "2026", pop: 7 } },
+        ],
+      },
+    });
+  });
+
   // Feature-serv items endpoint for the "parcs" collection — filters by the
   // `nom` query param so setFilter can be observed end-to-end.
   await page.route("**/collections/parcs/items.json*", async (route) => {
