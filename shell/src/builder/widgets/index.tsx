@@ -3,6 +3,7 @@ import { registerDataWidgets } from "./data";
 import { registerIndicatorWidget } from "./indicator";
 import { registerMapWidget } from "./mapWidget";
 import { registerFilterWidget } from "./filter";
+import { registerChartWidget } from "./chart";
 
 export function registerBuiltinWidgets(): void {
   if (getWidget("text")) return;
@@ -109,4 +110,5 @@ export function registerBuiltinWidgets(): void {
   registerIndicatorWidget();
   registerMapWidget();
   registerFilterWidget();
+  registerChartWidget();
 }
