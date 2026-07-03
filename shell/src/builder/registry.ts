@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
 import type { DataSource, DataSourceState, RenderMode } from "../api/types";
+import type { ActionBus } from "./ActionBus";
 
 export type WidgetContext = {
   mode: RenderMode;
   navigate?: (pageId: string) => void;
   data?: DataSourceState;
+  bus?: ActionBus;
+  widgetId?: string;
 };
 
 export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
@@ -13,6 +16,8 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
   icon?: ReactNode;
   defaultProps: P;
   defaultSize: { w: number; h: number };
+  events?: readonly string[];
+  actions?: readonly string[];
   PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };
