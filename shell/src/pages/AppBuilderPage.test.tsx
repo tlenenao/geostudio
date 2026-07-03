@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { AppConfig, ItemClient } from "../api/types";
@@ -53,4 +53,31 @@ test("adds a data source and persists it", async () => {
   await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
   const saved = saveAppConfig.mock.calls[0][1];
   expect(saved.dataSources).toHaveLength(1);
+});
+
+test("composes an action between two widgets and persists it", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    saveAppConfig,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByRole("button", { name: "Filtre" });
+  await userEvent.click(screen.getByRole("button", { name: "Filtre" }));
+  await userEvent.click(screen.getByRole("button", { name: "Liste" }));
+
+  const emitterSelect = screen.getByLabelText("Widget émetteur");
+  const targetSelect = screen.getByLabelText("Widget cible");
+  await userEvent.selectOptions(emitterSelect, within(emitterSelect).getByRole("option", { name: "Filtre" }));
+  await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
+  await userEvent.selectOptions(targetSelect, within(targetSelect).getByRole("option", { name: "Liste" }));
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "setFilter");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1];
+  expect(saved.messages).toHaveLength(1);
+  expect(saved.messages[0]).toMatchObject({ event: "changed", action: "setFilter" });
 });
