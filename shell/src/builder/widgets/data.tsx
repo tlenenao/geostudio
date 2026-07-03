@@ -60,6 +60,7 @@ export function registerDataWidgets(): void {
       const data = ctx.data;
       if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+      if (data.records.length === 0) return <p className="text-xs text-slate-400">Aucune donnée</p>;
       const columns = ((props.columns as string[] | undefined)?.length
         ? (props.columns as string[])
         : Object.keys(data.records[0]?.properties ?? {}));

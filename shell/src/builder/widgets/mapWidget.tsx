@@ -17,6 +17,7 @@ export function registerMapWidget(): void {
         onChange={(id) => onChange({ ...props, dataSourceId: id })} />
     ),
     Component: ({ props, ctx }) => {
+      if (ctx.data?.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       const url = ctx.data?.url;
       const config: MapConfig = {
         basemap: { style: DEFAULT_STYLE },

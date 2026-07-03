@@ -60,7 +60,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     });
   }
 
-  const setSources = (dataSources: typeof draft.dataSources) => setDraft({ ...draft, dataSources });
+  const setSources = (dataSources: typeof draft.dataSources) =>
+    setDraft((d) => (d ? { ...d, dataSources } : d));
 
   return (
     <div className="flex h-full flex-col">
