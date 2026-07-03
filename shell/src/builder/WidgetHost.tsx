@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import type { RenderMode, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
+import { useDataStates } from "./DataContext";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -19,6 +20,9 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
 }
 
 export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode }) {
+  const states = useDataStates();
+  const dsId = item.props.dataSourceId as string | undefined;
+  const data = dsId ? states[dsId] : undefined;
   const def = getWidget(item.widget);
   if (!def) {
     return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Widget inconnu : {item.widget}</div>;
@@ -26,7 +30,7 @@ export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode 
   const Widget = def.Component;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode }} />
+      <Widget props={item.props} ctx={{ mode, data }} />
     </WidgetErrorBoundary>
   );
 }
