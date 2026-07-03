@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppConfig, useSaveApp } from "../api/hooks";
 import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
+import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
 import { WidgetPalette } from "../builder/WidgetPalette";
@@ -63,6 +64,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setSources = (dataSources: typeof draft.dataSources) =>
     setDraft((d) => (d ? { ...d, dataSources } : d));
 
+  const setMessages = (messages: typeof draft.messages) =>
+    setDraft((d) => (d ? { ...d, messages } : d));
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-2">
@@ -79,6 +83,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <WidgetPalette onAdd={addWidget} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
             <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
+            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
+            <ActionsPanel items={draft.layout.items} messages={draft.messages} onChange={setMessages} />
           </aside>
         )}
         <main className="flex-1 overflow-auto p-2">
