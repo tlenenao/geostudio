@@ -38,3 +38,19 @@ test("shows an error when loading fails", async () => {
   renderPage({ getAppConfig: vi.fn().mockRejectedValue(new Error("x")) });
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
 });
+
+test("adds a data source and persists it", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    saveAppConfig,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByRole("button", { name: "Ajouter une source" });
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une source" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1];
+  expect(saved.dataSources).toHaveLength(1);
+});
