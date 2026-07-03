@@ -455,3 +455,19 @@ test("queryDataSource throws when the feature request fails", async () => {
     makeClient().queryDataSource({ id: "d", type: "features", service: "featureserv", layer: "x", query: {} }),
   ).rejects.toThrow();
 });
+
+test("featuresUrl appends scalar query entries as sorted filter params", () => {
+  const url = makeClient().featuresUrl({
+    id: "d", type: "features", service: "featureserv", layer: "parcs",
+    query: { nom: "Parc A", limit: 10 },
+  });
+  expect(url).toBe("https://featureserv.test/collections/parcs/items.json?limit=10&nom=Parc+A");
+});
+
+test("featuresUrl omits empty/nullish query entries", () => {
+  const url = makeClient().featuresUrl({
+    id: "d", type: "features", service: "featureserv", layer: "parcs",
+    query: { nom: "", ville: undefined as unknown as string },
+  });
+  expect(url).toBe("https://featureserv.test/collections/parcs/items.json");
+});

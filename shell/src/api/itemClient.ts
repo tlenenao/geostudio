@@ -51,7 +51,16 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
 
 function buildFeaturesUrl(featureservUrl: string | undefined, source: DataSource): string {
   if (!featureservUrl) throw new Error("featuresUrl: featureservUrl is not configured");
-  return `${featureservUrl}/collections/${source.layer}/items.json`;
+  const base = `${featureservUrl}/collections/${source.layer}/items.json`;
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(source.query).sort(([a], [b]) => a.localeCompare(b))) {
+    if (v === null || v === undefined || v === "") continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      params.set(k, String(v));
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 export function createItemClient(opts: {
