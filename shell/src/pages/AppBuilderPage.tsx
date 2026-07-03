@@ -18,7 +18,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [mode, setMode] = useState<RenderMode>("edit");
 
   useEffect(() => {
-    if (query.data) setDraft(query.data);
+    // Seed the draft once on first load. Re-seeding on every query.data change
+    // (e.g. the refetch after a save) would clobber in-flight local edits.
+    if (query.data) setDraft((d) => d ?? query.data);
   }, [query.data]);
 
   const selected = useMemo(
