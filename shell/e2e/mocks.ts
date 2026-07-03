@@ -143,16 +143,16 @@ export async function mockGeoNode(page: Page) {
     });
   });
 
-  // Feature-serv items endpoint for the "parcs" collection — used by the List widget E2E.
-  await page.route("**/collections/parcs/items.json", async (route) => {
-    await route.fulfill({
-      json: {
-        type: "FeatureCollection",
-        features: [
-          { id: 1, properties: { nom: "Parc du Test" } },
-          { id: 2, properties: { nom: "Bois Test" } },
-        ],
-      },
-    });
+  // Feature-serv items endpoint for the "parcs" collection — filters by the
+  // `nom` query param so setFilter can be observed end-to-end.
+  await page.route("**/collections/parcs/items.json*", async (route) => {
+    const url = new URL(route.request().url());
+    const nom = url.searchParams.get("nom");
+    const all = [
+      { id: 1, properties: { nom: "Parc du Test" } },
+      { id: 2, properties: { nom: "Bois Test" } },
+    ];
+    const features = nom ? all.filter((f) => f.properties.nom === nom) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
   });
 }
