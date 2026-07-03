@@ -101,3 +101,30 @@ test("list setFilter action filters its bound source", async () => {
   });
   await waitFor(() => expect(queryDataSource).toHaveBeenLastCalledWith(expect.objectContaining({ query: { nom: "A" } })));
 });
+
+test("table sorts rows when a column header is clicked", async () => {
+  const Table = getWidget("table")!.Component;
+  const ctx = { mode: "runtime", data: state({ records: [
+    { id: 1, properties: { nom: "B" } },
+    { id: 2, properties: { nom: "A" } },
+    { id: 3, properties: { nom: "C" } },
+  ] }) } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  await userEvent.click(screen.getByRole("button", { name: /nom/ }));
+  let cells = screen.getAllByRole("cell");
+  expect(cells[0]).toHaveTextContent("A"); // ascending
+  await userEvent.click(screen.getByRole("button", { name: /nom/ }));
+  cells = screen.getAllByRole("cell");
+  expect(cells[0]).toHaveTextContent("C"); // descending
+});
+
+test("table paginates with a configured page size", async () => {
+  const Table = getWidget("table")!.Component;
+  const records = [1, 2, 3].map((n) => ({ id: n, properties: { nom: `N${n}` } }));
+  const ctx = { mode: "runtime", data: state({ records }) } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom"], pageSize: 2 }} ctx={ctx} />);
+  expect(screen.getAllByRole("row")).toHaveLength(3); // header + 2 data rows
+  expect(screen.queryByText("N3")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+  expect(screen.getByRole("cell", { name: "N3" })).toBeInTheDocument();
+});
