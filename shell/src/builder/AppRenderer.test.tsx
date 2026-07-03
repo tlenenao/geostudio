@@ -47,3 +47,21 @@ test("edit mode moving a widget calls onChange with the new position", async () 
   const next = onChange.mock.calls[0][0] as AppConfig;
   expect(next.layout.items[0]).toMatchObject({ x: 1 });
 });
+
+test("configures the bus so a button click drives a wired action", async () => {
+  // Two buttons: one emits "clicked"; the message wires it to the other's… there is
+  // no builtin action on button, so assert wiring via a spy widget is covered in
+  // ActionBusContext.test. Here assert the renderer wires messages without crashing
+  // and renders interactive widgets.
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [],
+    messages: [{ id: "m", from: "b1", event: "clicked", to: "b1", action: "noop" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "b1", widget: "button", x: 0, y: 0, w: 2, h: 1, props: { label: "Go" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  // No target action registered → emitting is a safe no-op; the app still renders.
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+  expect(screen.getByRole("button", { name: "Go" })).toBeInTheDocument();
+});

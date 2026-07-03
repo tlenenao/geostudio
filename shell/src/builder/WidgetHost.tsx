@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import type { RenderMode, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
+import { useActionBus } from "./ActionBusContext";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -21,6 +22,7 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
 
 export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode }) {
   const states = useDataStates();
+  const bus = useActionBus();
   const dsId = item.props.dataSourceId as string | undefined;
   const data = dsId ? states[dsId] : undefined;
   const def = getWidget(item.widget);
@@ -30,7 +32,7 @@ export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode 
   const Widget = def.Component;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode, data }} />
+      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id }} />
     </WidgetErrorBoundary>
   );
 }
