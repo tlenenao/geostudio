@@ -1,4 +1,5 @@
 import { getWidget, registerWidget } from "../registry";
+import { registerDataWidgets } from "./data";
 
 export function registerBuiltinWidgets(): void {
   if (getWidget("text")) return;
@@ -98,4 +99,6 @@ export function registerBuiltinWidgets(): void {
       </button>
     ),
   });
+
+  registerDataWidgets();
 }
