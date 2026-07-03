@@ -1,5 +1,7 @@
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
+import { useBusAction } from "../ActionBusContext";
+import { useSetFilter } from "../DataContext";
 import type { DataRecord } from "../../api/types";
 
 function firstField(records: DataRecord[]): string | undefined {
@@ -12,6 +14,8 @@ export function registerDataWidgets(): void {
     label: "Liste",
     defaultProps: { dataSourceId: "", titleField: "" },
     defaultSize: { w: 4, h: 4 },
+    events: ["itemSelected"],
+    actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
@@ -23,6 +27,11 @@ export function registerDataWidgets(): void {
       </div>
     ),
     Component: ({ props, ctx }) => {
+      const setFilter = useSetFilter();
+      useBusAction(ctx.bus, ctx.widgetId, "setFilter", (payload) => {
+        const dsId = String(props.dataSourceId ?? "");
+        if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
+      });
       const data = ctx.data;
       if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
@@ -31,7 +40,11 @@ export function registerDataWidgets(): void {
       return (
         <ul className="flex flex-col gap-0.5 text-sm">
           {data.records.map((r) => (
-            <li key={String(r.id)} className="truncate border-b border-slate-100 py-0.5">
+            <li
+              key={String(r.id)}
+              className="cursor-pointer truncate border-b border-slate-100 py-0.5 hover:bg-slate-50"
+              onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
+            >
               {String(r.properties[field] ?? r.id)}
             </li>
           ))}
@@ -45,6 +58,7 @@ export function registerDataWidgets(): void {
     label: "Table",
     defaultProps: { dataSourceId: "", columns: [] },
     defaultSize: { w: 6, h: 4 },
+    actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
@@ -57,6 +71,11 @@ export function registerDataWidgets(): void {
       </div>
     ),
     Component: ({ props, ctx }) => {
+      const setFilter = useSetFilter();
+      useBusAction(ctx.bus, ctx.widgetId, "setFilter", (payload) => {
+        const dsId = String(props.dataSourceId ?? "");
+        if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
+      });
       const data = ctx.data;
       if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
