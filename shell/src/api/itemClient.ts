@@ -49,6 +49,11 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
   }
 }
 
+function buildFeaturesUrl(featureservUrl: string | undefined, source: DataSource): string {
+  if (!featureservUrl) throw new Error("featuresUrl: featureservUrl is not configured");
+  return `${featureservUrl}/collections/${source.layer}/items.json`;
+}
+
 export function createItemClient(opts: {
   geonodeUrl: string;
   builderUrl: string;
@@ -383,7 +388,7 @@ export function createItemClient(opts: {
     },
 
     featuresUrl(source: DataSource): string {
-      return `${featureservUrl}/collections/${source.layer}/items.json`;
+      return buildFeaturesUrl(featureservUrl, source);
     },
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
@@ -391,7 +396,7 @@ export function createItemClient(opts: {
         return (source.query.records as DataRecord[] | undefined) ?? [];
       }
       const token = getToken();
-      const res = await fetch(this.featuresUrl(source), {
+      const res = await fetch(buildFeaturesUrl(featureservUrl, source), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status} features ${source.layer}`);
