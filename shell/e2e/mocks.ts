@@ -142,4 +142,17 @@ export async function mockGeoNode(page: Page) {
       json: { collections: [] },
     });
   });
+
+  // Feature-serv items endpoint for the "parcs" collection — used by the List widget E2E.
+  await page.route("**/collections/parcs/items.json", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, properties: { nom: "Parc du Test" } },
+          { id: 2, properties: { nom: "Bois Test" } },
+        ],
+      },
+    });
+  });
 }
