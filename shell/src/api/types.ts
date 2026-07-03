@@ -106,7 +106,7 @@ export type AppLayout = {
 
 export type DataSource = {
   id: string;
-  type: "features" | "static";
+  type: "features" | "static" | "statistics";
   service: string;
   layer: string;
   query: Record<string, unknown>;

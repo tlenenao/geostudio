@@ -471,3 +471,120 @@ test("featuresUrl omits empty/nullish query entries", () => {
   });
   expect(url).toBe("https://featureserv.test/collections/parcs/items.json");
 });
+
+test("queryDataSource aggregates a statistics source by count per group", async () => {
+  server.use(
+    http.get("https://featureserv.test/collections/villes/items.json", () =>
+      HttpResponse.json({
+        type: "FeatureCollection",
+        features: [
+          { id: 1, properties: { region: "Nord", pop: 10 } },
+          { id: 2, properties: { region: "Nord", pop: 20 } },
+          { id: 3, properties: { region: "Sud", pop: 5 } },
+        ],
+      }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    query: { groupBy: "region", agg: "count" },
+  });
+  expect(records).toEqual([
+    { id: "Nord", properties: { region: "Nord", value: 2 } },
+    { id: "Sud", properties: { region: "Sud", value: 1 } },
+  ]);
+});
+
+test("queryDataSource supports sum/avg/min/max aggregations per group", async () => {
+  const feats = {
+    type: "FeatureCollection",
+    features: [
+      { id: 1, properties: { region: "Nord", pop: 10 } },
+      { id: 2, properties: { region: "Nord", pop: 20 } },
+      { id: 3, properties: { region: "Sud", pop: 6 } },
+    ],
+  };
+  const run = async (agg: string) => {
+    server.use(
+      http.get("https://featureserv.test/collections/villes/items.json", () => HttpResponse.json(feats)),
+    );
+    return makeClient().queryDataSource({
+      id: "s", type: "statistics", service: "featureserv", layer: "villes",
+      query: { groupBy: "region", agg, field: "pop" },
+    });
+  };
+  expect(await run("sum")).toEqual([
+    { id: "Nord", properties: { region: "Nord", value: 30 } },
+    { id: "Sud", properties: { region: "Sud", value: 6 } },
+  ]);
+  expect(await run("avg")).toEqual([
+    { id: "Nord", properties: { region: "Nord", value: 15 } },
+    { id: "Sud", properties: { region: "Sud", value: 6 } },
+  ]);
+  expect(await run("min")).toEqual([
+    { id: "Nord", properties: { region: "Nord", value: 10 } },
+    { id: "Sud", properties: { region: "Sud", value: 6 } },
+  ]);
+  expect(await run("max")).toEqual([
+    { id: "Nord", properties: { region: "Nord", value: 20 } },
+    { id: "Sud", properties: { region: "Sud", value: 6 } },
+  ]);
+});
+
+test("queryDataSource pivots a statistics source into one column per split value", async () => {
+  server.use(
+    http.get("https://featureserv.test/collections/villes/items.json", () =>
+      HttpResponse.json({
+        type: "FeatureCollection",
+        features: [
+          { id: 1, properties: { region: "Nord", annee: "2025", pop: 10 } },
+          { id: 2, properties: { region: "Nord", annee: "2026", pop: 12 } },
+          { id: 3, properties: { region: "Sud", annee: "2025", pop: 5 } },
+        ],
+      }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    query: { groupBy: "region", split: "annee", agg: "sum", field: "pop" },
+  });
+  expect(records).toEqual([
+    { id: "Nord", properties: { region: "Nord", "2025": 10, "2026": 12 } },
+    { id: "Sud", properties: { region: "Sud", "2025": 5, "2026": 0 } },
+  ]);
+});
+
+test("queryDataSource produces one wide column per measure", async () => {
+  server.use(
+    http.get("https://featureserv.test/collections/villes/items.json", () =>
+      HttpResponse.json({
+        type: "FeatureCollection",
+        features: [
+          { id: 1, properties: { region: "Nord", pop: 10, rev: 4 } },
+          { id: 2, properties: { region: "Nord", pop: 20, rev: 8 } },
+        ],
+      }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    query: {
+      groupBy: "region",
+      measures: [
+        { field: "pop", agg: "sum", label: "Population" },
+        { field: "rev", agg: "avg" },
+      ],
+    },
+  });
+  expect(records).toEqual([
+    { id: "Nord", properties: { region: "Nord", Population: 30, avg_rev: 6 } },
+  ]);
+});
+
+test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
+  const url = makeClient().featuresUrl({
+    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    query: { groupBy: "region", split: "annee", agg: "sum", field: "pop", annee_filtre: 2026 },
+  });
+  expect(url).toBe("https://featureserv.test/collections/villes/items.json?annee_filtre=2026");
+});
