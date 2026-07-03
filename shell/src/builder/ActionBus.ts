@@ -4,7 +4,7 @@ export type BusHandler = (payload?: unknown) => void;
 
 // Per-app event bus. Widgets emit events and register actions; the renderer
 // wires config.messages so emitting an event invokes the target action(s).
-// Keys join id + name with   so ids containing separators can't collide.
+// Keys join id + name with a space; ids are UUIDs / fixed literals (no spaces), so keys don't collide in practice.
 export class ActionBus {
   private actions = new Map<string, BusHandler>();
   private wiring = new Map<string, ActionMessage[]>();

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -96,6 +96,8 @@ test("list setFilter action filters its bound source", async () => {
   );
 
   await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
-  bus.emit("flt", "changed", { nom: "A" });
+  await act(async () => {
+    bus.emit("flt", "changed", { nom: "A" });
+  });
   await waitFor(() => expect(queryDataSource).toHaveBeenLastCalledWith(expect.objectContaining({ query: { nom: "A" } })));
 });
