@@ -66,6 +66,7 @@ export function registerBuiltinWidgets(): void {
     label: "Bouton",
     defaultProps: { label: "Bouton", href: "" },
     defaultSize: { w: 2, h: 1 },
+    events: ["clicked"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
@@ -88,11 +89,12 @@ export function registerBuiltinWidgets(): void {
         </label>
       </div>
     ),
-    Component: ({ props }) => (
+    Component: ({ props, ctx }) => (
       <button
         type="button"
         className="rounded-md bg-slate-800 px-3 py-1.5 text-sm text-white"
         onClick={() => {
+          ctx.bus?.emit(ctx.widgetId ?? "", "clicked", { widgetId: ctx.widgetId });
           const href = String(props.href ?? "");
           if (href) window.open(href, "_blank", "noopener");
         }}
