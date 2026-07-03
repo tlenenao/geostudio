@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
@@ -56,7 +57,7 @@ export function registerDataWidgets(): void {
   registerWidget({
     type: "table",
     label: "Table",
-    defaultProps: { dataSourceId: "", columns: [] },
+    defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
     defaultSize: { w: 6, h: 4 },
     actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
@@ -76,6 +77,9 @@ export function registerDataWidgets(): void {
         const dsId = String(props.dataSourceId ?? "");
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
       });
+      const [sortCol, setSortCol] = useState<string | null>(null);
+      const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+      const [page, setPage] = useState(0);
       const data = ctx.data;
       if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
@@ -83,19 +87,60 @@ export function registerDataWidgets(): void {
       const columns = ((props.columns as string[] | undefined)?.length
         ? (props.columns as string[])
         : Object.keys(data.records[0]?.properties ?? {}));
+
+      const sorted = [...data.records];
+      if (sortCol) {
+        const dir = sortDir === "asc" ? 1 : -1;
+        sorted.sort((a, b) => {
+          const av = a.properties[sortCol];
+          const bv = b.properties[sortCol];
+          if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+          return String(av ?? "").localeCompare(String(bv ?? "")) * dir;
+        });
+      }
+      const pageSize = Number(props.pageSize) || 10;
+      const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+      const current = Math.min(page, pageCount - 1);
+      const shown = sorted.slice(current * pageSize, current * pageSize + pageSize);
+
+      function toggleSort(c: string) {
+        if (sortCol === c) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        else { setSortCol(c); setSortDir("asc"); }
+        setPage(0);
+      }
+
       return (
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr>{columns.map((c) => <th key={c} className="border-b p-1">{c}</th>)}</tr>
-          </thead>
-          <tbody>
-            {data.records.map((r) => (
-              <tr key={String(r.id)}>
-                {columns.map((c) => <td key={c} className="border-b border-slate-100 p-1">{String(r.properties[c] ?? "")}</td>)}
+        <div className="flex h-full flex-col text-xs">
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                {columns.map((c) => (
+                  <th key={c} className="border-b p-1">
+                    <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(c)}>
+                      {c}{sortCol === c ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                    </button>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={String(r.id)}>
+                  {columns.map((c) => <td key={c} className="border-b border-slate-100 p-1">{String(r.properties[c] ?? "")}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {pageCount > 1 && (
+            <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-slate-500">
+              <button type="button" className="rounded border border-slate-300 px-1 disabled:opacity-40"
+                disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
+              <span>Page {current + 1} / {pageCount}</span>
+              <button type="button" className="rounded border border-slate-300 px-1 disabled:opacity-40"
+                disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
+            </div>
+          )}
+        </div>
       );
     },
   });
