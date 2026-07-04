@@ -140,3 +140,20 @@ def test_pages_round_trip():
 def test_pages_optional_defaults_empty():
     config = BuilderConfig.model_validate(_valid_payload("app"))
     assert config.pages == []
+
+
+def test_variables_round_trip():
+    payload = _valid_payload("app")
+    payload["variables"] = [
+        {"id": "v1", "name": "message", "initialValue": "salut"},
+    ]
+    config = BuilderConfig.model_validate(payload)
+    assert len(config.variables) == 1
+    assert config.variables[0].name == "message"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["variables"][0]["initialValue"] == "salut"
+
+
+def test_variables_optional_defaults_empty():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.variables == []
