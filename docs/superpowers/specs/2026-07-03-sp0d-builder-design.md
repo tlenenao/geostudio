@@ -85,41 +85,73 @@ SP-0d ajoute (par sous-phase, toujours additif, jamais de rupture) :
   via l'`ActionsPanel`. *(SP-0d.3)*
 - **`pages[]`** : liste de pages, chacune avec son `layout` ; `variables[]` : état partagé
   runtime. *(SP-0d.5)*
-- **`published`** : booléen/état de publication. *(SP-0d.6)*
 
 Chaque extension est introduite dans sa sous-phase avec migration/validation côté Builder Service
 (Pydantic, valeurs par défaut → configs existants restent valides).
 
+**Pas d'extension `BuilderConfig` pour SP-0d.6.** L'état de publication est porté par le champ
+`is_published` déjà natif à la ressource GeoNode (déjà utilisé en lecture par `listItems`'s
+`scope: "public"` filter) — pas par une nouvelle propriété de `BuilderConfig`, pour éviter deux
+sources de vérité potentiellement divergentes (GeoNode vs Builder Service) sur un même item.
+
 ## 5. Registre de widgets & SDK
 
-Chaque widget est décrit par une **définition** enregistrée dans un registre :
+Chaque widget est décrit par une **définition** enregistrée dans un registre. Ceci reflète la forme
+réellement implémentée depuis SP-0d.1–0d.5 (le bloc de type qui apparaissait ici avant SP-0d.7 avait
+divergé de l'implémentation — `icon`/`actions`/`bus`/`navigate` notamment ; corrigé) :
 
 ```ts
 type WidgetContext = {
   mode: RenderMode;
-  data?: DataSourceState;          // données résolues si le widget est lié
-  bus: ActionBus;                  // émettre/écouter des événements
-  navigate: (pageId: string) => void;
+  data?: DataSourceState;            // résolu automatiquement si props.dataSourceId est défini
+  bus?: ActionBus;
+  navigate?: (pageId: string) => void;
+  pages?: Page[];
+  variables?: Record<string, string>; // valeurs courantes, lecture seule côté widget
+  widgetId?: string;
 };
-type WidgetDefinition<P = Record<string, unknown>> = {
-  type: string;                    // ex. "text", "image", "map", "list", "chart", "filter"
+type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
+  type: string;                      // ex. "text", "image", "map", "list", "chart", "filter"
   label: string;
-  icon: ReactNode;
+  icon?: ReactNode;                  // déclaré, jamais consommé par WidgetPalette aujourd'hui
   defaultProps: P;
   defaultSize: { w: number; h: number };
-  PropsPanel: (p: { props: P; onChange: (p: P) => void; dataSources: DataSource[] }) => JSX.Element;
-  Component: (p: { props: P; ctx: WidgetContext }) => JSX.Element;
-  events?: string[];               // triggers exposés (ex. "itemSelected")
-  actions?: Record<string, (args: unknown) => void>; // actions exposées (déclarées côté instance)
+  events?: readonly string[];        // noms d'événements déclarés (émis via ctx.bus?.emit)
+  actions?: readonly string[];       // noms d'actions déclarées ; le widget les enregistre lui-même
+                                      // via useBusAction(ctx.bus, ctx.widgetId, name, handler)
+  PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
+  Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };
 function registerWidget(def: WidgetDefinition): void;
 function getWidget(type: string): WidgetDefinition | undefined;
 function listWidgets(): WidgetDefinition[];
 ```
 
-Le registre est le point d'extension : ajouter un widget = enregistrer une définition. C'est la
-base du **SDK « briques »** (SP-0d.7) : les briques additionnelles enregistrent leurs widgets sans
-toucher au cœur.
+Le registre est déjà, de fait, le point d'extension : `WidgetPalette`/`WidgetHost`/`PropsPanel`/
+`ActionsPanel` ne font aucune distinction par `type` de widget — n'importe quelle définition
+enregistrée avant leur montage s'intègre automatiquement partout, sans toucher au cœur. **SP-0d.7**
+ne change donc pas ce mécanisme ; il le documente et le stabilise :
+
+- **Contrat documenté et stable.** Un module d'export unique (ex. `shell/src/builder/sdk.ts`)
+  réexporte tout ce qu'un widget a besoin d'importer aujourd'hui via des chemins relatifs profonds
+  (`WidgetDefinition`, `WidgetContext`, `registerWidget`, `useBusAction`, `useSetFilter`,
+  `useVariables`) — un seul point d'import stable plutôt que `../registry`/`../ActionBusContext`/
+  `../DataContext`/`../VariablesContext` dispersés.
+- **Enregistrement tiers = à la compilation, pas à l'exécution.** Un widget « brique additionnelle »
+  est un module TS/React qui appelle `registerWidget(...)` avant le montage de l'app — que ce module
+  vive dans ce dépôt ou dans un paquet npm importé statiquement. Pas de chargement dynamique d'un
+  bundle hébergé séparément (le dépôt n'a ni monorepo ni infrastructure de type module federation) ;
+  reporté à une évolution ultérieure si un jour nécessaire.
+- **Garde-fou léger contre les collisions.** `registerWidget` avertit (`console.warn`, jamais
+  d'exception) si un `type` déjà enregistré est réécrit — la doc recommande de préfixer les types
+  non natifs (`"acme.monWidget"`) pour éviter une collision avec un futur widget natif ou un autre
+  tiers. Comportement inchangé pour tous les widgets natifs existants.
+- **`PropsPanel` reste libre.** Le contrat ne fixe que la signature de fonction ; aucun composant de
+  champ partagé n'est imposé (aucun widget natif n'utilise `shell/src/ui/` aujourd'hui — cohérent
+  avec l'existant plutôt qu'une nouvelle convention à faire adopter rétroactivement).
+- **Widget d'exemple.** Un widget de démonstration, enregistré depuis un module clairement séparé
+  des widgets natifs (pas dans `shell/src/builder/widgets/`), n'important *que* le barrel `sdk.ts` —
+  preuve que la surface exportée est suffisante et qu'aucun import relatif profond n'est requis.
 
 ## 6. Composants (shell)
 
@@ -187,10 +219,35 @@ invalidation → refetch → widgets liés se rafraîchissent.
 
 - **Édition** : `/apps/:pk/edit` → `AppBuilderPage`. Ouvrir une app depuis le catalogue/détail
   route les items `app`/`dashboard` vers l'éditeur (comme SP-0c route les `map` vers `/maps/:pk`).
-- **Runtime** : `/apps/:pk` → `AppRenderer(runtime)` sur le config chargé (`getAppConfig`).
-  L'accès public respecte le partage GeoNode (SP-0d.6). Dashboards : même moteur, layout dense.
+- **Runtime** : `/apps/:pk` → `AppRenderer(runtime)` sur le config chargé (`getAppConfig`), rendu
+  **sans** le chrome `AppLayout` (pas d'en-tête GeoStudio, pas de nav) — c'est déjà « ce que voit
+  l'utilisateur final », donc c'est aussi, sans URL ni route séparée, la vue embed/iframe (§ci-
+  dessous). Dashboards : même moteur, layout dense.
 - `NewItemButton` crée déjà `app`/`dashboard` (SP-0b) ; après création on navigue vers
   `/apps/:pk/edit`.
+- **Accès public (SP-0d.6).** Aujourd'hui, `RequireAuth` englobe toute l'app (`App.tsx`) : aucune
+  route ne rend pour un visiteur anonyme, et le Builder Service ne vérifie *aucune* permission sur
+  `GET /configs/by-item/:id` — n'importe quel appelant, token ou pas, reçoit la config s'il connaît
+  l'`item_id`. Retirer `RequireAuth` de la route runtime ne suffirait donc pas : la config resterait
+  accessible à quiconque connaît l'id, indépendamment du partage GeoNode réel.
+  Le garde-fou choisi : la route runtime (authentifiée ou non) appelle **d'abord** `getItem(pk)`
+  (`GET {geonodeUrl}/api/v2/resources/:pk`) — c'est cet appel qui applique déjà les vraies
+  permissions GeoNode (privé/partagé/`anonymous`). Ce n'est qu'après un `getItem` réussi que la
+  route va chercher la config au Builder Service. Un `getItem` en 401/403/404 affiche le message
+  d'accès du shell (§11) et **n'appelle jamais** `getAppConfig`. Cette vérification passe par
+  GeoNode uniquement — aucun changement d'auth n'est apporté au Builder Service dans ce lot ; sa
+  lacune (config lisible sans vérification propre) reste documentée comme dette pour une évolution
+  ultérieure si le Builder Service doit un jour être exposé sans ce garde-fou en amont.
+- **Embed/iframe.** Découle directement du point précédent, sans route ni URL supplémentaire : la
+  route runtime étant déjà chrome-less et accessible sans authentification (sous réserve du partage
+  GeoNode), elle est déjà intégrable telle quelle dans un `<iframe>` externe. Aucune modification
+  des en-têtes de sécurité (`X-Frame-Options`/CSP `frame-ancestors`) : aucune n'existe aujourd'hui
+  dans `shell/nginx.conf`, donc l'intégrabilité cross-origin reste, comme actuellement, un défaut
+  non explicite plutôt qu'une décision explicite — hors scope de ce lot.
+- **Miniature.** `uploadThumbnail` (upload manuel d'un fichier) existe déjà mais `ItemCard` n'affiche
+  jamais `thumbnailUrl` — corrigé dans ce lot. Un bouton « Capturer » dans l'éditeur photographie le
+  rendu DOM actuel de l'`AppRenderer` (nouvelle dépendance légère, ex. `html-to-image`) et réutilise
+  `uploadThumbnail` tel quel — pas de nouvel endpoint, pas de capture automatique au save.
 
 ## 11. Gestion d'erreurs
 
@@ -198,7 +255,8 @@ invalidation → refetch → widgets liés se rafraîchissent.
   local) ; le reste de l'app rend.
 - `getAppConfig`/source en erreur → état d'erreur localisé + retry.
 - Save/Publish échoué → `role="alert"` ; le draft reste préservé, l'éditeur reste ouvert.
-- 401/403 → géré par le shell ; runtime public non autorisé → message d'accès.
+- 401/403 → géré par le shell ; `getItem` en échec sur la route runtime publique → message
+  d'accès, `getAppConfig` n'est jamais appelé (§10).
 
 ## 12. Stratégie de tests
 
@@ -211,7 +269,7 @@ invalidation → refetch → widgets liés se rafraîchissent.
   → enregistrer → ouvrir le runtime** et vérifier le rendu ; puis, par sous-phase, lier une source,
   câbler une action, publier.
 - **Backend (pytest)** : Builder Service valide les extensions de schéma (item id, layouts par
-  breakpoint, pages, published) — round-trips, configs existants restent valides.
+  breakpoint, pages, variables) — round-trips, configs existants restent valides.
 
 ## 13. Phasage du plan d'implémentation
 
@@ -235,20 +293,30 @@ Chaque sous-phase est testable seule et livrée en branche → PR (workflow habi
 - **SP-0d.5 — Pages, navigation, thème, templates, responsive** : `pages[]` + widget
   **Navigation/Menu** + routage de pages ; `variables[]` ; `ThemePanel` ; galerie de **templates** ;
   édition **par breakpoint** (`LayoutItem.layouts`).
-- **SP-0d.6 — Publication & partage** : état `published` ; runtime public respectant le partage
-  GeoNode ; **embed/iframe** ; capture de miniature.
-- **SP-0d.7 — SDK widgets (briques)** : contrat de widget documenté + enregistrement tiers +
-  widgets d'exemple → base des **briques additionnelles** intégrables.
+- **SP-0d.6 — Publication & partage** : bascule `is_published` (GeoNode, réutilisé — pas de nouveau
+  champ `BuilderConfig`) exposée dans l'éditeur/catalogue ; runtime rendu sans le chrome
+  `AppLayout` et accessible sans authentification, gardé par un `getItem` GeoNode préalable (§10)
+  plutôt que par le Builder Service — ce qui fournit embed/iframe sans route ni en-tête
+  supplémentaire ; correction de l'affichage de `thumbnailUrl` dans `ItemCard` (jamais rendu
+  aujourd'hui) + capture DOM manuelle côté éditeur réutilisant `uploadThumbnail`.
+- **SP-0d.7 — SDK widgets (briques)** : barrel d'export stable (`sdk.ts`, §5) réexportant le
+  contrat déjà implémenté (`WidgetDefinition`/`WidgetContext`/`registerWidget` + hooks
+  `useBusAction`/`useSetFilter`/`useVariables`) ; garde-fou `console.warn` sur collision de `type` ;
+  un widget d'exemple enregistré hors de `builder/widgets/`, n'important que le barrel. Aucun
+  chargement de plugin à l'exécution (extension à la compilation uniquement) ; `PropsPanel` reste
+  libre (pas de composants de champ partagés imposés).
 
 `writing-plans` produira d'abord le plan de **SP-0d.1**.
 
 ## 14. Dépendances
 
 - Front : une brique de grille (maison ; `react-grid-layout` en repli documenté) ; plus tard une
-  lib de charts (ex. `recharts` ou `@visx`) en SP-0d.4. Réutilise `MapView`/Deck.gl (SP-0c) pour le
-  widget Carte. Aucune nouvelle dépendance backend obligatoire.
-- Backend : extensions Pydantic additives au `BuilderConfig` (item id, layouts, pages, published),
-  introduites par sous-phase.
+  lib de charts (ex. `recharts` ou `@visx`) en SP-0d.4 ; une lib légère de capture DOM→image (ex.
+  `html-to-image`) en SP-0d.6, pour la miniature uniquement. Réutilise `MapView`/Deck.gl (SP-0c)
+  pour le widget Carte. Aucune nouvelle dépendance backend, à aucune sous-phase.
+- Backend : extensions Pydantic additives au `BuilderConfig` (item id, layouts, pages, variables),
+  introduites par sous-phase. SP-0d.6 n'en introduit aucune (§4) — l'état de publication reste
+  porté par GeoNode, pas par `BuilderConfig`.
 
 ## 15. Contraintes globales
 
