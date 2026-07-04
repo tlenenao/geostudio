@@ -11,6 +11,7 @@ function resource(pk: string, type = "app", title = `Item ${pk}`) {
     owner: { username: "alice" },
     thumbnail_url: `${GEONODE}/thumbs/${pk}.png`,
     date: "2026-01-01T00:00:00Z",
+    is_published: false,
   };
 }
 
@@ -64,6 +65,7 @@ export const handlers = [
         owner: { username: "alice" },
         thumbnail_url: null,
         date: "2026-01-01T00:00:00Z",
+        is_published: (patch.is_published as boolean) ?? false,
       },
     });
   }),

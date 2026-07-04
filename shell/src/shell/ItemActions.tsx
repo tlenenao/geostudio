@@ -13,6 +13,7 @@ type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
   const [panel, setPanel] = useState<Panel>(null);
   const update = useUpdateItem(item.pk);
+  const publish = useUpdateItem(item.pk);
   const thumbnail = useUploadThumbnail(item.pk);
   const remove = useDeleteItem();
 
@@ -54,6 +55,19 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         <div className="absolute z-20 mt-8 flex flex-col rounded-md border border-slate-200 bg-white text-sm shadow">
           <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("edit")}>
             Modifier
+          </button>
+          <button
+            className="px-3 py-1 text-left hover:bg-slate-100"
+            onClick={async () => {
+              try {
+                await publish.mutateAsync({ isPublished: !item.isPublished });
+                setPanel(null);
+              } catch {
+                /* surfaced via publish.isError */
+              }
+            }}
+          >
+            {item.isPublished ? "Dépublier" : "Publier"}
           </button>
           <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("thumbnail")}>
             Miniature
@@ -104,6 +118,11 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
       {remove.isError && panel === "delete" && (
         <p role="alert" className="mt-2 text-sm text-red-600">
           Échec de la suppression.
+        </p>
+      )}
+      {publish.isError && panel === "menu" && (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          Échec de la publication.
         </p>
       )}
     </div>

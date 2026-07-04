@@ -17,6 +17,7 @@ const item: Item = {
   thumbnailUrl: null,
   date: "",
   configId: null,
+  isPublished: false,
 };
 
 function Harness({ children }: { children: ReactNode }) {
@@ -73,4 +74,16 @@ test("deletes an item after confirmation and calls onDeleted", async () => {
   const dialog = screen.getByRole("dialog");
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(onDeleted).toHaveBeenCalled());
+});
+
+test("toggles publication from the menu", async () => {
+  render(
+    <Harness>
+      <ItemActions item={item} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /actions/i }));
+  const publish = screen.getByRole("button", { name: "Publier" });
+  await userEvent.click(publish);
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Publier" })).not.toBeInTheDocument());
 });

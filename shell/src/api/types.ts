@@ -11,6 +11,7 @@ export type Item = {
   thumbnailUrl: string | null;
   date: string;
   configId: string | null;
+  isPublished: boolean;
 };
 
 export type ItemPage = {
@@ -37,7 +38,7 @@ export type ListItemsParams = {
   me?: string;
 };
 
-export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[] };
+export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[]; isPublished?: boolean };
 
 export type Group = { id: string; title: string };
 export type ShareRole = "viewer" | "editor";

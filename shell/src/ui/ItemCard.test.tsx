@@ -13,6 +13,7 @@ const item: Item = {
   thumbnailUrl: null,
   date: "2026-01-01T00:00:00Z",
   configId: null,
+  isPublished: false,
 };
 
 test("renders title and type", () => {

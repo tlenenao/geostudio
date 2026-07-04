@@ -10,6 +10,7 @@ type GeoNodeResource = {
   owner?: { username?: string };
   thumbnail_url?: string | null;
   date?: string;
+  is_published?: boolean;
 };
 
 function toItem(r: GeoNodeResource): Item {
@@ -22,6 +23,7 @@ function toItem(r: GeoNodeResource): Item {
     thumbnailUrl: r.thumbnail_url ?? null,
     date: r.date ?? "",
     configId: null,
+    isPublished: r.is_published ?? false,
   };
 }
 
@@ -295,18 +297,21 @@ export function createItemClient(opts: {
         thumbnailUrl: null,
         date: "",
         configId: String(data.id),
+        isPublished: false,
       };
     },
 
     async updateItem(pk: string, patch: UpdatePatch): Promise<Item> {
       const token = getToken();
+      const { isPublished, ...rest } = patch;
+      const body = { ...rest, ...(isPublished !== undefined ? { is_published: isPublished } : {}) };
       const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         throw new Error(`Request failed: ${res.status} PATCH /resources/${pk}`);
@@ -414,6 +419,7 @@ export function createItemClient(opts: {
       return {
         pk: String(data.itemId), resourceType: "map", title: input.title, abstract: "",
         owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
       };
     },
 

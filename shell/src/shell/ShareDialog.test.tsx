@@ -19,6 +19,7 @@ const item: Item = {
   thumbnailUrl: null,
   date: "",
   configId: null,
+  isPublished: false,
 };
 
 function Harness({ children }: { children: ReactNode }) {
