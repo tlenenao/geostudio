@@ -48,7 +48,7 @@ export function GridCanvas({
                 }}
               />
             )}
-            <div className="pointer-events-none h-full w-full p-1">{renderItem(item)}</div>
+            <div className={`h-full w-full p-1 ${editable ? "pointer-events-none" : ""}`}>{renderItem(item)}</div>
             {selected && (
               <div className="absolute right-0 top-0 z-20 flex gap-0.5">
                 <button type="button" aria-label={`Déplacer widget-${item.id} à gauche`}
