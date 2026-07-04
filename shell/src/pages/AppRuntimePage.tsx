@@ -17,7 +17,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         config={query.data}
         mode="runtime"
         pageId={pageId}
-        onNavigate={(nextPageId) => navigate(`/apps/${pk}/${nextPageId}`)}
+        onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
       />
     </div>
   );
