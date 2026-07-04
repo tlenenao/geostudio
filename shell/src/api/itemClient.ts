@@ -1,4 +1,4 @@
-import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, ResourceType, Sharing, Theme, UpdatePatch } from "./types";
+import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 
 type GeoNodeResource = {
@@ -456,6 +456,7 @@ export function createItemClient(opts: {
           theme?: Theme;
           dataSources?: DataSource[];
           messages?: ActionMessage[];
+          pages?: Page[];
           layout?: AppConfig["layout"] | null;
         };
       };
@@ -466,6 +467,7 @@ export function createItemClient(opts: {
         theme: c.theme ?? {},
         dataSources: c.dataSources ?? [],
         messages: c.messages ?? [],
+        pages: c.pages,
         layout: c.layout,
       };
     },
@@ -481,6 +483,7 @@ export function createItemClient(opts: {
           theme: config.theme,
           dataSources: config.dataSources,
           messages: config.messages,
+          pages: config.pages,
           layout: config.layout,
         }),
       });
