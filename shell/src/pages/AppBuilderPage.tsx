@@ -4,12 +4,14 @@ import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
+import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
 import { PropsPanel } from "../builder/PropsPanel";
 import { ThemePanel } from "../builder/ThemePanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, type Breakpoint } from "../builder/grid";
+import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { Button } from "../ui/button";
 
 registerBuiltinWidgets();
@@ -21,6 +23,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
+  const [activePageId, setActivePageId] = useState<string | null>(null);
 
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change
@@ -28,18 +31,25 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     if (query.data) setDraft((d) => d ?? query.data);
   }, [query.data]);
 
+  const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
+  const activePage = activePageId ?? pages[0]?.id ?? null;
+  const activeLayout = useMemo(
+    () => (draft && activePage ? getPageLayout(draft, activePage) : null),
+    [draft, activePage],
+  );
+
   const selected = useMemo(
-    () => draft?.layout.items.find((i) => i.id === selectedId) ?? null,
-    [draft, selectedId],
+    () => activeLayout?.items.find((i) => i.id === selectedId) ?? null,
+    [activeLayout, selectedId],
   );
 
   if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
-  if (query.isError || !draft)
+  if (query.isError || !draft || !activeLayout || !activePage)
     return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
 
   function addWidget(type: string) {
     const def = getWidget(type);
-    if (!def || !draft) return;
+    if (!def || !draft || !activeLayout || !activePage) return;
     const item: WidgetItem = {
       id: crypto.randomUUID(),
       widget: type,
@@ -49,19 +59,16 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       h: def.defaultSize.h,
       props: { ...def.defaultProps },
     };
-    setDraft({ ...draft, layout: { ...draft.layout, items: [...draft.layout.items, item] } });
+    setDraft(setPageLayout(draft, activePage, { ...activeLayout, items: [...activeLayout.items, item] }));
     setSelectedId(item.id);
   }
 
   function updateSelectedProps(props: Record<string, unknown>) {
-    if (!draft || !selectedId) return;
-    setDraft({
-      ...draft,
-      layout: {
-        ...draft.layout,
-        items: draft.layout.items.map((i) => (i.id === selectedId ? { ...i, props } : i)),
-      },
-    });
+    if (!draft || !selectedId || !activeLayout || !activePage) return;
+    setDraft(setPageLayout(draft, activePage, {
+      ...activeLayout,
+      items: activeLayout.items.map((i) => (i.id === selectedId ? { ...i, props } : i)),
+    }));
   }
 
   const setSources = (dataSources: typeof draft.dataSources) =>
@@ -72,6 +79,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
 
   const setTheme = (theme: typeof draft.theme) =>
     setDraft((d) => (d ? { ...d, theme } : d));
+
+  const setPages = (nextPages: typeof pages) =>
+    setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
 
   return (
     <div className="flex h-full flex-col">
@@ -100,10 +110,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           <aside className="w-48 overflow-auto border-r p-2">
             <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
             <WidgetPalette onAdd={addWidget} />
+            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
+            <PageManager pages={pages} activePageId={activePage} onChange={setPages} onSelectPage={setActivePageId} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
             <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
-            <ActionsPanel items={draft.layout.items} messages={draft.messages} onChange={setMessages} />
+            <ActionsPanel items={activeLayout.items} messages={draft.messages} onChange={setMessages} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
             <ThemePanel theme={draft.theme} onChange={setTheme} />
           </aside>
@@ -116,6 +128,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             selectedId={selectedId}
             onSelect={setSelectedId}
             breakpoint={breakpoint}
+            pageId={activePage}
+            onNavigate={setActivePageId}
           />
         </main>
         {mode === "edit" && (
