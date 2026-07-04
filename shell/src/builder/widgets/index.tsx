@@ -45,7 +45,7 @@ export function registerBuiltinWidgets(): void {
     Component: ({ props, ctx }) => {
       const raw = String(props.text ?? "");
       const text = ctx.data ? interpolate(raw, ctx.data.records[0]) : raw;
-      return <p className="whitespace-pre-wrap">{text}</p>;
+      return <p className="whitespace-pre-wrap text-[var(--gs-color-text)]">{text}</p>;
     },
   });
 
@@ -117,7 +117,7 @@ export function registerBuiltinWidgets(): void {
     Component: ({ props, ctx }) => (
       <button
         type="button"
-        className="rounded-md bg-slate-800 px-3 py-1.5 text-sm text-white"
+        className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white"
         onClick={() => {
           ctx.bus?.emit(ctx.widgetId ?? "", "clicked", { widgetId: ctx.widgetId });
           const href = String(props.href ?? "");

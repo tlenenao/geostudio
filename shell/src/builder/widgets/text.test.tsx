@@ -33,3 +33,9 @@ test("text leaves unknown tokens empty and offers a source binding", () => {
   render(<Panel props={{ text: "" }} dataSources={[]} onChange={() => {}} />);
   expect(screen.getByLabelText("Source de données")).toBeInTheDocument();
 });
+
+test("text uses the text color theme token", () => {
+  const Text = getWidget("text")!.Component;
+  render(<Text props={{ text: "Salut" }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  expect(screen.getByText("Salut")).toHaveClass("text-[var(--gs-color-text)]");
+});

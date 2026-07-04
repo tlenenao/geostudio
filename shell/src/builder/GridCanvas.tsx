@@ -21,7 +21,7 @@ export function GridCanvas({
 }) {
   return (
     <div
-      className="grid h-full w-full gap-1 bg-slate-50"
+      className="grid h-full w-full gap-1 bg-[var(--gs-color-surface)]"
       data-breakpoint={breakpoint}
       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridAutoRows: "40px" }}
       onClick={() => editable && onSelect(null)}

@@ -21,3 +21,12 @@ test("button emits clicked to the wired action", async () => {
 test("button declares a clicked event", () => {
   expect(getWidget("button")!.events).toContain("clicked");
 });
+
+test("button uses the primary color and radius theme tokens", () => {
+  const Button = getWidget("button")!.Component;
+  render(<Button props={{ label: "Go" }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  expect(screen.getByRole("button", { name: "Go" })).toHaveClass(
+    "bg-[var(--gs-color-primary)]",
+    "rounded-[var(--gs-radius)]",
+  );
+});

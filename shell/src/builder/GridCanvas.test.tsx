@@ -67,3 +67,8 @@ test("positions items at the active breakpoint and exposes data hooks", () => {
   // sanity: matches the pure helper
   expect(posFor(bpItems[0], "sm")).toEqual({ x: 5, y: 1, w: 6, h: 2 });
 });
+
+test("the canvas backdrop uses the surface theme token", () => {
+  const { container } = renderCanvas();
+  expect(container.firstChild).toHaveClass("bg-[var(--gs-color-surface)]");
+});
