@@ -19,6 +19,7 @@ class LayoutItem(BaseModel):
     w: int
     h: int
     props: dict = Field(default_factory=dict)
+    layouts: dict[str, dict] | None = None
 
 
 class Layout(BaseModel):

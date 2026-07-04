@@ -108,3 +108,17 @@ def test_layout_item_accepts_optional_id():
 def test_layout_item_id_defaults_to_none():
     item = LayoutItem(widget="text", x=0, y=0, w=4, h=2)
     assert item.id is None
+
+
+def test_layout_item_layouts_round_trip():
+    payload = _valid_payload("app")
+    payload["layout"]["items"][0]["layouts"] = {"sm": {"x": 1, "y": 2, "w": 6, "h": 3}}
+    config = BuilderConfig.model_validate(payload)
+    assert config.layout.items[0].layouts == {"sm": {"x": 1, "y": 2, "w": 6, "h": 3}}
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["layout"]["items"][0]["layouts"]["sm"]["x"] == 1
+
+
+def test_layout_item_layouts_optional():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.layout.items[0].layouts is None
