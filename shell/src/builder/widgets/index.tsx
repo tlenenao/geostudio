@@ -8,13 +8,18 @@ import { registerFilterWidget } from "./filter";
 import { registerChartWidget } from "./chart";
 import { registerNavigationWidget } from "./navigation";
 
-// Replace {{champ}} tokens with the record's property values (empty if absent).
-function interpolate(text: string, record: DataRecord | undefined): string {
-  if (!record) return text;
-  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = record.properties[key];
-    return v === null || v === undefined ? "" : String(v);
-  });
+// Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
+// bound source), then {{champ}} tokens from the record's properties (only
+// when a source is bound — an unbound Texte still shows {{champ}} verbatim).
+function interpolate(text: string, record: DataRecord | undefined, variables: Record<string, string>): string {
+  let out = text.replace(/\{\{\s*var:([\w.]+)\s*\}\}/g, (_, name: string) => variables[name] ?? "");
+  if (record) {
+    out = out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
+      const v = record.properties[key];
+      return v === null || v === undefined ? "" : String(v);
+    });
+  }
+  return out;
 }
 
 export function registerBuiltinWidgets(): void {
@@ -40,12 +45,12 @@ export function registerBuiltinWidgets(): void {
           dataSources={dataSources}
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-        <p className="text-[10px] text-slate-400">Utilisez {"{{champ}}"} pour insérer une valeur de la source liée.</p>
+        <p className="text-[10px] text-slate-400">Utilisez {"{{champ}}"} pour insérer une valeur de la source liée, ou {"{{var:nom}}"} pour une variable.</p>
       </div>
     ),
     Component: ({ props, ctx }) => {
       const raw = String(props.text ?? "");
-      const text = ctx.data ? interpolate(raw, ctx.data.records[0]) : raw;
+      const text = interpolate(raw, ctx.data?.records[0], ctx.variables ?? {});
       return <p className="whitespace-pre-wrap text-[var(--gs-color-text)]">{text}</p>;
     },
   });

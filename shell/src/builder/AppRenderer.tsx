@@ -1,13 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppConfig, RenderMode } from "../api/types";
+import type { AppConfig, RenderMode, Variable } from "../api/types";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
 import { moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
 import { getPages, getPageLayout, setPageLayout } from "./pages";
 import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
-import { ActionBusProvider } from "./ActionBusContext";
+import { ActionBusProvider, useBusAction } from "./ActionBusContext";
+import { VariablesProvider, useSetVariable } from "./VariablesContext";
 import { themeToCssVars } from "./theme";
+
+// A message's payload is whatever shape its emitter chose (Button emits
+// {widgetId}, Filtre emits {[field]: value}, …). If the payload is an
+// object carrying a key matching this variable's own name — e.g. a Filtre
+// configured with field === the variable's name — use that value; any
+// other payload shape (or a bare primitive) is stringified as-is.
+function valueFromPayload(payload: unknown, name: string): string {
+  if (payload && typeof payload === "object" && name in (payload as Record<string, unknown>)) {
+    const v = (payload as Record<string, unknown>)[name];
+    return v === null || v === undefined ? "" : String(v);
+  }
+  return payload === null || payload === undefined ? "" : String(payload);
+}
+
+function VariableBusBridge({ variable, bus }: { variable: Variable; bus: ActionBus }) {
+  const setVariable = useSetVariable();
+  useBusAction(bus, `var:${variable.id}`, "set", (payload) => {
+    setVariable(variable.name, valueFromPayload(payload, variable.name));
+  });
+  return null;
+}
 
 export function AppRenderer({
   config,
@@ -73,17 +95,22 @@ export function AppRenderer({
   return (
     <div ref={containerRef} className="h-full w-full bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
       <ActionBusProvider bus={bus}>
-        <DataProvider sources={config.dataSources}>
-          <GridCanvas
-            items={activeLayout.items}
-            breakpoint={bp}
-            editable={editable}
-            selectedId={selectedId}
-            onSelect={(id) => onSelect?.(id)}
-            onMoveItem={handleMove}
-            renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
-          />
-        </DataProvider>
+        <VariablesProvider variables={config.variables ?? []}>
+          {(config.variables ?? []).map((v) => (
+            <VariableBusBridge key={v.id} variable={v} bus={bus} />
+          ))}
+          <DataProvider sources={config.dataSources}>
+            <GridCanvas
+              items={activeLayout.items}
+              breakpoint={bp}
+              editable={editable}
+              selectedId={selectedId}
+              onSelect={(id) => onSelect?.(id)}
+              onMoveItem={handleMove}
+              renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
+            />
+          </DataProvider>
+        </VariablesProvider>
       </ActionBusProvider>
     </div>
   );

@@ -179,3 +179,30 @@ test("threads the resolved pages and a navigate callback into widget context", a
   await userEvent.click(screen.getByText("go"));
   expect(onNavigate).toHaveBeenCalledWith("p2");
 });
+
+test("threads variables into widget context, seeded from their initialValue", () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "message", initialValue: "salut" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "{{var:message}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  expect(screen.getByText("salut")).toBeInTheDocument();
+});
+
+test("a variable.set action updates the value read by a Texte widget", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "message", initialValue: "" }],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "message", label: "Message" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "{{var:message}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hello");
+  expect(await screen.findByText("hello")).toBeInTheDocument();
+});

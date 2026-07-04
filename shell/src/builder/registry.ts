@@ -6,6 +6,7 @@ export type WidgetContext = {
   mode: RenderMode;
   navigate?: (pageId: string) => void;
   pages?: Page[];
+  variables?: Record<string, string>;
   data?: DataSourceState;
   bus?: ActionBus;
   widgetId?: string;

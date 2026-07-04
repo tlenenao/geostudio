@@ -39,3 +39,11 @@ test("text uses the text color theme token", () => {
   render(<Text props={{ text: "Salut" }} ctx={{ mode: "runtime" } as WidgetContext} />);
   expect(screen.getByText("Salut")).toHaveClass("text-[var(--gs-color-text)]");
 });
+
+test("text resolves {{var:nom}} directly from ctx.variables, independent of a bound source", () => {
+  const Text = getWidget("text")!.Component;
+  render(
+    <Text props={{ text: "Valeur : {{var:message}}" }} ctx={{ mode: "runtime", variables: { message: "salut" } } as WidgetContext} />,
+  );
+  expect(screen.getByText("Valeur : salut")).toBeInTheDocument();
+});
