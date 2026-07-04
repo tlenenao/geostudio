@@ -5,11 +5,13 @@ import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Dialog } from "../ui/dialog";
+import { TEMPLATES } from "../builder/templates";
 
 export function NewItemButton() {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"app" | "dashboard" | "map">("app");
   const [title, setTitle] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const { username } = useAuth();
   const navigate = useNavigate();
   const create = useCreateItem();
@@ -19,6 +21,7 @@ export function NewItemButton() {
     setOpen(false);
     setTitle("");
     setKind("app");
+    setTemplateId("");
     create.reset();
     createMap.reset();
   }
@@ -31,7 +34,7 @@ export function NewItemButton() {
       const item =
         kind === "map"
           ? await createMap.mutateAsync({ title: clean, owner: username ?? "" })
-          : await create.mutateAsync({ kind, title: clean, owner: username ?? "" });
+          : await create.mutateAsync({ kind, title: clean, owner: username ?? "", templateId: templateId || undefined });
       close();
       navigate(kind === "map" ? `/maps/${item.pk}` : `/apps/${item.pk}/edit`);
     } catch {
@@ -52,13 +55,29 @@ export function NewItemButton() {
               aria-label="Type"
               className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={kind}
-              onChange={(e) => setKind(e.target.value as "app" | "dashboard" | "map")}
+              onChange={(e) => { setKind(e.target.value as "app" | "dashboard" | "map"); setTemplateId(""); }}
             >
               <option value="app">App</option>
               <option value="dashboard">Dashboard</option>
               <option value="map">Map</option>
             </select>
           </label>
+          {kind !== "map" && (
+            <label className="flex flex-col gap-1 text-sm">
+              Modèle
+              <select
+                aria-label="Modèle"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+              >
+                <option value="">Vide</option>
+                {TEMPLATES.filter((t) => t.kind === kind).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1 text-sm">
             Titre
             <Input

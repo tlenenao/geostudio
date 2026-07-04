@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { vi } from "vitest";
@@ -122,4 +122,52 @@ test("shows an alert and stays on the page when creation fails", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.queryByText(/^app-builder-/)).not.toBeInTheDocument();
+});
+
+test("shows a Modèle select for app/dashboard, filtered by the current type", async () => {
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(screen.getByRole("option", { name: "Vide" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Deux colonnes" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Tableau de bord basique" })).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "dashboard");
+  expect(screen.getByRole("option", { name: "Tableau de bord basique" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Deux colonnes" })).not.toBeInTheDocument();
+});
+
+test("creating from a template posts its layout", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-9", kind: "app", itemId: "9", version: 1, config: body.config });
+    }),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Modèle"), "two-column");
+  await userEvent.type(screen.getByLabelText("Titre"), "Mon app");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  await waitFor(() => expect(body).not.toBeNull());
+  expect(body.config.layout.items).toHaveLength(2);
+  expect(body.config.layout.items[0].widget).toBe("text");
+});
+
+test("does not show a Modèle select for the map type", async () => {
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "map");
+  expect(screen.queryByLabelText("Modèle")).not.toBeInTheDocument();
 });
