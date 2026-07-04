@@ -22,11 +22,11 @@ export function registerFilterWidget(): void {
     Component: ({ props, ctx }) => {
       const field = String(props.field ?? "");
       return (
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-[var(--gs-color-text)]">
           {String(props.label ?? "Filtrer")}
           <input
             aria-label="Valeur du filtre"
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
             onChange={(e) => {
               const value = e.target.value;
               ctx.bus?.emit(ctx.widgetId ?? "", "changed", field ? { [field]: value } : {});

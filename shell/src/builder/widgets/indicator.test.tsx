@@ -26,3 +26,11 @@ test("indicator sums a field when agg=sum", () => {
   render(<Ind props={{ dataSourceId: "d", agg: "sum", field: "pop" }} ctx={ctx} />);
   expect(screen.getByText("40")).toBeInTheDocument();
 });
+
+test("indicator uses the theme text/muted tokens", () => {
+  const Ind = getWidget("indicator")!.Component;
+  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: {} }] }) } as WidgetContext;
+  render(<Ind props={{ label: "Total" }} ctx={ctx} />);
+  expect(screen.getByText("1")).toHaveClass("text-[var(--gs-color-text)]");
+  expect(screen.getByText("Total")).toHaveClass("text-[var(--gs-color-muted)]");
+});

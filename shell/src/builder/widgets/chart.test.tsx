@@ -47,3 +47,11 @@ test("PropsPanel edits the chart type and exposes the advanced JSON escape hatch
   await userEvent.selectOptions(screen.getByLabelText("Type de graphique"), "line");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ chartType: "line" }));
 });
+
+test("loading and empty states use the theme muted token", () => {
+  const Chart = getWidget("chart")!.Component;
+  const { rerender } = render(<Chart props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />);
+  expect(screen.getByText(/chargement/i)).toHaveClass("text-[var(--gs-color-muted)]");
+  rerender(<Chart props={{}} ctx={{ mode: "runtime", data: state() } as WidgetContext} />);
+  expect(screen.getByText(/aucune donnée/i)).toHaveClass("text-[var(--gs-color-muted)]");
+});

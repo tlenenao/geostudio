@@ -128,3 +128,22 @@ test("table paginates with a configured page size", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
   expect(screen.getByRole("cell", { name: "N3" })).toBeInTheDocument();
 });
+
+test("list item uses the theme border/surface/text tokens", () => {
+  const List = getWidget("list")!.Component;
+  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
+  render(<List props={{ titleField: "nom" }} ctx={ctx} />);
+  expect(screen.getByText("Parc A")).toHaveClass(
+    "border-[var(--gs-color-border)]",
+    "text-[var(--gs-color-text)]",
+    "hover:bg-[var(--gs-color-surface)]",
+  );
+});
+
+test("table cells and headers use the theme border/text tokens", () => {
+  const Table = getWidget("table")!.Component;
+  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "A" } }] }) } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  expect(screen.getByRole("cell", { name: "A" })).toHaveClass("border-[var(--gs-color-border)]");
+  expect(screen.getByRole("table")).toHaveClass("text-[var(--gs-color-text)]");
+});

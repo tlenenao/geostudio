@@ -94,9 +94,9 @@ export function registerChartWidget(): void {
     },
     Component: ({ props, ctx }) => {
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
+      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-slate-400">Aucune donnée</p>;
+      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);
       return (
         <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>

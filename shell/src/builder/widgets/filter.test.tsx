@@ -27,3 +27,10 @@ test("filter widget declares a changed event and edits its field", async () => {
   const last = onChange.mock.calls.at(-1)![0];
   expect(String(last.field).endsWith("m")).toBe(true);
 });
+
+test("filter label and input use the theme text/border tokens", () => {
+  const Filter = getWidget("filter")!.Component;
+  render(<Filter props={{ label: "Rechercher" }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  expect(screen.getByText("Rechercher")).toHaveClass("text-[var(--gs-color-text)]");
+  expect(screen.getByLabelText("Valeur du filtre")).toHaveClass("border-[var(--gs-color-border)]");
+});

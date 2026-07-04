@@ -34,16 +34,16 @@ export function registerDataWidgets(): void {
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
       });
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
+      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-slate-400">Aucune donnée</p>;
+      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const field = String(props.titleField || firstField(data.records) || "");
       return (
         <ul className="flex flex-col gap-0.5 text-sm">
           {data.records.map((r) => (
             <li
               key={String(r.id)}
-              className="cursor-pointer truncate border-b border-slate-100 py-0.5 hover:bg-slate-50"
+              className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
               onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
             >
               {String(r.properties[field] ?? r.id)}
@@ -81,9 +81,9 @@ export function registerDataWidgets(): void {
       const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
       const [page, setPage] = useState(0);
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
+      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-slate-400">Aucune donnée</p>;
+      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const columns = ((props.columns as string[] | undefined)?.length
         ? (props.columns as string[])
         : Object.keys(data.records[0]?.properties ?? {}));
@@ -111,11 +111,11 @@ export function registerDataWidgets(): void {
 
       return (
         <div className="flex h-full flex-col text-xs">
-          <table className="w-full text-left">
+          <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
               <tr>
                 {columns.map((c) => (
-                  <th key={c} className="border-b p-1">
+                  <th key={c} className="border-b border-[var(--gs-color-border)] p-1">
                     <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(c)}>
                       {c}{sortCol === c ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                     </button>
@@ -126,17 +126,17 @@ export function registerDataWidgets(): void {
             <tbody>
               {shown.map((r) => (
                 <tr key={String(r.id)}>
-                  {columns.map((c) => <td key={c} className="border-b border-slate-100 p-1">{String(r.properties[c] ?? "")}</td>)}
+                  {columns.map((c) => <td key={c} className="border-b border-[var(--gs-color-border)] p-1">{String(r.properties[c] ?? "")}</td>)}
                 </tr>
               ))}
             </tbody>
           </table>
           {pageCount > 1 && (
-            <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-slate-500">
-              <button type="button" className="rounded border border-slate-300 px-1 disabled:opacity-40"
+            <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-[var(--gs-color-muted)]">
+              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
                 disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
               <span>Page {current + 1} / {pageCount}</span>
-              <button type="button" className="rounded border border-slate-300 px-1 disabled:opacity-40"
+              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
                 disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
             </div>
           )}

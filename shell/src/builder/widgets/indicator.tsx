@@ -30,7 +30,7 @@ export function registerIndicatorWidget(): void {
     ),
     Component: ({ props, ctx }) => {
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-slate-400">Chargement…</p>;
+      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur</p>;
       const agg = String(props.agg ?? "count");
       const field = String(props.field ?? "");
@@ -40,8 +40,8 @@ export function registerIndicatorWidget(): void {
           : data.records.length;
       return (
         <div className="flex h-full flex-col items-center justify-center">
-          <span className="text-2xl font-semibold">{value}</span>
-          <span className="text-xs text-slate-500">{String(props.label ?? "")}</span>
+          <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
+          <span className="text-xs text-[var(--gs-color-muted)]">{String(props.label ?? "")}</span>
         </div>
       );
     },
