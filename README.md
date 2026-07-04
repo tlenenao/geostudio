@@ -1,221 +1,100 @@
-# Stack GIS Open-Source — Alternative à ArcGIS Enterprise
+# GeoStudio
 
-Stack de production complète, déployable en Docker Compose, équivalente à ArcGIS Enterprise. Économie estimée : **80–95 % sur les coûts logiciels**.
+**Plateforme d'applications géospatiales open-source** : cataloguer des données,
+créer des cartes, construire des applications et dashboards métier **sans code**
+— et à terme, la couche géospatiale de la data platform moderne (formats ouverts,
+API standards OGC, architecture AI-native via MCP).
 
----
-
-## Prérequis
-
-| Outil | Version minimale | Vérification |
-|---|---|---|
-| Docker | 24+ | `docker --version` |
-| Docker Compose | 2.20+ | `docker compose version` |
-| RAM disponible | 16 Go minimum (32 Go recommandés) | `free -h` |
-| Espace disque | 50 Go minimum | `df -h` |
-
-**Outils optionnels (import de données) :**
-- `ogr2ogr` / GDAL — conversion de formats géo
-- `tippecanoe` — génération de tuiles PMTiles
-- `mc` (MinIO Client) — upload vers MinIO
+> **Statut : refondation en cours (pré-v0.1).** Ce dépôt est le fork de travail
+> issu de `gis-project`, restructuré pour exécuter la feuille de route « option C » :
+> le shell et son builder sont le produit ; le socle GeoNode est remplacé
+> progressivement par un cœur maison. Voir
+> [la feuille de route](docs/vision/2026-07-04-feuille-de-route-geostudio.md).
 
 ---
 
-## Installation rapide
+## Ce qui existe aujourd'hui
 
-### 1. Cloner le dépôt
+- **`shell/`** — le front React (TypeScript, Vite, MapLibre GL + deck.gl, ECharts) :
+  - catalogue d'items (cartes, apps, dashboards) : création, édition, partage,
+    publication, vignettes ;
+  - éditeur de cartes (tuiles vectorielles Martin, raster TiTiler, couches
+    deck.gl) ;
+  - **builder d'apps/dashboards no-code** : grille responsive par breakpoint,
+    widgets (carte, texte, image, bouton, table, indicateur, filtre, graphique,
+    navigation), bus d'actions, variables, multi-pages, thèmes, templates —
+    le tout rendu par un runtime unique config-driven (`AppConfig` JSON) ;
+  - SDK de widgets embryonnaire (`registerWidget`).
+- **`core/`** — le cœur naissant (Python/FastAPI, ex `builder-service`) :
+  persistance des configs d'apps **versionnées avec révisions et rollback**.
+  Il grossira en cœur complet (items, partage, OGC API Features, MCP) selon la
+  feuille de route.
+- **`docker-compose.yml`** — la stack de dev : PostGIS, PgBouncer, MinIO, Martin,
+  TiTiler, pg_featureserv, Keycloak, Traefik, cœur, shell — plus GeoNode, Superset
+  et Redis, **en sursis** (retirés au jalon M1 de la feuille de route).
 
-```bash
-git clone https://github.com/tlenenao/gis-project.git
-cd gis-project
-```
+## Où va le projet
 
-### 2. Configurer les variables d'environnement
+| Jalon | Contenu |
+|---|---|
+| **M1 GeoNode-free** | Items/partage/publication dans le cœur ; GeoNode, Superset, Redis sortent |
+| **M2 AI-operable** | Serveur MCP : un agent crée un dashboard valide |
+| **M3 Les apps écrivent** | OGC API Features (CRUD) + widget Formulaire schema-driven |
+| **M4 Donnée→carte** | Upload GPKG/GeoJSON → carte stylée partageable en minutes |
+| **M5 SDK ouvrable** | Contrat de widget Web Components, chargement dynamique |
+| **M6 v0.1 publique** | CI, images versionnées, install docs, démo publique |
 
-```bash
-cp .env.example .env
-# Éditer .env et remplir tous les champs obligatoires
-nano .env
-```
+Détail, arbitrages techniques et estimations :
+[`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md).
 
-Variables à renseigner dans `.env` :
+## Démarrage rapide (dev)
 
-| Variable | Description | Exemple |
-|---|---|---|
-| `PG_PASSWORD` | Mot de passe PostgreSQL | `MotDePasse_Fort!` |
-| `MINIO_USER` | Utilisateur MinIO | `minioadmin` |
-| `MINIO_PASSWORD` | Mot de passe MinIO (≥ 12 car.) | `MinioSecret_123` |
-| `KC_PASSWORD` | Mot de passe admin Keycloak | `KeycloakAdmin!` |
-| `SUPERSET_SECRET` | Clé secrète Superset (random 64 car.) | voir ci-dessous |
-| `ACME_EMAIL` | Email pour certificat Let's Encrypt | `admin@exemple.fr` |
-| `DOMAIN` | Nom de domaine public | `gis.exemple.fr` |
-
-Générer une clé secrète Superset :
-```bash
-openssl rand -base64 48
-```
-
-### 3. Démarrer la stack
-
-**Option A — Démarrage ordonné (recommandé en première installation) :**
-
-```bash
-# Socle de données
-docker compose up -d postgis redis minio
-sleep 10
-
-# Middleware
-docker compose up -d pgbouncer
-
-# Serveurs de tuiles
-docker compose up -d martin titiler pg-featureserv
-
-# Applications
-docker compose up -d keycloak superset geonode
-
-# Ingress (SSL/TLS)
-docker compose up -d traefik
-```
-
-**Option B — Démarrage global :**
+Prérequis : Docker 24+, Node 20+, [uv](https://docs.astral.sh/uv/) (Python).
 
 ```bash
-docker compose up -d
+cp .env.example .env       # renseigner les mots de passe
+docker compose up -d       # stack complète
 ```
 
-### 4. Initialiser la base de données
+| Service | URL |
+|---|---|
+| Shell (front) | http://localhost:8300 |
+| Cœur (API) | http://localhost:8200 |
+| Martin (tuiles MVT) | http://localhost:3000 |
+| pg_featureserv (OGC API Features) | http://localhost:9000 |
+| Keycloak | http://localhost:8180 |
+| MinIO console | http://localhost:9001 |
+
+### Développement front (shell)
 
 ```bash
-# Attendre que PostgreSQL soit prêt
-docker compose exec postgis pg_isready -U gis
-
-# Appliquer le schéma initial
-docker compose exec -T postgis psql -U gis -d gis < sql/init.sql
+cd shell
+npm ci
+npm run test        # unitaires (Vitest)
+npm run e2e         # E2E (Playwright, auth mockée)
+npm run dev         # serveur de dev Vite
 ```
 
-### 5. Vérifier la santé des services
+### Développement cœur
 
 ```bash
-# Martin (tuiles vectorielles)
-curl http://localhost:3000/health
-
-# TiTiler (raster)
-curl http://localhost:8000/healthz
-
-# pg_featureserv (OGC API Features)
-curl http://localhost:9000/
-
-# GeoNode
-curl http://localhost:8080/api/v2/
+cd core
+uv sync
+uv run pytest
+uv run uvicorn app.main:app --reload --port 8200
 ```
 
----
+## Documentation
 
-## Import de données géographiques
+| Document | Rôle |
+|---|---|
+| [`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md) | **Référence** : phasage SP-1→SP-9, arbitrages, jalons |
+| [`docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md`](docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md) | La décision d'orientation (option C) et ses raisons |
+| [`docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md`](docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md) | La vision long terme (exploration 2026) |
+| [`docs/superpowers/specs/`](docs/superpowers/specs/) et [`plans/`](docs/superpowers/plans/) | Specs et plans datés de chaque sous-projet (SP-0x…) |
+| [`docs/archive/`](docs/archive/) | Études préalables (générations dépassées, conservées pour traçabilité) |
+| [`CLAUDE.md`](CLAUDE.md) | Guide de travail pour les sessions de développement (Claude) |
 
-### Depuis un fichier GeoPackage / Shapefile
+## Licence
 
-```bash
-ogr2ogr \
-  -f PostgreSQL \
-  "PG:host=localhost port=5432 dbname=gis user=gis password=${PG_PASSWORD}" \
-  communes_france.gpkg \
-  -nlt PROMOTE_TO_MULTI \
-  -overwrite
-```
-
-### Générer des tuiles PMTiles (mode hors-ligne)
-
-```bash
-# Installer tippecanoe si nécessaire
-# apt install tippecanoe  ou  brew install tippecanoe
-
-bash scripts/generate-pmtiles.sh
-```
-
----
-
-## Accès aux interfaces
-
-| Service | URL | Identifiants par défaut |
-|---|---|---|
-| GeoNode (portail) | `http://localhost:8080` | admin / (voir .env) |
-| Superset (BI) | `http://localhost:8088` | admin / admin |
-| Keycloak (auth) | `http://localhost:8180` | admin / KC_PASSWORD |
-| MinIO (stockage) | `http://localhost:9001` | MINIO_USER / MINIO_PASSWORD |
-| Martin (tuiles MVT) | `http://localhost:3000` | — |
-| TiTiler (raster) | `http://localhost:8000` | — |
-| pg_featureserv | `http://localhost:9000` | — |
-| Traefik dashboard | `http://localhost:8090` | — |
-
----
-
-## Architecture
-
-```
-                    ┌──────────────┐
-                    │   Traefik    │  SSL/TLS, routing
-                    └──────┬───────┘
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌─────────────┐ ┌────────────┐ ┌────────────┐
-    │  Martin     │ │  Superset  │ │  GeoNode   │
-    │ (MVT <3ms)  │ │  (BI geo)  │ │  (portail) │
-    └──────┬──────┘ └─────┬──────┘ └─────┬──────┘
-           └──────────────┼──────────────┘
-                          ▼
-           ┌──────────────────────────────┐
-           │   PostgreSQL 16 + PostGIS   │
-           │   PgBouncer (pooling)       │
-           └──────────────┬───────────────┘
-                          │
-           ┌──────────────┼──────────────┐
-           ▼              ▼              ▼
-      ┌─────────┐   ┌──────────┐   ┌──────────┐
-      │  Redis  │   │  MinIO   │   │ Keycloak │
-      │ (cache) │   │ (objets) │   │  (auth)  │
-      └─────────┘   └──────────┘   └──────────┘
-```
-
-Correspondance avec ArcGIS Enterprise :
-
-| ArcGIS Enterprise | Cette stack | Maturité |
-|---|---|---|
-| Enterprise Geodatabase | PostgreSQL + PostGIS | ⭐⭐⭐⭐⭐ |
-| ArcGIS Server (WMS/WFS) | GeoServer | ⭐⭐⭐⭐⭐ |
-| ArcGIS Server (tuiles vecteur) | Martin | ⭐⭐⭐⭐ |
-| ArcGIS Image Server | TiTiler | ⭐⭐⭐⭐ |
-| ArcGIS Portal | GeoNode | ⭐⭐⭐⭐ |
-| ArcGIS Dashboards | Grafana + Superset | ⭐⭐⭐⭐⭐ |
-| Web Adaptor | Traefik | ⭐⭐⭐⭐⭐ |
-| SSO / Auth | Keycloak | ⭐⭐⭐⭐⭐ |
-
----
-
-## Commandes utiles
-
-```bash
-# Voir les logs d'un service
-docker compose logs -f martin
-
-# Redémarrer un service
-docker compose restart postgis
-
-# Arrêter la stack (données conservées)
-docker compose stop
-
-# Supprimer la stack + volumes (DESTRUCTIF)
-docker compose down -v
-
-# Voir l'état des services
-docker compose ps
-```
-
----
-
-## Documentation détaillée
-
-- **[`plateforme-modulaire.md`](plateforme-modulaire.md)** — 📌 **Document maître** : conception du produit OGE (noyau `GeoCore` + modules enfichables), parité ArcGIS 11.4, performance, gouvernance & roadmap
-- [`synthese.md`](synthese.md) — Vue d'ensemble de toute la stack open-source GIS (correspondance ArcGIS ↔ FOSS4G)
-- [`stack3-modern-web-gis.md`](stack3-modern-web-gis.md) — Guide complet Modern Web GIS (MapLibre, Deck.gl, PMTiles)
-- [`stacks-production.md`](stacks-production.md) — Comparatif des 5 stacks de production
-- [`stacks-comparatif.md`](stacks-comparatif.md) — Tableau comparatif approfondi
+[Apache-2.0](LICENSE).
