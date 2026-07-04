@@ -16,7 +16,7 @@ import { themeToCssVars } from "./theme";
 // configured with field === the variable's name — use that value; any
 // other payload shape (or a bare primitive) is stringified as-is.
 function valueFromPayload(payload: unknown, name: string): string {
-  if (payload && typeof payload === "object" && name in (payload as Record<string, unknown>)) {
+  if (payload && typeof payload === "object") {
     const v = (payload as Record<string, unknown>)[name];
     return v === null || v === undefined ? "" : String(v);
   }

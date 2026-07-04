@@ -206,3 +206,23 @@ test("a variable.set action updates the value read by a Texte widget", async () 
   await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hello");
   expect(await screen.findByText("hello")).toBeInTheDocument();
 });
+
+test("a variable.set action with non-matching object payload resolves to empty string, not [object Object]", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "message", initialValue: "initial" }],
+    messages: [{ id: "m1", from: "btn1", event: "clicked", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "btn1", widget: "button", x: 0, y: 0, w: 2, h: 1, props: { label: "Click me" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Value: {{var:message}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  const textElement = screen.getByText("Value: initial");
+  expect(textElement).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Click me" }));
+  // Button emits {widgetId}, which doesn't have a "message" key.
+  // The variable should resolve to empty string, not "[object Object]".
+  expect(textElement.textContent).toBe("Value: ");
+  expect(screen.queryByText(/\[object Object\]/)).toBeNull();
+});
