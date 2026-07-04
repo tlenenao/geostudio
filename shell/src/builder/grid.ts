@@ -55,6 +55,16 @@ export function moveItemAt(item: WidgetItem, bp: Breakpoint, dxCells: number, dy
   return { ...item, layouts: { ...item.layouts, [bp]: { ...cur, x, y } } };
 }
 
+// Position for a newly added widget: stack it below all existing items (at
+// the base/`lg` breakpoint) so it never overlaps a widget already on the
+// canvas. Without this, every new item would default to (0, 0) and sit on
+// top of whatever's already there — invisible/unclickable underneath in
+// preview and runtime.
+export function nextFreePosition(items: WidgetItem[]): { x: number; y: number } {
+  const maxY = items.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+  return { x: 0, y: maxY };
+}
+
 export function breakpointForWidth(width: number): Breakpoint {
   if (width >= 1024) return "lg";
   if (width >= 640) return "md";
