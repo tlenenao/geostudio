@@ -11,12 +11,14 @@ import { PropsPanel } from "../builder/PropsPanel";
 import { ThemePanel } from "../builder/ThemePanel";
 import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
+import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { Button } from "../ui/button";
 
 registerBuiltinWidgets();
+registerCounterExampleWidget();
 
 export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
