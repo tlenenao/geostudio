@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { expect, test, vi } from "vitest";
-import type { AppConfig, ItemClient } from "../api/types";
+import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
 
@@ -40,8 +40,25 @@ function renderRuntime(client: Partial<ItemClient>) {
   );
 }
 
+const okItem: Item = {
+  pk: "9", resourceType: "app", title: "App", abstract: "", owner: "alice",
+  thumbnailUrl: null, date: "", configId: null, isPublished: true,
+};
+
 test("navigate() percent-encodes pk and the target pageId", async () => {
-  renderRuntime({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(config) });
   await userEvent.click(await screen.findByRole("button", { name: "Détails" }));
   expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/a%2Fb");
+});
+
+test("shows an access-denied message and never fetches the config when getItem fails", async () => {
+  const getAppConfig = vi.fn().mockResolvedValue(config);
+  renderRuntime({ getItem: vi.fn().mockRejectedValue(new Error("403")), getAppConfig });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/accès/i);
+  expect(getAppConfig).not.toHaveBeenCalled();
+});
+
+test("proceeds to fetch and render the config once getItem succeeds", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(config) });
+  expect(await screen.findByRole("button", { name: "Accueil" })).toBeInTheDocument();
 });
