@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
@@ -33,7 +33,9 @@ test("declares a reset action that resets to the initial value", async () => {
   render(<Counter props={{ initial: 3 }} ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext} />);
   await userEvent.click(screen.getByRole("button", { name: "+1" }));
   expect(screen.getByText("4")).toBeInTheDocument();
-  bus.emit("emitter", "go");
+  await act(async () => {
+    bus.emit("emitter", "go");
+  });
   expect(screen.getByText("3")).toBeInTheDocument();
 });
 
