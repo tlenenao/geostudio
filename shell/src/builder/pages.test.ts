@@ -41,3 +41,9 @@ test("setPageLayout on an explicit-pages config updates only the matching page a
   expect(next.pages![0].layout).toBe(layout); // untouched
   expect(next.layout).toBe(layout); // mirrors pages[0], unchanged since p1 wasn't edited
 });
+
+test("setPageLayout on an implicit-page config ignores an unrelated pageId", () => {
+  const newLayout: AppLayout = { type: "grid", breakpoints: {}, items: [] };
+  const next = setPageLayout(baseConfig, "not-a-real-page", newLayout);
+  expect(next).toBe(baseConfig);
+});
