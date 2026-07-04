@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
-import { _resetRegistry } from "./registry";
+import { _resetRegistry, registerWidget } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { AppRenderer } from "./AppRenderer";
 import type { AppConfig, ItemClient } from "../api/types";
@@ -102,4 +102,80 @@ test("applies theme CSS variables on the root container, falling back to default
   expect(root.style.getPropertyValue("--gs-color-background")).toBe("#ffffff"); // default, untouched
   expect(root).toHaveClass("bg-[var(--gs-color-background)]");
   expect(root).toHaveClass("font-[var(--gs-font)]");
+});
+
+test("renders only the active page's items when pages exist", () => {
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "a1", widget: "text", x: 0, y: 0, w: 2, h: 2, props: { text: "Accueil" } },
+    ] },
+    pages: [
+      { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+        { id: "a1", widget: "text", x: 0, y: 0, w: 2, h: 2, props: { text: "Accueil" } },
+      ] } },
+      { id: "p2", name: "Détails", layout: { type: "grid", breakpoints: {}, items: [
+        { id: "b1", widget: "text", x: 0, y: 0, w: 2, h: 2, props: { text: "Détails" } },
+      ] } },
+    ],
+  };
+  render(<AppRenderer config={cfg} mode="runtime" pageId="p2" />, { wrapper: Wrapper });
+  expect(screen.getByText("Détails")).toBeInTheDocument();
+  expect(screen.queryByText("Accueil")).toBeNull();
+});
+
+test("edits write to the active page's layout, mirroring pages[0] into the top-level layout", async () => {
+  let latest: AppConfig | null = null;
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "a1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+    pages: [
+      { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+        { id: "a1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+      ] } },
+    ],
+  };
+  render(
+    <AppRenderer config={cfg} mode="edit" pageId="p1" selectedId="a1" onSelect={() => {}} onChange={(c) => { latest = c; }} />,
+    { wrapper: Wrapper },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a1 à droite" }));
+  expect(latest!.pages![0].layout.items[0].x).toBe(1);
+  expect(latest!.layout.items[0].x).toBe(1); // mirrored
+});
+
+test("threads the resolved pages and a navigate callback into widget context", async () => {
+  _resetRegistry();
+  registerWidget({
+    type: "nav-probe",
+    label: "Probe",
+    defaultProps: {},
+    defaultSize: { w: 2, h: 1 },
+    PropsPanel: () => null,
+    Component: ({ ctx }) => (
+      <div>
+        <p>pages:{(ctx.pages ?? []).map((p) => p.name).join(",")}</p>
+        <button onClick={() => ctx.navigate?.("p2")}>go</button>
+      </div>
+    ),
+  });
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "n1", widget: "nav-probe", x: 0, y: 0, w: 2, h: 1, props: {} },
+    ] },
+    pages: [
+      { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+        { id: "n1", widget: "nav-probe", x: 0, y: 0, w: 2, h: 1, props: {} },
+      ] } },
+      { id: "p2", name: "Détails", layout: { type: "grid", breakpoints: {}, items: [] } },
+    ],
+  };
+  const onNavigate = vi.fn();
+  render(<AppRenderer config={cfg} mode="runtime" pageId="p1" onNavigate={onNavigate} />, { wrapper: Wrapper });
+  expect(screen.getByText("pages:Accueil,Détails")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("go"));
+  expect(onNavigate).toHaveBeenCalledWith("p2");
 });
