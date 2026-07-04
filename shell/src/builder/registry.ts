@@ -27,6 +27,9 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
 const registry = new Map<string, WidgetDefinition>();
 
 export function registerWidget(def: WidgetDefinition): void {
+  if (registry.has(def.type)) {
+    console.warn(`registerWidget: overwriting an already-registered widget type "${def.type}"`);
+  }
   registry.set(def.type, def);
 }
 export function getWidget(type: string): WidgetDefinition | undefined {
