@@ -47,3 +47,13 @@ test("wires an emitter to a variable's set action", async () => {
   expect(next).toHaveLength(1);
   expect(next[0]).toMatchObject({ from: "f1", event: "changed", to: "var:v1", action: "set" });
 });
+
+test("hides a message whose endpoints are not on the current page", () => {
+  const messages: ActionMessage[] = [
+    { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" },
+    { id: "m2", from: "ghost", event: "changed", to: "l1", action: "setFilter" },
+  ];
+  render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
+  expect(screen.getByText("Filtre.changed → Liste.setFilter")).toBeInTheDocument();
+  expect(screen.queryByText(/ghost/)).not.toBeInTheDocument();
+});
