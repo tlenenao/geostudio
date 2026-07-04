@@ -685,3 +685,27 @@ test("createConfigItem falls back to an empty layout when templateId is unknown"
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "does-not-exist" });
   expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
 });
+
+test("getItem maps is_published into isPublished", async () => {
+  const item = await makeClient().getItem("7");
+  expect(item.isPublished).toBe(false);
+});
+
+test("updateItem sends isPublished as is_published and maps the result back", async () => {
+  let body: any = null;
+  server.use(
+    http.patch("https://geonode.test/api/v2/resources/:pk", async ({ request, params }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        resource: {
+          pk: String(params.pk), resource_type: "app", title: "Item", abstract: "",
+          owner: { username: "alice" }, thumbnail_url: null, date: "2026-01-01T00:00:00Z",
+          is_published: body.is_published,
+        },
+      });
+    }),
+  );
+  const item = await makeClient().updateItem("7", { isPublished: true });
+  expect(body.is_published).toBe(true);
+  expect(item.isPublished).toBe(true);
+});

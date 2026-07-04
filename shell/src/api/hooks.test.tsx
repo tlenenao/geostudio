@@ -57,8 +57,8 @@ test("useDeleteItem optimistically removes the item from the list", async () => 
   );
   queryClient.setQueryData(["items", {}], {
     items: [
-      { pk: "1", resourceType: "app", title: "A", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null },
-      { pk: "2", resourceType: "app", title: "B", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null },
+      { pk: "1", resourceType: "app", title: "A", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+      { pk: "2", resourceType: "app", title: "B", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null, isPublished: false },
     ],
     total: 2,
     page: 1,
