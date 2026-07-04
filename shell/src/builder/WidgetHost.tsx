@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from "react";
-import type { RenderMode, WidgetItem } from "../api/types";
+import type { Page, RenderMode, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
@@ -20,7 +20,17 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
   }
 }
 
-export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode }) {
+export function WidgetHost({
+  item,
+  mode,
+  pages = [],
+  navigate,
+}: {
+  item: WidgetItem;
+  mode: RenderMode;
+  pages?: Page[];
+  navigate?: (pageId: string) => void;
+}) {
   const states = useDataStates();
   const bus = useActionBus();
   const dsId = item.props.dataSourceId as string | undefined;
@@ -32,7 +42,7 @@ export function WidgetHost({ item, mode }: { item: WidgetItem; mode: RenderMode 
   const Widget = def.Component;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id }} />
+      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate }} />
     </WidgetErrorBoundary>
   );
 }
