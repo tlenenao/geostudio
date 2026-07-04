@@ -119,3 +119,19 @@ test("edits the theme's primary color and persists it", async () => {
   const saved = saveAppConfig.mock.calls[0][1];
   expect(saved.theme.colors.primary).toBe("#ff0000");
 });
+
+test("adds a second page and can switch back to editing the first", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await screen.findByRole("button", { name: "Ajouter une page" });
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une page" }));
+  await userEvent.click(screen.getByRole("button", { name: "Ouvrir la page page-1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.pages).toHaveLength(2);
+  expect(saved.pages![0].id).toBe("page-1");
+  expect(saved.pages![0].layout.items).toHaveLength(1); // Texte landed on page 1
+  expect(saved.pages![1].layout.items).toHaveLength(0); // page 2 untouched
+});
