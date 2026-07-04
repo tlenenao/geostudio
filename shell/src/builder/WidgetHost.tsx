@@ -3,6 +3,7 @@ import type { Page, RenderMode, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
+import { useVariables } from "./VariablesContext";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -33,6 +34,7 @@ export function WidgetHost({
 }) {
   const states = useDataStates();
   const bus = useActionBus();
+  const variables = useVariables();
   const dsId = item.props.dataSourceId as string | undefined;
   const data = dsId ? states[dsId] : undefined;
   const def = getWidget(item.widget);
@@ -42,7 +44,7 @@ export function WidgetHost({
   const Widget = def.Component;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate }} />
+      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables }} />
     </WidgetErrorBoundary>
   );
 }
