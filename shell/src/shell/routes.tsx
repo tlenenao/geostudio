@@ -1,9 +1,11 @@
-import { Routes, Route, useNavigate, useParams } from "react-router-dom";
+import { Routes, Route, Outlet, useNavigate, useParams } from "react-router-dom";
 import { CatalogPage } from "../pages/CatalogPage";
 import { ItemDetailPage } from "../pages/ItemDetailPage";
 import { MapEditorPage } from "../pages/MapEditorPage";
 import { AppBuilderPage } from "../pages/AppBuilderPage";
 import { AppRuntimePage } from "../pages/AppRuntimePage";
+import { RequireAuth } from "../auth/RequireAuth";
+import { AppLayout } from "./AppLayout";
 
 function CatalogRoute() {
   const navigate = useNavigate();
@@ -43,13 +45,25 @@ function AppRuntimeRoute() {
   return <AppRuntimePage pk={pk!} pageId={pageId} />;
 }
 
+function ProtectedLayout() {
+  return (
+    <RequireAuth>
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+    </RequireAuth>
+  );
+}
+
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<CatalogRoute />} />
-      <Route path="/items/:pk" element={<ItemDetailRoute />} />
-      <Route path="/maps/:pk" element={<MapEditorRoute />} />
-      <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<CatalogRoute />} />
+        <Route path="/items/:pk" element={<ItemDetailRoute />} />
+        <Route path="/maps/:pk" element={<MapEditorRoute />} />
+        <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
+      </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
     </Routes>
   );

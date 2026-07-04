@@ -7,6 +7,18 @@ import { vi } from "vitest";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRoutes } from "./routes";
+import type { AuthState } from "../auth/useAuth";
+
+const authState: AuthState = {
+  isLoading: false,
+  isAuthenticated: true,
+  username: "alice",
+  error: null,
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+};
+vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
 vi.mock("../pages/MapEditorPage", () => ({
   MapEditorPage: ({ pk }: { pk: string }) => <div>map-editor-{pk}</div>,
@@ -57,4 +69,19 @@ test("renders the app runtime route at /apps/:pk", () => {
 test("renders the app runtime route with a pageId at /apps/:pk/:pageId", () => {
   wrap(<AppRoutes />, "/apps/42/xyz");
   expect(screen.getByText("app-runtime-42-xyz")).toBeInTheDocument();
+});
+
+test("the runtime route renders without going through the auth gate", () => {
+  authState.isAuthenticated = false;
+  wrap(<AppRoutes />, "/apps/42");
+  expect(screen.getByText("app-runtime-42-none")).toBeInTheDocument();
+  authState.isAuthenticated = true;
+});
+
+test("protected routes still require authentication", () => {
+  authState.isAuthenticated = false;
+  wrap(<AppRoutes />, "/");
+  expect(authState.signIn).toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: /ouvrir/i })).not.toBeInTheDocument();
+  authState.isAuthenticated = true;
 });
