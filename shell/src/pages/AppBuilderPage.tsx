@@ -8,6 +8,7 @@ import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
 import { PropsPanel } from "../builder/PropsPanel";
 import { ThemePanel } from "../builder/ThemePanel";
+import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, type Breakpoint } from "../builder/grid";
@@ -83,6 +84,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setPages = (nextPages: typeof pages) =>
     setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
 
+  const setVariables = (variables: typeof draft.variables) =>
+    setDraft((d) => (d ? { ...d, variables } : d));
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-2">
@@ -115,7 +119,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
             <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
-            <ActionsPanel items={activeLayout.items} messages={draft.messages} onChange={setMessages} />
+            <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
+            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
+            <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
             <ThemePanel theme={draft.theme} onChange={setTheme} />
           </aside>

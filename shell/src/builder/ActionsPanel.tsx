@@ -1,8 +1,12 @@
 import { useState } from "react";
-import type { ActionMessage, WidgetItem } from "../api/types";
+import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 
-function widgetLabel(items: WidgetItem[], id: string): string {
+function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
+  if (id.startsWith("var:")) {
+    const v = variables.find((v) => `var:${v.id}` === id);
+    return v ? `Variable : ${v.name}` : id;
+  }
   const it = items.find((i) => i.id === id);
   return (it && getWidget(it.widget)?.label) || id;
 }
@@ -10,26 +14,38 @@ function eventsOf(items: WidgetItem[], id: string): readonly string[] {
   return getWidget(items.find((i) => i.id === id)?.widget ?? "")?.events ?? [];
 }
 function actionsOf(items: WidgetItem[], id: string): readonly string[] {
+  if (id.startsWith("var:")) return ["set"];
   return getWidget(items.find((i) => i.id === id)?.widget ?? "")?.actions ?? [];
+}
+function resolvesOnThisPage(items: WidgetItem[], variables: Variable[], id: string): boolean {
+  if (id.startsWith("var:")) return variables.some((v) => `var:${v.id}` === id);
+  return items.some((i) => i.id === id);
 }
 
 const selectCls = "h-8 rounded border border-slate-300 bg-white text-xs";
 
 export function ActionsPanel({
   items,
+  variables = [],
   messages,
   onChange,
 }: {
   items: WidgetItem[];
+  variables?: Variable[];
   messages: ActionMessage[];
   onChange: (messages: ActionMessage[]) => void;
 }) {
   const emitters = items.filter((i) => (getWidget(i.widget)?.events?.length ?? 0) > 0);
-  const receivers = items.filter((i) => (getWidget(i.widget)?.actions?.length ?? 0) > 0);
+  const widgetReceivers = items.filter((i) => (getWidget(i.widget)?.actions?.length ?? 0) > 0);
+  const variableReceivers = variables.map((v) => ({ id: `var:${v.id}`, label: `Variable : ${v.name}` }));
   const [from, setFrom] = useState("");
   const [event, setEvent] = useState("");
   const [to, setTo] = useState("");
   const [action, setAction] = useState("");
+
+  const visibleMessages = messages.filter(
+    (m) => resolvesOnThisPage(items, variables, m.from) && resolvesOnThisPage(items, variables, m.to),
+  );
 
   function add() {
     if (!from || !event || !to || !action) return;
@@ -43,18 +59,18 @@ export function ActionsPanel({
   return (
     <div className="flex flex-col gap-2 text-sm">
       <ul className="flex flex-col gap-1">
-        {messages.map((m) => (
+        {visibleMessages.map((m) => (
           <li key={m.id} className="flex items-center justify-between rounded border border-slate-200 p-1 text-xs">
-            <span>{widgetLabel(items, m.from)}.{m.event} → {widgetLabel(items, m.to)}.{m.action}</span>
+            <span>{widgetLabel(items, variables, m.from)}.{m.event} → {widgetLabel(items, variables, m.to)}.{m.action}</span>
             <button type="button" aria-label={`Retirer l'action ${m.id}`} className="text-red-600" onClick={() => remove(m.id)}>✕</button>
           </li>
         ))}
-        {messages.length === 0 && <li className="text-xs text-slate-400">Aucune action.</li>}
+        {visibleMessages.length === 0 && <li className="text-xs text-slate-400">Aucune action.</li>}
       </ul>
       <select aria-label="Widget émetteur" className={selectCls} value={from}
         onChange={(e) => { setFrom(e.target.value); setEvent(""); }}>
         <option value="">Widget émetteur…</option>
-        {emitters.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, i.id)}</option>)}
+        {emitters.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, variables, i.id)}</option>)}
       </select>
       <select aria-label="Événement" className={selectCls} value={event} disabled={!from}
         onChange={(e) => setEvent(e.target.value)}>
@@ -64,7 +80,8 @@ export function ActionsPanel({
       <select aria-label="Widget cible" className={selectCls} value={to}
         onChange={(e) => { setTo(e.target.value); setAction(""); }}>
         <option value="">Widget cible…</option>
-        {receivers.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, i.id)}</option>)}
+        {widgetReceivers.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, variables, i.id)}</option>)}
+        {variableReceivers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
       </select>
       <select aria-label="Action" className={selectCls} value={action} disabled={!to}
         onChange={(e) => setAction(e.target.value)}>

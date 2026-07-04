@@ -120,6 +120,34 @@ test("edits the theme's primary color and persists it", async () => {
   expect(saved.theme.colors.primary).toBe("#ff0000");
 });
 
+test("adds a variable and wires a Filtre action to it, then persists both", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    saveAppConfig,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByRole("button", { name: "Ajouter une variable" });
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une variable" }));
+  await userEvent.click(screen.getByRole("button", { name: "Filtre" }));
+
+  const emitterSelect = screen.getByLabelText("Widget émetteur");
+  const targetSelect = screen.getByLabelText("Widget cible");
+  await userEvent.selectOptions(emitterSelect, within(emitterSelect).getByRole("option", { name: "Filtre" }));
+  await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
+  await userEvent.selectOptions(targetSelect, within(targetSelect).getByRole("option", { name: "Variable : Variable 1" }));
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "set");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1];
+  expect(saved.variables).toHaveLength(1);
+  expect(saved.messages).toHaveLength(1);
+  expect(saved.messages[0]).toMatchObject({ event: "changed", action: "set", to: `var:${saved.variables[0].id}` });
+});
+
 test("adds a second page and can switch back to editing the first", async () => {
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
