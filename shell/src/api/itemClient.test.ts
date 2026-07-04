@@ -660,3 +660,28 @@ test("saveAppConfig PUTs the variables array when present", async () => {
   expect(body.variables).toHaveLength(1);
   expect(body.variables[0].name).toBe("message");
 });
+
+test("createConfigItem seeds the layout from a template when templateId is given", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "two-column" });
+  expect(body.config.layout.items).toHaveLength(2);
+  expect(body.config.layout.items[0].widget).toBe("text");
+});
+
+test("createConfigItem falls back to an empty layout when templateId is unknown", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://builder.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "does-not-exist" });
+  expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
+});
