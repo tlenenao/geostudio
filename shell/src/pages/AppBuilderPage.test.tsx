@@ -81,3 +81,24 @@ test("composes an action between two widgets and persists it", async () => {
   expect(saved.messages).toHaveLength(1);
   expect(saved.messages[0]).toMatchObject({ event: "changed", action: "setFilter" });
 });
+
+test("edits a position at the sm breakpoint and persists layouts.sm", async () => {
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer en sm" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.layout.items[0].x).toBe(0); // base untouched
+  expect(saved.layout.items[0].layouts?.sm).toEqual({ x: 1, y: 0, w: 4, h: 2 });
+});
