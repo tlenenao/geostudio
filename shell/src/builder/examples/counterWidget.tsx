@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { flushSync } from "react-dom";
 import { registerWidget, useBusAction } from "../sdk";
 
 export function registerCounterExampleWidget(): void {
@@ -25,7 +24,7 @@ export function registerCounterExampleWidget(): void {
     Component: ({ props, ctx }) => {
       const [count, setCount] = useState(Number(props.initial ?? 0));
       useBusAction(ctx.bus, ctx.widgetId, "reset", () =>
-        flushSync(() => setCount(Number(props.initial ?? 0))),
+        setCount(Number(props.initial ?? 0)),
       );
       function increment() {
         const next = count + 1;
