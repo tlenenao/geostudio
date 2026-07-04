@@ -28,6 +28,12 @@ class Layout(BaseModel):
     items: list[LayoutItem] = Field(default_factory=list)
 
 
+class Page(BaseModel):
+    id: str
+    name: str
+    layout: Layout
+
+
 class Message(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -77,6 +83,7 @@ class BuilderConfig(BaseModel):
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
     messages: list[Message] = Field(default_factory=list)
+    pages: list[Page] = Field(default_factory=list)
     map: MapConfig | None = None
 
     @model_validator(mode="after")

@@ -122,3 +122,21 @@ def test_layout_item_layouts_round_trip():
 def test_layout_item_layouts_optional():
     config = BuilderConfig.model_validate(_valid_payload("app"))
     assert config.layout.items[0].layouts is None
+
+
+def test_pages_round_trip():
+    payload = _valid_payload("app")
+    payload["pages"] = [
+        {"id": "p1", "name": "Accueil", "layout": payload["layout"]},
+        {"id": "p2", "name": "Détails", "layout": {"type": "grid", "breakpoints": {}, "items": []}},
+    ]
+    config = BuilderConfig.model_validate(payload)
+    assert len(config.pages) == 2
+    assert config.pages[0].name == "Accueil"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["pages"][1]["name"] == "Détails"
+
+
+def test_pages_optional_defaults_empty():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.pages == []
