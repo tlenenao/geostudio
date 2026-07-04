@@ -26,6 +26,7 @@
 10. [Exploitation](#10-exploitation)
 11. [Analyse comparative](#11-analyse-comparative)
 12. [Architecture cible](#12-architecture-cible)
+13. [Addendum — quatre briques différenciantes](#13-addendum--quatre-briques-différenciantes)
 
 ---
 
@@ -727,6 +728,10 @@ spécialiste SIG — contre plusieurs ETP spécialisés pour un ArcGIS Enterpris
 9. **La sécurité spatiale** (ABAC par emprise : « chacun voit son territoire »)
    générée jusqu'au niveau ligne dans la base.
 10. **Des SLO et une exploitabilité packagés** — l'exploitation comme feature.
+11. **Un moteur de workflows géospatial durable** (orchestration longue durée,
+    humain dans la boucle) — voir §13.1.
+12. **Le versionnement de données façon Git** (branches, merge, conflits spatiaux)
+    — voir §13.2, probablement le fossé défensif le plus difficile à copier.
 
 ### Synthèse des recommandations par domaine
 
@@ -858,3 +863,189 @@ horizon 5 ans — donc on ne joue pas ce match. On joue **simplicité d'adoption
 ouverture radicale des formats, intégration à la data platform, et architecture
 AI-native** : quatre terrains où une feuille blanche 2026 bat structurellement vingt
 ans d'héritage.
+
+---
+
+## 13. Addendum — quatre briques différenciantes
+
+> Revue critique par le panel de quatre briques proposées en itération : GIS Workflow
+> Engine, GIS Data Versioning, GIS Agent Runtime, GIS Application Builder « à la
+> Retool ». Verdict global : **trois adoptions avec amendements, une déjà couverte à
+> pousser plus loin.** Ces quatre briques convergent d'ailleurs vers une même thèse :
+> la plateforme n'est pas un portail de cartes mais une **plateforme d'applications
+> géospatiales** (l'équivalent d'un Power Platform ouvert et spatial). Attention en
+> retour : quatre briques de plus sont en tension directe avec la contrainte de
+> simplicité — le séquencement (fin de section) fait partie du verdict.
+
+### 13.1 GIS Workflow Engine
+
+**L'idée.** Un moteur d'orchestration type Temporal/Camunda/n8n, mais géospatial :
+processus longs, étapes de traitement, humain dans la boucle.
+
+**Verdict : adopté — c'est un angle mort réel d'ArcGIS.** Esri a ModelBuilder et les
+web tools (traitements), mais rien pour les *processus métier durables* : « demande
+d'urbanisme reçue → contrôles spatiaux automatiques → si intersection zone protégée,
+validation humaine → mise à jour du référentiel → notification ». Aujourd'hui ce tissu
+conjonctif vit dans FME, des scripts Python et des emails — c'est-à-dire nulle part.
+
+**Approche moderne.**
+- **Ne pas écrire un moteur de workflow from scratch** (cimetière de projets). Le
+  besoin réel est la *durable execution* : état persistant, reprise sur panne, retry,
+  timers, étapes d'approbation humaine.
+- Deux implémentations selon le profil (même API au-dessus) : **moteur durable
+  embarqué sur PostgreSQL** (files + état de workflow en base — compatible avec la
+  contrainte « une VM 8 Go ») par défaut ; **Temporal** en option au profil Scale
+  quand les volumes le justifient.
+- Le workflow est — encore — **une config déclarative** (DAG d'étapes typées),
+  éditable dans le builder (canvas nodes/edges type n8n), versionnable, générable
+  par IA. Étapes géospatiales de première classe : traitement (via OGC API
+  Processes), requête spatiale, géofencing, génération de carte/rapport, approbation
+  humaine, appel HTTP/webhook sortant.
+- **OGC API Processes** comme standard d'exposition : un workflow publié *est* un
+  process invocable — cohérence avec le reste de la surface API.
+- Synergie forte avec les alertes (§7) : une alerte peut déclencher un workflow ;
+  et avec les agents (§13.3) : un agent peut composer un workflow, un workflow peut
+  invoquer un agent comme étape.
+
+**Compromis.** La double implémentation (embarqué/Temporal) a un coût — mitigé si
+l'API de définition est la même et si l'embarqué reste volontairement plus simple
+(pas de signaux exotiques, pas de child workflows illimités). Le canvas visuel de
+workflow est un gros chantier UX ; il réutilise l'infrastructure du builder (§5).
+
+**Recommandation.** Workflows déclaratifs + durable execution sur Postgres par
+défaut, Temporal en option d'échelle, exposition OGC API Processes, approbation
+humaine et déclencheurs (événement, alerte, cron, webhook) comme citoyens de
+première classe. C'est la brique qui transforme la plateforme de « publier des
+cartes » en « opérer des processus métier spatiaux ».
+
+### 13.2 GIS Data Versioning
+
+**L'idée.** Git pour les couches : branches, merge, résolution de conflits spatiaux.
+
+**Verdict : adopté avec lucidité — c'est la brique la plus difficile, et pour cette
+raison le meilleur fossé défensif.** Nuance importante que la proposition sous-estime :
+c'est l'un des rares domaines où ArcGIS a une avance réelle (branch versioning de la
+geodatabase, workflows de réconciliation pour les utilities). Le battre exige mieux,
+pas pareil : la version Esri est enfermée dans la geodatabase et son UX est réservée
+aux experts.
+
+**Approche moderne — deux étages, pas un :**
+1. **Versionnement implicite pour tous, gratuit par construction** : time-travel du
+   lakehouse (snapshots Iceberg), historique d'audit des éditions PostGIS (qui a
+   changé quoi, quand), restauration à une date. Zéro concept nouveau pour
+   l'utilisateur — 90 % du besoin (« revenir avant l'erreur d'hier ») est couvert.
+2. **Versionnement explicite pour les référentiels éditoriaux** : branches nommées,
+   merge, revue — le modèle **Kart** (git réel pour données géospatiales, projet
+   open source existant) comme fondation ou comme inspiration de modèle de données,
+   plutôt qu'une invention maison. Cas d'usage : cadastre, réseaux, plans
+   d'urbanisme — là où une modification se prépare pendant des semaines avant
+   publication.
+- **Le produit différenciant n'est pas le moteur, c'est l'UX de merge spatial** :
+  visualisation côte à côte des versions d'une géométrie, conflits
+  attributaires/géométriques/topologiques distingués, résolution assistée par IA
+  (proposition argumentée, jamais automatique sur un référentiel).
+- Synergie avec les workflows (§13.1) : « merge request » de données = workflow
+  d'approbation — les deux briques n'en font qu'une côté UX (revue, validation,
+  publication).
+
+**Compromis.** Le merge topologique général (réseaux avec connectivité) est un
+problème dur — périmètre initial : géométries simples + attributs, topologie
+signalée comme conflit à résoudre humainement. Le versionnement explicite ne doit
+jamais fuir dans l'UX des utilisateurs qui n'en ont pas besoin (la branche est une
+fonctionnalité d'espace de travail, pas un passage obligé).
+
+**Recommandation.** Étage 1 (time-travel/audit) dès l'an 1 — presque gratuit avec
+Iceberg + CDC. Étage 2 (branches/merge) à partir de l'an 3, fondé sur Kart ou son
+modèle, avec l'UX de revue spatiale comme investissement principal. Vendue comme
+« pull request pour vos données », c'est l'argument qui parle aux DSI.
+
+### 13.3 GIS Agent Runtime
+
+**L'idée.** Une couche où un agent IA exécute des traitements, crée des cartes,
+modifie des apps, génère des dashboards — sans développement spécifique.
+
+**Verdict : déjà aux deux tiers dans le document (§6) — l'apport réel est le mot
+« runtime ».** Le §6 établit la surface (MCP, tout déclaratif, permissions héritées,
+audit). Ce qui manquait : l'environnement d'*exécution* des agents comme composant
+de plateforme, pas seulement comme client externe.
+
+**Ce que le runtime ajoute à la surface MCP :**
+- **Exécution hébergée** : agents lancés par la plateforme (à la demande, planifiés,
+  ou déclenchés par événement/workflow) et non plus seulement depuis le poste de
+  l'utilisateur — l'agent d'enrichissement de métadonnées tourne chaque nuit,
+  l'agent de QA à chaque import.
+- **Cycle plan → approbation → exécution** : pour toute action d'écriture, l'agent
+  produit d'abord un *plan inspectable* (les configs/requêtes qu'il va appliquer —
+  possible car tout est déclaratif) ; politiques d'approbation par type d'action
+  (lecture libre, écriture sandbox libre, écriture référentiel = revue humaine).
+- **Sandbox et budgets** : espace de travail isolé (les productions de l'agent sont
+  des brouillons tant que non promus), quotas de tokens/temps/appels par agent et
+  par tenant, kill switch.
+- **Agents = objets de plateforme** : définis par une config (rôle, outils autorisés,
+  déclencheurs, budget), catalogués, partageables, versionnés — et distribuables via
+  la marketplace (§5). Un tiers peut publier « agent de contrôle PLU ».
+- Synergies : un agent est une étape de workflow possible (§13.1) et un auteur de
+  merge request de données possible (§13.2) — jamais un committeur direct.
+
+**Compromis.** L'exécution hébergée d'agents est une responsabilité de sécurité
+majeure (le sandboxing devient obligatoire, plus optionnel comme en §5) et un coût
+d'inférence à gouverner. L'évaluation continue (§6) devient critique dès que des
+agents tournent sans humain devant.
+
+**Recommandation.** Étendre le §6 : la surface MCP an 1-2, le runtime hébergé
+(planification, plan/approbation, budgets, agents-objets) an 3-4. Règle invariante :
+**un agent n'a jamais plus de droits que son propriétaire, et n'écrit jamais dans un
+référentiel sans revue** — c'est ce qui rend la brique vendable au secteur public.
+
+### 13.4 GIS Application Builder (niveau Retool/Power Apps)
+
+**L'idée.** Pousser le builder au-delà des dashboards : génération d'applications
+métier complètes, mélange Retool/Appsmith/Power Apps/Experience Builder.
+
+**Verdict : direction confirmée — c'est déjà la colonne vertébrale du §5 ; l'apport
+est d'expliciter les chemins d'écriture et la logique métier.** Un dashboard lit ;
+une application métier *écrit* : formulaires liés aux données, validations, actions
+(créer/modifier/supprimer, appeler un workflow), états et navigation multi-pages.
+
+**Ce qui manque au §5 pour atteindre Retool :**
+- **Formulaires et CRUD de première classe** : formulaires générés depuis le schéma
+  de la couche (types, domaines de valeurs, contraintes), validation déclarative,
+  écriture via OGC API Features avec les permissions/RLS de §9 — le formulaire
+  terrain (type Survey123) devient un cas particulier du même système.
+- **Un langage d'expressions standard** pour la logique légère (visibilité
+  conditionnelle, champs calculés, filtres dynamiques) : **CEL** (Common Expression
+  Language) plutôt qu'un langage maison ou du JavaScript arbitraire — sandboxable,
+  analysable, généré facilement par IA. C'est l'équivalent ouvert du rôle qu'Arcade
+  joue chez Esri.
+- **Actions composables** : le clic d'un bouton peut écrire une donnée, lancer un
+  workflow (§13.1), déclencher une alerte — le builder et le workflow engine
+  partagent le même vocabulaire d'actions.
+- **Génération d'apps par IA** : « fais-moi l'application d'instruction des permis »
+  → l'agent (§13.3) produit une AppConfig complète (pages, formulaires, workflow de
+  validation) que l'utilisateur retouche dans le builder. C'est le scénario qui
+  n'existe chez aucun concurrent SIG et que l'architecture tout-déclaratif rend
+  crédible.
+
+**Compromis.** La puissance de Retool vient de ses échappatoires JavaScript partout ;
+les adopter telles quelles ruinerait le sandboxing et la générabilité par IA.
+Position assumée : **CEL pour 90 % des cas, plugin (§5) ou eject vers le SDK pour le
+reste** — une marche plus haute que Retool, mais une plateforme plus sûre et plus
+lisible. Risque de scope creep maximal de tout le document : sans séquencement
+strict, cette brique peut engloutir la roadmap.
+
+**Recommandation.** Garder le runtime unique du §5 et l'étendre dans l'ordre :
+lecture/dashboards → formulaires/CRUD → expressions CEL → actions/workflows →
+génération IA. Chaque cran doit être utile seul.
+
+### Séquencement consolidé des quatre briques
+
+| Brique | An 1 | An 2 | An 3 | An 4-5 |
+|---|---|---|---|---|
+| Workflows | — | Jobs + déclencheurs | Moteur durable + canvas | Temporal option, marketplace de workflows |
+| Versioning | Time-travel/audit (étage 1) | UX d'historique | Branches/merge (étage 2) | Merge assisté IA, topologie |
+| Agent runtime | Surface MCP | Copilot utilisateur | Agents planifiés + plan/approbation | Agents-objets + marketplace |
+| App builder | Dashboards (lecture) | Formulaires/CRUD + CEL | Actions/workflows | Génération d'apps par IA |
+
+La lecture en colonne montre la cohérence : chaque année, les quatre briques
+s'appuient sur les mêmes fondations livrées (déclaratif → écriture → orchestration →
+génération). C'est le même produit qui s'approfondit, pas quatre produits.
