@@ -134,9 +134,25 @@ export type ActionMessage = {
   action: string;
 };
 
+export type ThemeColors = {
+  primary?: string;
+  background?: string;
+  surface?: string;
+  text?: string;
+  muted?: string;
+  border?: string;
+};
+
+export type Theme = {
+  colors?: ThemeColors;
+  font?: string;
+  radius?: string;
+  space?: string;
+};
+
 export type AppConfig = {
   kind: "app" | "dashboard";
-  theme: Record<string, unknown>;
+  theme: Theme;
   dataSources: DataSource[];
   messages: ActionMessage[];
   layout: AppLayout;
