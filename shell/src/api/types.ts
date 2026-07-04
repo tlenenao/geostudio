@@ -69,7 +69,7 @@ export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getMe(): Promise<Me>;
-  createConfigItem(input: { kind: CreateKind; title: string; owner: string }): Promise<Item>;
+  createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;

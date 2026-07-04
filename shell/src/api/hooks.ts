@@ -28,7 +28,7 @@ export function useCreateItem() {
   const client = useItemClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { kind: CreateKind; title: string; owner: string }) =>
+    mutationFn: (input: { kind: CreateKind; title: string; owner: string; templateId?: string }) =>
       client.createConfigItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });

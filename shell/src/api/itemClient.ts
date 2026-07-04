@@ -1,5 +1,6 @@
 import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
+import { getTemplate } from "../builder/templates";
 
 type GeoNodeResource = {
   pk: number | string;
@@ -255,13 +256,14 @@ export function createItemClient(opts: {
       };
     },
 
-    async createConfigItem(input: { kind: CreateKind; title: string; owner: string }): Promise<Item> {
+    async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {
+      const template = input.templateId ? getTemplate(input.templateId) : undefined;
       const config = {
         version: 1,
         kind: input.kind,
-        theme: {},
+        theme: template?.theme ?? {},
         dataSources: [],
-        layout: { type: "grid", breakpoints: {}, items: [] },
+        layout: template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
         messages: [],
       };
       const token = getToken();
