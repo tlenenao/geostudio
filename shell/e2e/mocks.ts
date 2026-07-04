@@ -26,6 +26,7 @@ export async function mockGeoNode(page: Page) {
   const deleted = new Set<string>();
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
+  let published = false;
 
   await page.route("**/api/v2/resources*", async (route) => {
     const url = new URL(route.request().url());
@@ -69,10 +70,15 @@ export async function mockGeoNode(page: Page) {
   });
 
   await page.route("**/api/v2/resources/9", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = await route.request().postDataJSON();
+      if (typeof body.is_published === "boolean") published = body.is_published;
+    }
     await route.fulfill({
       json: {
         resource: { pk: "9", resource_type: "app", title: "Créée", abstract: "",
-          owner: { username: "mockuser" }, thumbnail_url: null, date: "2026-01-01" },
+          owner: { username: "mockuser" }, thumbnail_url: null, date: "2026-01-01",
+          is_published: published },
       },
     });
   });
