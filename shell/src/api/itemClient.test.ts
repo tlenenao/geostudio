@@ -626,3 +626,37 @@ test("saveAppConfig PUTs the pages array when present", async () => {
   expect(body.pages).toHaveLength(1);
   expect(body.pages[0].name).toBe("Accueil");
 });
+
+test("getAppConfig passes through the variables array when present", async () => {
+  server.use(
+    http.get("https://builder.test/configs/by-item/5", () =>
+      HttpResponse.json({
+        id: "cfg-5", itemId: "5", kind: "app",
+        config: {
+          kind: "app", theme: {}, dataSources: [], messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+          variables: [{ id: "v1", name: "message", initialValue: "salut" }],
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getAppConfig("5");
+  expect(cfg.variables).toEqual([{ id: "v1", name: "message", initialValue: "salut" }]);
+});
+
+test("saveAppConfig PUTs the variables array when present", async () => {
+  let body: any;
+  server.use(
+    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
+    }),
+  );
+  await makeClient().saveAppConfig("5", {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    variables: [{ id: "v1", name: "message", initialValue: "salut" }],
+  });
+  expect(body.variables).toHaveLength(1);
+  expect(body.variables[0].name).toBe("message");
+});
