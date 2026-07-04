@@ -58,9 +58,12 @@ export async function mockGeoNode(page: Page) {
         json: { id: "cfg-1", kind: "map", itemId: "77" },
       });
     } else {
-      // App/dashboard creation path — keep the existing response unchanged.
+      // App/dashboard creation path — persist the posted config so a later
+      // GET (e.g. opening the editor right after creation) reflects it,
+      // the same way the PUT handler already does for saves.
+      savedConfigs.set("9", body.config);
       await route.fulfill({
-        json: { id: "cfg-9", kind: "app", itemId: "9", version: 1, config: {} },
+        json: { id: "cfg-9", kind: body.config.kind, itemId: "9", version: 1, config: body.config },
       });
     }
   });
