@@ -6,6 +6,7 @@ import { AppRenderer } from "../builder/AppRenderer";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
 import { WidgetPalette } from "../builder/WidgetPalette";
 import { PropsPanel } from "../builder/PropsPanel";
+import { ThemePanel } from "../builder/ThemePanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, type Breakpoint } from "../builder/grid";
@@ -69,6 +70,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setMessages = (messages: typeof draft.messages) =>
     setDraft((d) => (d ? { ...d, messages } : d));
 
+  const setTheme = (theme: typeof draft.theme) =>
+    setDraft((d) => (d ? { ...d, theme } : d));
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-2">
@@ -100,6 +104,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
             <ActionsPanel items={draft.layout.items} messages={draft.messages} onChange={setMessages} />
+            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
+            <ThemePanel theme={draft.theme} onChange={setTheme} />
           </aside>
         )}
         <main className="flex-1 overflow-auto p-2">
