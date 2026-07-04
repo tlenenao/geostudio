@@ -1,5 +1,5 @@
 [project]
-name = "geostudio-builder-service"
+name = "geostudio-core"
 version = "0.1.0"
 description = "GeoStudio Builder Service — stores and versions App/Dashboard configs"
 requires-python = ">=3.12"
