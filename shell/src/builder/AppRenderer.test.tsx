@@ -65,3 +65,31 @@ test("configures the bus so a button click drives a wired action", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Go" }));
   expect(screen.getByRole("button", { name: "Go" })).toBeInTheDocument();
 });
+
+test("edits the sm layout when the breakpoint prop is sm, leaving the base intact", async () => {
+  let latest: AppConfig | null = null;
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  render(
+    <AppRenderer config={cfg} mode="edit" breakpoint="sm" selectedId="w1" onSelect={() => {}} onChange={(c) => { latest = c; }} />,
+    { wrapper: Wrapper },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  expect(latest!.layout.items[0].x).toBe(0); // base untouched
+  expect(latest!.layout.items[0].layouts?.sm).toEqual({ x: 1, y: 0, w: 4, h: 2 });
+});
+
+test("renders the item at its sm override when breakpoint=sm", () => {
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" }, layouts: { sm: { x: 6, y: 2, w: 6, h: 2 } } },
+    ] },
+  };
+  const { container } = render(<AppRenderer config={cfg} mode="runtime" breakpoint="sm" />, { wrapper: Wrapper });
+  expect(container.querySelector("[data-col]")).toHaveAttribute("data-col", "6");
+});
