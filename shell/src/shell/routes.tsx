@@ -39,8 +39,8 @@ function AppBuilderRoute() {
 }
 
 function AppRuntimeRoute() {
-  const { pk } = useParams();
-  return <AppRuntimePage pk={pk!} />;
+  const { pk, pageId } = useParams();
+  return <AppRuntimePage pk={pk!} pageId={pageId} />;
 }
 
 export function AppRoutes() {
@@ -50,7 +50,7 @@ export function AppRoutes() {
       <Route path="/items/:pk" element={<ItemDetailRoute />} />
       <Route path="/maps/:pk" element={<MapEditorRoute />} />
       <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
-      <Route path="/apps/:pk" element={<AppRuntimeRoute />} />
+      <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
     </Routes>
   );
 }
