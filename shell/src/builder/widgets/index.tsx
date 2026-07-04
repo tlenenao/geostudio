@@ -6,6 +6,7 @@ import { registerIndicatorWidget } from "./indicator";
 import { registerMapWidget } from "./mapWidget";
 import { registerFilterWidget } from "./filter";
 import { registerChartWidget } from "./chart";
+import { registerNavigationWidget } from "./navigation";
 
 // Replace {{champ}} tokens with the record's property values (empty if absent).
 function interpolate(text: string, record: DataRecord | undefined): string {
@@ -134,4 +135,5 @@ export function registerBuiltinWidgets(): void {
   registerMapWidget();
   registerFilterWidget();
   registerChartWidget();
+  registerNavigationWidget();
 }
