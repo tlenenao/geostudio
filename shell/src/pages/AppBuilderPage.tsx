@@ -8,6 +8,7 @@ import { WidgetPalette } from "../builder/WidgetPalette";
 import { PropsPanel } from "../builder/PropsPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { getWidget } from "../builder/registry";
+import { BREAKPOINTS, type Breakpoint } from "../builder/grid";
 import { Button } from "../ui/button";
 
 registerBuiltinWidgets();
@@ -18,6 +19,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
+  const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
 
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change
@@ -72,6 +74,19 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       <div className="flex items-center gap-2 border-b p-2">
         <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
         <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+        <div className="ml-2 flex items-center gap-1">
+          {BREAKPOINTS.map((bp) => (
+            <Button
+              key={bp}
+              size="sm"
+              variant={breakpoint === bp ? "default" : "outline"}
+              aria-label={`Éditer en ${bp}`}
+              onClick={() => setBreakpoint(bp)}
+            >
+              {bp}
+            </Button>
+          ))}
+        </div>
         <div className="flex-1" />
         <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>Enregistrer</Button>
         {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
@@ -94,6 +109,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             onChange={setDraft}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            breakpoint={breakpoint}
           />
         </main>
         {mode === "edit" && (
