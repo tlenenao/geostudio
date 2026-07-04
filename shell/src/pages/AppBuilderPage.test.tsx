@@ -6,6 +6,10 @@ import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppBuilderPage } from "./AppBuilderPage";
 
+vi.mock("html-to-image", () => ({
+  toBlob: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/png" })),
+}));
+
 const config: AppConfig = {
   kind: "app", theme: {}, dataSources: [], messages: [],
   layout: { type: "grid", breakpoints: {}, items: [] },
@@ -162,4 +166,16 @@ test("adds a second page and can switch back to editing the first", async () => 
   expect(saved.pages![0].id).toBe("page-1");
   expect(saved.pages![0].layout.items).toHaveLength(1); // Texte landed on page 1
   expect(saved.pages![1].layout.items).toHaveLength(0); // page 2 untouched
+});
+
+test("captures a thumbnail and uploads it", async () => {
+  const uploadThumbnail = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    saveAppConfig: vi.fn().mockResolvedValue(undefined),
+    uploadThumbnail,
+  });
+  await screen.findByRole("button", { name: "Capturer une miniature" });
+  await userEvent.click(screen.getByRole("button", { name: "Capturer une miniature" }));
+  await waitFor(() => expect(uploadThumbnail).toHaveBeenCalledWith("5", expect.any(File)));
 });
