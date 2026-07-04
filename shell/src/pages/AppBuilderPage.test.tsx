@@ -102,3 +102,20 @@ test("edits a position at the sm breakpoint and persists layouts.sm", async () =
   expect(saved.layout.items[0].x).toBe(0); // base untouched
   expect(saved.layout.items[0].layouts?.sm).toEqual({ x: 1, y: 0, w: 4, h: 2 });
 });
+
+test("edits the theme's primary color and persists it", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    saveAppConfig,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByLabelText("Couleur primaire");
+  const { fireEvent } = await import("@testing-library/react");
+  fireEvent.change(screen.getByLabelText("Couleur primaire"), { target: { value: "#ff0000" } });
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1];
+  expect(saved.theme.colors.primary).toBe("#ff0000");
+});
