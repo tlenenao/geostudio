@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import type { WidgetItem } from "../api/types";
-import { GRID_COLS, styleFor } from "./grid";
+import { GRID_COLS, posFor, styleForPos, type Breakpoint } from "./grid";
 
 export function GridCanvas({
   items,
+  breakpoint,
   editable,
   selectedId,
   onSelect,
@@ -11,6 +12,7 @@ export function GridCanvas({
   renderItem,
 }: {
   items: WidgetItem[];
+  breakpoint: Breakpoint;
   editable: boolean;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -20,15 +22,19 @@ export function GridCanvas({
   return (
     <div
       className="grid h-full w-full gap-1 bg-slate-50"
+      data-breakpoint={breakpoint}
       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridAutoRows: "40px" }}
       onClick={() => editable && onSelect(null)}
     >
       {items.map((item) => {
+        const pos = posFor(item, breakpoint);
         const selected = editable && item.id === selectedId;
         return (
           <div
             key={item.id}
-            style={styleFor(item)}
+            data-col={pos.x}
+            data-row={pos.y}
+            style={styleForPos(pos)}
             className={`relative overflow-hidden rounded ${selected ? "outline outline-2 outline-blue-500" : ""}`}
           >
             {editable && (
