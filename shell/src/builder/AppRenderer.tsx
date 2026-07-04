@@ -57,7 +57,7 @@ export function AppRenderer({
   }
 
   return (
-    <div ref={containerRef} className="h-full w-full" style={themeToCssVars(config.theme)}>
+    <div ref={containerRef} className="h-full w-full bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
       <ActionBusProvider bus={bus}>
         <DataProvider sources={config.dataSources}>
           <GridCanvas

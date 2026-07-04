@@ -100,4 +100,6 @@ test("applies theme CSS variables on the root container, falling back to default
   const root = container.firstChild as HTMLElement;
   expect(root.style.getPropertyValue("--gs-color-primary")).toBe("#ff0000");
   expect(root.style.getPropertyValue("--gs-color-background")).toBe("#ffffff"); // default, untouched
+  expect(root).toHaveClass("bg-[var(--gs-color-background)]");
+  expect(root).toHaveClass("font-[var(--gs-font)]");
 });
