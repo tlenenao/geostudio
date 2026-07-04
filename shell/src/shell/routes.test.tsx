@@ -17,7 +17,7 @@ vi.mock("../pages/AppBuilderPage", () => ({
 }));
 
 vi.mock("../pages/AppRuntimePage", () => ({
-  AppRuntimePage: ({ pk }: { pk: string }) => <div>app-runtime-{pk}</div>,
+  AppRuntimePage: ({ pk, pageId }: { pk: string; pageId?: string }) => <div>app-runtime-{pk}-{pageId ?? "none"}</div>,
 }));
 
 function wrap(children: ReactNode, initial = "/") {
@@ -51,5 +51,10 @@ test("renders the app builder route at /apps/:pk/edit", () => {
 
 test("renders the app runtime route at /apps/:pk", () => {
   wrap(<AppRoutes />, "/apps/42");
-  expect(screen.getByText("app-runtime-42")).toBeInTheDocument();
+  expect(screen.getByText("app-runtime-42-none")).toBeInTheDocument();
+});
+
+test("renders the app runtime route with a pageId at /apps/:pk/:pageId", () => {
+  wrap(<AppRoutes />, "/apps/42/xyz");
+  expect(screen.getByText("app-runtime-42-xyz")).toBeInTheDocument();
 });
