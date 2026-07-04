@@ -6,6 +6,7 @@ import { moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
 import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider } from "./ActionBusContext";
+import { themeToCssVars } from "./theme";
 
 export function AppRenderer({
   config,
@@ -56,7 +57,7 @@ export function AppRenderer({
   }
 
   return (
-    <div ref={containerRef} className="h-full w-full">
+    <div ref={containerRef} className="h-full w-full" style={themeToCssVars(config.theme)}>
       <ActionBusProvider bus={bus}>
         <DataProvider sources={config.dataSources}>
           <GridCanvas

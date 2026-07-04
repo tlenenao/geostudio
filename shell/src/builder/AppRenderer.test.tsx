@@ -93,3 +93,11 @@ test("renders the item at its sm override when breakpoint=sm", () => {
   const { container } = render(<AppRenderer config={cfg} mode="runtime" breakpoint="sm" />, { wrapper: Wrapper });
   expect(container.querySelector("[data-col]")).toHaveAttribute("data-col", "6");
 });
+
+test("applies theme CSS variables on the root container, falling back to defaults", () => {
+  const cfg: AppConfig = { ...config, theme: { colors: { primary: "#ff0000" } } };
+  const { container } = render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  const root = container.firstChild as HTMLElement;
+  expect(root.style.getPropertyValue("--gs-color-primary")).toBe("#ff0000");
+  expect(root.style.getPropertyValue("--gs-color-background")).toBe("#ffffff"); // default, untouched
+});
