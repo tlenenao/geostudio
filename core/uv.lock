@@ -80,7 +80,7 @@ wheels = [
 ]
 
 [[package]]
-name = "geostudio-builder-service"
+name = "geostudio-core"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
