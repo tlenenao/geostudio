@@ -43,6 +43,10 @@ API standards OGC, architecture AI-native via MCP).
 | **M4 Donnée→carte** | Upload GPKG/GeoJSON → carte stylée partageable en minutes |
 | **M5 SDK ouvrable** | Contrat de widget Web Components, chargement dynamique |
 | **M6 v0.1 publique** | CI, images versionnées, install docs, démo publique |
+| **M7 exploitable** | OpenTelemetry + dashboards/SLO packagés |
+| **M8 data platform** | CDC PostGIS → GeoParquet, analytique DuckDB |
+| **M9 catalogue ouvert** | API STAC, export DCAT-AP, moissonnage (STAC, WMS/WFS, CSW, CKAN) |
+| **M10 3D & print** | Couches 3D Tiles + terrain, export PNG/PDF mis en page |
 
 Détail, arbitrages techniques et estimations :
 [`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md).

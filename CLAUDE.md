@@ -15,9 +15,9 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Documents de référence (ordre d'autorité)
 
 1. **`docs/vision/2026-07-04-feuille-de-route-geostudio.md`** — LA référence :
-   phasage SP-1→SP-9, périmètre exact du remplacement de GeoNode (= l'interface
-   `ItemClient`), modèle de données du cœur v0, **15 arbitrages tranchés (§8)**,
-   jalons M1–M6. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
+   phasage SP-1→SP-13, périmètre exact du remplacement de GeoNode (= l'interface
+   `ItemClient`), modèle de données du cœur v0, **27 arbitrages tranchés (§8)**,
+   jalons M1–M10. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
    on met à jour ce document explicitement.
 2. `docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md` — pourquoi
    l'option C, décisions produit (§9).
@@ -46,6 +46,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - MCP : module du cœur, même process, permissions de l'utilisateur, audité.
 - GeoNode/Superset/Redis : **en sursis** — aucune nouvelle dépendance à eux ;
   tout nouveau code de contenu passe par le cœur. Ils sortent au jalon M1.
+- Post-v0.1 (SP-10→13, ordre figé par A27) : observabilité **OTel + profil
+  `grafana/otel-lgtm`** ; lakehouse **CDC par réplication logique (worker
+  maison) → GeoParquet plat** (Iceberg différé), **DuckDB côté serveur** (API
+  structurée pour les widgets, SQL read-only réservé aux analystes) ; **STAC
+  natif dans le cœur** + export DCAT-AP + moissonnage par référencement
+  (connecteurs : STAC → GetCapabilities → CSW → CKAN) ; 3D **deck.gl
+  Tile3DLayer + terrain raster-dem**, impression **Playwright en worker**.
 
 ## Règles d'architecture non négociables
 
