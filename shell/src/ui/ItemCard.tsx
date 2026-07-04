@@ -19,6 +19,13 @@ export function ItemCard({
         </span>
         {actions}
       </div>
+      {item.thumbnailUrl && (
+        <img
+          src={item.thumbnailUrl}
+          alt={item.title}
+          className="h-24 w-full rounded object-cover"
+        />
+      )}
       <h3 className="text-base font-semibold">{item.title}</h3>
       <p className="line-clamp-2 text-sm text-slate-500">{item.abstract}</p>
       <Button size="sm" className="mt-2 w-fit" onClick={() => onOpen(item.pk, item.resourceType)}>

@@ -33,3 +33,13 @@ test("renders the actions slot when provided", () => {
   render(<ItemCard item={item} onOpen={() => {}} actions={<span>ACTIONS</span>} />);
   expect(screen.getByText("ACTIONS")).toBeInTheDocument();
 });
+
+test("shows a thumbnail image when thumbnailUrl is set", () => {
+  render(<ItemCard item={{ ...item, thumbnailUrl: "https://geonode.test/thumbs/42.png" }} onOpen={() => {}} />);
+  expect(screen.getByRole("img", { name: item.title })).toHaveAttribute("src", "https://geonode.test/thumbs/42.png");
+});
+
+test("shows no image when thumbnailUrl is null", () => {
+  render(<ItemCard item={item} onOpen={() => {}} />);
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
+});
