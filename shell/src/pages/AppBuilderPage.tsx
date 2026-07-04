@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { useAppConfig, useSaveApp } from "../api/hooks";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toBlob } from "html-to-image";
+import { useAppConfig, useSaveApp, useUploadThumbnail } from "../api/hooks";
 import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -20,6 +21,8 @@ registerBuiltinWidgets();
 export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
+  const thumbnail = useUploadThumbnail(pk);
+  const mainRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
@@ -64,6 +67,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setSelectedId(item.id);
   }
 
+  async function captureThumbnail() {
+    if (!mainRef.current) return;
+    const blob = await toBlob(mainRef.current);
+    if (!blob) return;
+    const file = new File([blob], "thumbnail.png", { type: "image/png" });
+    try {
+      await thumbnail.mutateAsync(file);
+    } catch {
+      /* surfaced via thumbnail.isError */
+    }
+  }
+
   function updateSelectedProps(props: Record<string, unknown>) {
     if (!draft || !selectedId || !activeLayout || !activePage) return;
     setDraft(setPageLayout(draft, activePage, {
@@ -106,8 +121,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           ))}
         </div>
         <div className="flex-1" />
+        <Button size="sm" variant="outline" disabled={thumbnail.isPending} onClick={captureThumbnail}>
+          Capturer une miniature
+        </Button>
         <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>Enregistrer</Button>
         {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
+        {thumbnail.isError && <span role="alert" className="text-sm text-red-600">Échec de la capture.</span>}
       </div>
       <div className="flex flex-1 overflow-hidden">
         {mode === "edit" && (
@@ -126,7 +145,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <ThemePanel theme={draft.theme} onChange={setTheme} />
           </aside>
         )}
-        <main className="flex-1 overflow-auto p-2">
+        <main ref={mainRef} className="flex-1 overflow-auto p-2">
           <AppRenderer
             config={draft}
             mode={mode}
