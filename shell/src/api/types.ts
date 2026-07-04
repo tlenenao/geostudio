@@ -111,6 +111,12 @@ export type Page = {
   layout: AppLayout;
 };
 
+export type Variable = {
+  id: string;
+  name: string;
+  initialValue: string;
+};
+
 export type DataSource = {
   id: string;
   type: "features" | "static" | "statistics";
@@ -163,4 +169,5 @@ export type AppConfig = {
   messages: ActionMessage[];
   layout: AppLayout;
   pages?: Page[];
+  variables?: Variable[];
 };
