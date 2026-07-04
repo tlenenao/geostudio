@@ -22,10 +22,11 @@ test("publishing an item, capturing a thumbnail, and the runtime route still wor
 
   // 2. Authenticated runtime route still renders after the routing change.
   await page.goto("/apps/9");
-  await expect(page.locator("body")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 
   // 3. Thumbnail capture from the builder.
   await page.goto("/apps/9/edit");
   await page.getByRole("button", { name: "Capturer une miniature" }).click();
   await expect(page.getByRole("button", { name: "Capturer une miniature" })).toBeEnabled();
+  await expect(page.getByText("Échec de la capture.")).toHaveCount(0);
 });
