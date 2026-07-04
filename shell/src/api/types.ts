@@ -105,6 +105,12 @@ export type AppLayout = {
   items: WidgetItem[];
 };
 
+export type Page = {
+  id: string;
+  name: string;
+  layout: AppLayout;
+};
+
 export type DataSource = {
   id: string;
   type: "features" | "static" | "statistics";
@@ -156,4 +162,5 @@ export type AppConfig = {
   dataSources: DataSource[];
   messages: ActionMessage[];
   layout: AppLayout;
+  pages?: Page[];
 };

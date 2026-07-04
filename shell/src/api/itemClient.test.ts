@@ -588,3 +588,41 @@ test("featuresUrl strips reserved statistics keys but keeps filter params", () =
   });
   expect(url).toBe("https://featureserv.test/collections/villes/items.json?annee_filtre=2026");
 });
+
+test("getAppConfig passes through the pages array when present", async () => {
+  server.use(
+    http.get("https://builder.test/configs/by-item/5", () =>
+      HttpResponse.json({
+        id: "cfg-5", itemId: "5", kind: "app",
+        config: {
+          kind: "app", theme: {}, dataSources: [], messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+          pages: [
+            { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [] } },
+          ],
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getAppConfig("5");
+  expect(cfg.pages).toEqual([
+    { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [] } },
+  ]);
+});
+
+test("saveAppConfig PUTs the pages array when present", async () => {
+  let body: any;
+  server.use(
+    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
+    }),
+  );
+  await makeClient().saveAppConfig("5", {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    pages: [{ id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [] } }],
+  });
+  expect(body.pages).toHaveLength(1);
+  expect(body.pages[0].name).toBe("Accueil");
+});
