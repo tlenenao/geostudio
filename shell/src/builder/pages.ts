@@ -20,6 +20,7 @@ export function getPageLayout(config: AppConfig, pageId: string): AppLayout {
 // (the field the backend still requires for app/dashboard configs).
 export function setPageLayout(config: AppConfig, pageId: string, layout: AppLayout): AppConfig {
   if (!config.pages || config.pages.length === 0) {
+    if (pageId !== IMPLICIT_PAGE_ID) return config;
     return { ...config, layout };
   }
   const pages = config.pages.map((p) => (p.id === pageId ? { ...p, layout } : p));
