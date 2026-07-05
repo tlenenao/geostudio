@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: gis
+          POSTGRES_PASSWORD: gis
+          POSTGRES_DB: gis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U gis" --health-interval=5s --health-timeout=5s --health-retries=10
+    defaults:
+      run:
+        working-directory: core
+    env:
+      DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - run: uv run alembic upgrade head
+      - run: uv run alembic downgrade base
