@@ -23,6 +23,9 @@ def test_write_audit_persists_a_row():
                 object_id="config-1",
                 payload={"title": "My App"},
             )
+            # Writer only flushes; commit to persist across the session
+            # boundary this test deliberately crosses.
+            session.commit()
 
         with Session() as session:
             rows = session.scalars(select(AuditLog)).all()

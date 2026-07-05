@@ -35,6 +35,6 @@ def get_or_create_user(
         user.email = email
         user.first_name = first_name
         user.last_name = last_name
-    session.commit()
+    session.flush()
     session.refresh(user)
     return user

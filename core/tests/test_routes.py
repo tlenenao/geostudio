@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.main import create_app
 from app import db
 from app.audit.models import AuditLog
-from app.db import make_engine, make_session_factory, init_db
+from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.configs import routes
 from app.auth.dependency import get_current_user
 from app.items.models import Item
@@ -25,12 +25,15 @@ def client():
             setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
             username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
         )
+        # Repository functions only flush now; commit here to stand in for
+        # "a prior successful request that provisioned this tenant/user".
+        setup_session.commit()
 
     app = create_app()
 
     def override_session():
-        with Session() as s:
-            yield s
+        with request_scoped_session(Session) as session:
+            yield session
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
@@ -274,6 +277,26 @@ def test_put_config_by_item_404_when_missing(client):
     assert resp.status_code == 404
 
 
+def test_create_config_is_atomic_when_a_later_step_fails(client, monkeypatch):
+    """If create_config raises AFTER create_item has already run, the whole
+    request must roll back — no orphaned Item may survive. This proves the
+    single-commit-per-request boundary (repo functions flush, the request
+    owns the commit) actually protects atomicity."""
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated failure after create_item")
+
+    monkeypatch.setattr(routes.repo, "create_config", boom)
+
+    with pytest.raises(RuntimeError, match="simulated failure after create_item"):
+        client.post("/configs", json={"title": "My App", "config": _config_body()})
+
+    # A fresh session must see zero Item rows: create_item's write was rolled
+    # back with the rest of the failed request, not left behind as an orphan.
+    with client.session_factory() as session:
+        assert session.scalars(select(Item)).all() == []
+
+
 def test_create_config_writes_audit_log(client):
     created = _create(client)
     with client.session_factory() as session:
@@ -299,8 +322,8 @@ def client_with_real_auth(monkeypatch):
     app = create_app()
 
     def override_session():
-        with Session() as s:
-            yield s
+        with request_scoped_session(Session) as session:
+            yield session
 
     app.dependency_overrides[db.get_session] = override_session
     # Note: get_current_user is deliberately NOT overridden here.

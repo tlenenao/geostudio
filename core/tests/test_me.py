@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db
+from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -21,12 +21,15 @@ def client():
             username="alice", email="alice@example.com",
             first_name="Alice", last_name="Doe",
         )
+        # Repository functions only flush now; commit here to stand in for
+        # "a prior successful request that provisioned this tenant/user".
+        setup_session.commit()
 
     app = create_app()
 
     def override_session():
-        with Session() as s:
-            yield s
+        with request_scoped_session(Session) as session:
+            yield session
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user

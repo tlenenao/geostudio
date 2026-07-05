@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db
+from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.items import repository as items_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -21,12 +21,15 @@ def client():
             setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
             username="alice", email=None, first_name="", last_name="",
         )
+        # Repository functions only flush now; commit here to stand in for
+        # "a prior successful request that provisioned this tenant/user".
+        setup_session.commit()
 
     app = create_app()
 
     def override_session():
-        with Session() as s:
-            yield s
+        with request_scoped_session(Session) as session:
+            yield session
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
@@ -47,6 +50,9 @@ def _seed_item(client, title="My App") -> str:
             session, tenant_id=client.tenant.id, owner_id=client.user.id,
             resource_type="app", title=title,
         )
+        # create_item only flushes now; this block bypasses the request
+        # boundary, so commit explicitly to persist the seed row.
+        session.commit()
         return item.id
 
 

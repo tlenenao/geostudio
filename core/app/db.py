@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -52,6 +53,25 @@ def init_db(engine: Engine) -> None:
     # "relation already exists".
     if engine.dialect.name == "sqlite":
         Base.metadata.create_all(engine)
+
+
+@contextmanager
+def request_scoped_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    """Own the transaction boundary for one request/test.
+
+    Repository/writer functions never commit themselves — they only
+    ``flush()`` within the open transaction. This wrapper commits once when
+    the block completes successfully, or rolls back everything on any
+    exception, so a mid-request failure can never leave a partial write
+    (e.g. an orphaned Item with no linked Config).
+    """
+    with session_factory() as session:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
 
 
 def get_session() -> Iterator[Session]:  # pragma: no cover - overridden at runtime

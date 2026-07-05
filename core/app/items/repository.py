@@ -40,7 +40,7 @@ def create_item(
         resource_type=resource_type, title=title,
     )
     session.add(item)
-    session.commit()
+    session.flush()
     session.refresh(item)
     return item
 
@@ -114,7 +114,7 @@ def update_item(
         item.keywords = keywords
     if is_published is not None:
         item.is_published = is_published
-    session.commit()
+    session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
     return _to_read(item, owner_username)
