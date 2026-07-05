@@ -1,23 +1,18 @@
-from collections.abc import Iterator
-
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import repository as repo
+from app.configs import repository as repo
 from app.geonode import ItemClient, StubItemClient
-from app.repository import ConfigRead, RevisionInfo
-from app.schemas import BuilderConfig
+from app.configs.repository import ConfigRead, RevisionInfo
+from app.configs.schemas import BuilderConfig
+from app.db import get_session
 
 router = APIRouter()
 
 # Default providers; create_app() overrides get_session with a real factory,
 # and tests override both via app.dependency_overrides.
 _default_item_client = StubItemClient()
-
-
-def get_session() -> Iterator[Session]:  # pragma: no cover - overridden at runtime
-    raise RuntimeError("get_session dependency not configured")
 
 
 def get_item_client() -> ItemClient:

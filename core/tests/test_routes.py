@@ -2,9 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app import db
 from app.db import make_engine, make_session_factory, init_db
 from app.geonode import StubItemClient
-from app import routes
+from app.configs import routes
 
 
 @pytest.fixture()
@@ -20,7 +21,7 @@ def client():
         with Session() as s:
             yield s
 
-    app.dependency_overrides[routes.get_session] = override_session
+    app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[routes.get_item_client] = lambda: stub
 
     test_client = TestClient(app)

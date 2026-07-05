@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from app.db import Base, make_engine, make_session_factory, init_db
-from app.models import Config, ConfigRevision
+from app.configs.models import Config, ConfigRevision
 
 
 def test_can_persist_config_and_revision():

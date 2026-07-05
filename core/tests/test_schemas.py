@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import BuilderConfig
+from app.configs.schemas import BuilderConfig
 
 
 def _valid_payload(kind: str = "app") -> dict:
@@ -95,7 +95,7 @@ def test_app_config_still_requires_layout():
         BuilderConfig.model_validate({"kind": "app"})
 
 
-from app.schemas import LayoutItem
+from app.configs.schemas import LayoutItem
 
 
 def test_layout_item_accepts_optional_id():
