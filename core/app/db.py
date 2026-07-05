@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -13,13 +13,23 @@ def make_engine(url: str) -> Engine:
     if "memory" in url and url.startswith("sqlite"):
         # StaticPool ensures all threads share the single in-memory connection,
         # which is required when TestClient runs the ASGI handler in a worker thread.
-        return create_engine(
+        engine = create_engine(
             url,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    else:
+        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        engine = create_engine(url, connect_args=connect_args)
+
+    if engine.dialect.name == "sqlite":
+        @event.listens_for(engine, "connect")
+        def _enable_sqlite_fk(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    return engine
 
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -30,6 +40,7 @@ def init_db(engine: Engine) -> None:
     # Import models so they register on Base.metadata before create_all.
     from app.audit import models as audit_models  # noqa: F401
     from app.configs import models  # noqa: F401
+    from app.items import models as items_models  # noqa: F401
     from app.tenants import models as tenants_models  # noqa: F401
     from app.users import models as users_models  # noqa: F401
 

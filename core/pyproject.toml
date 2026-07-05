@@ -38,6 +38,7 @@ type = "layers"
 layers = [
     "app.main",
     "app.configs",
+    "app.items",
     "app.auth",
     "app.audit",
     "app.users",
@@ -45,6 +46,7 @@ layers = [
 ]
 ignore_imports = [
     "app.db -> app.configs.models",
+    "app.db -> app.items.models",
     "app.db -> app.audit.models",
     "app.db -> app.tenants.models",
     "app.db -> app.users.models",
