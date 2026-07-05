@@ -17,6 +17,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.2",
+    "import-linter>=2.0",
 ]
 
 [tool.pytest.ini_options]
@@ -26,4 +27,25 @@ filterwarnings = [
     "error",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+name = "layered architecture"
+type = "layers"
+layers = [
+    "app.main",
+    "app.configs",
+    "app.auth",
+    "app.audit",
+    "app.users",
+    "app.tenants",
+]
+ignore_imports = [
+    "app.db -> app.configs.models",
+    "app.db -> app.audit.models",
+    "app.db -> app.tenants.models",
+    "app.db -> app.users.models",
 ]
