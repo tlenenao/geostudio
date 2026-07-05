@@ -2,9 +2,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app import db
+from app.audit.models import AuditLog
 from app.db import make_engine, make_session_factory, init_db
 from app.geonode import StubItemClient
-from app import routes
+from app.configs import routes
+from app.auth.dependency import get_current_user
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+from sqlalchemy import select
 
 
 @pytest.fixture()
@@ -14,17 +20,28 @@ def client():
     Session = make_session_factory(engine)
     stub = StubItemClient()
 
+    with Session() as setup_session:
+        tenant = get_or_create_default_tenant(setup_session)
+        user = get_or_create_user(
+            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
+            username="alice", email="alice@example.com",
+            first_name="Alice", last_name="Doe",
+        )
+
     app = create_app()
 
     def override_session():
         with Session() as s:
             yield s
 
-    app.dependency_overrides[routes.get_session] = override_session
+    app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[routes.get_item_client] = lambda: stub
+    app.dependency_overrides[get_current_user] = lambda: user
 
     test_client = TestClient(app)
     test_client.stub = stub  # type: ignore[attr-defined]
+    test_client.session_factory = Session  # type: ignore[attr-defined]
+    test_client.user = user  # type: ignore[attr-defined]
     yield test_client
     engine.dispose()
 
@@ -244,3 +261,65 @@ def test_put_config_by_item_404_when_missing(client):
             "basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []}},
     )
     assert resp.status_code == 404
+
+
+def test_create_config_writes_audit_log(client):
+    created = _create(client)
+    with client.session_factory() as session:
+        rows = session.scalars(select(AuditLog)).all()
+        assert len(rows) == 1
+        assert rows[0].action == "config.create"
+        assert rows[0].actor_id == client.user.id
+        assert rows[0].object_id == created["id"]
+
+
+@pytest.fixture()
+def client_with_real_auth(monkeypatch):
+    """Like `client`, but deliberately does NOT override get_current_user, so
+    the real dependency (mock-mode resolution, header parsing) runs
+    end-to-end through the HTTP request. This is what proves authentication
+    is genuinely wired into the route rather than always being bypassed by
+    the `client` fixture's override."""
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    stub = StubItemClient()
+
+    app = create_app()
+
+    def override_session():
+        with Session() as s:
+            yield s
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[routes.get_item_client] = lambda: stub
+    # Note: get_current_user is deliberately NOT overridden here.
+
+    test_client = TestClient(app)
+    yield test_client
+    engine.dispose()
+
+
+def test_create_config_without_authorization_header_is_rejected(client_with_real_auth):
+    # No Authorization header at all: get_current_user checks
+    # `authorization.startswith("Bearer ")` before even looking at mock mode,
+    # so this must 401 regardless of CORE_AUTH_MODE.
+    response = client_with_real_auth.post(
+        "/configs",
+        json={"title": "My App", "owner": "alice", "config": _config_body()},
+    )
+    assert response.status_code == 401
+
+
+def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_auth):
+    # Mock mode accepts any bearer token as long as the header is present
+    # and prefixed with "Bearer ". This proves get_current_user really runs
+    # (and succeeds) through the full HTTP stack, not just when overridden.
+    response = client_with_real_auth.post(
+        "/configs",
+        json={"title": "My App", "owner": "alice", "config": _config_body()},
+        headers={"Authorization": "Bearer anything"},
+    )
+    assert response.status_code == 201, response.text
