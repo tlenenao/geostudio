@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import Base
 from app.configs import models as configs_models  # noqa: F401 — registers Config/ConfigRevision on Base.metadata
+from app.tenants import models as tenants_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
