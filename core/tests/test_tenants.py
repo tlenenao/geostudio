@@ -10,6 +10,9 @@ def test_get_or_create_default_tenant_is_idempotent():
         with Session() as session:
             first = get_or_create_default_tenant(session)
             assert first.slug == "default"
+            # Repository only flushes; commit to persist across the session
+            # boundary this test deliberately crosses.
+            session.commit()
 
         with Session() as session:
             second = get_or_create_default_tenant(session)

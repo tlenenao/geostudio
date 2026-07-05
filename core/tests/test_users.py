@@ -16,6 +16,9 @@ def test_get_or_create_user_creates_then_refreshes():
                 first_name="Alice", last_name="Doe",
             )
             assert created.username == "alice"
+            # Repository only flushes; commit to persist across the session
+            # boundary this test deliberately crosses.
+            session.commit()
 
         with Session() as session:
             tenant = get_or_create_default_tenant(session)
