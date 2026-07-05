@@ -24,13 +24,13 @@ class RollbackRequest(BaseModel):
     version: int
 
 
-def _delete_config_and_item(session: Session, config_id: str, item_id: str) -> None:
+def _delete_config_and_item(session: Session, config_id: str, item_id: str, tenant_id: str) -> None:
     from sqlalchemy import delete
     from app.configs.models import ConfigRevision, Config
 
     session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
     session.execute(delete(Config).where(Config.id == config_id))
-    session.execute(delete(Item).where(Item.id == item_id))
+    session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
     session.flush()
 
 
@@ -117,7 +117,11 @@ def delete_config(
     result = repo.get_config(session, config_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
-    _delete_config_and_item(session, config_id, result.itemId)
+    if result.itemId is None or items_repo.get_item(
+        session, tenant_id=user.tenant_id, item_id=result.itemId
+    ) is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="config.delete", object_type="config", object_id=config_id, payload={},
@@ -168,7 +172,9 @@ def delete_config_by_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
-    _delete_config_and_item(session, result.id, item_id)
+    if items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id) is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="config.delete", object_type="config", object_id=result.id, payload={},
@@ -193,7 +199,9 @@ def delete_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
-    _delete_config_and_item(session, result.id, item_id)
+    if items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id) is None:
+        raise HTTPException(status_code=404, detail="item not found")
+    _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="item.delete", object_type="item", object_id=item_id, payload={},

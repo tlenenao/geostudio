@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -5,10 +7,12 @@ from sqlalchemy import select
 from app.main import create_app
 from app import db
 from app.audit.models import AuditLog
+from app.configs.models import Config
 from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.configs import routes
 from app.auth.dependency import get_current_user
 from app.items.models import Item
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -342,6 +346,78 @@ def test_create_config_without_authorization_header_is_rejected(client_with_real
         json={"title": "My App", "config": _config_body()},
     )
     assert response.status_code == 401
+
+
+def _other_tenant_user(client) -> object:
+    """Provision a second tenant with its own user, distinct from the
+    `client` fixture's default tenant/user ("alice"). Used to prove
+    cross-tenant delete requests are rejected."""
+    with client.session_factory() as session:
+        tenant = Tenant(id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
+        session.add(tenant)
+        session.flush()
+        mallory = get_or_create_user(
+            session, tenant_id=tenant.id, oidc_sub="sub-mallory",
+            username="mallory", email="mallory@example.com",
+            first_name="Mallory", last_name="Doe",
+        )
+        session.commit()
+        session.refresh(mallory)
+    return mallory
+
+
+def test_delete_config_cross_tenant_returns_404_and_leaves_data_intact(client):
+    created = _create(client)
+    config_id, item_id = created["id"], created["itemId"]
+    mallory = _other_tenant_user(client)
+
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.delete(f"/configs/{config_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+
+    assert response.status_code == 404
+    with client.session_factory() as session:
+        assert session.get(Item, item_id) is not None
+        assert session.get(Config, config_id) is not None
+    assert client.get(f"/configs/{config_id}").status_code == 200
+
+
+def test_delete_config_by_item_cross_tenant_returns_404_and_leaves_data_intact(client):
+    created = _create(client)
+    config_id, item_id = created["id"], created["itemId"]
+    mallory = _other_tenant_user(client)
+
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.delete(f"/configs/by-item/{item_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+
+    assert response.status_code == 404
+    with client.session_factory() as session:
+        assert session.get(Item, item_id) is not None
+        assert session.get(Config, config_id) is not None
+    assert client.get(f"/configs/by-item/{item_id}").status_code == 200
+
+
+def test_delete_item_cross_tenant_returns_404_and_leaves_data_intact(client):
+    created = _create(client)
+    config_id, item_id = created["id"], created["itemId"]
+    mallory = _other_tenant_user(client)
+
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.delete(f"/items/{item_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+
+    assert response.status_code == 404
+    with client.session_factory() as session:
+        assert session.get(Item, item_id) is not None
+        assert session.get(Config, config_id) is not None
+    assert client.get(f"/configs/{config_id}").status_code == 200
 
 
 def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_auth):
