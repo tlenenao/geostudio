@@ -1,8 +1,13 @@
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+# Add parent directory to sys.path so 'app' module can be imported when alembic is invoked directly.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import Base
 from app import models as legacy_models  # noqa: F401 — registers Config/ConfigRevision on Base.metadata
