@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 
 import jwt
 from fastapi import Depends, Header, HTTPException
@@ -14,6 +15,7 @@ def _mock_mode() -> bool:
     return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
 
 
+@lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
     jwks_url = os.environ.get(
@@ -50,9 +52,12 @@ def get_current_user(
             signing_key.key,
             algorithms=["RS256"],
             audience=os.environ["CORE_OIDC_AUDIENCE"],
+            issuer=os.environ["CORE_OIDC_ISSUER"],
         )
-    except jwt.PyJWKClientError as exc:
+    except jwt.PyJWKClientConnectionError as exc:
         raise HTTPException(status_code=503, detail="identity provider unreachable") from exc
+    except jwt.PyJWKClientError as exc:
+        raise HTTPException(status_code=401, detail="invalid token") from exc
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
 
