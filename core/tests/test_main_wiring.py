@@ -1,5 +1,5 @@
 from app.main import create_app
-from app import routes
+from app.configs import routes
 from app.geonode import GeoNodeItemClient, StubItemClient
 
 

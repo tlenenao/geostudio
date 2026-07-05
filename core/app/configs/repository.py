@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Config, ConfigRevision
-from app.schemas import BuilderConfig
+from app.configs.models import Config, ConfigRevision
+from app.configs.schemas import BuilderConfig
 
 
 class ConfigRead(BaseModel):
