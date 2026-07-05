@@ -55,6 +55,8 @@ jobs:
         working-directory: core
       - run: uv run python scripts/export_openapi.py openapi.json
         working-directory: core
+        env:
+          PYTHONPATH: .
       - run: npm ci
         working-directory: shell
       - run: npm run gen:api-types
