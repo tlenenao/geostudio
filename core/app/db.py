@@ -30,6 +30,7 @@ def init_db(engine: Engine) -> None:
     # Import models so they register on Base.metadata before create_all.
     from app.configs import models  # noqa: F401
     from app.tenants import models as tenants_models  # noqa: F401
+    from app.users import models as users_models  # noqa: F401
 
     Base.metadata.create_all(engine)
 
