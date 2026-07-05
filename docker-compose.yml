@@ -158,6 +158,9 @@ services:
     build: ./core
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
+      CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://keycloak:8080/realms/geostudio}
+      CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
     ports:
       - "8200:8200"
     networks: [gis-net]
