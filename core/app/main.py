@@ -1,4 +1,3 @@
-import logging
 import os
 from collections.abc import Iterator
 
@@ -26,21 +25,9 @@ def create_app() -> FastAPI:
 
     app.dependency_overrides[db.get_session] = get_session
 
-    geonode_url = os.environ.get("GEONODE_BASE_URL")
-    geonode_token = os.environ.get("GEONODE_TOKEN")
-    if geonode_url and geonode_token:
-        from app.geonode import GeoNodeItemClient
-
-        geonode_client = GeoNodeItemClient(geonode_url, geonode_token)
-        app.dependency_overrides[configs_routes.get_item_client] = lambda: geonode_client
-    else:
-        logging.getLogger("uvicorn.error").warning(
-            "GEONODE_BASE_URL/GEONODE_TOKEN not set; item creation uses the in-memory stub."
-        )
-
-    app.include_router(auth_routes.router)
     app.include_router(configs_routes.router)
     app.include_router(items_routes.router)
+    app.include_router(auth_routes.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
