@@ -33,7 +33,14 @@ def init_db(engine: Engine) -> None:
     from app.tenants import models as tenants_models  # noqa: F401
     from app.users import models as users_models  # noqa: F401
 
-    Base.metadata.create_all(engine)
+    # Alembic migrations (core/alembic/versions/) are the sole source of truth
+    # for schema on real databases (Postgres). create_all() is only safe/used
+    # for the fast-test and local-dev SQLite path, where there is no migration
+    # history to conflict with. Running it against Postgres too would race
+    # with `alembic upgrade head`: whichever runs second fails with
+    # "relation already exists".
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(engine)
 
 
 def get_session() -> Iterator[Session]:  # pragma: no cover - overridden at runtime
