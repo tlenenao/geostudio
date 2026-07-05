@@ -3,6 +3,9 @@ import pytest
 from app.db import make_engine, make_session_factory, init_db
 from app.configs import repository as repo
 from app.configs.schemas import BuilderConfig
+from app.items.models import Item
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
 @pytest.fixture()
@@ -24,7 +27,24 @@ def _config(kind: str = "app", widget: str = "map") -> BuilderConfig:
     })
 
 
+def _make_item(session, item_id: str) -> None:
+    # Config.item_id is now a real, non-null FK to items.id (Step 6): tests
+    # that create a Config must first insert a matching Item row, or SQLite's
+    # now-enforced FK (Step 5) raises IntegrityError on the Config insert.
+    tenant = get_or_create_default_tenant(session)
+    user = get_or_create_user(
+        session, tenant_id=tenant.id, oidc_sub="sub-1",
+        username="alice", email=None, first_name="", last_name="",
+    )
+    session.add(Item(
+        id=item_id, tenant_id=tenant.id, owner_id=user.id,
+        resource_type="app", title="placeholder",
+    ))
+    session.commit()
+
+
 def test_create_then_get(session):
+    _make_item(session, "item-1")
     created = repo.create_config(session, _config(), item_id="item-1")
     assert created.version == 1
     assert created.itemId == "item-1"
@@ -40,7 +60,8 @@ def test_get_missing_returns_none(session):
 
 
 def test_update_creates_new_revision(session):
-    created = repo.create_config(session, _config(widget="map"), item_id=None)
+    _make_item(session, "item-1")
+    created = repo.create_config(session, _config(widget="map"), item_id="item-1")
     updated = repo.update_config(session, created.id, _config(widget="table"))
     assert updated is not None
     assert updated.version == 2
@@ -55,7 +76,8 @@ def test_update_missing_returns_none(session):
 
 
 def test_rollback_restores_old_revision_as_new(session):
-    created = repo.create_config(session, _config(widget="map"), item_id=None)
+    _make_item(session, "item-1")
+    created = repo.create_config(session, _config(widget="map"), item_id="item-1")
     repo.update_config(session, created.id, _config(widget="table"))
 
     rolled = repo.rollback_config(session, created.id, version=1)
@@ -66,11 +88,13 @@ def test_rollback_restores_old_revision_as_new(session):
 
 
 def test_rollback_missing_version_returns_none(session):
-    created = repo.create_config(session, _config(), item_id=None)
+    _make_item(session, "item-1")
+    created = repo.create_config(session, _config(), item_id="item-1")
     assert repo.rollback_config(session, created.id, version=99) is None
 
 
 def test_delete_config_removes_config_and_revisions(session):
+    _make_item(session, "item-1")
     created = repo.create_config(session, _config(widget="map"), item_id="item-1")
     repo.update_config(session, created.id, _config(widget="table"))
 
@@ -84,6 +108,7 @@ def test_delete_missing_config_returns_false(session):
 
 
 def test_get_config_by_item_returns_latest(session):
+    _make_item(session, "item-7")
     created = repo.create_config(session, _config(widget="map"), item_id="item-7")
     repo.update_config(session, created.id, _config(widget="table"))
     found = repo.get_config_by_item(session, "item-7")
