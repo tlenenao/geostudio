@@ -31,7 +31,7 @@ def _delete_config_and_item(session: Session, config_id: str, item_id: str) -> N
     session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
     session.execute(delete(Config).where(Config.id == config_id))
     session.execute(delete(Item).where(Item.id == item_id))
-    session.commit()
+    session.flush()
 
 
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)

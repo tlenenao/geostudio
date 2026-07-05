@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import db
 from app.auth import routes as auth_routes
 from app.configs import routes as configs_routes
-from app.db import init_db, make_engine, make_session_factory
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import routes as items_routes
 
 
@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
     session_factory = make_session_factory(engine)
 
     def get_session() -> Iterator[Session]:
-        with session_factory() as session:
+        with request_scoped_session(session_factory) as session:
             yield session
 
     app.dependency_overrides[db.get_session] = get_session
