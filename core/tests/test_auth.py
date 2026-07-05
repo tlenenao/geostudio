@@ -80,7 +80,13 @@ def test_oidc_mode_rejects_wrong_audience(monkeypatch, session):
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()
     token = jwt.encode(
-        {"sub": "sub-123", "aud": "someone-else"}, private_key, algorithm="RS256"
+        {
+            "sub": "sub-123",
+            "aud": "someone-else",
+            "iss": "https://keycloak.example/realms/geostudio",
+        },
+        private_key,
+        algorithm="RS256",
     )
     monkeypatch.setattr(dependency, "_jwks_client", lambda: _FakeJWKSClient(public_key))
 
@@ -110,6 +116,48 @@ def test_oidc_mode_rejects_wrong_issuer(monkeypatch, session):
 
     with pytest.raises(HTTPException) as exc_info:
         dependency.get_current_user(authorization=f"Bearer {token}", session=session)
+    assert exc_info.value.status_code == 401
+
+
+class _RaisingJWKSClient:
+    def __init__(self, exc):
+        self._exc = exc
+
+    def get_signing_key_from_jwt(self, token):
+        raise self._exc
+
+
+def test_jwks_connection_error_returns_503(monkeypatch, session):
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
+    monkeypatch.setenv("CORE_OIDC_ISSUER", "https://keycloak.example/realms/geostudio")
+    monkeypatch.setenv("CORE_OIDC_AUDIENCE", "geostudio-core")
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        dependency,
+        "_jwks_client",
+        lambda: _RaisingJWKSClient(jwt.PyJWKClientConnectionError("network down")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency.get_current_user(authorization="Bearer sometoken", session=session)
+    assert exc_info.value.status_code == 503
+
+
+def test_jwks_unknown_kid_returns_401(monkeypatch, session):
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
+    monkeypatch.setenv("CORE_OIDC_ISSUER", "https://keycloak.example/realms/geostudio")
+    monkeypatch.setenv("CORE_OIDC_AUDIENCE", "geostudio-core")
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        dependency,
+        "_jwks_client",
+        lambda: _RaisingJWKSClient(jwt.PyJWKClientError("Unable to find a signing key")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency.get_current_user(authorization="Bearer sometoken", session=session)
     assert exc_info.value.status_code == 401
 
 
