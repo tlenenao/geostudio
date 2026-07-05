@@ -55,6 +55,7 @@ def test_oidc_mode_validates_and_provisions_user(monkeypatch, session):
         {
             "sub": "sub-123",
             "aud": "geostudio-core",
+            "iss": "https://keycloak.example/realms/geostudio",
             "preferred_username": "alice",
             "email": "alice@example.com",
             "given_name": "Alice",
@@ -86,3 +87,37 @@ def test_oidc_mode_rejects_wrong_audience(monkeypatch, session):
     with pytest.raises(HTTPException) as exc_info:
         dependency.get_current_user(authorization=f"Bearer {token}", session=session)
     assert exc_info.value.status_code == 401
+
+
+def test_oidc_mode_rejects_wrong_issuer(monkeypatch, session):
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
+    monkeypatch.setenv("CORE_OIDC_ISSUER", "https://keycloak.example/realms/geostudio")
+    monkeypatch.setenv("CORE_OIDC_AUDIENCE", "geostudio-core")
+    from fastapi import HTTPException
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    token = jwt.encode(
+        {
+            "sub": "sub-123",
+            "aud": "geostudio-core",
+            "iss": "https://someone-else.example/realms/other",
+        },
+        private_key,
+        algorithm="RS256",
+    )
+    monkeypatch.setattr(dependency, "_jwks_client", lambda: _FakeJWKSClient(public_key))
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency.get_current_user(authorization=f"Bearer {token}", session=session)
+    assert exc_info.value.status_code == 401
+
+
+def test_jwks_client_is_memoized(monkeypatch):
+    monkeypatch.setenv("CORE_OIDC_ISSUER", "https://keycloak.example/realms/geostudio")
+    dependency._jwks_client.cache_clear()
+
+    client1 = dependency._jwks_client()
+    client2 = dependency._jwks_client()
+
+    assert client1 is client2
