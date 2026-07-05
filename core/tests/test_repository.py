@@ -1,8 +1,8 @@
 import pytest
 
 from app.db import make_engine, make_session_factory, init_db
-from app import repository as repo
-from app.schemas import BuilderConfig
+from app.configs import repository as repo
+from app.configs.schemas import BuilderConfig
 
 
 @pytest.fixture()
