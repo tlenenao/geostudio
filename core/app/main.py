@@ -29,6 +29,18 @@ def create_app() -> FastAPI:
     app.include_router(items_routes.router)
     app.include_router(auth_routes.router)
 
+    s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
+    s3_access_key = os.environ.get("S3_ACCESS_KEY")
+    s3_secret_key = os.environ.get("S3_SECRET_KEY")
+    s3_bucket = os.environ.get("S3_THUMBNAILS_BUCKET", "geostudio-thumbnails")
+    if s3_endpoint and s3_access_key and s3_secret_key:
+        from app.items.storage import S3ThumbnailStore
+
+        app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: S3ThumbnailStore(
+            endpoint_url=s3_endpoint, access_key=s3_access_key,
+            secret_key=s3_secret_key, bucket=s3_bucket,
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}

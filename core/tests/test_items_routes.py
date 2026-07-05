@@ -1,3 +1,5 @@
+import io
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,6 +8,8 @@ from app import db
 from app.auth.dependency import get_current_user
 from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.items import repository as items_repo
+from app.items import routes as items_routes
+from app.items.storage import InMemoryThumbnailStore
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -89,3 +93,38 @@ def test_patch_item_updates_title(client):
 
 def test_patch_item_missing_returns_404(client):
     assert client.patch("/items/nope", json={"title": "x"}).status_code == 404
+
+
+def test_upload_and_read_thumbnail(client):
+    item_id = _seed_item(client)
+    store = InMemoryThumbnailStore()
+    client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
+
+    upload = client.post(
+        f"/items/{item_id}/thumbnail",
+        files={"file": ("thumb.png", io.BytesIO(b"fake-png-bytes"), "image/png")},
+    )
+    assert upload.status_code == 204
+
+    read = client.get(f"/items/{item_id}/thumbnail")
+    assert read.status_code == 200
+    assert read.content == b"fake-png-bytes"
+    assert read.headers["content-type"] == "image/png"
+
+
+def test_upload_thumbnail_rejects_non_image(client):
+    item_id = _seed_item(client)
+    store = InMemoryThumbnailStore()
+    client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
+
+    response = client.post(
+        f"/items/{item_id}/thumbnail",
+        files={"file": ("doc.pdf", io.BytesIO(b"not-an-image"), "application/pdf")},
+    )
+    assert response.status_code == 400
+
+
+def test_read_thumbnail_missing_returns_404(client):
+    item_id = _seed_item(client)
+    response = client.get(f"/items/{item_id}/thumbnail")
+    assert response.status_code == 404
