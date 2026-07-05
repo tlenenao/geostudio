@@ -91,6 +91,22 @@ def list_items(
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 
+def set_thumbnail_key(session: Session, *, tenant_id: str, item_id: str, thumbnail_key: str) -> None:
+    item = session.execute(
+        select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if item is None:
+        return
+    item.thumbnail_key = thumbnail_key
+    session.flush()
+
+
+def get_thumbnail_key(session: Session, *, tenant_id: str, item_id: str) -> str | None:
+    return session.scalar(
+        select(Item.thumbnail_key).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    )
+
+
 def update_item(
     session: Session,
     *,

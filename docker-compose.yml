@@ -161,10 +161,14 @@ services:
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
       CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://keycloak:8080/realms/geostudio}
       CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_THUMBNAILS_BUCKET: geostudio-thumbnails
     ports:
       - "8200:8200"
     networks: [gis-net]
-    depends_on: [pgbouncer]
+    depends_on: [pgbouncer, minio]
     restart: unless-stopped
 
   # ─── Auth ──────────────────────────────────────────────
