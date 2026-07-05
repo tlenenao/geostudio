@@ -10,6 +10,7 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import Base
+from app.audit import models as audit_models  # noqa: F401
 from app.configs import models as configs_models  # noqa: F401 — registers Config/ConfigRevision on Base.metadata
 from app.tenants import models as tenants_models  # noqa: F401
 from app.users import models as users_models  # noqa: F401
