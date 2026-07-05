@@ -3,9 +3,14 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app import db
+from app.audit.models import AuditLog
 from app.db import make_engine, make_session_factory, init_db
 from app.geonode import StubItemClient
 from app.configs import routes
+from app.auth.dependency import get_current_user
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+from sqlalchemy import select
 
 
 @pytest.fixture()
@@ -15,6 +20,14 @@ def client():
     Session = make_session_factory(engine)
     stub = StubItemClient()
 
+    with Session() as setup_session:
+        tenant = get_or_create_default_tenant(setup_session)
+        user = get_or_create_user(
+            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
+            username="alice", email="alice@example.com",
+            first_name="Alice", last_name="Doe",
+        )
+
     app = create_app()
 
     def override_session():
@@ -23,9 +36,12 @@ def client():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[routes.get_item_client] = lambda: stub
+    app.dependency_overrides[get_current_user] = lambda: user
 
     test_client = TestClient(app)
     test_client.stub = stub  # type: ignore[attr-defined]
+    test_client.session_factory = Session  # type: ignore[attr-defined]
+    test_client.user = user  # type: ignore[attr-defined]
     yield test_client
     engine.dispose()
 
@@ -245,3 +261,13 @@ def test_put_config_by_item_404_when_missing(client):
             "basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []}},
     )
     assert resp.status_code == 404
+
+
+def test_create_config_writes_audit_log(client):
+    created = _create(client)
+    with client.session_factory() as session:
+        rows = session.scalars(select(AuditLog)).all()
+        assert len(rows) == 1
+        assert rows[0].action == "config.create"
+        assert rows[0].actor_id == client.user.id
+        assert rows[0].object_id == created["id"]
