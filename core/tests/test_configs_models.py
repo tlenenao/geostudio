@@ -2,6 +2,9 @@ from sqlalchemy import select
 
 from app.db import Base, make_engine, make_session_factory, init_db
 from app.configs.models import Config, ConfigRevision
+from app.items.models import Item
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
 def test_can_persist_config_and_revision():
@@ -11,7 +14,21 @@ def test_can_persist_config_and_revision():
         Session = make_session_factory(engine)
 
         with Session() as session:
-            config = Config(id="c1", kind="app", item_id=None, current_version=1)
+            tenant = get_or_create_default_tenant(session)
+            user = get_or_create_user(
+                session, tenant_id=tenant.id, oidc_sub="sub-1",
+                username="alice", email=None, first_name="", last_name="",
+            )
+            session.add(Item(
+                id="item-1", tenant_id=tenant.id, owner_id=user.id,
+                resource_type="app", title="My App",
+            ))
+            # Explicit flush: Item and Config aren't linked by an ORM
+            # relationship (just a raw FK column), so the unit of work isn't
+            # guaranteed to insert `items` before `configs` in the same
+            # flush; force it so the now-enforced FK doesn't fail.
+            session.flush()
+            config = Config(id="c1", kind="app", item_id="item-1", current_version=1)
             session.add(config)
             session.add(ConfigRevision(config_id="c1", version=1, data={"kind": "app"}))
             session.commit()

@@ -14,6 +14,6 @@ def get_or_create_default_tenant(session: Session) -> Tenant:
         return tenant
     tenant = Tenant(id=uuid.uuid4().hex, slug=DEFAULT_TENANT_SLUG, name="Default")
     session.add(tenant)
-    session.commit()
+    session.flush()
     session.refresh(tenant)
     return tenant

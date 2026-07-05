@@ -25,4 +25,4 @@ def write_audit(
             payload=payload or {},
         )
     )
-    session.commit()
+    session.flush()
