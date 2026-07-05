@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
 from app import db
+from app.auth import routes as auth_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory
 
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
             "GEONODE_BASE_URL/GEONODE_TOKEN not set; item creation uses the in-memory stub."
         )
 
+    app.include_router(auth_routes.router)
     app.include_router(configs_routes.router)
 
     @app.get("/health")
