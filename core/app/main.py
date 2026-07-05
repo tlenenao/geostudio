@@ -9,6 +9,7 @@ from app import db
 from app.auth import routes as auth_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory
+from app.items import routes as items_routes
 
 
 def create_app() -> FastAPI:
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_routes.router)
     app.include_router(configs_routes.router)
+    app.include_router(items_routes.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
