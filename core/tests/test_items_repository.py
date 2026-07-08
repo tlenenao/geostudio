@@ -78,7 +78,7 @@ def test_list_items_scope_public(session, tenant_and_user):
     assert [i.title for i in page.items] == ["Published"]
 
 
-def test_list_items_scope_shared_is_empty(session, tenant_and_user):
+def test_list_items_scope_shared_excludes_owned_items_with_no_shares(session, tenant_and_user):
     tenant, user = tenant_and_user
     repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Any")
 
@@ -88,6 +88,79 @@ def test_list_items_scope_shared_is_empty(session, tenant_and_user):
     )
     assert page.total == 0
     assert page.items == []
+
+
+def test_list_items_scope_shared_and_all(session, tenant_and_user):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    tenant, owner = tenant_and_user
+    bob = get_or_create_user(
+        session, tenant_id=tenant.id, oidc_sub="sub-bob",
+        username="bob", email=None, first_name="", last_name="",
+    )
+    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers")
+    session.add(group)
+    session.flush()
+    session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=tenant.id))
+
+    owned_by_owner = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Owner's"
+    )
+    shared_with_bob = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Shared"
+    )
+    session.add(ItemShare(item_id=shared_with_bob.id, group_id=group.id, tenant_id=tenant.id, role="viewer"))
+    public_item = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Public"
+    )
+    public_item.is_public = True
+    invisible = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Invisible"
+    )
+    session.flush()
+
+    shared_page = repo.list_items(
+        session, tenant_id=tenant.id, current_user_id=bob.id,
+        q=None, resource_type=None, scope="shared", page=1, page_size=12,
+    )
+    assert shared_page.total == 1
+    assert [i.title for i in shared_page.items] == ["Shared"]
+
+    all_page = repo.list_items(
+        session, tenant_id=tenant.id, current_user_id=bob.id,
+        q=None, resource_type=None, scope="all", page=1, page_size=12,
+    )
+    assert all_page.total == 2
+    titles = {i.title for i in all_page.items}
+    assert titles == {"Shared", "Public"}
+    assert "Invisible" not in titles
+    assert "Owner's" not in titles  # bob doesn't own it, isn't shared, not public
+
+    # Pagination correctness (spec §7): a small page_size must still report the
+    # true total and return exactly the items for that page, not an
+    # in-memory-filtered approximation.
+    first_of_two = repo.list_items(
+        session, tenant_id=tenant.id, current_user_id=bob.id,
+        q=None, resource_type=None, scope="all", page=1, page_size=1,
+    )
+    assert first_of_two.total == 2
+    assert len(first_of_two.items) == 1
+
+
+def test_get_access_facts(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+
+    facts = repo.get_access_facts(session, tenant_id=tenant.id, item_id=item.id)
+    assert facts is not None
+    assert facts.owner_id == user.id
+    assert facts.is_public is False
+    assert facts.is_published is False
+
+
+def test_get_access_facts_missing_returns_none(session, tenant_and_user):
+    tenant, _ = tenant_and_user
+    assert repo.get_access_facts(session, tenant_id=tenant.id, item_id="nope") is None
 
 
 def test_list_items_search_and_type_filter(session, tenant_and_user):

@@ -6,6 +6,7 @@ from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
+from app.sharing.authorization import can
 from app.users.models import User
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,9 @@ def get_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
     result = repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
@@ -56,6 +60,12 @@ def update_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to modify this item")
+
     result = repo.update_item(
         session, tenant_id=user.tenant_id, item_id=item_id,
         title=patch.title, abstract=patch.abstract, keywords=patch.keywords,
@@ -85,9 +95,11 @@ def upload_thumbnail(
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
-    existing = repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
-    if existing is None:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to modify this item")
 
     content_type = file.content_type or "application/octet-stream"
     if not content_type.startswith("image/"):
@@ -109,6 +121,9 @@ def read_thumbnail(
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
     key = repo.get_thumbnail_key(session, tenant_id=user.tenant_id, item_id=item_id)
     if key is None:
         raise HTTPException(status_code=404, detail="no thumbnail")
