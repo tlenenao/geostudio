@@ -170,6 +170,18 @@ def update_item(
     return _to_read(item, owner_username)
 
 
+def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
+    row = session.execute(
+        select(Item, User.username)
+        .join(User, User.id == Item.owner_id)
+        .where(Item.id == item_id, Item.is_published.is_(True))
+    ).first()
+    if row is None:
+        return None
+    item, owner_username = row
+    return _to_read(item, owner_username)
+
+
 def set_is_public(session: Session, *, tenant_id: str, item_id: str, is_public: bool) -> None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
