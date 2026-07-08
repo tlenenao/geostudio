@@ -45,6 +45,7 @@ def client():
     test_client = TestClient(app)
     test_client.session_factory = Session  # type: ignore[attr-defined]
     test_client.user = user  # type: ignore[attr-defined]
+    test_client.tenant = tenant  # type: ignore[attr-defined]
     yield test_client
     engine.dispose()
 
@@ -364,6 +365,138 @@ def _other_tenant_user(client) -> object:
         session.commit()
         session.refresh(mallory)
     return mallory
+
+
+def _same_tenant_stranger(client) -> object:
+    with client.session_factory() as session:
+        stranger = get_or_create_user(
+            session, tenant_id=client.tenant.id,
+            oidc_sub="sub-stranger", username="stranger",
+            email="stranger@example.com", first_name="Stranger", last_name="Doe",
+        )
+        session.commit()
+        session.refresh(stranger)
+    return stranger
+
+
+def test_get_config_invisible_to_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.get(f"/configs/{created['id']}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_put_config_by_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.put(f"/configs/{created['id']}", json=_config_body())
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_revisions_by_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.get(f"/configs/{created['id']}/revisions")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_rollback_by_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_delete_config_by_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.delete(f"/configs/{created['id']}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+    with client.session_factory() as session:
+        assert session.get(Item, created["itemId"]) is not None
+
+
+def test_get_config_by_item_invisible_to_stranger_returns_404(client):
+    created = _create(client)
+    stranger = _same_tenant_stranger(client)
+    client.app.dependency_overrides[get_current_user] = lambda: stranger
+    try:
+        response = client.get(f"/configs/by-item/{created['itemId']}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_group_editor_can_update_config(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    created = _create(client)
+    with client.session_factory() as session:
+        editor = get_or_create_user(
+            session, tenant_id=client.tenant.id, oidc_sub="sub-editor",
+            username="editor", email=None, first_name="", last_name="",
+        )
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Editors", created_by=client.user.id)
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=editor.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(
+            item_id=created["itemId"], group_id=group.id, tenant_id=client.tenant.id, role="editor",
+        ))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: editor
+    try:
+        response = client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 200
+
+
+def test_group_viewer_cannot_update_config_returns_403(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    created = _create(client)
+    with client.session_factory() as session:
+        viewer = get_or_create_user(
+            session, tenant_id=client.tenant.id, oidc_sub="sub-viewer",
+            username="viewer", email=None, first_name="", last_name="",
+        )
+        group = Group(id="g-viewer", tenant_id=client.tenant.id, name="Viewers", created_by=client.user.id)
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=viewer.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(
+            item_id=created["itemId"], group_id=group.id, tenant_id=client.tenant.id, role="viewer",
+        ))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: viewer
+    try:
+        response = client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 403
 
 
 def test_delete_config_cross_tenant_returns_404_and_leaves_data_intact(client):

@@ -6,6 +6,9 @@ from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
+from app.sharing import repository as sharing_repo
+from app.sharing.authorization import can
+from app.sharing.schemas import GroupShare, Sharing
 from app.users.models import User
 from sqlalchemy.orm import Session
 
@@ -43,6 +46,9 @@ def get_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
     result = repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
@@ -56,6 +62,12 @@ def update_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to modify this item")
+
     result = repo.update_item(
         session, tenant_id=user.tenant_id, item_id=item_id,
         title=patch.title, abstract=patch.abstract, keywords=patch.keywords,
@@ -85,9 +97,11 @@ def upload_thumbnail(
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
-    existing = repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
-    if existing is None:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to modify this item")
 
     content_type = file.content_type or "application/octet-stream"
     if not content_type.startswith("image/"):
@@ -109,8 +123,56 @@ def read_thumbnail(
     user: User = Depends(get_current_user),
     store: ThumbnailStore = Depends(get_thumbnail_store),
 ) -> Response:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
     key = repo.get_thumbnail_key(session, tenant_id=user.tenant_id, item_id=item_id)
     if key is None:
         raise HTTPException(status_code=404, detail="no thumbnail")
     content, content_type = store.read(key)
     return Response(content=content, media_type=content_type)
+
+
+@router.get("/items/{item_id}/sharing", response_model=Sharing)
+def get_sharing(
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Sharing:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    shares = sharing_repo.list_shares(session, item_id=item_id)
+    return Sharing(
+        public=facts.is_public,
+        groups=[GroupShare(groupId=s.group_id, role=s.role) for s in shares],
+    )
+
+
+@router.put("/items/{item_id}/sharing", status_code=status.HTTP_204_NO_CONTENT)
+def set_sharing(
+    item_id: str,
+    body: Sharing,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    if not can(session, user_id=user.id, action="share", item=facts):
+        raise HTTPException(status_code=403, detail="not allowed to share this item")
+
+    ok = sharing_repo.replace_shares(
+        session, tenant_id=user.tenant_id, item_id=item_id,
+        shares=[(g.groupId, g.role) for g in body.groups],
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="group not found")
+    repo.set_is_public(session, tenant_id=user.tenant_id, item_id=item_id, is_public=body.public)
+
+    write_audit(
+        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+        action="item.share", object_type="item", object_id=item_id,
+        payload={"public": body.public, "groups": [g.model_dump() for g in body.groups]},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,6 +10,7 @@ from app.configs.schemas import BuilderConfig
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
@@ -24,12 +25,24 @@ class RollbackRequest(BaseModel):
     version: int
 
 
+def _require_access(
+    session: Session, *, user: User, item_id: str, action: str
+) -> None:
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="not found")
+    if action != "read" and not can(session, user_id=user.id, action=action, item=facts):
+        raise HTTPException(status_code=403, detail="not allowed")
+
+
 def _delete_config_and_item(session: Session, config_id: str, item_id: str, tenant_id: str) -> None:
     from sqlalchemy import delete
     from app.configs.models import ConfigRevision, Config
+    from app.sharing.models import ItemShare
 
     session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
     session.execute(delete(Config).where(Config.id == config_id))
+    session.execute(delete(ItemShare).where(ItemShare.item_id == item_id))
     session.execute(delete(Item).where(Item.id == item_id, Item.tenant_id == tenant_id))
     session.flush()
 
@@ -59,10 +72,15 @@ def create_config(
 
 
 @router.get("/configs/{config_id}", response_model=ConfigRead)
-def get_config(config_id: str, session: Session = Depends(get_session)) -> ConfigRead:
+def get_config(
+    config_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ConfigRead:
     result = repo.get_config(session, config_id)
-    if result is None:
+    if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_access(session, user=user, item_id=result.itemId, action="read")
     return result
 
 
@@ -73,6 +91,11 @@ def update_config(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    existing = repo.get_config(session, config_id)
+    if existing is None or existing.itemId is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    _require_access(session, user=user, item_id=existing.itemId, action="write")
+
     result = repo.update_config(session, config_id, config)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
@@ -85,8 +108,14 @@ def update_config(
 
 @router.get("/configs/{config_id}/revisions", response_model=list[RevisionInfo])
 def list_revisions(
-    config_id: str, session: Session = Depends(get_session)
+    config_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> list[RevisionInfo]:
+    existing = repo.get_config(session, config_id)
+    if existing is None or existing.itemId is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    _require_access(session, user=user, item_id=existing.itemId, action="read")
     return repo.list_revisions(session, config_id)
 
 
@@ -97,6 +126,11 @@ def rollback_config(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    existing = repo.get_config(session, config_id)
+    if existing is None or existing.itemId is None:
+        raise HTTPException(status_code=404, detail="config not found")
+    _require_access(session, user=user, item_id=existing.itemId, action="write")
+
     result = repo.rollback_config(session, config_id, request.version)
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")
@@ -115,12 +149,10 @@ def delete_config(
     user: User = Depends(get_current_user),
 ) -> Response:
     result = repo.get_config(session, config_id)
-    if result is None:
+    if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
-    if result.itemId is None or items_repo.get_item(
-        session, tenant_id=user.tenant_id, item_id=result.itemId
-    ) is None:
-        raise HTTPException(status_code=404, detail="config not found")
+    _require_access(session, user=user, item_id=result.itemId, action="delete")
+
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
@@ -135,8 +167,11 @@ def delete_config(
 
 @router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
 def get_config_by_item(
-    item_id: str, session: Session = Depends(get_session)
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    _require_access(session, user=user, item_id=item_id, action="read")
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
@@ -150,6 +185,7 @@ def update_config_by_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    _require_access(session, user=user, item_id=item_id, action="write")
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
@@ -169,10 +205,9 @@ def delete_config_by_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
+    _require_access(session, user=user, item_id=item_id, action="delete")
     result = repo.get_config_by_item(session, item_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="config not found")
-    if items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id) is None:
         raise HTTPException(status_code=404, detail="config not found")
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
@@ -196,10 +231,9 @@ def delete_item(
     # its config_revisions before the DB cascades configs -> items (see plan
     # Architecture). app.items must never import app.configs, so this
     # cross-cutting orchestration belongs to the configs layer.
+    _require_access(session, user=user, item_id=item_id, action="delete")
     result = repo.get_config_by_item(session, item_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="item not found")
-    if items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id) is None:
         raise HTTPException(status_code=404, detail="item not found")
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
