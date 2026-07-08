@@ -128,3 +128,76 @@ def test_read_thumbnail_missing_returns_404(client):
     item_id = _seed_item(client)
     response = client.get(f"/items/{item_id}/thumbnail")
     assert response.status_code == 404
+
+
+def _other_user(client, username="mallory"):
+    with client.session_factory() as session:
+        tenant = get_or_create_default_tenant(session)
+        user = get_or_create_user(
+            session, tenant_id=tenant.id, oidc_sub=f"sub-{username}",
+            username=username, email=None, first_name="", last_name="",
+        )
+        session.commit()
+        session.refresh(user)
+    return user
+
+
+def test_get_item_invisible_to_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.get(f"/items/{item_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_patch_item_by_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_patch_item_by_group_viewer_returns_403(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    item_id = _seed_item(client)
+    bob = _other_user(client, "bob")
+    with client.session_factory() as session:
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers")
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        get_response = client.get(f"/items/{item_id}")
+        patch_response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert get_response.status_code == 200
+    assert patch_response.status_code == 403
+
+
+def test_upload_thumbnail_by_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    store = InMemoryThumbnailStore()
+    client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.post(
+            f"/items/{item_id}/thumbnail",
+            files={"file": ("thumb.png", io.BytesIO(b"x"), "image/png")},
+        )
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
