@@ -93,6 +93,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_groups_get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{group_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Member */
+        post: operations["add_member_groups__group_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -146,6 +181,24 @@ export interface paths {
         patch: operations["update_item_items__item_id__patch"];
         trace?: never;
     };
+    "/items/{item_id}/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sharing */
+        get: operations["get_sharing_items__item_id__sharing_get"];
+        /** Set Sharing */
+        put: operations["set_sharing_items__item_id__sharing_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/items/{item_id}/thumbnail": {
         parameters: {
             query?: never;
@@ -181,10 +234,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/configs/by-item/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Config By Item */
+        get: operations["get_public_config_by_item_public_configs_by_item__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Item */
+        get: operations["get_public_item_public_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddMemberRequest */
+        AddMemberRequest: {
+            /** Userid */
+            userId: string;
+        };
         /** BaseMap */
         BaseMap: {
             /** Style */
@@ -242,6 +334,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CreateGroupRequest */
+        CreateGroupRequest: {
+            /** Name */
+            name: string;
+        };
         /** DataSource */
         DataSource: {
             /** Id */
@@ -256,6 +353,23 @@ export interface components {
             service: string;
             /** Type */
             type: string;
+        };
+        /** GroupRead */
+        GroupRead: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** GroupShare */
+        GroupShare: {
+            /** Groupid */
+            groupId: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "viewer" | "editor";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -447,6 +561,13 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** Sharing */
+        Sharing: {
+            /** Groups */
+            groups: components["schemas"]["GroupShare"][];
+            /** Public */
+            public: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -516,7 +637,9 @@ export interface operations {
     get_config_by_item_configs_by_item__item_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string;
+            };
             path: {
                 item_id: string;
             };
@@ -615,7 +738,9 @@ export interface operations {
     get_config_configs__config_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string;
+            };
             path: {
                 config_id: string;
             };
@@ -714,7 +839,9 @@ export interface operations {
     list_revisions_configs__config_id__revisions_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string;
+            };
             path: {
                 config_id: string;
             };
@@ -767,6 +894,107 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConfigRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_groups_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_groups_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_member_groups__group_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -939,6 +1167,74 @@ export interface operations {
             };
         };
     };
+    get_sharing_items__item_id__sharing_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sharing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_sharing_items__item_id__sharing_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Sharing"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_thumbnail_items__item_id__thumbnail_get: {
         parameters: {
             query?: never;
@@ -1025,6 +1321,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_config_by_item_public_configs_by_item__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_item_public_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemRead"];
                 };
             };
             /** @description Validation Error */
