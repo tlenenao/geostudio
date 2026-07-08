@@ -168,3 +168,13 @@ def update_item(
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
     return _to_read(item, owner_username)
+
+
+def set_is_public(session: Session, *, tenant_id: str, item_id: str, is_public: bool) -> None:
+    item = session.execute(
+        select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if item is None:
+        return
+    item.is_public = is_public
+    session.flush()
