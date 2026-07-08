@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockGeoNode } from "./mocks";
+import { mockCore } from "./mocks";
 
 test("publishing an item, capturing a thumbnail, and the runtime route still work", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
 
   // Create an app (lands on /apps/9/edit, per every other E2E spec's convention).
