@@ -18,8 +18,8 @@
 3. [Architecture cible de fin de feuille de route](#3-architecture-cible)
 4. [Le périmètre exact du remplacement de GeoNode](#4-périmètre-du-remplacement-de-geonode)
 5. [Modèle de données du cœur v0](#5-modèle-de-données-du-cœur-v0)
-6. [Phasage SP-1 → SP-9](#6-phasage)
-7. [Points d'arbitrage technique (A1–A15)](#7-points-darbitrage-technique)
+6. [Phasage SP-1 → SP-13](#6-phasage)
+7. [Points d'arbitrage technique (A1–A27)](#7-points-darbitrage-technique)
 8. [Décisions d'arbitrage](#8-décisions-darbitrage)
 9. [Ce qui est explicitement différé](#9-différé)
 10. [Risques transverses](#10-risques-transverses)
@@ -175,12 +175,22 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-7 | Recherche (pgvector) + MCP v1 | 25–45 h | SP-2, SP-6 | — |
 | SP-8 | SDK Web Components v1 | 60–110 h | SP-5 | **M5 SDK ouvrable** |
 | SP-9 | Durcissement produit public (v0.1) | 30–50 h + continu | tous | **M6 v0.1 publique** |
-| | **Total** | **≈ 390–695 h** | | ≈ 9–18 mois à 10–25 h/sem |
+| SP-10 | Observabilité & SLO (OpenTelemetry) | 25–45 h | SP-9 | **M7 exploitable** |
+| SP-11 | Lakehouse & CDC (GeoParquet, DuckDB) | 70–120 h | SP-6, SP-10 | **M8 data platform** |
+| SP-12 | Catalogue interopérable (STAC, DCAT, moissonnage) | 60–100 h | SP-6 | **M9 catalogue ouvert** |
+| SP-13 | 3D & impression | 50–90 h | SP-1 | **M10 3D & print** |
+| | **Total** | **≈ 595–1 050 h** | | ≈ 14–28 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
 volontairement minuscule et placé tôt : démo forte, coût faible, et il force la
 propreté de l'API du cœur.
+
+Les **SP-10 à SP-13** ont été ajoutés le 2026-07-05 (extension de périmètre :
+sortie du « différé ») ; leur position — *après* v0.1 — et leur ordre relatif
+sont fixés par l'arbitrage A27. SP-13 (3D & impression) ne dépend que du socle et
+peut s'intercaler plus tôt si un besoin utilisateur réel l'exige ; SP-12 peut
+précéder SP-11 si l'interop catalogue devient un argument commercial urgent.
 
 ---
 
@@ -423,6 +433,150 @@ contribuer.
 
 ---
 
+### SP-10 — Observabilité & SLO (OpenTelemetry)
+
+**Objectif.** La plateforme s'exploite : traces, métriques et logs standards,
+SLO packagés — en place au moment où la démo publique (SP-9) commence à recevoir
+du trafic réel.
+
+**Contenu.**
+- **OTel SDK** dans le cœur et les workers : auto-instrumentation FastAPI /
+  SQLAlchemy / httpx, spans sur les jobs procrastinate, logs structurés corrélés
+  au `trace_id`. Export **OTLP** configurable par env — aucun backend imposé.
+- **Profil compose optionnel** `--profile observability` : conteneur unique
+  `grafana/otel-lgtm` (Grafana + Loki + Tempo + Mimir) — la référence (A26) ;
+  OTLP standard pour brancher autre chose en production.
+- **Dashboards packagés** : santé du cœur (latence API P95, taux d'erreur),
+  tuiles Martin (ses métriques Prometheus existantes), jobs (backlog, échecs,
+  durée), PostgreSQL de base.
+- **SLO définis + alertes préconfigurées** : latence API Features P95 < 200 ms,
+  latence tuiles P95 < 50 ms, backlog de jobs sous seuil, taux 5xx < 1 %.
+  (La fraîcheur CDC s'y ajoute en SP-11.)
+- Quelques métriques métier : items créés, apps publiées, exécutions runtime.
+
+**Critères d'acceptation.** `docker compose --profile observability up` →
+dashboards alimentés sans configuration ; une requête lente est traçable de bout
+en bout (shell → cœur → SQL) ; les 4 SLO sont visibles et une alerte de test se
+déclenche.
+
+**Risques.** En faire trop : c'est une *référence d'exploitation* packagée, pas
+une plateforme d'observabilité. Le périmètre est celui des dashboards/SLO listés,
+point.
+
+---
+
+### SP-11 — Lakehouse & CDC (GeoParquet, DuckDB)
+
+**Objectif.** L'étage analytique de la vision : PostGIS (chaud) répliqué en
+continu vers GeoParquet sur MinIO (froid), interrogé par DuckDB dans le cœur.
+Le SIG rejoint la data platform.
+
+**Contenu.**
+- **Worker CDC** (A16) : slot de réplication logique PostgreSQL (pgoutput),
+  décodage des changements, écriture **GeoParquet partitionné** (collection +
+  temps), tombstones pour les suppressions, checkpointing et reprise sur panne ;
+  **backfill initial** par snapshot de table. Spike de validation en ouverture
+  de phase.
+- **Layout lakehouse** (A17) : GeoParquet plat + convention de partitionnement
+  documentée ; job de **compaction** planifié (procrastinate). Iceberg différé
+  (réévalué quand le versioning de données §13.2 montera).
+- **Module analytique du cœur** : DuckDB in-process (extension spatiale + httpfs
+  vers MinIO) ; **API d'agrégation structurée** (A19) — group-by, mesures,
+  filtres attributaires et spatiaux simples — consommée par les widgets
+  stats/charts (remplace l'agrégation client actuelle de `queryDataSource`).
+- **Endpoint SQL read-only sandboxé** réservé au rôle *analyste* (A19) : vues
+  autorisées par les permissions, quotas, timeout.
+- **SLO de fraîcheur CDC** (branché sur SP-10) : lag chaud→froid < 5 min.
+- DuckDB-**WASM** navigateur explicitement différé (A18) — deuxième étage, après
+  stabilisation du serveur.
+
+**Critères d'acceptation.** Une écriture PostGIS (formulaire SP-4) est visible
+dans le GeoParquet en < 5 min, suppressions comprises ; un widget Graphique
+agrège ~1 M de lignes en < 2 s via l'API analytique ; un analyste exécute du SQL
+read-only sur ses vues autorisées, un non-analyste reçoit 403 ; le lag CDC est
+visible dans les dashboards SP-10.
+
+**Risques.** Le CDC est le morceau le plus délicat de toute la feuille de route
+(slots qui gonflent le WAL, redémarrages, évolutions de schéma). Mitigation :
+spike d'ouverture, monitoring du lag dès le premier jour, procédure de
+re-backfill documentée ; en v1, un `ALTER TABLE` déclenche un re-backfill de la
+collection (pas de schema evolution incrémentale).
+
+---
+
+### SP-12 — Catalogue interopérable : STAC, DCAT, moissonnage
+
+**Objectif.** Le catalogue GeoStudio se lit avec les standards (STAC, DCAT) et
+lit les autres catalogues (moissonnage) — « le catalogue référence les assets là
+où ils sont ».
+
+**Contenu.**
+- **API STAC native dans le cœur** (A20) : classes de conformité progressives
+  (core → collections → item-search) sur les tables items/collections
+  existantes, mapping documenté ; conformité vérifiée par `stac-api-validator`
+  en CI ; la visibilité suit les permissions (le STAC anonyme n'expose que le
+  publié).
+- **Export DCAT-AP** JSON-LD moissonnable (A21), validé contre le validateur
+  data.gouv.fr — l'obligation open-data des collectivités couverte à peu de
+  frais.
+- **Moteur de moissonnage** : sources déclaratives (`harvest_sources` : type,
+  URL, planification, mode) exécutées en jobs procrastinate ; **référencement
+  pur par défaut, copie opt-in** par source (A23) qui route vers le pipeline
+  d'ingestion SP-6. Items moissonnés typés « référence externe » (source, lien,
+  fraîcheur, re-moissonnage).
+- **Connecteurs** (A22 — les quatre retenus), *chacun livrable séparément et
+  dans cet ordre* : ① catalogues STAC externes ; ② WMS/WFS GetCapabilities
+  (référencer un GeoServer existant en secondes) ; ③ CSW/ISO 19139
+  (GeoNetwork/geOrchestra — parser tolérant, champs minimaux) ; ④ CKAN/
+  data.gouv.fr.
+- UI : administration des sources, badge « externe » sur les items, ajout d'une
+  couche moissonnée (WMS/WFS) à une carte sans copie.
+
+**Critères d'acceptation.** QGIS (plugin STAC) navigue le catalogue ; l'export
+DCAT-AP passe le validateur data.gouv.fr ; une source GeoNetwork et un GeoServer
+sont moissonnés, cherchables, et une couche WMS moissonnée s'affiche dans une
+carte ; le re-moissonnage met à jour sans dupliquer.
+
+**Risques.** L'hétérogénéité ISO 19139 (profils, encodages) — parser tolérant et
+périmètre de champs minimal assumé. Quatre connecteurs = risque d'étalement :
+chaque connecteur est un incrément autonome, on peut s'arrêter entre deux.
+
+---
+
+### SP-13 — 3D & impression
+
+**Objectif.** Des maquettes 3D (3D Tiles) et du terrain dans les cartes ; des
+exports PNG/PDF mis en page depuis n'importe quelle carte ou app.
+
+**Contenu 3D** (A24) :
+- Type de couche `tiles3d` dans `MapConfig` ; rendu **deck.gl `Tile3DLayer`**
+  (loaders.gl) dans le MapView existant — pas de deuxième moteur carto ;
+  contrôles caméra (pitch/bearing) dans l'éditeur.
+- **Terrain** : source raster-dem MapLibre alimentée par un DEM COG servi par
+  TiTiler (déjà dans la stack) ; interrupteur terrain dans l'éditeur de carte.
+- Hébergement de tilesets 3D Tiles *existants* : upload (zip) → S3 → item ;
+  la **conversion** (py3dtiles, nuages de points…) est différée.
+
+**Contenu impression** (A25) :
+- **Worker d'export** : Playwright headless rend la vraie page runtime
+  (carte ou app) → PNG haute résolution / PDF — WYSIWYG exact des styles
+  MapLibre. Écart assumé avec la vision (QGIS Server), documenté : le print
+  « pro » (CMJN, très hautes résolutions) attendra une demande réelle.
+- **`PrintLayout` déclaratif** (encore une config) : format A4/A3
+  portrait/paysage, titre, légende, barre d'échelle, flèche nord, cartouche.
+- Bouton « Exporter » (visionneuse et runtime) → job asynchrone → lien de
+  téléchargement (S3 présigné).
+
+**Critères d'acceptation.** Un tileset 3D Tiles public s'affiche, terrain
+activé, navigable à > 30 fps sur un poste moyen ; export PDF A3 d'une carte avec
+légende et échelle correctes ; export d'un dashboard multi-widgets fidèle au
+rendu écran.
+
+**Risques.** Réglage du screen-space error de `Tile3DLayer` selon les tilesets ;
+Playwright alourdit l'image du worker (image worker dédiée à l'export).
+
+---
+
 ## 7. Points d'arbitrage technique
 
 Chaque point : options, avantages/inconvénients, recommandation. Les décisions
@@ -581,13 +735,135 @@ sous **Apache-2.0/MIT** pour ne pas contaminer les apps des utilisateurs.
 **Recommandation : (a)** — sauf si Q2 (premiers utilisateurs) révèle un déploiement
 réel.
 
+### A16 — Mécanisme de CDC (SP-11)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Réplication logique + worker maison** (slot pgoutput/wal2json lu par un worker qui écrit le GeoParquet) | Aucun composant en plus ; aligné vision (« CDC par logical replication ») ; contrôle total du format de sortie | Plomberie à écrire et durcir : gestion des slots, reprises, backpressure, WAL qui gonfle si le worker s'arrête |
+| (b) Debezium Server | Éprouvé, gère slots/offsets/reprises | Une JVM de plus, configuration lourde, pensé pour Kafka (sinks limités sans lui) — à contre-courant du scale-down |
+| (c) Synchro périodique (`updated_at`/exports) | Trivial | Pas du vrai CDC : suppressions ratées sans tombstones, fraîcheur en heures, double logique |
+
+**Recommandation : (a)**, avec spike de validation en ouverture de SP-11 et
+monitoring du lag dès le premier jour.
+
+### A17 — Format des tables froides (SP-11)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) GeoParquet plat + partitionnement par convention, Iceberg plus tard** | Simple ; lisible partout (DuckDB, QGIS, pandas) ; zéro catalogue de tables à opérer ; l'option « simple » de la vision §3 | Pas de time-travel ni schema evolution — l'étage 1 du versioning de données (§13.2) attendra Iceberg ; compaction maison |
+| (b) Iceberg dès le début (+ catalogue REST type Lakekeeper) | Time-travel jour 1, schema evolution, snapshots | Un service catalogue de plus ; écosystème Python encore mouvant ; complexité d'exploitation notable |
+
+**Recommandation : (a)** — Iceberg est réévalué quand la brique versioning montera.
+
+### A18 — Ordre d'exposition de l'analytique DuckDB (SP-11)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Serveur d'abord, WASM ensuite** | L'endpoint analytique du cœur profite immédiatement aux widgets stats/charts (remplace l'agrégation client), permissions contrôlées | Charge sur le cœur (mitigée : DuckDB in-process lit S3, cache) |
+| (b) DuckDB-WASM navigateur d'abord | Zéro charge serveur ; exploration locale spectaculaire (démonstrateur de la vision) | Les parquet descendent au client (permission = fichier entier) ; sert l'analyste, pas les widgets |
+| (c) Les deux dans la même phase | Cohérence | Double chantier — phase énorme, risque d'enlisement |
+
+**Recommandation : (a).**
+
+### A19 — Surface de requête analytique (SP-11)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) API structurée pour les widgets + SQL read-only sandboxé réservé au rôle analyste** | Widgets sûrs et générables par IA ; l'analyste (persona n° 2 de la vision) est servi ; périmètre contrôlé (vues autorisées, quotas, timeout) | Deux surfaces à maintenir |
+| (b) SQL read-only pour tous | Puissance partout | Surface d'abus/DoS ; permissions à répliquer dans les vues ; UX non-analyste faible |
+| (c) API structurée seulement | Minimal et sûr | Le pont vers la data platform perd son intérêt |
+
+**Recommandation : (a).**
+
+### A20 — Implémentation de l'API STAC (SP-12)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Routes STAC natives dans le cœur** (sur les tables items/collections existantes) | Une seule source de vérité ; permissions/audit natifs ; conformité progressive (core → collections → item-search) | La conformité est à notre charge (stac-api-validator en CI) |
+| (b) pgstac + stac-fastapi monté dans le cœur | Éprouvé, item-search très performant | Deuxième modèle de données (schéma pgstac) à synchroniser : duplication, migrations doubles, permissions à rebrancher |
+| (c) Service stac-fastapi séparé | Isolation | Contredit le monolithe modulaire ; même duplication + un déploiement de plus |
+
+**Recommandation : (a).**
+
+### A21 — Ambition DCAT (SP-12)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Export DCAT-AP moissonnable** (JSON-LD/RDF généré du catalogue) | Suffit à data.gouv.fr et aux portails open-data ; peu de code ; couvre l'obligation open-data des collectivités | Pas d'API DCAT complète ni SPARQL |
+| (b) API DCAT complète | Interop maximale | Gros chantier pour très peu d'usage réel |
+| (c) Différer | Focus | Argument commercial collectivités raté |
+
+**Recommandation : (a).**
+
+### A22 — Connecteurs de moissonnage v1 (SP-12)
+
+Candidats : catalogues STAC externes · CSW/ISO 19139 (GeoNetwork) · WMS/WFS
+GetCapabilities · CKAN/data.gouv.fr. Arbitrage sur *lesquels* et dans quel ordre —
+chaque connecteur doit être un incrément livrable séparément (risque d'étalement).
+
+**Recommandation : STAC d'abord** (modèle natif), puis GetCapabilities (valeur
+immédiate pour les organisations équipées), CSW ensuite (valeur forte, parsing
+pénible), CKAN en dernier (métadonnées géo pauvres).
+
+### A23 — Mode de moissonnage (SP-12)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Référencement pur + copie opt-in par source** | « Enregistrer ≠ copier » (vision) ; léger, frais ; la copie opt-in route vers l'ingestion SP-6 quand perfs/dispo l'exigent | Dépendance à la disponibilité des sources non copiées |
+| (b) Copie systématique | Performances et disponibilité garanties | Contredit la vision ; stockage et resynchronisation permanents ; licences des données copiées |
+
+**Recommandation : (a).**
+
+### A24 — Moteur 3D (SP-13)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) deck.gl `Tile3DLayer` + terrain raster-dem MapLibre** | Réutilise l'overlay deck.gl déjà intégré ; 3D Tiles OGC via loaders.gl ; terrain depuis un DEM COG servi par TiTiler (déjà en stack) ; pas de 2ᵉ moteur | Pas de vrai globe ; photogrammétrie très lourde à la limite |
+| (b) Viewer CesiumJS séparé | Globe complet, écosystème 3D le plus riche | Deuxième moteur à intégrer au builder (couches, styles, interactions dupliquées) — coût permanent |
+| (c) Attendre la 3D native MapLibre | Zéro travail | Calendrier hors de notre contrôle |
+
+**Recommandation : (a)**, CesiumJS réévalué si un besoin globe/photogrammétrie
+réel apparaît.
+
+### A25 — Voie d'impression/export (SP-13)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Rendu navigateur headless en worker** (Playwright rend la vraie carte → PNG/PDF, layouts déclaratifs) | WYSIWYG exact des styles MapLibre ; réutilise la stack ; les mises en page sont des configs | Print « pro » limité (CMJN, très hautes résolutions) — **écart assumé avec la vision (QGIS Server)**, documenté |
+| (b) QGIS Server headless | Qualité cartographique professionnelle | Traduction permanente des styles MapLibre en projets QGIS — chantier de conversion sans fin ; conteneur lourd |
+| (c) Navigateur d'abord, QGIS Server plus tard | Progressif, la demande décide | Deux systèmes à terme si le besoin pro se confirme |
+
+**Recommandation : (a)** — bascule vers (c) uniquement sur demande réelle de
+print professionnel.
+
+### A26 — Stack d'observabilité de référence (SP-10)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) OTel SDK + profil compose `grafana/otel-lgtm`** | Instrumentation OTLP native ; un seul conteneur optionnel pour tout voir (aligné scale-down) ; dashboards/SLO packagés démontrables | L'image lgtm vise le dev/petite échelle (assumé : OTLP permet de brancher autre chose en prod) |
+| (b) Stack Grafana complète séparée | Prod-grade d'entrée | 4–5 conteneurs à opérer et documenter — disproportionné comme référence |
+| (c) Export OTLP seul, pas de backend fourni | Minimal | « SLO packagés » indémontrables ; l'exploitant débutant livré à lui-même |
+
+**Recommandation : (a).**
+
+### A27 — Séquencement des quatre chantiers (SP-10 → SP-13)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Après v0.1 : OTel → Lakehouse → STAC → 3D/print** | v0.1 sort tôt ; l'observabilité protège la démo publique ; puis data platform, catalogue, 3D | La différenciation data attend v0.1 |
+| (b) Après v0.1 : Lakehouse d'abord, OTel par tranches | La valeur data arrive plus vite | Démo publique exploitée à l'aveugle au début |
+| (c) Intercaler le lakehouse avant le SDK (SP-8) | Différenciation data plus tôt | Retarde v0.1 de plusieurs mois — contraire à « démontrable en continu » |
+
+**Recommandation : (a).**
+
 ---
 
 ## 8. Décisions d'arbitrage
 
-> Arbitrages tranchés le **2026-07-04**. Chaque décision est révisable *jusqu'au
-> lancement du SP concerné*, figée ensuite (toute révision passe par une mise à
-> jour explicite de ce document).
+> Arbitrages tranchés le **2026-07-04** (A1–A15) et le **2026-07-05** (A16–A27,
+> extension SP-10→SP-13). Chaque décision est révisable *jusqu'au lancement du SP
+> concerné*, figée ensuite (toute révision passe par une mise à jour explicite de
+> ce document).
 
 | # | Sujet | Décision | SP concerné |
 |---|---|---|---|
@@ -606,6 +882,18 @@ réel.
 | A13 | Forme du MCP | **Module du cœur, même process** | SP-2 |
 | A14 | Structure dépôt | **Monorepo, `builder-service/` renommé `core/`** dès SP-1a | SP-1a |
 | A15 | Données existantes | **Repartir propre, re-seed de démo** (aucun déploiement réel à migrer) | SP-1d |
+| A16 | Mécanisme CDC | **Réplication logique + worker maison** (spike d'ouverture, monitoring du lag) | SP-11 |
+| A17 | Format froid | **GeoParquet plat + partitionnement** ; Iceberg réévalué avec le versioning de données | SP-11 |
+| A18 | Exposition DuckDB | **Serveur d'abord** (API du cœur), WASM navigateur ensuite | SP-11 |
+| A19 | Surface analytique | **API structurée pour les widgets + SQL read-only réservé au rôle analyste** | SP-11 |
+| A20 | API STAC | **Routes natives dans le cœur** (conformité progressive, stac-api-validator en CI) | SP-12 |
+| A21 | DCAT | **Export DCAT-AP moissonnable** (JSON-LD, validé data.gouv.fr) | SP-12 |
+| A22 | Connecteurs moissonnage | **Les quatre** — livrés dans l'ordre : STAC → GetCapabilities → CSW/ISO → CKAN | SP-12 |
+| A23 | Mode moissonnage | **Référencement pur + copie opt-in par source** | SP-12 |
+| A24 | Moteur 3D | **deck.gl `Tile3DLayer` + terrain raster-dem MapLibre** | SP-13 |
+| A25 | Impression | **Rendu navigateur headless (Playwright) en worker** ⚠ écart assumé avec la vision (QGIS Server) — bascule seulement sur demande réelle de print pro | SP-13 |
+| A26 | Observabilité de référence | **OTel SDK + profil compose `grafana/otel-lgtm`**, dashboards & SLO packagés | SP-10 |
+| A27 | Séquencement | **Après v0.1 : OTel → Lakehouse → STAC → 3D/print** | SP-10→13 |
 
 **Conséquences immédiates des décisions** :
 - SP-1a démarre par le renommage `core/` (A14) et l'ajout de la génération
@@ -621,19 +909,25 @@ réel.
 
 ## 9. Différé
 
-Explicitement **hors** de cette feuille de route (réévalués après M6, ou si Q2/Q10/Q11
-tranchent autrement) :
+> Mise à jour 2026-07-05 : quatre chantiers sont **sortis du différé** et intégrés
+> à la feuille de route — observabilité/SLO (SP-10), lakehouse & CDC (SP-11),
+> STAC/DCAT/moissonnage (SP-12), 3D & impression (SP-13).
+
+Explicitement **hors** de cette feuille de route (réévalués après M10, ou si
+Q2/Q10/Q11 tranchent autrement) :
 
 - Temps réel (SSE, alertes, NATS) — palier 0 de la vision, attend un besoin concret.
 - Offline/terrain, profil Edge, synchronisation.
-- Lakehouse complet (GeoParquet/Iceberg/DuckDB), CDC — SP-6 pose seulement l'ingestion.
-- Catalogue STAC public complet, DCAT, moissonnage.
-- 3D (3D Tiles), impression (QGIS Server).
+- **Iceberg** (time-travel, schema evolution) — réévalué quand le versioning de
+  données (§13.2 vision) montera (A17).
+- **DuckDB-WASM navigateur** — deuxième étage de l'analytique, après SP-11 (A18).
+- **Conversion 3D** (py3dtiles, nuages de points) et **QGIS Server** pour le print
+  professionnel — sur demande réelle uniquement (A24/A25).
+- API DCAT complète/SPARQL — l'export DCAT-AP suffit (A21).
 - Marketplace, sandbox dure des extensions, signature sigstore.
 - Multi-tenant *actif* (le schéma est prêt, l'activation attend une demande).
 - Workflows durables, versioning de données, agent runtime hébergé (briques §13 de
-  la vision — après M6).
-- OpenTelemetry/SLO complets (un logging structuré propre suffit jusqu'à M6).
+  la vision).
 - CI « 8 Go » (décision Q7) — l'empreinte baissera de fait, sans garde-fou bloquant.
 
 ---
@@ -649,6 +943,8 @@ tranchent autrement) :
 | Pont React↔WC plus dur que prévu (SP-8) | SDK retardé | Prototype sur le Compteur avant de figer le manifeste ; SP-8 est le dernier gros SP, il peut glisser sans bloquer le reste |
 | Solo : bus factor et créneaux hachés | Vélocité irrégulière | Des SP courts, des sous-phases ≤ 25 h, la doc de specs/plans comme mémoire externe |
 | Dérive doc/code (3 générations de docs déjà) | Confusion contributeurs | SP-9 archive G1/G2 ; règle : un document de référence par sujet, les autres pointent dessus |
+| Le CDC déraille (slot qui gonfle le WAL, worker arrêté, schéma modifié) | Disque plein côté PostGIS, lakehouse périmé | Spike d'ouverture SP-11, alerte sur le lag et la taille du slot (SP-10), procédure de re-backfill documentée, `ALTER` = re-backfill assumé en v1 |
+| Étalement des connecteurs de moissonnage (4 retenus) | SP-12 sans fin | Un connecteur = un incrément livrable ; ordre A22 figé ; on peut s'arrêter entre deux |
 
 ---
 
@@ -662,10 +958,15 @@ tranchent autrement) :
 | **M4 Donnée→carte** (SP-6) | GPKG 50 k entités → carte partagée < 5 min | Temps-vers-la-première-carte mesuré |
 | **M5 SDK ouvrable** (SP-8) | Widget WC externe chargé dynamiquement, E2E verte | Un widget écrit par quelqu'un d'autre (ou un agent) sans lire le code du shell |
 | **M6 v0.1 publique** (SP-9) | Licence, CI, images, install docs, démo publique | Une installation tierce réussie sans assistance ; premières issues externes |
+| **M7 exploitable** (SP-10) | Profil observability, dashboards alimentés, 4 SLO avec alertes | Une requête lente diagnostiquée en < 10 min via les traces |
+| **M8 data platform** (SP-11) | CDC PostGIS→GeoParquet en continu, API analytique DuckDB | Écriture chaude visible au froid < 5 min ; 1 M de lignes agrégées < 2 s |
+| **M9 catalogue ouvert** (SP-12) | STAC conforme, export DCAT-AP, 4 connecteurs de moissonnage | QGIS navigue le catalogue ; data.gouv.fr moissonne ; un GeoServer externe référencé en < 1 min |
+| **M10 3D & print** (SP-13) | Couches 3D Tiles + terrain ; export PNG/PDF mis en page | Tileset public navigable > 30 fps ; PDF A3 avec légende/échelle fidèles |
 
 ---
 
 *Feuille de route rédigée le 2026-07-04 sur l'état de la branche `dev`
-(commit `b8eb71f`). Les arbitrages A1–A15 sont tranchés en §8 ; toute révision
-d'un arbitrage après lancement du SP concerné passe par une mise à jour explicite
-de ce document.*
+(commit `b8eb71f`) ; étendue le 2026-07-05 (SP-10→SP-13, arbitrages A16–A27,
+jalons M7–M10). Les arbitrages A1–A27 sont tranchés en §8 ; toute révision d'un
+arbitrage après lancement du SP concerné passe par une mise à jour explicite de
+ce document.*
