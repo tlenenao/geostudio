@@ -27,8 +27,7 @@ function Harness({ children }: { children: ReactNode }) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   return (
@@ -41,9 +40,9 @@ function Harness({ children }: { children: ReactNode }) {
 test("saves the sharing payload for a checked group", async () => {
   let body: any = null;
   server.use(
-    http.put("https://geonode.test/api/v2/resources/:pk/permissions", async ({ request }) => {
+    http.put("https://core.test/items/:pk/sharing", async ({ request }) => {
       body = await request.json();
-      return new HttpResponse(null, { status: 200 });
+      return new HttpResponse(null, { status: 204 });
     }),
   );
   const onClose = vi.fn();
@@ -55,18 +54,18 @@ test("saves the sharing payload for a checked group", async () => {
   await userEvent.click(await screen.findByRole("checkbox", { name: "Groupe Équipe B" }));
   await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
-  expect(body.groups).toEqual(
-    expect.arrayContaining([
-      { id: "anonymous", permissions: "view" },
-      { id: "10", permissions: "edit" },
-      { id: "11", permissions: "view" },
+  expect(body).toEqual({
+    public: true,
+    groups: expect.arrayContaining([
+      { groupId: "10", role: "editor" },
+      { groupId: "11", role: "viewer" },
     ]),
-  );
+  });
 });
 
 test("keeps the dialog open and shows an alert when saving fails", async () => {
   server.use(
-    http.put("https://geonode.test/api/v2/resources/:pk/permissions", () =>
+    http.put("https://core.test/items/:pk/sharing", () =>
       new HttpResponse(null, { status: 500 }),
     ),
   );
