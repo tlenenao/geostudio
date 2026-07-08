@@ -201,3 +201,83 @@ def test_upload_thumbnail_by_non_owner_returns_404(client):
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
+
+
+def test_get_sharing_defaults_to_private(client):
+    item_id = _seed_item(client)
+    response = client.get(f"/items/{item_id}/sharing")
+    assert response.status_code == 200
+    assert response.json() == {"public": False, "groups": []}
+
+
+def test_put_then_get_sharing_round_trips(client):
+    from app.sharing.models import Group
+
+    item_id = _seed_item(client)
+    with client.session_factory() as session:
+        session.add(Group(id="g1", tenant_id=client.tenant.id, name="Reviewers"))
+        session.commit()
+
+    put_response = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]},
+    )
+    assert put_response.status_code == 204
+
+    get_response = client.get(f"/items/{item_id}/sharing")
+    assert get_response.status_code == 200
+    assert get_response.json() == {
+        "public": True, "groups": [{"groupId": "g1", "role": "viewer"}],
+    }
+
+
+def test_put_sharing_with_unknown_group_returns_404(client):
+    item_id = _seed_item(client)
+    response = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]},
+    )
+    assert response.status_code == 404
+
+
+def test_put_sharing_writes_audit_log(client):
+    from sqlalchemy import select
+    from app.audit.models import AuditLog
+
+    item_id = _seed_item(client)
+    client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+    with client.session_factory() as session:
+        actions = {r.action for r in session.scalars(select(AuditLog)).all()}
+        assert "item.share" in actions
+
+
+def test_get_sharing_invisible_to_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.get(f"/items/{item_id}/sharing")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_put_sharing_by_group_viewer_returns_403(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    item_id = _seed_item(client)
+    bob = _other_user(client, "bob")
+    with client.session_factory() as session:
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers")
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 403
