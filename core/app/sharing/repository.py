@@ -24,8 +24,8 @@ def has_group_role(
     return session.scalar(stmt) is not None
 
 
-def create_group(session: Session, *, tenant_id: str, name: str) -> Group:
-    group = Group(id=uuid.uuid4().hex, tenant_id=tenant_id, name=name)
+def create_group(session: Session, *, tenant_id: str, name: str, created_by: str) -> Group:
+    group = Group(id=uuid.uuid4().hex, tenant_id=tenant_id, name=name, created_by=created_by)
     session.add(group)
     session.flush()
     session.refresh(group)
@@ -40,9 +40,13 @@ def list_groups(session: Session, *, tenant_id: str) -> list[Group]:
     )
 
 
-def add_member(session: Session, *, tenant_id: str, group_id: str, user_id: str) -> bool:
+def add_member(
+    session: Session, *, tenant_id: str, group_id: str, user_id: str, caller_id: str
+) -> bool:
     group = session.get(Group, group_id)
     if group is None or group.tenant_id != tenant_id:
+        return False
+    if group.created_by != caller_id:
         return False
     user_tenant = session.scalar(select(User.tenant_id).where(User.id == user_id))
     if user_tenant != tenant_id:

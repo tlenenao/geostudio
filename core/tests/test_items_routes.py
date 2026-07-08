@@ -170,7 +170,7 @@ def test_patch_item_by_group_viewer_returns_403(client):
     item_id = _seed_item(client)
     bob = _other_user(client, "bob")
     with client.session_factory() as session:
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers")
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
@@ -215,7 +215,7 @@ def test_put_then_get_sharing_round_trips(client):
 
     item_id = _seed_item(client)
     with client.session_factory() as session:
-        session.add(Group(id="g1", tenant_id=client.tenant.id, name="Reviewers"))
+        session.add(Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id))
         session.commit()
 
     put_response = client.put(
@@ -238,6 +238,32 @@ def test_put_sharing_with_unknown_group_returns_404(client):
         json={"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]},
     )
     assert response.status_code == 404
+
+
+def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
+    from app.sharing.models import Group
+
+    item_id = _seed_item(client)
+    with client.session_factory() as session:
+        session.add(Group(id="g-real", tenant_id=client.tenant.id, name="Real", created_by=client.user.id))
+        session.commit()
+
+    # Establish a known-good baseline sharing state first.
+    client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]},
+    )
+
+    # Attempt a rejected update mixing one real group with one unknown group.
+    rejected = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": False, "groups": [{"groupId": "g-real", "role": "editor"}, {"groupId": "nope", "role": "viewer"}]},
+    )
+    assert rejected.status_code == 404
+
+    # The baseline state must be untouched.
+    unchanged = client.get(f"/items/{item_id}/sharing")
+    assert unchanged.json() == {"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]}
 
 
 def test_put_sharing_writes_audit_log(client):
@@ -268,7 +294,7 @@ def test_put_sharing_by_group_viewer_returns_403(client):
     item_id = _seed_item(client)
     bob = _other_user(client, "bob")
     with client.session_factory() as session:
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers")
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))

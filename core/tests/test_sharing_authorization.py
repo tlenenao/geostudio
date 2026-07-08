@@ -43,8 +43,8 @@ def actors(session):
         username="dual_role_member", email=None, first_name="", last_name="",
     )
 
-    viewer_group = Group(id="viewers", tenant_id=tenant.id, name="Viewers")
-    editor_group = Group(id="editors", tenant_id=tenant.id, name="Editors")
+    viewer_group = Group(id="viewers", tenant_id=tenant.id, name="Viewers", created_by=owner.id)
+    editor_group = Group(id="editors", tenant_id=tenant.id, name="Editors", created_by=owner.id)
     session.add_all([viewer_group, editor_group])
     session.flush()
     session.add(GroupMember(group_id=viewer_group.id, user_id=viewer.id, tenant_id=tenant.id))
@@ -170,7 +170,10 @@ def test_cross_tenant_isolation_prevents_unauthorized_access(session, actors):
 
     # Create a group in tenant2 with id that matches tenant1's viewer group
     # (This creates the scenario where cross-tenant filtering is critical)
-    group_in_tenant2 = Group(id="shared-xgroup", tenant_id=tenant2.id, name="Shared Group in T2")
+    group_in_tenant2 = Group(
+        id="shared-xgroup", tenant_id=tenant2.id, name="Shared Group in T2",
+        created_by=user_in_tenant2.id,
+    )
     session.add(group_in_tenant2)
     session.flush()
 

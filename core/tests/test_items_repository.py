@@ -98,7 +98,7 @@ def test_list_items_scope_shared_and_all(session, tenant_and_user):
         session, tenant_id=tenant.id, oidc_sub="sub-bob",
         username="bob", email=None, first_name="", last_name="",
     )
-    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers")
+    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers", created_by=owner.id)
     session.add(group)
     session.flush()
     session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=tenant.id))

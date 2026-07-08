@@ -96,6 +96,24 @@ def test_add_member_to_unknown_group_returns_404(client):
     assert response.status_code == 404
 
 
+def test_add_member_by_non_creator_returns_404(client):
+    group_id = client.post("/groups", json={"name": "Reviewers"}).json()["id"]
+    with client.session_factory() as session:
+        bob = get_or_create_user(
+            session, tenant_id=client.tenant.id, oidc_sub="sub-bob",
+            username="bob", email=None, first_name="", last_name="",
+        )
+        session.commit()
+        session.refresh(bob)
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.post(f"/groups/{group_id}/members", json={"userId": bob.id})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
 def test_create_group_writes_audit_log(client):
     from sqlalchemy import select
     from app.audit.models import AuditLog
