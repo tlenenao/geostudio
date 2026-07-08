@@ -128,3 +128,182 @@ def test_read_thumbnail_missing_returns_404(client):
     item_id = _seed_item(client)
     response = client.get(f"/items/{item_id}/thumbnail")
     assert response.status_code == 404
+
+
+def _other_user(client, username="mallory"):
+    with client.session_factory() as session:
+        tenant = get_or_create_default_tenant(session)
+        user = get_or_create_user(
+            session, tenant_id=tenant.id, oidc_sub=f"sub-{username}",
+            username=username, email=None, first_name="", last_name="",
+        )
+        session.commit()
+        session.refresh(user)
+    return user
+
+
+def test_get_item_invisible_to_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.get(f"/items/{item_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_patch_item_by_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_patch_item_by_group_viewer_returns_403(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    item_id = _seed_item(client)
+    bob = _other_user(client, "bob")
+    with client.session_factory() as session:
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        get_response = client.get(f"/items/{item_id}")
+        patch_response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert get_response.status_code == 200
+    assert patch_response.status_code == 403
+
+
+def test_upload_thumbnail_by_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    store = InMemoryThumbnailStore()
+    client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.post(
+            f"/items/{item_id}/thumbnail",
+            files={"file": ("thumb.png", io.BytesIO(b"x"), "image/png")},
+        )
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_get_sharing_defaults_to_private(client):
+    item_id = _seed_item(client)
+    response = client.get(f"/items/{item_id}/sharing")
+    assert response.status_code == 200
+    assert response.json() == {"public": False, "groups": []}
+
+
+def test_put_then_get_sharing_round_trips(client):
+    from app.sharing.models import Group
+
+    item_id = _seed_item(client)
+    with client.session_factory() as session:
+        session.add(Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id))
+        session.commit()
+
+    put_response = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]},
+    )
+    assert put_response.status_code == 204
+
+    get_response = client.get(f"/items/{item_id}/sharing")
+    assert get_response.status_code == 200
+    assert get_response.json() == {
+        "public": True, "groups": [{"groupId": "g1", "role": "viewer"}],
+    }
+
+
+def test_put_sharing_with_unknown_group_returns_404(client):
+    item_id = _seed_item(client)
+    response = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]},
+    )
+    assert response.status_code == 404
+
+
+def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
+    from app.sharing.models import Group
+
+    item_id = _seed_item(client)
+    with client.session_factory() as session:
+        session.add(Group(id="g-real", tenant_id=client.tenant.id, name="Real", created_by=client.user.id))
+        session.commit()
+
+    # Establish a known-good baseline sharing state first.
+    client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]},
+    )
+
+    # Attempt a rejected update mixing one real group with one unknown group.
+    rejected = client.put(
+        f"/items/{item_id}/sharing",
+        json={"public": False, "groups": [{"groupId": "g-real", "role": "editor"}, {"groupId": "nope", "role": "viewer"}]},
+    )
+    assert rejected.status_code == 404
+
+    # The baseline state must be untouched.
+    unchanged = client.get(f"/items/{item_id}/sharing")
+    assert unchanged.json() == {"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]}
+
+
+def test_put_sharing_writes_audit_log(client):
+    from sqlalchemy import select
+    from app.audit.models import AuditLog
+
+    item_id = _seed_item(client)
+    client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+    with client.session_factory() as session:
+        actions = {r.action for r in session.scalars(select(AuditLog)).all()}
+        assert "item.share" in actions
+
+
+def test_get_sharing_invisible_to_non_owner_returns_404(client):
+    item_id = _seed_item(client)
+    mallory = _other_user(client)
+    client.app.dependency_overrides[get_current_user] = lambda: mallory
+    try:
+        response = client.get(f"/items/{item_id}/sharing")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 404
+
+
+def test_put_sharing_by_group_viewer_returns_403(client):
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    item_id = _seed_item(client)
+    bob = _other_user(client, "bob")
+    with client.session_factory() as session:
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.commit()
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 403

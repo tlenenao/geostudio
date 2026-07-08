@@ -39,8 +39,10 @@ name = "layered architecture"
 type = "layers"
 layers = [
     "app.main",
+    "app.public",
     "app.configs",
     "app.items",
+    "app.sharing",
     "app.auth",
     "app.audit",
     "app.users",
@@ -52,4 +54,5 @@ ignore_imports = [
     "app.db -> app.audit.models",
     "app.db -> app.tenants.models",
     "app.db -> app.users.models",
+    "app.db -> app.sharing.models",
 ]
