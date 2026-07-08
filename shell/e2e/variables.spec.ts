@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockGeoNode } from "./mocks";
+import { mockCore } from "./mocks";
 
 test("a Filtre wired to a variable updates a Texte widget reading it, in the runtime", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Nouveau" }).click();

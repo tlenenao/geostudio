@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockGeoNode } from "./mocks";
+import { mockCore } from "./mocks";
 
 test("adding a page and a Navigation widget lets the runtime navigate between pages", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Nouveau" }).click();

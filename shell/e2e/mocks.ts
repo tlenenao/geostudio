@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
 
 const ALL = [
-  { pk: "1", resource_type: "app", title: "Alpha", abstract: "A", owner: { username: "alice" }, thumbnail_url: null, date: "2026-01-01" },
-  { pk: "2", resource_type: "dashboard", title: "Beta", abstract: "B", owner: { username: "alice" }, thumbnail_url: null, date: "2026-01-01" },
+  { pk: "1", resourceType: "app", title: "Alpha", abstract: "A", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false },
+  { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "B", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false },
 ];
 
 const DEFAULT_MAP_CONFIG = {
@@ -22,31 +22,36 @@ const DEFAULT_APP_CONFIG = {
   layout: { type: "grid", breakpoints: {}, items: [] },
 } as const;
 
-export async function mockGeoNode(page: Page) {
+export async function mockCore(page: Page) {
   const deleted = new Set<string>();
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
   let published = false;
 
-  await page.route("**/api/v2/resources*", async (route) => {
+  await page.route("**/items*", async (route) => {
     const url = new URL(route.request().url());
-    const owner = url.searchParams.get("filter{owner.username.in}");
+    const scope = url.searchParams.get("scope");
     const visible = ALL.filter((r) => !deleted.has(r.pk));
-    // Alpha/Beta are owned by "alice"; the mock user is "mockuser".
-    const resources = owner ? visible.filter((r) => r.owner.username === owner) : visible;
+    // Fixture reality: every item in ALL is owned by "alice"; the mock auth
+    // user is "mockuser" (see useAuth.ts's MOCK_STATE) — so scope=mine is
+    // always empty for this fixture, matching the pre-migration mock's
+    // behavior for the "mockuser" case.
+    const items = scope === "mine" ? [] : visible;
+    await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
+  });
+
+  await page.route("**/me", async (route) => {
     await route.fulfill({
-      json: { total: resources.length, page: 1, page_size: 12, resources },
+      json: { id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User", email: null, tenantId: "t-mock" },
     });
   });
 
-  await page.route("**/api/v2/users/me", async (route) => {
-    await route.fulfill({
-      json: { user: { username: "mockuser", first_name: "Mock", last_name: "User" } },
-    });
-  });
-
-  await page.route("**/api/v2/resources/1", async (route) => {
-    await route.fulfill({ json: { resource: ALL[0] } });
+  // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side
+  // route is also "/items/1" (same path, different origin — localhost:4173
+  // vs. https://core.test), so a path-only glob here would also intercept
+  // the browser's document navigation to that page and break rendering.
+  await page.route("https://core.test/items/1", async (route) => {
+    await route.fulfill({ json: ALL[0] });
   });
 
   await page.route("**/configs", async (route) => {
@@ -69,16 +74,17 @@ export async function mockGeoNode(page: Page) {
     }
   });
 
-  await page.route("**/api/v2/resources/9", async (route) => {
+  // Same host-scoping rationale as "/items/1" above — the shell also has a
+  // client-side route "/items/9".
+  await page.route("https://core.test/items/9", async (route) => {
     if (route.request().method() === "PATCH") {
       const body = await route.request().postDataJSON();
-      if (typeof body.is_published === "boolean") published = body.is_published;
+      if (typeof body.isPublished === "boolean") published = body.isPublished;
     }
     await route.fulfill({
       json: {
-        resource: { pk: "9", resource_type: "app", title: "Créée", abstract: "",
-          owner: { username: "mockuser" }, thumbnail_url: null, date: "2026-01-01",
-          is_published: published },
+        pk: "9", resourceType: "app", title: "Créée", abstract: "", owner: "mockuser",
+        thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: published,
       },
     });
   });
