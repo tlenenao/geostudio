@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Config, ConfigRevision
-from app.schemas import BuilderConfig
+from app.configs.models import Config, ConfigRevision
+from app.configs.schemas import BuilderConfig
 
 
 class ConfigRead(BaseModel):
@@ -48,7 +48,7 @@ def create_config(session: Session, config: BuilderConfig, item_id: str | None) 
     )
     session.add(record)
     session.add(revision)
-    session.commit()
+    session.flush()
     session.refresh(record)
     return _to_read(record, revision)
 
@@ -83,7 +83,7 @@ def update_config(session: Session, config_id: str, config: BuilderConfig) -> Co
     )
     record.current_version = new_version
     session.add(revision)
-    session.commit()
+    session.flush()
     session.refresh(record)
     return _to_read(record, revision)
 
@@ -111,7 +111,7 @@ def rollback_config(session: Session, config_id: str, version: int) -> ConfigRea
     revision = ConfigRevision(config_id=config_id, version=new_version, data=source.data)
     record.current_version = new_version
     session.add(revision)
-    session.commit()
+    session.flush()
     session.refresh(record)
     return _to_read(record, revision)
 
@@ -122,5 +122,5 @@ def delete_config(session: Session, config_id: str) -> bool:
         return False
     session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
     session.delete(record)
-    session.commit()
+    session.flush()
     return True
