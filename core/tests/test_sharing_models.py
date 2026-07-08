@@ -33,7 +33,7 @@ def test_group_member_and_item_share_round_trip(session):
         resource_type="app", title="Shared app",
     )
 
-    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers")
+    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers", created_by=alice.id)
     session.add(group)
     session.flush()
     session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=tenant.id))
@@ -57,7 +57,7 @@ def test_item_share_cascades_on_item_delete(session):
         session, tenant_id=tenant.id, owner_id=alice.id,
         resource_type="app", title="Will be deleted",
     )
-    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers")
+    group = Group(id="g1", tenant_id=tenant.id, name="Reviewers", created_by=alice.id)
     session.add(group)
     session.flush()
     session.add(ItemShare(item_id=item.id, group_id=group.id, tenant_id=tenant.id, role="viewer"))

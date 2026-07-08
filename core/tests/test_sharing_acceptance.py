@@ -61,7 +61,7 @@ def test_item_shared_to_a_group_is_visible_to_members_and_invisible_to_others(cl
             session, tenant_id=client.tenant.id, oidc_sub="sub-outsider",
             username="outsider", email=None, first_name="", last_name="",
         )
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Trusted")
+        group = Group(id="g1", tenant_id=client.tenant.id, name="Trusted", created_by=client.user.id)
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=member.id, tenant_id=client.tenant.id))

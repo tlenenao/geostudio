@@ -38,7 +38,7 @@ def create_group(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> GroupRead:
-    group = repo.create_group(session, tenant_id=user.tenant_id, name=body.name)
+    group = repo.create_group(session, tenant_id=user.tenant_id, name=body.name, created_by=user.id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="group.create", object_type="group", object_id=group.id,
@@ -54,7 +54,9 @@ def add_member(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    ok = repo.add_member(session, tenant_id=user.tenant_id, group_id=group_id, user_id=body.userId)
+    ok = repo.add_member(
+        session, tenant_id=user.tenant_id, group_id=group_id, user_id=body.userId, caller_id=user.id,
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="group or user not found")
     write_audit(
