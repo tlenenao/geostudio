@@ -16,8 +16,7 @@ function AppShell() {
   const client = useMemo(
     () =>
       createItemClient({
-        geonodeUrl: config.geonodeUrl,
-        builderUrl: config.builderUrl,
+        coreUrl: config.coreUrl,
         martinUrl: config.martinUrl,
         featureservUrl: config.featureservUrl,
         getToken: getAccessToken,
