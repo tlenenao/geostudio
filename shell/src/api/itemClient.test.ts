@@ -4,252 +4,110 @@ import { createItemClient } from "./itemClient";
 
 function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     martinUrl: "https://martin.test",
     featureservUrl: "https://featureserv.test",
     getToken: () => token,
   });
 }
 
-test("listItems maps GeoNode resources to Items", async () => {
-  const page = await makeClient().listItems();
-  expect(page.total).toBe(2);
-  expect(page.items[0]).toMatchObject({
-    pk: "1",
-    resourceType: "app",
-    title: "Alpha",
-    owner: "alice",
-  });
-});
-
-test("listItems forwards the search term", async () => {
-  const page = await makeClient().listItems({ q: "beta" });
-  expect(page.items).toHaveLength(1);
-  expect(page.items[0].title).toBe("Beta");
-});
-
-test("listItems sends the bearer token", async () => {
+test("listItems sends the bearer token and scope", async () => {
   let auth: string | null = null;
+  let url: string | null = null;
   server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+    http.get("https://core.test/items", ({ request }) => {
       auth = request.headers.get("authorization");
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+      url = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
   );
-  await makeClient("abc").listItems();
+  await makeClient("abc").listItems({ scope: "shared" });
   expect(auth).toBe("Bearer abc");
+  expect(url).toContain("scope=shared");
 });
 
-test("listItems forwards the type filter param", async () => {
-  let captured: URL | null = null;
-  server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
-      captured = new URL(request.url);
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
-    }),
-  );
-  await makeClient().listItems({ type: "app" });
-  expect(captured!.searchParams.get("filter{resource_type.in}")).toBe("app");
-});
-
-test("getItem maps a single resource", async () => {
+test("getItem returns the item as-is (core owner is already a flat string)", async () => {
   const item = await makeClient().getItem("7");
   expect(item.pk).toBe("7");
-  expect(item.thumbnailUrl).toContain("/thumbs/7.png");
+  expect(item.owner).toBe("alice");
 });
 
-test("getItem throws on 404", async () => {
+test("getItem missing returns 404 and throws", async () => {
   await expect(makeClient().getItem("404")).rejects.toThrow(/404/);
 });
 
-test("getMe maps the current user", async () => {
+test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
   const me = await makeClient().getMe();
   expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin" });
 });
 
-test("createConfigItem posts a skeleton config and maps to Item", async () => {
-  const item = await makeClient().createConfigItem({
-    kind: "dashboard",
-    title: "My Dash",
-    owner: "alice",
-  });
-  expect(item).toMatchObject({
-    pk: "99",
-    resourceType: "dashboard",
-    title: "My Dash",
-    owner: "alice",
-    configId: "cfg-1",
-    thumbnailUrl: null,
-  });
+test("createConfigItem does not send owner in the request body", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "99", kind: "app", version: 1, config: {} }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createConfigItem({ kind: "app", title: "My App", owner: "alice" });
+  expect(body).not.toHaveProperty("owner");
+  expect(item.owner).toBe("alice");
+  expect(item.pk).toBe("99");
 });
 
-test("createConfigItem sends title, owner and an empty grid layout", async () => {
-  let body: any = null;
+test("updateItem sends the patch camelCase, unchanged", async () => {
+  let body: unknown;
   server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
+    http.patch("https://core.test/items/:pk", async ({ params, request }) => {
       body = await request.json();
       return HttpResponse.json({
-        id: "c",
-        kind: body.config.kind,
-        itemId: "1",
-        version: 1,
-        config: body.config,
+        pk: String(params.pk), resourceType: "app", title: "Renamed", abstract: "", owner: "alice",
+        thumbnailUrl: null, date: "", configId: null, isPublished: true,
       });
     }),
   );
-  await makeClient("abc").createConfigItem({ kind: "app", title: "T", owner: "o" });
-  expect(body.title).toBe("T");
-  expect(body.owner).toBe("o");
-  expect(body.config.kind).toBe("app");
-  expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
-});
-
-test("updateItem PATCHes GeoNode and maps the result", async () => {
-  const item = await makeClient().updateItem("7", { title: "Renamed", abstract: "New" });
-  expect(item.pk).toBe("7");
+  const item = await makeClient().updateItem("7", { title: "Renamed", isPublished: true });
+  expect(body).toEqual({ title: "Renamed", isPublished: true });
   expect(item.title).toBe("Renamed");
-  expect(item.abstract).toBe("New");
 });
 
-test("uploadThumbnail PUTs multipart without throwing", async () => {
-  const file = new File(["x"], "t.png", { type: "image/png" });
-  await expect(makeClient().uploadThumbnail("7", file)).resolves.toBeUndefined();
-});
-
-test("deleteItem DELETEs the by-item endpoint", async () => {
-  let url: string | null = null;
+test("uploadThumbnail POSTs multipart form data", async () => {
+  let method: string | null = null;
   server.use(
-    http.delete("https://builder.test/configs/by-item/:pk", ({ request }) => {
-      url = new URL(request.url).pathname;
+    http.post("https://core.test/items/:pk/thumbnail", ({ request }) => {
+      method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
   );
-  await makeClient().deleteItem("42");
-  expect(url).toBe("/configs/by-item/42");
+  await makeClient().uploadThumbnail("7", new File(["x"], "thumb.png", { type: "image/png" }));
+  expect(method).toBe("POST");
 });
 
-test("deleteItem treats 404 as success", async () => {
-  server.use(
-    http.delete("https://builder.test/configs/by-item/:pk", () =>
-      new HttpResponse(null, { status: 404 }),
-    ),
-  );
-  await expect(makeClient().deleteItem("gone")).resolves.toBeUndefined();
+test("deleteItem tolerates a 404 as success", async () => {
+  server.use(http.delete("https://core.test/configs/by-item/:pk", () => new HttpResponse(null, { status: 404 })));
+  await expect(makeClient().deleteItem("nope")).resolves.toBeUndefined();
 });
 
-test("createConfigItem throws when builder returns no itemId", async () => {
-  server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
-      const body = (await request.json()) as { config: { kind: string } };
-      return HttpResponse.json({ id: "c", kind: body.config.kind, itemId: null, version: 1, config: body.config });
-    }),
-  );
-  await expect(
-    makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" }),
-  ).rejects.toThrow(/itemId/);
-});
-
-test("listGroups maps GeoNode group_profiles", async () => {
+test("listGroups maps name to title", async () => {
   const groups = await makeClient().listGroups();
-  expect(groups).toEqual([
-    { id: "10", title: "Équipe A" },
-    { id: "11", title: "Équipe B" },
-  ]);
+  expect(groups).toEqual([{ id: "10", title: "Équipe A" }, { id: "11", title: "Équipe B" }]);
 });
 
-test("getSharing maps public flag and group roles", async () => {
+test("getSharing passes through the core's Sharing shape directly", async () => {
   const sharing = await makeClient().getSharing("7");
-  expect(sharing.public).toBe(true);
-  expect(sharing.groups).toEqual([{ groupId: "10", role: "editor" }]);
+  expect(sharing).toEqual({ public: true, groups: [{ groupId: "10", role: "editor" }] });
 });
 
-test("setSharing sends the mapped GeoNode payload", async () => {
-  let body: any = null;
+test("setSharing PUTs the sharing object as-is", async () => {
+  let body: unknown;
   server.use(
-    http.put("https://geonode.test/api/v2/resources/:pk/permissions", async ({ request }) => {
+    http.put("https://core.test/items/:pk/sharing", async ({ request }) => {
       body = await request.json();
-      return new HttpResponse(null, { status: 200 });
+      return new HttpResponse(null, { status: 204 });
     }),
   );
-  await makeClient().setSharing("7", {
-    public: true,
-    groups: [{ groupId: "5", role: "viewer" }],
-  });
-  expect(body.groups).toEqual([
-    { id: "anonymous", permissions: "view" },
-    { id: "5", permissions: "view" },
-  ]);
-});
-
-test("setSharing omits the anonymous group when private", async () => {
-  let body: any = null;
-  server.use(
-    http.put("https://geonode.test/api/v2/resources/:pk/permissions", async ({ request }) => {
-      body = await request.json();
-      return new HttpResponse(null, { status: 200 });
-    }),
-  );
-  await makeClient().setSharing("7", {
-    public: false,
-    groups: [{ groupId: "5", role: "editor" }],
-  });
-  expect(body.groups).toEqual([{ id: "5", permissions: "edit" }]);
-});
-
-test("listItems scope=mine sends the owner filter", async () => {
-  let url = "";
-  server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
-      url = request.url;
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
-    }),
-  );
-  await makeClient().listItems({ scope: "mine", me: "alice" });
-  expect(new URL(url).searchParams.get("filter{owner.username.in}")).toBe("alice");
-});
-
-test("listItems scope=public sends the published filter", async () => {
-  let url = "";
-  server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
-      url = request.url;
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
-    }),
-  );
-  await makeClient().listItems({ scope: "public" });
-  expect(new URL(url).searchParams.get("filter{is_published}")).toBe("true");
-});
-
-test("listItems scope=shared drops items owned by me", async () => {
-  server.use(
-    http.get("https://geonode.test/api/v2/resources", () =>
-      HttpResponse.json({
-        total: 2,
-        page: 1,
-        page_size: 12,
-        resources: [
-          { pk: "1", resource_type: "app", title: "Mine", owner: { username: "alice" }, date: "" },
-          { pk: "2", resource_type: "app", title: "Theirs", owner: { username: "bob" }, date: "" },
-        ],
-      }),
-    ),
-  );
-  const page = await makeClient().listItems({ scope: "shared", me: "alice" });
-  expect(page.items.map((i) => i.pk)).toEqual(["2"]);
-  expect(page.total).toBe(1);
-});
-
-test("listItems scope=mine without me does not send the owner filter", async () => {
-  let url = "";
-  server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
-      url = request.url;
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
-    }),
-  );
-  await makeClient().listItems({ scope: "mine" });
-  expect(new URL(url).searchParams.has("filter{owner.username.in}")).toBe(false);
+  await makeClient().setSharing("7", { public: false, groups: [{ groupId: "10", role: "viewer" }] });
+  expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
 });
 
 test("listLayerSources aggregates Martin vector sources and featureserv collections", async () => {
@@ -311,7 +169,7 @@ test("listLayerSources throws when both services fail", async () => {
 test("createMapItem posts a map skeleton and returns a map Item", async () => {
   let body: any;
   server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
+    http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-1", kind: "map", itemId: "77" }, { status: 201 });
     }),
@@ -325,7 +183,7 @@ test("createMapItem posts a map skeleton and returns a map Item", async () => {
 test("getMapConfig reads and maps the builder map config", async () => {
   // ConfigRead nests the builder config under "config"; the map is config.map.
   server.use(
-    http.get("https://builder.test/configs/by-item/77", () =>
+    http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1", itemId: "77", kind: "map",
         config: {
@@ -349,7 +207,7 @@ test("getMapConfig reads and maps the builder map config", async () => {
 
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
-    http.get("https://builder.test/configs/by-item/77", () =>
+    http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "app", config: { kind: "app", map: null } }),
     ),
   );
@@ -359,7 +217,7 @@ test("getMapConfig throws when the config has no map payload", async () => {
 test("saveMapConfig PUTs the map config by item", async () => {
   let method = ""; let body: any;
   server.use(
-    http.put("https://builder.test/configs/by-item/77", async ({ request }) => {
+    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
       method = request.method; body = await request.json();
       return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", map: body.map });
     }),
@@ -373,7 +231,7 @@ test("saveMapConfig PUTs the map config by item", async () => {
 
 test("getAppConfig reads the app config (kind/theme/layout)", async () => {
   server.use(
-    http.get("https://builder.test/configs/by-item/5", () =>
+    http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5", itemId: "5", kind: "app",
         config: {
@@ -392,7 +250,7 @@ test("getAppConfig reads the app config (kind/theme/layout)", async () => {
 
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
-    http.get("https://builder.test/configs/by-item/5", () =>
+    http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "map", config: { kind: "map", layout: null } }),
     ),
   );
@@ -402,7 +260,7 @@ test("getAppConfig throws when the config has no layout", async () => {
 test("saveAppConfig PUTs the app config by item", async () => {
   let body: any;
   server.use(
-    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -591,7 +449,7 @@ test("featuresUrl strips reserved statistics keys but keeps filter params", () =
 
 test("getAppConfig passes through the pages array when present", async () => {
   server.use(
-    http.get("https://builder.test/configs/by-item/5", () =>
+    http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5", itemId: "5", kind: "app",
         config: {
@@ -613,7 +471,7 @@ test("getAppConfig passes through the pages array when present", async () => {
 test("saveAppConfig PUTs the pages array when present", async () => {
   let body: any;
   server.use(
-    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -629,7 +487,7 @@ test("saveAppConfig PUTs the pages array when present", async () => {
 
 test("getAppConfig passes through the variables array when present", async () => {
   server.use(
-    http.get("https://builder.test/configs/by-item/5", () =>
+    http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5", itemId: "5", kind: "app",
         config: {
@@ -647,7 +505,7 @@ test("getAppConfig passes through the variables array when present", async () =>
 test("saveAppConfig PUTs the variables array when present", async () => {
   let body: any;
   server.use(
-    http.put("https://builder.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -664,7 +522,7 @@ test("saveAppConfig PUTs the variables array when present", async () => {
 test("createConfigItem seeds the layout from a template when templateId is given", async () => {
   let body: any = null;
   server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
+    http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
     }),
@@ -677,35 +535,11 @@ test("createConfigItem seeds the layout from a template when templateId is given
 test("createConfigItem falls back to an empty layout when templateId is unknown", async () => {
   let body: any = null;
   server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
+    http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
     }),
   );
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "does-not-exist" });
   expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
-});
-
-test("getItem maps is_published into isPublished", async () => {
-  const item = await makeClient().getItem("7");
-  expect(item.isPublished).toBe(false);
-});
-
-test("updateItem sends isPublished as is_published and maps the result back", async () => {
-  let body: any = null;
-  server.use(
-    http.patch("https://geonode.test/api/v2/resources/:pk", async ({ request, params }) => {
-      body = await request.json();
-      return HttpResponse.json({
-        resource: {
-          pk: String(params.pk), resource_type: "app", title: "Item", abstract: "",
-          owner: { username: "alice" }, thumbnail_url: null, date: "2026-01-01T00:00:00Z",
-          is_published: body.is_published,
-        },
-      });
-    }),
-  );
-  const item = await makeClient().updateItem("7", { isPublished: true });
-  expect(body.is_published).toBe(true);
-  expect(item.isPublished).toBe(true);
 });

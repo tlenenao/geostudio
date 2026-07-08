@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { http, HttpResponse } from "msw";
+import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
@@ -11,8 +13,7 @@ function wrapper({ children }: { children: ReactNode }) {
     defaultOptions: { queries: { retry: false } },
   });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "test-token",
   });
   return (
@@ -23,6 +24,19 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 test("useItems returns the mapped page", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+  );
   const { result } = renderHook(() => useItems({}), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.total).toBe(2);
@@ -46,8 +60,7 @@ test("useCreateItem creates an item and returns it", async () => {
 test("useDeleteItem optimistically removes the item from the list", async () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   const wrap = ({ children }: { children: ReactNode }) => (

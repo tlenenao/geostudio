@@ -25,8 +25,7 @@ function Harness({ children }: { children: ReactNode }) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   return (
