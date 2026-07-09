@@ -30,14 +30,14 @@ API standards OGC, architecture AI-native via MCP).
   Il grossira en cœur complet (items, partage, OGC API Features, MCP) selon la
   feuille de route.
 - **`docker-compose.yml`** — la stack de dev : PostGIS, PgBouncer, MinIO, Martin,
-  TiTiler, pg_featureserv, Keycloak, Traefik, cœur, shell — plus GeoNode, Superset
-  et Redis, **en sursis** (retirés au jalon M1 de la feuille de route).
+  TiTiler, pg_featureserv, Keycloak, Traefik, cœur, shell. GeoNode, Superset et
+  Redis sont sortis (jalon M1).
 
 ## Où va le projet
 
 | Jalon | Contenu |
 |---|---|
-| **M1 GeoNode-free** | Items/partage/publication dans le cœur ; GeoNode, Superset, Redis sortent |
+| **M1 GeoNode-free** ✅ | Items/partage/publication dans le cœur ; GeoNode, Superset, Redis sortis |
 | **M2 AI-operable** | Serveur MCP : un agent crée un dashboard valide |
 | **M3 Les apps écrivent** | OGC API Features (CRUD) + widget Formulaire schema-driven |
 | **M4 Donnée→carte** | Upload GPKG/GeoJSON → carte stylée partageable en minutes |
