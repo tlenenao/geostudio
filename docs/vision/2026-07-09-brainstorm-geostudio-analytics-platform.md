@@ -1,12 +1,14 @@
 # GeoStudio Analytics Platform — brainstorm stratégique
 
-> **Date : 2026-07-09 · Statut : brainstorm / proposition de vision — en attente de
-> validation.** Ce document ne modifie **aucun** arbitrage de la
-> [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) (§8, A1–A27) : il
-> s'appuie dessus, propose des extensions, et signale explicitement (⚠) tout point
-> qui, s'il était retenu, exigerait une mise à jour de la feuille de route. Les
-> chantiers proposés ici passeront chacun par le workflow spec → plan avant toute
-> exécution.
+> **Date : 2026-07-09 · Statut : validé** — les cinq questions ouvertes (§10)
+> ont été tranchées par Tanguy le 2026-07-09 et les amendements déclinés le même
+> jour dans la [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) :
+> **SP-14/SP-15, arbitrages A28–A30, amendements A22/A27, jalons M11/M12**. La
+> feuille de route reste LA référence opérationnelle ; ce document en est le
+> matériau de vision (benchmark, architecture cible, personas). Les chantiers
+> passeront chacun par le workflow spec → plan avant toute exécution. Les ⚠ du
+> texte ci-dessous marquaient les extensions alors candidates — voir le
+> récapitulatif de statut en §7.
 >
 > Question posée : faire évoluer GeoStudio d'un builder d'applications
 > géospatiales vers une **plateforme complète de Data Visualization, Analytics et
@@ -695,13 +697,13 @@ et sera tranché au moment venu, pas ici).
 
 ### Récapitulatif des amendements que cette vision demanderait (si retenue)
 
-| # | Nature | Document impacté |
-|---|---|---|
-| 1 | SP-5 : bindings CEL généralisés + variables typées explicitement au périmètre | spec SP-5 (pas d'arbitrage changé) |
-| 2 | SP-11 : datasets partagés au périmètre (ou SP-14 immédiat) | feuille de route §6 |
-| 3 | Nouveaux SP-14 (Analytics UX) et SP-15 (Alertes & reporting), jalons M11/M12 | feuille de route §6/§11 |
-| 4 | A22 : ArcGIS Feature Services en 5ᵉ connecteur (sur déclencheur) | feuille de route §8 |
-| 5 | A27 : ordre relatif SP-12/13/14/15 à retrancher après SP-11 | feuille de route §8 |
+| # | Nature | Document impacté | Statut (2026-07-09) |
+|---|---|---|---|
+| 1 | SP-5 : bindings CEL généralisés + variables typées explicitement au périmètre | spec SP-5 (pas d'arbitrage changé) | ✅ acté — périmètre SP-5 étendu dans la feuille de route |
+| 2 | SP-11 : datasets partagés au périmètre (ou SP-14 immédiat) | feuille de route §6 | ✅ acté — rattachés à **SP-14** (SP-11 inchangé) ; arbitrage **A28** |
+| 3 | Nouveaux SP-14 (Analytics UX) et SP-15 (Alertes & reporting), jalons M11/M12 | feuille de route §6/§11 | ✅ actés (sections SP-14/SP-15, jalons M11/M12) |
+| 4 | A22 : ArcGIS Feature Services en 5ᵉ connecteur (sur déclencheur) | feuille de route §8 | ✅ acté **dès maintenant** (Q-A4), inséré en **2ᵉ position** après STAC |
+| 5 | A27 : ordre relatif SP-12/13/14/15 à retrancher après SP-11 | feuille de route §8 | ⏳ volontairement laissé ouvert (Q-A3) — à arbitrer avant le lancement du premier de ces SP |
 
 ### Coût honnête
 
@@ -773,26 +775,30 @@ non techniciens, et le budget contraint. C'est exactement Q2.
 ## 10. Questions
 
 <a name="10-questions"></a>
-À trancher par Tanguy (elles conditionnent les vagues, pas la v0.1) :
+Tranchées par Tanguy le **2026-07-09** :
 
-- **Q-A1** : valider le concept **Dataset comme objet de plateforme** (nouveau
-  type d'item) — c'est la clef de voûte de tout le document.
-- **Q-A2** : le contexte global inclut-il l'emprise par défaut (`extent` filtre
-  les datasets marqués) — ou opt-in par dataset ? (proposition : opt-in par
-  dataset, car le refetch à chaque pan de carte a un coût).
-- **Q-A3** : priorité relative SP-14/SP-15 vs SP-12/SP-13 après le lakehouse
-  (amendement A27) — dépend de Q2 (premiers utilisateurs réels).
-- **Q-A4** : le connecteur ArcGIS Feature Services mérite-t-il d'entrer en A22
-  dès maintenant (argument migration Esri) ou sur déclencheur ?
-- **Q-A5** : Excel — export sec (CSV/xlsx de données) suffit-il, ou faut-il des
-  classeurs mis en forme (gabarits) ? (proposition : export sec en SP-15,
-  gabarits différés).
+- **Q-A1 — Dataset comme objet de plateforme** : ✅ **oui** (nouveau type
+  d'item) — arbitrage **A28**. La clef de voûte du document est validée.
+- **Q-A2 — Emprise dans le contexte global** : **opt-in par dataset** par
+  défaut, avec possibilité d'activer le refetch à chaque déplacement de carte
+  dans la config — arbitrage **A29**.
+- **Q-A3 — Priorité SP-14/SP-15 vs SP-12/SP-13** : **à arbitrer plus tard**,
+  avant le lancement du premier de ces SP (A27 amendé en ce sens) ; dépend de
+  Q2 (premiers utilisateurs réels).
+- **Q-A4 — Connecteur ArcGIS Feature Services** : **dès maintenant** — A22
+  amendé (5 connecteurs), inséré en **2ᵉ position** : STAC → **ArcGIS FS** →
+  GetCapabilities → CSW/ISO → CKAN ; le référencement comme source de dataset
+  arrive dès SP-14.
+- **Q-A5 — Excel** : **export sec** (CSV/XLSX) en SP-15, gabarits différés —
+  arbitrage **A30**.
 
 ---
 
 *Brainstorm rédigé le 2026-07-09 (état M1, branche `dev`), sur la base de la
 feuille de route 2026-07-04 (arbitrages A1–A27 respectés), du comparatif §9, de
 la vision long terme, et de l'inventaire du code du builder
-(`shell/src/builder/`). Prochaine étape si validé : mise à jour explicite de la
-feuille de route (amendements §7 ci-dessus), puis specs SP dédiées le moment
-venu — rien de tout ceci n'interfère avec SP-2 (MCP v0), le prochain chantier.*
+(`shell/src/builder/`). Validé le 2026-07-09 (réponses Q-A1→Q-A5, §10) et
+décliné le même jour dans la feuille de route (SP-14/SP-15, arbitrages A28–A30,
+amendements A22/A27, jalons M11/M12). Les specs SP dédiées viendront au moment
+de lancer chaque chantier — rien de tout ceci n'interfère avec SP-2 (MCP v0),
+le prochain chantier.*
