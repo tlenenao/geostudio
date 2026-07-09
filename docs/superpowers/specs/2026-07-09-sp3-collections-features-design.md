@@ -52,8 +52,9 @@ métadonnées STAC (SP-6, A7).
 | Découpage | **3 sous-phases livrables** : SP-3a registre+introspection (15–25 h), SP-3b CRUD features+RLS (25–40 h), SP-3c bascule shell+démolition (10–25 h). La lecture reste sur pg_featureserv jusqu'à 3c (parité atteinte). |
 | Surface OGC (A4) | Part 1 : landing `/`, `/conformance`, `/collections`, `/collections/{cid}`, `/items` (GeoJSON, `limit`/`offset` + liens `next`/`prev`, `bbox`, filtres d'égalité `propriété=valeur`), `/items/{fid}`. Part 4 : `POST` (create), `PUT` (replace), `DELETE`. **Pas de PATCH ni de reprojection en v1** ; CRS déclaré : CRS84 (les données de démo sont en 4326). Conformité progressive — les classes annoncées dans `/conformance` sont celles réellement tenues. |
 | Compat filtres | Les filtres d'égalité par paramètre d'URL reproduisent le comportement pg_featureserv **exactement** (le `DataSource.query` du builder passe ses clés en query string — contrat existant à ne pas casser). Les clés stats (`groupBy`, `split`, `agg`, `field`, `measures`) restent exclues côté shell. |
-| Enregistrement | `POST /collections {tableName, title, …}` — l'appelant devient **owner**. Garde-fous : la table doit exister dans le schéma `public`, avoir une PK simple, 0 ou 1 colonne géométrie ; les tables du cœur (`Base.metadata` + `alembic_version`) et les vues matérialisées sont refusées. Identifiants toujours quotés (jamais interpolés). `DELETE /collections/{cid}` **désenregistre sans dropper la table**. |
-| Permissions | Table `collection_shares` (miroir d'`item_shares` : groupe × rôle viewer/editor) ; **`can()` reste l'unique porte**, généralisée : `ItemAccessFacts` devient `AccessFacts` (alias conservé) et le lookup de rôle est routé par un paramètre `kind: "item"\|"collection"`. Owner → tout ; editor → write ; viewer/public → read. Motif « 404 avant 403 » conservé (anti-énumération). |
+| **Rôle admin** (décision 2026-07-09) | Colonne **`users.is_admin`** (bool, défaut false), gérée par le cœur — cohérent avec A2 (« identité déléguée, autorisation maison »). **Bootstrap** : env `CORE_ADMIN_SUBS` (liste de `sub` OIDC séparés par des virgules), appliquée et rafraîchie à chaque `get_or_create_user` (promouvoir via l'env ne demande qu'un re-login). **Promotion par API** : `PATCH /users/{id} {isAdmin}` réservé aux admins, refus de rétrograder le dernier admin (409), audité (`user.promote`/`user.demote`). En mode `mock`, le user mock est admin (tests/e2e) ; les tests d'authz surchargent par des users non-admin. Périmètre : **registre + pleins droits (read/write/share) sur toutes les collections du tenant** — via la porte `can()` (paramètre `actor_is_admin`, courtcircuit pour `kind="collection"` uniquement). **Aucun droit supplémentaire sur items/configs/groupes** (testé explicitement — la sémantique SP-1 ne bouge pas). |
+| Enregistrement | `POST /collections {tableName, title, …}` — **réservé aux admins** ; l'admin appelant devient **owner**. Garde-fous : la table doit exister dans le schéma `public`, avoir une PK simple, 0 ou 1 colonne géométrie ; les tables du cœur (`Base.metadata` + `alembic_version`) et les vues matérialisées sont refusées. Identifiants toujours quotés (jamais interpolés). `DELETE /collections/{cid}` (**admin**) **désenregistre sans dropper la table**. |
+| Permissions | Table `collection_shares` (miroir d'`item_shares` : groupe × rôle viewer/editor) ; **`can()` reste l'unique porte**, généralisée : `ItemAccessFacts` devient `AccessFacts` (alias conservé) et le lookup de rôle est routé par un paramètre `kind: "item"\|"collection"`. Owner → tout ; **admin → tout sur les collections** ; editor → write ; viewer/public → read. Motif « 404 avant 403 » conservé (anti-énumération). |
 | Accès anonyme | `is_public` sur la collection ⇒ lecture anonyme des features. Implémenté par une dépendance `get_current_user_optional` **sur les routes OGC elles-mêmes** (URLs OGC stables obligatoires — pas de duplication sous `/public`). |
 | RLS (A3) | Générée **à l'enregistrement** de la collection : `ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT 'default'`, `ENABLE ROW LEVEL SECURITY`, policies `USING`/`WITH CHECK (tenant_id = current_setting('app.tenant_id'))`. Le cœur exécute chaque transaction feature sous `SET LOCAL ROLE gis_rls` (rôle **non-propriétaire** créé par migration, `SELECT/INSERT/UPDATE/DELETE` accordés par collection) + `SET LOCAL app.tenant_id` — compatible PgBouncer en pool `transaction` (portée transactionnelle). `can()` reste l'enforcement premier ; la RLS est la défense en profondeur. **Martin (rôle `gis`, propriétaire) n'est pas couvert** — écart documenté et assumé par A3 (« Martin devra à terme passer par des vues ou un rôle par tenant »). |
 | Introspection | **Vivante** (pg_catalog/information_schema à la requête, pas de cache persistant — pas de schéma périmé). Le registre ne stocke que la déclaration (+ `geometry_type`/`srid`/`pk_column` figés à l'enregistrement pour la validation). Types v1 **bornés** : text, numeric/int, bool, date, timestamptz, enum Postgres ; géométries (Multi)Point/LineString/Polygon. Colonne hors périmètre ⇒ exposée `"unsupported"`, en lecture seule, refusée à l'écriture. |
@@ -92,8 +93,8 @@ class CollectionShare(Base):
     role: Mapped[str] = mapped_column(String, nullable=False)   # "viewer" | "editor"
 ```
 
-Migration Alembic 0008 : `collections`, `collection_shares`, **rôle Postgres
-`gis_rls`** (`CREATE ROLE … NOLOGIN`, `GRANT gis_rls TO gis` pour autoriser le
+Migration Alembic 0008 : colonne **`users.is_admin`** (bool, non-null, défaut
+false), `collections`, `collection_shares`, **rôle Postgres `gis_rls`** (`CREATE ROLE … NOLOGIN`, `GRANT gis_rls TO gis` pour autoriser le
 `SET LOCAL ROLE`) — la partie rôle est no-op en SQLite (guard sur le dialecte,
 comme le pattern existant `init_db`). Les DDL par collection (tenant_id, RLS,
 GRANT) ne sont **pas** dans la migration : ils sont exécutés par le module
@@ -137,13 +138,22 @@ PUT    /collections/{cid}/items/{fid}      → 204 (remplacement complet)
 DELETE /collections/{cid}/items/{fid}      → 204
 
 # Gestion du registre (hors spec OGC, même conventions que /items)
-POST   /collections                        → enregistre une table existante (caller = owner)
-PATCH  /collections/{cid}                  → title, description, isPublic, editable
-DELETE /collections/{cid}                  → désenregistre (la table survit)
+POST   /collections                        → enregistre une table existante (admin ; devient owner)
+PATCH  /collections/{cid}                  → title, description, isPublic, editable (owner ou admin)
+DELETE /collections/{cid}                  → désenregistre, la table survit (admin)
 GET    /collections/{cid}/schema           → introspection (voir §3)
-GET    /collections/{cid}/sharing          → comme /items/{id}/sharing
+GET    /collections/{cid}/sharing          → comme /items/{id}/sharing (owner ou admin)
 PUT    /collections/{cid}/sharing          → idem (groupes × viewer/editor)
+
+# Administration des utilisateurs (rôle admin)
+GET    /users?page=&pageSize=              → listing minimal (id, username, isAdmin)
+PATCH  /users/{id}                         → { isAdmin } ; 409 si dernier admin rétrogradé
 ```
+
+Contrainte de frontières : `users` est sous `auth` dans le contrat layers (il ne
+peut pas importer `get_current_user`) — les routes `/users` vivent donc dans
+`app/auth/routes.py`, qui importe déjà le repository users. Pas de nouveau
+module pour deux endpoints.
 
 Écritures features : payload = GeoJSON Feature (`properties` + `geometry`
 optionnelle si la collection n'a pas de géométrie ou si la colonne est
@@ -156,7 +166,9 @@ par champ. Chaque mutation : `can(write)` → `SET LOCAL ROLE gis_rls` +
 Les tables de démo `incidents` et `points_interet` sont déclarées comme
 collections éditables (et `is_public=true`) par un **script de seed idempotent**
 (`core/scripts/seed_demo.py`, invoqué dans la doc d'install) — pas par
-migration : l'enregistrement exige un owner, donc un user existant.
+migration : l'enregistrement exige un owner. Le script écrit en base
+directement et prend `--owner <username>` (défaut : le premier admin trouvé,
+créé depuis `CORE_ADMIN_SUBS` si nécessaire).
 
 ## 5. RLS — limites explicites
 
@@ -191,6 +203,9 @@ chemin tuiles est inchangé. À réévaluer quand le multi-tenant s'activera
 - Collection inconnue **ou** non lisible → `404` (anti-énumération, comme
   items) ; écriture sans rôle editor → `403` ; anonyme sur collection non
   publique → `404`.
+- Enregistrement / désenregistrement par un non-admin → `403` (la collection
+  est listable, donc pas d'anti-énumération à préserver ici) ; `PATCH /users`
+  par un non-admin → `403` ; rétrogradation du dernier admin → `409`.
 - Enregistrement : table inexistante / vue matérialisée / table du cœur / PK
   absente ou composite / deux colonnes géométrie → `400` avec raison précise ;
   `table_name` déjà enregistré dans le tenant → `409`.
@@ -210,9 +225,12 @@ chemin tuiles est inchangé. À réévaluer quand le multi-tenant s'activera
   quotés — test dédié avec noms hostiles `"communes; drop table--"`) ;
   génération des liens `next`/`prev`.
 - **SQLite (pattern existant)** : CRUD du registre, `PATCH`, désenregistrement,
-  sharing de collections, matrice `can()` généralisée (owner/editor/viewer/
-  stranger/anonyme × read/write/share — répliquée de
-  `test_sharing_authorization.py`, isolation cross-tenant comprise).
+  sharing de collections, matrice `can()` généralisée (**admin**/owner/editor/
+  viewer/stranger/anonyme × read/write/share — répliquée de
+  `test_sharing_authorization.py`, isolation cross-tenant comprise) ; bootstrap
+  admin depuis `CORE_ADMIN_SUBS` (promotion au token, rafraîchie) ; garde du
+  dernier admin ; **test anti-régression : un admin n'a aucun droit
+  supplémentaire sur items/configs** (la matrice SP-1 reste inchangée).
 - **PostGIS réel (nouveau, marqueur `postgis`)** : enregistrement complet
   (tenant_id ajouté, RLS activée, policies créées, GRANT) ; CRUD features avec
   géométrie ; filtres/bbox/pagination ; **RLS effective** (une session forcée
@@ -229,7 +247,9 @@ chemin tuiles est inchangé. À réévaluer quand le multi-tenant s'activera
 
 - Un `editor` crée, modifie et supprime une feature (géométrie comprise) via
   l'API OGC ; un `viewer` reçoit 403 en écriture ; un anonyme lit une
-  collection publique et reçoit 404 sur une privée. *(matrice testée)*
+  collection publique et reçoit 404 sur une privée ; un **admin** enregistre
+  une collection et écrit dans toute collection du tenant, un non-admin reçoit
+  403 sur `POST /collections`. *(matrice testée)*
 - `GET /collections/{cid}/schema` sur `incidents` renvoie champs, types, enums
   et contrainte `required` exacts — le contrat que SP-4 consommera.
 - Une feature créée via l'API est **immédiatement visible dans les tuiles
