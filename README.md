@@ -78,7 +78,12 @@ CI) se vérifie manuellement :
 
 1. `docker compose up -d` (stack complète, y compris `keycloak` avec le realm
    `geostudio` importé automatiquement — voir `docker compose ps keycloak`
-   pour confirmer `healthy`).
+   pour confirmer `healthy`), puis appliquer les migrations du cœur :
+   `cd core && DATABASE_URL=postgresql+psycopg://gis:${PG_PASSWORD}@localhost:5432/gis uv run alembic upgrade head`.
+   Sans cette étape, `GET /me` échoue même avec un token Keycloak valide —
+   `get_current_user` écrit dans les tables `tenants`/`users`, absentes tant
+   que les migrations n'ont pas tourné sur une base Postgres neuve
+   (`init_db()` ne les crée qu'en SQLite, jamais en Postgres).
 2. Construire et lancer le shell avec `CORE_AUTH_MODE=oidc` côté cœur et sans
    `VITE_AUTH_MODE=mock` côté shell (retirer la variable ou la mettre à
    `oidc`).
