@@ -36,7 +36,7 @@ services:
         -c max_parallel_workers_per_gather=4
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.22
+    image: edoburu/pgbouncer:1.22.1-p0
     environment:
       DB_HOST: postgis
       DB_NAME: gis
@@ -73,7 +73,7 @@ services:
   # ─── Serveurs de tuiles ────────────────────────────────
 
   martin:
-    image: ghcr.io/maplibre/martin:v0.13
+    image: ghcr.io/maplibre/martin:v0.13.0
     environment:
       DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
     volumes:
@@ -87,7 +87,7 @@ services:
         condition: service_started
 
   titiler:
-    image: developmentseed/titiler:0.18
+    image: ghcr.io/developmentseed/titiler:0.18.4
     environment:
       CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF,.tiff
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES
