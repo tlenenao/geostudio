@@ -21,9 +21,10 @@ test("listItems sends the bearer token and scope", async () => {
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
   );
-  await makeClient("abc").listItems({ scope: "shared" });
+  await makeClient("abc").listItems({ scope: "shared", type: "app" });
   expect(auth).toBe("Bearer abc");
   expect(url).toContain("scope=shared");
+  expect(url).toContain("type=app");
 });
 
 test("getItem returns the item as-is (core owner is already a flat string)", async () => {
