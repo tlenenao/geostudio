@@ -2,31 +2,6 @@ import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Grou
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
-type GeoNodeResource = {
-  pk: number | string;
-  resource_type: string;
-  title: string;
-  abstract?: string;
-  owner?: { username?: string };
-  thumbnail_url?: string | null;
-  date?: string;
-  is_published?: boolean;
-};
-
-function toItem(r: GeoNodeResource): Item {
-  return {
-    pk: String(r.pk),
-    resourceType: (r.resource_type as ResourceType) ?? "map",
-    title: r.title,
-    abstract: r.abstract ?? "",
-    owner: r.owner?.username ?? "",
-    thumbnailUrl: r.thumbnail_url ?? null,
-    date: r.date ?? "",
-    configId: null,
-    isPublished: r.is_published ?? false,
-  };
-}
-
 type RawMapLayer = {
   id: string; title: string; visible: boolean; kind: string;
   tilesUrl?: string | null; sourceLayer?: string | null; url?: string | null;
@@ -158,22 +133,27 @@ function aggregateRecords(records: DataRecord[], query: Record<string, unknown>)
 }
 
 export function createItemClient(opts: {
-  geonodeUrl: string;
-  builderUrl: string;
+  coreUrl: string;
   martinUrl?: string;
   featureservUrl?: string;
   getToken: () => string | undefined;
 }): ItemClient {
-  const { geonodeUrl, builderUrl, martinUrl, featureservUrl, getToken } = opts;
+  const { coreUrl, martinUrl, featureservUrl, getToken } = opts;
 
-  async function get<T>(path: string): Promise<T> {
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = getToken();
-    const res = await fetch(`${geonodeUrl}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(`${coreUrl}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
-      throw new Error(`Request failed: ${res.status} ${path}`);
+      throw new Error(`Request failed: ${res.status} ${method} ${path}`);
     }
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
 
@@ -213,49 +193,21 @@ export function createItemClient(opts: {
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
-      if (params.q) q.set("search", params.q);
-      if (params.type) q.set("filter{resource_type.in}", params.type);
-      if (params.scope === "mine" && params.me) {
-        q.set("filter{owner.username.in}", params.me);
-      }
-      if (params.scope === "public") {
-        q.set("filter{is_published}", "true");
-      }
+      if (params.q) q.set("q", params.q);
+      if (params.type) q.set("type", params.type);
+      if (params.scope) q.set("scope", params.scope);
       q.set("page", String(params.page ?? 1));
-      q.set("page_size", String(params.pageSize ?? 12));
-      const data = await get<{
-        total: number;
-        page: number;
-        page_size: number;
-        resources: GeoNodeResource[];
-      }>(`/api/v2/resources?${q.toString()}`);
-      let items = data.resources.map(toItem);
-      let total = data.total;
-      if (params.scope === "shared" && params.me) {
-        // Page-local exclusion of owned items (GeoNode has no "shared with me"
-        // param). `total` is only corrected for this page, so multi-page totals
-        // are approximate — documented limitation. Never let it go negative.
-        const before = items.length;
-        items = items.filter((i) => i.owner !== params.me);
-        total = Math.max(0, total - (before - items.length));
-      }
-      return { items, total, page: data.page, pageSize: data.page_size };
+      q.set("pageSize", String(params.pageSize ?? 12));
+      return request<ItemPage>("GET", `/items?${q.toString()}`);
     },
 
     async getItem(pk: string): Promise<Item> {
-      const data = await get<{ resource: GeoNodeResource }>(`/api/v2/resources/${pk}`);
-      return toItem(data.resource);
+      return request<Item>("GET", `/items/${pk}`);
     },
 
     async getMe(): Promise<Me> {
-      const data = await get<{
-        user: { username: string; first_name?: string; last_name?: string };
-      }>(`/api/v2/users/me`);
-      return {
-        username: data.user.username,
-        firstName: data.user.first_name ?? "",
-        lastName: data.user.last_name ?? "",
-      };
+      const data = await request<{ username: string; firstName: string; lastName: string }>("GET", `/me`);
+      return { username: data.username, firstName: data.firstName, lastName: data.lastName };
     },
 
     async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {
@@ -268,25 +220,11 @@ export function createItemClient(opts: {
         layout: template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
         messages: [],
       };
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ title: input.title, owner: input.owner, config }),
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} /configs`);
-      }
-      const data = (await res.json()) as {
-        id: string | number;
-        kind: string;
-        itemId: string | null;
-      };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
       if (!data.itemId) {
-        throw new Error("createConfigItem: builder returned no itemId");
+        throw new Error("createConfigItem: core returned no itemId");
       }
       return {
         pk: String(data.itemId),
@@ -302,41 +240,26 @@ export function createItemClient(opts: {
     },
 
     async updateItem(pk: string, patch: UpdatePatch): Promise<Item> {
-      const token = getToken();
-      const { isPublished, ...rest } = patch;
-      const body = { ...rest, ...(isPublished !== undefined ? { is_published: isPublished } : {}) };
-      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} PATCH /resources/${pk}`);
-      }
-      const data = (await res.json()) as { resource: GeoNodeResource };
-      return toItem(data.resource);
+      return request<Item>("PATCH", `/items/${pk}`, patch);
     },
 
     async uploadThumbnail(pk: string, file: File): Promise<void> {
       const token = getToken();
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}/set_thumbnail`, {
-        method: "PUT",
+      const res = await fetch(`${coreUrl}/items/${pk}/thumbnail`, {
+        method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
       if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} PUT thumbnail`);
+        throw new Error(`Request failed: ${res.status} POST thumbnail`);
       }
     },
 
     async deleteItem(pk: string): Promise<void> {
       const token = getToken();
-      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
+      const res = await fetch(`${coreUrl}/configs/by-item/${pk}`, {
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -346,44 +269,16 @@ export function createItemClient(opts: {
     },
 
     async listGroups(): Promise<Group[]> {
-      const data = await get<{ group_profiles: { pk: number | string; title: string }[] }>(
-        `/api/v2/groups`,
-      );
-      return data.group_profiles.map((g) => ({ id: String(g.pk), title: g.title }));
+      const data = await request<{ id: string; name: string }[]>("GET", `/groups`);
+      return data.map((g) => ({ id: g.id, title: g.name }));
     },
 
     async getSharing(pk: string): Promise<Sharing> {
-      const data = await get<{ groups: { id: string; permissions: string }[] }>(
-        `/api/v2/resources/${pk}/permissions`,
-      );
-      return {
-        public: data.groups.some((g) => g.id === "anonymous"),
-        groups: data.groups
-          .filter((g) => g.id !== "anonymous")
-          .map((g) => ({ groupId: g.id, role: g.permissions === "edit" ? "editor" : "viewer" })),
-      };
+      return request<Sharing>("GET", `/items/${pk}/sharing`);
     },
 
     async setSharing(pk: string, sharing: Sharing): Promise<void> {
-      const token = getToken();
-      const groups = [
-        ...(sharing.public ? [{ id: "anonymous", permissions: "view" }] : []),
-        ...sharing.groups.map((g) => ({
-          id: g.groupId,
-          permissions: g.role === "editor" ? "edit" : "view",
-        })),
-      ];
-      const res = await fetch(`${geonodeUrl}/api/v2/resources/${pk}/permissions`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ groups }),
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} PUT permissions`);
-      }
+      await request<void>("PUT", `/items/${pk}/sharing`, sharing);
     },
 
     async listLayerSources(): Promise<LayerSource[]> {
@@ -407,15 +302,10 @@ export function createItemClient(opts: {
         layers: [],
       };
       const config = { version: 1, kind: "map", map };
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ title: input.title, owner: input.owner, config }),
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /configs`);
-      const data = (await res.json()) as { id: string | number; kind: string; itemId: string | null };
-      if (!data.itemId) throw new Error("createMapItem: builder returned no itemId");
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createMapItem: core returned no itemId");
       return {
         pk: String(data.itemId), resourceType: "map", title: input.title, abstract: "",
         owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
@@ -424,15 +314,10 @@ export function createItemClient(opts: {
     },
 
     async getMapConfig(pk: string): Promise<MapConfig> {
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} GET /configs/by-item/${pk}`);
       // ConfigRead nests the builder config under "config"; the map is config.map.
-      const data = (await res.json()) as {
+      const data = await request<{
         config?: { map?: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null };
-      };
+      }>("GET", `/configs/by-item/${pk}`);
       const map = data.config?.map;
       if (!map) throw new Error("getMapConfig: config has no map payload");
       return {
@@ -443,22 +328,11 @@ export function createItemClient(opts: {
     },
 
     async saveMapConfig(pk: string, config: MapConfig): Promise<void> {
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ version: 1, kind: "map", map: config }),
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} PUT /configs/by-item/${pk}`);
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map: config });
     },
 
     async getAppConfig(pk: string): Promise<AppConfig> {
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} GET /configs/by-item/${pk}`);
-      const data = (await res.json()) as {
+      const data = await request<{
         config?: {
           kind?: "app" | "dashboard";
           theme?: Theme;
@@ -468,7 +342,7 @@ export function createItemClient(opts: {
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
         };
-      };
+      }>("GET", `/configs/by-item/${pk}`);
       const c = data.config;
       if (!c?.layout) throw new Error("getAppConfig: config has no layout");
       return {
@@ -483,22 +357,16 @@ export function createItemClient(opts: {
     },
 
     async saveAppConfig(pk: string, config: AppConfig): Promise<void> {
-      const token = getToken();
-      const res = await fetch(`${builderUrl}/configs/by-item/${pk}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          version: 1,
-          kind: config.kind,
-          theme: config.theme,
-          dataSources: config.dataSources,
-          messages: config.messages,
-          pages: config.pages,
-          variables: config.variables,
-          layout: config.layout,
-        }),
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: config.kind,
+        theme: config.theme,
+        dataSources: config.dataSources,
+        messages: config.messages,
+        pages: config.pages,
+        variables: config.variables,
+        layout: config.layout,
       });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} PUT /configs/by-item/${pk}`);
     },
 
     featuresUrl(source: DataSource): string {

@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRoutes } from "./routes";
@@ -37,8 +39,7 @@ function wrap(children: ReactNode, initial = "/") {
     defaultOptions: { queries: { retry: false } },
   });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   return render(
@@ -51,6 +52,18 @@ function wrap(children: ReactNode, initial = "/") {
 }
 
 test("navigates from catalog to app builder on open (app item)", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+  );
   wrap(<AppRoutes />);
   await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
   expect(await screen.findByText("app-builder-1")).toBeInTheDocument();

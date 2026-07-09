@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockGeoNode } from "./mocks";
+import { mockCore } from "./mocks";
 
 test("login (mock) → list → open item", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
 
   await expect(page.getByText("GeoStudio")).toBeVisible();
@@ -14,7 +14,7 @@ test("login (mock) → list → open item", async ({ page }) => {
 });
 
 test("create an App → lands on the builder", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
   await page.getByLabel("Titre").fill("Créée");
@@ -24,7 +24,7 @@ test("create an App → lands on the builder", async ({ page }) => {
 });
 
 test("delete an item from the catalog", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).first().click();
@@ -34,7 +34,7 @@ test("delete an item from the catalog", async ({ page }) => {
 });
 
 test("delete from the detail page returns to the catalog", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   // Navigate directly to the item detail page — clicking "Ouvrir" now goes to the builder.
   await page.goto("/items/1");
   await expect(page).toHaveURL(/\/items\/1$/);
@@ -46,7 +46,7 @@ test("delete from the detail page returns to the catalog", async ({ page }) => {
 });
 
 test("filters the catalog to my items (empty for the mock user)", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await page.getByLabel("Portée").selectOption("mine");
