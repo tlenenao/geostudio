@@ -106,6 +106,21 @@ def get_current_mcp_actor(
     ...
 ```
 
+> **Mis à jour après implémentation (plan SP-2a, exécuté) :** le SDK MCP
+> officiel impose son propre protocole `TokenVerifier`
+> (`mcp.server.auth.provider.TokenVerifier`, `verify_token(token) ->
+> AccessToken | None`) plutôt qu'une dépendance FastAPI classique — l'esquisse
+> `get_current_mcp_actor` ci-dessus a été remplacée par
+> `app.mcp.auth.KeycloakTokenVerifier`, de forme différente mais de logique
+> identique (même JWKS, même issuer, audience `CORE_MCP_AUDIENCE`). Le SDK
+> génère aussi lui-même `/.well-known/oauth-protected-resource/mcp` et le
+> challenge `401`+`WWW-Authenticate` — ce plan ne les écrit pas à la main
+> (voir le plan d'implémentation pour le détail). Conséquence du protocole
+> `TokenVerifier` (qui ne peut renvoyer qu'un `AccessToken` ou `None`, jamais
+> lever un code HTTP précis) : un Keycloak injoignable pendant la validation
+> remonte en `401` côté MCP, pas en `503` comme `get_current_user` côté REST
+> — divergence assumée, pas un bug (voir le plan, revue finale).
+
 Duplication délibérée de la logique JWT plutôt que paramétrage de
 `get_current_user` par une audience variable : les deux dépendances
 protègent des surfaces différentes (API REST du shell vs. serveur MCP) et
