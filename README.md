@@ -104,6 +104,32 @@ indique un realm mal configuré (`Valid redirect URIs` du client
 l'`audience`/`issuer` attendus par le cœur (`CORE_OIDC_AUDIENCE`,
 `CORE_OIDC_ISSUER`) et ce que le realm émet réellement.
 
+### Vérifier le serveur MCP (manuel)
+
+Le serveur MCP (`/mcp`) n'a, à ce stade (SP-2a), aucun outil métier réel —
+juste `whoami`, qui prouve que l'authentification OAuth aboutit à la même
+identité que l'API REST du shell. Vérification manuelle :
+
+1. `docker compose up -d` (stack complète, `CORE_AUTH_MODE=oidc`, realm
+   `geostudio` importé).
+2. Avec un client MCP conforme à la spec *MCP Authorization* (ou
+   l'inspecteur MCP en ligne de commande), se connecter à
+   `http://localhost:8200/mcp`.
+3. Le client découvre `/.well-known/oauth-protected-resource/mcp`,
+   s'enregistre dynamiquement auprès de Keycloak (DCR), puis déclenche un
+   flow OAuth 2.1 + PKCE dans le navigateur — se connecter avec un des
+   utilisateurs de démo du realm (`alice`/`Demo1234!`).
+4. Une fois connecté, appeler l'outil `whoami` : la réponse doit contenir
+   `{"username": "alice", ...}` — la même identité que celle que `GET /me`
+   retournerait pour le même utilisateur côté API REST.
+
+Un échec à l'étape 3 avec une erreur de policy `Trusted Hosts` indique que
+le realm importé n'a pas la politique de dev de ce plan (Task 1) — vérifier
+`deploy/keycloak/geostudio-realm.json`. Un `401` à l'étape 4 indique un
+décalage entre `CORE_MCP_AUDIENCE` et l'audience réellement émise par le
+realm (vérifier que `geostudio-mcp-audience` est bien un scope par défaut
+du realm : `GET /admin/realms/geostudio/default-default-client-scopes`).
+
 ### Développement front (shell)
 
 ```bash

@@ -15,16 +15,19 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Documents de référence (ordre d'autorité)
 
 1. **`docs/vision/2026-07-04-feuille-de-route-geostudio.md`** — LA référence :
-   phasage SP-1→SP-13, périmètre exact du remplacement de GeoNode (= l'interface
-   `ItemClient`), modèle de données du cœur v0, **27 arbitrages tranchés (§8)**,
-   jalons M1–M10. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
+   phasage SP-1→SP-15, périmètre exact du remplacement de GeoNode (= l'interface
+   `ItemClient`), modèle de données du cœur v0, **30 arbitrages tranchés (§8)**,
+   jalons M1–M12. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
    on met à jour ce document explicitement.
 2. `docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md` — pourquoi
    l'option C, décisions produit (§9).
 3. `docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md` — vision
    long terme.
-4. `docs/superpowers/specs/` + `plans/` — chaque SP a sa spec puis son plan datés.
-5. `docs/archive/` — générations dépassées ; ne pas s'en inspirer sans lire la
+4. `docs/vision/2026-07-09-brainstorm-geostudio-analytics-platform.md` — vision
+   analytics/BI/decision support (validée, déclinée en SP-14/SP-15 et A28–A30) :
+   benchmark, architecture Datasets→Widgets, personas.
+5. `docs/superpowers/specs/` + `plans/` — chaque SP a sa spec puis son plan datés.
+6. `docs/archive/` — générations dépassées ; ne pas s'en inspirer sans lire la
    note d'archive.
 
 ## Décisions figées (ne pas re-débattre)
@@ -46,13 +49,21 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - MCP : module du cœur, même process, permissions de l'utilisateur, audité.
 - GeoNode/Superset/Redis : **sortis (jalon M1, 2026-07-09)** — retirés du
   compose et du code ; tout code de contenu passe par le cœur.
-- Post-v0.1 (SP-10→13, ordre figé par A27) : observabilité **OTel + profil
+- Post-v0.1 (SP-10→15 ; A27 amendé : OTel puis Lakehouse, ordre SP-12→15
+  ensuite à arbitrer avant leur lancement) : observabilité **OTel + profil
   `grafana/otel-lgtm`** ; lakehouse **CDC par réplication logique (worker
   maison) → GeoParquet plat** (Iceberg différé), **DuckDB côté serveur** (API
   structurée pour les widgets, SQL read-only réservé aux analystes) ; **STAC
   natif dans le cœur** + export DCAT-AP + moissonnage par référencement
-  (connecteurs : STAC → GetCapabilities → CSW → CKAN) ; 3D **deck.gl
-  Tile3DLayer + terrain raster-dem**, impression **Playwright en worker**.
+  (connecteurs : STAC → **ArcGIS FS** → GetCapabilities → CSW → CKAN) ; 3D
+  **deck.gl Tile3DLayer + terrain raster-dem**, impression **Playwright en
+  worker**.
+- Analytics (brainstorm 2026-07-09 validé) : **datasets = objets de plateforme**
+  (nouveau type d'item, pipeline déclaratif + métriques CEL, A28) — SP-14
+  Analytics UX (requête visuelle, contexte global temps×emprise — emprise
+  opt-in par dataset, A29 —, cross-filter, SQL Lab) et SP-15 alertes & rapports
+  planifiés (exports secs CSV/XLSX, A30) ; bindings CEL généralisés + variables
+  typées entrent au périmètre SP-5.
 
 ## Règles d'architecture non négociables
 
@@ -109,6 +120,10 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
   code.
 - **Prochain chantier : SP-2** (serveur MCP v0 — voir feuille de route §M2 /
   "AI-operable") : un agent doit pouvoir créer un dashboard valide via MCP.
+- 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
+  dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
+  A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
+  « vague 0 » opportunistes au fil de SP-4/SP-5).
 - Suivi non bloquant en attente : tags d'images Docker `pgbouncer`/`martin`/
   `titiler` repinnés vers des versions résolubles (2026-07-09) ; documenter
   dans `.env.example` si de nouveaux tags dérivent à nouveau.

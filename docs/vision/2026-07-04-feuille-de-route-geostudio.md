@@ -8,6 +8,10 @@
 > Date : 2026-07-04 · Statut : feuille de route — les arbitrages techniques (§7) sont
 > tranchés en §8. Chaque phase donnera lieu à sa spec + son plan détaillé
 > (`docs/superpowers/`) au moment de la lancer, selon le workflow SP-0x existant.
+> Étendue le 2026-07-05 (SP-10→13, A16–A27) puis le **2026-07-09** (SP-14/SP-15,
+> A28–A30, amendements A22/A27, jalons M11/M12 — issus du
+> [brainstorm Analytics Platform](./2026-07-09-brainstorm-geostudio-analytics-platform.md),
+> validé Q-A1→Q-A5).
 
 ---
 
@@ -179,7 +183,9 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-11 | Lakehouse & CDC (GeoParquet, DuckDB) | 70–120 h | SP-6, SP-10 | **M8 data platform** |
 | SP-12 | Catalogue interopérable (STAC, DCAT, moissonnage) | 60–100 h | SP-6 | **M9 catalogue ouvert** |
 | SP-13 | 3D & impression | 50–90 h | SP-1 | **M10 3D & print** |
-| | **Total** | **≈ 595–1 050 h** | | ≈ 14–28 mois à 10–25 h/sem |
+| SP-14 | Analytics UX : datasets, requête visuelle, contexte global | 60–100 h | SP-11 | **M11 BI géospatiale** |
+| SP-15 | Alertes & reporting : exports, rapports planifiés | 50–80 h | SP-13, SP-14 | **M12 la plateforme prévient** |
+| | **Total** | **≈ 705–1 230 h** | | ≈ 16–32 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
@@ -191,6 +197,15 @@ sortie du « différé ») ; leur position — *après* v0.1 — et leur ordre r
 sont fixés par l'arbitrage A27. SP-13 (3D & impression) ne dépend que du socle et
 peut s'intercaler plus tôt si un besoin utilisateur réel l'exige ; SP-12 peut
 précéder SP-11 si l'interop catalogue devient un argument commercial urgent.
+
+Les **SP-14 et SP-15** ont été ajoutés le 2026-07-09 (brainstorm Analytics
+Platform, validé) : ils suivent SP-11 (l'API analytique est leur socle), mais
+leur ordre relatif vis-à-vis de SP-12/SP-13 **reste à arbitrer** avant le
+lancement du premier d'entre eux (décision Q-A3 ; A27 amendé). Seule contrainte
+structurelle : SP-15 dépend du worker d'export de SP-13 pour ses rapports PDF.
+Les quick wins de la « vague 0 » du brainstorm (auto-refresh par source, types
+ECharts additionnels, KPI enrichie) restent opportunistes au fil de SP-4/SP-5,
+hors périmètre formel.
 
 ---
 
@@ -335,6 +350,12 @@ calculés, filtres dynamiques — l'équivalent ouvert du rôle d'Arcade chez Es
   des bindings `{{champ}}`/`{{var:nom}}` actuels (compatibilité assurée).
 - Actions composées : une action peut en déclencher plusieurs, avec condition
   (expression) — sans devenir un moteur de workflow (différé, §9).
+- **Extension de périmètre 2026-07-09** (brainstorm Analytics, acté) :
+  **bindings CEL généralisés** — toute prop de tout widget accepte une
+  expression (`{ $expr: … }`) évaluée dans `WidgetHost` — et **variables
+  typées** (string|number|bool|date|record|list) en remplacement des variables
+  string actuelles ; `visibleWhen` et les champs calculés en deviennent des cas
+  particuliers.
 
 **Critères d'acceptation.** Un dashboard où un Filtre pilote par expression la
 visibilité d'un widget et une colonne calculée, créé sans code, E2E vert ; une
@@ -577,6 +598,95 @@ Playwright alourdit l'image du worker (image worker dédiée à l'export).
 
 ---
 
+### SP-14 — Analytics UX : datasets, requête visuelle, contexte global
+
+> Ajouté le 2026-07-09 (brainstorm
+> [Analytics Platform](./2026-07-09-brainstorm-geostudio-analytics-platform.md)
+> §7, vague 1). Position relative à SP-12/SP-13 : à arbitrer avant lancement
+> (A27 amendé).
+
+**Objectif.** La BI géospatiale sans code : un agent non technicien répond à une
+question spatiale (« combien d'incidents à moins de 500 m d'une école, par
+commune, ce trimestre ? ») sans SQL, sur l'API analytique de SP-11.
+
+**Contenu.**
+- **Datasets partagés** (A28) : nouveau type d'item (catalogué, partageable via
+  `can()`, versionné, audité) = source + pipeline de transformations déclaratif
+  (filter attributaire/spatial/CEL, aggregate, join, derive, pivot, opérations
+  spatiales packagées : buffer, countWithin, intersection, agrégation H3) +
+  métriques nommées CEL + libellés métier + `refreshPolicy` (à la demande /
+  intervalle / matérialisation planifiée). Datasets inline conservés dans les
+  apps ; « promouvoir en dataset partagé » depuis le builder. Le type
+  `statistics` actuel (agrégation client) migre vers le pipeline serveur.
+- **Requête visuelle** (Filtrer → Joindre → Résumer → Trier) compilant vers
+  l'API analytique structurée (A19) — jamais de SQL fabriqué côté client ;
+  suggestions de visualisation depuis le schéma introspecté (SP-3).
+- **Contexte analytique global** : temps × emprise × filtres × sélection ;
+  cross-filter par défaut sur les nouvelles apps (`interactions: "auto"`,
+  `manual` pour les configs migrées) ; réactivité à l'emprise **opt-in par
+  dataset** avec refetch au déplacement activable en config (A29) ; état
+  sérialisable dans l'URL + bookmarks (« situations » partageables).
+- **Widgets analytiques** : KPI card riche (delta vs référence, sparkline,
+  seuils CEL), tableau croisé/pivot (agrégation serveur), nouveaux types
+  ECharts (sankey, treemap, sunburst, funnel, histogramme binné serveur),
+  séries temporelles avec comparaison de périodes, filtres typés
+  (select/date-range/slider alimentés par dataset), carte analytique
+  (MapConfig complet + symbologie pilotée par dataset via les mêmes
+  `encodings` que les charts), conteneurs (onglets/modale/tiroir).
+- **SQL Lab** : l'UI de l'endpoint SQL read-only du rôle analyste (A19) —
+  éditeur, historique, « enregistrer comme dataset ».
+- **Source `arcgis`** : référencement d'un Feature Service comme source de
+  dataset (la partie moissonnage/copie reste en SP-12, A22 amendé).
+- MCP : outils `create_dataset`, `run_analytics_query`, `explain_dataset`.
+
+**Critères d'acceptation (E2E).** La question spatiale type ci-dessus est
+résolue sans code (requête visuelle → dataset → widgets) ; un clic sur une
+barre filtre le dashboard entier ; « voir les entités » ouvre les lignes
+sous-jacentes (table + carte) ; un dataset partagé alimente deux apps
+distinctes ; un analyste sauve une requête SQL comme dataset consommé ensuite
+par un non-analyste ; les configs v1 existantes s'ouvrent sans régression
+(migration automatique, E2E existantes vertes).
+
+**Risques.** L'API analytique qui enfle en ORM (garde-fou : périmètre fermé par
+version ; la soupape est le SQL analyste) ; le cross-filter qui surprend
+(garde-fou : `manual` par défaut sur l'existant) ; le SP le plus large de la
+route — sous-phases livrables obligatoires à la rédaction du plan.
+
+---
+
+### SP-15 — Alertes & reporting : la plateforme prévient
+
+> Ajouté le 2026-07-09 (brainstorm §7, vague 2). Dépend de SP-14 (datasets, API
+> analytique) et du worker d'export de SP-13.
+
+**Objectif.** Le decision support qui sort de l'écran : rapports planifiés
+diffusés, alertes de seuil, exports — sur les droits du propriétaire, audité.
+
+**Contenu.**
+- **`AlertRule`** (objet déclaratif) : dataset + condition CEL (+ prédicats
+  spatiaux — géofencing léger : entité dans zone, sortie de périmètre) +
+  fréquence + canaux email/webhook avec gabarit de message ; évaluée en jobs
+  procrastinate ; états ok/firing, historique, tout dans `audit_log` ; droits
+  du propriétaire, quotas par tenant.
+- **`ReportSchedule`** : cible app/page + état analytique figé (bookmark) +
+  format + cron + destinataires → worker Playwright (SP-13) → S3 présigné →
+  email/webhook. PDF de dashboards paginés (en-tête/pied, sauts de page par
+  section).
+- **Exports secs** (A30) : CSV/XLSX côté serveur (DuckDB `COPY TO`), par widget
+  ou par dataset, permissions `can()` ; menu « explorer » des widgets (export
+  CSV/PNG du widget). Classeurs mis en forme (gabarits) différés (§9).
+
+**Critères d'acceptation (E2E).** Un rapport hebdomadaire PDF arrive par email
+avec l'état analytique attendu ; une alerte de seuil se déclenche en < 5 min et
+se journalise ; un export XLSX d'un dataset de 100 k lignes respecte les
+permissions ; un utilisateur sans droit sur le dataset ne reçoit rien.
+
+**Risques.** Surface d'abus (spam, exfiltration) — quotas, canaux validés,
+audit systématique ; scope creep du reporting (gabarits, CMJN, éditeur de mise
+en page) — différé explicite, la demande réelle décidera.
+
+---
+
 ## 7. Points d'arbitrage technique
 
 Chaque point : options, avantages/inconvénients, recommandation. Les décisions
@@ -805,6 +915,13 @@ chaque connecteur doit être un incrément livrable séparément (risque d'étal
 immédiate pour les organisations équipées), CSW ensuite (valeur forte, parsing
 pénible), CKAN en dernier (métadonnées géo pauvres).
 
+> **Amendement 2026-07-09 (Q-A4, brainstorm Analytics)** : un **5ᵉ connecteur
+> ArcGIS Feature Services** (référencement + copie via l'ingestion SP-6) entre
+> dans A22, inséré en **2ᵉ position** — ordre final : STAC → **ArcGIS FS** →
+> GetCapabilities → CSW/ISO → CKAN. Argument : la donnée existante des
+> collectivités équipées Esri, le pont de sortie. Le *référencement* d'un
+> Feature Service comme source de dataset arrive dès SP-14.
+
 ### A23 — Mode de moissonnage (SP-12)
 
 | Option | Avantages | Inconvénients |
@@ -856,14 +973,47 @@ print professionnel.
 
 **Recommandation : (a).**
 
+> **Amendement 2026-07-09 (Q-A3)** : SP-14 et SP-15 s'ajoutent après SP-11
+> (leur socle). L'ordre relatif SP-12/SP-13/SP-14/SP-15 **reste à arbitrer**
+> avant le lancement du premier d'entre eux ; seule contrainte : SP-15 requiert
+> le worker d'export de SP-13.
+
+### A28 — Datasets : objet de plateforme ou config privée aux apps (SP-14)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Dataset = objet de plateforme** (nouveau type d'item : catalogué, partagé via `can()`, versionné, audité) + datasets inline conservés dans les apps | Couche sémantique : métriques définies une fois, réutilisées partout ; gouvernance (changer la source ne casse pas N dashboards) ; cherchable (pgvector SP-7) ; générable/lisible par le MCP | Un type d'item de plus ; UI de gestion à construire |
+| (b) Sources privées par app (statu quo étendu) | Zéro nouveau concept | Chaque dashboard redéfinit ses métriques ; aucune réutilisation ; dérive sémantique silencieuse |
+
+**Décision (Q-A1, 2026-07-09) : (a).**
+
+### A29 — Réactivité des datasets à l'emprise carte (SP-14)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Opt-in par dataset**, avec refetch à chaque déplacement de carte activable dans la config | Coût réseau/serveur maîtrisé par défaut ; le « stats sur ce que je vois » s'active là où il a du sens | Un réglage de plus à comprendre pour l'auteur |
+| (b) Emprise dans le contexte global par défaut | Le geste SIG activé partout d'office | Refetch de tous les datasets à chaque pan/zoom — coût par défaut inacceptable |
+
+**Décision (Q-A2, 2026-07-09) : (a).**
+
+### A30 — Ambition des exports tabulaires (SP-15)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Export sec** CSV/XLSX (données brutes, DuckDB `COPY TO`) | Trivial à implémenter ; couvre l'essentiel du besoin réel | Pas de mise en forme |
+| (b) Classeurs mis en forme (gabarits) | Rapports Excel « finis » | Moteur de gabarits à construire et maintenir — scope creep garanti |
+
+**Décision (Q-A5, 2026-07-09) : (a)** — gabarits différés (§9), sur demande réelle.
+
 ---
 
 ## 8. Décisions d'arbitrage
 
-> Arbitrages tranchés le **2026-07-04** (A1–A15) et le **2026-07-05** (A16–A27,
-> extension SP-10→SP-13). Chaque décision est révisable *jusqu'au lancement du SP
-> concerné*, figée ensuite (toute révision passe par une mise à jour explicite de
-> ce document).
+> Arbitrages tranchés le **2026-07-04** (A1–A15), le **2026-07-05** (A16–A27,
+> extension SP-10→SP-13) et le **2026-07-09** (A28–A30 + amendements A22/A27,
+> extension SP-14/SP-15 — brainstorm Analytics Platform validé). Chaque décision
+> est révisable *jusqu'au lancement du SP concerné*, figée ensuite (toute
+> révision passe par une mise à jour explicite de ce document).
 
 | # | Sujet | Décision | SP concerné |
 |---|---|---|---|
@@ -888,12 +1038,15 @@ print professionnel.
 | A19 | Surface analytique | **API structurée pour les widgets + SQL read-only réservé au rôle analyste** | SP-11 |
 | A20 | API STAC | **Routes natives dans le cœur** (conformité progressive, stac-api-validator en CI) | SP-12 |
 | A21 | DCAT | **Export DCAT-AP moissonnable** (JSON-LD, validé data.gouv.fr) | SP-12 |
-| A22 | Connecteurs moissonnage | **Les quatre** — livrés dans l'ordre : STAC → GetCapabilities → CSW/ISO → CKAN | SP-12 |
+| A22 | Connecteurs moissonnage | **Les cinq** (amendé 2026-07-09) — ordre : STAC → **ArcGIS FS** → GetCapabilities → CSW/ISO → CKAN | SP-12 (réf. comme source de dataset dès SP-14) |
 | A23 | Mode moissonnage | **Référencement pur + copie opt-in par source** | SP-12 |
 | A24 | Moteur 3D | **deck.gl `Tile3DLayer` + terrain raster-dem MapLibre** | SP-13 |
 | A25 | Impression | **Rendu navigateur headless (Playwright) en worker** ⚠ écart assumé avec la vision (QGIS Server) — bascule seulement sur demande réelle de print pro | SP-13 |
 | A26 | Observabilité de référence | **OTel SDK + profil compose `grafana/otel-lgtm`**, dashboards & SLO packagés | SP-10 |
-| A27 | Séquencement | **Après v0.1 : OTel → Lakehouse → STAC → 3D/print** | SP-10→13 |
+| A27 | Séquencement | **Après v0.1 : OTel → Lakehouse**, puis STAC / 3D-print / Analytics — ordre relatif SP-12→15 à arbitrer avant leur lancement (amendé 2026-07-09, Q-A3 ; contrainte : SP-15 après SP-13) | SP-10→15 |
+| A28 | Datasets | **Objet de plateforme** (nouveau type d'item) + datasets inline dans les apps | SP-14 |
+| A29 | Réactivité à l'emprise | **Opt-in par dataset** ; refetch au déplacement de carte activable en config | SP-14 |
+| A30 | Exports tabulaires | **Export sec CSV/XLSX** ; classeurs mis en forme (gabarits) différés | SP-15 |
 
 **Conséquences immédiates des décisions** :
 - SP-1a démarre par le renommage `core/` (A14) et l'ajout de la génération
@@ -916,7 +1069,9 @@ print professionnel.
 Explicitement **hors** de cette feuille de route (réévalués après M10, ou si
 Q2/Q10/Q11 tranchent autrement) :
 
-- Temps réel (SSE, alertes, NATS) — palier 0 de la vision, attend un besoin concret.
+- Temps réel *en flux* (SSE, MQTT, NATS — palier 0 de la vision §7), attend un
+  besoin concret (Q10). Le rafraîchissement par intervalle arrive en SP-14 et
+  les **alertes évaluées en jobs** en SP-15 — ni l'un ni l'autre n'en dépend.
 - Offline/terrain, profil Edge, synchronisation.
 - **Iceberg** (time-travel, schema evolution) — réévalué quand le versioning de
   données (§13.2 vision) montera (A17).
@@ -924,6 +1079,12 @@ Q2/Q10/Q11 tranchent autrement) :
 - **Conversion 3D** (py3dtiles, nuages de points) et **QGIS Server** pour le print
   professionnel — sur demande réelle uniquement (A24/A25).
 - API DCAT complète/SPARQL — l'export DCAT-AP suffit (A21).
+- **Connecteurs SQL externes** (MySQL, SQL Server…) — DuckDB `ATTACH` le jour où
+  une demande réelle arrive ; surface d'exploitation (drivers, credentials,
+  réseau) injustifiée avant.
+- **Gabarits Excel** (classeurs mis en forme) — l'export sec suffit (A30).
+- **DuckDB-WASM navigateur** (déjà listé via A18) et **LOD expressions** façon
+  Tableau — extensions analytiques de deuxième étage.
 - Marketplace, sandbox dure des extensions, signature sigstore.
 - Multi-tenant *actif* (le schéma est prêt, l'activation attend une demande).
 - Workflows durables, versioning de données, agent runtime hébergé (briques §13 de
@@ -962,11 +1123,14 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M8 data platform** (SP-11) | CDC PostGIS→GeoParquet en continu, API analytique DuckDB | Écriture chaude visible au froid < 5 min ; 1 M de lignes agrégées < 2 s |
 | **M9 catalogue ouvert** (SP-12) | STAC conforme, export DCAT-AP, 4 connecteurs de moissonnage | QGIS navigue le catalogue ; data.gouv.fr moissonne ; un GeoServer externe référencé en < 1 min |
 | **M10 3D & print** (SP-13) | Couches 3D Tiles + terrain ; export PNG/PDF mis en page | Tileset public navigable > 30 fps ; PDF A3 avec légende/échelle fidèles |
+| **M11 BI géospatiale** (SP-14) | Datasets partagés, requête visuelle, contexte global, cross-filter, SQL Lab | Une question spatiale (« incidents à < 500 m d'une école, par commune, ce trimestre ») résolue sans code ni SQL par un non-technicien |
+| **M12 La plateforme prévient** (SP-15) | Alertes, rapports planifiés diffusés, exports secs | Rapport PDF hebdo reçu par email ; alerte de seuil déclenchée et journalisée < 5 min ; export XLSX permissionné |
 
 ---
 
 *Feuille de route rédigée le 2026-07-04 sur l'état de la branche `dev`
 (commit `b8eb71f`) ; étendue le 2026-07-05 (SP-10→SP-13, arbitrages A16–A27,
-jalons M7–M10). Les arbitrages A1–A27 sont tranchés en §8 ; toute révision d'un
-arbitrage après lancement du SP concerné passe par une mise à jour explicite de
-ce document.*
+jalons M7–M10) puis le 2026-07-09 (SP-14/SP-15, arbitrages A28–A30, amendements
+A22/A27, jalons M11–M12 — brainstorm Analytics Platform validé Q-A1→Q-A5). Les
+arbitrages A1–A30 sont tranchés en §8 ; toute révision d'un arbitrage après
+lancement du SP concerné passe par une mise à jour explicite de ce document.*
