@@ -5,6 +5,9 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml ./
+# Kept in sync by hand with pyproject.toml's [project.dependencies] — alembic/pyjwt/boto3/
+# python-multipart were added there across SP-1a/b/c but had drifted out of this list,
+# crash-looping the container on `import jwt` etc. the moment CORE_AUTH_MODE=oidc is used.
 RUN uv pip install --system --no-cache \
     "fastapi>=0.111" "uvicorn[standard]>=0.30" "sqlalchemy>=2.0" \
     "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" \

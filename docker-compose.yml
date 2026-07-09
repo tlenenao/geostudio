@@ -43,8 +43,8 @@ services:
       DB_NAME: gis
       DB_USER: gis
       DB_PASSWORD: ${PG_PASSWORD}
-      LISTEN_PORT: 6432
-      AUTH_TYPE: scram-sha-256
+      LISTEN_PORT: 6432 # every consumer's DATABASE_URL connects to pgbouncer:6432; the image defaults to 5432 without this
+      AUTH_TYPE: scram-sha-256 # matches postgis:16's default password encryption; without this pgbouncer can't authenticate against it
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 50
