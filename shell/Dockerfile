@@ -5,8 +5,8 @@ RUN npm ci
 COPY . .
 # Build-time public config; override at build with --build-arg as needed.
 ARG VITE_CORE_URL=http://localhost:8200
-ARG VITE_OIDC_AUTHORITY=http://localhost:8180/realms/gis-platform
-ARG VITE_OIDC_CLIENT_ID=shell
+ARG VITE_OIDC_AUTHORITY=http://localhost:8180/realms/geostudio
+ARG VITE_OIDC_CLIENT_ID=geostudio-shell
 ARG VITE_OIDC_REDIRECT_URI=http://localhost:8300/
 ENV VITE_CORE_URL=$VITE_CORE_URL \
     VITE_OIDC_AUTHORITY=$VITE_OIDC_AUTHORITY \
