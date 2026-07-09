@@ -4,7 +4,11 @@
 
 **Goal:** Wire a Keycloak realm export into the dev `docker-compose` stack so `CORE_AUTH_MODE=oidc` (already built in SP-1a, only exercised in `mock` mode until now) and the shell's real OIDC login flow (`react-oidc-context`, already built) can run end-to-end for the first time, and document the manual verification procedure.
 
-**Prerequisite (blocking, external to this plan):** a realm export JSON at `deploy/keycloak/geostudio-realm.json`, containing: realm `geostudio`; client `geostudio-shell` (public, PKCE/"Standard flow" enabled, valid redirect URI matching `VITE_OIDC_REDIRECT_URI`, web origins `+` for CORS); client `geostudio-core` (confidential/bearer-only, audience `geostudio-core` — matches `CORE_OIDC_AUDIENCE`'s existing default in `docker-compose.yml`); a couple of demo users with passwords. This file is being produced outside this plan (Tanguy is creating and exporting it from a running Keycloak instance). **Task 1's first step is to check for this file and its expected shape — if it's missing, stop and report exactly what's needed rather than inventing realm content**, since the realm's actual security configuration (client secrets, redirect URIs, user passwords) is not something this plan should author from scratch.
+**Prerequisite (now satisfied):** `deploy/keycloak/geostudio-realm.json` has been authored and validated (not by Tanguy — plan revised in-session; see below) — realm `geostudio`; client `geostudio-shell` (public, PKCE `S256`, standard flow + direct-access-grants enabled for dev convenience, redirect URIs `http://localhost:8300/` and `http://localhost:8300/*`, web origins `+`); client `geostudio-core` (`bearerOnly: true`, confidential, no login flow); an `oidc-audience-mapper` on `geostudio-shell` adding `geostudio-core` to the access token's `aud` claim; demo users `alice`/`bob` (password `Demo1234!`, plaintext in the JSON — Keycloak hashes it at import time, this is a dev-only realm never exposed publicly). **Validated empirically**, not just written from memory: created via the Admin REST API against a scratch Keycloak 24.0 container, exported via `partial-export`, demo users added by hand (partial-export never includes user credentials — a real limitation of that endpoint, not an oversight), then the resulting JSON was imported COLD into a fresh Keycloak container (`--import-realm`, no shared state with the authoring instance) and round-tripped through the exact validation `core/app/auth/dependency.py` performs (`PyJWKClient` + `jwt.decode(..., audience=..., issuer=...)`, using `uv run python3` from `core/`) — confirmed `VALID` for both demo users after the cold import.
+
+**Critical finding from that validation, folded into Task 1 below:** Keycloak's `start-dev` (no `KC_HOSTNAME` set) derives the token's `iss` claim from whichever Host header reached the token endpoint — dynamically, per request. A browser doing the Authorization Code flow reaches Keycloak via `http://localhost:8180` (the published port), so `iss` will be `http://localhost:8180/realms/geostudio` — **not** `http://keycloak:8080/realms/geostudio`, which is `docker-compose.yml`'s current `CORE_OIDC_ISSUER` default (correct for `mock` mode, where no real Keycloak round-trip happens, but wrong for a real token). Since the `core` container itself cannot resolve `localhost:8180` (that's the *host's* loopback, not reachable from inside a container) to fetch the JWKS for signature verification, this requires **decoupling** issuer validation from JWKS retrieval — which `core/app/auth/dependency.py` already supports via a separate `CORE_OIDC_JWKS_URL` env var (built in SP-1a, previously unused since only `mock` mode had ever been exercised). Task 1 sets `CORE_OIDC_ISSUER=http://localhost:8180/realms/geostudio` (matches what the browser-issued token will actually carry) and adds `CORE_OIDC_JWKS_URL=http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs` (internal docker-network hostname, reachable from the `core` container) to the `core` service's environment. This is exactly the kind of Keycloak configuration surprise the SP-1d spec's own §8 Risks section predicted for this sub-phase.
+
+**Second finding:** the `keycloak` image tag pinned in `docker-compose.yml`, `quay.io/keycloak/keycloak:24`, no longer resolves (`docker pull` returns "not found" — the bare `:24` tag has been retired upstream). `:24.0` does resolve and is what this plan's realm was authored/validated against. Task 1 repins the image tag.
 
 **Architecture:** Keycloak already runs in `docker-compose.yml` today (`start-dev`, backed by Postgres, no realm import). This plan changes its `command` to `start-dev --import-realm` and mounts the realm file into `/opt/keycloak/data/import/`, matching Keycloak's own auto-import convention (no custom import scripting needed). The cœur's `CORE_OIDC_ISSUER`/`CORE_OIDC_AUDIENCE` defaults in `docker-compose.yml` already point at realm `geostudio`/client `geostudio-core` (set correctly back in SP-1a) — only the **shell's** `Dockerfile` build-arg defaults are stale (`VITE_OIDC_AUTHORITY` still defaults to a `gis-platform` realm name, `VITE_OIDC_CLIENT_ID` still defaults to bare `shell`) and need fixing to match. No application code changes — `AuthProvider.tsx`/`useAuth.ts` (real `react-oidc-context` wiring) and the cœur's `app/auth/dependency.py` (JWKS validation) were both already built in SP-1a and need no changes, only a real realm to talk to.
 
@@ -20,44 +24,49 @@
 
 ---
 
-### Task 1: Check the realm file, wire it into `docker-compose.yml`
+### Task 1: Wire the realm into `docker-compose.yml`; fix the issuer/JWKS split and the image tag
 
 **Files:**
-- Read (prerequisite check, no modification): `deploy/keycloak/geostudio-realm.json`
+- Read (already authored and validated — see above): `deploy/keycloak/geostudio-realm.json`
 - Modify: `docker-compose.yml`
 
 **Interfaces:**
-- Consumes: `deploy/keycloak/geostudio-realm.json` (external prerequisite — realm name `geostudio`, clients `geostudio-shell`/`geostudio-core`).
-- Produces: `keycloak` service auto-imports this realm on every start; a healthcheck reports import/startup failure.
+- Consumes: `deploy/keycloak/geostudio-realm.json` (realm `geostudio`, clients `geostudio-shell`/`geostudio-core`, demo users `alice`/`bob`).
+- Produces: `keycloak` service auto-imports this realm on every start; a healthcheck reports import/startup failure; `core` service's `CORE_OIDC_ISSUER`/`CORE_OIDC_JWKS_URL` correctly split so real (not `mock`-mode) tokens validate.
 
-- [ ] **Step 1: Verify the prerequisite file exists and has the expected shape**
+- [ ] **Step 1: Sanity-check the realm file's shape (already validated end-to-end, this is just a fast local re-check)**
 
 Run:
-```bash
-test -f deploy/keycloak/geostudio-realm.json && echo "FOUND" || echo "MISSING"
-```
-If `MISSING`: **stop here** and report back that `deploy/keycloak/geostudio-realm.json` is required before this task can proceed — do not author a realm file from scratch. If `FOUND`, continue.
-
-Run a shape check:
 ```bash
 python3 -c "
 import json
 data = json.load(open('deploy/keycloak/geostudio-realm.json'))
-assert data.get('realm') == 'geostudio', f'expected realm=geostudio, got {data.get(\"realm\")}'
+assert data.get('realm') == 'geostudio'
 client_ids = {c.get('clientId') for c in data.get('clients', [])}
-assert 'geostudio-shell' in client_ids, f'missing geostudio-shell client, found: {client_ids}'
-assert 'geostudio-core' in client_ids, f'missing geostudio-core client, found: {client_ids}'
-print('shape OK:', client_ids)
+assert 'geostudio-shell' in client_ids and 'geostudio-core' in client_ids
+user_names = {u.get('username') for u in data.get('users', [])}
+print('shape OK:', client_ids, user_names)
 "
 ```
-Expected: `shape OK: {'geostudio-shell', 'geostudio-core'}` (or a superset — extra clients are fine). If this fails, stop and report the exact mismatch rather than adjusting `docker-compose.yml`'s expectations to fit a wrong realm — the realm's names are already load-bearing elsewhere in already-merged code (see Global Constraints).
+Expected: `shape OK: {...'geostudio-shell', 'geostudio-core'...} {'alice', 'bob'}`.
 
-- [ ] **Step 2: Mount the realm file and switch to `--import-realm`**
+- [ ] **Step 2: Fix the pinned Keycloak image tag**
+
+`quay.io/keycloak/keycloak:24` no longer resolves (confirmed via `docker pull` during this plan's realm-authoring work — the bare `:24` tag was retired upstream). Change:
+```yaml
+    image: quay.io/keycloak/keycloak:24
+```
+to:
+```yaml
+    image: quay.io/keycloak/keycloak:24.0
+```
+
+- [ ] **Step 3: Mount the realm file, switch to `--import-realm`, add a healthcheck**
 
 In `docker-compose.yml`, change the `keycloak` service:
 ```yaml
   keycloak:
-    image: quay.io/keycloak/keycloak:24
+    image: quay.io/keycloak/keycloak:24.0
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
@@ -83,37 +92,79 @@ In `docker-compose.yml`, change the `keycloak` service:
       retries: 10
       start_period: 30s
 ```
-(`KC_HEALTH_ENABLED: "true"` turns on Keycloak's built-in `/health/ready` endpoint on the management port, which is exposed on the same `8080` internal port by default in Keycloak 24. The healthcheck uses a raw `/dev/tcp` HTTP request rather than `curl`/`wget` since the Keycloak image doesn't bundle either — matches the constraint that already-running services like `postgis`/`minio` in this same file use `CMD`/`CMD-SHELL` with tools proven present in their own images; verify in Step 3 whether `/dev/tcp` works in this image's shell, and fall back to installing `curl` via a custom entrypoint only if it doesn't — prefer the simpler `/dev/tcp` form first.)
+(`KC_HEALTH_ENABLED: "true"` turns on Keycloak's built-in `/health/ready` endpoint. The healthcheck uses a raw `/dev/tcp` HTTP request since the Keycloak image bundles neither `curl` nor `wget` — verify in Step 5 whether this works in the `24.0` image's shell; if not, adjust until it correctly reports healthy only after a successful realm import and ready server, never unconditionally.)
 
-- [ ] **Step 3: Bring the stack up and verify the healthcheck actually detects success**
+- [ ] **Step 4: Fix the `core` service's issuer/JWKS split**
+
+In `docker-compose.yml`'s `core` service `environment:` block, change:
+```yaml
+      CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://keycloak:8080/realms/geostudio}
+      CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
+```
+to:
+```yaml
+      CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://localhost:8180/realms/geostudio}
+      CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
+      CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
+```
+This is the fix documented above: Keycloak's `start-dev` derives a real browser-issued token's `iss` from the Host header the browser actually used (`localhost:8180`, the published port) — the `core` container validates `issuer` against that same value, but fetches the JWKS from `keycloak:8080` (the internal docker-network hostname, unreachable as `localhost` from inside a different container). `app/auth/dependency.py`'s existing `CORE_OIDC_JWKS_URL` override (built in SP-1a, unused until now) is exactly the mechanism for this split — no code change needed, only this env var.
+
+Also update `.env.example` to mention the split (add a comment, no new required var — both already have defaults):
+```
+CORE_OIDC_ISSUER=http://localhost:8180/realms/geostudio
+CORE_OIDC_AUDIENCE=geostudio-core
+# JWKS fetched from inside the core container, via the internal docker network —
+# deliberately different from CORE_OIDC_ISSUER (which must match what a real
+# browser's token actually carries as `iss`, i.e. the externally published port).
+CORE_OIDC_JWKS_URL=http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs
+```
+
+- [ ] **Step 5: Bring the stack up and verify the healthcheck actually detects success**
 
 Run:
 ```bash
 docker compose up -d postgis keycloak
 docker compose ps keycloak
 ```
-Expected: after `start_period` (30s) plus a few retries, `docker compose ps keycloak` shows `healthy`, not `starting` indefinitely or `unhealthy`. If the healthcheck command doesn't work in this image (check with `docker compose logs keycloak` for import errors, and `docker compose exec keycloak sh -c '...'` to test the healthcheck command interactively), adjust the `test:` command until it correctly reports healthy only after a successful realm import and ready server — do not leave a healthcheck that always reports healthy regardless of import success (that would defeat the Global Constraint's "loud failure" requirement).
+Expected: after `start_period` (30s) plus a few retries, `docker compose ps keycloak` shows `healthy`, not `starting` indefinitely or `unhealthy`. If the healthcheck command doesn't work in this image (check `docker compose logs keycloak` for import errors, and `docker compose exec keycloak sh -c '...'` to test interactively), adjust the `test:` command until it correctly reports healthy only after a successful realm import and ready server.
 
-- [ ] **Step 4: Verify the realm was actually imported**
+- [ ] **Step 6: Verify the realm was actually imported**
 
 Run:
 ```bash
 curl -s http://localhost:8180/realms/geostudio/.well-known/openid-configuration | python3 -m json.tool | head -5
 ```
-Expected: a valid OpenID configuration JSON (has `issuer`, `authorization_endpoint`, etc.), confirming the `geostudio` realm exists and is served. If this 404s, the import failed silently despite a "healthy" status — go back to Step 3's healthcheck and tighten it (e.g. check `/realms/geostudio` reachability directly instead of just the generic `/health/ready`).
+Expected: valid OpenID configuration JSON with `"issuer": "http://localhost:8180/realms/geostudio"`. If this 404s, the import failed silently despite a "healthy" status — tighten Step 5's healthcheck to check `/realms/geostudio` reachability directly instead of just the generic `/health/ready`.
 
-- [ ] **Step 5: Tear down**
+- [ ] **Step 7: End-to-end token validation against the real compose stack**
+
+Bring up `core` too, with `CORE_AUTH_MODE=oidc` (it defaults to `mock` in `docker-compose.yml`, which would skip real JWT validation entirely and make this step pass for the wrong reason):
+```bash
+CORE_AUTH_MODE=oidc docker compose up -d postgis keycloak core
+```
+Get a token (password grant, `geostudio-shell`, demo user `alice`):
+```bash
+curl -s -X POST http://localhost:8180/realms/geostudio/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password&client_id=geostudio-shell&username=alice&password=Demo1234!" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])" > /tmp/kc_token.txt
+```
+Call the cœur's `/me` directly with it (`CORE_AUTH_MODE` must be `oidc`, not `mock`, for this container — check/set it in `docker-compose.yml`'s `core.environment` or via `.env` before this step):
+```bash
+curl -s http://localhost:8200/me -H "Authorization: Bearer $(cat /tmp/kc_token.txt)"
+```
+Expected: `200` with a JSON body whose `username` is `"alice"` (not a `401` — a `401` here means the issuer/audience/JWKS wiring from Steps 3-4 is still wrong; re-check `docker compose logs core` for the specific PyJWT rejection reason).
+
+- [ ] **Step 8: Tear down**
 
 Run: `docker compose down`
-(Leaves no lingering containers between this task and the next.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add docker-compose.yml
-git commit -m "feat: import the geostudio Keycloak realm on startup, healthcheck"
+git add docker-compose.yml .env.example deploy/keycloak/geostudio-realm.json
+git commit -m "feat: import the geostudio Keycloak realm on startup; fix issuer/JWKS split and image tag"
 ```
-(Do not commit `deploy/keycloak/geostudio-realm.json` in this commit unless it isn't already tracked — check `git status`; if Tanguy already committed it separately, this commit is compose-only.)
 
 ---
 
