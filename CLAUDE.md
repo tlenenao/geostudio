@@ -44,8 +44,8 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   aux tiers avant ça ; le registre React actuel reste interne.
 - Client TS du shell : types générés depuis l'OpenAPI du cœur.
 - MCP : module du cœur, même process, permissions de l'utilisateur, audité.
-- GeoNode/Superset/Redis : **en sursis** — aucune nouvelle dépendance à eux ;
-  tout nouveau code de contenu passe par le cœur. Ils sortent au jalon M1.
+- GeoNode/Superset/Redis : **sortis (jalon M1, 2026-07-09)** — retirés du
+  compose et du code ; tout code de contenu passe par le cœur.
 - Post-v0.1 (SP-10→13, ordre figé par A27) : observabilité **OTel + profil
   `grafana/otel-lgtm`** ; lakehouse **CDC par réplication logique (worker
   maison) → GeoParquet plat** (Iceberg différé), **DuckDB côté serveur** (API
@@ -81,28 +81,37 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell
 cd shell && npm ci
-npm run test         # Vitest (56 fichiers)
+npm run test         # Vitest (56 fichiers, 277 tests)
 npm run e2e          # Playwright (13 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 53 tests
+uv run pytest        # 155 tests
 
 # stack
-docker compose up -d # nécessite .env (cf. .env.example)
+docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
+                      # (postgis, pgbouncer, minio, martin, titiler,
+                      # pg-featureserv, core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-05 (mise à jour à chaque jalon)
+## État au 2026-07-09 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
   embryonnaire ; core : configs versionnées + rollback). Renommage
-  `builder-service/`→`core/` (A14). Docs consolidées, G1/G2 archivées.
-- **Prochain chantier : SP-1a** (socle du cœur : Alembic, middleware JWT OIDC
-  avec mode mock, tables `tenants/users/audit_log`, lint de frontières,
-  `GET /me`) — voir feuille de route §6. En ouverture de SP-1a, ajouter la
-  génération OpenAPI→TS dans la CI (A11).
+  `builder-service/`→`core/` (A14). **Tout SP-1 (a→d)** : socle du cœur (auth
+  JWT OIDC + mode mock, `tenants/users/audit_log`, lint de frontières, `GET
+  /me`), module `items`, partage/publication (`can()`, groupes, items publics
+  anonymes), bascule complète du shell sur le cœur (`CoreItemClient`, plus
+  aucun appel GeoNode), réalm Keycloak réel câblé et validé end-to-end. **Jalon
+  M1 (GeoNode-free) atteint** : GeoNode/Superset/Redis retirés du compose et du
+  code.
+- **Prochain chantier : SP-2** (serveur MCP v0 — voir feuille de route §M2 /
+  "AI-operable") : un agent doit pouvoir créer un dashboard valide via MCP.
+- Suivi non bloquant en attente : tags d'images Docker `pgbouncer`/`martin`/
+  `titiler` repinnés vers des versions résolubles (2026-07-09) ; documenter
+  dans `.env.example` si de nouveaux tags dérivent à nouveau.
 - Questions produit encore ouvertes : Q2 (premiers utilisateurs réels),
   Q10 (temps réel), Q11 (offline) — cf. comparatif §8. Seule Q2 peut réordonner
   SP-3/SP-6.
