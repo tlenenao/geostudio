@@ -69,6 +69,36 @@ docker compose up -d       # stack complète
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 
+### Vérifier le mode `oidc` réel (manuel)
+
+Le mode `mock` (`VITE_AUTH_MODE=mock`, `CORE_AUTH_MODE=mock`) suffit pour le
+développement courant et pour les 13 specs E2E — aucun accès réseau à
+Keycloak n'est nécessaire. Le mode `oidc` réel (utilisé en usage réel, pas en
+CI) se vérifie manuellement :
+
+1. `docker compose up -d` (stack complète, y compris `keycloak` avec le realm
+   `geostudio` importé automatiquement — voir `docker compose ps keycloak`
+   pour confirmer `healthy`).
+2. Construire et lancer le shell avec `CORE_AUTH_MODE=oidc` côté cœur et sans
+   `VITE_AUTH_MODE=mock` côté shell (retirer la variable ou la mettre à
+   `oidc`).
+3. Ouvrir http://localhost:8300 — être redirigé vers Keycloak
+   (`http://localhost:8180/realms/geostudio/...`), se connecter avec un des
+   utilisateurs de démo du realm importé.
+4. Après redirection retour vers le shell : le catalogue doit se charger
+   normalement (preuve que le token JWT émis par Keycloak est accepté par le
+   cœur — `CORE_OIDC_ISSUER`/`CORE_OIDC_AUDIENCE` validés côté
+   `app/auth/dependency.py`).
+5. Ouvrir les DevTools réseau, vérifier qu'un appel `GET /me` retourne un
+   `username` cohérent avec l'utilisateur Keycloak connecté (pas `mockuser`).
+
+Un échec à l'étape 3 (pas de redirection, ou erreur `invalid_redirect_uri`)
+indique un realm mal configuré (`Valid redirect URIs` du client
+`geostudio-shell` doit inclure exactement `http://localhost:8300/`). Un échec
+à l'étape 4 (401 du cœur après connexion réussie) indique un décalage entre
+l'`audience`/`issuer` attendus par le cœur (`CORE_OIDC_AUDIENCE`,
+`CORE_OIDC_ISSUER`) et ce que le realm émet réellement.
+
 ### Développement front (shell)
 
 ```bash
