@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockGeoNode } from "./mocks";
+import { mockCore } from "./mocks";
 
 test("an sdk-only example widget appears in the palette and wires through ActionsPanel", async ({ page }) => {
-  await mockGeoNode(page);
+  await mockCore(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Nouveau" }).click();

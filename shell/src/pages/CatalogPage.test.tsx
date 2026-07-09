@@ -17,8 +17,7 @@ function wrapper({ children }: { children: ReactNode }) {
     defaultOptions: { queries: { retry: false } },
   });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "test-token",
   });
   return (
@@ -28,7 +27,23 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
+function mockCatalogItems() {
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      const url = new URL(request.url);
+      const q = url.searchParams.get("q");
+      const all = [
+        { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+      ];
+      const items = q ? all.filter((i) => i.title.toLowerCase().includes(q.toLowerCase())) : all;
+      return HttpResponse.json({ items, total: items.length, page: 1, pageSize: 12 });
+    }),
+  );
+}
+
 test("lists items from the catalog", async () => {
+  mockCatalogItems();
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   expect(await screen.findByText("Alpha")).toBeInTheDocument();
   expect(screen.getByText("Beta")).toBeInTheDocument();
@@ -36,6 +51,7 @@ test("lists items from the catalog", async () => {
 });
 
 test("filters by search term", async () => {
+  mockCatalogItems();
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await screen.findByText("Alpha");
   await userEvent.type(screen.getByLabelText("Rechercher"), "beta");
@@ -46,14 +62,14 @@ test("filters by search term", async () => {
 test("filters the catalog by scope", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://geonode.test/api/v2/resources", ({ request }) => {
+    http.get("https://core.test/items", ({ request }) => {
       lastUrl = request.url;
-      return HttpResponse.json({ total: 0, page: 1, page_size: 12, resources: [] });
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
   );
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await userEvent.selectOptions(screen.getByLabelText("Portée"), "mine");
   await waitFor(() =>
-    expect(new URL(lastUrl).searchParams.get("filter{owner.username.in}")).toBe("alice"),
+    expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"),
   );
 });

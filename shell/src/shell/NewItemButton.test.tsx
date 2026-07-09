@@ -30,8 +30,7 @@ function AppBuilderProbe() {
 function Harness({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   return (
@@ -74,7 +73,7 @@ test("does not submit an empty title", async () => {
 
 test("creates a Map and navigates to the editor route", async () => {
   server.use(
-    http.post("https://builder.test/configs", () =>
+    http.post("https://core.test/configs", () =>
       HttpResponse.json({ id: "cfg-77", kind: "map", itemId: "77", version: 1, config: {} }),
     ),
   );
@@ -84,8 +83,7 @@ test("creates a Map and navigates to the editor route", async () => {
   }
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({
-    geonodeUrl: "https://geonode.test",
-    builderUrl: "https://builder.test",
+    coreUrl: "https://core.test",
     getToken: () => "t",
   });
   render(
@@ -110,7 +108,7 @@ test("creates a Map and navigates to the editor route", async () => {
 
 test("shows an alert and stays on the page when creation fails", async () => {
   server.use(
-    http.post("https://builder.test/configs", () => new HttpResponse(null, { status: 500 })),
+    http.post("https://core.test/configs", () => new HttpResponse(null, { status: 500 })),
   );
   render(
     <Harness>
@@ -142,7 +140,7 @@ test("shows a Modèle select for app/dashboard, filtered by the current type", a
 test("creating from a template posts its layout", async () => {
   let body: any = null;
   server.use(
-    http.post("https://builder.test/configs", async ({ request }) => {
+    http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-9", kind: "app", itemId: "9", version: 1, config: body.config });
     }),

@@ -9,8 +9,7 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       VITE_AUTH_MODE: "mock",
-      VITE_GEONODE_URL: "https://geonode.test",
-      VITE_BUILDER_URL: "https://builder.test",
+      VITE_CORE_URL: "https://core.test",
       VITE_MARTIN_URL: "https://martin.test",
       VITE_FEATURESERV_URL: "https://featureserv.test",
     },
