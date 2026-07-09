@@ -881,6 +881,30 @@
       ]
     },
     {
+      "id": "0a4cf82d-64d0-42bb-97ae-95817f8ee639",
+      "name": "geostudio-mcp-audience",
+      "description": "Adds geostudio-mcp to the access token audience for MCP clients",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "id": "e0c7124b-017b-4536-9cfa-c73588fe7025",
+          "name": "geostudio-mcp-audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "geostudio-mcp",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "id": "13381cc6-7d40-49e1-891d-160341d54958",
       "name": "role_list",
       "description": "SAML role list",
@@ -1399,7 +1423,8 @@
     "email",
     "roles",
     "web-origins",
-    "acr"
+    "acr",
+    "geostudio-mcp-audience"
   ],
   "defaultOptionalClientScopes": [
     "offline_access",
@@ -1429,21 +1454,6 @@
   "identityProviderMappers": [],
   "components": {
     "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy": [
-      {
-        "id": "16e6d92c-5595-4175-9b8d-97f4c62db712",
-        "name": "Trusted Hosts",
-        "providerId": "trusted-hosts",
-        "subType": "anonymous",
-        "subComponents": {},
-        "config": {
-          "host-sending-registration-request-must-match": [
-            "true"
-          ],
-          "client-uris-must-match": [
-            "true"
-          ]
-        }
-      },
       {
         "id": "8c636099-949e-4ef5-a5b7-3b815a412711",
         "name": "Allowed Client Scopes",
