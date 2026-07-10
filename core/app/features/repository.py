@@ -123,3 +123,61 @@ def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
         f"WHERE {quote_ident(session, info.pk_column)} = :fid"
     ), {"fid": value}).one_or_none()
     return _row_to_feature(info, row) if row else None
+
+
+def _geometry_sql(info: TableInfo) -> str:
+    return "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
+
+
+def insert_feature(session: Session, info: TableInfo, *, properties: dict,
+                   geometry: dict | None):
+    t = quote_ident(session, info.table_name)
+    cols, values, params = ["tenant_id"], ["current_setting('app.tenant_id')"], {}
+    for i, col in enumerate(_property_columns(info)):
+        if col.name in properties:
+            cols.append(quote_ident(session, col.name))
+            values.append(f":p{i}")
+            params[f"p{i}"] = properties[col.name]
+    if geometry is not None and info.geometry_column:
+        cols.append(quote_ident(session, info.geometry_column))
+        values.append(_geometry_sql(info))
+        params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
+    fid = session.execute(text(
+        f"INSERT INTO public.{t} ({', '.join(cols)}) VALUES ({', '.join(values)}) "
+        f"RETURNING {quote_ident(session, info.pk_column)}"
+    ), params).scalar()
+    return fid
+
+
+def replace_feature(session: Session, info: TableInfo, *, fid: str,
+                    properties: dict, geometry: dict | None) -> bool:
+    value = _coerce_fid(info, fid)
+    if value is None:
+        return False
+    t = quote_ident(session, info.table_name)
+    sets, params = [], {"__fid": value}
+    for i, col in enumerate(_property_columns(info)):
+        sets.append(f"{quote_ident(session, col.name)} = :p{i}")
+        params[f"p{i}"] = properties.get(col.name)  # absent → NULL (remplacement complet)
+    if info.geometry_column:
+        if geometry is not None:
+            sets.append(f"{quote_ident(session, info.geometry_column)} = {_geometry_sql(info)}")
+            params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
+        else:
+            sets.append(f"{quote_ident(session, info.geometry_column)} = NULL")
+    r = session.execute(text(
+        f"UPDATE public.{t} SET {', '.join(sets)} "
+        f"WHERE {quote_ident(session, info.pk_column)} = :__fid"
+    ), params)
+    return r.rowcount == 1
+
+
+def delete_feature(session: Session, info: TableInfo, *, fid: str) -> bool:
+    value = _coerce_fid(info, fid)
+    if value is None:
+        return False
+    t = quote_ident(session, info.table_name)
+    r = session.execute(text(
+        f"DELETE FROM public.{t} WHERE {quote_ident(session, info.pk_column)} = :__fid"
+    ), {"__fid": value})
+    return r.rowcount == 1
