@@ -9,6 +9,7 @@ from app.collections import repository as repo
 from app.collections.introspection import (
     Introspector, TableNotFound, UnsupportedTable,
 )
+from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
@@ -118,6 +119,17 @@ def get_collection(
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
 ):
     return _collection_json(_get_readable(session, user, collection_id))
+
+
+@router.get("/collections/{collection_id}/schema")
+def get_collection_schema(
+    collection_id: str,
+    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
+):
+    col = _get_readable(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    return table_info_to_schema(info)
 
 
 @router.patch("/collections/{collection_id}")
