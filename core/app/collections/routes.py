@@ -138,7 +138,12 @@ def get_collection_schema(
     introspect: Introspector = Depends(get_introspector),
 ):
     col = _get_readable(session, user, collection_id)
-    info = introspect(session, col.table_name)
+    try:
+        info = introspect(session, col.table_name)
+    except TableNotFound:
+        raise HTTPException(status_code=404, detail="backing table not found")
+    except UnsupportedTable as exc:
+        raise HTTPException(status_code=409, detail=exc.reason)
     return table_info_to_schema(info)
 
 

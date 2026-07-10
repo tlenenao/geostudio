@@ -179,6 +179,43 @@ def test_schema_endpoint_uses_introspector(env):
     assert schema["fields"] == [{"name": "titre", "type": "string", "required": True}]
 
 
+def test_schema_endpoint_404_when_backing_table_gone(env):
+    # Une collection enregistrée dont la table a été droppée depuis (hors du
+    # cœur, ex. migration manuelle) ne doit pas faire 500 : /schema retourne
+    # 404, pas une exception d'introspection non mappée.
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    def gone_introspector(session, table_name):
+        raise TableNotFound(table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: gone_introspector
+    r = client.get("/collections/incidents/schema")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "backing table not found"
+
+
+def test_schema_endpoint_409_when_backing_table_unsupported(env):
+    # Idem si la table backing existe encore mais a été altérée en une forme
+    # que l'introspecteur ne sait plus lire (ex. colonne géométrie retirée).
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    from app.collections.introspection import UnsupportedTable
+
+    def unsupported_introspector(session, table_name):
+        raise UnsupportedTable("no geometry column")
+
+    app.dependency_overrides[collections_routes.get_introspector] = (
+        lambda: unsupported_introspector
+    )
+    r = client.get("/collections/incidents/schema")
+    assert r.status_code == 409
+    assert r.json()["detail"] == "no geometry column"
+
+
 def test_patch_and_delete(env):
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
