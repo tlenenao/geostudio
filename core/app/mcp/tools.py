@@ -179,3 +179,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 action="item.share", object_type="item", object_id=itemId,
                 payload={"public": sharing.public, "groups": [g.model_dump() for g in sharing.groups]},
             )
+
+    @server.resource("schema://app-config")
+    def app_config_schema() -> dict:
+        """JSON Schema for AppConfig/DashboardConfig — validate before
+        calling create_item or save_app_config."""
+        return BuilderConfig.model_json_schema()
