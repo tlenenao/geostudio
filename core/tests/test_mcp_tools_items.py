@@ -50,7 +50,8 @@ def app_client(monkeypatch, tmp_path):
     test_client.session_factory = Session  # type: ignore[attr-defined]
     test_client.tenant = tenant  # type: ignore[attr-defined]
     test_client.mock_user = mock_user  # type: ignore[attr-defined]
-    return test_client
+    yield test_client
+    engine.dispose()
 
 
 def call_tool(test_client, name: str, arguments: dict) -> dict:
