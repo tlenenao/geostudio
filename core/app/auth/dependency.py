@@ -15,6 +15,11 @@ def _mock_mode() -> bool:
     return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
 
 
+def _admin_subs() -> set[str]:
+    raw = os.environ.get("CORE_ADMIN_SUBS", "")
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
@@ -43,6 +48,7 @@ def get_current_user(
             email=None,
             first_name="Mock",
             last_name="User",
+            bootstrap_admin=True,
         )
 
     try:
@@ -69,4 +75,5 @@ def get_current_user(
         email=claims.get("email"),
         first_name=claims.get("given_name", ""),
         last_name=claims.get("family_name", ""),
+        bootstrap_admin=claims["sub"] in _admin_subs(),
     )
