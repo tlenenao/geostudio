@@ -6,8 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
-def _qi(session: Session, identifier: str) -> str:
+def quote_ident(session: Session, identifier: str) -> str:
     return session.get_bind().dialect.identifier_preparer.quote(identifier)
+
+
+_qi = quote_ident
 
 
 def apply_collection_ddl(session: Session, table_name: str) -> None:
@@ -21,12 +24,18 @@ def apply_collection_ddl(session: Session, table_name: str) -> None:
         "USING (tenant_id = current_setting('app.tenant_id')) "
         "WITH CHECK (tenant_id = current_setting('app.tenant_id'))",
         f"GRANT SELECT, INSERT, UPDATE, DELETE ON public.{t} TO gis_rls",
+        # L'index sert toutes les requêtes RLS — current_setting est comparé à
+        # chaque ligne sinon ; nom borné à 63 octets par construction v1.
+        f"CREATE INDEX IF NOT EXISTS "
+        f"{quote_ident(session, 'ix_' + table_name + '_tenant_id')} "
+        f"ON public.{t} (tenant_id)",
     ]
     for stmt in stmts:
         session.execute(text(stmt))
     # Les INSERT sous gis_rls doivent pouvoir tirer la séquence de la PK (serial).
     seq = session.execute(
-        text("SELECT pg_get_serial_sequence(:t, a.attname) FROM pg_index i "
+        text("SELECT pg_get_serial_sequence('public.' || quote_ident(:t), a.attname) "
+             "FROM pg_index i "
              "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
              "WHERE i.indrelid = ('public.' || quote_ident(:t))::regclass "
              "AND i.indisprimary"),
