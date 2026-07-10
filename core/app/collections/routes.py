@@ -10,12 +10,17 @@ from app.collections.introspection import (
     Introspector, TableNotFound, UnsupportedTable,
 )
 from app.collections.schemas import CollectionCreate, CollectionPatch
-from app.db import Base, get_session
+from app.db import core_table_names, get_session
 from app.sharing.authorization import can
 
 router = APIRouter()
 
-CORE_TABLES = frozenset(Base.metadata.tables) | {"alembic_version"}
+
+def _core_tables() -> frozenset[str]:
+    # Calculé à la requête, jamais à l'import : au moment où main.py importe ce
+    # module, app.items/app.configs ne sont pas encore importés et
+    # Base.metadata serait incomplet (denylist trouée).
+    return core_table_names() | {"alembic_version"}
 
 
 def get_introspector() -> Introspector:  # overridé en test ; task 7 branche le vrai
@@ -70,7 +75,7 @@ def register_collection(
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
     _require_admin(user)
-    if body.tableName in CORE_TABLES:
+    if body.tableName in _core_tables():
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
         raise HTTPException(status_code=409, detail="table already registered")
