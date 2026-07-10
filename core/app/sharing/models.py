@@ -41,3 +41,16 @@ class ItemShare(Base):
     )
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor"
+
+
+class CollectionShare(Base):
+    __tablename__ = "collection_shares"
+
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    group_id: Mapped[str] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor"

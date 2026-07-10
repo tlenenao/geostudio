@@ -40,6 +40,7 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 def init_db(engine: Engine) -> None:
     # Import models so they register on Base.metadata before create_all.
     from app.audit import models as audit_models  # noqa: F401
+    from app.collections import models as collections_models  # noqa: F401
     from app.configs import models  # noqa: F401
     from app.items import models as items_models  # noqa: F401
     from app.sharing import models as sharing_models  # noqa: F401
