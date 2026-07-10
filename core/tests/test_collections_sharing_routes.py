@@ -113,6 +113,43 @@ def test_share_is_audited(env):
         assert "collection.share" in list(s.scalars(select(AuditLog.action)))
 
 
+def test_put_sharing_unknown_group_is_404_and_keeps_existing(env):
+    app, client, _, admin, _regular, group_id = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.put("/collections/incidents/sharing",
+               json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]})
+    r = client.put("/collections/incidents/sharing",
+                   json={"public": True, "groups": [{"groupId": "nope", "role": "viewer"}]})
+    assert r.status_code == 404
+    # Rien n'a été modifié : le partage existant survit, public reste False.
+    body = client.get("/collections/incidents/sharing").json()
+    assert body == {"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]}
+
+
+def test_put_sharing_cross_tenant_group_is_404(env):
+    app, client, Session, admin, _regular, group_id = env
+    from app.tenants.models import Tenant
+    with Session() as s:
+        other_tenant = Tenant(id=uuid.uuid4().hex, slug="other", name="Other")
+        s.add(other_tenant)
+        s.flush()
+        outsider = get_or_create_user(s, tenant_id=other_tenant.id, oidc_sub="z",
+                                      username="outsider", email=None,
+                                      first_name="", last_name="")
+        foreign_group = Group(id=uuid.uuid4().hex, tenant_id=other_tenant.id,
+                              name="ailleurs", created_by=outsider.id)
+        s.add(foreign_group)
+        foreign_group_id = foreign_group.id
+        s.commit()
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    r = client.put("/collections/incidents/sharing",
+                   json={"public": False,
+                         "groups": [{"groupId": foreign_group_id, "role": "viewer"}]})
+    assert r.status_code == 404
+
+
 def test_put_sharing_rejects_invalid_role(env):
     app, client, _, admin, _regular, group_id = env
     _as(app, admin)

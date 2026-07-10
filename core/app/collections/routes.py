@@ -172,7 +172,7 @@ def _require_share(session, user, col) -> None:
         raise HTTPException(status_code=403, detail="share access required")
 
 
-@router.get("/collections/{collection_id}/sharing")
+@router.get("/collections/{collection_id}/sharing", response_model=Sharing)
 def get_sharing(
     collection_id: str, user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
@@ -183,18 +183,23 @@ def get_sharing(
             "groups": [{"groupId": s.group_id, "role": s.role} for s in shares]}
 
 
-@router.put("/collections/{collection_id}/sharing")
+@router.put("/collections/{collection_id}/sharing", response_model=Sharing)
 def put_sharing(
     collection_id: str, body: Sharing,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
     col = _get_readable(session, user, collection_id)
     _require_share(session, user, col)
-    col.is_public = body.public
-    repo.set_collection_sharing(
+    ok = repo.set_collection_sharing(
         session, tenant_id=user.tenant_id, collection_id=col.id,
         groups=[(g.groupId, g.role) for g in body.groups],
     )
+    if not ok:
+        # Même statut/détail que le chemin items (items/routes.py) : ne jamais
+        # révéler l'existence d'un groupe d'un autre tenant. is_public n'est
+        # muté qu'après validation — rien n'a changé à ce stade.
+        raise HTTPException(status_code=404, detail="group not found")
+    col.is_public = body.public
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.share", object_type="collection", object_id=col.id,
                 payload={"public": body.public,
