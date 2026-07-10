@@ -1,3 +1,5 @@
+from typing import Literal
+
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -112,4 +114,33 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
                 action="config.update", object_type="config", object_id=existing.id, payload={},
             )
+            return result
+
+    @server.tool()
+    async def create_item(
+        ctx: Context, kind: Literal["app", "dashboard"], title: str, config: BuilderConfig,
+    ) -> ItemRead:
+        """Create a new app or dashboard — mirrors POST /configs. The item's
+        owner is always the authenticated caller; there is no owner
+        parameter to accept from the agent."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type=kind, title=title,
+            )
+            config_result = configs_repo.create_config(session, config, item_id=item.id)
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": title},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"title": title, "kind": kind},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None  # just created it, in the same transaction
             return result
