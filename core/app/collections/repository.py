@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
@@ -56,4 +56,27 @@ def list_visible_collections(
 
 def delete_collection(session: Session, col: Collection) -> None:
     session.delete(col)
+    session.flush()
+
+
+def get_collection_sharing(
+    session: Session, *, tenant_id: str, collection_id: str
+) -> list[CollectionShare]:
+    return list(session.scalars(select(CollectionShare).where(
+        CollectionShare.tenant_id == tenant_id,
+        CollectionShare.collection_id == collection_id,
+    )).all())
+
+
+def set_collection_sharing(
+    session: Session, *, tenant_id: str, collection_id: str,
+    groups: list[tuple[str, str]],  # [(group_id, role)]
+) -> None:
+    session.execute(delete(CollectionShare).where(
+        CollectionShare.tenant_id == tenant_id,
+        CollectionShare.collection_id == collection_id,
+    ))
+    for group_id, role in groups:
+        session.add(CollectionShare(collection_id=collection_id, group_id=group_id,
+                                    tenant_id=tenant_id, role=role))
     session.flush()

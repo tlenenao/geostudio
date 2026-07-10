@@ -13,6 +13,7 @@ from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
+from app.sharing.schemas import Sharing
 
 router = APIRouter()
 
@@ -163,3 +164,40 @@ def unregister_collection(
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.delete", object_type="collection", object_id=collection_id,
                 payload={})
+
+
+def _require_share(session, user, col) -> None:
+    if not can(session, user_id=user.id, action="share", item=repo.get_access_facts(col),
+               kind="collection", actor_is_admin=user.is_admin):
+        raise HTTPException(status_code=403, detail="share access required")
+
+
+@router.get("/collections/{collection_id}/sharing")
+def get_sharing(
+    collection_id: str, user=Depends(get_current_user), session: Session = Depends(get_session),
+):
+    col = _get_readable(session, user, collection_id)
+    _require_share(session, user, col)
+    shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
+    return {"public": col.is_public,
+            "groups": [{"groupId": s.group_id, "role": s.role} for s in shares]}
+
+
+@router.put("/collections/{collection_id}/sharing")
+def put_sharing(
+    collection_id: str, body: Sharing,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+):
+    col = _get_readable(session, user, collection_id)
+    _require_share(session, user, col)
+    col.is_public = body.public
+    repo.set_collection_sharing(
+        session, tenant_id=user.tenant_id, collection_id=col.id,
+        groups=[(g.groupId, g.role) for g in body.groups],
+    )
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="collection.share", object_type="collection", object_id=col.id,
+                payload={"public": body.public,
+                         "groups": [g.model_dump() for g in body.groups]})
+    return {"public": col.is_public,
+            "groups": [{"groupId": g.groupId, "role": g.role} for g in body.groups]}
