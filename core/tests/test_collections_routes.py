@@ -83,6 +83,22 @@ def test_register_unknown_table_400_and_duplicate_409(env):
     assert client.post("/collections", json={"tableName": "incidents"}).status_code == 409
 
 
+def test_table_name_bounded_to_50_chars(env):
+    # 50 = 63 (limite Postgres) − len("ix_" + "_tenant_id") : garantit que le
+    # nom d'index tenant_id généré par le DDL n'est jamais tronqué (deux tables
+    # au long préfixe commun donneraient sinon le MÊME nom d'index, et le
+    # second CREATE INDEX IF NOT EXISTS serait silencieusement sauté).
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    r = client.post("/collections", json={"tableName": "t" * 51})
+    assert r.status_code == 422  # rejeté par la validation pydantic
+    # 50 caractères : passe la couche schéma — le 400 "table not found" du
+    # fake introspector prouve qu'on a atteint la logique métier.
+    r = client.post("/collections", json={"tableName": "t" * 50})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "table not found in schema public"
+
+
 def test_register_core_table_refused(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
