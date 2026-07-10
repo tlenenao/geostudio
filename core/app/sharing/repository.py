@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.sharing.models import Group, GroupMember, ItemShare
+from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare
 from app.users.models import User
 
 
@@ -19,6 +19,23 @@ def has_group_role(
             GroupMember.user_id == user_id,
             GroupMember.tenant_id == tenant_id,
             ItemShare.role.in_(roles),
+        )
+    )
+    return session.scalar(stmt) is not None
+
+
+def has_collection_group_role(
+    session: Session, *, tenant_id: str, collection_id: str, user_id: str, roles: set[str]
+) -> bool:
+    stmt = (
+        select(CollectionShare.role)
+        .join(GroupMember, GroupMember.group_id == CollectionShare.group_id)
+        .where(
+            CollectionShare.collection_id == collection_id,
+            CollectionShare.tenant_id == tenant_id,
+            GroupMember.user_id == user_id,
+            GroupMember.tenant_id == tenant_id,
+            CollectionShare.role.in_(roles),
         )
     )
     return session.scalar(stmt) is not None

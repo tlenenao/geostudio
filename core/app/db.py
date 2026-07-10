@@ -37,14 +37,27 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def init_db(engine: Engine) -> None:
-    # Import models so they register on Base.metadata before create_all.
+def core_table_names() -> frozenset[str]:
+    """Noms des tables du cœur, calculés APRÈS import de tous les modules
+    models. Les imports paresseux sont indispensables : un appelant peut être
+    importé avant app.items/app.configs (ordre alphabétique dans main.py), et
+    ``Base.metadata`` ne connaît que les modèles déjà importés. Source de
+    vérité de la denylist du registre de collections."""
     from app.audit import models as audit_models  # noqa: F401
+    from app.collections import models as collections_models  # noqa: F401
     from app.configs import models  # noqa: F401
     from app.items import models as items_models  # noqa: F401
     from app.sharing import models as sharing_models  # noqa: F401
     from app.tenants import models as tenants_models  # noqa: F401
     from app.users import models as users_models  # noqa: F401
+
+    return frozenset(Base.metadata.tables)
+
+
+def init_db(engine: Engine) -> None:
+    # Import models (via core_table_names) so they register on Base.metadata
+    # before create_all.
+    core_table_names()
 
     # Alembic migrations (core/alembic/versions/) are the sole source of truth
     # for schema on real databases (Postgres). create_all() is only safe/used
