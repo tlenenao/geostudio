@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import db
 from app.auth import routes as auth_routes
+from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import routes as items_routes
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(sharing_routes.router)
     app.include_router(public_routes.router)
     app.include_router(schemas_router)
+    app.include_router(collections_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")

@@ -77,3 +77,14 @@ def get_current_user(
         last_name=claims.get("family_name", ""),
         bootstrap_admin=claims["sub"] in _admin_subs(),
     )
+
+
+def get_current_user_optional(
+    authorization: str = Header(default=""),
+    session: Session = Depends(get_session),
+) -> User | None:
+    """Comme get_current_user, mais renvoie None sans header (accès anonyme
+    aux collections publiques — URLs OGC stables, spec SP-3 §2)."""
+    if not authorization.startswith("Bearer "):
+        return None
+    return get_current_user(authorization=authorization, session=session)
