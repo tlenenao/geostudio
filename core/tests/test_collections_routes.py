@@ -139,6 +139,15 @@ def test_public_collection_visible_to_anonymous(env):
     assert [c["id"] for c in body["collections"]] == ["incidents"]
 
 
+def test_schema_endpoint_uses_introspector(env):
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    schema = client.get("/collections/incidents/schema").json()
+    assert schema["pk"] == "id"
+    assert schema["fields"] == [{"name": "titre", "type": "string", "required": True}]
+
+
 def test_patch_and_delete(env):
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
