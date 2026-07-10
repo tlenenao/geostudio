@@ -33,12 +33,14 @@ def _type_ok(col: ColumnInfo, value) -> bool:
 
 
 def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
-    if not isinstance(feature, dict) or feature.get("type") != "Feature" \
-            or not isinstance(feature.get("properties", {}), dict):
+    if not isinstance(feature, dict) or feature.get("type") != "Feature":
+        return [_err("", "invalid_feature", "payload must be a GeoJSON Feature")]
+    props_raw = feature.get("properties", {})
+    if props_raw is not None and not isinstance(props_raw, dict):
         return [_err("", "invalid_feature", "payload must be a GeoJSON Feature")]
 
     errors: list[dict] = []
-    props = feature.get("properties") or {}
+    props = props_raw or {}  # properties: null est valide (RFC 7946) → {}
     by_name = {c.name: c for c in info.columns}
     reserved = {info.pk_column, "tenant_id", info.geometry_column}
 
@@ -65,7 +67,10 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
 
     geometry = feature.get("geometry")
     if geometry is not None:
-        if info.geometry_column is None:
+        if not isinstance(geometry, dict):
+            errors.append(_err("geometry", "geometry_mismatch",
+                               "geometry must be a GeoJSON geometry object"))
+        elif info.geometry_column is None:
             errors.append(_err("geometry", "unexpected_geometry",
                                "collection has no geometry column"))
         elif geometry.get("type") != info.geometry_type:

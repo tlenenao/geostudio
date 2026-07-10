@@ -79,3 +79,16 @@ def test_geometry_type_mismatch_and_unexpected():
 
 def test_geometry_is_optional():
     assert validate_feature(INFO, _f({"titre": "x"})) == []
+
+
+def test_non_dict_geometry_is_error_not_crash():
+    errors = validate_feature(INFO, _f({"titre": "x"}, "POINT(1 2)"))
+    assert ("geometry", "geometry_mismatch") in _codes(errors)
+    errors = validate_feature(INFO, _f({"titre": "x"}, []))
+    assert ("geometry", "geometry_mismatch") in _codes(errors)
+
+
+def test_null_properties_is_valid_rfc7946():
+    errors = validate_feature(INFO, {"type": "Feature", "properties": None, "geometry": None})
+    # properties:null = {} → seule l'exigence required s'applique
+    assert _codes(errors) == {("titre", "missing_required")}
