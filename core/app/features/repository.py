@@ -1,7 +1,9 @@
-"""Lecture des features : SQL brut paramétré, identifiants quotés. Les
-fonctions supposent que l'appelant a posé rls_scope() — elles ne gèrent ni
-rôle ni tenant. fid et filtres arrivent en str (URL) et sont coercés selon
-le type introspecté."""
+"""Lecture et écriture des features : SQL brut paramétré, identifiants
+quotés. Les fonctions supposent que l'appelant a posé rls_scope() — elles ne
+gèrent ni rôle ni tenant (sauf le stampage explicite du tenant à l'insert).
+fid et filtres arrivent en str (URL) et sont coercés selon le type
+introspecté. Les colonnes de type "unsupported" sont read-only (contrat de
+validation.py) : jamais écrites ici."""
 import json
 from dataclasses import dataclass
 
@@ -134,6 +136,8 @@ def insert_feature(session: Session, info: TableInfo, *, properties: dict,
     t = quote_ident(session, info.table_name)
     cols, values, params = ["tenant_id"], ["current_setting('app.tenant_id')"], {}
     for i, col in enumerate(_property_columns(info)):
+        if col.type == "unsupported":  # read-only (contrat de validation.py)
+            continue
         if col.name in properties:
             cols.append(quote_ident(session, col.name))
             values.append(f":p{i}")
@@ -157,6 +161,8 @@ def replace_feature(session: Session, info: TableInfo, *, fid: str,
     t = quote_ident(session, info.table_name)
     sets, params = [], {"__fid": value}
     for i, col in enumerate(_property_columns(info)):
+        if col.type == "unsupported":  # read-only (contrat de validation.py) : intouchée
+            continue
         sets.append(f"{quote_ident(session, col.name)} = :p{i}")
         params[f"p{i}"] = properties.get(col.name)  # absent → NULL (remplacement complet)
     if info.geometry_column:

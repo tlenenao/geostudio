@@ -130,3 +130,38 @@ def test_delete_scoped(info, pg_session_factory):
         session.commit()
     with pg_session_factory() as session:
         assert session.execute(text("SELECT count(*) FROM t_feat")).scalar() == 2
+
+
+def test_replace_preserves_unsupported_readonly_columns(pg_engine, pg_session_factory):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_ro"))
+        conn.execute(text(
+            "CREATE TABLE t_feat_ro (id serial PRIMARY KEY, titre text NOT NULL, "
+            "payload jsonb NOT NULL, tenant_id text NOT NULL DEFAULT 'default', "
+            "geom geometry(Point, 4326))"))
+        conn.execute(text("ALTER TABLE t_feat_ro ENABLE ROW LEVEL SECURITY"))
+        conn.execute(text(
+            "CREATE POLICY tenant_isolation ON t_feat_ro "
+            "USING (tenant_id = current_setting('app.tenant_id')) "
+            "WITH CHECK (tenant_id = current_setting('app.tenant_id'))"))
+        conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON t_feat_ro TO gis_rls"))
+        conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE t_feat_ro_id_seq TO gis_rls"))
+        conn.execute(text(
+            "INSERT INTO t_feat_ro (titre, payload, tenant_id) "
+            "VALUES ('a', '{\"k\": 1}', 'default')"))
+    try:
+        with pg_session_factory() as session:
+            info = introspect_table(session, "t_feat_ro")
+            with rls_scope(session, "default"):
+                ok = replace_feature(session, info, fid="1",
+                                     properties={"titre": "a2"}, geometry=None)
+                assert ok is True
+            session.commit()
+        with pg_session_factory() as session:
+            row = session.execute(text(
+                "SELECT titre, payload FROM t_feat_ro WHERE id = 1")).one()
+            assert row[0] == "a2"
+            assert row[1] == {"k": 1}  # la colonne read-only NOT NULL a survécu
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS t_feat_ro"))
