@@ -15,6 +15,14 @@ def _mock_mode() -> bool:
     return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
 
 
+def admin_subs() -> set[str]:
+    """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
+    vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par
+    le chemin MCP, app.mcp.tools._resolve_actor)."""
+    raw = os.environ.get("CORE_ADMIN_SUBS", "")
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
@@ -43,6 +51,7 @@ def get_current_user(
             email=None,
             first_name="Mock",
             last_name="User",
+            bootstrap_admin=True,
         )
 
     try:
@@ -69,4 +78,16 @@ def get_current_user(
         email=claims.get("email"),
         first_name=claims.get("given_name", ""),
         last_name=claims.get("family_name", ""),
+        bootstrap_admin=claims["sub"] in admin_subs(),
     )
+
+
+def get_current_user_optional(
+    authorization: str = Header(default=""),
+    session: Session = Depends(get_session),
+) -> User | None:
+    """Comme get_current_user, mais renvoie None sans header (accès anonyme
+    aux collections publiques — URLs OGC stables, spec SP-3 §2)."""
+    if not authorization.startswith("Bearer "):
+        return None
+    return get_current_user(authorization=authorization, session=session)
