@@ -98,7 +98,7 @@ npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 155 tests
+uv run pytest        # 231 tests
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
                       # pg-featureserv, core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-09 (mise à jour à chaque jalon)
+## État au 2026-07-10 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -117,9 +117,22 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
   anonymes), bascule complète du shell sur le cœur (`CoreItemClient`, plus
   aucun appel GeoNode), réalm Keycloak réel câblé et validé end-to-end. **Jalon
   M1 (GeoNode-free) atteint** : GeoNode/Superset/Redis retirés du compose et du
-  code.
-- **Prochain chantier : SP-2** (serveur MCP v0 — voir feuille de route §M2 /
-  "AI-operable") : un agent doit pouvoir créer un dashboard valide via MCP.
+  code. **Tout SP-2 (a+b)** : serveur MCP v0 — `/mcp` authentifié OAuth
+  2.1+PKCE (Keycloak Authorization Server, DCR, audience `geostudio-mcp`), puis
+  les 7 outils métier (`list_items`, `get_item`, `get_app_config`,
+  `save_app_config`, `create_item`, `get_sharing`, `set_sharing`, mêmes
+  fonctions de repository et même porte `can()` que l'API REST,
+  `actor_kind=agent` dans `audit_log`) + schéma JSON `AppConfig` publié
+  (ressource MCP et endpoint HTTP). **Jalon M2 (AI-operable) atteint** : un
+  agent MCP peut créer un dashboard valide qui s'ouvre dans le builder du shell.
+- **SP-3a livré** (2026-07-10) : registre de collections (enregistrement
+  admin, garde-fous, introspection vivante `GET /collections/{id}/schema`,
+  partage groupes×rôles, accès anonyme aux collections publiques), rôle admin
+  (`users.is_admin`, bootstrap `CORE_ADMIN_SUBS`, `GET/PATCH /users`), RLS
+  générée par collection (rôle `gis_rls`, policy `tenant_isolation`), seed
+  démo (`core/scripts/seed_demo.py`), infra de test PostGIS (marqueur
+  `postgis`). **Prochain chantier : SP-3b** (CRUD features OGC API — ouvrir
+  par le spike RLS/PgBouncer prévu par la spec).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
