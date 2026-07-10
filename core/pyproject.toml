@@ -31,6 +31,9 @@ filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
+markers = [
+    "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
+]
 
 [tool.importlinter]
 root_package = "app"
