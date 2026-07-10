@@ -7,10 +7,34 @@
 > pg_featureserv.
 >
 > Date : 2026-07-09.
-> Statut : design proposé.
-> Prérequis : SP-1 livré (items, `can()`, groupes, audit). Rédigée en avance de
-> phase — le prochain chantier reste SP-2 (MCP v0), qui n'a aucune dépendance
-> croisée avec SP-3.
+> Statut : design validé ; **SP-3a livré le 2026-07-10** (revue finale de
+> branche passée). SP-3b/SP-3c à venir.
+> Prérequis : SP-1 livré (items, `can()`, groupes, audit).
+
+---
+
+## Notes de revue SP-3a (2026-07-10) — à traiter en ouverture de SP-3b
+
+1. **Défaut de spec identifié (bloquant pour le spike SP-3b)** : la ligne RLS
+   du §2 stampe les lignes métier avec `tenant_id DEFAULT 'default'` (le
+   *slug* du tenant), alors que `tenants.id` — utilisé par
+   `collections.tenant_id`, `audit_log` et `can()` — est un **uuid**
+   (`get_or_create_default_tenant`). Rien ne casse en SP-3a (aucun code ne
+   pose encore `app.tenant_id`), mais le `SET LOCAL app.tenant_id` de SP-3b
+   doit choisir une représentation : slug comme marqueur du plan de données,
+   ou re-stampage en uuid. **À trancher au spike RLS/PgBouncer et à
+   répercuter ici.** La PK globale `Collection.id` (slug) relève de la même
+   décision (collision inter-tenants à l'activation du multi-tenant).
+2. Backlog SP-3b (issu des revues de tâches) : test RLS sur UPDATE ; index
+   sur `tenant_id` des tables métier ; qualification schéma du lookup enum et
+   de `pg_get_serial_sequence` ; tests des gardes 0-PK / 2-géométries ;
+   validation des doublons `group_id` dans `Sharing.groups` (défaut partagé
+   avec le chemin items depuis SP-1 — corriger les deux) ; audit du script de
+   seed (`actor_kind="system"`) et gestion d'`UnsupportedTable` dans le seed ;
+   révocation des grants/policy au désenregistrement (hygiène).
+3. Backlog SP-3c : `response_model` sur les endpoints collections/users (les
+   types TS générés sont `unknown` sans ça) ; le job CI `api-types-drift` ne
+   diffe pas `core/openapi.json` lui-même (seulement le `.d.ts` dérivé).
 
 ---
 
