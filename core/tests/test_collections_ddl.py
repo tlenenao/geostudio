@@ -42,6 +42,37 @@ def test_ddl_is_idempotent(pg_table, pg_session_factory):
         session.commit()
 
 
+def test_ddl_creates_tenant_index(pg_table, pg_session_factory):
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table)
+        session.commit()
+    with pg_session_factory() as session:
+        idx = session.execute(text(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 't_rls'")).scalars().all()
+        assert "ix_t_rls_tenant_id" in idx
+
+
+def test_rls_blocks_update_across_tenants(pg_table, pg_session_factory):
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table)
+        session.execute(text(
+            "INSERT INTO t_rls (titre, tenant_id) VALUES ('a', 'default')"))
+        session.commit()
+    with pg_session_factory() as session:
+        # Mauvais tenant : l'UPDATE ne voit aucune ligne (USING) — 0 modifiée.
+        session.execute(text("SELECT set_config('app.tenant_id', 'other', true)"))
+        session.execute(text("SET LOCAL ROLE gis_rls"))
+        r = session.execute(text("UPDATE t_rls SET titre = 'hack'"))
+        assert r.rowcount == 0
+    with pg_session_factory() as session:
+        # Bon tenant : impossible de réécrire tenant_id vers un autre (WITH CHECK).
+        session.execute(text("SELECT set_config('app.tenant_id', 'default', true)"))
+        session.execute(text("SET LOCAL ROLE gis_rls"))
+        import sqlalchemy.exc
+        with pytest.raises(sqlalchemy.exc.DBAPIError):
+            session.execute(text("UPDATE t_rls SET tenant_id = 'other'"))
+
+
 def test_rls_blocks_wrong_tenant(pg_table, pg_session_factory):
     with pg_session_factory() as session:
         apply_collection_ddl(session, pg_table)
