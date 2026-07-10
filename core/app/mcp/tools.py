@@ -1,6 +1,10 @@
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
+from app.audit.writer import write_audit
+from app.configs import repository as configs_repo
+from app.configs.repository import ConfigRead
+from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
@@ -76,4 +80,36 @@ def register_tools(server: FastMCP, session_factory) -> None:
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=itemId)
             if result is None:
                 raise ValueError("item not found")
+            return result
+
+    @server.tool()
+    async def get_app_config(ctx: Context, itemId: str) -> ConfigRead:
+        """Get the app/dashboard config for an item — mirrors GET /configs/by-item/{id}."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            _require_access(session, user=user, item_id=itemId, action="read")
+            result = configs_repo.get_config_by_item(session, itemId)
+            if result is None:
+                raise ValueError("config not found")
+            return result
+
+    @server.tool()
+    async def save_app_config(ctx: Context, itemId: str, config: BuilderConfig) -> ConfigRead:
+        """Save (and version) the app/dashboard config for an item — mirrors
+        PUT /configs/by-item/{id}."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            _require_access(session, user=user, item_id=itemId, action="write")
+            existing = configs_repo.get_config_by_item(session, itemId)
+            if existing is None:
+                raise ValueError("config not found")
+            result = configs_repo.update_config(session, existing.id, config)
+            if result is None:
+                raise ValueError("config not found")
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.update", object_type="config", object_id=existing.id, payload={},
+            )
             return result
