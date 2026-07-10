@@ -57,7 +57,7 @@ def _require_admin(user) -> None:
         raise HTTPException(status_code=403, detail="admin role required")
 
 
-def _get_readable(session, user, collection_id):
+def get_readable_collection(session, user, collection_id):
     """404 avant 403 : une collection illisible est indistinguable d'une absente."""
     col = None
     if user is not None:
@@ -128,7 +128,7 @@ def get_collection(
     collection_id: str,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
 ):
-    return _collection_json(_get_readable(session, user, collection_id))
+    return _collection_json(get_readable_collection(session, user, collection_id))
 
 
 @router.get("/collections/{collection_id}/schema")
@@ -137,7 +137,7 @@ def get_collection_schema(
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     try:
         info = introspect(session, col.table_name)
     except TableNotFound:
@@ -152,7 +152,7 @@ def patch_collection(
     collection_id: str, body: CollectionPatch,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     if not can(session, user_id=user.id, action="write", item=repo.get_access_facts(col),
                kind="collection", actor_is_admin=user.is_admin):
         raise HTTPException(status_code=403, detail="write access required")
@@ -172,7 +172,7 @@ def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_admin(user)  # après le 404 : un non-admin qui la voit reçoit 403
     repo.delete_collection(session, col)
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
@@ -190,7 +190,7 @@ def _require_share(session, user, col) -> None:
 def get_sharing(
     collection_id: str, user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
     return {"public": col.is_public,
@@ -202,7 +202,7 @@ def put_sharing(
     collection_id: str, body: Sharing,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     ok = repo.set_collection_sharing(
         session, tenant_id=user.tenant_id, collection_id=col.id,
