@@ -12,6 +12,7 @@ from app.db import init_db, make_engine, make_session_factory, request_scoped_se
 from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
+from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
 
 
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(sharing_routes.router)
     app.include_router(public_routes.router)
+    app.include_router(schemas_router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
