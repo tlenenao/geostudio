@@ -130,6 +130,26 @@ décalage entre `CORE_MCP_AUDIENCE` et l'audience réellement émise par le
 realm (vérifier que `geostudio-mcp-audience` est bien un scope par défaut
 du realm : `GET /admin/realms/geostudio/default-default-client-scopes`).
 
+#### Scénario complet (SP-2b) : créer un dashboard depuis un agent
+
+Une fois connecté (voir ci-dessus), un agent MCP peut maintenant :
+
+1. `list_items` — lister le catalogue.
+2. `get_app_config` sur un item existant — lire sa config.
+3. Lire la ressource `schema://app-config` (ou `GET /schemas/app-config`)
+   pour connaître la forme attendue d'un `AppConfig`.
+4. `create_item` avec un config valide contre ce schéma — crée un nouveau
+   dashboard, dont l'owner est l'utilisateur Keycloak connecté (jamais un
+   paramètre de l'outil).
+5. Ouvrir http://localhost:8300 dans le shell, se connecter avec le même
+   utilisateur : le dashboard créé par l'agent apparaît dans le catalogue et
+   s'ouvre normalement dans le builder — c'est le critère d'acceptation
+   final de la feuille de route pour SP-2 (« un agent crée un dashboard
+   valide qui s'ouvre dans le builder »).
+6. Vérifier `audit_log` (via un accès direct à la base, ou un futur outil
+   d'administration) : les lignes créées par cette séquence portent
+   `actor_kind = "agent"`, pas `"user"`.
+
 ### Développement front (shell)
 
 ```bash
