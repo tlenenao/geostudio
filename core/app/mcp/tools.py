@@ -4,6 +4,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.audit.writer import write_audit
+from app.auth.dependency import admin_subs
 from app.configs import repository as configs_repo
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
@@ -29,6 +30,7 @@ def _resolve_actor(session, access_token) -> User:
         email=claims.get("email"),
         first_name=claims.get("given_name", ""),
         last_name=claims.get("family_name", ""),
+        bootstrap_admin=access_token.subject in admin_subs(),
     )
 
 
