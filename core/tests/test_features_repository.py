@@ -3,7 +3,14 @@ from sqlalchemy import text
 
 from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
-from app.features.repository import FilterError, get_feature, select_features
+from app.features.repository import (
+    FilterError,
+    delete_feature,
+    get_feature,
+    insert_feature,
+    replace_feature,
+    select_features,
+)
 from app.features.rls import rls_scope
 
 pytestmark = pytest.mark.postgis
@@ -80,3 +87,46 @@ def test_get_feature(info, pg_session_factory):
 def test_table_extent(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         assert table_extent(session, info) == [1.0, 45.0, 2.0, 46.0]
+
+
+def test_insert_stamps_current_tenant_and_returns_fid(info, pg_session_factory):
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            fid = insert_feature(session, info, properties={"titre": "d", "nb": 4},
+                                 geometry={"type": "Point", "coordinates": [4.0, 48.0]})
+        session.commit()
+    assert isinstance(fid, int)
+    with pg_session_factory() as session:
+        row = session.execute(text(
+            "SELECT tenant_id, titre, ST_X(geom) FROM t_feat WHERE id = :i"), {"i": fid}).one()
+        assert row[0] == "default" and row[1] == "d" and row[2] == 4.0
+
+
+def test_replace_is_full_and_scoped(info, pg_session_factory):
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            ok = replace_feature(session, info, fid="1",
+                                 properties={"titre": "a2"}, geometry=None)
+            assert ok is True
+            assert replace_feature(session, info, fid="3",  # autre tenant
+                                   properties={"titre": "hack"}, geometry=None) is False
+            assert replace_feature(session, info, fid="999",
+                                   properties={"titre": "x"}, geometry=None) is False
+        session.commit()
+    with pg_session_factory() as session:
+        row = session.execute(text(
+            "SELECT titre, nb, geom FROM t_feat WHERE id = 1")).one()
+        assert row[0] == "a2" and row[1] is None and row[2] is None  # remplacement complet
+        assert session.execute(text(
+            "SELECT titre FROM t_feat WHERE id = 3")).scalar() == "c"  # intact
+
+
+def test_delete_scoped(info, pg_session_factory):
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            assert delete_feature(session, info, fid="2") is True
+            assert delete_feature(session, info, fid="3") is False  # autre tenant
+            assert delete_feature(session, info, fid="zzz") is False
+        session.commit()
+    with pg_session_factory() as session:
+        assert session.execute(text("SELECT count(*) FROM t_feat")).scalar() == 2
