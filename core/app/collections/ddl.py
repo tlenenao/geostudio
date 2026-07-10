@@ -25,7 +25,8 @@ def apply_collection_ddl(session: Session, table_name: str) -> None:
         "WITH CHECK (tenant_id = current_setting('app.tenant_id'))",
         f"GRANT SELECT, INSERT, UPDATE, DELETE ON public.{t} TO gis_rls",
         # L'index sert toutes les requêtes RLS — current_setting est comparé à
-        # chaque ligne sinon ; nom borné à 63 octets par construction v1.
+        # chaque ligne sinon ; nom ≤ 63 octets garanti : tableName est borné à
+        # 50 par CollectionCreate (schemas.py).
         f"CREATE INDEX IF NOT EXISTS "
         f"{quote_ident(session, 'ix_' + table_name + '_tenant_id')} "
         f"ON public.{t} (tenant_id)",
