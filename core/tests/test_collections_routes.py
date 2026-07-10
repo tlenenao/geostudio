@@ -116,6 +116,37 @@ def test_denylist_short_circuits_before_introspection(env):
     assert calls == []  # l'introspecteur n'a jamais été appelé
 
 
+def test_register_postgis_system_table_refused(env):
+    # spatial_ref_sys est une table PostGIS ordinaire (PK simple) qui passerait
+    # toutes les autres gardes : la denylist doit la couvrir explicitement,
+    # sinon l'enregistrer ALTERerait une table système PostGIS (tenant_id,
+    # RLS, grants).
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    r = client.post("/collections", json={"tableName": "spatial_ref_sys"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "core table cannot be registered"
+
+
+def test_denylist_postgis_system_tables_short_circuits_before_introspection(env):
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    calls: list[str] = []
+
+    def spying_introspector(session, table_name):
+        calls.append(table_name)
+        raise TableNotFound(table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = (
+        lambda: spying_introspector
+    )
+    for table in ("spatial_ref_sys", "geometry_columns", "geography_columns"):
+        r = client.post("/collections", json={"tableName": table})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "core table cannot be registered"
+    assert calls == []  # l'introspecteur n'a jamais été appelé
+
+
 def test_private_collection_hidden_from_stranger_and_anonymous(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
