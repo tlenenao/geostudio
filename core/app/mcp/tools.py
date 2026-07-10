@@ -10,7 +10,9 @@ from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
+from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
+from app.sharing.schemas import Sharing
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
@@ -144,3 +146,36 @@ def register_tools(server: FastMCP, session_factory) -> None:
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
             assert result is not None  # just created it, in the same transaction
             return result
+
+    @server.tool()
+    async def get_sharing(ctx: Context, itemId: str) -> Sharing:
+        """Get an item's sharing settings — mirrors GET /items/{id}/sharing."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            facts = _require_access(session, user=user, item_id=itemId, action="read")
+            shares = sharing_repo.list_shares(session, item_id=itemId)
+            return Sharing(
+                public=facts.is_public,
+                groups=[{"groupId": s.group_id, "role": s.role} for s in shares],
+            )
+
+    @server.tool()
+    async def set_sharing(ctx: Context, itemId: str, sharing: Sharing) -> None:
+        """Set an item's sharing settings — mirrors PUT /items/{id}/sharing."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            _require_access(session, user=user, item_id=itemId, action="share")
+            ok = sharing_repo.replace_shares(
+                session, tenant_id=user.tenant_id, item_id=itemId,
+                shares=[(g.groupId, g.role) for g in sharing.groups],
+            )
+            if not ok:
+                raise ValueError("group not found")
+            items_repo.set_is_public(session, tenant_id=user.tenant_id, item_id=itemId, is_public=sharing.public)
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.share", object_type="item", object_id=itemId,
+                payload={"public": sharing.public, "groups": [g.model_dump() for g in sharing.groups]},
+            )
