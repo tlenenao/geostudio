@@ -169,6 +169,31 @@ def test_create_item_ignores_any_owner_argument_and_uses_the_caller_identity(app
         assert spoofed == []
 
 
+def test_resolve_actor_bootstraps_admin_from_core_admin_subs(app_client, monkeypatch):
+    # CORE_ADMIN_SUBS doit être appliquée (et rafraîchie) à chaque
+    # get_or_create_user, y compris sur le chemin MCP — pas seulement sur le
+    # chemin REST (get_current_user). mock-sub est le subject fixe que
+    # MockTokenVerifier résout toujours (app/mcp/auth.py).
+    monkeypatch.setenv("CORE_ADMIN_SUBS", "mock-sub")
+    with app_client:
+        call_tool(app_client, "whoami", {})
+
+    with app_client.session_factory() as session:
+        from app.users.models import User
+        user = session.get(User, app_client.mock_user.id)
+        assert user.is_admin is True
+
+
+def test_resolve_actor_does_not_bootstrap_admin_without_core_admin_subs(app_client):
+    with app_client:
+        call_tool(app_client, "whoami", {})
+
+    with app_client.session_factory() as session:
+        from app.users.models import User
+        user = session.get(User, app_client.mock_user.id)
+        assert user.is_admin is False
+
+
 def test_create_item_writes_audit_log_with_agent_actor(app_client):
     with app_client:
         call_tool(
