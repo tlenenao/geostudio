@@ -17,12 +17,21 @@ from app.sharing.schemas import Sharing
 
 router = APIRouter()
 
+# Tables système PostGIS : de simples tables Postgres ordinaires (PK simple,
+# pas de tenant_id) qui passeraient toutes les autres gardes. Les enregistrer
+# comme collection ALTERerait une table système partagée par toute l'instance
+# PostGIS (tenant_id, RLS, grants) — à exclure explicitement, la denylist
+# core_table_names() ne les connaît pas (ce ne sont pas des modèles du cœur).
+POSTGIS_SYSTEM_TABLES = frozenset({
+    "spatial_ref_sys", "geometry_columns", "geography_columns",
+})
+
 
 def _core_tables() -> frozenset[str]:
     # Calculé à la requête, jamais à l'import : au moment où main.py importe ce
     # module, app.items/app.configs ne sont pas encore importés et
     # Base.metadata serait incomplet (denylist trouée).
-    return core_table_names() | {"alembic_version"}
+    return core_table_names() | {"alembic_version"} | POSTGIS_SYSTEM_TABLES
 
 
 def get_introspector() -> Introspector:  # overridé en test ; task 7 branche le vrai
