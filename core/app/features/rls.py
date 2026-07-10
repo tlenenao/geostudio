@@ -22,4 +22,12 @@ def rls_scope(session: Session, tenant_id: str):
     try:
         yield
     finally:
-        session.execute(text("RESET ROLE"))
+        try:
+            session.execute(text("RESET ROLE"))
+        except Exception:
+            # Transaction déjà avortée (erreur SQL dans le scope) : le RESET
+            # échouerait en InFailedSqlTransaction et MASQUERAIT l'erreur
+            # d'origine (IntegrityError → 409, WITH CHECK → 4xx). Sans gravité :
+            # SET LOCAL ROLE est transactionnel, le rollback imminent rend le
+            # rôle de toute façon.
+            pass

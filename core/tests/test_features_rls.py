@@ -47,6 +47,18 @@ def test_scope_releases_role_on_exception(pg_rls_table, pg_session_factory):
         assert session.execute(text("SELECT current_user")).scalar() == "gis"
 
 
+def test_scope_preserves_original_sql_error(pg_rls_table, pg_session_factory):
+    import sqlalchemy.exc
+    with pg_session_factory() as session:
+        with pytest.raises(sqlalchemy.exc.DBAPIError) as exc_info:
+            with rls_scope(session, "other"):
+                # WITH CHECK rejette : erreur SQL DANS le scope
+                session.execute(text(
+                    "INSERT INTO t_scope (v, tenant_id) VALUES ('x', 'default')"))
+        # C'est l'erreur d'ORIGINE qui doit remonter, pas l'échec du RESET ROLE
+        assert "row-level security" in str(exc_info.value).lower()
+
+
 def test_scope_write_stamps_current_tenant(pg_rls_table, pg_session_factory):
     with pg_session_factory() as session:
         with rls_scope(session, "default"):
