@@ -2099,6 +2099,26 @@
         },
         "summary": "Get Public Item"
       }
+    },
+    "/schemas/app-config": {
+      "get": {
+        "operationId": "get_app_config_schema_schemas_app_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get App Config Schema Schemas App Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get App Config Schema"
+      }
     }
   }
 }
