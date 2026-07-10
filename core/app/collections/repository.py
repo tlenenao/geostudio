@@ -1,9 +1,9 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
 from app.sharing.authorization import AccessFacts
-from app.sharing.models import CollectionShare, GroupMember
+from app.sharing.models import CollectionShare, Group, GroupMember
 
 
 def get_access_facts(col: Collection) -> AccessFacts:
@@ -71,7 +71,21 @@ def get_collection_sharing(
 def set_collection_sharing(
     session: Session, *, tenant_id: str, collection_id: str,
     groups: list[tuple[str, str]],  # [(group_id, role)]
-) -> None:
+) -> bool:
+    """Replace all group shares for one collection. Returns False (no changes
+    made) if any group_id doesn't belong to tenant_id — the caller must treat
+    this as a 404 (never leak cross-tenant group existence). Same contract as
+    app/sharing/repository.py::replace_shares for items."""
+    group_ids = [group_id for group_id, _role in groups]
+    if group_ids:
+        matching = session.scalar(
+            select(func.count())
+            .select_from(Group)
+            .where(Group.tenant_id == tenant_id, Group.id.in_(group_ids))
+        )
+        if matching != len(set(group_ids)):
+            return False
+
     session.execute(delete(CollectionShare).where(
         CollectionShare.tenant_id == tenant_id,
         CollectionShare.collection_id == collection_id,
@@ -80,3 +94,4 @@ def set_collection_sharing(
         session.add(CollectionShare(collection_id=collection_id, group_id=group_id,
                                     tenant_id=tenant_id, role=role))
     session.flush()
+    return True
