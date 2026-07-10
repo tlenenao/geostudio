@@ -76,7 +76,9 @@ def test_register_and_get(env):
 def test_register_unknown_table_400_and_duplicate_409(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    assert client.post("/collections", json={"tableName": "nope"}).status_code == 400
+    r = client.post("/collections", json={"tableName": "nope"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "table not found in schema public"
     client.post("/collections", json={"tableName": "incidents"})
     assert client.post("/collections", json={"tableName": "incidents"}).status_code == 409
 
@@ -84,9 +86,34 @@ def test_register_unknown_table_400_and_duplicate_409(env):
 def test_register_core_table_refused(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    # La denylist (Base.metadata + alembic_version) court-circuite AVANT l'introspection.
-    assert client.post("/collections", json={"tableName": "items"}).status_code == 400
-    assert client.post("/collections", json={"tableName": "alembic_version"}).status_code == 400
+    # Le detail exact distingue le refus denylist du fallback TableNotFound
+    # ("table not found in schema public") du fake introspector.
+    for table in ("items", "configs", "alembic_version"):
+        r = client.post("/collections", json={"tableName": table})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "core table cannot be registered"
+
+
+def test_denylist_short_circuits_before_introspection(env):
+    # Non-régression du timing d'import : la denylist doit couvrir items/configs
+    # même si collections.routes est importé avant leurs modèles (main.py les
+    # importe alphabétiquement APRÈS app.collections), et refuser AVANT tout
+    # appel à l'introspecteur.
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    calls: list[str] = []
+
+    def spying_introspector(session, table_name):
+        calls.append(table_name)
+        raise TableNotFound(table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = (
+        lambda: spying_introspector
+    )
+    r = client.post("/collections", json={"tableName": "items"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "core table cannot be registered"
+    assert calls == []  # l'introspecteur n'a jamais été appelé
 
 
 def test_private_collection_hidden_from_stranger_and_anonymous(env):
