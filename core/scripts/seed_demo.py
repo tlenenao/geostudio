@@ -9,8 +9,9 @@ import os
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.collections.ddl import apply_collection_ddl
-from app.collections.introspection import TableNotFound
+from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.repository import create_collection, get_collection
 from app.db import make_engine, make_session_factory
@@ -52,6 +53,9 @@ def seed(session: Session, owner_username: str | None = None) -> list[str]:
         except TableNotFound:
             print(f"table '{table}' absente — ignorée")
             continue
+        except UnsupportedTable as exc:
+            print(f"table '{table}' non enregistrable ({exc.reason}) — ignorée")
+            continue
         apply_collection_ddl(session, table)
         create_collection(
             session, tenant_id=tenant.id, owner_id=owner.id, table_name=table,
@@ -59,6 +63,10 @@ def seed(session: Session, owner_username: str | None = None) -> list[str]:
             pk_column=info.pk_column, geometry_column=info.geometry_column,
             geometry_type=info.geometry_type, srid=info.srid,
         )
+        write_audit(session, tenant_id=tenant.id, actor_id=owner.id,
+                    actor_kind="system", action="collection.create",
+                    object_type="collection", object_id=table,
+                    payload={"tableName": table, "seed": True})
         created.append(table)
     return created
 

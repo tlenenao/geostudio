@@ -15,23 +15,32 @@
 
 ## Notes de revue SP-3a (2026-07-10) — à traiter en ouverture de SP-3b
 
-1. **Défaut de spec identifié (bloquant pour le spike SP-3b)** : la ligne RLS
-   du §2 stampe les lignes métier avec `tenant_id DEFAULT 'default'` (le
-   *slug* du tenant), alors que `tenants.id` — utilisé par
-   `collections.tenant_id`, `audit_log` et `can()` — est un **uuid**
-   (`get_or_create_default_tenant`). Rien ne casse en SP-3a (aucun code ne
-   pose encore `app.tenant_id`), mais le `SET LOCAL app.tenant_id` de SP-3b
-   doit choisir une représentation : slug comme marqueur du plan de données,
-   ou re-stampage en uuid. **À trancher au spike RLS/PgBouncer et à
-   répercuter ici.** La PK globale `Collection.id` (slug) relève de la même
-   décision (collision inter-tenants à l'activation du multi-tenant).
-2. Backlog SP-3b (issu des revues de tâches) : test RLS sur UPDATE ; index
-   sur `tenant_id` des tables métier ; qualification schéma du lookup enum et
-   de `pg_get_serial_sequence` ; tests des gardes 0-PK / 2-géométries ;
-   validation des doublons `group_id` dans `Sharing.groups` (défaut partagé
-   avec le chemin items depuis SP-1 — corriger les deux) ; audit du script de
-   seed (`actor_kind="system"`) et gestion d'`UnsupportedTable` dans le seed ;
-   révocation des grants/policy au désenregistrement (hygiène).
+1. **✅ Tranché (Tanguy, 2026-07-10) — `tenants.id` est un identifiant
+   lisible IMMUABLE** (option A). Le défaut : la migration 0002 seed le
+   tenant par défaut avec `id='default'` (littéral lisible) et backfille tout
+   le cœur avec, mais `get_or_create_default_tenant` créait un **uuid** quand
+   la ligne n'existait pas (bases de test) — le `SET LOCAL app.tenant_id =
+   user.tenant_id` de SP-3b aurait rendu toutes les lignes invisibles sous
+   RLS selon l'historique de la base. Décision : l'id du tenant est choisi à
+   la création (= slug), immuable, lisible dans les données ouvertes
+   (GeoParquet, exports — « le format est l'API ») ; le chemin code est
+   aligné sur le seed (fix + test dans cette branche) ; **SP-3b peut poser
+   `SET LOCAL app.tenant_id = user.tenant_id` tel quel**. Conséquences : un
+   futur `create_tenant` reçoit un id lisible immuable explicite ; la PK
+   globale `Collection.id` (slug) reste au backlog multi-tenant (passage en
+   PK composite à l'activation).
+2. Backlog SP-3b (issu des revues de tâches), traité pendant SP-3b sauf
+   mention contraire :
+   - test RLS sur UPDATE ✅
+   - index sur `tenant_id` des tables métier ✅
+   - qualification schéma du lookup enum et de `pg_get_serial_sequence` ✅
+   - tests des gardes 0-PK / 2-géométries ✅
+   - validation des doublons `group_id` dans `Sharing.groups` (défaut partagé
+     avec le chemin items depuis SP-1 — corriger les deux) ✅
+   - audit du script de seed (`actor_kind="system"`) et gestion
+     d'`UnsupportedTable` dans le seed ✅
+   - révocation des grants/policy au désenregistrement (hygiène)
+     **(reste ouvert)**
 3. Backlog SP-3c : `response_model` sur les endpoints collections/users (les
    types TS générés sont `unknown` sans ça) ; le job CI `api-types-drift` ne
    diffe pas `core/openapi.json` lui-même (seulement le `.d.ts` dérivé).
@@ -221,6 +230,19 @@ chemin tuiles est inchangé. À réévaluer quand le multi-tenant s'activera
   cœur ; les 4 specs sensibles ajustées, **les 13 restent vertes**.
 - `docker-compose.yml` : **retrait du service `pg-featureserv`** (10 → 9
   services) ; README/CLAUDE.md mis à jour.
+
+> **Note de revue SP-3c (2026-07-11, revue finale de branche)** : `types.ts`
+> n'a **pas** suivi la ligne « `DataSource.service` idem » ci-dessus —
+> `DataSource.service` est resté un `string` libre, sans migration à
+> l'ouverture des configs. Vérifié sans risque : ce champ n'est lu nulle part
+> pour du branchement (seuls `layer`/`query` comptent dans
+> `buildFeaturesUrl`/`queryDataSource` ; `LayerPicker.tsx` ne lit
+> `LayerSource.service`, un champ distinct, que pour une clé React) — une
+> config déjà enregistrée avec `service:"featureserv"` continue de
+> fonctionner sans effet, la migration prévue ici n'avait pas d'objet réel.
+> Seule la valeur par défaut d'une **nouvelle** source a changé
+> (`DataSourcePanel.tsx`, → `"core"`), par cohérence. Décision actée : ne pas
+> réintroduire cette migration a posteriori.
 
 ## 7. Gestion d'erreurs
 

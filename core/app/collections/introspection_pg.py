@@ -60,22 +60,25 @@ def introspect_table(session: Session, table_name: str) -> TableInfo:
         srid = geom_rows[0][2]
 
     col_rows = session.execute(text(
-        "SELECT column_name, data_type, udt_name, is_nullable, column_default, "
+        "SELECT column_name, data_type, udt_name, udt_schema, is_nullable, column_default, "
         "character_maximum_length, is_identity "
         "FROM information_schema.columns "
         "WHERE table_schema = 'public' AND table_name = :t ORDER BY ordinal_position"
     ), {"t": table_name}).all()
 
     columns: list[ColumnInfo] = []
-    for name, data_type, udt_name, is_nullable, default, max_len, is_identity in col_rows:
+    for name, data_type, udt_name, udt_schema, is_nullable, default, max_len, is_identity in col_rows:
         if name == geometry_column:
             continue
         enum_values = None
         if data_type == "USER-DEFINED":
             enum_values = session.execute(text(
-                "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
-                "WHERE t.typname = :ty ORDER BY e.enumsortorder"
-            ), {"ty": udt_name}).scalars().all()
+                "SELECT e.enumlabel FROM pg_enum e "
+                "JOIN pg_type t ON t.oid = e.enumtypid "
+                "JOIN pg_namespace n ON n.oid = t.typnamespace "
+                "WHERE t.typname = :ty AND n.nspname = :ns "
+                "ORDER BY e.enumsortorder"
+            ), {"ty": udt_name, "ns": udt_schema}).scalars().all()
             ftype: FieldType = "enum" if enum_values else "unsupported"
             enum_values = list(enum_values) or None
         else:

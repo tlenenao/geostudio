@@ -1,6 +1,8 @@
+import logging
 from typing import Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -14,6 +16,8 @@ from app.collections.schemas import CollectionCreate, CollectionPatch
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -44,6 +48,36 @@ def get_ddl_applier() -> Callable[[Session, str], None]:  # task 8 branche le vr
     return apply_collection_ddl
 
 
+def get_extent_provider():
+    """Défaut : emprise réelle sous rls_scope. app.collections ne peut pas
+    importer app.features (couche supérieure) — le scope RLS vit donc en
+    double minimal ici : les deux SET sont inline (3 lignes), pas d'import."""
+    from sqlalchemy import text as _text
+
+    from app.collections.extent import table_extent
+
+    def provider(session, info, tenant_id):
+        if session.get_bind().dialect.name != "postgresql":
+            return None
+        session.execute(_text("SELECT set_config('app.tenant_id', :tid, true)"),
+                        {"tid": tenant_id})
+        session.execute(_text("SET LOCAL ROLE gis_rls"))
+        try:
+            return table_extent(session, info)
+        finally:
+            try:
+                session.execute(_text("RESET ROLE"))
+            except DBAPIError as exc:
+                # Transaction avortée par l'échec de table_extent (25P02) : le
+                # RESET échouerait et masquerait l'erreur d'origine ; le
+                # rollback rend le rôle. Tout autre échec remonte (même
+                # discipline que app/features/rls.py).
+                if getattr(exc.orig, "sqlstate", None) != "25P02":
+                    raise
+
+    return provider
+
+
 def _collection_json(col) -> dict:
     return {
         "id": col.id, "title": col.title, "description": col.description,
@@ -57,7 +91,7 @@ def _require_admin(user) -> None:
         raise HTTPException(status_code=403, detail="admin role required")
 
 
-def _get_readable(session, user, collection_id):
+def get_readable_collection(session, user, collection_id):
     """404 avant 403 : une collection illisible est indistinguable d'une absente."""
     col = None
     if user is not None:
@@ -125,10 +159,31 @@ def list_collections(
 
 @router.get("/collections/{collection_id}")
 def get_collection(
-    collection_id: str,
+    collection_id: str, request: Request,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
+    extent_provider=Depends(get_extent_provider),
 ):
-    return _collection_json(_get_readable(session, user, collection_id))
+    col = get_readable_collection(session, user, collection_id)
+    body = _collection_json(col)
+    body["itemType"] = "feature"
+    base = str(request.base_url).rstrip("/")
+    body["links"] = [
+        {"rel": "self", "type": "application/json",
+         "href": f"{base}/collections/{col.id}"},
+        {"rel": "items", "type": "application/geo+json",
+         "href": f"{base}/collections/{col.id}/items"},
+    ]
+    try:
+        info = introspect(session, col.table_name)
+        bbox = extent_provider(session, info, col.tenant_id)
+    except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
+        # Table disparue/mutée ou erreur SQL : la description reste servie
+        # sans extent ; un bug de code, lui, doit remonter (pas d'except large).
+        logger.warning("extent lookup failed for collection %s: %s", col.id, exc)
+        bbox = None
+    body["extent"] = {"spatial": {"bbox": [bbox]}} if bbox else None
+    return body
 
 
 @router.get("/collections/{collection_id}/schema")
@@ -137,7 +192,7 @@ def get_collection_schema(
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     try:
         info = introspect(session, col.table_name)
     except TableNotFound:
@@ -152,7 +207,7 @@ def patch_collection(
     collection_id: str, body: CollectionPatch,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     if not can(session, user_id=user.id, action="write", item=repo.get_access_facts(col),
                kind="collection", actor_is_admin=user.is_admin):
         raise HTTPException(status_code=403, detail="write access required")
@@ -172,7 +227,7 @@ def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_admin(user)  # après le 404 : un non-admin qui la voit reçoit 403
     repo.delete_collection(session, col)
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
@@ -190,7 +245,7 @@ def _require_share(session, user, col) -> None:
 def get_sharing(
     collection_id: str, user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
     return {"public": col.is_public,
@@ -202,7 +257,7 @@ def put_sharing(
     collection_id: str, body: Sharing,
     user=Depends(get_current_user), session: Session = Depends(get_session),
 ):
-    col = _get_readable(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     ok = repo.set_collection_sharing(
         session, tenant_id=user.tenant_id, collection_id=col.id,
