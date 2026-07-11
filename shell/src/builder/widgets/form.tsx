@@ -298,6 +298,24 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     },
   });
 
+  const remove = useMutation({
+    mutationFn: () => client.deleteFeature(ctx.data?.layer ?? "", String(editingId)),
+  });
+
+  async function handleDelete() {
+    if (editingId === null) return;
+    if (!window.confirm("Supprimer cet enregistrement ?")) return;
+    try {
+      await remove.mutateAsync();
+      queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties: {} });
+      resetTo();
+    } catch (err) {
+      setGenericError(true);
+      ctx.bus?.emit(ctx.widgetId ?? "", "failed", { message: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+
   function resetTo() {
     setValues({});
     setTouched({});
@@ -405,6 +423,14 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         <p className="text-xs text-[var(--gs-color-muted)]">
           Modification de l'enregistrement #{String(editingId)}
           <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>Annuler</button>
+          <button
+            type="button"
+            className="ml-2 text-xs text-red-600 underline"
+            disabled={remove.isPending}
+            onClick={handleDelete}
+          >
+            Supprimer
+          </button>
         </p>
       )}
       <div className="mt-auto flex items-center gap-2">
