@@ -524,6 +524,39 @@ test("Supprimer calls deleteFeature after confirmation, invalidates, and exits e
   expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
 });
 
+test("updating a non-Point record resubmits its original geometry unchanged", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }), updateFeature } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Polygon" }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+    geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+  });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite existante", gravite: "moyenne" },
+      geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+    }),
+  );
+});
+
 test("Supprimer does nothing when the confirmation is declined", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(false);
   const bus = new ActionBus();

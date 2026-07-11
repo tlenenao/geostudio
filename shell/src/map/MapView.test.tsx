@@ -248,6 +248,17 @@ test("does nothing when a click event carries no features", () => {
   expect(onFeatureClick).not.toHaveBeenCalled();
 });
 
+test("ignores a clicked feature with no id", () => {
+  const onFeatureClick = vi.fn();
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" }],
+  };
+  render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "a", { features: [{ properties: { nom: "Parc A" }, geometry: null }] });
+  expect(onFeatureClick).not.toHaveBeenCalled();
+});
+
 test("detaches the old layer's click handler when config.layers replaces it", () => {
   const onFeatureClick = vi.fn();
   const first: MapConfig = {

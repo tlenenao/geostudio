@@ -280,6 +280,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
+  const [loadedGeometry, setLoadedGeometry] = useState<unknown>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
@@ -323,6 +324,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     setLon("");
     setLat("");
+    setLoadedGeometry(null);
     setEditingId(null);
     write.reset();
   }
@@ -336,6 +338,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setTouched({});
     setServerErrors({});
     setGenericError(false);
+    setLoadedGeometry(record.geometry ?? null);
     const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
     if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
       setLon(String(geom.coordinates[0]));
@@ -369,9 +372,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (values[f.name] !== undefined) properties[f.name] = values[f.name];
     });
     const geometry =
-      geometryType === "Point" && lon !== "" && lat !== ""
-        ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
-        : null;
+      geometryType === "Point"
+        ? (lon !== "" && lat !== "" ? { type: "Point", coordinates: [Number(lon), Number(lat)] } : null)
+        : loadedGeometry;
     try {
       await write.mutateAsync({ properties, geometry });
       queryClient.invalidateQueries({ queryKey: ["datasource"] });
