@@ -59,6 +59,7 @@ export function registerDataWidgets(): void {
     label: "Table",
     defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
     defaultSize: { w: 6, h: 4 },
+    events: ["itemSelected"],
     actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
@@ -125,7 +126,11 @@ export function registerDataWidgets(): void {
             </thead>
             <tbody>
               {shown.map((r) => (
-                <tr key={String(r.id)}>
+                <tr
+                  key={String(r.id)}
+                  className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
+                  onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
+                >
                   {columns.map((c) => <td key={c} className="border-b border-[var(--gs-color-border)] p-1">{String(r.properties[c] ?? "")}</td>)}
                 </tr>
               ))}
