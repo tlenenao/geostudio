@@ -458,3 +458,54 @@ test("the Annuler button exits edit mode and clears the form", async () => {
 test("form declares loadRecord alongside reset", () => {
   expect(getWidget("form")!.actions).toEqual(["reset", "loadRecord"]);
 });
+
+test("submitting while editing calls updateFeature with the record id and stays on the record", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const { client } = renderConnectedForm({ client: { updateFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.clear(screen.getByLabelText("Titre"));
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite corrigée");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite corrigée", gravite: "moyenne" },
+      geometry: null,
+    }),
+  );
+  expect(screen.getByLabelText("Titre")).toHaveValue("Fuite corrigée");
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("createFeature is still called (not updateFeature) when not editing", async () => {
+  const updateFeature = vi.fn();
+  const { client } = renderConnectedForm({ client: { updateFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(client.createFeature).toHaveBeenCalled());
+  expect(updateFeature).not.toHaveBeenCalled();
+});
+
+test("updating a record resubmits a hidden field's original value unchanged", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const { client } = renderConnectedForm({ client: { updateFeature }, bus });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne", notes_internes: "confidentiel" },
+  });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite existante", gravite: "moyenne", notes_internes: "confidentiel" },
+      geometry: null,
+    }),
+  );
+});

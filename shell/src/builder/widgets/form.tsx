@@ -276,6 +276,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported")
     .sort((a, b) => a.order - b.order);
+  const allFields = ((props.fields as FormField[] | undefined) ?? []).filter((f) => f.type !== "unsupported");
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
@@ -286,8 +287,15 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
   const write = useMutation({
-    mutationFn: (input: { properties: Record<string, unknown>; geometry: unknown | null }) =>
-      client.createFeature(ctx.data?.layer ?? "", { type: "Feature", properties: input.properties, geometry: input.geometry }),
+    mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
+      const collectionId = ctx.data?.layer ?? "";
+      const feature = { type: "Feature" as const, properties: input.properties, geometry: input.geometry };
+      if (editingId !== null) {
+        await client.updateFeature(collectionId, String(editingId), feature);
+      } else {
+        await client.createFeature(collectionId, feature);
+      }
+    },
   });
 
   function resetTo() {
@@ -339,7 +347,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setServerErrors({});
     setGenericError(false);
     const properties: Record<string, unknown> = {};
-    fields.forEach((f) => {
+    allFields.forEach((f) => {
       if (values[f.name] !== undefined) properties[f.name] = values[f.name];
     });
     const geometry =
@@ -350,7 +358,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       await write.mutateAsync({ properties, geometry });
       queryClient.invalidateQueries({ queryKey: ["datasource"] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
-      resetTo();
+      if (editingId === null) {
+        resetTo();
+      }
     } catch (err) {
       if (err instanceof FeatureValidationError) {
         const byField: Record<string, string> = {};
