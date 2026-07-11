@@ -6,7 +6,6 @@ function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
     coreUrl: "https://core.test",
     martinUrl: "https://martin.test",
-    featureservUrl: "https://featureserv.test",
     getToken: () => token,
   });
 }
@@ -277,14 +276,14 @@ test("saveAppConfig PUTs the app config by item", async () => {
   expect(body.layout.type).toBe("grid");
 });
 
-test("featuresUrl builds the featureserv items url", () => {
-  const url = makeClient().featuresUrl({ id: "d", type: "features", service: "featureserv", layer: "public.parcs", query: {} });
-  expect(url).toBe("https://featureserv.test/collections/public.parcs/items.json");
+test("featuresUrl builds the core items url", () => {
+  const url = makeClient().featuresUrl({ id: "d", type: "features", service: "core", layer: "public.parcs", query: {} });
+  expect(url).toBe("https://core.test/collections/public.parcs/items");
 });
 
 test("queryDataSource maps a feature collection to records", async () => {
   server.use(
-    http.get("https://featureserv.test/collections/public.parcs/items.json", () =>
+    http.get("https://core.test/collections/public.parcs/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
@@ -294,7 +293,7 @@ test("queryDataSource maps a feature collection to records", async () => {
       }),
     ),
   );
-  const records = await makeClient().queryDataSource({ id: "d", type: "features", service: "featureserv", layer: "public.parcs", query: {} });
+  const records = await makeClient().queryDataSource({ id: "d", type: "features", service: "core", layer: "public.parcs", query: {} });
   expect(records).toHaveLength(2);
   expect(records[0]).toMatchObject({ id: 1, properties: { nom: "Parc A" } });
   // Missing feature id falls back to the index.
@@ -311,32 +310,32 @@ test("queryDataSource returns inline records for a static source", async () => {
 
 test("queryDataSource throws when the feature request fails", async () => {
   server.use(
-    http.get("https://featureserv.test/collections/x/items.json", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/collections/x/items", () => new HttpResponse(null, { status: 500 })),
   );
   await expect(
-    makeClient().queryDataSource({ id: "d", type: "features", service: "featureserv", layer: "x", query: {} }),
+    makeClient().queryDataSource({ id: "d", type: "features", service: "core", layer: "x", query: {} }),
   ).rejects.toThrow();
 });
 
 test("featuresUrl appends scalar query entries as sorted filter params", () => {
   const url = makeClient().featuresUrl({
-    id: "d", type: "features", service: "featureserv", layer: "parcs",
+    id: "d", type: "features", service: "core", layer: "parcs",
     query: { nom: "Parc A", limit: 10 },
   });
-  expect(url).toBe("https://featureserv.test/collections/parcs/items.json?limit=10&nom=Parc+A");
+  expect(url).toBe("https://core.test/collections/parcs/items?limit=10&nom=Parc+A");
 });
 
 test("featuresUrl omits empty/nullish query entries", () => {
   const url = makeClient().featuresUrl({
-    id: "d", type: "features", service: "featureserv", layer: "parcs",
+    id: "d", type: "features", service: "core", layer: "parcs",
     query: { nom: "", ville: undefined as unknown as string },
   });
-  expect(url).toBe("https://featureserv.test/collections/parcs/items.json");
+  expect(url).toBe("https://core.test/collections/parcs/items");
 });
 
 test("queryDataSource aggregates a statistics source by count per group", async () => {
   server.use(
-    http.get("https://featureserv.test/collections/villes/items.json", () =>
+    http.get("https://core.test/collections/villes/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
@@ -348,7 +347,7 @@ test("queryDataSource aggregates a statistics source by count per group", async 
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    id: "s", type: "statistics", service: "core", layer: "villes",
     query: { groupBy: "region", agg: "count" },
   });
   expect(records).toEqual([
@@ -368,10 +367,10 @@ test("queryDataSource supports sum/avg/min/max aggregations per group", async ()
   };
   const run = async (agg: string) => {
     server.use(
-      http.get("https://featureserv.test/collections/villes/items.json", () => HttpResponse.json(feats)),
+      http.get("https://core.test/collections/villes/items", () => HttpResponse.json(feats)),
     );
     return makeClient().queryDataSource({
-      id: "s", type: "statistics", service: "featureserv", layer: "villes",
+      id: "s", type: "statistics", service: "core", layer: "villes",
       query: { groupBy: "region", agg, field: "pop" },
     });
   };
@@ -395,7 +394,7 @@ test("queryDataSource supports sum/avg/min/max aggregations per group", async ()
 
 test("queryDataSource pivots a statistics source into one column per split value", async () => {
   server.use(
-    http.get("https://featureserv.test/collections/villes/items.json", () =>
+    http.get("https://core.test/collections/villes/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
@@ -407,7 +406,7 @@ test("queryDataSource pivots a statistics source into one column per split value
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    id: "s", type: "statistics", service: "core", layer: "villes",
     query: { groupBy: "region", split: "annee", agg: "sum", field: "pop" },
   });
   expect(records).toEqual([
@@ -418,7 +417,7 @@ test("queryDataSource pivots a statistics source into one column per split value
 
 test("queryDataSource produces one wide column per measure", async () => {
   server.use(
-    http.get("https://featureserv.test/collections/villes/items.json", () =>
+    http.get("https://core.test/collections/villes/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
@@ -429,7 +428,7 @@ test("queryDataSource produces one wide column per measure", async () => {
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    id: "s", type: "statistics", service: "core", layer: "villes",
     query: {
       groupBy: "region",
       measures: [
@@ -445,10 +444,10 @@ test("queryDataSource produces one wide column per measure", async () => {
 
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
-    id: "s", type: "statistics", service: "featureserv", layer: "villes",
+    id: "s", type: "statistics", service: "core", layer: "villes",
     query: { groupBy: "region", split: "annee", agg: "sum", field: "pop", annee_filtre: 2026 },
   });
-  expect(url).toBe("https://featureserv.test/collections/villes/items.json?annee_filtre=2026");
+  expect(url).toBe("https://core.test/collections/villes/items?annee_filtre=2026");
 });
 
 test("getAppConfig passes through the pages array when present", async () => {
