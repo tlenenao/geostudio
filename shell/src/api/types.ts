@@ -66,6 +66,32 @@ export type LayerSource = {
   url?: string;
 };
 
+export type CollectionFieldType =
+  | "string" | "integer" | "number" | "boolean" | "date" | "datetime" | "enum" | "unsupported";
+
+export type CollectionSchemaField = {
+  name: string;
+  type: CollectionFieldType;
+  required: boolean;
+  maxLength?: number;
+  values?: string[];
+};
+
+export type CollectionSchema = {
+  collection: string;
+  pk: string;
+  geometry: { column: string; type: string | null; srid: number } | null;
+  fields: CollectionSchemaField[];
+};
+
+export type FieldError = { field: string; code: string; message: string };
+
+export type GeoJSONFeatureInput = {
+  type: "Feature";
+  properties: Record<string, unknown>;
+  geometry: unknown | null;
+};
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
@@ -85,6 +111,10 @@ export interface ItemClient {
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   featuresUrl(source: DataSource): string;
+  getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
+  createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }>;
+  updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
+  deleteFeature(collectionId: string, fid: string): Promise<void>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
@@ -136,6 +166,7 @@ export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
+  layer?: string;
   url?: string;
 };
 
