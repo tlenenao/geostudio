@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
-import type { MapConfig } from "../api/types";
+import type { DataRecord, MapConfig } from "../api/types";
 import { MapLegend } from "./MapLegend";
 
 const HIGHLIGHT_ID = "__highlight__";
@@ -18,10 +18,17 @@ function applyLayers(
   map: maplibregl.Map,
   layers: MapConfig["layers"],
   applied: Set<string>,
+  clickHandlers: Map<string, (e: maplibregl.MapLayerMouseEvent) => void>,
+  onFeatureClick: (record: DataRecord) => void,
 ) {
   applied.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
+    const prevHandler = clickHandlers.get(id);
+    if (prevHandler) {
+      map.off("click", id, prevHandler);
+      clickHandlers.delete(id);
+    }
   });
   applied.clear();
 
@@ -48,6 +55,13 @@ function applyLayers(
       } else if (layer.kind === "feature") {
         map.addSource(layer.id, { type: "geojson", data: layer.url });
         map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+        const handler = (e: maplibregl.MapLayerMouseEvent) => {
+          const f = e.features?.[0];
+          if (!f || f.id == null) return;
+          onFeatureClick({ id: f.id as string | number, properties: f.properties ?? {}, geometry: f.geometry });
+        };
+        map.on("click", layer.id, handler);
+        clickHandlers.set(layer.id, handler);
       }
       applied.add(layer.id);
     } catch (err) {
@@ -88,19 +102,28 @@ function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
 
 export const MapView = forwardRef<
   MapViewHandle,
-  { config: MapConfig; onViewChange?: (v: { center: [number, number]; zoom: number }) => void }
->(function MapView({ config, onViewChange }, ref) {
+  {
+    config: MapConfig;
+    onViewChange?: (v: { center: [number, number]; zoom: number }) => void;
+    onFeatureClick?: (record: DataRecord) => void;
+  }
+>(function MapView({ config, onViewChange, onFeatureClick }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const appliedRef = useRef<Set<string>>(new Set());
+  const clickHandlersRef = useRef<Map<string, (e: maplibregl.MapLayerMouseEvent) => void>>(new Map());
   // Keep the latest callback/layers reachable from the mount-time closures so
   // the async "load" and "moveend" handlers never read stale values.
   const onViewChangeRef = useRef(onViewChange);
+  const onFeatureClickRef = useRef(onFeatureClick);
   const layersRef = useRef(config.layers);
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
   }, [onViewChange]);
+  useEffect(() => {
+    onFeatureClickRef.current = onFeatureClick;
+  }, [onFeatureClick]);
   useEffect(() => {
     layersRef.current = config.layers;
   });
@@ -120,7 +143,7 @@ export const MapView = forwardRef<
     map.on("load", () => {
       map.addSource(HIGHLIGHT_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
-      applyLayers(map, layersRef.current, appliedRef.current);
+      applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
       applyDeckLayers(overlay, layersRef.current);
     });
     map.on("moveend", () => {
@@ -143,7 +166,7 @@ export const MapView = forwardRef<
     const map = mapRef.current;
     const overlay = overlayRef.current;
     if (!map || !map.isStyleLoaded() || !overlay) return;
-    applyLayers(map, config.layers, appliedRef.current);
+    applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
     applyDeckLayers(overlay, config.layers);
   }, [config.layers]);
 

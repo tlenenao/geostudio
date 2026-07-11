@@ -65,11 +65,11 @@ function renderPanel(
   return { onChange, client };
 }
 
-test("form widget is registered with submitted/failed events and a reset action", () => {
+test("form widget is registered with submitted/failed events and reset/loadRecord actions", () => {
   const def = getWidget("form")!;
   expect(def.label).toBe("Formulaire");
   expect(def.events).toEqual(["submitted", "failed"]);
-  expect(def.actions).toEqual(["reset"]);
+  expect(def.actions).toEqual(["reset", "loadRecord"]);
   expect(def.defaultProps).toEqual({ dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null });
 });
 
@@ -408,4 +408,164 @@ test("submitting a Point collection with empty coordinates sends a null geometry
       expect.objectContaining({ geometry: null }),
     ),
   );
+});
+
+test("loadRecord pre-fills the form from the selected record's properties", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  renderConnectedForm({ bus, widgetId: "form1" });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Fuite existante"));
+  expect(screen.getByLabelText("Gravité")).toHaveValue("moyenne");
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Point" }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  bus.emit("table1", "itemSelected", {
+    id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" },
+    geometry: { type: "Point", coordinates: [2.35, 48.85] },
+  });
+  await waitFor(() => expect(screen.getByLabelText("Longitude")).toHaveValue(2.35));
+  expect(screen.getByLabelText("Latitude")).toHaveValue(48.85);
+});
+
+test("the Annuler button exits edit mode and clears the form", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  renderConnectedForm({ bus, widgetId: "form1" });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Titre")).toHaveValue("");
+});
+
+test("form declares loadRecord alongside reset", () => {
+  expect(getWidget("form")!.actions).toEqual(["reset", "loadRecord"]);
+});
+
+test("submitting while editing calls updateFeature with the record id and stays on the record", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const { client } = renderConnectedForm({ client: { updateFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.clear(screen.getByLabelText("Titre"));
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite corrigée");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite corrigée", gravite: "moyenne" },
+      geometry: null,
+    }),
+  );
+  expect(screen.getByLabelText("Titre")).toHaveValue("Fuite corrigée");
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("createFeature is still called (not updateFeature) when not editing", async () => {
+  const updateFeature = vi.fn();
+  const { client } = renderConnectedForm({ client: { updateFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(client.createFeature).toHaveBeenCalled());
+  expect(updateFeature).not.toHaveBeenCalled();
+});
+
+test("updating a record resubmits a hidden field's original value unchanged", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const { client } = renderConnectedForm({ client: { updateFeature }, bus });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne", notes_internes: "confidentiel" },
+  });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite existante", gravite: "moyenne", notes_internes: "confidentiel" },
+      geometry: null,
+    }),
+  );
+});
+
+test("Supprimer calls deleteFeature after confirmation, invalidates, and exits edit mode", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const deleteFeature = vi.fn().mockResolvedValue(undefined);
+  const { client, invalidateSpy } = renderConnectedForm({ client: { deleteFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
+  expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
+});
+
+test("updating a non-Point record resubmits its original geometry unchanged", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const updateFeature = vi.fn().mockResolvedValue(undefined);
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }), updateFeature } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Polygon" }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+    geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+  });
+  await screen.findByDisplayValue("Fuite existante");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(updateFeature).toHaveBeenCalledWith("incidents", "7", {
+      type: "Feature",
+      properties: { titre: "Fuite existante", gravite: "moyenne" },
+      geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+    }),
+  );
+});
+
+test("Supprimer does nothing when the confirmation is declined", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const deleteFeature = vi.fn();
+  const { client } = renderConnectedForm({ client: { deleteFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  expect(client.deleteFeature).not.toHaveBeenCalled();
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
 });
