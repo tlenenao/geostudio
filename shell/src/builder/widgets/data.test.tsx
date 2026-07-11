@@ -59,9 +59,10 @@ test("list emits itemSelected with the clicked record", async () => {
   expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" } });
 });
 
-test("list declares itemSelected event and setFilter action", () => {
+test("list and table declare itemSelected event and setFilter action", () => {
   expect(getWidget("list")!.events).toContain("itemSelected");
   expect(getWidget("list")!.actions).toContain("setFilter");
+  expect(getWidget("table")!.events).toContain("itemSelected");
   expect(getWidget("table")!.actions).toContain("setFilter");
 });
 
@@ -146,4 +147,19 @@ test("table cells and headers use the theme border/text tokens", () => {
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   expect(screen.getByRole("cell", { name: "A" })).toHaveClass("border-[var(--gs-color-border)]");
   expect(screen.getByRole("table")).toHaveClass("text-[var(--gs-color-text)]");
+});
+
+test("table emits itemSelected with the clicked row", async () => {
+  const bus = new ActionBus();
+  const handler = vi.fn();
+  bus.register("map1", "flyTo", handler);
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "map1", action: "flyTo" }]);
+  const Table = getWidget("table")!.Component;
+  const ctx = {
+    mode: "runtime", bus, widgetId: "table1",
+    data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
+  } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  await userEvent.click(screen.getByRole("cell", { name: "Parc A" }));
+  expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" } });
 });

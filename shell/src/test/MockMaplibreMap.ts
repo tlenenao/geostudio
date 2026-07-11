@@ -5,6 +5,7 @@ export const mapInstances: MockMap[] = [];
 export class MockMap {
   opts: { style: string; center: [number, number]; zoom: number };
   handlers: Record<string, Array<() => void>> = {};
+  layerHandlers: Record<string, Array<(e: unknown) => void>> = {};
   sources: Recorded[] = [];
   layers: { id: string; [k: string]: unknown }[] = [];
   controls: unknown[] = [];
@@ -17,13 +18,25 @@ export class MockMap {
     mapInstances.push(this);
   }
 
-  on(event: string, cb: () => void) {
-    (this.handlers[event] ??= []).push(cb);
-    if (event === "load") cb();
+  on(event: string, arg2: string | (() => void), cb?: (e: unknown) => void) {
+    if (typeof arg2 === "string" && cb) {
+      const key = `${event}:${arg2}`;
+      (this.layerHandlers[key] ??= []).push(cb);
+    } else if (typeof arg2 === "function") {
+      (this.handlers[event] ??= []).push(arg2);
+      if (event === "load") arg2();
+    }
     return this;
+  }
+  off(event: string, layerId: string, cb: (e: unknown) => void) {
+    const key = `${event}:${layerId}`;
+    this.layerHandlers[key] = (this.layerHandlers[key] ?? []).filter((h) => h !== cb);
   }
   fire(event: string) {
     this.handlers[event]?.forEach((cb) => cb());
+  }
+  fireOnLayer(event: string, layerId: string, payload: unknown) {
+    this.layerHandlers[`${event}:${layerId}`]?.forEach((cb) => cb(payload));
   }
   addSource(id: string, spec: unknown) {
     const rec: Recorded & { setData?: (d: unknown) => void } = { id, spec };
