@@ -47,3 +47,50 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   await expect(page.getByText("Fuite d'eau (résolue)")).toBeHidden();
   await expect(page.getByText(/Modification de l'enregistrement/)).toBeHidden();
 });
+
+test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est refusée (403)", async ({ page }) => {
+  await mockCore(page);
+  // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
+  // récemment enregistrée qui matche, donc ceci l'emporte sur le
+  // "**/collections/incidents" (canWrite:true) déjà enregistré par mockCore.
+  await page.route("**/collections/incidents", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+        isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: false,
+      },
+    });
+  });
+  await page.route("**/collections/incidents/items*", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 403, json: { detail: "write access required" } });
+    } else {
+      await route.fallback();
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("app");
+  await dialog.getByLabel("Modèle").selectOption("application-de-saisie");
+  await dialog.getByLabel("Titre").fill("Déclarer un incident (viewer)");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/apps\/9\/edit$/);
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("button", { name: "Déclarer l'incident" })).not.toBeVisible();
+
+  // Écriture forcée (contournement de l'UI, ex. devtools) : le serveur refuse.
+  const status = await page.evaluate(async () => {
+    const res = await fetch("https://core.test/collections/incidents/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "Feature", properties: { titre: "Forcé", gravite: "haute" }, geometry: null }),
+    });
+    return res.status;
+  });
+  expect(status).toBe(403);
+});
