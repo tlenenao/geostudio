@@ -31,9 +31,8 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
 // URL (they configure client-side aggregation, not the feature request).
 const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures"]);
 
-function buildFeaturesUrl(featureservUrl: string | undefined, source: DataSource): string {
-  if (!featureservUrl) throw new Error("featuresUrl: featureservUrl is not configured");
-  const base = `${featureservUrl}/collections/${source.layer}/items.json`;
+function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
+  const base = `${coreUrl}/collections/${source.layer}/items`;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(source.query).sort(([a], [b]) => a.localeCompare(b))) {
     if (STAT_KEYS.has(k)) continue;
@@ -135,10 +134,9 @@ function aggregateRecords(records: DataRecord[], query: Record<string, unknown>)
 export function createItemClient(opts: {
   coreUrl: string;
   martinUrl?: string;
-  featureservUrl?: string;
   getToken: () => string | undefined;
 }): ItemClient {
-  const { coreUrl, martinUrl, featureservUrl, getToken } = opts;
+  const { coreUrl, martinUrl, getToken } = opts;
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = getToken();
@@ -174,19 +172,21 @@ export function createItemClient(opts: {
     }));
   }
 
-  async function fetchFeatureservSources(): Promise<LayerSource[]> {
-    if (!featureservUrl) return [];
-    const res = await fetch(`${featureservUrl}/collections.json`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections.json`);
+  async function fetchCoreCollections(): Promise<LayerSource[]> {
+    const token = getToken();
+    const res = await fetch(`${coreUrl}/collections`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
     const data = (await res.json()) as {
       collections?: { id: string; title?: string }[];
     };
     return (data.collections ?? []).map((c) => ({
       id: c.id,
       title: c.title ?? c.id,
-      service: "featureserv" as const,
+      service: "core" as const,
       kind: "feature" as const,
-      url: `${featureservUrl}/collections/${c.id}/items.json`,
+      url: `${coreUrl}/collections/${c.id}/items`,
     }));
   }
 
@@ -284,7 +284,7 @@ export function createItemClient(opts: {
     async listLayerSources(): Promise<LayerSource[]> {
       const results = await Promise.allSettled([
         fetchMartinSources(),
-        fetchFeatureservSources(),
+        fetchCoreCollections(),
       ]);
       const fulfilled = results.filter(
         (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",
@@ -370,7 +370,7 @@ export function createItemClient(opts: {
     },
 
     featuresUrl(source: DataSource): string {
-      return buildFeaturesUrl(featureservUrl, source);
+      return buildFeaturesUrl(coreUrl, source);
     },
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
@@ -378,7 +378,7 @@ export function createItemClient(opts: {
         return (source.query.records as DataRecord[] | undefined) ?? [];
       }
       const token = getToken();
-      const res = await fetch(buildFeaturesUrl(featureservUrl, source), {
+      const res = await fetch(buildFeaturesUrl(coreUrl, source), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status} features ${source.layer}`);

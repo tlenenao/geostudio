@@ -18,7 +18,6 @@ function AppShell() {
       createItemClient({
         coreUrl: config.coreUrl,
         martinUrl: config.martinUrl,
-        featureservUrl: config.featureservUrl,
         getToken: getAccessToken,
       }),
     [getAccessToken],
