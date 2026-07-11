@@ -157,3 +157,14 @@ def test_put_sharing_rejects_invalid_role(env):
     r = client.put("/collections/incidents/sharing",
                    json={"public": False, "groups": [{"groupId": group_id, "role": "owner"}]})
     assert r.status_code == 422
+
+
+def test_put_sharing_duplicate_group_is_422(env):
+    app, client, _, admin, _regular, group_id = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    r = client.put("/collections/incidents/sharing", json={
+        "public": False,
+        "groups": [{"groupId": group_id, "role": "viewer"},
+                   {"groupId": group_id, "role": "editor"}]})
+    assert r.status_code == 422
