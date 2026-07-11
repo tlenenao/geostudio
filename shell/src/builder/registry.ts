@@ -10,6 +10,7 @@ export type WidgetContext = {
   data?: DataSourceState;
   bus?: ActionBus;
   widgetId?: string;
+  user?: { name: string };
 };
 
 export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
