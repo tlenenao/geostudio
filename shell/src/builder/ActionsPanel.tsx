@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
+import { validateExpression } from "./expr";
 
 function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
   if (id.startsWith("var:")) {
@@ -55,16 +56,33 @@ export function ActionsPanel({
   function remove(id: string) {
     onChange(messages.filter((m) => m.id !== id));
   }
+  function updateWhen(id: string, when: string) {
+    onChange(messages.map((m) => (m.id === id ? { ...m, when: when || undefined } : m)));
+  }
 
   return (
     <div className="flex flex-col gap-2 text-sm">
       <ul className="flex flex-col gap-1">
-        {visibleMessages.map((m) => (
-          <li key={m.id} className="flex items-center justify-between rounded border border-slate-200 p-1 text-xs">
-            <span>{widgetLabel(items, variables, m.from)}.{m.event} → {widgetLabel(items, variables, m.to)}.{m.action}</span>
-            <button type="button" aria-label={`Retirer l'action ${m.id}`} className="text-red-600" onClick={() => remove(m.id)}>✕</button>
-          </li>
-        ))}
+        {visibleMessages.map((m) => {
+          const when = m.when ?? "";
+          const error = when ? validateExpression(when) : null;
+          return (
+            <li key={m.id} className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span>{widgetLabel(items, variables, m.from)}.{m.event} → {widgetLabel(items, variables, m.to)}.{m.action}</span>
+                <button type="button" aria-label={`Retirer l'action ${m.id}`} className="text-red-600" onClick={() => remove(m.id)}>✕</button>
+              </div>
+              <input
+                aria-label={`Condition de l'action ${m.id}`}
+                placeholder="Condition (optionnel)"
+                className="h-7 rounded border border-slate-300 px-1 font-mono"
+                value={when}
+                onChange={(e) => updateWhen(m.id, e.target.value)}
+              />
+              {error && <span role="alert" className="text-red-600">{error}</span>}
+            </li>
+          );
+        })}
         {visibleMessages.length === 0 && <li className="text-xs text-slate-400">Aucune action.</li>}
       </ul>
       <select aria-label="Widget émetteur" className={selectCls} value={from}

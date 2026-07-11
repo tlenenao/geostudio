@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 import { getConfigExpressionErrors } from "./configExpressionErrors";
 import type { AppConfig } from "../api/types";
 
-function config(items: AppConfig["layout"]["items"]): AppConfig {
-  return { kind: "app", theme: {}, dataSources: [], messages: [], layout: { type: "grid", breakpoints: {}, items } };
+function config(items: AppConfig["layout"]["items"], messages: AppConfig["messages"] = []): AppConfig {
+  return { kind: "app", theme: {}, dataSources: [], messages, layout: { type: "grid", breakpoints: {}, items } };
 }
 
 test("returns no errors for a config with no expressions", () => {
@@ -52,4 +52,21 @@ test("does not throw when a calculated column's expr is not a string (corrupted 
   ];
   expect(() => getConfigExpressionErrors(config(items))).not.toThrow();
   expect(Array.isArray(getConfigExpressionErrors(config(items)))).toBe(true);
+});
+
+test("returns no errors when a message's condition is valid", () => {
+  const messages: AppConfig["messages"] = [{ id: "m1", from: "w1", event: "clicked", to: "w2", action: "noop", when: "vars.x == 'a'" }];
+  expect(getConfigExpressionErrors(config([], messages))).toEqual([]);
+});
+
+test("ignores a message without a condition", () => {
+  const messages: AppConfig["messages"] = [{ id: "m1", from: "w1", event: "clicked", to: "w2", action: "noop" }];
+  expect(getConfigExpressionErrors(config([], messages))).toEqual([]);
+});
+
+test("reports an invalid message condition with the message id", () => {
+  const messages: AppConfig["messages"] = [{ id: "m1", from: "w1", event: "clicked", to: "w2", action: "noop", when: "vars.x ==" }];
+  const errors = getConfigExpressionErrors(config([], messages));
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toContain("m1");
 });
