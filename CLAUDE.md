@@ -155,9 +155,22 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   sécurité reste le 403 serveur, inchangé), gabarit de galerie « Application
   de saisie » (Formulaire+Carte+Table pré-câblés sur une même source), spec
   E2E complète « déclarer un incident » + spec viewer-sans-boutons/403-forcé.
-  **14 specs E2E vertes** (13 + `incident-form.spec.ts`). Prochain chantier :
-  **SP-5** (expressions & actions composées — CEL, spike cel-js en ouverture,
-  cf. feuille de route §SP-5 et arbitrage A8).
+  **14 specs E2E vertes** (13 + `incident-form.spec.ts`).
+- **SP-5a livré** (2026-07-11) : spike + moteur d'expressions CEL — spike
+  `cel-js` validé (7/7, vocabulaire `vars`/`record`/`user`, gate A8 franchi),
+  `shell/src/builder/expr.ts` (`evaluateExpression`/`validateExpression`,
+  jamais throw), `visibleWhen` sur tout `WidgetItem` (masque un widget en
+  preview/runtime, jamais en edit, `WidgetHost` câble `useAuth()` →
+  `WidgetContext.user`), colonne calculée sur le widget Table (rétrocompatible
+  avec les colonnes `string`), validation à l'édition (`getConfigExpressionErrors`,
+  bouton **Enregistrer** désactivé si une expression est invalide), spec E2E
+  `expressions.spec.ts`. **15 specs E2E vertes** (14 + `expressions.spec.ts`,
+  20/20 tests). Revue finale de branche : aucun Critical/Important non résolu ;
+  dette a11y notée hors périmètre (aria-label pré-existant sur le champ
+  colonnes texte du Table, antérieur à SP-5a). Prochain chantier : **SP-5b**
+  (actions composées avec condition — cf. spec SP-5
+  `docs/superpowers/specs/2026-07-11-sp5-expressions-actions-composees-design.md`
+  §1).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
