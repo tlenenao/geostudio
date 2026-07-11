@@ -99,17 +99,6 @@ services:
       - "8000:8000"
     networks: [gis-net]
 
-  pg-featureserv:
-    image: pramsey/pg_featureserv:latest
-    environment:
-      DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
-    ports:
-      - "9000:9000"
-    networks: [gis-net]
-    depends_on:
-      pgbouncer:
-        condition: service_started
-
   # ─── Applications ──────────────────────────────────────
 
   # Cœur GeoStudio (ex builder-service, renommé — arbitrage A14 de la feuille de route).
