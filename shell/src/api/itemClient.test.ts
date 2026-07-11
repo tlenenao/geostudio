@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
-import { createItemClient } from "./itemClient";
+import { createItemClient, FeatureValidationError } from "./itemClient";
 
 function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
@@ -545,4 +545,113 @@ test("createConfigItem falls back to an empty layout when templateId is unknown"
   );
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "does-not-exist" });
   expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
+});
+
+test("getCollectionSchema returns the introspected fields", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents/schema", () =>
+      HttpResponse.json({
+        collection: "incidents",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [
+          { name: "titre", type: "string", required: true, maxLength: 120 },
+          { name: "gravite", type: "enum", required: true, values: ["faible", "moyenne", "haute"] },
+          { name: "nb_victimes", type: "integer", required: false },
+        ],
+      }),
+    ),
+  );
+  const schema = await makeClient().getCollectionSchema("incidents");
+  expect(schema.geometry).toEqual({ column: "geom", type: "Point", srid: 4326 });
+  expect(schema.fields).toHaveLength(3);
+  expect(schema.fields[0]).toEqual({ name: "titre", type: "string", required: true, maxLength: 120 });
+});
+
+test("createFeature sends a GeoJSON Feature with the bearer token and returns the new id", async () => {
+  let auth: string | null = null;
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/collections/incidents/items", async ({ request }) => {
+      auth = request.headers.get("authorization");
+      body = await request.json();
+      return HttpResponse.json({ id: 42 }, { status: 201 });
+    }),
+  );
+  const result = await makeClient("abc").createFeature("incidents", {
+    type: "Feature",
+    properties: { titre: "Fuite d'eau" },
+    geometry: null,
+  });
+  expect(auth).toBe("Bearer abc");
+  expect(body).toEqual({ type: "Feature", properties: { titre: "Fuite d'eau" }, geometry: null });
+  expect(result).toEqual({ id: 42 });
+});
+
+test("createFeature throws FeatureValidationError with field errors on 400", async () => {
+  server.use(
+    http.post("https://core.test/collections/incidents/items", () =>
+      HttpResponse.json(
+        { detail: { errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }] } },
+        { status: 400 },
+      ),
+    ),
+  );
+  const err = await makeClient()
+    .createFeature("incidents", { type: "Feature", properties: {}, geometry: null })
+    .catch((e) => e);
+  expect(err).toBeInstanceOf(FeatureValidationError);
+  expect((err as FeatureValidationError).errors).toEqual([
+    { field: "titre", code: "missing_required", message: "'titre' is required" },
+  ]);
+});
+
+test("createFeature throws a plain Error with the server message on 403", async () => {
+  server.use(
+    http.post("https://core.test/collections/incidents/items", () =>
+      HttpResponse.json({ detail: "collection is not editable" }, { status: 403 }),
+    ),
+  );
+  await expect(
+    makeClient().createFeature("incidents", { type: "Feature", properties: {}, geometry: null }),
+  ).rejects.toThrow("collection is not editable");
+});
+
+test("updateFeature sends a PUT and resolves on 204", async () => {
+  let body: unknown;
+  server.use(
+    http.put("https://core.test/collections/incidents/items/7", async ({ request }) => {
+      body = await request.json();
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().updateFeature("incidents", "7", {
+    type: "Feature",
+    properties: { titre: "Mise à jour" },
+    geometry: null,
+  });
+  expect(body).toEqual({ type: "Feature", properties: { titre: "Mise à jour" }, geometry: null });
+});
+
+test("updateFeature throws a plain Error with the server message on 404", async () => {
+  server.use(
+    http.put("https://core.test/collections/incidents/items/999", () =>
+      HttpResponse.json({ detail: "feature not found" }, { status: 404 }),
+    ),
+  );
+  await expect(
+    makeClient().updateFeature("incidents", "999", { type: "Feature", properties: {}, geometry: null }),
+  ).rejects.toThrow("feature not found");
+});
+
+test("deleteFeature sends a DELETE and resolves on 204", async () => {
+  let method: string | null = null;
+  server.use(
+    http.delete("https://core.test/collections/incidents/items/7", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().deleteFeature("incidents", "7");
+  expect(method).toBe("DELETE");
 });
