@@ -59,7 +59,7 @@ export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[
 export type LayerSource = {
   id: string;
   title: string;
-  service: "martin" | "featureserv";
+  service: "martin" | "core";
   kind: "vector" | "feature";
   tilesUrl?: string;
   sourceLayer?: string;
