@@ -655,3 +655,21 @@ test("deleteFeature sends a DELETE and resolves on 204", async () => {
   await makeClient().deleteFeature("incidents", "7");
   expect(method).toBe("DELETE");
 });
+
+test("getCollectionPermission returns the canWrite flag", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents", () =>
+      HttpResponse.json({ id: "incidents", title: "Incidents", canWrite: true }),
+    ),
+  );
+  expect(await makeClient().getCollectionPermission("incidents")).toBe(true);
+});
+
+test("getCollectionPermission defaults to false when the field is absent", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents", () =>
+      HttpResponse.json({ id: "incidents", title: "Incidents" }),
+    ),
+  );
+  expect(await makeClient().getCollectionPermission("incidents")).toBe(false);
+});
