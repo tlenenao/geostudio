@@ -5,7 +5,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
-import type { CollectionSchema, DataSource } from "../../api/types";
+import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 
 export type FormField = {
@@ -276,18 +276,46 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported")
     .sort((a, b) => a.order - b.order);
+  const allFields = ((props.fields as FormField[] | undefined) ?? []).filter((f) => f.type !== "unsupported");
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
+  const [loadedGeometry, setLoadedGeometry] = useState<unknown>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
 
   const write = useMutation({
-    mutationFn: (input: { properties: Record<string, unknown>; geometry: unknown | null }) =>
-      client.createFeature(ctx.data?.layer ?? "", { type: "Feature", properties: input.properties, geometry: input.geometry }),
+    mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
+      const collectionId = ctx.data?.layer ?? "";
+      const feature = { type: "Feature" as const, properties: input.properties, geometry: input.geometry };
+      if (editingId !== null) {
+        await client.updateFeature(collectionId, String(editingId), feature);
+      } else {
+        await client.createFeature(collectionId, feature);
+      }
+    },
   });
+
+  const remove = useMutation({
+    mutationFn: () => client.deleteFeature(ctx.data?.layer ?? "", String(editingId)),
+  });
+
+  async function handleDelete() {
+    if (editingId === null) return;
+    if (!window.confirm("Supprimer cet enregistrement ?")) return;
+    try {
+      await remove.mutateAsync();
+      queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties: {} });
+      resetTo();
+    } catch (err) {
+      setGenericError(true);
+      ctx.bus?.emit(ctx.widgetId ?? "", "failed", { message: err instanceof Error ? err.message : "unknown" });
+    }
+  }
 
   function resetTo() {
     setValues({});
@@ -296,9 +324,31 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     setLon("");
     setLat("");
+    setLoadedGeometry(null);
+    setEditingId(null);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
+
+  function handleLoadRecord(payload?: unknown) {
+    const record = payload as DataRecord | undefined;
+    if (!record) return;
+    setEditingId(record.id);
+    setValues({ ...record.properties });
+    setTouched({});
+    setServerErrors({});
+    setGenericError(false);
+    setLoadedGeometry(record.geometry ?? null);
+    const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
+    if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
+      setLon(String(geom.coordinates[0]));
+      setLat(String(geom.coordinates[1]));
+    } else {
+      setLon("");
+      setLat("");
+    }
+  }
+  useBusAction(ctx.bus, ctx.widgetId, "loadRecord", handleLoadRecord);
 
   function errorFor(field: FormField): string | null {
     if (touched[field.name]) {
@@ -318,18 +368,20 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setServerErrors({});
     setGenericError(false);
     const properties: Record<string, unknown> = {};
-    fields.forEach((f) => {
+    allFields.forEach((f) => {
       if (values[f.name] !== undefined) properties[f.name] = values[f.name];
     });
     const geometry =
-      geometryType === "Point" && lon !== "" && lat !== ""
-        ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
-        : null;
+      geometryType === "Point"
+        ? (lon !== "" && lat !== "" ? { type: "Point", coordinates: [Number(lon), Number(lat)] } : null)
+        : loadedGeometry;
     try {
       await write.mutateAsync({ properties, geometry });
       queryClient.invalidateQueries({ queryKey: ["datasource"] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
-      resetTo();
+      if (editingId === null) {
+        resetTo();
+      }
     } catch (err) {
       if (err instanceof FeatureValidationError) {
         const byField: Record<string, string> = {};
@@ -370,6 +422,20 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           </label>
         </div>
       )}
+      {editingId !== null && (
+        <p className="text-xs text-[var(--gs-color-muted)]">
+          Modification de l'enregistrement #{String(editingId)}
+          <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>Annuler</button>
+          <button
+            type="button"
+            className="ml-2 text-xs text-red-600 underline"
+            disabled={remove.isPending}
+            onClick={handleDelete}
+          >
+            Supprimer
+          </button>
+        </p>
+      )}
       <div className="mt-auto flex items-center gap-2">
         <button
           type="submit"
@@ -396,7 +462,7 @@ export function registerFormWidget(): void {
     defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
     defaultSize: { w: 4, h: 6 },
     events: ["submitted", "failed"],
-    actions: ["reset"],
+    actions: ["reset", "loadRecord"],
     PropsPanel: FormPropsPanel,
     Component: FormComponent,
   });

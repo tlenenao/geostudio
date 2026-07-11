@@ -26,7 +26,7 @@ export function registerMapWidget(): void {
     label: "Carte",
     defaultProps: { dataSourceId: "" },
     defaultSize: { w: 6, h: 6 },
-    events: ["extentChanged"],
+    events: ["extentChanged", "itemSelected"],
     actions: ["flyTo", "highlight"],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources.filter((s) => s.type === "features")}
@@ -56,6 +56,7 @@ export function registerMapWidget(): void {
             ref={handle}
             config={config}
             onViewChange={(v) => ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v)}
+            onFeatureClick={(record) => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record)}
           />
         </Suspense>
       );
