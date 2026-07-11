@@ -57,3 +57,26 @@ test("hides a message whose endpoints are not on the current page", () => {
   expect(screen.getByText("Filtre.changed → Liste.setFilter")).toBeInTheDocument();
   expect(screen.queryByText(/ghost/)).not.toBeInTheDocument();
 });
+
+test("edits a message's condition", async () => {
+  const onChange = vi.fn();
+  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" }];
+  render(<ActionsPanel items={items} messages={messages} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Condition de l'action m1"), "vars.x ==");
+  expect(onChange).toHaveBeenCalled();
+  const next = onChange.mock.calls.at(-1)![0] as ActionMessage[];
+  expect(next[0].id).toBe("m1");
+  expect(typeof next[0].when).toBe("string");
+});
+
+test("shows a validation error for an invalid message condition", () => {
+  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x ==" }];
+  render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+test("shows no validation error for a valid message condition", () => {
+  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x == 'a'" }];
+  render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

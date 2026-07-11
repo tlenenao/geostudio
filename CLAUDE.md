@@ -167,8 +167,27 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   `expressions.spec.ts`. **15 specs E2E vertes** (14 + `expressions.spec.ts`,
   20/20 tests). Revue finale de branche : aucun Critical/Important non résolu ;
   dette a11y notée hors périmètre (aria-label pré-existant sur le champ
-  colonnes texte du Table, antérieur à SP-5a). Prochain chantier : **SP-5b**
-  (actions composées avec condition — cf. spec SP-5
+  colonnes texte du Table, antérieur à SP-5a).
+- **SP-5b livré** (2026-07-11) : actions composées avec condition —
+  `ActionMessage.when` (CEL optionnel), `ActionBus.emit` ne déclenche la
+  cible d'un message que si sa condition s'évalue à vrai contre
+  `{ record: payload de l'émetteur, vars, user }` (message sans condition :
+  comportement inchangé) ; `AppRenderer` alimente le bus en variables/
+  utilisateur courants (`ActionConditionBridge`, même patron que
+  `VariableBusBridge`) ; `ActionsPanel` gagne une condition éditable par
+  action avec validation inline, `getConfigExpressionErrors` la valide
+  aussi. **Fix cœur au passage** : `LayoutItem.visibleWhen`/`Message.when`
+  ajoutés à `core/app/configs/schemas.py` — corrige un bug latent de SP-5a
+  (`visibleWhen` était silencieusement supprimé à chaque enregistrement
+  réel, le round-trip Pydantic `model_validate`/`model_dump` ignorant tout
+  champ non déclaré ; non détecté par les E2E de SP-5a qui mockent le
+  réseau). **16 specs E2E vertes** (15 + `action-conditions.spec.ts`).
+  Revue finale de branche : aucun Critical/Important ; 1 Minor corrigé sur
+  le champ (garde `typeof` sur une condition d'action non-string dans
+  `getConfigExpressionErrors`, parité avec le garde équivalent de SP-5a sur
+  les colonnes calculées). Prochain chantier : **SP-5c** (bindings CEL
+  généralisés + variables typées — re-cadrage par son propre brainstorm
+  avant plan, cf. spec SP-5
   `docs/superpowers/specs/2026-07-11-sp5-expressions-actions-composees-design.md`
   §1).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
