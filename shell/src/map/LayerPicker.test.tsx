@@ -10,7 +10,7 @@ const sources: LayerSource[] = [
   { id: "communes", title: "Communes", service: "martin", kind: "vector",
     tilesUrl: "https://martin.test/communes/{z}/{x}/{y}", sourceLayer: "communes" },
   { id: "public.parcs", title: "Parcs", service: "core", kind: "feature",
-    url: "https://fs.test/collections/public.parcs/items.json" },
+    url: "https://core.test/collections/public.parcs/items" },
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
@@ -52,7 +52,7 @@ test("emits a feature MapLayer for a core source", async () => {
     kind: "feature",
     title: "Parcs",
     visible: true,
-    url: "https://fs.test/collections/public.parcs/items.json",
+    url: "https://core.test/collections/public.parcs/items",
   });
 });
 
