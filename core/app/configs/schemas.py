@@ -20,6 +20,7 @@ class LayoutItem(BaseModel):
     h: int
     props: dict = Field(default_factory=dict)
     layouts: dict[str, dict] | None = None
+    visibleWhen: str | None = None
 
 
 class Layout(BaseModel):
@@ -47,6 +48,7 @@ class Message(BaseModel):
     event: str
     to: str
     action: str
+    when: str | None = None
 
 
 class MapView(BaseModel):
