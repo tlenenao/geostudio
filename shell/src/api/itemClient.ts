@@ -432,6 +432,11 @@ export function createItemClient(opts: {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
     },
 
+    async getCollectionPermission(collectionId: string): Promise<boolean> {
+      const data = await request<{ canWrite?: boolean }>("GET", `/collections/${collectionId}`);
+      return data.canWrite ?? false;
+    },
+
     async createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }> {
       return requestFeatureWrite<{ id: string | number }>(
         `${coreUrl}/collections/${collectionId}/items`, "POST", getToken(), feature,
