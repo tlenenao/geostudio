@@ -5,7 +5,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
-import type { CollectionSchema, DataSource } from "../../api/types";
+import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 
 export type FormField = {
@@ -283,6 +283,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
 
   const write = useMutation({
     mutationFn: (input: { properties: Record<string, unknown>; geometry: unknown | null }) =>
@@ -296,9 +297,29 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     setLon("");
     setLat("");
+    setEditingId(null);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
+
+  function handleLoadRecord(payload?: unknown) {
+    const record = payload as DataRecord | undefined;
+    if (!record) return;
+    setEditingId(record.id);
+    setValues({ ...record.properties });
+    setTouched({});
+    setServerErrors({});
+    setGenericError(false);
+    const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
+    if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
+      setLon(String(geom.coordinates[0]));
+      setLat(String(geom.coordinates[1]));
+    } else {
+      setLon("");
+      setLat("");
+    }
+  }
+  useBusAction(ctx.bus, ctx.widgetId, "loadRecord", handleLoadRecord);
 
   function errorFor(field: FormField): string | null {
     if (touched[field.name]) {
@@ -370,6 +391,12 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           </label>
         </div>
       )}
+      {editingId !== null && (
+        <p className="text-xs text-[var(--gs-color-muted)]">
+          Modification de l'enregistrement #{String(editingId)}
+          <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>Annuler</button>
+        </p>
+      )}
       <div className="mt-auto flex items-center gap-2">
         <button
           type="submit"
@@ -396,7 +423,7 @@ export function registerFormWidget(): void {
     defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
     defaultSize: { w: 4, h: 6 },
     events: ["submitted", "failed"],
-    actions: ["reset"],
+    actions: ["reset", "loadRecord"],
     PropsPanel: FormPropsPanel,
     Component: FormComponent,
   });
