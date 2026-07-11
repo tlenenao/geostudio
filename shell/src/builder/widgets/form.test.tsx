@@ -509,3 +509,30 @@ test("updating a record resubmits a hidden field's original value unchanged", as
     }),
   );
 });
+
+test("Supprimer calls deleteFeature after confirmation, invalidates, and exits edit mode", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const deleteFeature = vi.fn().mockResolvedValue(undefined);
+  const { client, invalidateSpy } = renderConnectedForm({ client: { deleteFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
+  expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
+});
+
+test("Supprimer does nothing when the confirmation is declined", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const deleteFeature = vi.fn();
+  const { client } = renderConnectedForm({ client: { deleteFeature }, bus });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  expect(client.deleteFeature).not.toHaveBeenCalled();
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
