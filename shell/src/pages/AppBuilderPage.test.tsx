@@ -186,3 +186,26 @@ test("captures a thumbnail and uploads it", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Capturer une miniature" }));
   await waitFor(() => expect(uploadThumbnail).toHaveBeenCalledWith("5", expect.any(File)));
 });
+
+test("disables Enregistrer and shows the error when a widget's visibleWhen is invalid", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  await userEvent.type(screen.getByLabelText("Condition d'affichage (visibleWhen)"), "vars.x ==");
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  expect(screen.getByRole("alert", { name: /condition d'affichage/i })).toBeInTheDocument();
+  expect(saveAppConfig).not.toHaveBeenCalled();
+});
+
+test("re-enables Enregistrer once the invalid visibleWhen is corrected", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
+  await userEvent.type(area, "vars.x ==");
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await userEvent.type(area, " 'a'");
+  expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled();
+});
