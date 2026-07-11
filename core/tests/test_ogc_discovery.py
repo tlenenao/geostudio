@@ -117,3 +117,32 @@ def test_collection_description_is_ogc(env):
     assert body["extent"] == {"spatial": {"bbox": [[1.0, 45.0, 2.0, 46.0]]}}
     rels = {l["rel"]: l["href"] for l in body["links"]}
     assert rels["items"].endswith("/collections/incidents/items")
+
+
+def test_extent_failure_degrades_to_none(env, caplog):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin, public=True)
+
+    def broken_provider(session, info, tenant_id):
+        raise TableNotFound("gone")
+
+    app.dependency_overrides[collections_routes.get_extent_provider] = (
+        lambda: broken_provider)
+    body = client.get("/collections/incidents").json()
+    assert body["extent"] is None
+    assert "extent lookup failed" in caplog.text
+
+
+def test_extent_code_bug_is_not_swallowed(env):
+    app, client, admin, _r, _repo = env
+    _register(app, client, admin, public=True)
+
+    def buggy_provider(session, info, tenant_id):
+        raise TypeError("bug")
+
+    app.dependency_overrides[collections_routes.get_extent_provider] = (
+        lambda: buggy_provider)
+    # TestClient propage les exceptions non-HTTP (raise_server_exceptions=True
+    # par défaut) : un bug de code doit remonter, pas être avalé en extent=None.
+    with pytest.raises(TypeError):
+        client.get("/collections/incidents")
