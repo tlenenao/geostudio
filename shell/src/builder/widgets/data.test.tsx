@@ -163,3 +163,46 @@ test("table emits itemSelected with the clicked row", async () => {
   await userEvent.click(screen.getByRole("cell", { name: "Parc A" }));
   expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" } });
 });
+
+test("table renders a calculated column evaluated per row against record and vars", () => {
+  const Table = getWidget("table")!.Component;
+  const ctx = { mode: "runtime", variables: { seuil: "haute" }, data: state({ records: [
+    { id: 1, properties: { nom: "A", gravite: "haute" } },
+    { id: 2, properties: { nom: "B", gravite: "faible" } },
+  ] }) } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom", { label: "Urgent", expr: "record.gravite == vars.seuil" }] }} ctx={ctx} />);
+  expect(screen.getByRole("columnheader", { name: "Urgent" })).toBeInTheDocument();
+  const cells = screen.getAllByRole("cell");
+  expect(cells[1]).toHaveTextContent("true"); // ligne 1 : gravite == seuil
+  expect(cells[3]).toHaveTextContent("false"); // ligne 2 : gravite != seuil
+});
+
+test("a calculated column header has no sort button", () => {
+  const Table = getWidget("table")!.Component;
+  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "A" } }] }) } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: [{ label: "Calc", expr: "1 + 1" }] }} ctx={ctx} />);
+  expect(screen.queryByRole("button", { name: /Calc/ })).not.toBeInTheDocument();
+  expect(screen.getByText("Calc")).toBeInTheDocument();
+});
+
+test("table PropsPanel adds a calculated column without disturbing existing plain columns", async () => {
+  const Table = getWidget("table")!;
+  const onChange = vi.fn();
+  render(<Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une colonne calculée" }));
+  expect(onChange).toHaveBeenCalledWith({ columns: ["nom", { label: "Nouvelle colonne", expr: "" }] });
+});
+
+test("table PropsPanel edits a calculated column's label and expression", async () => {
+  const Table = getWidget("table")!;
+  const onChange = vi.fn();
+  const props = { columns: ["nom", { label: "Nouvelle colonne", expr: "" }] };
+  const { rerender } = render(<Table.PropsPanel props={props} onChange={onChange} dataSources={[]} />);
+  await userEvent.type(screen.getByLabelText(/Libellé de la colonne calculée/), "!");
+  const afterLabel = onChange.mock.calls.at(-1)![0];
+  rerender(<Table.PropsPanel props={afterLabel} onChange={onChange} dataSources={[]} />);
+  await userEvent.type(screen.getByLabelText(/Expression de la colonne calculée/), "1");
+  const afterExpr = onChange.mock.calls.at(-1)![0];
+  expect(afterExpr.columns[0]).toBe("nom"); // colonne texte inchangée
+  expect(afterExpr.columns[1].expr).toBe("1");
+});
