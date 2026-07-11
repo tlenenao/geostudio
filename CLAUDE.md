@@ -98,7 +98,7 @@ npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 231 tests
+uv run pytest        # 291 tests
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
                       # pg-featureserv, core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-10 (mise à jour à chaque jalon)
+## État au 2026-07-11 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -131,8 +131,13 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 10 services
   (`users.is_admin`, bootstrap `CORE_ADMIN_SUBS`, `GET/PATCH /users`), RLS
   générée par collection (rôle `gis_rls`, policy `tenant_isolation`), seed
   démo (`core/scripts/seed_demo.py`), infra de test PostGIS (marqueur
-  `postgis`). **Prochain chantier : SP-3b** (CRUD features OGC API — ouvrir
-  par le spike RLS/PgBouncer prévu par la spec).
+  `postgis`).
+- **SP-3b livré** (2026-07-11) : OGC API Features Part 1+4 dans le cœur
+  (landing, conformance, items GeoJSON — bbox, filtres, pagination avec
+  liens —, POST/PUT/DELETE validés par schéma, audités), chaque requête
+  métier sous `rls_scope` (rôle `gis_rls` + GUC tenant, validé à travers
+  PgBouncer par `scripts/spike_pgbouncer_rls.py`). **Prochain chantier :
+  SP-3c** (bascule du shell sur le cœur, retrait de pg_featureserv).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

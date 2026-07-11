@@ -29,13 +29,18 @@
    futur `create_tenant` reçoit un id lisible immuable explicite ; la PK
    globale `Collection.id` (slug) reste au backlog multi-tenant (passage en
    PK composite à l'activation).
-2. Backlog SP-3b (issu des revues de tâches) : test RLS sur UPDATE ; index
-   sur `tenant_id` des tables métier ; qualification schéma du lookup enum et
-   de `pg_get_serial_sequence` ; tests des gardes 0-PK / 2-géométries ;
-   validation des doublons `group_id` dans `Sharing.groups` (défaut partagé
-   avec le chemin items depuis SP-1 — corriger les deux) ; audit du script de
-   seed (`actor_kind="system"`) et gestion d'`UnsupportedTable` dans le seed ;
-   révocation des grants/policy au désenregistrement (hygiène).
+2. Backlog SP-3b (issu des revues de tâches), traité pendant SP-3b sauf
+   mention contraire :
+   - test RLS sur UPDATE ✅
+   - index sur `tenant_id` des tables métier ✅
+   - qualification schéma du lookup enum et de `pg_get_serial_sequence` ✅
+   - tests des gardes 0-PK / 2-géométries ✅
+   - validation des doublons `group_id` dans `Sharing.groups` (défaut partagé
+     avec le chemin items depuis SP-1 — corriger les deux) ✅
+   - audit du script de seed (`actor_kind="system"`) et gestion
+     d'`UnsupportedTable` dans le seed ✅
+   - révocation des grants/policy au désenregistrement (hygiène)
+     **(reste ouvert)**
 3. Backlog SP-3c : `response_model` sur les endpoints collections/users (les
    types TS générés sont `unknown` sans ça) ; le job CI `api-types-drift` ne
    diffe pas `core/openapi.json` lui-même (seulement le `.d.ts` dérivé).
