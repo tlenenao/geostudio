@@ -1,6 +1,8 @@
+import logging
 from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -14,6 +16,8 @@ from app.collections.schemas import CollectionCreate, CollectionPatch
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,7 +65,15 @@ def get_extent_provider():
         try:
             return table_extent(session, info)
         finally:
-            session.execute(_text("RESET ROLE"))
+            try:
+                session.execute(_text("RESET ROLE"))
+            except DBAPIError as exc:
+                # Transaction avortée par l'échec de table_extent (25P02) : le
+                # RESET échouerait et masquerait l'erreur d'origine ; le
+                # rollback rend le rôle. Tout autre échec remonte (même
+                # discipline que app/features/rls.py).
+                if getattr(exc.orig, "sqlstate", None) != "25P02":
+                    raise
 
     return provider
 
@@ -165,8 +177,11 @@ def get_collection(
     try:
         info = introspect(session, col.table_name)
         bbox = extent_provider(session, info, col.tenant_id)
-    except Exception:
-        bbox = None  # description robuste : une table disparue ne casse pas le détail
+    except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
+        # Table disparue/mutée ou erreur SQL : la description reste servie
+        # sans extent ; un bug de code, lui, doit remonter (pas d'except large).
+        logger.warning("extent lookup failed for collection %s: %s", col.id, exc)
+        bbox = None
     body["extent"] = {"spatial": {"bbox": [bbox]}} if bbox else None
     return body
 
