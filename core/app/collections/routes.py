@@ -78,11 +78,21 @@ def get_extent_provider():
     return provider
 
 
-def _collection_json(col) -> dict:
+def _can_write_collection(session, user, col) -> bool:
+    if user is None:
+        return False
+    return col.editable and can(
+        session, user_id=user.id, action="write", item=repo.get_access_facts(col),
+        kind="collection", actor_is_admin=user.is_admin,
+    )
+
+
+def _collection_json(col, can_write: bool) -> dict:
     return {
         "id": col.id, "title": col.title, "description": col.description,
         "tableName": col.table_name, "isPublic": col.is_public, "editable": col.editable,
         "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
+        "canWrite": can_write,
     }
 
 
@@ -141,7 +151,7 @@ def register_collection(
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.create", object_type="collection", object_id=col.id,
                 payload={"tableName": col.table_name})
-    return _collection_json(col)
+    return _collection_json(col, _can_write_collection(session, user, col))
 
 
 @router.get("/collections")
@@ -154,7 +164,7 @@ def list_collections(
         session, tenant_id=tenant_id, user_id=user.id if user else None,
         is_admin=bool(user and user.is_admin),
     )
-    return {"collections": [_collection_json(c) for c in cols]}
+    return {"collections": [_collection_json(c, _can_write_collection(session, user, c)) for c in cols]}
 
 
 @router.get("/collections/{collection_id}")
@@ -165,7 +175,7 @@ def get_collection(
     extent_provider=Depends(get_extent_provider),
 ):
     col = get_readable_collection(session, user, collection_id)
-    body = _collection_json(col)
+    body = _collection_json(col, _can_write_collection(session, user, col))
     body["itemType"] = "feature"
     base = str(request.base_url).rstrip("/")
     body["links"] = [
@@ -219,7 +229,7 @@ def patch_collection(
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.update", object_type="collection", object_id=col.id,
                 payload=body.model_dump(exclude_none=True))
-    return _collection_json(col)
+    return _collection_json(col, _can_write_collection(session, user, col))
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
