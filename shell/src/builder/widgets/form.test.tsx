@@ -65,11 +65,11 @@ function renderPanel(
   return { onChange, client };
 }
 
-test("form widget is registered with submitted/failed events and a reset action", () => {
+test("form widget is registered with submitted/failed events and reset/loadRecord actions", () => {
   const def = getWidget("form")!;
   expect(def.label).toBe("Formulaire");
   expect(def.events).toEqual(["submitted", "failed"]);
-  expect(def.actions).toEqual(["reset"]);
+  expect(def.actions).toEqual(["reset", "loadRecord"]);
   expect(def.defaultProps).toEqual({ dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null });
 });
 
@@ -408,4 +408,53 @@ test("submitting a Point collection with empty coordinates sends a null geometry
       expect.objectContaining({ geometry: null }),
     ),
   );
+});
+
+test("loadRecord pre-fills the form from the selected record's properties", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  renderConnectedForm({ bus, widgetId: "form1" });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Fuite existante"));
+  expect(screen.getByLabelText("Gravité")).toHaveValue("moyenne");
+  expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Point" }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  bus.emit("table1", "itemSelected", {
+    id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" },
+    geometry: { type: "Point", coordinates: [2.35, 48.85] },
+  });
+  await waitFor(() => expect(screen.getByLabelText("Longitude")).toHaveValue(2.35));
+  expect(screen.getByLabelText("Latitude")).toHaveValue(48.85);
+});
+
+test("the Annuler button exits edit mode and clears the form", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  renderConnectedForm({ bus, widgetId: "form1" });
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Titre")).toHaveValue("");
+});
+
+test("form declares loadRecord alongside reset", () => {
+  expect(getWidget("form")!.actions).toEqual(["reset", "loadRecord"]);
 });
