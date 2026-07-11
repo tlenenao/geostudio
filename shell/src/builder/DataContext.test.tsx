@@ -14,7 +14,7 @@ function Probe() {
   const states = useDataStates();
   const s = states["ds1"];
   if (!s || s.loading) return <p>loading</p>;
-  return <p>records:{s.records.length} url:{s.url}</p>;
+  return <p>records:{s.records.length} url:{s.url} layer:{s.layer}</p>;
 }
 
 test("resolves sources and exposes their state", async () => {
@@ -34,6 +34,7 @@ test("resolves sources and exposes their state", async () => {
   );
   await waitFor(() => expect(screen.getByText(/records:1/)).toBeInTheDocument());
   expect(screen.getByText(/url:https:\/\/fs\/parcs\/items.json/)).toBeInTheDocument();
+  expect(screen.getByText(/layer:parcs/)).toBeInTheDocument();
 });
 
 test("setFilter merges into a source query and refetches", async () => {
