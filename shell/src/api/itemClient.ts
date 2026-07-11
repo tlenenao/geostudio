@@ -251,9 +251,9 @@ export function createItemClient(opts: {
         version: 1,
         kind: input.kind,
         theme: template?.theme ?? {},
-        dataSources: [],
+        dataSources: template?.dataSources ?? [],
         layout: template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
-        messages: [],
+        messages: template?.messages ?? [],
       };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
         "POST", `/configs`, { title: input.title, config },
