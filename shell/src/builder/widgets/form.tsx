@@ -287,9 +287,16 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [genericError, setGenericError] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
+  const collectionId = ctx.data?.layer ?? "";
+  const permissionQuery = useQuery({
+    queryKey: ["collection-permission", collectionId],
+    queryFn: () => client.getCollectionPermission(collectionId),
+    enabled: collectionId !== "",
+  });
+  const canWrite = permissionQuery.data ?? true;
+
   const write = useMutation({
     mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
-      const collectionId = ctx.data?.layer ?? "";
       const feature = { type: "Feature" as const, properties: input.properties, geometry: input.geometry };
       if (editingId !== null) {
         await client.updateFeature(collectionId, String(editingId), feature);
@@ -300,7 +307,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   });
 
   const remove = useMutation({
-    mutationFn: () => client.deleteFeature(ctx.data?.layer ?? "", String(editingId)),
+    mutationFn: () => client.deleteFeature(collectionId, String(editingId)),
   });
 
   async function handleDelete() {
@@ -426,24 +433,28 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         <p className="text-xs text-[var(--gs-color-muted)]">
           Modification de l'enregistrement #{String(editingId)}
           <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>Annuler</button>
-          <button
-            type="button"
-            className="ml-2 text-xs text-red-600 underline"
-            disabled={remove.isPending}
-            onClick={handleDelete}
-          >
-            Supprimer
-          </button>
+          {canWrite && (
+            <button
+              type="button"
+              className="ml-2 text-xs text-red-600 underline"
+              disabled={remove.isPending}
+              onClick={handleDelete}
+            >
+              Supprimer
+            </button>
+          )}
         </p>
       )}
       <div className="mt-auto flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={write.isPending}
-          className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          {String(props.submitLabel ?? "Enregistrer")}
-        </button>
+        {canWrite && (
+          <button
+            type="submit"
+            disabled={write.isPending}
+            className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          >
+            {String(props.submitLabel ?? "Enregistrer")}
+          </button>
+        )}
         <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm" onClick={resetTo}>
           Réinitialiser
         </button>
