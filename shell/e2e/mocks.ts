@@ -151,16 +151,17 @@ export async function mockCore(page: Page) {
     });
   });
 
-  // Feature-serv OGC API collections — return empty list (no feature layers needed).
-  await page.route("**/collections.json", async (route) => {
+  // Cœur OGC API collections — return empty list (no feature layers needed
+  // beyond the two below).
+  await page.route("**/collections", async (route) => {
     await route.fulfill({
       json: { collections: [] },
     });
   });
 
-  // Feature-serv items for the "villes" collection — a statistics source
-  // aggregates these client-side (groupBy region, split annee → 2 series).
-  await page.route("**/collections/villes/items.json*", async (route) => {
+  // Cœur items for the "villes" collection — a statistics source aggregates
+  // these client-side (groupBy region, split annee → 2 series).
+  await page.route("**/collections/villes/items*", async (route) => {
     await route.fulfill({
       json: {
         type: "FeatureCollection",
@@ -174,9 +175,9 @@ export async function mockCore(page: Page) {
     });
   });
 
-  // Feature-serv items endpoint for the "parcs" collection — filters by the
-  // `nom` query param so setFilter can be observed end-to-end.
-  await page.route("**/collections/parcs/items.json*", async (route) => {
+  // Cœur items endpoint for the "parcs" collection — filters by the `nom`
+  // query param so setFilter can be observed end-to-end.
+  await page.route("**/collections/parcs/items*", async (route) => {
     const url = new URL(route.request().url());
     const nom = url.searchParams.get("nom");
     const all = [
