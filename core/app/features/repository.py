@@ -66,7 +66,7 @@ def _where(session: Session, info: TableInfo, bbox, filters):
         if info.geometry_column is None:
             raise FilterError("bbox", "collection has no geometry")
         g = quote_ident(session, info.geometry_column)
-        clauses.append(f"{g} && ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, :bsrid)")
+        clauses.append(f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)")
         params.update({"bx0": bbox[0], "by0": bbox[1], "bx1": bbox[2],
                        "by1": bbox[3], "bsrid": info.srid or 4326})
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
