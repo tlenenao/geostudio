@@ -6,6 +6,13 @@ import { expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
+import type { AuthState } from "../auth/useAuth";
+
+const authState: AuthState = {
+  isLoading: false, isAuthenticated: true, username: "tanguy",
+  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+};
+vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
 const emptyLayout = { type: "grid" as const, breakpoints: {}, items: [] };
 const config: AppConfig = {

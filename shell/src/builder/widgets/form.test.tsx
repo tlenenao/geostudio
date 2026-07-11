@@ -252,6 +252,7 @@ function renderConnectedForm({
 } = {}) {
   const client = {
     createFeature: vi.fn().mockResolvedValue({ id: 1 }),
+    getCollectionPermission: vi.fn().mockResolvedValue(true),
     ...clientOverrides,
   } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -352,7 +353,10 @@ test("the reset bus action clears the form", async () => {
 });
 
 function renderConnectedFormWithGeometry(geometryType: string | null) {
-  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const client = {
+    createFeature: vi.fn().mockResolvedValue({ id: 1 }),
+    getCollectionPermission: vi.fn().mockResolvedValue(true),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
   render(
@@ -423,7 +427,10 @@ test("loadRecord pre-fills the form from the selected record's properties", asyn
 test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {
   const bus = new ActionBus();
   bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
-  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const client = {
+    createFeature: vi.fn().mockResolvedValue({ id: 1 }),
+    getCollectionPermission: vi.fn().mockResolvedValue(true),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
   render(
@@ -528,7 +535,11 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
   const bus = new ActionBus();
   bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
   const updateFeature = vi.fn().mockResolvedValue(undefined);
-  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }), updateFeature } as unknown as ItemClient;
+  const client = {
+    createFeature: vi.fn().mockResolvedValue({ id: 1 }),
+    getCollectionPermission: vi.fn().mockResolvedValue(true),
+    updateFeature,
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
   render(
@@ -568,4 +579,19 @@ test("Supprimer does nothing when the confirmation is declined", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
   expect(client.deleteFeature).not.toHaveBeenCalled();
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+});
+
+test("hides the write buttons once the collection permission resolves to canWrite=false", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  const getCollectionPermission = vi.fn().mockResolvedValue(false);
+  const { client } = renderConnectedForm({ client: { getCollectionPermission }, bus });
+  await waitFor(() => expect(client.getCollectionPermission).toHaveBeenCalledWith("incidents"));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
+  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+  // Réinitialiser/Annuler restent visibles : ce ne sont pas des actions d'écriture.
+  expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeInTheDocument();
 });

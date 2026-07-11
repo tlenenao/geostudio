@@ -187,4 +187,68 @@ export async function mockCore(page: Page) {
     const features = nom ? all.filter((f) => f.properties.nom === nom) : all;
     await route.fulfill({ json: { type: "FeatureCollection", features } });
   });
+
+  // Collection "incidents" — schéma introspecté, permission d'écriture, et
+  // CRUD complet avec état en mémoire (pour que la Table reflète les écritures
+  // du Formulaire au fil du scénario "déclarer un incident").
+  const incidentRecords = new Map<string, { properties: Record<string, unknown>; geometry: unknown }>();
+  let nextIncidentId = 1;
+
+  await page.route("**/collections/incidents", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+        isPublic: false, editable: true, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: true,
+      },
+    });
+  });
+
+  await page.route("**/collections/incidents/schema", async (route) => {
+    await route.fulfill({
+      json: {
+        collection: "incidents", pk: "id", geometry: null,
+        fields: [
+          { name: "titre", type: "string", required: true, maxLength: 120 },
+          { name: "gravite", type: "enum", required: true, values: ["faible", "moyenne", "haute"] },
+        ],
+      },
+    });
+  });
+
+  await page.route("**/collections/incidents/items*", async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({
+        json: {
+          type: "FeatureCollection",
+          features: [...incidentRecords.entries()].map(([id, r]) => ({
+            type: "Feature", id: Number(id), properties: r.properties, geometry: r.geometry,
+          })),
+        },
+      });
+    } else if (method === "POST") {
+      const body = await route.request().postDataJSON();
+      const id = String(nextIncidentId++);
+      incidentRecords.set(id, { properties: body.properties, geometry: body.geometry });
+      await route.fulfill({ status: 201, json: { id: Number(id) } });
+    } else {
+      await route.fallback();
+    }
+  });
+
+  await page.route("**/collections/incidents/items/*", async (route) => {
+    const method = route.request().method();
+    const id = route.request().url().split("/").pop() ?? "";
+    if (method === "PUT") {
+      const body = await route.request().postDataJSON();
+      incidentRecords.set(id, { properties: body.properties, geometry: body.geometry });
+      await route.fulfill({ status: 204, body: "" });
+    } else if (method === "DELETE") {
+      incidentRecords.delete(id);
+      await route.fulfill({ status: 204, body: "" });
+    } else {
+      await route.fallback();
+    }
+  });
 }

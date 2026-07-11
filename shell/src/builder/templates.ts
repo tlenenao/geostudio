@@ -1,4 +1,4 @@
-import type { AppLayout, Theme } from "../api/types";
+import type { ActionMessage, AppLayout, DataSource, Theme } from "../api/types";
 
 export type Template = {
   id: string;
@@ -6,6 +6,8 @@ export type Template = {
   kind: "app" | "dashboard";
   layout: AppLayout;
   theme?: Theme;
+  dataSources?: DataSource[];
+  messages?: ActionMessage[];
 };
 
 const TWO_COLUMN_LAYOUT: AppLayout = {
@@ -26,9 +28,42 @@ const BASIC_DASHBOARD_LAYOUT: AppLayout = {
   ],
 };
 
+const INCIDENT_DATA_SOURCE_ID = "tpl-incident-ds";
+
+const INCIDENT_APP_DATA_SOURCES: DataSource[] = [
+  { id: INCIDENT_DATA_SOURCE_ID, type: "features", service: "core", layer: "incidents", query: {} },
+];
+
+const INCIDENT_APP_LAYOUT: AppLayout = {
+  type: "grid",
+  breakpoints: {},
+  items: [
+    {
+      id: "tpl-incident-form", widget: "form", x: 0, y: 0, w: 4, h: 6,
+      props: { dataSourceId: INCIDENT_DATA_SOURCE_ID, fields: [], submitLabel: "Déclarer l'incident", geometryType: null },
+    },
+    {
+      id: "tpl-incident-map", widget: "map", x: 4, y: 0, w: 8, h: 4,
+      props: { dataSourceId: INCIDENT_DATA_SOURCE_ID },
+    },
+    {
+      id: "tpl-incident-table", widget: "table", x: 4, y: 4, w: 8, h: 2,
+      props: { dataSourceId: INCIDENT_DATA_SOURCE_ID, columns: [], pageSize: 10 },
+    },
+  ],
+};
+
+const INCIDENT_APP_MESSAGES: ActionMessage[] = [
+  { id: "tpl-incident-msg", from: "tpl-incident-table", event: "itemSelected", to: "tpl-incident-form", action: "loadRecord" },
+];
+
 export const TEMPLATES: Template[] = [
   { id: "two-column", name: "Deux colonnes", kind: "app", layout: TWO_COLUMN_LAYOUT },
   { id: "basic-dashboard", name: "Tableau de bord basique", kind: "dashboard", layout: BASIC_DASHBOARD_LAYOUT },
+  {
+    id: "application-de-saisie", name: "Application de saisie", kind: "app",
+    layout: INCIDENT_APP_LAYOUT, dataSources: INCIDENT_APP_DATA_SOURCES, messages: INCIDENT_APP_MESSAGES,
+  },
 ];
 
 export function getTemplate(id: string): Template | undefined {

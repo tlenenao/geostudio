@@ -92,13 +92,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell
 cd shell && npm ci
-npm run test         # Vitest (56 fichiers, 277 tests)
-npm run e2e          # Playwright (13 specs, VITE_AUTH_MODE=mock)
+npm run test         # Vitest (57 fichiers, 332 tests)
+npm run e2e          # Playwright (14 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 291 tests
+uv run pytest        # 293 tests (263 exécutés + 30 marqués postgis, nécessitent docker)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -141,10 +141,36 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   de couches carte, sources de données du builder) directement depuis le
   cœur (`GET /collections`, `GET/POST/PUT/DELETE /collections/{id}/items`) ;
   `pg_featureserv` retiré du compose (10→9 services) et de toute la doc ;
-  les 13 specs E2E restent vertes sur des mocks re-câblés. **SP-3 est
-  clos.** Prochain chantier : **SP-4** (formulaires dans le builder, spec
-  déjà écrite —
-  `docs/superpowers/specs/2026-07-10-sp4-formulaires-builder-design.md`).
+  les 13 specs E2E restent vertes sur des mocks re-câblés. **SP-3 est clos.**
+- **SP-4 livré et clos** (2026-07-11, sous-phases a+b+c) : formulaires dans le
+  builder — nouveau widget Formulaire (schéma introspecté, overrides label/
+  ordre/masquage/validation, écriture `feature.create`/`update`/`delete`,
+  champ géométrie point, SP-4a), édition depuis la sélection carte/table
+  (`itemSelected` émis par Carte et Table au clic, action `loadRecord` du
+  Formulaire, mode édition avec bouton Annuler, préservation des champs/
+  géométrie masqués à la modification, SP-4b), puis intégration (SP-4c) :
+  `canWrite` par utilisateur exposé par le cœur sur les collections (miroir
+  exact du prédicat serveur `_get_writable`), le Formulaire masque ses
+  boutons d'écriture en fail-open quand `canWrite=false` (la frontière de
+  sécurité reste le 403 serveur, inchangé), gabarit de galerie « Application
+  de saisie » (Formulaire+Carte+Table pré-câblés sur une même source), spec
+  E2E complète « déclarer un incident » + spec viewer-sans-boutons/403-forcé.
+  **14 specs E2E vertes** (13 + `incident-form.spec.ts`).
+- **SP-5a livré** (2026-07-11) : spike + moteur d'expressions CEL — spike
+  `cel-js` validé (7/7, vocabulaire `vars`/`record`/`user`, gate A8 franchi),
+  `shell/src/builder/expr.ts` (`evaluateExpression`/`validateExpression`,
+  jamais throw), `visibleWhen` sur tout `WidgetItem` (masque un widget en
+  preview/runtime, jamais en edit, `WidgetHost` câble `useAuth()` →
+  `WidgetContext.user`), colonne calculée sur le widget Table (rétrocompatible
+  avec les colonnes `string`), validation à l'édition (`getConfigExpressionErrors`,
+  bouton **Enregistrer** désactivé si une expression est invalide), spec E2E
+  `expressions.spec.ts`. **15 specs E2E vertes** (14 + `expressions.spec.ts`,
+  20/20 tests). Revue finale de branche : aucun Critical/Important non résolu ;
+  dette a11y notée hors périmètre (aria-label pré-existant sur le champ
+  colonnes texte du Table, antérieur à SP-5a). Prochain chantier : **SP-5b**
+  (actions composées avec condition — cf. spec SP-5
+  `docs/superpowers/specs/2026-07-11-sp5-expressions-actions-composees-design.md`
+  §1).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
