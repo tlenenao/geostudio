@@ -157,3 +157,31 @@ def test_variables_round_trip():
 def test_variables_optional_defaults_empty():
     config = BuilderConfig.model_validate(_valid_payload("app"))
     assert config.variables == []
+
+
+def test_layout_item_visible_when_round_trip():
+    payload = _valid_payload("app")
+    payload["layout"]["items"][0]["visibleWhen"] = "vars.x == 'a'"
+    config = BuilderConfig.model_validate(payload)
+    assert config.layout.items[0].visibleWhen == "vars.x == 'a'"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["layout"]["items"][0]["visibleWhen"] == "vars.x == 'a'"
+
+
+def test_layout_item_visible_when_optional():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.layout.items[0].visibleWhen is None
+
+
+def test_message_when_round_trip():
+    payload = _valid_payload("app")
+    payload["messages"][0]["when"] = "record.nom == 'A'"
+    config = BuilderConfig.model_validate(payload)
+    assert config.messages[0].when == "record.nom == 'A'"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["messages"][0]["when"] == "record.nom == 'A'"
+
+
+def test_message_when_optional():
+    config = BuilderConfig.model_validate(_valid_payload())
+    assert config.messages[0].when is None

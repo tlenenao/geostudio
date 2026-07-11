@@ -1,4 +1,5 @@
 import type { ActionMessage } from "../api/types";
+import { evaluateExpression, type ExprContext } from "./expr";
 
 export type BusHandler = (payload?: unknown) => void;
 
@@ -8,6 +9,7 @@ export type BusHandler = (payload?: unknown) => void;
 export class ActionBus {
   private actions = new Map<string, BusHandler>();
   private wiring = new Map<string, ActionMessage[]>();
+  private context: ExprContext = { vars: {}, user: { name: "" } };
 
   configure(messages: ActionMessage[]): void {
     this.wiring.clear();
@@ -17,6 +19,13 @@ export class ActionBus {
       list.push(m);
       this.wiring.set(key, list);
     }
+  }
+
+  // Keeps the vars/user available to a message's `when` condition current.
+  // Called by AppRenderer (Task 3) whenever live variables or the
+  // authenticated user change.
+  setContext(context: ExprContext): void {
+    this.context = context;
   }
 
   register(widgetId: string, action: string, handler: BusHandler): () => void {
@@ -29,7 +38,9 @@ export class ActionBus {
 
   emit(widgetId: string, event: string, payload?: unknown): void {
     const list = this.wiring.get(`${widgetId} ${event}`) ?? [];
+    const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
     for (const m of list) {
+      if (m.when && !evaluateExpression(m.when, { ...this.context, record })) continue;
       this.actions.get(`${m.to} ${m.action}`)?.(payload);
     }
   }

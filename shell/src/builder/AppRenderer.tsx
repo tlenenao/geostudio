@@ -7,7 +7,8 @@ import { getPages, getPageLayout, setPageLayout } from "./pages";
 import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
-import { VariablesProvider, useSetVariable } from "./VariablesContext";
+import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
+import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
 // A message's payload is whatever shape its emitter chose (Button emits
@@ -28,6 +29,18 @@ function VariableBusBridge({ variable, bus }: { variable: Variable; bus: ActionB
   useBusAction(bus, `var:${variable.id}`, "set", (payload) => {
     setVariable(variable.name, valueFromPayload(payload, variable.name));
   });
+  return null;
+}
+
+// Keeps ActionBus.context fresh with the live app variables and the
+// authenticated user, so an ActionMessage.when condition (SP-5b) can
+// reference vars.x/user.name — mirrors VariableBusBridge's live-value wiring.
+function ActionConditionBridge({ bus }: { bus: ActionBus }) {
+  const variables = useVariables();
+  const { username } = useAuth();
+  useEffect(() => {
+    bus.setContext({ vars: variables, user: { name: username ?? "" } });
+  }, [bus, variables, username]);
   return null;
 }
 
@@ -96,6 +109,7 @@ export function AppRenderer({
     <div ref={containerRef} className="h-full w-full bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
       <ActionBusProvider bus={bus}>
         <VariablesProvider variables={config.variables ?? []}>
+          <ActionConditionBridge bus={bus} />
           {(config.variables ?? []).map((v) => (
             <VariableBusBridge key={v.id} variable={v} bus={bus} />
           ))}

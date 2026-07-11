@@ -233,3 +233,54 @@ test("a variable.set action with non-matching object payload resolves to empty s
   expect(textElement.textContent).toBe("Value: ");
   expect(screen.queryByText(/\[object Object\]/)).toBeNull();
 });
+
+test("a message's condition gates the action on the emitting event's payload", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "status", initialValue: "" }],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set", when: "record.status == 'Nord'" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "status", label: "Filtre" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Statut: {{var:status}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  expect(screen.getByText("Statut:")).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "Nord");
+  expect(await screen.findByText("Statut: Nord")).toBeInTheDocument();
+});
+
+test("a message's condition can reference live vars, not just the payload", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [
+      { id: "gate", name: "gate", initialValue: "open" },
+      { id: "v1", name: "message", initialValue: "" },
+    ],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set", when: "vars.gate == 'open'" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "message", label: "Filtre" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Msg: {{var:message}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hi");
+  expect(await screen.findByText("Msg: hi")).toBeInTheDocument();
+});
+
+test("a message's condition prevents the action from firing when it evaluates falsy", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "message", initialValue: "initial" }],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set", when: "vars.gate == 'open'" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "message", label: "Filtre" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Msg: {{var:message}}" } },
+    ] },
+  };
+  // No "gate" variable exists on this config, so vars.gate is undefined → the
+  // condition evaluates falsy (evaluateExpression warns + returns undefined).
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hi");
+  expect(screen.getByText("Msg: initial")).toBeInTheDocument();
+});

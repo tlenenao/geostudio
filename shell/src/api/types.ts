@@ -178,6 +178,7 @@ export type ActionMessage = {
   event: string;
   to: string;
   action: string;
+  when?: string;
 };
 
 export type ThemeColors = {
