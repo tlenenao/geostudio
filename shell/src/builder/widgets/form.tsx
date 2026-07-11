@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
+import { useBusAction } from "../ActionBusContext";
+import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataSource } from "../../api/types";
+import type { WidgetContext } from "../registry";
 
 export type FormField = {
   name: string;
@@ -267,23 +270,67 @@ function FieldInput({
   );
 }
 
-function FormComponent({ props }: { props: Record<string, unknown> }) {
+function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: WidgetContext }) {
+  const client = useItemClient();
+  const queryClient = useQueryClient();
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported")
     .sort((a, b) => a.order - b.order);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [genericError, setGenericError] = useState(false);
+
+  const write = useMutation({
+    mutationFn: (properties: Record<string, unknown>) =>
+      client.createFeature(ctx.data?.layer ?? "", { type: "Feature", properties, geometry: null }),
+  });
+
+  function resetTo() {
+    setValues({});
+    setTouched({});
+    setServerErrors({});
+    setGenericError(false);
+    write.reset();
+  }
+  useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
 
   function errorFor(field: FormField): string | null {
-    if (!touched[field.name]) return null;
-    return validateField(field, values[field.name]);
+    if (touched[field.name]) {
+      const clientError = validateField(field, values[field.name]);
+      if (clientError) return clientError;
+    }
+    return serverErrors[field.name] ?? null;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const allTouched: Record<string, boolean> = {};
     fields.forEach((f) => { allTouched[f.name] = true; });
     setTouched(allTouched);
+    const hasClientErrors = fields.some((f) => validateField(f, values[f.name]) !== null);
+    if (hasClientErrors) return;
+    setServerErrors({});
+    setGenericError(false);
+    const properties: Record<string, unknown> = {};
+    fields.forEach((f) => {
+      if (values[f.name] !== undefined) properties[f.name] = values[f.name];
+    });
+    try {
+      await write.mutateAsync(properties);
+      queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
+      resetTo();
+    } catch (err) {
+      if (err instanceof FeatureValidationError) {
+        const byField: Record<string, string> = {};
+        err.errors.forEach((fe) => { byField[fe.field] = fe.message; });
+        setServerErrors(byField);
+      } else {
+        setGenericError(true);
+      }
+      ctx.bus?.emit(ctx.widgetId ?? "", "failed", { message: err instanceof Error ? err.message : "unknown" });
+    }
   }
 
   return (
@@ -301,10 +348,20 @@ function FormComponent({ props }: { props: Record<string, unknown> }) {
         </label>
       ))}
       <div className="mt-auto flex items-center gap-2">
-        <button type="submit" className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white">
+        <button
+          type="submit"
+          disabled={write.isPending}
+          className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+        >
           {String(props.submitLabel ?? "Enregistrer")}
         </button>
+        <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm" onClick={resetTo}>
+          Réinitialiser
+        </button>
       </div>
+      {genericError && (
+        <p role="alert" className="text-xs text-red-600">Échec de l'enregistrement.</p>
+      )}
     </form>
   );
 }

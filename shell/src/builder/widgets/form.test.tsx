@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -8,6 +8,8 @@ import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
+import { ActionBus } from "../ActionBus";
+import { FeatureValidationError } from "../../api/itemClient";
 
 beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
 
@@ -178,8 +180,16 @@ const visibleFields = [
 ];
 
 function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
-  render(<Form props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }} ctx={{ mode: "runtime", ...ctx } as WidgetContext} />);
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }} ctx={{ mode: "runtime", ...ctx } as WidgetContext} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
 }
 
 test("form renders visible fields ordered, skipping hidden ones", () => {
@@ -225,4 +235,118 @@ test("form renders an enum field as a select with its schema options", () => {
   const select = screen.getByLabelText("Gravité");
   expect(select.tagName).toBe("SELECT");
   expect(screen.getByRole("option", { name: "haute" })).toBeInTheDocument();
+});
+
+function renderConnectedForm({
+  fields = visibleFields,
+  client: clientOverrides = {},
+  bus,
+  widgetId = "form1",
+  layer = "incidents",
+}: {
+  fields?: typeof visibleFields;
+  client?: Partial<ItemClient>;
+  bus?: ActionBus;
+  widgetId?: string;
+  layer?: string;
+} = {}) {
+  const client = {
+    createFeature: vi.fn().mockResolvedValue({ id: 1 }),
+    ...clientOverrides,
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer }, bus, widgetId } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  return { client, invalidateSpy };
+}
+
+test("a valid submit calls createFeature with the bound collection and properties", async () => {
+  const { client } = renderConnectedForm();
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.createFeature).toHaveBeenCalledWith("incidents", {
+      type: "Feature",
+      properties: { titre: "Fuite d'eau", gravite: "haute" },
+      geometry: null,
+    }),
+  );
+});
+
+test("a successful submit clears the form, invalidates data sources, and emits submitted", async () => {
+  const bus = new ActionBus();
+  const handler = vi.fn();
+  bus.register("sink", "log", handler);
+  bus.configure([{ id: "m", from: "form1", event: "submitted", to: "sink", action: "log" }]);
+  const { invalidateSpy } = renderConnectedForm({ bus });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(handler).toHaveBeenCalledWith({ properties: { titre: "Fuite d'eau", gravite: "haute" } }));
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
+  expect(screen.getByLabelText("Titre")).toHaveValue("");
+});
+
+test("submit is disabled while the write is pending", async () => {
+  let resolveWrite!: (v: { id: number }) => void;
+  const createFeature = vi.fn(() => new Promise<{ id: number }>((resolve) => { resolveWrite = resolve; }));
+  renderConnectedForm({ client: { createFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  resolveWrite({ id: 1 });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled());
+});
+
+test("a 400 response maps field errors onto the matching inputs", async () => {
+  // titre/gravité are both filled (client validation passes) — the server
+  // still rejects on a rule the client doesn't know about (e.g. a uniqueness
+  // constraint), proving the 400 mapping runs independently of client checks.
+  const createFeature = vi.fn().mockRejectedValue(
+    new FeatureValidationError([{ field: "titre", code: "duplicate", message: "un incident « Fuite d'eau » existe déjà" }]),
+  );
+  const bus = new ActionBus();
+  const failed = vi.fn();
+  bus.register("sink", "log", failed);
+  bus.configure([{ id: "m", from: "form1", event: "failed", to: "sink", action: "log" }]);
+  renderConnectedForm({ client: { createFeature }, bus });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText("un incident « Fuite d'eau » existe déjà")).toBeInTheDocument();
+  expect(failed).toHaveBeenCalled();
+});
+
+test("a generic write failure shows a fallback message without crashing", async () => {
+  const createFeature = vi.fn().mockRejectedValue(new Error("collection is not editable"));
+  renderConnectedForm({ client: { createFeature } });
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText("Échec de l'enregistrement.")).toBeInTheDocument();
+});
+
+test("the reset bus action clears the form", async () => {
+  // ActionBus.emit(widgetId, event) only routes through configured wiring
+  // (from/event → to/action) — it does not invoke a widget's own registered
+  // action directly. Mirror the mapWidget.test.tsx precedent: a source
+  // widget ("btn1") emits an event wired to form1's "reset" action.
+  const bus = new ActionBus();
+  bus.configure([{ id: "m", from: "btn1", event: "clicked", to: "form1", action: "reset" }]);
+  renderConnectedForm({ bus, widgetId: "form1" });
+  await userEvent.type(screen.getByLabelText("Titre"), "Brouillon");
+  bus.emit("btn1", "clicked");
+  await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue(""));
 });
