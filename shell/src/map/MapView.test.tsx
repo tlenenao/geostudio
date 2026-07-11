@@ -219,3 +219,50 @@ test("highlight sets the highlight source data and clears it on null", () => {
     spec: { data: { type: "FeatureCollection", features: [] } },
   });
 });
+
+test("emits a feature click via onFeatureClick", () => {
+  const onFeatureClick = vi.fn();
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" }],
+  };
+  render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "a", {
+    features: [{ id: 7, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } }],
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith({
+    id: 7,
+    properties: { nom: "Parc A" },
+    geometry: { type: "Point", coordinates: [1, 2] },
+  });
+});
+
+test("does nothing when a click event carries no features", () => {
+  const onFeatureClick = vi.fn();
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" }],
+  };
+  render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "a", { features: [] });
+  expect(onFeatureClick).not.toHaveBeenCalled();
+});
+
+test("detaches the old layer's click handler when config.layers replaces it", () => {
+  const onFeatureClick = vi.fn();
+  const first: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" }],
+  };
+  const { rerender } = render(<MapView config={first} onFeatureClick={onFeatureClick} />);
+  const map = mapInstances[0];
+  const second: MapConfig = {
+    ...config,
+    layers: [{ id: "b", title: "B", visible: true, kind: "feature", url: "https://fs/b" }],
+  };
+  rerender(<MapView config={second} onFeatureClick={onFeatureClick} />);
+  map.fireOnLayer("click", "a", { features: [{ id: 1, properties: {}, geometry: null }] });
+  expect(onFeatureClick).not.toHaveBeenCalled();
+  map.fireOnLayer("click", "b", { features: [{ id: 2, properties: {}, geometry: null }] });
+  expect(onFeatureClick).toHaveBeenCalledWith({ id: 2, properties: {}, geometry: null });
+});
