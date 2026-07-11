@@ -17,8 +17,9 @@ export function getConfigExpressionErrors(config: AppConfig): string[] {
         for (const col of columns as unknown[]) {
           if (typeof col === "object" && col !== null && "expr" in col) {
             const { label, expr } = col as CalculatedColumn;
+            if (typeof expr !== "string") continue;
             const err = validateExpression(expr);
-            if (err) errors.push(`Widget ${item.id}, colonne "${label}" : ${err}`);
+            if (err) errors.push(`Widget ${item.id}, colonne "${String(label)}" : ${err}`);
           }
         }
       }
