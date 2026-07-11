@@ -61,3 +61,45 @@ def test_composite_pk_refused(pg_session, pg_engine):
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE t_composite"))
+
+
+def test_enum_lookup_is_schema_qualified(pg_session, pg_engine):
+    # Un type homonyme dans un autre schéma ne doit pas polluer les valeurs.
+    with pg_engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS decoy"))
+        conn.execute(text("DROP TYPE IF EXISTS decoy.t_gravite"))
+        conn.execute(text("CREATE TYPE decoy.t_gravite AS ENUM ('polluee')"))
+    try:
+        info = introspect_table(pg_session, "t_incidents")
+        by_name = {c.name: c for c in info.columns}
+        assert by_name["gravite"].enum_values == ["faible", "moyenne", "haute"]
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TYPE IF EXISTS decoy.t_gravite"))
+            conn.execute(text("DROP SCHEMA IF EXISTS decoy"))
+
+
+def test_table_without_pk_refused(pg_session, pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_nopk"))
+        conn.execute(text("CREATE TABLE t_nopk (a int)"))
+    try:
+        with pytest.raises(UnsupportedTable):
+            introspect_table(pg_session, "t_nopk")
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE t_nopk"))
+
+
+def test_two_geometry_columns_refused(pg_session, pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_twogeom"))
+        conn.execute(text(
+            "CREATE TABLE t_twogeom (id serial PRIMARY KEY, "
+            "g1 geometry(Point,4326), g2 geometry(Point,4326))"))
+    try:
+        with pytest.raises(UnsupportedTable):
+            introspect_table(pg_session, "t_twogeom")
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE t_twogeom"))

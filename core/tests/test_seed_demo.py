@@ -68,3 +68,13 @@ def test_seed_is_idempotent(pg_core):
         session.commit()
     with pg_core() as session:
         assert seed(session) == []  # déjà enregistrées : rien à faire
+
+
+def test_seed_writes_audit(pg_core):
+    with pg_core() as session:
+        seed(session)
+        session.commit()
+    with pg_core() as session:
+        rows = session.execute(text(
+            "SELECT action, actor_kind FROM audit_log")).all()
+    assert ("collection.create", "system") in [(r[0], r[1]) for r in rows]

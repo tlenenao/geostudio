@@ -30,8 +30,8 @@ API standards OGC, architecture AI-native via MCP).
   Il grossira en cœur complet (items, partage, OGC API Features, MCP) selon la
   feuille de route.
 - **`docker-compose.yml`** — la stack de dev : PostGIS, PgBouncer, MinIO, Martin,
-  TiTiler, pg_featureserv, Keycloak, Traefik, cœur, shell. GeoNode, Superset et
-  Redis sont sortis (jalon M1).
+  TiTiler, Keycloak, Traefik, cœur, shell. GeoNode, Superset, Redis et
+  pg_featureserv sont sortis (jalons M1 et SP-3c).
 
 ## Où va le projet
 
@@ -65,7 +65,6 @@ docker compose up -d       # stack complète
 | Shell (front) | http://localhost:8300 |
 | Cœur (API) | http://localhost:8200 |
 | Martin (tuiles MVT) | http://localhost:3000 |
-| pg_featureserv (OGC API Features) | http://localhost:9000 |
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 

@@ -15,7 +15,7 @@ export function DataSourcePanel({
   function add() {
     onChange([
       ...sources,
-      { id: crypto.randomUUID(), type: "features", service: "featureserv", layer: "", query: {} },
+      { id: crypto.randomUUID(), type: "features", service: "core", layer: "", query: {} },
     ]);
   }
   function remove(id: string) {

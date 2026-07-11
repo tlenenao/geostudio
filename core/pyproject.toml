@@ -45,6 +45,7 @@ layers = [
     "app.main",
     "app.mcp",
     "app.public",
+    "app.features",
     "app.collections",
     "app.configs",
     "app.items",

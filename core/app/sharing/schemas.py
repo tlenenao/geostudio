@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class GroupShare(BaseModel):
@@ -11,3 +11,11 @@ class GroupShare(BaseModel):
 class Sharing(BaseModel):
     public: bool
     groups: list[GroupShare]
+
+    @field_validator("groups")
+    @classmethod
+    def no_duplicate_groups(cls, groups):
+        seen = [g.groupId for g in groups]
+        if len(seen) != len(set(seen)):
+            raise ValueError("duplicate groupId in sharing payload")
+        return groups
