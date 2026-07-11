@@ -47,6 +47,45 @@ def info(pg_incidents, pg_session_factory):
         yield introspect_table(session, "t_feat")
 
 
+@pytest.fixture()
+def pg_incidents_l93(pg_engine, pg_session_factory):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_l93"))
+        conn.execute(text(
+            "CREATE TABLE t_feat_l93 (id serial PRIMARY KEY, titre text NOT NULL, "
+            "tenant_id text NOT NULL DEFAULT 'default', geom geometry(Point, 2154))"))
+        conn.execute(text("ALTER TABLE t_feat_l93 ENABLE ROW LEVEL SECURITY"))
+        conn.execute(text(
+            "CREATE POLICY tenant_isolation ON t_feat_l93 "
+            "USING (tenant_id = current_setting('app.tenant_id')) "
+            "WITH CHECK (tenant_id = current_setting('app.tenant_id'))"))
+        conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON t_feat_l93 TO gis_rls"))
+        conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE t_feat_l93_id_seq TO gis_rls"))
+        conn.execute(text(
+            "INSERT INTO t_feat_l93 (titre, tenant_id, geom) VALUES "
+            "('a', 'default', ST_Transform(ST_SetSRID(ST_MakePoint(1.0, 45.0), 4326), 2154)), "
+            "('b', 'default', ST_Transform(ST_SetSRID(ST_MakePoint(2.0, 46.0), 4326), 2154))"))
+    yield
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_feat_l93"))
+
+
+@pytest.fixture()
+def info_l93(pg_incidents_l93, pg_session_factory):
+    with pg_session_factory() as session:
+        yield introspect_table(session, "t_feat_l93")
+
+
+def test_bbox_transforms_from_crs84_to_collection_srid(info_l93, pg_session_factory):
+    # La collection est en Lambert-93 (EPSG:2154) mais le bbox de la requête
+    # OGC est toujours en CRS84 (lon/lat) : l'enveloppe doit être transformée
+    # depuis 4326 avant comparaison, sinon elle ne matche jamais rien.
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info_l93, limit=10, offset=0,
+                               bbox=(0.5, 44.5, 1.5, 45.5))
+        assert [f["id"] for f in page.features] == [1]
+
+
 def test_select_is_tenant_bound_and_geojson(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         page = select_features(session, info, limit=100, offset=0)
