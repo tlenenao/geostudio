@@ -56,6 +56,8 @@ def test_full_crud_roundtrip(pg_app):
         "geometry": {"type": "Point", "coordinates": [1.85, 45.27]}})
     assert r.status_code == 201
     fid = r.json()["id"]
+    desc = client.get("/collections/demo_incidents").json()
+    assert desc["extent"]["spatial"]["bbox"] == [[1.85, 45.27, 1.85, 45.27]]
     body = client.get("/collections/demo_incidents/items").json()
     assert body["numberMatched"] == 1
     assert body["features"][0]["properties"]["titre"] == "Nid de poule"

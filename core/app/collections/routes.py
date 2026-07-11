@@ -1,6 +1,6 @@
 from typing import Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -42,6 +42,28 @@ def get_introspector() -> Introspector:  # overridé en test ; task 7 branche le
 def get_ddl_applier() -> Callable[[Session, str], None]:  # task 8 branche le vrai
     from app.collections.ddl import apply_collection_ddl
     return apply_collection_ddl
+
+
+def get_extent_provider():
+    """Défaut : emprise réelle sous rls_scope. app.collections ne peut pas
+    importer app.features (couche supérieure) — le scope RLS vit donc en
+    double minimal ici : les deux SET sont inline (3 lignes), pas d'import."""
+    from sqlalchemy import text as _text
+
+    from app.collections.extent import table_extent
+
+    def provider(session, info, tenant_id):
+        if session.get_bind().dialect.name != "postgresql":
+            return None
+        session.execute(_text("SELECT set_config('app.tenant_id', :tid, true)"),
+                        {"tid": tenant_id})
+        session.execute(_text("SET LOCAL ROLE gis_rls"))
+        try:
+            return table_extent(session, info)
+        finally:
+            session.execute(_text("RESET ROLE"))
+
+    return provider
 
 
 def _collection_json(col) -> dict:
@@ -125,10 +147,28 @@ def list_collections(
 
 @router.get("/collections/{collection_id}")
 def get_collection(
-    collection_id: str,
+    collection_id: str, request: Request,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
+    extent_provider=Depends(get_extent_provider),
 ):
-    return _collection_json(get_readable_collection(session, user, collection_id))
+    col = get_readable_collection(session, user, collection_id)
+    body = _collection_json(col)
+    body["itemType"] = "feature"
+    base = str(request.base_url).rstrip("/")
+    body["links"] = [
+        {"rel": "self", "type": "application/json",
+         "href": f"{base}/collections/{col.id}"},
+        {"rel": "items", "type": "application/geo+json",
+         "href": f"{base}/collections/{col.id}/items"},
+    ]
+    try:
+        info = introspect(session, col.table_name)
+        bbox = extent_provider(session, info, col.tenant_id)
+    except Exception:
+        bbox = None  # description robuste : une table disparue ne casse pas le détail
+    body["extent"] = {"spatial": {"bbox": [bbox]}} if bbox else None
+    return body
 
 
 @router.get("/collections/{collection_id}/schema")
