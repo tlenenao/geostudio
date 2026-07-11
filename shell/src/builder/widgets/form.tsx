@@ -276,14 +276,17 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported")
     .sort((a, b) => a.order - b.order);
+  const geometryType = props.geometryType as string | null | undefined;
+  const [lon, setLon] = useState<string>("");
+  const [lat, setLat] = useState<string>("");
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
 
   const write = useMutation({
-    mutationFn: (properties: Record<string, unknown>) =>
-      client.createFeature(ctx.data?.layer ?? "", { type: "Feature", properties, geometry: null }),
+    mutationFn: (input: { properties: Record<string, unknown>; geometry: unknown | null }) =>
+      client.createFeature(ctx.data?.layer ?? "", { type: "Feature", properties: input.properties, geometry: input.geometry }),
   });
 
   function resetTo() {
@@ -291,6 +294,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setTouched({});
     setServerErrors({});
     setGenericError(false);
+    setLon("");
+    setLat("");
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
@@ -316,8 +321,12 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     fields.forEach((f) => {
       if (values[f.name] !== undefined) properties[f.name] = values[f.name];
     });
+    const geometry =
+      geometryType === "Point" && lon !== "" && lat !== ""
+        ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
+        : null;
     try {
-      await write.mutateAsync(properties);
+      await write.mutateAsync({ properties, geometry });
       queryClient.invalidateQueries({ queryKey: ["datasource"] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
       resetTo();
@@ -347,6 +356,20 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {errorFor(f) && <span role="alert" className="text-xs text-red-600">{errorFor(f)}</span>}
         </label>
       ))}
+      {geometryType === "Point" && (
+        <div className="flex gap-2">
+          <label className="flex flex-1 flex-col gap-1">
+            Longitude
+            <input type="number" step="any" aria-label="Longitude" className={fieldInputCls}
+              value={lon} onChange={(e) => setLon(e.target.value)} />
+          </label>
+          <label className="flex flex-1 flex-col gap-1">
+            Latitude
+            <input type="number" step="any" aria-label="Latitude" className={fieldInputCls}
+              value={lat} onChange={(e) => setLat(e.target.value)} />
+          </label>
+        </div>
+      )}
       <div className="mt-auto flex items-center gap-2">
         <button
           type="submit"

@@ -350,3 +350,62 @@ test("the reset bus action clears the form", async () => {
   bus.emit("btn1", "clicked");
   await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue(""));
 });
+
+function renderConnectedFormWithGeometry(geometryType: string | null) {
+  const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Form = getWidget("form")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Form
+          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType }}
+          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" } } as WidgetContext}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  return { client };
+}
+
+test("a Point collection shows longitude/latitude inputs", () => {
+  renderConnectedFormWithGeometry("Point");
+  expect(screen.getByLabelText("Longitude")).toBeInTheDocument();
+  expect(screen.getByLabelText("Latitude")).toBeInTheDocument();
+});
+
+test("a non-Point (or absent) geometry shows no geometry inputs", () => {
+  renderConnectedFormWithGeometry("LineString");
+  expect(screen.queryByLabelText("Longitude")).not.toBeInTheDocument();
+  renderConnectedFormWithGeometry(null);
+  expect(screen.queryByLabelText("Longitude")).not.toBeInTheDocument();
+});
+
+test("submitting with longitude/latitude filled sends a GeoJSON Point geometry", async () => {
+  const { client } = renderConnectedFormWithGeometry("Point");
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.type(screen.getByLabelText("Longitude"), "2.35");
+  await userEvent.type(screen.getByLabelText("Latitude"), "48.85");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.createFeature).toHaveBeenCalledWith("incidents", {
+      type: "Feature",
+      properties: { titre: "Fuite d'eau", gravite: "haute" },
+      geometry: { type: "Point", coordinates: [2.35, 48.85] },
+    }),
+  );
+});
+
+test("submitting a Point collection with empty coordinates sends a null geometry", async () => {
+  const { client } = renderConnectedFormWithGeometry("Point");
+  await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
+  await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(client.createFeature).toHaveBeenCalledWith(
+      "incidents",
+      expect.objectContaining({ geometry: null }),
+    ),
+  );
+});
