@@ -583,6 +583,17 @@
             "title": "Props",
             "type": "object"
           },
+          "visibleWhen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiblewhen"
+          },
           "w": {
             "title": "W",
             "type": "integer"
@@ -847,6 +858,17 @@
           "to": {
             "title": "To",
             "type": "string"
+          },
+          "when": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When"
           }
         },
         "required": [
