@@ -1,4 +1,4 @@
-import type { ActionMessage, AppConfig, CreateKind, DataRecord, DataSource, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AppConfig, CollectionSchema, CreateKind, DataRecord, DataSource, FieldError, GeoJSONFeatureInput, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -30,6 +30,41 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
 // Statistics config keys carried in DataSource.query; excluded from the fetch
 // URL (they configure client-side aggregation, not the feature request).
 const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures"]);
+
+export class FeatureValidationError extends Error {
+  errors: FieldError[];
+  constructor(errors: FieldError[]) {
+    super("feature validation failed");
+    this.name = "FeatureValidationError";
+    this.errors = errors;
+  }
+}
+
+async function requestFeatureWrite<T>(
+  url: string,
+  method: string,
+  token: string | undefined,
+  body?: GeoJSONFeatureInput,
+): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 400) {
+    const data = (await res.json().catch(() => null)) as { detail?: { errors?: FieldError[] } } | null;
+    throw new FeatureValidationError(data?.detail?.errors ?? []);
+  }
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+    const message = typeof data?.detail === "string" ? data.detail : `Request failed: ${res.status} ${method} ${url}`;
+    throw new Error(message);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
 
 function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
   const base = `${coreUrl}/collections/${source.layer}/items`;
@@ -391,6 +426,28 @@ export function createItemClient(opts: {
         geometry: f.geometry,
       }));
       return source.type === "statistics" ? aggregateRecords(records, source.query) : records;
+    },
+
+    async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
+      return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
+    },
+
+    async createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }> {
+      return requestFeatureWrite<{ id: string | number }>(
+        `${coreUrl}/collections/${collectionId}/items`, "POST", getToken(), feature,
+      );
+    },
+
+    async updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void> {
+      await requestFeatureWrite<void>(
+        `${coreUrl}/collections/${collectionId}/items/${fid}`, "PUT", getToken(), feature,
+      );
+    },
+
+    async deleteFeature(collectionId: string, fid: string): Promise<void> {
+      await requestFeatureWrite<void>(
+        `${coreUrl}/collections/${collectionId}/items/${fid}`, "DELETE", getToken(),
+      );
     },
   };
 }
