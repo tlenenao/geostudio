@@ -1,7 +1,6 @@
 export type AppConfig = {
   coreUrl: string;
   martinUrl: string;
-  featureservUrl: string;
   oidcAuthority: string;
   oidcClientId: string;
   oidcRedirectUri: string;
@@ -30,7 +29,6 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   return {
     coreUrl: env.VITE_CORE_URL!,
     martinUrl: env.VITE_MARTIN_URL ?? "",
-    featureservUrl: env.VITE_FEATURESERV_URL ?? "",
     oidcAuthority: env.VITE_OIDC_AUTHORITY ?? "",
     oidcClientId: env.VITE_OIDC_CLIENT_ID ?? "",
     oidcRedirectUri: env.VITE_OIDC_REDIRECT_URI ?? "",
