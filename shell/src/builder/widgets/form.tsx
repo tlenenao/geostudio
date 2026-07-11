@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
@@ -193,8 +194,119 @@ function FormPropsPanel({
   );
 }
 
-function FormComponent() {
-  return <p className="text-xs text-[var(--gs-color-muted)]">Formulaire (à suivre)</p>;
+function validateField(field: FormField, value: unknown): string | null {
+  const empty = value === undefined || value === null || value === "";
+  if (field.required && empty) return "Champ requis";
+  if (empty) return null;
+  if (field.type === "integer" || field.type === "number") {
+    const n = Number(value);
+    if (Number.isNaN(n)) return "Nombre invalide";
+    if (field.min !== undefined && n < field.min) return `Doit être ≥ ${field.min}`;
+    if (field.max !== undefined && n > field.max) return `Doit être ≤ ${field.max}`;
+  }
+  if (field.type === "string") {
+    if (field.maxLength !== undefined && String(value).length > field.maxLength) {
+      return `${field.maxLength} caractères maximum`;
+    }
+    if (field.pattern && !new RegExp(field.pattern).test(String(value))) return "Format invalide";
+  }
+  if (field.type === "enum" && field.values && !field.values.includes(String(value))) return "Valeur invalide";
+  return null;
+}
+
+const fieldInputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+
+function FieldInput({
+  field,
+  value,
+  onChange,
+  onBlur,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  onBlur: () => void;
+}) {
+  if (field.type === "boolean") {
+    return (
+      <input type="checkbox" aria-label={field.label} checked={Boolean(value)}
+        onChange={(e) => onChange(e.target.checked)} onBlur={onBlur} />
+    );
+  }
+  if (field.type === "integer" || field.type === "number") {
+    return (
+      <input type="number" aria-label={field.label} className={fieldInputCls}
+        value={value === undefined ? "" : String(value)}
+        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} onBlur={onBlur} />
+    );
+  }
+  if (field.type === "date") {
+    return (
+      <input type="date" aria-label={field.label} className={fieldInputCls}
+        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+    );
+  }
+  if (field.type === "datetime") {
+    return (
+      <input type="datetime-local" aria-label={field.label} className={fieldInputCls}
+        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+    );
+  }
+  if (field.type === "enum") {
+    return (
+      <select aria-label={field.label} className={fieldInputCls}
+        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur}>
+        <option value=""></option>
+        {(field.values ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input type="text" aria-label={field.label} className={fieldInputCls}
+      value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+  );
+}
+
+function FormComponent({ props }: { props: Record<string, unknown> }) {
+  const fields = ((props.fields as FormField[] | undefined) ?? [])
+    .filter((f) => !f.hidden && f.type !== "unsupported")
+    .sort((a, b) => a.order - b.order);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  function errorFor(field: FormField): string | null {
+    if (!touched[field.name]) return null;
+    return validateField(field, values[field.name]);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const allTouched: Record<string, boolean> = {};
+    fields.forEach((f) => { allTouched[f.name] = true; });
+    setTouched(allTouched);
+  }
+
+  return (
+    <form className="flex h-full flex-col gap-2 overflow-auto text-sm" onSubmit={handleSubmit}>
+      {fields.map((f) => (
+        <label key={f.name} className="flex flex-col gap-1">
+          {f.label}{f.required ? " *" : ""}
+          <FieldInput
+            field={f}
+            value={values[f.name]}
+            onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
+            onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+          />
+          {errorFor(f) && <span role="alert" className="text-xs text-red-600">{errorFor(f)}</span>}
+        </label>
+      ))}
+      <div className="mt-auto flex items-center gap-2">
+        <button type="submit" className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white">
+          {String(props.submitLabel ?? "Enregistrer")}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 export function registerFormWidget(): void {

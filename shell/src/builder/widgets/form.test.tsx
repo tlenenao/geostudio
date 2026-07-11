@@ -7,6 +7,7 @@ import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
+import type { WidgetContext } from "../registry";
 
 beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
 
@@ -167,4 +168,61 @@ test("dragging a field row onto another reorders the list and renumbers order", 
     ["nb_victimes", 1],
     ["titre", 2],
   ]);
+});
+
+const visibleFields = [
+  { name: "titre", type: "string" as const, label: "Titre", order: 0, hidden: false, required: true },
+  { name: "gravite", type: "enum" as const, label: "Gravité", order: 1, hidden: false, required: true, values: ["faible", "moyenne", "haute"] },
+  { name: "nb_victimes", type: "integer" as const, label: "Victimes", order: 2, hidden: false, required: false, min: 0 },
+  { name: "notes_internes", type: "string" as const, label: "Notes internes", order: 3, hidden: true, required: false },
+];
+
+function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
+  const Form = getWidget("form")!.Component;
+  render(<Form props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }} ctx={{ mode: "runtime", ...ctx } as WidgetContext} />);
+}
+
+test("form renders visible fields ordered, skipping hidden ones", () => {
+  renderForm();
+  const labels = screen.getAllByRole("textbox").map((el) => el.getAttribute("aria-label"));
+  expect(labels).toContain("Titre");
+  expect(screen.queryByLabelText("Notes internes")).not.toBeInTheDocument();
+});
+
+test("form shows a required error after blurring an empty required field", async () => {
+  renderForm();
+  const titre = screen.getByLabelText("Titre");
+  await userEvent.click(titre);
+  await userEvent.tab();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Champ requis");
+});
+
+test("form blocks submit and surfaces one error per invalid required field", async () => {
+  renderForm();
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(screen.getAllByRole("alert")).toHaveLength(2); // titre + gravite, tous deux requis et vides
+});
+
+test("form validates a numeric field against its min bound", async () => {
+  renderForm();
+  const victimes = screen.getByLabelText("Victimes");
+  await userEvent.type(victimes, "-1");
+  await userEvent.tab();
+  expect(await screen.findByText("Doit être ≥ 0")).toBeInTheDocument();
+});
+
+test("form validates a string field against its pattern", async () => {
+  const fields = [{ name: "titre", type: "string" as const, label: "Titre", order: 0, hidden: false, required: false, pattern: "^[A-Z]" }];
+  renderForm(fields);
+  const titre = screen.getByLabelText("Titre");
+  await userEvent.type(titre, "fuite");
+  await userEvent.tab();
+  expect(await screen.findByText("Format invalide")).toBeInTheDocument();
+});
+
+test("form renders an enum field as a select with its schema options", () => {
+  renderForm();
+  const select = screen.getByLabelText("Gravité");
+  expect(select.tagName).toBe("SELECT");
+  expect(screen.getByRole("option", { name: "haute" })).toBeInTheDocument();
 });
