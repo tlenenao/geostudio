@@ -22,6 +22,34 @@ router = APIRouter()
 RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "f"}
 MAX_LIMIT = 1000
 
+CONFORMANCE_CLASSES = [
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/ogcapi-features-4/1.0/conf/create-replace-delete",
+]
+
+
+@router.get("/")
+def landing_page(request: Request):
+    base = str(request.base_url).rstrip("/")
+    return {
+        "title": "GeoStudio OGC API Features",
+        "description": "Collections éditables du cœur GeoStudio",
+        "links": [
+            {"rel": "self", "type": "application/json", "href": f"{base}/"},
+            {"rel": "conformance", "type": "application/json", "href": f"{base}/conformance"},
+            {"rel": "data", "type": "application/json", "href": f"{base}/collections"},
+            {"rel": "service-desc", "type": "application/vnd.oai.openapi+json;version=3.0",
+             "href": f"{base}/openapi.json"},
+        ],
+    }
+
+
+@router.get("/conformance")
+def conformance():
+    return {"conformsTo": CONFORMANCE_CLASSES}
+
 
 def get_features_repo():  # overridé en test SQLite
     from app.features import repository
