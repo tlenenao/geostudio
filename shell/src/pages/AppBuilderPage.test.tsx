@@ -5,6 +5,13 @@ import { expect, test, vi } from "vitest";
 import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppBuilderPage } from "./AppBuilderPage";
+import type { AuthState } from "../auth/useAuth";
+
+const authState: AuthState = {
+  isLoading: false, isAuthenticated: true, username: "tanguy",
+  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+};
+vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
 vi.mock("html-to-image", () => ({
   toBlob: vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/png" })),

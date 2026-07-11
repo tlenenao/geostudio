@@ -3,6 +3,13 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { registerWidget, _resetRegistry } from "./registry";
 import { WidgetHost } from "./WidgetHost";
 import type { WidgetItem } from "../api/types";
+import type { AuthState } from "../auth/useAuth";
+
+const authState: AuthState = {
+  isLoading: false, isAuthenticated: true, username: "tanguy",
+  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+};
+vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
 beforeEach(() => _resetRegistry());
 afterEach(() => vi.restoreAllMocks());
@@ -27,4 +34,32 @@ test("isolates a widget that throws during render", () => {
     PropsPanel: () => <div />, Component: () => { throw new Error("boom"); } });
   render(<WidgetHost item={item("boom")} mode="runtime" />);
   expect(screen.getByText(/erreur du widget/i)).toBeInTheDocument();
+});
+
+test("hides a widget in runtime mode when visibleWhen evaluates to false", () => {
+  registerWidget({ type: "ok", label: "Ok", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: () => <div>visible-content</div> });
+  render(<WidgetHost item={{ ...item("ok"), visibleWhen: "1 == 2" }} mode="runtime" />);
+  expect(screen.queryByText("visible-content")).not.toBeInTheDocument();
+});
+
+test("shows a widget in runtime mode when visibleWhen evaluates to true", () => {
+  registerWidget({ type: "ok", label: "Ok", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: () => <div>visible-content</div> });
+  render(<WidgetHost item={{ ...item("ok"), visibleWhen: "1 == 1" }} mode="runtime" />);
+  expect(screen.getByText("visible-content")).toBeInTheDocument();
+});
+
+test("always shows a widget in edit mode regardless of visibleWhen", () => {
+  registerWidget({ type: "ok", label: "Ok", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: () => <div>visible-content</div> });
+  render(<WidgetHost item={{ ...item("ok"), visibleWhen: "1 == 2" }} mode="edit" />);
+  expect(screen.getByText("visible-content")).toBeInTheDocument();
+});
+
+test("shows a widget when visibleWhen is absent", () => {
+  registerWidget({ type: "ok", label: "Ok", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: () => <div>visible-content</div> });
+  render(<WidgetHost item={item("ok")} mode="runtime" />);
+  expect(screen.getByText("visible-content")).toBeInTheDocument();
 });

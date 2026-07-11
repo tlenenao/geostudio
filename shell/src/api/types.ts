@@ -129,6 +129,7 @@ export type WidgetItem = {
   h: number;
   props: Record<string, unknown>;
   layouts?: Partial<Record<"sm" | "md" | "lg", { x: number; y: number; w: number; h: number }>>;
+  visibleWhen?: string;
 };
 
 export type AppLayout = {
