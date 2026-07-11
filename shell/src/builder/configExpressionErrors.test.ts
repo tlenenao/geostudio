@@ -36,3 +36,20 @@ test("reports an invalid calculated column expression with the widget id and col
   expect(errors[0]).toContain("w2");
   expect(errors[0]).toContain("Mauvaise");
 });
+
+test("does not throw when a calculated column's expr is not a string (corrupted config)", () => {
+  const items: AppConfig["layout"]["items"] = [
+    {
+      id: "w3",
+      widget: "table",
+      x: 0,
+      y: 0,
+      w: 2,
+      h: 2,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      props: { columns: [{ label: "Mauvaise", expr: 42 } as any] },
+    },
+  ];
+  expect(() => getConfigExpressionErrors(config(items))).not.toThrow();
+  expect(Array.isArray(getConfigExpressionErrors(config(items)))).toBe(true);
+});
