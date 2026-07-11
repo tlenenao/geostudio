@@ -33,6 +33,7 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
       loading: r.isLoading,
       error: r.isError,
       records: r.data ?? [],
+      layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
     };
   });

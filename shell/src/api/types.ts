@@ -166,6 +166,7 @@ export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
+  layer?: string;
   url?: string;
 };
 
