@@ -4,6 +4,8 @@ import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
 import { useVariables } from "./VariablesContext";
+import { useAuth } from "../auth/useAuth";
+import { evaluateExpression } from "./expr";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -35,16 +37,21 @@ export function WidgetHost({
   const states = useDataStates();
   const bus = useActionBus();
   const variables = useVariables();
+  const { username } = useAuth();
+  const user = { name: username ?? "" };
   const dsId = item.props.dataSourceId as string | undefined;
   const data = dsId ? states[dsId] : undefined;
   const def = getWidget(item.widget);
   if (!def) {
     return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Widget inconnu : {item.widget}</div>;
   }
+  const visible = mode === "edit" || !item.visibleWhen
+    || Boolean(evaluateExpression(item.visibleWhen, { vars: variables, record: data?.records[0]?.properties, user }));
+  if (!visible) return null;
   const Widget = def.Component;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables }} />
+      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user }} />
     </WidgetErrorBoundary>
   );
 }

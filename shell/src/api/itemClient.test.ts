@@ -655,3 +655,35 @@ test("deleteFeature sends a DELETE and resolves on 204", async () => {
   await makeClient().deleteFeature("incidents", "7");
   expect(method).toBe("DELETE");
 });
+
+test("getCollectionPermission returns the canWrite flag", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents", () =>
+      HttpResponse.json({ id: "incidents", title: "Incidents", canWrite: true }),
+    ),
+  );
+  expect(await makeClient().getCollectionPermission("incidents")).toBe(true);
+});
+
+test("getCollectionPermission defaults to false when the field is absent", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents", () =>
+      HttpResponse.json({ id: "incidents", title: "Incidents" }),
+    ),
+  );
+  expect(await makeClient().getCollectionPermission("incidents")).toBe(false);
+});
+
+test("createConfigItem seeds dataSources and messages from a template that defines them", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "application-de-saisie" });
+  expect(body.config.dataSources).toHaveLength(1);
+  expect(body.config.dataSources[0]).toMatchObject({ type: "features", layer: "incidents" });
+  expect(body.config.messages).toHaveLength(1);
+});

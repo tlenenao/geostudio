@@ -15,6 +15,7 @@ import { registerCounterExampleWidget } from "../builder/examples/counterWidget"
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
+import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { Button } from "../ui/button";
 
 registerBuiltinWidgets();
@@ -90,6 +91,14 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     }));
   }
 
+  function updateSelectedVisibleWhen(expr: string) {
+    if (!draft || !selectedId || !activeLayout || !activePage) return;
+    setDraft(setPageLayout(draft, activePage, {
+      ...activeLayout,
+      items: activeLayout.items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)),
+    }));
+  }
+
   const setSources = (dataSources: typeof draft.dataSources) =>
     setDraft((d) => (d ? { ...d, dataSources } : d));
 
@@ -104,6 +113,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
 
   const setVariables = (variables: typeof draft.variables) =>
     setDraft((d) => (d ? { ...d, variables } : d));
+
+  const expressionErrors = draft ? getConfigExpressionErrors(draft) : [];
 
   return (
     <div className="flex h-full flex-col">
@@ -127,7 +138,14 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         <Button size="sm" variant="outline" disabled={thumbnail.isPending} onClick={captureThumbnail}>
           Capturer une miniature
         </Button>
-        <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>Enregistrer</Button>
+        <Button size="sm" disabled={save.isPending || expressionErrors.length > 0} onClick={() => save.mutate(draft)}>
+          Enregistrer
+        </Button>
+        {expressionErrors.length > 0 && (
+          <span role="alert" aria-label="Erreur de condition d'affichage" className="text-sm text-red-600">
+            {expressionErrors[0]}
+          </span>
+        )}
         {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
         {thumbnail.isError && <span role="alert" className="text-sm text-red-600">Échec de la capture.</span>}
       </div>
@@ -163,7 +181,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         {mode === "edit" && (
           <aside className="w-64 overflow-auto border-l p-2">
             <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
-            <PropsPanel item={selected} dataSources={draft.dataSources} onChange={updateSelectedProps} />
+            <PropsPanel
+              item={selected}
+              dataSources={draft.dataSources}
+              onChange={updateSelectedProps}
+              onVisibleWhenChange={updateSelectedVisibleWhen}
+            />
           </aside>
         )}
       </div>

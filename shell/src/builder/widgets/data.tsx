@@ -3,7 +3,15 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
 import { useSetFilter } from "../DataContext";
+import { evaluateExpression } from "../expr";
 import type { DataRecord } from "../../api/types";
+
+type CalculatedColumn = { label: string; expr: string };
+type TableColumn = string | CalculatedColumn;
+
+function isCalculatedColumn(c: TableColumn): c is CalculatedColumn {
+  return typeof c === "object" && c !== null;
+}
 
 function firstField(records: DataRecord[]): string | undefined {
   return records[0] ? Object.keys(records[0].properties)[0] : undefined;
@@ -61,17 +69,56 @@ export function registerDataWidgets(): void {
     defaultSize: { w: 6, h: 4 },
     events: ["itemSelected"],
     actions: ["setFilter"],
-    PropsPanel: ({ props, onChange, dataSources }) => (
-      <div className="flex flex-col gap-2 text-sm">
-        <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-          onChange={(id) => onChange({ ...props, dataSourceId: id })} />
-        <label className="flex flex-col gap-1">Colonnes (séparées par des virgules)
-          <input aria-label="Colonnes" className="h-9 rounded-md border border-slate-300 px-2"
-            value={(props.columns as string[] | undefined)?.join(",") ?? ""}
-            onChange={(e) => onChange({ ...props, columns: e.target.value.split(",").map((c) => c.trim()).filter(Boolean) })} />
-        </label>
-      </div>
-    ),
+    PropsPanel: ({ props, onChange, dataSources }) => {
+      const columns = (props.columns as TableColumn[] | undefined) ?? [];
+      const plainColumns = columns.filter((c): c is string => typeof c === "string");
+      const calculatedColumns = columns.filter(isCalculatedColumn);
+
+      function setPlainColumns(next: string[]) {
+        onChange({ ...props, columns: [...next, ...calculatedColumns] });
+      }
+      function addCalculatedColumn() {
+        onChange({ ...props, columns: [...plainColumns, ...calculatedColumns, { label: "Nouvelle colonne", expr: "" }] });
+      }
+      function updateCalculatedColumn(index: number, patch: Partial<CalculatedColumn>) {
+        const next = calculatedColumns.map((c, i) => (i === index ? { ...c, ...patch } : c));
+        onChange({ ...props, columns: [...plainColumns, ...next] });
+      }
+      function removeCalculatedColumn(index: number) {
+        onChange({ ...props, columns: [...plainColumns, ...calculatedColumns.filter((_, i) => i !== index)] });
+      }
+
+      return (
+        <div className="flex flex-col gap-2 text-sm">
+          <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
+            onChange={(id) => onChange({ ...props, dataSourceId: id })} />
+          <label className="flex flex-col gap-1">Colonnes (séparées par des virgules)
+            <input aria-label="Colonnes" className="h-9 rounded-md border border-slate-300 px-2"
+              value={plainColumns.join(",")}
+              onChange={(e) => setPlainColumns(e.target.value.split(",").map((c) => c.trim()).filter(Boolean))} />
+          </label>
+          {calculatedColumns.map((col, i) => (
+            <div key={i} className="flex flex-col gap-1 rounded border border-slate-200 p-2">
+              <label className="flex flex-col gap-1">Libellé
+                <input aria-label={`Libellé de la colonne calculée ${i + 1}`} className="h-9 rounded-md border border-slate-300 px-2"
+                  value={col.label} onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1">Expression
+                <input aria-label={`Expression de la colonne calculée ${i + 1}`} className="h-9 rounded-md border border-slate-300 px-2 font-mono"
+                  value={col.expr} onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })} />
+              </label>
+              <button type="button" className="self-start text-xs text-red-600 underline" onClick={() => removeCalculatedColumn(i)}>
+                Supprimer la colonne
+              </button>
+            </div>
+          ))}
+          <button type="button" className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={addCalculatedColumn}>
+            Ajouter une colonne calculée
+          </button>
+        </div>
+      );
+    },
     Component: ({ props, ctx }) => {
       const setFilter = useSetFilter();
       useBusAction(ctx.bus, ctx.widgetId, "setFilter", (payload) => {
@@ -85,9 +132,20 @@ export function registerDataWidgets(): void {
       if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
-      const columns = ((props.columns as string[] | undefined)?.length
-        ? (props.columns as string[])
-        : Object.keys(data.records[0]?.properties ?? {}));
+      const rawColumns = (props.columns as TableColumn[] | undefined) ?? [];
+      const columns: TableColumn[] = rawColumns.length ? rawColumns : Object.keys(data.records[0]?.properties ?? {});
+
+      function columnKey(c: TableColumn): string {
+        return isCalculatedColumn(c) ? c.label : c;
+      }
+      function columnLabel(c: TableColumn): string {
+        return isCalculatedColumn(c) ? c.label : c;
+      }
+      function cellValue(c: TableColumn, r: DataRecord): string {
+        if (!isCalculatedColumn(c)) return String(r.properties[c] ?? "");
+        const value = evaluateExpression(c.expr, { vars: ctx.variables ?? {}, record: r.properties, user: ctx.user ?? { name: "" } });
+        return value === undefined || value === null ? "" : String(value);
+      }
 
       const sorted = [...data.records];
       if (sortCol) {
@@ -115,13 +173,20 @@ export function registerDataWidgets(): void {
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
               <tr>
-                {columns.map((c) => (
-                  <th key={c} className="border-b border-[var(--gs-color-border)] p-1">
-                    <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(c)}>
-                      {c}{sortCol === c ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                    </button>
-                  </th>
-                ))}
+                {columns.map((c) => {
+                  const key = columnKey(c);
+                  return (
+                    <th key={key} className="border-b border-[var(--gs-color-border)] p-1">
+                      {isCalculatedColumn(c) ? (
+                        <span className="font-medium">{columnLabel(c)}</span>
+                      ) : (
+                        <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(key)}>
+                          {columnLabel(c)}{sortCol === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                        </button>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -131,7 +196,7 @@ export function registerDataWidgets(): void {
                   className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
                   onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
                 >
-                  {columns.map((c) => <td key={c} className="border-b border-[var(--gs-color-border)] p-1">{String(r.properties[c] ?? "")}</td>)}
+                  {columns.map((c) => <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">{cellValue(c, r)}</td>)}
                 </tr>
               ))}
             </tbody>

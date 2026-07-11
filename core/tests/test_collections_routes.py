@@ -257,3 +257,19 @@ def test_mutations_are_audited(env):
         actions = list(s.scalars(select(AuditLog.action)))
     for expected in ("collection.create", "collection.update", "collection.delete"):
         assert expected in actions
+
+
+def test_canWrite_reflects_the_requesting_users_write_access(env):
+    app, client, _, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True})
+
+    # admin (propriétaire de la collection qu'il vient de créer) : canWrite=True
+    assert client.get("/collections/incidents").json()["canWrite"] is True
+    assert client.get("/collections").json()["collections"][0]["canWrite"] is True
+
+    # regular : lisible car isPublic=True (comme un viewer), mais aucun rôle
+    # editor sur le groupe de partage de la collection → canWrite=False
+    _as(app, regular)
+    assert client.get("/collections/incidents").json()["canWrite"] is False
+    assert client.get("/collections").json()["collections"][0]["canWrite"] is False
