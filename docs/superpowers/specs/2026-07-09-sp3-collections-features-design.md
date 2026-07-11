@@ -231,6 +231,19 @@ chemin tuiles est inchangé. À réévaluer quand le multi-tenant s'activera
 - `docker-compose.yml` : **retrait du service `pg-featureserv`** (10 → 9
   services) ; README/CLAUDE.md mis à jour.
 
+> **Note de revue SP-3c (2026-07-11, revue finale de branche)** : `types.ts`
+> n'a **pas** suivi la ligne « `DataSource.service` idem » ci-dessus —
+> `DataSource.service` est resté un `string` libre, sans migration à
+> l'ouverture des configs. Vérifié sans risque : ce champ n'est lu nulle part
+> pour du branchement (seuls `layer`/`query` comptent dans
+> `buildFeaturesUrl`/`queryDataSource` ; `LayerPicker.tsx` ne lit
+> `LayerSource.service`, un champ distinct, que pour une clé React) — une
+> config déjà enregistrée avec `service:"featureserv"` continue de
+> fonctionner sans effet, la migration prévue ici n'avait pas d'objet réel.
+> Seule la valeur par défaut d'une **nouvelle** source a changé
+> (`DataSourcePanel.tsx`, → `"core"`), par cohérence. Décision actée : ne pas
+> réintroduire cette migration a posteriori.
+
 ## 7. Gestion d'erreurs
 
 - Collection inconnue **ou** non lisible → `404` (anti-énumération, comme
