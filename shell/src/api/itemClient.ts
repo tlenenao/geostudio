@@ -174,19 +174,21 @@ export function createItemClient(opts: {
     }));
   }
 
-  async function fetchFeatureservSources(): Promise<LayerSource[]> {
-    if (!featureservUrl) return [];
-    const res = await fetch(`${featureservUrl}/collections.json`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections.json`);
+  async function fetchCoreCollections(): Promise<LayerSource[]> {
+    const token = getToken();
+    const res = await fetch(`${coreUrl}/collections`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
     const data = (await res.json()) as {
       collections?: { id: string; title?: string }[];
     };
     return (data.collections ?? []).map((c) => ({
       id: c.id,
       title: c.title ?? c.id,
-      service: "featureserv" as const,
+      service: "core" as const,
       kind: "feature" as const,
-      url: `${featureservUrl}/collections/${c.id}/items.json`,
+      url: `${coreUrl}/collections/${c.id}/items`,
     }));
   }
 
@@ -284,7 +286,7 @@ export function createItemClient(opts: {
     async listLayerSources(): Promise<LayerSource[]> {
       const results = await Promise.allSettled([
         fetchMartinSources(),
-        fetchFeatureservSources(),
+        fetchCoreCollections(),
       ]);
       const fulfilled = results.filter(
         (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",

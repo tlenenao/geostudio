@@ -111,7 +111,8 @@ test("setSharing PUTs the sharing object as-is", async () => {
   expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
 });
 
-test("listLayerSources aggregates Martin vector sources and featureserv collections", async () => {
+test("listLayerSources aggregates Martin vector sources and core collections", async () => {
+  let auth: string | null = null;
   server.use(
     http.get("https://martin.test/catalog", () =>
       HttpResponse.json({
@@ -121,13 +122,15 @@ test("listLayerSources aggregates Martin vector sources and featureserv collecti
         },
       }),
     ),
-    http.get("https://featureserv.test/collections.json", () =>
-      HttpResponse.json({
+    http.get("https://core.test/collections", ({ request }) => {
+      auth = request.headers.get("authorization");
+      return HttpResponse.json({
         collections: [{ id: "public.parcs", title: "Parcs" }],
-      }),
-    ),
+      });
+    }),
   );
-  const sources = await makeClient().listLayerSources();
+  const sources = await makeClient("abc").listLayerSources();
+  expect(auth).toBe("Bearer abc");
   const martin = sources.find((s) => s.id === "communes");
   expect(martin).toMatchObject({
     title: "Communes",
@@ -141,28 +144,28 @@ test("listLayerSources aggregates Martin vector sources and featureserv collecti
   const feature = sources.find((s) => s.id === "public.parcs");
   expect(feature).toMatchObject({
     title: "Parcs",
-    service: "featureserv",
+    service: "core",
     kind: "feature",
-    url: "https://featureserv.test/collections/public.parcs/items.json",
+    url: "https://core.test/collections/public.parcs/items",
   });
 });
 
 test("listLayerSources still returns one service when the other fails", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
-    http.get("https://featureserv.test/collections.json", () =>
+    http.get("https://core.test/collections", () =>
       HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
     ),
   );
   const sources = await makeClient().listLayerSources();
   expect(sources).toHaveLength(1);
-  expect(sources[0].service).toBe("featureserv");
+  expect(sources[0].service).toBe("core");
 });
 
 test("listLayerSources throws when both services fail", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
-    http.get("https://featureserv.test/collections.json", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/collections", () => new HttpResponse(null, { status: 500 })),
   );
   await expect(makeClient().listLayerSources()).rejects.toThrow();
 });
