@@ -671,6 +671,8 @@ export interface components {
             props?: {
                 [key: string]: unknown;
             };
+            /** Visiblewhen */
+            visibleWhen?: string | null;
             /** W */
             w: number;
             /** Widget */
@@ -759,6 +761,8 @@ export interface components {
             from: string;
             /** To */
             to: string;
+            /** When */
+            when?: string | null;
         };
         /** Page */
         Page: {
