@@ -26,7 +26,7 @@ export function getConfigExpressionErrors(config: AppConfig): string[] {
     }
   }
   for (const m of config.messages) {
-    if (!m.when) continue;
+    if (!m.when || typeof m.when !== "string") continue;
     const err = validateExpression(m.when);
     if (err) errors.push(`Action ${m.id} (condition) : ${err}`);
   }

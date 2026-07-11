@@ -70,3 +70,10 @@ test("reports an invalid message condition with the message id", () => {
   expect(errors).toHaveLength(1);
   expect(errors[0]).toContain("m1");
 });
+
+test("does not throw when a message's when is not a string (corrupted config)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: AppConfig["messages"] = [{ id: "m1", from: "w1", event: "clicked", to: "w2", action: "noop", when: 42 as any }];
+  expect(() => getConfigExpressionErrors(config([], messages))).not.toThrow();
+  expect(getConfigExpressionErrors(config([], messages))).toEqual([]);
+});
