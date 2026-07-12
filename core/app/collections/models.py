@@ -26,6 +26,7 @@ class Collection(Base):
     geometry_column: Mapped[str | None] = mapped_column(String, nullable=True)
     geometry_type: Mapped[str | None] = mapped_column(String, nullable=True)
     srid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feature_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     editable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

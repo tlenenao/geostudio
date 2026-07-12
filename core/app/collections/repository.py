@@ -21,11 +21,13 @@ def get_collection(session: Session, *, tenant_id: str, collection_id: str) -> C
 def create_collection(session: Session, *, tenant_id: str, owner_id: str, table_name: str,
                       title: str, description: str, is_public: bool,
                       pk_column: str, geometry_column: str | None,
-                      geometry_type: str | None, srid: int | None) -> Collection:
+                      geometry_type: str | None, srid: int | None,
+                      feature_count: int | None = None) -> Collection:
     col = Collection(
         id=table_name, tenant_id=tenant_id, owner_id=owner_id, table_name=table_name,
         title=title, description=description, is_public=is_public, pk_column=pk_column,
         geometry_column=geometry_column, geometry_type=geometry_type, srid=srid,
+        feature_count=feature_count,
     )
     session.add(col)
     session.flush()
