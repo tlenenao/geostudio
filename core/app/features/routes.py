@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -184,6 +185,10 @@ def create_feature(
                                       geometry=payload.get("geometry"))
     except IntegrityError:
         raise HTTPException(status_code=409, detail="feature conflicts with an existing row")
+    session.execute(
+        text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
+        {"id": col.id},
+    )
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="feature.create", object_type="feature", object_id=str(fid),
                 payload={"collection": col.id, "fid": str(fid)})
@@ -225,6 +230,10 @@ def remove_feature(
         ok = repo.delete_feature(session, info, fid=fid)
     if not ok:
         raise HTTPException(status_code=404, detail="feature not found")
+    session.execute(
+        text("UPDATE collections SET feature_count = feature_count - 1 WHERE id = :id"),
+        {"id": col.id},
+    )
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="feature.delete", object_type="feature", object_id=fid,
                 payload={"collection": col.id, "fid": fid})

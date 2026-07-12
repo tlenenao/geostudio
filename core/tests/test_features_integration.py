@@ -57,6 +57,7 @@ def test_full_crud_roundtrip(pg_app):
         "geometry": {"type": "Point", "coordinates": [1.85, 45.27]}})
     assert r.status_code == 201
     fid = r.json()["id"]
+    assert client.get("/collections/demo_incidents").json()["featureCount"] == 1
     desc = client.get("/collections/demo_incidents").json()
     assert desc["extent"]["spatial"]["bbox"] == [[1.85, 45.27, 1.85, 45.27]]
     body = client.get("/collections/demo_incidents/items").json()
@@ -67,5 +68,7 @@ def test_full_crud_roundtrip(pg_app):
         "geometry": {"type": "Point", "coordinates": [1.85, 45.27]}}).status_code == 204
     assert client.get(f"/collections/demo_incidents/items/{fid}").json()[
         "properties"]["titre"] == "Réparé"
+    assert client.get("/collections/demo_incidents").json()["featureCount"] == 1  # PUT inchangé
     assert client.delete(f"/collections/demo_incidents/items/{fid}").status_code == 204
     assert client.get("/collections/demo_incidents/items").json()["numberMatched"] == 0
+    assert client.get("/collections/demo_incidents").json()["featureCount"] == 0
