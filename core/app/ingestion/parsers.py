@@ -17,7 +17,7 @@ import pyogrio
 import pyproj
 import shapely
 from pyogrio.errors import DataLayerError, DataSourceError
-from pyproj.exceptions import CRSError
+from pyproj.exceptions import ProjError
 from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
@@ -138,11 +138,14 @@ def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
 def _crs_transform(crs: str | None):
     try:
         src = pyproj.CRS.from_user_input(crs)
-    except CRSError as exc:
+    except ProjError as exc:
         raise IngestionParseError(f"CRS manquant ou non reconnu : {crs!r}") from exc
     if src == _WGS84:
         return None
-    transformer = pyproj.Transformer.from_crs(src, _WGS84, always_xy=True)
+    try:
+        transformer = pyproj.Transformer.from_crs(src, _WGS84, always_xy=True)
+    except ProjError as exc:
+        raise IngestionParseError(f"CRS non transformable vers WGS84 : {crs!r}") from exc
     return transformer.transform
 
 
