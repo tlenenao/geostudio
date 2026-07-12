@@ -6,11 +6,11 @@ Usage : DATABASE_URL=postgresql+psycopg://… uv run python -m scripts.seed_demo
 import argparse
 import os
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.collections.ddl import apply_collection_ddl
+from app.collections.ddl import apply_collection_ddl, quote_ident
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.repository import create_collection, get_collection
@@ -57,11 +57,16 @@ def seed(session: Session, owner_username: str | None = None) -> list[str]:
             print(f"table '{table}' non enregistrable ({exc.reason}) — ignorée")
             continue
         apply_collection_ddl(session, table)
+        t = quote_ident(session, table)
+        feature_count = session.execute(
+            text(f"SELECT count(*) FROM public.{t}")
+        ).scalar_one()
         create_collection(
             session, tenant_id=tenant.id, owner_id=owner.id, table_name=table,
             title=title, description="Collection de démonstration", is_public=True,
             pk_column=info.pk_column, geometry_column=info.geometry_column,
             geometry_type=info.geometry_type, srid=info.srid,
+            feature_count=feature_count,
         )
         write_audit(session, tenant_id=tenant.id, actor_id=owner.id,
                     actor_kind="system", action="collection.create",

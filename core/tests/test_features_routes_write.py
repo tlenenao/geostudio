@@ -2,12 +2,14 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
+from app.collections.repository import get_collection
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
 from app.main import create_app
@@ -88,6 +90,9 @@ def env():
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = (
         lambda: lambda session, table: None)
+    app.dependency_overrides[collections_routes.get_feature_counter] = (
+        lambda: (lambda session, table_name: 0)
+    )
     fake_repo = make_fake_write_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_repo
     # SQLite ne connaît ni SET LOCAL ROLE ni set_config : neutraliser le scope.
@@ -181,3 +186,27 @@ def test_writes_are_audited(env):
     with Session() as s:
         actions = set(s.scalars(select(AuditLog.action)))
     assert {"feature.create", "feature.update", "feature.delete"} <= actions
+
+
+def _feature_count(Session, collection_id="incidents"):
+    with Session() as s:
+        return get_collection(s, tenant_id="default", collection_id=collection_id).feature_count
+
+
+def test_create_and_delete_maintain_feature_count(env):
+    app, client, Session, admin, _r, _repo = env
+    _register(app, client, admin)
+    _as(app, admin)
+    assert _feature_count(Session) == 0
+    client.post("/collections/incidents/items", json=VALID)
+    assert _feature_count(Session) == 1
+    client.delete("/collections/incidents/items/1")
+    assert _feature_count(Session) == 0
+
+
+def test_put_does_not_change_feature_count(env):
+    app, client, Session, admin, _r, _repo = env
+    _register(app, client, admin)
+    _as(app, admin)
+    client.put("/collections/incidents/items/1", json=VALID)
+    assert _feature_count(Session) == 0  # remplacement, pas de création

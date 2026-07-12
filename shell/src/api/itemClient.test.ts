@@ -124,7 +124,7 @@ test("listLayerSources aggregates Martin vector sources and core collections", a
     http.get("https://core.test/collections", ({ request }) => {
       auth = request.headers.get("authorization");
       return HttpResponse.json({
-        collections: [{ id: "public.parcs", title: "Parcs" }],
+        collections: [{ id: "public.parcs", title: "Parcs", featureCount: 42 }],
       });
     }),
   );
@@ -138,6 +138,7 @@ test("listLayerSources aggregates Martin vector sources and core collections", a
     tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
     sourceLayer: "communes",
   });
+  expect(martin?.featureCount).toBeUndefined();
   // Martin source without a description falls back to its id for the title.
   expect(sources.find((s) => s.id === "routes")?.title).toBe("routes");
   const feature = sources.find((s) => s.id === "public.parcs");
@@ -146,6 +147,7 @@ test("listLayerSources aggregates Martin vector sources and core collections", a
     service: "core",
     kind: "feature",
     url: "https://core.test/collections/public.parcs/items",
+    featureCount: 42,
   });
 });
 

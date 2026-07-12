@@ -64,6 +64,7 @@ export type LayerSource = {
   tilesUrl?: string;
   sourceLayer?: string;
   url?: string;
+  featureCount?: number | null;
 };
 
 export type CollectionFieldType =

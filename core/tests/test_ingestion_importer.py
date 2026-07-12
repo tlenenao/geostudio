@@ -273,3 +273,17 @@ def test_shapefile_zip_import_creates_queryable_collection(env, tmp_path):
             text(f"SELECT nom FROM public.{result.collection_id} ORDER BY nom")
         ).scalars().all()
         assert rows == ["A", "B"]
+
+
+def test_geojson_import_stores_feature_count(env):
+    Session, tenant, user = env
+    with Session() as s:
+        result = run_import(
+            s, tenant_id=tenant.id, created_by=user.id, filename="villes.geojson",
+            content=GEOJSON, collection_title="Villes", lat_field=None, lon_field=None,
+        )
+        s.commit()
+    with Session() as s:
+        col = collections_repo.get_collection(
+            s, tenant_id=tenant.id, collection_id=result.collection_id)
+        assert col.feature_count == 2  # GEOJSON contient 2 features (A, B)
