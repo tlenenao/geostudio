@@ -13,7 +13,7 @@ RUN uv pip install --system --no-cache \
     "fastapi>=0.111" "uvicorn[standard]>=0.30" "sqlalchemy>=2.0" \
     "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" \
     "alembic>=1.13" "pyjwt[crypto]>=2.8" "boto3>=1.34" "python-multipart>=0.0.9" \
-    "mcp>=1.12" "shapely>=2.0" "procrastinate>=2.0"
+    "mcp>=1.12" "shapely>=2.0" "procrastinate>=2.0" "pyogrio>=0.9" "pyproj>=3.6"
 
 COPY app ./app
 
