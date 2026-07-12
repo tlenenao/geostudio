@@ -1015,18 +1015,52 @@
             "type": "string"
           },
           "initialValue": {
-            "title": "Initialvalue",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Initialvalue"
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "default": "string",
+            "enum": [
+              "string",
+              "number",
+              "bool",
+              "date",
+              "record",
+              "list"
+            ],
+            "title": "Type",
             "type": "string"
           }
         },
         "required": [
           "id",
-          "name",
-          "initialValue"
+          "name"
         ],
         "title": "Variable",
         "type": "object"
