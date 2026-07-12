@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Variable } from "../api/types";
 
-type SetVariable = (name: string, value: string) => void;
+type SetVariable = (name: string, value: unknown) => void;
 
-const VariablesContext = createContext<Record<string, string>>({});
+const VariablesContext = createContext<Record<string, unknown>>({});
 const SetVariableContext = createContext<SetVariable>(() => {});
 
 export function VariablesProvider({ variables, children }: { variables: Variable[]; children: ReactNode }) {
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
+  const [values, setValues] = useState<Record<string, unknown>>(() => {
+    const initial: Record<string, unknown> = {};
     for (const v of variables) initial[v.name] = v.initialValue;
     return initial;
   });
@@ -30,7 +30,7 @@ export function VariablesProvider({ variables, children }: { variables: Variable
     });
   }, [variables]);
 
-  function setVariable(name: string, value: string) {
+  function setVariable(name: string, value: unknown) {
     setValues((prev) => ({ ...prev, [name]: value }));
   }
 
@@ -41,7 +41,7 @@ export function VariablesProvider({ variables, children }: { variables: Variable
   );
 }
 
-export function useVariables(): Record<string, string> {
+export function useVariables(): Record<string, unknown> {
   return useContext(VariablesContext);
 }
 

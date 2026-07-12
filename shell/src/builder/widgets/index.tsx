@@ -12,8 +12,14 @@ import { registerFormWidget } from "./form";
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
 // bound source), then {{champ}} tokens from the record's properties (only
 // when a source is bound — an unbound Texte still shows {{champ}} verbatim).
-function interpolate(text: string, record: DataRecord | undefined, variables: Record<string, string>): string {
-  let out = text.replace(/\{\{\s*var:([\w.]+)\s*\}\}/g, (_, name: string) => variables[name] ?? "");
+function stringifyVariable(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function interpolate(text: string, record: DataRecord | undefined, variables: Record<string, unknown>): string {
+  let out = text.replace(/\{\{\s*var:([\w.]+)\s*\}\}/g, (_, name: string) => stringifyVariable(variables[name]));
   if (record) {
     out = out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
       const v = record.properties[key];

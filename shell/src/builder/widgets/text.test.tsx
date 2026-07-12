@@ -47,3 +47,28 @@ test("text resolves {{var:nom}} directly from ctx.variables, independent of a bo
   );
   expect(screen.getByText("Valeur : salut")).toBeInTheDocument();
 });
+
+test("text stringifies a number variable inserted via {{var:nom}}", () => {
+  const Text = getWidget("text")!.Component;
+  render(
+    <Text props={{ text: "Total : {{var:count}}" }} ctx={{ mode: "runtime", variables: { count: 42 } } as WidgetContext} />,
+  );
+  expect(screen.getByText("Total : 42")).toBeInTheDocument();
+});
+
+test("text stringifies a bool variable inserted via {{var:nom}}", () => {
+  const Text = getWidget("text")!.Component;
+  render(
+    <Text props={{ text: "Actif : {{var:gate}}" }} ctx={{ mode: "runtime", variables: { gate: true } } as WidgetContext} />,
+  );
+  expect(screen.getByText("Actif : true")).toBeInTheDocument();
+});
+
+test("text JSON-stringifies a record variable inserted via {{var:nom}}", () => {
+  const Text = getWidget("text")!.Component;
+  render(
+    <Text props={{ text: "Sélection : {{var:selected}}" }}
+      ctx={{ mode: "runtime", variables: { selected: { nom: "A" } } } as WidgetContext} />,
+  );
+  expect(screen.getByText('Sélection : {"nom":"A"}')).toBeInTheDocument();
+});
