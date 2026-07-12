@@ -97,3 +97,66 @@ test("does not show manual lat/lon selectors when a CSV's columns are auto-detec
   await waitFor(() => expect(screen.getByLabelText("Titre de la collection")).toBeInTheDocument());
   expect(screen.queryByLabelText("Colonne latitude")).not.toBeInTheDocument();
 });
+
+function gpkgFile(name = "villes.gpkg") {
+  return new File(["fake-gpkg-bytes"], name, { type: "application/geopackage+sqlite3" });
+}
+
+test("auto-selects the only layer of a GeoPackage without showing a picker", async () => {
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-3", key: "t/ghi-villes.gpkg" })),
+    http.put("https://minio.test/upload-3", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () =>
+      HttpResponse.json({ layers: [{ name: "villes", featureCount: 2, geometryType: "Point" }] })),
+    http.post("https://core.test/uploads", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string };
+      expect(body.layerName).toBe("villes");
+      return HttpResponse.json({ jobId: "job-3" });
+    }),
+    http.get("https://core.test/uploads/job-3", () =>
+      HttpResponse.json({ status: "done", errorMessage: null, collectionId: "ingest_x", itemId: "99" })),
+  );
+
+  render(<Harness><ImportFileButton /></Harness>);
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), gpkgFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByText("map-99")).toBeInTheDocument());
+});
+
+test("shows a layer picker for a multi-layer GeoPackage and imports the chosen layer", async () => {
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-4", key: "t/jkl-multi.gpkg" })),
+    http.put("https://minio.test/upload-4", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () =>
+      HttpResponse.json({
+        layers: [
+          { name: "villes", featureCount: 2, geometryType: "Point" },
+          { name: "routes", featureCount: 5, geometryType: "LineString" },
+        ],
+      })),
+    http.post("https://core.test/uploads", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string };
+      expect(body.layerName).toBe("routes");
+      return HttpResponse.json({ jobId: "job-4" });
+    }),
+    http.get("https://core.test/uploads/job-4", () =>
+      HttpResponse.json({ status: "done", errorMessage: null, collectionId: "ingest_y", itemId: "100" })),
+  );
+
+  render(<Harness><ImportFileButton /></Harness>);
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), gpkgFile("multi.gpkg"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Multi");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Couche à importer")).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Couche à importer"), "routes");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-100")).toBeInTheDocument());
+});
