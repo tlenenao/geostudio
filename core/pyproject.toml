@@ -17,6 +17,8 @@ dependencies = [
     "mcp>=1.12",
     "shapely>=2.0",
     "procrastinate>=2.0",
+    "pyogrio>=0.9",
+    "pyproj>=3.6",
 ]
 
 [dependency-groups]

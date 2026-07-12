@@ -1,16 +1,27 @@
-"""Parseurs GeoJSON et CSV+lat/lon (SP-6a) — pur Python, aucune dépendance
-GDAL (réservée à SP-6b pour GeoPackage/Shapefile). Chaque parseur produit un
-flux (géométrie shapely, propriétés) ; toute ligne/feature invalide lève
-IngestionParseError immédiatement (fail-fast, §5 de la spec SP-6a) — pas
-d'import partiel silencieux."""
+"""Parseurs GeoJSON, CSV+lat/lon (SP-6a) et GeoPackage/Shapefile zippé
+(SP-6b, via pyogrio — wheels manylinux, GDAL/GEOS/PROJ embarqués, aucun
+paquet système requis). Chaque parseur produit un flux (géométrie shapely,
+propriétés) ; toute ligne/feature/entité invalide lève IngestionParseError
+immédiatement (fail-fast) — pas d'import partiel silencieux."""
 import csv
 import io
 import json
+import math
+import tempfile
 from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 
+import numpy as np
+import pyogrio
+import pyproj
+import shapely
+from pyogrio.errors import DataLayerError, DataSourceError
+from pyproj.exceptions import CRSError
 from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform as shapely_transform
 
 
 class IngestionParseError(Exception):
@@ -19,6 +30,8 @@ class IngestionParseError(Exception):
 
 _LAT_NAMES = {"lat", "latitude", "y"}
 _LON_NAMES = {"lon", "lng", "longitude", "x"}
+_WGS84 = pyproj.CRS.from_epsg(4326)
+_OGR_ERRORS = (DataSourceError, DataLayerError)
 
 
 def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
@@ -105,3 +118,123 @@ def parse_csv_latlon(
             )
         properties = {k: v for k, v in row.items() if k not in (lat_field, lon_field)}
         yield Point(lon, lat), properties
+
+
+@dataclass
+class LayerInfo:
+    name: str
+    feature_count: int
+    geometry_type: str
+
+
+@contextmanager
+def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
+    with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
+        tmp.write(content)
+        tmp.flush()
+        yield tmp.name
+
+
+def _crs_transform(crs: str | None):
+    try:
+        src = pyproj.CRS.from_user_input(crs)
+    except CRSError as exc:
+        raise IngestionParseError(f"CRS manquant ou non reconnu : {crs!r}") from exc
+    if src == _WGS84:
+        return None
+    transformer = pyproj.Transformer.from_crs(src, _WGS84, always_xy=True)
+    return transformer.transform
+
+
+def _native_value(value):
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return value
+
+
+def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeometry, dict]]:
+    try:
+        raw_layers = pyogrio.list_layers(path)
+    except _OGR_ERRORS as exc:
+        raise IngestionParseError(f"fichier illisible : {exc}") from exc
+    available = [str(name) for name, _geom_type in raw_layers]
+    if layer_name is None:
+        if len(available) != 1:
+            raise IngestionParseError(
+                f"plusieurs couches disponibles ({', '.join(available)}) — précisez layerName"
+            )
+        layer_name = available[0]
+    elif layer_name not in available:
+        raise IngestionParseError(
+            f"couche '{layer_name}' introuvable — couches disponibles : {', '.join(available)}"
+        )
+    try:
+        meta, _index, geometry, field_data = pyogrio.raw.read(
+            path, layer=layer_name, force_2d=True
+        )
+    except _OGR_ERRORS as exc:
+        raise IngestionParseError(f"couche '{layer_name}' illisible : {exc}") from exc
+
+    transform = _crs_transform(meta["crs"])
+    fields = list(meta["fields"])
+
+    for i, wkb in enumerate(geometry):
+        if wkb is None:
+            raise IngestionParseError(f"entité {i} : géométrie manquante")
+        try:
+            geom = shapely.from_wkb(wkb)
+        except ShapelyError as exc:
+            raise IngestionParseError(f"entité {i} : géométrie invalide ({exc})") from exc
+        if transform is not None:
+            geom = shapely_transform(transform, geom)
+        if not geom.is_valid:
+            raise IngestionParseError(f"entité {i} : géométrie invalide")
+        properties = {
+            field: _native_value(field_data[j][i]) for j, field in enumerate(fields)
+        }
+        yield geom, properties
+
+
+def parse_gpkg(
+    content: bytes, layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    with _temp_file(content, ".gpkg") as path:
+        yield from _read_features(path, layer_name)
+
+
+def parse_shapefile_zip(
+    content: bytes, layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    with _temp_file(content, ".zip") as path:
+        yield from _read_features(f"/vsizip/{path}", layer_name)
+
+
+def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
+    lower = filename.lower()
+    if lower.endswith(".gpkg"):
+        suffix, wrap = ".gpkg", (lambda p: p)
+    elif lower.endswith(".zip"):
+        suffix, wrap = ".zip", (lambda p: f"/vsizip/{p}")
+    else:
+        raise ValueError(f"format non concerné par l'inspection : {filename}")
+    with _temp_file(content, suffix) as tmp_path:
+        path = wrap(tmp_path)
+        try:
+            raw_layers = pyogrio.list_layers(path)
+        except _OGR_ERRORS as exc:
+            raise IngestionParseError(f"fichier illisible : {exc}") from exc
+        layers = []
+        for name, _geom_type in raw_layers:
+            try:
+                info = pyogrio.read_info(path, layer=name)
+            except _OGR_ERRORS as exc:
+                raise IngestionParseError(f"couche '{name}' illisible : {exc}") from exc
+            layers.append(LayerInfo(
+                name=str(name), feature_count=int(info["features"]),
+                geometry_type=str(info["geometry_type"] or "Unknown"),
+            ))
+        if not layers:
+            raise IngestionParseError("aucune couche trouvée dans le fichier")
+        return layers
