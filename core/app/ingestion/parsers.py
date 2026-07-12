@@ -70,7 +70,10 @@ def parse_csv_latlon(
     except UnicodeDecodeError as exc:
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
     reader = csv.DictReader(io.StringIO(text))
-    fieldnames = reader.fieldnames or []
+    try:
+        fieldnames = reader.fieldnames or []
+    except csv.Error as exc:
+        raise IngestionParseError("en-tête CSV invalide ou mal formé") from exc
     if lat_field is None or lon_field is None:
         detected = detect_lat_lon_fields(fieldnames)
         if detected is None:
@@ -80,7 +83,18 @@ def parse_csv_latlon(
         lat_field, lon_field = detected
     if lat_field not in fieldnames or lon_field not in fieldnames:
         raise IngestionParseError(f"colonnes '{lat_field}'/'{lon_field}' absentes du CSV")
-    for i, row in enumerate(reader, start=1):
+    i = 0
+    row_iter = iter(reader)
+    while True:
+        try:
+            row = next(row_iter)
+        except StopIteration:
+            break
+        except csv.Error as exc:
+            raise IngestionParseError(
+                f"ligne {i + 1} : champ CSV trop volumineux ou mal formé"
+            ) from exc
+        i += 1
         try:
             lat = float(row[lat_field])
             lon = float(row[lon_field])
