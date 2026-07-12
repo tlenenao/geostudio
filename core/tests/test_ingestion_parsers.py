@@ -75,3 +75,30 @@ def test_parse_csv_latlon_raises_when_columns_cannot_be_detected():
     content = b"nom,valeur\nA,1\n"
     with pytest.raises(IngestionParseError, match="introuvables"):
         list(parse_csv_latlon(content, None, None))
+
+
+def test_parse_geojson_rejects_unrecognized_geometry_type():
+    content = (
+        b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+        b'"properties":{},"geometry":{"type":"Unknown","coordinates":[1,2]}}]}'
+    )
+    with pytest.raises(IngestionParseError, match="feature 0"):
+        list(parse_geojson(content))
+
+
+def test_parse_geojson_rejects_non_dict_feature():
+    content = b'{"type":"FeatureCollection","features":[1,2,3]}'
+    with pytest.raises(IngestionParseError, match="feature 0 : entrée invalide"):
+        list(parse_geojson(content))
+
+
+def test_parse_geojson_rejects_invalid_utf8_content():
+    content = b'{"type":"FeatureCollection","nom":"Cass\xe9", "features":[]}'
+    with pytest.raises(IngestionParseError, match="encodage invalide"):
+        list(parse_geojson(content))
+
+
+def test_parse_csv_latlon_rejects_non_utf8_content():
+    content = "nom,lat,lon\nCassé,48.85,2.35\n".encode("latin-1")
+    with pytest.raises(IngestionParseError, match="encodage invalide"):
+        list(parse_csv_latlon(content, None, None))
