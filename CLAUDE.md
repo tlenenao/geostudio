@@ -92,13 +92,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell
 cd shell && npm ci
-npm run test         # Vitest (60 fichiers, 394 tests)
-npm run e2e          # Playwright (17 specs, VITE_AUTH_MODE=mock)
+npm run test         # Vitest (61 fichiers, 398 tests)
+npm run e2e          # Playwright (18 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 302 tests (272 exécutés + 30 marqués postgis, nécessitent docker)
+uv run pytest        # 340 tests (302 exécutés + 38 marqués postgis, nécessitent docker)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -209,8 +209,38 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   variable record → `$expr` sur une prop non-Texte). PR #23 (dev→main)
   ouverte, CI verte après correction d'un drift attendu (`core-schema.d.ts`
   régénéré depuis l'OpenAPI, `Variable.type`/`initialValue` manquants) —
-  fusion à la main. **SP-5 est clos.** Prochain chantier : **SP-6**
-  (ingestion v1 — fichier→carte, cf. feuille de route §SP-6).
+  fusion à la main. **SP-5 est clos.**
+- **SP-6a livré** (2026-07-12) : infra jobs (`procrastinate`, file Postgres,
+  service `worker` séparé dans le compose) + ingestion GeoJSON/CSV — un
+  utilisateur authentifié (pas de restriction admin) uploade un fichier via
+  URL S3 présignée (le cœur ne voit jamais les octets, arbitrage A6), le
+  worker parse en pur Python (`shapely`, zéro GDAL — réservé à SP-6b),
+  fail-fast strict (`IngestionParseError`, jamais d'exception brute qui
+  fuite — 7 chemins de fuite fermés en revue : type de géométrie inconnu,
+  encodage non-UTF8, `features`/`properties` malformés, champ CSV
+  surdimensionné), crée une table PostGIS + l'enregistre comme collection
+  (mêmes fonctions internes qu'un admin enregistrant à la main,
+  `app.collections`/`app.configs`/`app.items`) + un item carte, sans
+  intervention manuelle. Shell : bouton « Importer un fichier »
+  (présignation → upload → poll du job → redirection carte, détection
+  auto des colonnes lat/lon CSV avec repli manuel). Exécuté en
+  subagent-driven-development (6 tâches, revue par tâche + revue finale de
+  branche modèle opus). La revue finale a trouvé et fait corriger 3 défauts
+  d'intégration invisibles à l'échelle d'une tâche : lignes importées
+  héritant `tenant_id='default'` au lieu du tenant réel de l'uploader
+  (invisible sous RLS pour tout tenant non-"default"), aucune trace d'audit
+  pour la collection/l'item créés par le worker, clé d'upload S3 non
+  vérifiée par préfixe tenant (risque confused-deputy) — plus un bug de
+  test préexistant et sans rapport découvert en validant les tests
+  `postgis` pour de vrai contre un conteneur PostGIS jetable plutôt que de
+  se fier au skip local (`str(engine.url)` masque le mot de passe).
+  **302 tests cœur** (272+30 skipped avant → 302 passed/38 skipped, tests
+  postgis exécutés réellement en local pour la validation, skippés par
+  défaut sans `CORE_TEST_DATABASE_URL`), **398 tests shell**, **18 specs
+  E2E vertes** (17 + `ingestion.spec.ts`). Poussé sur `dev`. **SP-6a est
+  clos.** Prochain chantier : **SP-6b** (GeoPackage/Shapefile via
+  `pyogrio`, cf. feuille de route §SP-6) ou périmètre suivant à
+  re-cadrer.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
