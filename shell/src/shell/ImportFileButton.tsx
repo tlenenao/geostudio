@@ -5,7 +5,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Dialog } from "../ui/dialog";
 
-type Phase = "form" | "uploading" | "polling" | "error";
+type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
+type LayerInfo = { name: string; featureCount: number; geometryType: string };
 
 const LAT_NAMES = ["lat", "latitude", "y"];
 const LON_NAMES = ["lon", "lng", "longitude", "x"];
@@ -17,6 +18,11 @@ function detectLatLon(headers: string[]): boolean {
   return hasLat && hasLon;
 }
 
+function isLayeredFormat(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return lower.endsWith(".gpkg") || lower.endsWith(".zip");
+}
+
 export function ImportFileButton() {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -24,6 +30,9 @@ export function ImportFileButton() {
   const [csvHeaders, setCsvHeaders] = useState<string[] | null>(null);
   const [latField, setLatField] = useState("");
   const [lonField, setLonField] = useState("");
+  const [uploadedKey, setUploadedKey] = useState<string | null>(null);
+  const [layers, setLayers] = useState<LayerInfo[]>([]);
+  const [layerName, setLayerName] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const client = useItemClient();
@@ -36,6 +45,9 @@ export function ImportFileButton() {
     setCsvHeaders(null);
     setLatField("");
     setLonField("");
+    setUploadedKey(null);
+    setLayers([]);
+    setLayerName("");
     setPhase("form");
     setError("");
   }
@@ -77,6 +89,17 @@ export function ImportFileButton() {
     }
   }
 
+  async function startJob(key: string, chosenLayerName: string | undefined) {
+    const { jobId } = await client.createIngestionJob({
+      key, filename: file!.name, collectionTitle: title.trim(),
+      latField: needsManualLatLon ? latField : undefined,
+      lonField: needsManualLatLon ? lonField : undefined,
+      layerName: chosenLayerName,
+    });
+    setPhase("polling");
+    await poll(jobId);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!file || !title.trim()) return;
@@ -88,13 +111,31 @@ export function ImportFileButton() {
         file.name, file.type || "application/octet-stream",
       );
       await client.uploadToPresignedUrl(uploadUrl, file);
-      const { jobId } = await client.createIngestionJob({
-        key, filename: file.name, collectionTitle: title.trim(),
-        latField: needsManualLatLon ? latField : undefined,
-        lonField: needsManualLatLon ? lonField : undefined,
-      });
-      setPhase("polling");
-      await poll(jobId);
+      if (isLayeredFormat(file.name)) {
+        const { layers: found } = await client.inspectUpload({ key, filename: file.name });
+        if (found.length > 1) {
+          setUploadedKey(key);
+          setLayers(found);
+          setPhase("selecting-layer");
+          return;
+        }
+        await startJob(key, found[0]?.name);
+        return;
+      }
+      await startJob(key, undefined);
+    } catch {
+      setPhase("error");
+      setError("Échec de l'import.");
+    }
+  }
+
+  async function confirmLayer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadedKey || !layerName) return;
+    setPhase("uploading");
+    setError("");
+    try {
+      await startJob(uploadedKey, layerName);
     } catch {
       setPhase("error");
       setError("Échec de l'import.");
@@ -109,64 +150,93 @@ export function ImportFileButton() {
         Importer un fichier
       </Button>
       <Dialog open={open} onClose={close} title="Importer un fichier">
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            Fichier à importer
-            <input
-              aria-label="Fichier à importer"
-              type="file"
-              accept=".geojson,.json,.csv"
-              onChange={onFileChange}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Titre de la collection
-            <Input
-              aria-label="Titre de la collection"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
-          {needsManualLatLon && (
-            <>
-              <label className="flex flex-col gap-1 text-sm">
-                Colonne latitude
-                <select
-                  aria-label="Colonne latitude"
-                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
-                  value={latField}
-                  onChange={(e) => setLatField(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Colonne longitude
-                <select
-                  aria-label="Colonne longitude"
-                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
-                  value={lonField}
-                  onChange={(e) => setLonField(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </label>
-            </>
-          )}
-          {phase === "error" && (
-            <p role="alert" className="text-sm text-red-600">{error}</p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={close}>
-              Annuler
-            </Button>
-            <Button type="submit" size="sm" disabled={busy}>
-              {phase === "uploading" ? "Envoi…" : phase === "polling" ? "Import en cours…" : "Importer"}
-            </Button>
-          </div>
-        </form>
+        {phase === "selecting-layer" ? (
+          <form onSubmit={confirmLayer} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              Couche à importer
+              <select
+                aria-label="Couche à importer"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={layerName}
+                onChange={(e) => setLayerName(e.target.value)}
+              >
+                <option value="">—</option>
+                {layers.map((l) => (
+                  <option key={l.name} value={l.name}>
+                    {l.name} ({l.featureCount} entités)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={close}>
+                Annuler
+              </Button>
+              <Button type="submit" size="sm" disabled={!layerName}>
+                Continuer
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              Fichier à importer
+              <input
+                aria-label="Fichier à importer"
+                type="file"
+                accept=".geojson,.json,.csv,.gpkg,.zip"
+                onChange={onFileChange}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Titre de la collection
+              <Input
+                aria-label="Titre de la collection"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            {needsManualLatLon && (
+              <>
+                <label className="flex flex-col gap-1 text-sm">
+                  Colonne latitude
+                  <select
+                    aria-label="Colonne latitude"
+                    className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                    value={latField}
+                    onChange={(e) => setLatField(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  Colonne longitude
+                  <select
+                    aria-label="Colonne longitude"
+                    className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                    value={lonField}
+                    onChange={(e) => setLonField(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
+            {phase === "error" && (
+              <p role="alert" className="text-sm text-red-600">{error}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={close}>
+                Annuler
+              </Button>
+              <Button type="submit" size="sm" disabled={busy}>
+                {phase === "uploading" ? "Envoi…" : phase === "polling" ? "Import en cours…" : "Importer"}
+              </Button>
+            </div>
+          </form>
+        )}
       </Dialog>
     </>
   );

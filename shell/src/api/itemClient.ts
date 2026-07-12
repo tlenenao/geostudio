@@ -466,6 +466,12 @@ export function createItemClient(opts: {
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     },
 
+    async inspectUpload(input: { key: string; filename: string }) {
+      return request<{
+        layers: { name: string; featureCount: number; geometryType: string }[];
+      }>("POST", "/uploads/inspect", input);
+    },
+
     async createIngestionJob(input) {
       return request<{ jobId: string }>("POST", "/uploads", input);
     },
