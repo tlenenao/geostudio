@@ -428,6 +428,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload Job */
+        post: operations["create_upload_job_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Upload */
+        post: operations["inspect_upload_uploads_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Presign Upload */
+        post: operations["presign_upload_uploads_presign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Upload Job */
+        get: operations["get_upload_job_uploads__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -598,6 +666,49 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** IngestionJobCreate */
+        IngestionJobCreate: {
+            /** Collectiontitle */
+            collectionTitle: string;
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+            /** Latfield */
+            latField?: string | null;
+            /** Layername */
+            layerName?: string | null;
+            /** Lonfield */
+            lonField?: string | null;
+        };
+        /** IngestionJobCreated */
+        IngestionJobCreated: {
+            /** Jobid */
+            jobId: string;
+        };
+        /** IngestionJobStatus */
+        IngestionJobStatus: {
+            /** Collectionid */
+            collectionId: string | null;
+            /** Errormessage */
+            errorMessage: string | null;
+            /** Itemid */
+            itemId: string | null;
+            /** Status */
+            status: string;
+        };
+        /** InspectRequest */
+        InspectRequest: {
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+        };
+        /** InspectResponse */
+        InspectResponse: {
+            /** Layers */
+            layers: components["schemas"]["LayerInfoOut"][];
+        };
         /** ItemPage */
         ItemPage: {
             /** Items */
@@ -640,6 +751,15 @@ export interface components {
             keywords?: string[] | null;
             /** Title */
             title?: string | null;
+        };
+        /** LayerInfoOut */
+        LayerInfoOut: {
+            /** Featurecount */
+            featureCount: number;
+            /** Geometrytype */
+            geometryType: string;
+            /** Name */
+            name: string;
         };
         /** Layout */
         Layout: {
@@ -771,6 +891,20 @@ export interface components {
             layout: components["schemas"]["Layout"];
             /** Name */
             name: string;
+        };
+        /** PresignRequest */
+        PresignRequest: {
+            /** Contenttype */
+            contentType: string;
+            /** Filename */
+            filename: string;
+        };
+        /** PresignResponse */
+        PresignResponse: {
+            /** Key */
+            key: string;
+            /** Uploadurl */
+            uploadUrl: string;
         };
         /** RevisionInfo */
         RevisionInfo: {
@@ -2146,6 +2280,144 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    create_upload_job_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestionJobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_upload_uploads_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presign_upload_uploads_presign_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_upload_job_uploads__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

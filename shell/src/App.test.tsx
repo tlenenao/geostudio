@@ -16,6 +16,9 @@ vi.mock("./auth/useAuth", () => ({ useAuth: () => authState }));
 vi.mock("./shell/NewItemButton", () => ({
   NewItemButton: () => <button>Nouveau</button>,
 }));
+vi.mock("./shell/ImportFileButton", () => ({
+  ImportFileButton: () => <button>Importer un fichier</button>,
+}));
 const { AppLayout } = await import("./shell/AppLayout");
 
 test("shell layout shows the GeoStudio brand", () => {

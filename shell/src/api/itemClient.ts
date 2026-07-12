@@ -454,5 +454,35 @@ export function createItemClient(opts: {
         `${coreUrl}/collections/${collectionId}/items/${fid}`, "DELETE", getToken(),
       );
     },
+
+    async presignUpload(filename: string, contentType: string) {
+      return request<{ uploadUrl: string; key: string }>(
+        "POST", "/uploads/presign", { filename, contentType },
+      );
+    },
+
+    async uploadToPresignedUrl(url: string, file: File) {
+      const res = await fetch(url, { method: "PUT", body: file });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    },
+
+    async inspectUpload(input: { key: string; filename: string }) {
+      return request<{
+        layers: { name: string; featureCount: number; geometryType: string }[];
+      }>("POST", "/uploads/inspect", input);
+    },
+
+    async createIngestionJob(input) {
+      return request<{ jobId: string }>("POST", "/uploads", input);
+    },
+
+    async getIngestionJob(jobId: string) {
+      return request<{
+        status: "pending" | "running" | "done" | "error";
+        errorMessage: string | null;
+        collectionId: string | null;
+        itemId: string | null;
+      }>("GET", `/uploads/${jobId}`);
+    },
   };
 }
