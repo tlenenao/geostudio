@@ -238,9 +238,50 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   postgis exécutés réellement en local pour la validation, skippés par
   défaut sans `CORE_TEST_DATABASE_URL`), **398 tests shell**, **18 specs
   E2E vertes** (17 + `ingestion.spec.ts`). Poussé sur `dev`. **SP-6a est
-  clos.** Prochain chantier : **SP-6b** (GeoPackage/Shapefile via
-  `pyogrio`, cf. feuille de route §SP-6) ou périmètre suivant à
-  re-cadrer.
+  clos.**
+- **SP-6b livré et clos** (2026-07-12) : ingestion GeoPackage/Shapefile
+  zippé — deux nouveaux parseurs (`parse_gpkg`, `parse_shapefile_zip`, via
+  `pyogrio`, wheels manylinux, aucun paquet système), CRS source reprojeté
+  automatiquement en WGS84 (`pyproj`, tout CRS résolu) avec fail-fast sur
+  CRS absent/non reconnu/non transformable ; `ingestion_jobs.layer_name`
+  (nullable) + `POST /uploads/inspect` (liste les couches d'un fichier
+  juste après l'upload S3, avant la création du job) ; côté shell,
+  sélection de couche **forcée** dès qu'il y en a plus d'une (jamais
+  d'auto-sélection de la première) — un import mono-couche saute
+  directement à l'exécution du job. Critère **M4** de la feuille de route
+  (GPKG 50 000 entités → carte en <5 min) validé empiriquement : **~1,7-1,8s
+  mesurés contre un PostGIS jetable réel**, ~170x sous le budget de 300s
+  (insertion PostGIS non batchée, arbitrage YAGNI confirmé par benchmark).
+  Exécuté en subagent-driven-development (7 tâches, revue par tâche + revue
+  finale de branche modèle opus). Un défaut Important trouvé et corrigé en
+  cours de route (Task 2) : `_crs_transform` ne capturait que l'échec de
+  `pyproj.CRS.from_user_input`, laissant fuiter un `ProjError` brut de
+  `Transformer.from_crs` sur un CRS résolu mais sans chemin de
+  transformation vers WGS84 (`CRSError` est une sous-classe de `ProjError`,
+  except élargi). Revue finale : aucun Critical/Important — `layer_name`
+  tracé bout-en-bout sans perte sur les 7 tâches, garde tenant de
+  `/uploads/inspect` identique à celle de `/uploads` (SP-6a), fermeture des
+  fichiers temporaires vérifiée sur tous les chemins d'erreur des
+  parseurs, `pyogrio`/`pyproj` synchronisés `pyproject.toml`+`Dockerfile`+
+  `uv.lock`. 4 Minor notés, non bloquants : pas de limite de
+  taille/décompression sur l'upload gpkg/zip (risque zip-bomb sur le
+  worker partagé, suivi recommandé), `numpy` importé directement sans
+  entrée `pyproject.toml` dédiée (transitif via `pyogrio`, choix assumé),
+  commentaire « confused deputy » absent sur la garde tenant d'
+  `inspect_upload`, cas 0-couche non testé côté shell (dormant —
+  `list_layers` lève avant de pouvoir retourner `[]`). **Défaut
+  pré-existant et sans rapport découvert au passage** (hors scope, non
+  aggravé par cette branche) : `core/app/configs/models.py` (ORM `Config`)
+  ne déclare pas `tenant_id`, alors que la migration `0002_tenants.py`
+  l'ajoute en `NOT NULL` via DDL brut — invisible aux tests postgis du
+  dépôt (tous construisent leur schéma via `Base.metadata.create_all`,
+  jamais un vrai `alembic upgrade head`) ; un déploiement réel migré via
+  Alembic puis écrivant `configs` via l'ORM lèverait une `IntegrityError`.
+  À traiter séparément. **326 tests cœur passed/43 skipped** (sans DB ;
+  369 passed avec `CORE_TEST_DATABASE_URL` contre un PostGIS jetable),
+  **400 tests shell**, **19 specs E2E vertes** (18 + `ingestion-gpkg.
+  spec.ts`). Poussé sur `dev`. Prochain chantier : périmètre suivant à
+  re-cadrer (cf. feuille de route, SP-7 ou re-priorisation).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
