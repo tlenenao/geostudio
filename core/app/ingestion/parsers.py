@@ -8,6 +8,7 @@ import io
 import json
 from collections.abc import Iterator
 
+from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 
@@ -31,19 +32,25 @@ def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
 
 def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     try:
-        data = json.loads(content)
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
+    try:
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise IngestionParseError(f"JSON invalide : {exc}") from exc
     if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
         raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
     features = data.get("features", [])
     for i, feature in enumerate(features):
+        if not isinstance(feature, dict):
+            raise IngestionParseError(f"feature {i} : entrée invalide")
         geometry = feature.get("geometry")
         if geometry is None:
             raise IngestionParseError(f"feature {i} : géométrie manquante")
         try:
             geom = shape(geometry)
-        except (ValueError, AttributeError, KeyError, TypeError) as exc:
+        except (ValueError, AttributeError, KeyError, TypeError, ShapelyError) as exc:
             raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
         if not geom.is_valid:
             raise IngestionParseError(f"feature {i} : géométrie invalide")
@@ -53,7 +60,11 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
 def parse_csv_latlon(
     content: bytes, lat_field: str | None, lon_field: str | None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
-    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
+    reader = csv.DictReader(io.StringIO(text))
     fieldnames = reader.fieldnames or []
     if lat_field is None or lon_field is None:
         detected = detect_lat_lon_fields(fieldnames)
