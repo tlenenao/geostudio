@@ -143,7 +143,7 @@ def run_import(
         session, tenant_id=tenant_id, owner_id=created_by, table_name=table_name,
         title=collection_title, description="", is_public=False,
         pk_column=info.pk_column, geometry_column=info.geometry_column,
-        geometry_type=info.geometry_type, srid=info.srid,
+        geometry_type=info.geometry_type, srid=info.srid, feature_count=len(rows),
     )
     write_audit(
         session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
