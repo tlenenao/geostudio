@@ -15,6 +15,10 @@ dependencies = [
     "boto3>=1.34",
     "python-multipart>=0.0.9",
     "mcp>=1.12",
+    "shapely>=2.0",
+    "procrastinate>=2.0",
+    "pyogrio>=0.9",
+    "pyproj>=3.6",
 ]
 
 [dependency-groups]
@@ -45,6 +49,7 @@ layers = [
     "app.main",
     "app.mcp",
     "app.public",
+    "app.ingestion",
     "app.features",
     "app.collections",
     "app.configs",
@@ -63,4 +68,5 @@ ignore_imports = [
     "app.db -> app.tenants.models",
     "app.db -> app.users.models",
     "app.db -> app.sharing.models",
+    "app.db -> app.ingestion.models",
 ]

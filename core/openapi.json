@@ -369,6 +369,165 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IngestionJobCreate": {
+        "properties": {
+          "collectionTitle": {
+            "minLength": 1,
+            "title": "Collectiontitle",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "key": {
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "latField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latfield"
+          },
+          "layerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layername"
+          },
+          "lonField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lonfield"
+          }
+        },
+        "required": [
+          "key",
+          "filename",
+          "collectionTitle"
+        ],
+        "title": "IngestionJobCreate",
+        "type": "object"
+      },
+      "IngestionJobCreated": {
+        "properties": {
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "title": "IngestionJobCreated",
+        "type": "object"
+      },
+      "IngestionJobStatus": {
+        "properties": {
+          "collectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionid"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "itemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemid"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "errorMessage",
+          "collectionId",
+          "itemId"
+        ],
+        "title": "IngestionJobStatus",
+        "type": "object"
+      },
+      "InspectRequest": {
+        "properties": {
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "key": {
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "filename"
+        ],
+        "title": "InspectRequest",
+        "type": "object"
+      },
+      "InspectResponse": {
+        "properties": {
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/LayerInfoOut"
+            },
+            "title": "Layers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "layers"
+        ],
+        "title": "InspectResponse",
+        "type": "object"
+      },
       "ItemPage": {
         "properties": {
           "items": {
@@ -518,6 +677,29 @@
           }
         },
         "title": "ItemUpdatePatch",
+        "type": "object"
+      },
+      "LayerInfoOut": {
+        "properties": {
+          "featureCount": {
+            "title": "Featurecount",
+            "type": "integer"
+          },
+          "geometryType": {
+            "title": "Geometrytype",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "featureCount",
+          "geometryType"
+        ],
+        "title": "LayerInfoOut",
         "type": "object"
       },
       "Layout": {
@@ -900,6 +1082,46 @@
           "layout"
         ],
         "title": "Page",
+        "type": "object"
+      },
+      "PresignRequest": {
+        "properties": {
+          "contentType": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "contentType"
+        ],
+        "title": "PresignRequest",
+        "type": "object"
+      },
+      "PresignResponse": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "uploadUrl": {
+            "title": "Uploadurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadUrl",
+          "key"
+        ],
+        "title": "PresignResponse",
         "type": "object"
       },
       "RevisionInfo": {
@@ -2992,6 +3214,205 @@
           }
         },
         "summary": "Get App Config Schema"
+      }
+    },
+    "/uploads": {
+      "post": {
+        "operationId": "create_upload_job_uploads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionJobCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Upload Job"
+      }
+    },
+    "/uploads/inspect": {
+      "post": {
+        "operationId": "inspect_upload_uploads_inspect_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Upload"
+      }
+    },
+    "/uploads/presign": {
+      "post": {
+        "operationId": "presign_upload_uploads_presign_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Presign Upload"
+      }
+    },
+    "/uploads/{job_id}": {
+      "get": {
+        "operationId": "get_upload_job_uploads__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Upload Job"
       }
     },
     "/users": {

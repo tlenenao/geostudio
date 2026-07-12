@@ -92,13 +92,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell
 cd shell && npm ci
-npm run test         # Vitest (60 fichiers, 394 tests)
-npm run e2e          # Playwright (17 specs, VITE_AUTH_MODE=mock)
+npm run test         # Vitest (61 fichiers, 398 tests)
+npm run e2e          # Playwright (18 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 302 tests (272 exécutés + 30 marqués postgis, nécessitent docker)
+uv run pytest        # 340 tests (302 exécutés + 38 marqués postgis, nécessitent docker)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -209,8 +209,79 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   variable record → `$expr` sur une prop non-Texte). PR #23 (dev→main)
   ouverte, CI verte après correction d'un drift attendu (`core-schema.d.ts`
   régénéré depuis l'OpenAPI, `Variable.type`/`initialValue` manquants) —
-  fusion à la main. **SP-5 est clos.** Prochain chantier : **SP-6**
-  (ingestion v1 — fichier→carte, cf. feuille de route §SP-6).
+  fusion à la main. **SP-5 est clos.**
+- **SP-6a livré** (2026-07-12) : infra jobs (`procrastinate`, file Postgres,
+  service `worker` séparé dans le compose) + ingestion GeoJSON/CSV — un
+  utilisateur authentifié (pas de restriction admin) uploade un fichier via
+  URL S3 présignée (le cœur ne voit jamais les octets, arbitrage A6), le
+  worker parse en pur Python (`shapely`, zéro GDAL — réservé à SP-6b),
+  fail-fast strict (`IngestionParseError`, jamais d'exception brute qui
+  fuite — 7 chemins de fuite fermés en revue : type de géométrie inconnu,
+  encodage non-UTF8, `features`/`properties` malformés, champ CSV
+  surdimensionné), crée une table PostGIS + l'enregistre comme collection
+  (mêmes fonctions internes qu'un admin enregistrant à la main,
+  `app.collections`/`app.configs`/`app.items`) + un item carte, sans
+  intervention manuelle. Shell : bouton « Importer un fichier »
+  (présignation → upload → poll du job → redirection carte, détection
+  auto des colonnes lat/lon CSV avec repli manuel). Exécuté en
+  subagent-driven-development (6 tâches, revue par tâche + revue finale de
+  branche modèle opus). La revue finale a trouvé et fait corriger 3 défauts
+  d'intégration invisibles à l'échelle d'une tâche : lignes importées
+  héritant `tenant_id='default'` au lieu du tenant réel de l'uploader
+  (invisible sous RLS pour tout tenant non-"default"), aucune trace d'audit
+  pour la collection/l'item créés par le worker, clé d'upload S3 non
+  vérifiée par préfixe tenant (risque confused-deputy) — plus un bug de
+  test préexistant et sans rapport découvert en validant les tests
+  `postgis` pour de vrai contre un conteneur PostGIS jetable plutôt que de
+  se fier au skip local (`str(engine.url)` masque le mot de passe).
+  **302 tests cœur** (272+30 skipped avant → 302 passed/38 skipped, tests
+  postgis exécutés réellement en local pour la validation, skippés par
+  défaut sans `CORE_TEST_DATABASE_URL`), **398 tests shell**, **18 specs
+  E2E vertes** (17 + `ingestion.spec.ts`). Poussé sur `dev`. **SP-6a est
+  clos.**
+- **SP-6b livré et clos** (2026-07-12) : ingestion GeoPackage/Shapefile
+  zippé — deux nouveaux parseurs (`parse_gpkg`, `parse_shapefile_zip`, via
+  `pyogrio`, wheels manylinux, aucun paquet système), CRS source reprojeté
+  automatiquement en WGS84 (`pyproj`, tout CRS résolu) avec fail-fast sur
+  CRS absent/non reconnu/non transformable ; `ingestion_jobs.layer_name`
+  (nullable) + `POST /uploads/inspect` (liste les couches d'un fichier
+  juste après l'upload S3, avant la création du job) ; côté shell,
+  sélection de couche **forcée** dès qu'il y en a plus d'une (jamais
+  d'auto-sélection de la première) — un import mono-couche saute
+  directement à l'exécution du job. Critère **M4** de la feuille de route
+  (GPKG 50 000 entités → carte en <5 min) validé empiriquement : **~1,7-1,8s
+  mesurés contre un PostGIS jetable réel**, ~170x sous le budget de 300s
+  (insertion PostGIS non batchée, arbitrage YAGNI confirmé par benchmark).
+  Exécuté en subagent-driven-development (7 tâches, revue par tâche + revue
+  finale de branche modèle opus). Un défaut Important trouvé et corrigé en
+  cours de route (Task 2) : `_crs_transform` ne capturait que l'échec de
+  `pyproj.CRS.from_user_input`, laissant fuiter un `ProjError` brut de
+  `Transformer.from_crs` sur un CRS résolu mais sans chemin de
+  transformation vers WGS84 (`CRSError` est une sous-classe de `ProjError`,
+  except élargi). Revue finale : aucun Critical/Important — `layer_name`
+  tracé bout-en-bout sans perte sur les 7 tâches, garde tenant de
+  `/uploads/inspect` identique à celle de `/uploads` (SP-6a), fermeture des
+  fichiers temporaires vérifiée sur tous les chemins d'erreur des
+  parseurs, `pyogrio`/`pyproj` synchronisés `pyproject.toml`+`Dockerfile`+
+  `uv.lock`. 4 Minor notés, non bloquants : pas de limite de
+  taille/décompression sur l'upload gpkg/zip (risque zip-bomb sur le
+  worker partagé, suivi recommandé), `numpy` importé directement sans
+  entrée `pyproject.toml` dédiée (transitif via `pyogrio`, choix assumé),
+  commentaire « confused deputy » absent sur la garde tenant d'
+  `inspect_upload`, cas 0-couche non testé côté shell (dormant —
+  `list_layers` lève avant de pouvoir retourner `[]`). **Défaut
+  pré-existant et sans rapport découvert au passage** (hors scope, non
+  aggravé par cette branche) : `core/app/configs/models.py` (ORM `Config`)
+  ne déclare pas `tenant_id`, alors que la migration `0002_tenants.py`
+  l'ajoute en `NOT NULL` via DDL brut — invisible aux tests postgis du
+  dépôt (tous construisent leur schéma via `Base.metadata.create_all`,
+  jamais un vrai `alembic upgrade head`) ; un déploiement réel migré via
+  Alembic puis écrivant `configs` via l'ORM lèverait une `IntegrityError`.
+  À traiter séparément. **326 tests cœur passed/43 skipped** (sans DB ;
+  369 passed avec `CORE_TEST_DATABASE_URL` contre un PostGIS jetable),
+  **400 tests shell**, **19 specs E2E vertes** (18 + `ingestion-gpkg.
+  spec.ts`). Poussé sur `dev`. Prochain chantier : périmètre suivant à
+  re-cadrer (cf. feuille de route, SP-7 ou re-priorisation).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

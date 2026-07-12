@@ -116,6 +116,21 @@ export interface ItemClient {
   createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }>;
   updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
   deleteFeature(collectionId: string, fid: string): Promise<void>;
+  presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
+  uploadToPresignedUrl(url: string, file: File): Promise<void>;
+  inspectUpload(input: { key: string; filename: string }): Promise<{
+    layers: { name: string; featureCount: number; geometryType: string }[];
+  }>;
+  createIngestionJob(input: {
+    key: string; filename: string; collectionTitle: string;
+    latField?: string; lonField?: string; layerName?: string;
+  }): Promise<{ jobId: string }>;
+  getIngestionJob(jobId: string): Promise<{
+    status: "pending" | "running" | "done" | "error";
+    errorMessage: string | null;
+    collectionId: string | null;
+    itemId: string | null;
+  }>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";

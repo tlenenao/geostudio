@@ -11,6 +11,7 @@ from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
+from app.ingestion import routes as ingestion_routes
 from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(schemas_router)
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
+    app.include_router(ingestion_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
@@ -65,6 +67,15 @@ def create_app() -> FastAPI:
             endpoint_url=s3_endpoint, access_key=s3_access_key,
             secret_key=s3_secret_key, bucket=s3_bucket,
         )
+
+    s3_uploads_bucket = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
+    if s3_endpoint and s3_access_key and s3_secret_key:
+        from app.ingestion.storage import make_s3_client
+
+        app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint, access_key=s3_access_key, secret_key=s3_secret_key,
+        )
+        app.dependency_overrides[ingestion_routes.get_uploads_bucket] = lambda: s3_uploads_bucket
 
     @app.get("/health")
     def health() -> dict[str, str]:
