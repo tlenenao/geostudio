@@ -51,6 +51,7 @@ def pg_app(pg_engine):
 def test_full_crud_roundtrip(pg_app):
     client = pg_app
     assert client.post("/collections", json={"tableName": "demo_incidents"}).status_code == 201
+    assert client.get("/collections/demo_incidents").json()["featureCount"] == 0
     r = client.post("/collections/demo_incidents/items", json={
         "type": "Feature", "properties": {"titre": "Nid de poule"},
         "geometry": {"type": "Point", "coordinates": [1.85, 45.27]}})

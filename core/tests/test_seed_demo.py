@@ -57,9 +57,9 @@ def test_seed_registers_demo_collections(pg_core):
     assert set(created) == {"incidents", "points_interet"}
     with pg_core() as session:
         rows = session.execute(text(
-            "SELECT id, is_public, editable FROM collections ORDER BY id")).all()
-    assert [(r[0], r[1], r[2]) for r in rows] == [
-        ("incidents", True, True), ("points_interet", True, True)]
+            "SELECT id, is_public, editable, feature_count FROM collections ORDER BY id")).all()
+    assert [(r[0], r[1], r[2], r[3]) for r in rows] == [
+        ("incidents", True, True, 0), ("points_interet", True, True, 0)]
 
 
 def test_seed_is_idempotent(pg_core):
