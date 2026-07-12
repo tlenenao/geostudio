@@ -445,6 +445,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uploads/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Upload */
+        post: operations["inspect_upload_uploads_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/uploads/presign": {
         parameters: {
             query?: never;
@@ -659,6 +676,8 @@ export interface components {
             key: string;
             /** Latfield */
             latField?: string | null;
+            /** Layername */
+            layerName?: string | null;
             /** Lonfield */
             lonField?: string | null;
         };
@@ -677,6 +696,18 @@ export interface components {
             itemId: string | null;
             /** Status */
             status: string;
+        };
+        /** InspectRequest */
+        InspectRequest: {
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+        };
+        /** InspectResponse */
+        InspectResponse: {
+            /** Layers */
+            layers: components["schemas"]["LayerInfoOut"][];
         };
         /** ItemPage */
         ItemPage: {
@@ -720,6 +751,15 @@ export interface components {
             keywords?: string[] | null;
             /** Title */
             title?: string | null;
+        };
+        /** LayerInfoOut */
+        LayerInfoOut: {
+            /** Featurecount */
+            featureCount: number;
+            /** Geometrytype */
+            geometryType: string;
+            /** Name */
+            name: string;
         };
         /** Layout */
         Layout: {
@@ -2266,6 +2306,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IngestionJobCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_upload_uploads_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectResponse"];
                 };
             };
             /** @description Validation Error */

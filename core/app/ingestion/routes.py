@@ -2,6 +2,7 @@ import os
 import uuid
 from collections.abc import Callable
 
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -9,12 +10,13 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.ingestion import repository as repo
+from app.ingestion.parsers import IngestionParseError, list_layers
 from app.ingestion.schemas import (
     IngestionJobCreate, IngestionJobCreated, IngestionJobStatus,
-    PresignRequest, PresignResponse,
+    InspectRequest, InspectResponse, LayerInfoOut, PresignRequest, PresignResponse,
 )
 from app.ingestion.storage import (
-    ensure_uploads_bucket, generate_presigned_put_url,
+    download_object, ensure_uploads_bucket, generate_presigned_put_url,
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.users.models import User
@@ -51,6 +53,31 @@ def presign_upload(
     return PresignResponse(uploadUrl=url, key=key)
 
 
+@router.post("/uploads/inspect", response_model=InspectResponse)
+def inspect_upload(
+    body: InspectRequest,
+    user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_uploads_bucket),
+) -> InspectResponse:
+    if not body.key.startswith(f"{user.tenant_id}/"):
+        raise HTTPException(status_code=400, detail="invalid upload key")
+    try:
+        content = download_object(s3, bucket=bucket, key=body.key)
+    except ClientError as exc:
+        raise HTTPException(status_code=404, detail="objet introuvable") from exc
+    try:
+        layers = list_layers(content, body.filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except IngestionParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return InspectResponse(layers=[
+        LayerInfoOut(name=layer.name, featureCount=layer.feature_count, geometryType=layer.geometry_type)
+        for layer in layers
+    ])
+
+
 @router.post("/uploads", response_model=IngestionJobCreated, status_code=201)
 def create_upload_job(
     body: IngestionJobCreate,
@@ -68,7 +95,7 @@ def create_upload_job(
     job = repo.create_job(
         session, tenant_id=user.tenant_id, created_by=user.id, source_key=body.key,
         filename=body.filename, collection_title=body.collectionTitle,
-        lat_field=body.latField, lon_field=body.lonField,
+        lat_field=body.latField, lon_field=body.lonField, layer_name=body.layerName,
     )
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",

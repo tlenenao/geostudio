@@ -17,6 +17,7 @@ class IngestionJobCreate(BaseModel):
     collectionTitle: str = Field(min_length=1)
     latField: str | None = None
     lonField: str | None = None
+    layerName: str | None = None
 
 
 class IngestionJobCreated(BaseModel):
@@ -28,3 +29,18 @@ class IngestionJobStatus(BaseModel):
     errorMessage: str | None
     collectionId: str | None
     itemId: str | None
+
+
+class InspectRequest(BaseModel):
+    key: str = Field(min_length=1)
+    filename: str = Field(min_length=1, max_length=255)
+
+
+class LayerInfoOut(BaseModel):
+    name: str
+    featureCount: int
+    geometryType: str
+
+
+class InspectResponse(BaseModel):
+    layers: list[LayerInfoOut]
