@@ -78,6 +78,27 @@ def get_extent_provider():
     return provider
 
 
+def get_feature_counter():
+    """Défaut : COUNT(*) réel sur la table backing. None hors PostgreSQL
+    (tests SQLite) : la collection reste avec feature_count=None, cohérent
+    avec le comportement documenté pour les collections pré-SP-6c non
+    encore backfillées. Pas de scope RLS ici (contrairement à
+    get_extent_provider) : à l'enregistrement, on veut le compte physique
+    total de la table, pas une vue filtrée par tenant — RLS ne s'applique
+    de toute façon qu'après apply_ddl, déjà passé à ce stade."""
+    from sqlalchemy import text as _text
+
+    from app.collections.ddl import quote_ident
+
+    def counter(session, table_name):
+        if session.get_bind().dialect.name != "postgresql":
+            return None
+        t = quote_ident(session, table_name)
+        return session.execute(_text(f"SELECT count(*) FROM public.{t}")).scalar_one()
+
+    return counter
+
+
 def _can_write_collection(session, user, col) -> bool:
     if user is None:
         return False
@@ -92,7 +113,7 @@ def _collection_json(col, can_write: bool) -> dict:
         "id": col.id, "title": col.title, "description": col.description,
         "tableName": col.table_name, "isPublic": col.is_public, "editable": col.editable,
         "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
-        "canWrite": can_write,
+        "canWrite": can_write, "featureCount": col.feature_count,
     }
 
 
@@ -128,6 +149,7 @@ def register_collection(
     user=Depends(get_current_user), session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
+    count_features=Depends(get_feature_counter),
 ):
     _require_admin(user)
     if body.tableName in _core_tables():
@@ -146,7 +168,7 @@ def register_collection(
         title=body.title or info.table_name, description=body.description,
         is_public=body.isPublic, pk_column=info.pk_column,
         geometry_column=info.geometry_column, geometry_type=info.geometry_type,
-        srid=info.srid,
+        srid=info.srid, feature_count=count_features(session, info.table_name),
     )
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.create", object_type="collection", object_id=col.id,

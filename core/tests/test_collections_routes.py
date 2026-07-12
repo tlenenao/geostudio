@@ -69,6 +69,7 @@ def test_register_and_get(env):
     assert r.status_code == 201
     body = r.json()
     assert body["id"] == "incidents" and body["geometryType"] == "Point"
+    assert body["featureCount"] is None  # hors PostgreSQL (SQLite) : pas de vrai COUNT(*)
     assert ddl_calls == ["incidents"]  # la RLS est appliquée à l'enregistrement
     assert client.get("/collections/incidents").status_code == 200
 
