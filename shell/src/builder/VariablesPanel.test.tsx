@@ -39,3 +39,46 @@ test("removes a variable", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Retirer la variable v1" }));
   expect(onChange).toHaveBeenCalledWith([]);
 });
+
+test("adds a variable defaulting to type string", async () => {
+  const onChange = vi.fn();
+  render(<VariablesPanel variables={[]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une variable" }));
+  const next = onChange.mock.calls[0][0] as Variable[];
+  expect(next[0].type).toBe("string");
+});
+
+test("changes a variable's type and resets its initial value to a default for that type", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "count", type: "string", initialValue: "abc" }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "number");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0].type).toBe("number");
+  expect(next[0].initialValue).toBe(0);
+});
+
+test("edits a number variable's initial value as a number", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "count", type: "number", initialValue: 0 }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Valeur initiale de la variable v1"), "5");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(typeof next[0].initialValue).toBe("number");
+});
+
+test("toggles a bool variable's initial value", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "gate", type: "bool", initialValue: false }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.click(screen.getByLabelText("Valeur initiale de la variable v1"));
+  expect(onChange).toHaveBeenCalledWith([{ id: "v1", name: "gate", type: "bool", initialValue: true }]);
+});
+
+test("shows no editable initial value for a record-typed variable", () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "selected", type: "record", initialValue: null }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  expect(screen.queryByLabelText("Valeur initiale de la variable v1")).not.toBeInTheDocument();
+  expect(screen.getByText("Définie par câblage d'action")).toBeInTheDocument();
+});

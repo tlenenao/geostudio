@@ -9,8 +9,8 @@ function Probe() {
   const setVariable = useSetVariable();
   return (
     <div>
-      <p>message:{values.message ?? "unset"}</p>
-      <p>count:{values.count ?? "unset"}</p>
+      <p>message:{String(values.message ?? "unset")}</p>
+      <p>count:{String(values.count ?? "unset")}</p>
       <button onClick={() => setVariable("message", "hello")}>set</button>
     </div>
   );
@@ -36,4 +36,22 @@ test("picks up a variable added after the provider first mounted", async () => {
   rerender(<VariablesProvider variables={next}><Probe /></VariablesProvider>);
   await waitFor(() => expect(screen.getByText("count:0")).toBeInTheDocument());
   expect(screen.getByText("message:salut")).toBeInTheDocument(); // untouched
+});
+
+test("useVariables and useSetVariable carry non-string values (number, bool, object, array)", async () => {
+  function Probe2() {
+    const values = useVariables();
+    const setVariable = useSetVariable();
+    return (
+      <div>
+        <p>count:{String(values.count)}</p>
+        <button onClick={() => setVariable("count", 42)}>set-number</button>
+        <button onClick={() => setVariable("selected", { nom: "A" })}>set-record</button>
+      </div>
+    );
+  }
+  render(<VariablesProvider variables={[{ id: "v1", name: "count", type: "number", initialValue: 0 }]}><Probe2 /></VariablesProvider>);
+  expect(screen.getByText("count:0")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "set-number" }));
+  expect(screen.getByText("count:42")).toBeInTheDocument();
 });

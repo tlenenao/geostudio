@@ -1,7 +1,7 @@
 import { evaluate, parse } from "cel-js";
 
 export type ExprContext = {
-  vars: Record<string, string>;
+  vars: Record<string, unknown>;
   record?: Record<string, unknown>;
   user: { name: string };
 };
