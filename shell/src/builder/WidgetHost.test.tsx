@@ -63,3 +63,24 @@ test("shows a widget when visibleWhen is absent", () => {
   render(<WidgetHost item={item("ok")} mode="runtime" />);
   expect(screen.getByText("visible-content")).toBeInTheDocument();
 });
+
+test("resolves an { $expr } prop value before passing it to the widget", () => {
+  registerWidget({ type: "probe", label: "Probe", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: ({ props }) => <div>value:{String(props.label)}</div> });
+  render(<WidgetHost item={item("probe", { label: { $expr: "1 + 1" } })} mode="runtime" />);
+  expect(screen.getByText("value:2")).toBeInTheDocument();
+});
+
+test("leaves a plain (non-$expr) prop value unchanged", () => {
+  registerWidget({ type: "probe", label: "Probe", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: ({ props }) => <div>value:{String(props.label)}</div> });
+  render(<WidgetHost item={item("probe", { label: "static" })} mode="runtime" />);
+  expect(screen.getByText("value:static")).toBeInTheDocument();
+});
+
+test("resolves { $expr } props in edit mode too, unlike visibleWhen", () => {
+  registerWidget({ type: "probe", label: "Probe", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: ({ props }) => <div>value:{String(props.label)}</div> });
+  render(<WidgetHost item={item("probe", { label: { $expr: "1 + 1" } })} mode="edit" />);
+  expect(screen.getByText("value:2")).toBeInTheDocument();
+});
