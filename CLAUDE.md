@@ -92,13 +92,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell
 cd shell && npm ci
-npm run test         # Vitest (57 fichiers, 332 tests)
-npm run e2e          # Playwright (14 specs, VITE_AUTH_MODE=mock)
+npm run test         # Vitest (60 fichiers, 394 tests)
+npm run e2e          # Playwright (17 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 293 tests (263 exécutés + 30 marqués postgis, nécessitent docker)
+uv run pytest        # 302 tests (272 exécutés + 30 marqués postgis, nécessitent docker)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-11 (mise à jour à chaque jalon)
+## État au 2026-07-12 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -190,6 +190,27 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   avant plan, cf. spec SP-5
   `docs/superpowers/specs/2026-07-11-sp5-expressions-actions-composees-design.md`
   §1).
+- **SP-5c livré et clos** (2026-07-12) : toute prop de tout widget accepte
+  `{ $expr: "…" }`, résolu récursivement dans `WidgetHost` avant passage au
+  composant, dans les 3 modes edit/preview/runtime (`resolveExprBindings`,
+  reconnu seulement si l'objet a exactement une clé `$expr` string — pas de
+  collision avec les colonnes calculées `{ label, expr }`) ; `Variable`
+  gagne un type (`string|number|bool|date|record|list`, défaut `"string"`,
+  rétrocompatible) qui pilote son éditeur dans `VariablesPanel` et la
+  coercion appliquée par `Variable.set` (`VariableBusBridge` :
+  extraction-par-clé + coercion pour string/number/bool/date en dégradation
+  silencieuse, payload entier de l'émetteur pour record/list) ;
+  `{{var:nom}}` reste le même mécanisme, rendu tolérant aux types non-string
+  (`String(...)` scalaires, `JSON.stringify(...)` record/list). Cœur :
+  `Variable.type`/`initialValue` élargis (Pydantic) pour persister sans
+  rejet. Exécuté en subagent-driven-development (6 tâches, revue par tâche
+  + revue finale de branche modèle opus, aucun Critical/Important). **17
+  specs E2E vertes** (16 + `expr-bindings.spec.ts`, Table.itemSelected →
+  variable record → `$expr` sur une prop non-Texte). PR #23 (dev→main)
+  ouverte, CI verte après correction d'un drift attendu (`core-schema.d.ts`
+  régénéré depuis l'OpenAPI, `Variable.type`/`initialValue` manquants) —
+  fusion à la main. **SP-5 est clos.** Prochain chantier : **SP-6**
+  (ingestion v1 — fichier→carte, cf. feuille de route §SP-6).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
