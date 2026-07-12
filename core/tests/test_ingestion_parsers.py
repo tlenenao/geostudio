@@ -102,3 +102,18 @@ def test_parse_csv_latlon_rejects_non_utf8_content():
     content = "nom,lat,lon\nCassé,48.85,2.35\n".encode("latin-1")
     with pytest.raises(IngestionParseError, match="encodage invalide"):
         list(parse_csv_latlon(content, None, None))
+
+
+def test_parse_geojson_rejects_non_iterable_features():
+    content = b'{"type":"FeatureCollection","features":5}'
+    with pytest.raises(IngestionParseError, match="FeatureCollection"):
+        list(parse_geojson(content))
+
+
+def test_parse_geojson_rejects_invalid_properties():
+    content = (
+        b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+        b'"properties":[1,2],"geometry":{"type":"Point","coordinates":[1.0,2.0]}}]}'
+    )
+    with pytest.raises(IngestionParseError, match="feature 0 : properties invalide"):
+        list(parse_geojson(content))
