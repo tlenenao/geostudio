@@ -272,6 +272,22 @@ def test_parse_gpkg_missing_crs_fails_fast(tmp_path):
         list(parse_gpkg(content, "entites"))
 
 
+def test_parse_gpkg_untransformable_crs_fails_fast(tmp_path):
+    # ENGCRS (engineering/site-local CRS) : accepté par pyproj.CRS.from_user_input
+    # mais sans chemin de transformation vers WGS84 — pyproj.Transformer.from_crs
+    # lève ProjError, distinct de CRSError levé plus tôt pour un CRS non reconnu.
+    eng_wkt = (
+        'ENGCRS["Site Local CRS",'
+        'EDATUM["Site Datum"],'
+        "CS[Cartesian,2],"
+        'AXIS["easting (X)",east,ORDER[1],LENGTHUNIT["metre",1]],'
+        'AXIS["northing (Y)",north,ORDER[2],LENGTHUNIT["metre",1]]]'
+    )
+    content = _gpkg_bytes(tmp_path, crs=eng_wkt)
+    with pytest.raises(IngestionParseError, match="CRS"):
+        list(parse_gpkg(content, "entites"))
+
+
 def test_parse_shapefile_zip_yields_geometry_and_properties(tmp_path):
     content = _shapefile_zip_bytes(tmp_path)
     rows = list(parse_shapefile_zip(content, "villes"))
