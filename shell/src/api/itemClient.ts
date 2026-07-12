@@ -214,7 +214,7 @@ export function createItemClient(opts: {
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
     const data = (await res.json()) as {
-      collections?: { id: string; title?: string }[];
+      collections?: { id: string; title?: string; featureCount?: number | null }[];
     };
     return (data.collections ?? []).map((c) => ({
       id: c.id,
@@ -222,6 +222,7 @@ export function createItemClient(opts: {
       service: "core" as const,
       kind: "feature" as const,
       url: `${coreUrl}/collections/${c.id}/items`,
+      featureCount: c.featureCount,
     }));
   }
 
