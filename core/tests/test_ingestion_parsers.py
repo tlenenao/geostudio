@@ -110,6 +110,12 @@ def test_parse_geojson_rejects_non_iterable_features():
         list(parse_geojson(content))
 
 
+def test_parse_csv_latlon_wraps_oversized_field_error():
+    content = ("nom,lat,lon\n\"" + "x" * 200000 + "\n1,2\n").encode("utf-8")
+    with pytest.raises(IngestionParseError, match="champ CSV trop volumineux ou mal formé"):
+        list(parse_csv_latlon(content, None, None))
+
+
 def test_parse_geojson_rejects_invalid_properties():
     content = (
         b'{"type":"FeatureCollection","features":[{"type":"Feature",'
