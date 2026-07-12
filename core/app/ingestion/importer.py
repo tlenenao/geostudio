@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
 from app.collections.ddl import apply_collection_ddl, quote_ident
 from app.collections.extent import table_extent
@@ -99,7 +100,14 @@ def run_import(
     col_defs = ", ".join(
         f"{quote_ident(session, name)} {sql_type}" for name, sql_type in columns.items()
     )
-    create_sql = f"CREATE TABLE public.{t} (id serial PRIMARY KEY"
+    # tenant_id est déclaré ici (et rempli à l'INSERT) plutôt que laissé à
+    # apply_collection_ddl ci-dessous : ce dernier ne fait qu'un
+    # ADD COLUMN IF NOT EXISTS ... DEFAULT 'default' (no-op si la colonne
+    # existe déjà) — s'il posait la colonne après coup, les lignes qu'on
+    # vient d'insérer hériteraient toutes du littéral 'default' au lieu du
+    # tenant réel de l'uploader, les rendant invisibles à travers RLS pour
+    # tout tenant dont l'id n'est pas "default" (bug de cloisonnement).
+    create_sql = f"CREATE TABLE public.{t} (id serial PRIMARY KEY, tenant_id text NOT NULL"
     if col_defs:
         create_sql += f", {col_defs}"
     create_sql += f", geom geometry({pg_geom_type}, 4326))"
@@ -107,13 +115,14 @@ def run_import(
 
     col_names = list(columns.keys())
     insert_cols = ", ".join(quote_ident(session, name) for name in col_names)
-    insert_cols_full = (insert_cols + ", " if insert_cols else "") + "geom"
+    insert_cols_full = "tenant_id, " + (insert_cols + ", " if insert_cols else "") + "geom"
     placeholders = ", ".join(f":{name}" for name in col_names)
-    values_clause = (placeholders + ", " if placeholders else "") + "ST_GeomFromText(:geom_wkt, 4326)"
+    values_clause = ":tenant_id, " + (placeholders + ", " if placeholders else "") + "ST_GeomFromText(:geom_wkt, 4326)"
     insert_sql = f"INSERT INTO public.{t} ({insert_cols_full}) VALUES ({values_clause})"
     params = []
     for geom, props in rows:
         row_params = {name: props.get(name) for name in col_names}
+        row_params["tenant_id"] = tenant_id
         row_params["geom_wkt"] = geom.wkt
         params.append(row_params)
     session.execute(text(insert_sql), params)
@@ -125,6 +134,11 @@ def run_import(
         title=collection_title, description="", is_public=False,
         pk_column=info.pk_column, geometry_column=info.geometry_column,
         geometry_type=info.geometry_type, srid=info.srid,
+    )
+    write_audit(
+        session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
+        action="collection.create", object_type="collection", object_id=col.id,
+        payload={"tableName": col.table_name},
     )
 
     bbox = table_extent(session, info)
@@ -138,6 +152,11 @@ def run_import(
     item = items_repo.create_item(
         session, tenant_id=tenant_id, owner_id=created_by,
         resource_type="map", title=collection_title,
+    )
+    write_audit(
+        session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
+        action="item.create", object_type="item", object_id=item.id,
+        payload={"title": collection_title},
     )
     config = BuilderConfig(
         kind="map",

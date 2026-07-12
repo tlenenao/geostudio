@@ -62,7 +62,7 @@ def test_presign_returns_upload_url_and_key(env):
 def test_create_upload_job_defers_task_and_returns_job_id(env):
     client, Session, tenant, alice, deferred = env
     r = client.post("/uploads", json={
-        "key": "t/abc-villes.geojson", "filename": "villes.geojson",
+        "key": "default/abc-villes.geojson", "filename": "villes.geojson",
         "collectionTitle": "Villes",
     })
     assert r.status_code == 201
@@ -76,6 +76,15 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
     }
 
 
+def test_create_upload_job_rejects_key_with_foreign_tenant_prefix(env):
+    client, *_ = env
+    r = client.post("/uploads", json={
+        "key": "other-tenant/abc-villes.geojson", "filename": "villes.geojson",
+        "collectionTitle": "Villes",
+    })
+    assert r.status_code == 400
+
+
 def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
     assert client.get("/uploads/does-not-exist").status_code == 404
@@ -84,7 +93,7 @@ def test_get_upload_job_404_for_unknown_job(env):
 def test_create_upload_job_is_audited(env):
     client, Session, tenant, alice, _ = env
     client.post("/uploads", json={
-        "key": "t/abc.csv", "filename": "villes.csv", "collectionTitle": "Villes CSV",
+        "key": "default/abc.csv", "filename": "villes.csv", "collectionTitle": "Villes CSV",
         "latField": "y", "lonField": "x",
     })
     with Session() as s:
