@@ -44,6 +44,11 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           >
             {source.title}
             <span className="ml-2 text-xs text-slate-400">{source.kind}</span>
+            {typeof source.featureCount === "number" && (
+              <span className="ml-2 text-xs text-slate-400">
+                {source.featureCount} entités
+              </span>
+            )}
           </button>
         </li>
       ))}

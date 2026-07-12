@@ -10,7 +10,9 @@ const sources: LayerSource[] = [
   { id: "communes", title: "Communes", service: "martin", kind: "vector",
     tilesUrl: "https://martin.test/communes/{z}/{x}/{y}", sourceLayer: "communes" },
   { id: "public.parcs", title: "Parcs", service: "core", kind: "feature",
-    url: "https://core.test/collections/public.parcs/items" },
+    url: "https://core.test/collections/public.parcs/items", featureCount: 128 },
+  { id: "public.legacy", title: "Legacy", service: "core", kind: "feature",
+    url: "https://core.test/collections/public.legacy/items", featureCount: null },
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
@@ -65,4 +67,18 @@ test("gives each added layer a distinct id", async () => {
   const id1 = (onAdd.mock.calls[0][0] as MapLayer).id;
   const id2 = (onAdd.mock.calls[1][0] as MapLayer).id;
   expect(id1).not.toBe(id2);
+});
+
+test("shows a feature-count badge for a core source with a known count", async () => {
+  renderPicker(vi.fn());
+  const item = (await screen.findByRole("button", { name: /Parcs/ })).closest("li")!;
+  expect(item).toHaveTextContent("128 entités");
+});
+
+test("shows no feature-count badge for a martin source or an unknown count", async () => {
+  renderPicker(vi.fn());
+  const martinItem = (await screen.findByRole("button", { name: /Communes/ })).closest("li")!;
+  expect(martinItem).not.toHaveTextContent(/entités/);
+  const legacyItem = (await screen.findByRole("button", { name: /Legacy/ })).closest("li")!;
+  expect(legacyItem).not.toHaveTextContent(/entités/);
 });
