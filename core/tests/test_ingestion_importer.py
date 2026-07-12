@@ -1,6 +1,10 @@
 """Bout en bout sur PostGIS réel : run_import seul (table + collection + item
 carte), sans procrastinate ni S3 — même infra que test_features_integration.py."""
+import numpy as np
 import pytest
+import shapely
+from pyogrio.raw import write as pyogrio_write
+from shapely.geometry import Point
 from sqlalchemy import select, text
 
 from app.audit.models import AuditLog
@@ -166,3 +170,106 @@ def test_corrupted_geojson_raises_without_creating_anything(env):
             s, tenant_id=tenant.id, user_id=user.id, is_admin=True
         )
         assert cols == []
+
+
+def _gpkg_bytes(tmp_path, *, layer="entites", crs="EPSG:4326", points=None):
+    points = points or [(1.0, 45.0), (2.0, 46.0)]
+    path = tmp_path / f"{layer}.gpkg"
+    geometry = shapely.to_wkb(np.array([Point(x, y) for x, y in points], dtype=object))
+    pyogrio_write(
+        str(path), geometry=geometry,
+        field_data=[np.array(["A", "B"][: len(points)], dtype=object)],
+        fields=["nom"], layer=layer, geometry_type="Point", crs=crs,
+    )
+    return path.read_bytes()
+
+
+def test_gpkg_import_creates_queryable_collection_and_map_item(env, tmp_path):
+    Session, tenant, user = env
+    content = _gpkg_bytes(tmp_path)
+    with Session() as s:
+        result = run_import(
+            s, tenant_id=tenant.id, created_by=user.id, filename="villes.gpkg",
+            content=content, collection_title="Villes GPKG", lat_field=None,
+            lon_field=None, layer_name="entites",
+        )
+        s.commit()
+    with Session() as s:
+        rows = s.execute(
+            text(f"SELECT nom FROM public.{result.collection_id} ORDER BY nom")
+        ).scalars().all()
+        assert rows == ["A", "B"]
+
+
+def test_gpkg_import_reprojects_non_wgs84_crs(env, tmp_path):
+    import pyproj
+    Session, tenant, user = env
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
+    x, y = transformer.transform(2.35, 48.85)
+    content = _gpkg_bytes(tmp_path, crs="EPSG:2154", points=[(x, y)])
+    with Session() as s:
+        result = run_import(
+            s, tenant_id=tenant.id, created_by=user.id, filename="l93.gpkg",
+            content=content, collection_title="Villes L93", lat_field=None,
+            lon_field=None, layer_name="entites",
+        )
+        s.commit()
+    with Session() as s:
+        lon, lat = s.execute(
+            text(f"SELECT ST_X(geom), ST_Y(geom) FROM public.{result.collection_id}")
+        ).one()
+        assert lon == pytest.approx(2.35, abs=1e-6)
+        assert lat == pytest.approx(48.85, abs=1e-6)
+
+
+def test_gpkg_import_requires_layer_name_when_multiple_layers(env, tmp_path):
+    Session, tenant, user = env
+    path = tmp_path / "multi.gpkg"
+    geometry = shapely.to_wkb(np.array([Point(1.0, 1.0)], dtype=object))
+    pyogrio_write(str(path), geometry=geometry, field_data=[np.array(["A"], dtype=object)],
+                  fields=["nom"], layer="a", geometry_type="Point", crs="EPSG:4326")
+    pyogrio_write(str(path), geometry=geometry, field_data=[np.array(["B"], dtype=object)],
+                  fields=["nom"], layer="b", geometry_type="Point", crs="EPSG:4326")
+    content = path.read_bytes()
+    with Session() as s:
+        with pytest.raises(IngestionParseError):
+            run_import(
+                s, tenant_id=tenant.id, created_by=user.id, filename="multi.gpkg",
+                content=content, collection_title="Multi", lat_field=None,
+                lon_field=None, layer_name=None,
+            )
+        s.rollback()
+    with Session() as s:
+        cols = collections_repo.list_visible_collections(
+            s, tenant_id=tenant.id, user_id=user.id, is_admin=True
+        )
+        assert cols == []
+
+
+def test_shapefile_zip_import_creates_queryable_collection(env, tmp_path):
+    import zipfile
+    Session, tenant, user = env
+    shp_path = tmp_path / "villes.shp"
+    geometry = shapely.to_wkb(np.array([Point(1.0, 45.0), Point(2.0, 46.0)], dtype=object))
+    pyogrio_write(
+        str(shp_path), geometry=geometry, field_data=[np.array(["A", "B"], dtype=object)],
+        fields=["nom"], geometry_type="Point", crs="EPSG:4326",
+    )
+    zip_path = tmp_path / "villes.zip"
+    with zipfile.ZipFile(zip_path, "w") as z:
+        for ext in ("shp", "shx", "dbf", "prj", "cpg"):
+            p = tmp_path / f"villes.{ext}"
+            if p.exists():
+                z.write(p, arcname=p.name)
+    with Session() as s:
+        result = run_import(
+            s, tenant_id=tenant.id, created_by=user.id, filename="villes.zip",
+            content=zip_path.read_bytes(), collection_title="Villes Shapefile",
+            lat_field=None, lon_field=None, layer_name="villes",
+        )
+        s.commit()
+    with Session() as s:
+        rows = s.execute(
+            text(f"SELECT nom FROM public.{result.collection_id} ORDER BY nom")
+        ).scalars().all()
+        assert rows == ["A", "B"]

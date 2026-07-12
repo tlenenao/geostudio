@@ -18,7 +18,9 @@ from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, MapView
-from app.ingestion.parsers import IngestionParseError, parse_csv_latlon, parse_geojson
+from app.ingestion.parsers import (
+    IngestionParseError, parse_csv_latlon, parse_geojson, parse_gpkg, parse_shapefile_zip,
+)
 from app.items import repository as items_repo
 
 # Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
@@ -43,6 +45,10 @@ def _pick_format(filename: str) -> str:
         return "geojson"
     if lower.endswith(".csv"):
         return "csv"
+    if lower.endswith(".gpkg"):
+        return "gpkg"
+    if lower.endswith(".zip"):
+        return "shapefile"
     raise IngestionParseError(f"format non supporté : {filename}")
 
 
@@ -67,13 +73,17 @@ def _zoom_for_extent(bbox: list[float]) -> float:
 def run_import(
     session: Session, *, tenant_id: str, created_by: str, filename: str,
     content: bytes, collection_title: str,
-    lat_field: str | None, lon_field: str | None,
+    lat_field: str | None, lon_field: str | None, layer_name: str | None = None,
 ) -> ImportResult:
     fmt = _pick_format(filename)
     if fmt == "geojson":
         rows = list(parse_geojson(content))
-    else:
+    elif fmt == "csv":
         rows = list(parse_csv_latlon(content, lat_field, lon_field))
+    elif fmt == "gpkg":
+        rows = list(parse_gpkg(content, layer_name))
+    else:
+        rows = list(parse_shapefile_zip(content, layer_name))
     if not rows:
         raise IngestionParseError("le fichier ne contient aucune entité")
 
