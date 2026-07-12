@@ -17,6 +17,9 @@ vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 vi.mock("./NewItemButton", () => ({
   NewItemButton: () => <button>Nouveau</button>,
 }));
+vi.mock("./ImportFileButton", () => ({
+  ImportFileButton: () => <button>Importer un fichier</button>,
+}));
 
 const { AppLayout } = await import("./AppLayout");
 

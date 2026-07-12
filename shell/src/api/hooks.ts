@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useItemClient } from "./ItemClientProvider";
+import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
 import type { AppConfig, CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
+export { useItemClient } from "./ItemClientProvider";
+
 export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["items", params],
     queryFn: () => client.listItems(params),
@@ -12,7 +14,7 @@ export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) 
 }
 
 export function useItem(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["item", pk],
     queryFn: () => client.getItem(pk),
@@ -20,12 +22,12 @@ export function useItem(pk: string) {
 }
 
 export function useMe() {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({ queryKey: ["me"], queryFn: () => client.getMe() });
 }
 
 export function useCreateItem() {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { kind: CreateKind; title: string; owner: string; templateId?: string }) =>
@@ -37,7 +39,7 @@ export function useCreateItem() {
 }
 
 export function useDeleteItem() {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (pk: string) => client.deleteItem(pk),
@@ -64,7 +66,7 @@ export function useDeleteItem() {
 }
 
 export function useUpdateItem(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (patch: UpdatePatch) => client.updateItem(pk, patch),
@@ -98,7 +100,7 @@ export function useUpdateItem(pk: string) {
 }
 
 export function useUploadThumbnail(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (file: File) => client.uploadThumbnail(pk, file),
@@ -110,7 +112,7 @@ export function useUploadThumbnail(pk: string) {
 }
 
 export function useGroups(options?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["groups"],
     queryFn: () => client.listGroups(),
@@ -119,7 +121,7 @@ export function useGroups(options?: { enabled?: boolean }) {
 }
 
 export function useSharing(pk: string, options?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["sharing", pk],
     queryFn: () => client.getSharing(pk),
@@ -128,7 +130,7 @@ export function useSharing(pk: string, options?: { enabled?: boolean }) {
 }
 
 export function useSetSharing(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (sharing: Sharing) => client.setSharing(pk, sharing),
@@ -140,7 +142,7 @@ export function useSetSharing(pk: string) {
 }
 
 export function useLayerSources(options?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["layer-sources"],
     queryFn: () => client.listLayerSources(),
@@ -149,7 +151,7 @@ export function useLayerSources(options?: { enabled?: boolean }) {
 }
 
 export function useCreateMap() {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { title: string; owner: string }) => client.createMapItem(input),
@@ -160,7 +162,7 @@ export function useCreateMap() {
 }
 
 export function useMapConfig(pk: string, options?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["map", pk],
     queryFn: () => client.getMapConfig(pk),
@@ -169,7 +171,7 @@ export function useMapConfig(pk: string, options?: { enabled?: boolean }) {
 }
 
 export function useSaveMap(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (config: MapConfig) => client.saveMapConfig(pk, config),
@@ -180,7 +182,7 @@ export function useSaveMap(pk: string) {
 }
 
 export function useAppConfig(pk: string, options?: { enabled?: boolean }) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   return useQuery({
     queryKey: ["app", pk],
     queryFn: () => client.getAppConfig(pk),
@@ -189,7 +191,7 @@ export function useAppConfig(pk: string, options?: { enabled?: boolean }) {
 }
 
 export function useSaveApp(pk: string) {
-  const client = useItemClient();
+  const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (config: AppConfig) => client.saveAppConfig(pk, config),
