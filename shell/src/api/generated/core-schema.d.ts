@@ -816,10 +816,21 @@ export interface components {
         Variable: {
             /** Id */
             id: string;
-            /** Initialvalue */
-            initialValue: string;
+            /**
+             * Initialvalue
+             * @default
+             */
+            initialValue: string | boolean | number | {
+                [key: string]: unknown;
+            } | unknown[] | null;
             /** Name */
             name: string;
+            /**
+             * Type
+             * @default string
+             * @enum {string}
+             */
+            type: "string" | "number" | "bool" | "date" | "record" | "list";
         };
     };
     responses: never;
