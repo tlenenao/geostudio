@@ -6,6 +6,7 @@ import { useActionBus } from "./ActionBusContext";
 import { useVariables } from "./VariablesContext";
 import { useAuth } from "../auth/useAuth";
 import { evaluateExpression } from "./expr";
+import { resolveExprBindings } from "./exprBindings";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -49,9 +50,11 @@ export function WidgetHost({
     || Boolean(evaluateExpression(item.visibleWhen, { vars: variables, record: data?.records[0]?.properties, user }));
   if (!visible) return null;
   const Widget = def.Component;
+  const exprCtx = { vars: variables, record: data?.records[0]?.properties, user };
+  const resolvedProps = resolveExprBindings(item.props, exprCtx) as Record<string, unknown>;
   return (
     <WidgetErrorBoundary>
-      <Widget props={item.props} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user }} />
+      <Widget props={resolvedProps} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user }} />
     </WidgetErrorBoundary>
   );
 }

@@ -144,10 +144,13 @@ export type Page = {
   layout: AppLayout;
 };
 
+export type VariableType = "string" | "number" | "bool" | "date" | "record" | "list";
+
 export type Variable = {
   id: string;
   name: string;
-  initialValue: string;
+  type?: VariableType;
+  initialValue: string | number | boolean | Record<string, unknown> | unknown[] | null;
 };
 
 export type DataSource = {

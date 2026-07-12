@@ -12,22 +12,43 @@ import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
 // A message's payload is whatever shape its emitter chose (Button emits
-// {widgetId}, Filtre emits {[field]: value}, …). If the payload is an
-// object carrying a key matching this variable's own name — e.g. a Filtre
-// configured with field === the variable's name — use that value; any
-// other payload shape (or a bare primitive) is stringified as-is.
-function valueFromPayload(payload: unknown, name: string): string {
-  if (payload && typeof payload === "object") {
-    const v = (payload as Record<string, unknown>)[name];
-    return v === null || v === undefined ? "" : String(v);
+// {widgetId}, Filtre emits {[field]: value}, …). For string/number/bool/date
+// variables, extract the payload key matching the variable's own name (e.g.
+// a Filtre configured with field === the variable's name) and coerce to the
+// declared type — degrade silently (keep the previous value) if not
+// coercible, never throw. For record/list variables, the whole emitter
+// payload is stored as-is (no by-name extraction) — this is what makes
+// wiring e.g. Table.itemSelected into a record variable useful, since its
+// payload is already a full DataRecord, not an object keyed by variable name.
+function coerceForVariable(payload: unknown, variable: Variable): unknown {
+  const type = variable.type ?? "string";
+  if (type === "record") {
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : undefined;
   }
-  return payload === null || payload === undefined ? "" : String(payload);
+  if (type === "list") {
+    return Array.isArray(payload) ? payload : undefined;
+  }
+  const raw = payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>)[variable.name]
+    : payload;
+  if (type === "number") {
+    const n = Number(raw);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  if (type === "bool") {
+    if (typeof raw === "boolean") return raw;
+    return ["true", "1"].includes(String(raw ?? "").toLowerCase());
+  }
+  // string, date
+  return raw === null || raw === undefined ? "" : String(raw);
 }
 
 function VariableBusBridge({ variable, bus }: { variable: Variable; bus: ActionBus }) {
   const setVariable = useSetVariable();
   useBusAction(bus, `var:${variable.id}`, "set", (payload) => {
-    setVariable(variable.name, valueFromPayload(payload, variable.name));
+    const value = coerceForVariable(payload, variable);
+    if (value === undefined) return; // not coercible for this type — keep the previous value, never crash
+    setVariable(variable.name, value);
   });
   return null;
 }

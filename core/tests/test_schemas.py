@@ -185,3 +185,44 @@ def test_message_when_round_trip():
 def test_message_when_optional():
     config = BuilderConfig.model_validate(_valid_payload())
     assert config.messages[0].when is None
+
+
+def test_variable_type_defaults_to_string():
+    payload = _valid_payload("app")
+    payload["variables"] = [{"id": "v1", "name": "message", "initialValue": "salut"}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.variables[0].type == "string"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["variables"][0]["type"] == "string"
+
+
+def test_variable_type_number_round_trips_non_string_initial_value():
+    payload = _valid_payload("app")
+    payload["variables"] = [{"id": "v1", "name": "count", "type": "number", "initialValue": 42}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.variables[0].initialValue == 42
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["variables"][0]["initialValue"] == 42
+
+
+def test_variable_type_bool_round_trips_bool_initial_value():
+    payload = _valid_payload("app")
+    payload["variables"] = [{"id": "v1", "name": "gate", "type": "bool", "initialValue": True}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.variables[0].initialValue is True
+
+
+def test_variable_type_record_round_trips_dict_initial_value():
+    payload = _valid_payload("app")
+    payload["variables"] = [{"id": "v1", "name": "selected", "type": "record", "initialValue": {"nom": "A"}}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.variables[0].initialValue == {"nom": "A"}
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["variables"][0]["initialValue"] == {"nom": "A"}
+
+
+def test_variable_type_list_round_trips_list_initial_value():
+    payload = _valid_payload("app")
+    payload["variables"] = [{"id": "v1", "name": "items", "type": "list", "initialValue": [1, 2, 3]}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.variables[0].initialValue == [1, 2, 3]

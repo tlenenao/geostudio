@@ -38,7 +38,8 @@ class Page(BaseModel):
 class Variable(BaseModel):
     id: str
     name: str
-    initialValue: str
+    type: Literal["string", "number", "bool", "date", "record", "list"] = "string"
+    initialValue: str | bool | float | dict | list | None = ""
 
 
 class Message(BaseModel):

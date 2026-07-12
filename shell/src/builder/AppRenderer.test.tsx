@@ -284,3 +284,77 @@ test("a message's condition prevents the action from firing when it evaluates fa
   await userEvent.type(screen.getByLabelText("Valeur du filtre"), "hi");
   expect(screen.getByText("Msg: initial")).toBeInTheDocument();
 });
+
+test("a number-typed variable coerces the payload's matching field to a number", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "count", type: "number", initialValue: 0 }],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "count", label: "Filtre" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Total : {{var:count}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "42");
+  expect(await screen.findByText("Total : 42")).toBeInTheDocument();
+});
+
+test("a number-typed variable keeps its previous value when the payload is not a valid number", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    variables: [{ id: "v1", name: "count", type: "number", initialValue: 7 }],
+    messages: [{ id: "m1", from: "flt1", event: "changed", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "flt1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: { field: "count", label: "Filtre" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Total : {{var:count}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.type(screen.getByLabelText("Valeur du filtre"), "abc");
+  expect(screen.getByText("Total : 7")).toBeInTheDocument();
+});
+
+test("a record-typed variable receives the emitter's whole payload, not an extraction by name", async () => {
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [],
+    variables: [{ id: "v1", name: "selected", type: "record", initialValue: null }],
+    messages: [{ id: "m1", from: "btn1", event: "clicked", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "btn1", widget: "button", x: 0, y: 0, w: 2, h: 1, props: { label: "Go" } },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Sélection : {{var:selected}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+  // Button emits { widgetId: "btn1" } — the whole payload, stored as-is (record type bypasses by-name extraction).
+  expect(await screen.findByText('Sélection : {"widgetId":"btn1"}')).toBeInTheDocument();
+});
+
+test("a list-typed variable receives the emitter's whole payload when it is an array", async () => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+  registerWidget({
+    type: "list-emitter-probe",
+    label: "Probe",
+    defaultProps: {},
+    defaultSize: { w: 2, h: 1 },
+    events: ["emitted"],
+    PropsPanel: () => null,
+    Component: ({ ctx }) => (
+      <button onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "emitted", [1, 2, 3])}>emit</button>
+    ),
+  });
+  const cfg: AppConfig = {
+    kind: "app", theme: {}, dataSources: [],
+    variables: [{ id: "v1", name: "items", type: "list", initialValue: [] }],
+    messages: [{ id: "m1", from: "p1", event: "emitted", to: "var:v1", action: "set" }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "p1", widget: "list-emitter-probe", x: 0, y: 0, w: 2, h: 1, props: {} },
+      { id: "t1", widget: "text", x: 0, y: 1, w: 4, h: 2, props: { text: "Items : {{var:items}}" } },
+    ] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  await userEvent.click(screen.getByRole("button", { name: "emit" }));
+  expect(await screen.findByText("Items : [1,2,3]")).toBeInTheDocument();
+});
