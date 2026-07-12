@@ -45,6 +45,7 @@ layers = [
     "app.main",
     "app.mcp",
     "app.public",
+    "app.ingestion",
     "app.features",
     "app.collections",
     "app.configs",
@@ -63,4 +64,5 @@ ignore_imports = [
     "app.db -> app.tenants.models",
     "app.db -> app.users.models",
     "app.db -> app.sharing.models",
+    "app.db -> app.ingestion.models",
 ]
