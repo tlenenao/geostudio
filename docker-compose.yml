@@ -116,8 +116,27 @@ services:
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
+      S3_UPLOADS_BUCKET: geostudio-uploads
     ports:
       - "8200:8200"
+    networks: [gis-net]
+    depends_on: [pgbouncer, minio]
+    restart: unless-stopped
+
+  # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
+  # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
+  worker:
+    build: ./core
+    command: >
+      sh -c "procrastinate --app app.ingestion.tasks.app schema --apply &&
+             procrastinate --app app.ingestion.tasks.app worker -q ingestion"
+    environment:
+      DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_UPLOADS_BUCKET: geostudio-uploads
+      CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
     restart: unless-stopped

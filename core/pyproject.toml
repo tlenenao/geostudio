@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "mcp>=1.12",
     "shapely>=2.0",
+    "procrastinate>=2.0",
 ]
 
 [dependency-groups]
