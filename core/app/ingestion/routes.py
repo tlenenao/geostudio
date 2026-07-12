@@ -58,6 +58,13 @@ def create_upload_job(
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> IngestionJobCreated:
+    # La clé est censée venir du présigné (/uploads/presign), qui la préfixe
+    # toujours par le tenant de l'appelant — un client qui en soumet une
+    # sous le préfixe d'un AUTRE tenant (deviné, réutilisé depuis une fuite,
+    # etc.) ferait sinon lire par le worker un objet S3 hors de son tenant
+    # (confused deputy) sous son propre job/collection/tenant courant.
+    if not body.key.startswith(f"{user.tenant_id}/"):
+        raise HTTPException(status_code=400, detail="invalid upload key")
     job = repo.create_job(
         session, tenant_id=user.tenant_id, created_by=user.id, source_key=body.key,
         filename=body.filename, collection_title=body.collectionTitle,
