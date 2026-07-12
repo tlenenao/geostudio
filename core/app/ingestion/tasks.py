@@ -47,18 +47,18 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
     engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
     session_factory = make_session_factory(engine)
 
-    with request_scoped_session(session_factory) as session:
-        job = ingestion_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
-        if job is None:
-            logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
-            return
-        ingestion_repo.mark_running(session, job_id=job_id)
-        filename, source_key, collection_title, lat_field, lon_field, created_by = (
-            job.filename, job.source_key, job.collection_title,
-            job.lat_field, job.lon_field, job.created_by,
-        )
-
     try:
+        with request_scoped_session(session_factory) as session:
+            job = ingestion_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+            if job is None:
+                logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
+                return
+            ingestion_repo.mark_running(session, job_id=job_id)
+            filename, source_key, collection_title, lat_field, lon_field, created_by = (
+                job.filename, job.source_key, job.collection_title,
+                job.lat_field, job.lon_field, job.created_by,
+            )
+
         s3 = _make_s3_client_from_env()
         content = download_object(s3, bucket=_uploads_bucket(), key=source_key)
         with request_scoped_session(session_factory) as session:
