@@ -42,6 +42,8 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
         raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
     features = data.get("features", [])
+    if not isinstance(features, list):
+        raise IngestionParseError("le GeoJSON doit être une FeatureCollection")
     for i, feature in enumerate(features):
         if not isinstance(feature, dict):
             raise IngestionParseError(f"feature {i} : entrée invalide")
@@ -54,7 +56,10 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
             raise IngestionParseError(f"feature {i} : géométrie invalide ({exc})") from exc
         if not geom.is_valid:
             raise IngestionParseError(f"feature {i} : géométrie invalide")
-        yield geom, dict(feature.get("properties") or {})
+        properties = feature.get("properties")
+        if properties is not None and not isinstance(properties, dict):
+            raise IngestionParseError(f"feature {i} : properties invalide")
+        yield geom, dict(properties or {})
 
 
 def parse_csv_latlon(
