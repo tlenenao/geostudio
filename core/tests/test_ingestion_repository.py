@@ -103,3 +103,30 @@ def test_create_job_stores_optional_lat_lon_fields():
         s.commit()
         assert job.lat_field == "y"
         assert job.lon_field == "x"
+
+
+def test_create_job_stores_layer_name():
+    Session, tenant, user = _env()
+    with Session() as s:
+        job = repo.create_job(
+            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
+            filename="villes.gpkg", collection_title="Villes",
+            lat_field=None, lon_field=None, layer_name="villes",
+        )
+        s.commit()
+        job_id = job.id
+    with Session() as s:
+        fetched = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert fetched.layer_name == "villes"
+
+
+def test_create_job_defaults_layer_name_to_none():
+    Session, tenant, user = _env()
+    with Session() as s:
+        job = repo.create_job(
+            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
+            filename="villes.geojson", collection_title="Villes",
+            lat_field=None, lon_field=None,
+        )
+        s.commit()
+        assert job.layer_name is None

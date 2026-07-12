@@ -9,12 +9,13 @@ from app.ingestion.models import IngestionJob
 def create_job(
     session: Session, *, tenant_id: str, created_by: str, source_key: str,
     filename: str, collection_title: str,
-    lat_field: str | None, lon_field: str | None,
+    lat_field: str | None, lon_field: str | None, layer_name: str | None = None,
 ) -> IngestionJob:
     job = IngestionJob(
         id=uuid.uuid4().hex, tenant_id=tenant_id, created_by=created_by,
         status="pending", source_key=source_key, filename=filename,
         collection_title=collection_title, lat_field=lat_field, lon_field=lon_field,
+        layer_name=layer_name,
     )
     session.add(job)
     session.flush()
