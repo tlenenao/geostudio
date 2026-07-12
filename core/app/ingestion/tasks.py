@@ -54,9 +54,9 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
                 return
             ingestion_repo.mark_running(session, job_id=job_id)
-            filename, source_key, collection_title, lat_field, lon_field, created_by = (
+            filename, source_key, collection_title, lat_field, lon_field, layer_name, created_by = (
                 job.filename, job.source_key, job.collection_title,
-                job.lat_field, job.lon_field, job.created_by,
+                job.lat_field, job.lon_field, job.layer_name, job.created_by,
             )
 
         s3 = _make_s3_client_from_env()
@@ -65,7 +65,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             result = run_import(
                 session, tenant_id=tenant_id, created_by=created_by, filename=filename,
                 content=content, collection_title=collection_title,
-                lat_field=lat_field, lon_field=lon_field,
+                lat_field=lat_field, lon_field=lon_field, layer_name=layer_name,
             )
         with request_scoped_session(session_factory) as session:
             ingestion_repo.mark_done(

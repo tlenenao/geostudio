@@ -398,6 +398,17 @@
             ],
             "title": "Latfield"
           },
+          "layerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layername"
+          },
           "lonField": {
             "anyOf": [
               {
@@ -478,6 +489,43 @@
           "itemId"
         ],
         "title": "IngestionJobStatus",
+        "type": "object"
+      },
+      "InspectRequest": {
+        "properties": {
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "key": {
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "filename"
+        ],
+        "title": "InspectRequest",
+        "type": "object"
+      },
+      "InspectResponse": {
+        "properties": {
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/LayerInfoOut"
+            },
+            "title": "Layers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "layers"
+        ],
+        "title": "InspectResponse",
         "type": "object"
       },
       "ItemPage": {
@@ -629,6 +677,29 @@
           }
         },
         "title": "ItemUpdatePatch",
+        "type": "object"
+      },
+      "LayerInfoOut": {
+        "properties": {
+          "featureCount": {
+            "title": "Featurecount",
+            "type": "integer"
+          },
+          "geometryType": {
+            "title": "Geometrytype",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "featureCount",
+          "geometryType"
+        ],
+        "title": "LayerInfoOut",
         "type": "object"
       },
       "Layout": {
@@ -3193,6 +3264,56 @@
           }
         },
         "summary": "Create Upload Job"
+      }
+    },
+    "/uploads/inspect": {
+      "post": {
+        "operationId": "inspect_upload_uploads_inspect_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Upload"
       }
     },
     "/uploads/presign": {
