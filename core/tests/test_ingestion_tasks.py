@@ -40,7 +40,7 @@ def env(pg_engine, monkeypatch):
             email=None, first_name="", last_name="",
         )
         s.commit()
-    monkeypatch.setenv("DATABASE_URL", str(pg_engine.url))
+    monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
     in_memory = testing.InMemoryConnector()
     with ingestion_tasks.app.replace_connector(in_memory) as app:
         yield app, Session, tenant, user
