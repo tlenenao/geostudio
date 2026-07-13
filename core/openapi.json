@@ -1316,6 +1316,22 @@
         "operationId": "list_collections_collections_get",
         "parameters": [
           {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
