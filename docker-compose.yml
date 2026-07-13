@@ -12,7 +12,7 @@ services:
   # ─── Base de données ───────────────────────────────────
 
   postgis:
-    image: postgis/postgis:16-3.4
+    build: ./deploy/postgis
     environment:
       POSTGRES_DB: gis
       POSTGRES_USER: gis
