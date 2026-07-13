@@ -68,8 +68,10 @@ def patch_extension(
 
 @router.get("/extensions")
 def list_extensions(
+    all: bool = False,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
 ):
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
-    exts = repo.list_active_extensions(session, tenant_id=tenant_id)
+    include_disabled = bool(user and user.is_admin and all)
+    exts = repo.list_extensions(session, tenant_id=tenant_id, include_disabled=include_disabled)
     return {"extensions": [_extension_json(e) for e in exts]}

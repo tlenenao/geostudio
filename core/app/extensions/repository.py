@@ -31,6 +31,8 @@ def update_extension(session: Session, ext: Extension, **fields) -> Extension:
     return ext
 
 
-def list_active_extensions(session: Session, *, tenant_id: str) -> list[Extension]:
-    stmt = select(Extension).where(Extension.tenant_id == tenant_id, Extension.enabled.is_(True))
+def list_extensions(session: Session, *, tenant_id: str, include_disabled: bool = False) -> list[Extension]:
+    stmt = select(Extension).where(Extension.tenant_id == tenant_id)
+    if not include_disabled:
+        stmt = stmt.where(Extension.enabled.is_(True))
     return list(session.scalars(stmt.order_by(Extension.label)).all())
