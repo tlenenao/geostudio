@@ -192,3 +192,31 @@ def test_update_item_patches_fields(session, tenant_and_user):
     assert updated is not None
     assert updated.title == "New title"
     assert updated.abstract == "New abstract"
+
+
+def test_create_item_enqueues_an_embedding_job(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    deferred = []
+    from app.items import jobs as item_jobs
+    monkeypatch.setattr(
+        item_jobs.embed_item_task, "defer",
+        lambda **kwargs: deferred.append(kwargs),
+    )
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
+
+
+def test_update_item_enqueues_an_embedding_job(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    deferred = []
+    from app.items import jobs as item_jobs
+    monkeypatch.setattr(
+        item_jobs.embed_item_task, "defer",
+        lambda **kwargs: deferred.append(kwargs),
+    )
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title="Y", abstract=None, keywords=None, is_published=None,
+    )
+    assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
