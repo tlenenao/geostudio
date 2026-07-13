@@ -33,7 +33,7 @@ def test_create_get_and_list_active():
     with Session() as s:
         ext = repo.get_extension(s, tenant_id=tenant_id, extension_id="acme.gauge")
         assert ext is not None and ext.label == "Jauge (extension)"
-        assert [e.id for e in repo.list_active_extensions(s, tenant_id=tenant_id)] == ["acme.gauge"]
+        assert [e.id for e in repo.list_extensions(s, tenant_id=tenant_id)] == ["acme.gauge"]
 
 
 def test_list_active_excludes_disabled():
@@ -49,6 +49,23 @@ def test_list_active_excludes_disabled():
         s.commit()
 
     with Session() as s:
-        assert repo.list_active_extensions(s, tenant_id=tenant_id) == []
+        assert repo.list_extensions(s, tenant_id=tenant_id) == []
         # toujours récupérable par id, seule la liste "actives" l'exclut
         assert repo.get_extension(s, tenant_id=tenant_id, extension_id="acme.gauge") is not None
+
+
+def test_list_extensions_include_disabled_returns_all():
+    Session, tenant_id, owner_id = _env()
+    with Session() as s:
+        ext = repo.create_extension(
+            s, tenant_id=tenant_id, owner_id=owner_id, id="acme.gauge",
+            tag="gauge-extension-widget", label="Jauge", module_url="https://x/gauge.js",
+            props=[], events=None, actions=None,
+            default_size={"w": 2, "h": 2}, permissions={"collections": "all"},
+        )
+        repo.update_extension(s, ext, enabled=False)
+        s.commit()
+
+    with Session() as s:
+        assert repo.list_extensions(s, tenant_id=tenant_id) == []
+        assert [e.id for e in repo.list_extensions(s, tenant_id=tenant_id, include_disabled=True)] == ["acme.gauge"]

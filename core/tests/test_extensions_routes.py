@@ -120,3 +120,34 @@ def test_mutations_are_audited(env):
         actions = list(s.scalars(select(AuditLog.action)))
     assert "extension.create" in actions
     assert "extension.update" in actions
+
+
+def test_get_extensions_all_true_shows_disabled_to_admin(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    client.post("/extensions", json=GAUGE_BODY)
+    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    default_listed = client.get("/extensions").json()["extensions"]
+    assert default_listed == []
+    all_listed = client.get("/extensions?all=true").json()["extensions"]
+    assert [e["id"] for e in all_listed] == ["acme.gauge"]
+
+
+def test_get_extensions_all_true_ignored_for_non_admin(env):
+    app, client, _, admin, regular = env
+    _as(app, admin)
+    client.post("/extensions", json=GAUGE_BODY)
+    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    _as(app, regular)
+    listed = client.get("/extensions?all=true").json()["extensions"]
+    assert listed == []
+
+
+def test_get_extensions_all_true_ignored_for_anonymous(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    client.post("/extensions", json=GAUGE_BODY)
+    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    del app.dependency_overrides[get_current_user_optional]
+    listed = client.get("/extensions?all=true").json()["extensions"]
+    assert listed == []

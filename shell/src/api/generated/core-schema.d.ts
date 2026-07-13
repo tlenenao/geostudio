@@ -236,6 +236,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Extensions */
+        get: operations["list_extensions_extensions_get"];
+        put?: never;
+        /** Register Extension */
+        post: operations["register_extension_extensions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extensions/{extension_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Extension */
+        patch: operations["patch_extension_extensions__extension_id__patch"];
+        trace?: never;
+    };
     "/groups": {
         parameters: {
             query?: never;
@@ -643,6 +678,81 @@ export interface components {
             service: string;
             /** Type */
             type: string;
+        };
+        /** ExtensionCreate */
+        ExtensionCreate: {
+            /** Actions */
+            actions?: string[] | null;
+            defaultSize: components["schemas"]["ExtensionSize"];
+            /** Events */
+            events?: string[] | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Moduleurl */
+            moduleUrl: string;
+            /**
+             * @default {
+             *       "collections": "all"
+             *     }
+             */
+            permissions: components["schemas"]["ExtensionPermissions"];
+            /**
+             * Props
+             * @default []
+             */
+            props: components["schemas"]["ExtensionProp"][];
+            /** Tag */
+            tag: string;
+        };
+        /** ExtensionPatch */
+        ExtensionPatch: {
+            /** Actions */
+            actions?: string[] | null;
+            defaultSize?: components["schemas"]["ExtensionSize"] | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Events */
+            events?: string[] | null;
+            /** Label */
+            label?: string | null;
+            /** Moduleurl */
+            moduleUrl?: string | null;
+            permissions?: components["schemas"]["ExtensionPermissions"] | null;
+            /** Props */
+            props?: components["schemas"]["ExtensionProp"][] | null;
+            /** Tag */
+            tag?: string | null;
+        };
+        /** ExtensionPermissions */
+        ExtensionPermissions: {
+            /**
+             * Collections
+             * @default all
+             */
+            collections: string[] | "all";
+        };
+        /** ExtensionProp */
+        ExtensionProp: {
+            /** Default */
+            default?: unknown;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "number" | "boolean" | "dataSource";
+        };
+        /** ExtensionSize */
+        ExtensionSize: {
+            /** H */
+            h: number;
+            /** W */
+            w: number;
         };
         /** GroupRead */
         GroupRead: {
@@ -1772,6 +1882,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_extensions_extensions_get: {
+        parameters: {
+            query?: {
+                all?: boolean;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_extension_extensions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_extension_extensions__extension_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                extension_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
