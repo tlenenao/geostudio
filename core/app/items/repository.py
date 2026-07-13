@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -10,9 +11,32 @@ from app.sharing.authorization import ItemAccessFacts
 from app.sharing.models import GroupMember, ItemShare
 from app.users.models import User
 
+logger = logging.getLogger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
+    # Best-effort : le calcul d'embedding est déjà fail-open (app.items.jobs.
+    # embed_item_task ne bloque jamais l'écriture sur un fournisseur lent ou
+    # indisponible, spec §Pipeline d'embedding). L'ENQUEUE elle-même doit
+    # suivre le même principe — sans quoi une file procrastinate
+    # injoignable transformerait un simple "l'item restera cherchable par
+    # trigram seul" en 500 sur toute création/modification d'item. Import
+    # local (pas en tête de fichier) : évite un cycle d'import — app.items.
+    # jobs importe app.items.models, importé transitivement très tôt par
+    # app.db.core_table_names().
+    from app.items.jobs import embed_item_task
+    try:
+        embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
+    except Exception:
+        logger.exception(
+            "échec de l'enqueue du job d'embedding pour l'item %s (l'écriture "
+            "n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)",
+            item_id,
+        )
 
 
 def _to_read(item: Item, owner_username: str) -> ItemRead:
@@ -44,6 +68,7 @@ def create_item(
     session.add(item)
     session.flush()
     session.refresh(item)
+    _enqueue_embedding(item.id, tenant_id)
     return item
 
 
@@ -167,6 +192,7 @@ def update_item(
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
+    _enqueue_embedding(item.id, tenant_id)
     return _to_read(item, owner_username)
 
 
