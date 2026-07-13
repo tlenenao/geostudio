@@ -46,6 +46,15 @@ export async function mockCore(page: Page) {
     });
   });
 
+  // Extensions registry (SP-8b) — AppBuilderPage/AppRuntimePage call
+  // GET /extensions unconditionally on mount; default to none active so
+  // every pre-existing spec (which never registers an extension) behaves
+  // exactly as before. Specs that need one or more active extensions
+  // override this route themselves.
+  await page.route("**/extensions*", async (route) => {
+    await route.fulfill({ json: { extensions: [] } });
+  });
+
   // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side
   // route is also "/items/1" (same path, different origin — localhost:4173
   // vs. https://core.test), so a path-only glob here would also intercept
