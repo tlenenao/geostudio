@@ -18,6 +18,7 @@ class MeResponse(BaseModel):
     email: str | None
     firstName: str
     lastName: str
+    isAdmin: bool
 
 
 @router.get("/me", response_model=MeResponse)
@@ -29,6 +30,7 @@ def get_me(user: User = Depends(get_current_user)) -> MeResponse:
         email=user.email,
         firstName=user.first_name,
         lastName=user.last_name,
+        isAdmin=user.is_admin,
     )
 
 
