@@ -151,6 +151,37 @@ test("listLayerSources aggregates Martin vector sources and core collections", a
   });
 });
 
+test("listActiveExtensions maps the core's /extensions response to ExtensionManifest[]", async () => {
+  let auth: string | null = null;
+  server.use(
+    http.get("https://core.test/extensions", ({ request }) => {
+      auth = request.headers.get("authorization");
+      return HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
+            events: ["changed"], actions: ["reset"],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+          },
+        ],
+      });
+    }),
+  );
+  const result = await makeClient("abc").listActiveExtensions();
+  expect(auth).toBe("Bearer abc");
+  expect(result).toEqual([
+    {
+      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+      moduleUrl: "https://example.com/gauge.js",
+      props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
+      events: ["changed"], actions: ["reset"],
+      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+    },
+  ]);
+});
+
 test("listLayerSources still returns one service when the other fails", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),

@@ -200,3 +200,15 @@ export function useSaveApp(pk: string) {
     },
   });
 }
+
+export function useActiveExtensions() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["extensions"],
+    // Optionnel : un ItemClient de test qui n'implémente pas encore la
+    // méthode (mocks existants de AppBuilderPage.test.tsx/AppRuntimePage.test.tsx,
+    // Partial<ItemClient>) résout silencieusement à [] plutôt que de faire
+    // planter la query — CoreItemClient réel l'implémente toujours.
+    queryFn: () => client.listActiveExtensions?.() ?? Promise.resolve([]),
+  });
+}
