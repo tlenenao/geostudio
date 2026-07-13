@@ -99,3 +99,22 @@ test("a malformed condition never throws and is treated as not matching", () => 
   expect(() => bus.emit("filter1", "changed", { nom: "A" })).not.toThrow();
   expect(handler).not.toHaveBeenCalled();
 });
+
+test("a handler that throws does not prevent the next handler in the same emit from running", () => {
+  const bus = new ActionBus();
+  const failing = vi.fn(() => {
+    throw new Error("boom");
+  });
+  const succeeding = vi.fn();
+  bus.register("ext1", "reset", failing);
+  bus.register("list1", "setFilter", succeeding);
+  bus.configure([
+    { id: "1", from: "btn1", event: "clicked", to: "ext1", action: "reset" },
+    { id: "2", from: "btn1", event: "clicked", to: "list1", action: "setFilter" },
+  ]);
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => bus.emit("btn1", "clicked", {})).not.toThrow();
+  expect(succeeding).toHaveBeenCalled();
+  expect(consoleError).toHaveBeenCalled();
+  consoleError.mockRestore();
+});

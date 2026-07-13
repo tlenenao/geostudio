@@ -38,7 +38,17 @@ test("getItem missing returns 404 and throws", async () => {
 
 test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
   const me = await makeClient().getMe();
-  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin" });
+  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false });
+});
+
+test("getMe surfaces isAdmin", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
+    ),
+  );
+  const me = await makeClient().getMe();
+  expect(me.isAdmin).toBe(true);
 });
 
 test("createConfigItem does not send owner in the request body", async () => {
@@ -149,6 +159,37 @@ test("listLayerSources aggregates Martin vector sources and core collections", a
     url: "https://core.test/collections/public.parcs/items",
     featureCount: 42,
   });
+});
+
+test("listActiveExtensions maps the core's /extensions response to ExtensionManifest[]", async () => {
+  let auth: string | null = null;
+  server.use(
+    http.get("https://core.test/extensions", ({ request }) => {
+      auth = request.headers.get("authorization");
+      return HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
+            events: ["changed"], actions: ["reset"],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+          },
+        ],
+      });
+    }),
+  );
+  const result = await makeClient("abc").listActiveExtensions();
+  expect(auth).toBe("Bearer abc");
+  expect(result).toEqual([
+    {
+      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+      moduleUrl: "https://example.com/gauge.js",
+      props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
+      events: ["changed"], actions: ["reset"],
+      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+    },
+  ]);
 });
 
 test("listLayerSources still returns one service when the other fails", async () => {
@@ -711,4 +752,43 @@ test("createConfigItem seeds dataSources and messages from a template that defin
   expect(body.config.dataSources).toHaveLength(1);
   expect(body.config.dataSources[0]).toMatchObject({ type: "features", layer: "incidents" });
   expect(body.config.messages).toHaveLength(1);
+});
+
+test("listAllExtensions requests all=true and keeps the enabled flag", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/extensions", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+          },
+        ],
+      });
+    }),
+  );
+  const result = await makeClient().listAllExtensions();
+  expect(url).toContain("all=true");
+  expect(result).toEqual([
+    {
+      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+      moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+    },
+  ]);
+});
+
+test("setExtensionEnabled PATCHes the extension with the new enabled value", async () => {
+  let body: unknown;
+  server.use(
+    http.patch("https://core.test/extensions/acme.gauge", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "acme.gauge" });
+    }),
+  );
+  await makeClient().setExtensionEnabled("acme.gauge", false);
+  expect(body).toEqual({ enabled: false });
 });

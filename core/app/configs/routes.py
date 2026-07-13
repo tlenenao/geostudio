@@ -7,6 +7,7 @@ from app.auth.dependency import get_current_user
 from app.configs import repository as repo
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
+from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -47,12 +48,20 @@ def _delete_config_and_item(session: Session, config_id: str, item_id: str, tena
     session.flush()
 
 
+def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant_id: str) -> None:
+    try:
+        validate_extension_permissions(session, config, tenant_id=tenant_id)
+    except ExtensionPermissionError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
     item = items_repo.create_item(
         session, tenant_id=user.tenant_id, owner_id=user.id,
         resource_type=request.config.kind, title=request.title,
@@ -95,6 +104,7 @@ def update_config(
     if existing is None or existing.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
+    _validate_extension_scope(session, config, tenant_id=user.tenant_id)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
@@ -189,6 +199,7 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")

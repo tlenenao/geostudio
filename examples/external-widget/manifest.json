@@ -1,0 +1,13 @@
+{
+  "id": "example.external-counter",
+  "tag": "external-example-widget",
+  "label": "Compteur externe (exemple)",
+  "moduleUrl": "widget.js",
+  "props": [
+    { "name": "initial", "type": "number", "label": "Valeur initiale", "default": 0 }
+  ],
+  "events": ["changed"],
+  "actions": ["reset"],
+  "defaultSize": { "w": 2, "h": 2 },
+  "permissions": { "collections": "all" }
+}

@@ -41,7 +41,11 @@ export class ActionBus {
     const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
     for (const m of list) {
       if (m.when && !evaluateExpression(m.when, { ...this.context, record })) continue;
-      this.actions.get(`${m.to} ${m.action}`)?.(payload);
+      try {
+        this.actions.get(`${m.to} ${m.action}`)?.(payload);
+      } catch (err) {
+        console.error(`Action bus: handler for "${m.to} ${m.action}" threw`, err);
+      }
     }
   }
 }

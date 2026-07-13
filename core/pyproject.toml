@@ -54,6 +54,7 @@ layers = [
     "app.features",
     "app.collections",
     "app.configs",
+    "app.extensions",
     "app.items",
     "app.sharing",
     "app.auth",
@@ -70,4 +71,5 @@ ignore_imports = [
     "app.db -> app.users.models",
     "app.db -> app.sharing.models",
     "app.db -> app.ingestion.models",
+    "app.db -> app.extensions.models",
 ]
