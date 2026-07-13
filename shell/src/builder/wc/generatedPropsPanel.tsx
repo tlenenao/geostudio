@@ -2,6 +2,10 @@ import type { DataSource } from "../../api/types";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { WcWidgetManifest } from "./manifest";
 
+// Filtre d'autorat, pas une frontière de sécurité : n'affecte que les sources
+// proposées dans ce panneau. Le module WC arbitraire chargé par l'extension
+// peut appeler n'importe quelle collection permise par le token du visiteur —
+// la frontière réelle reste can()/RLS côté cœur, inchangée.
 function permittedDataSources(dataSources: DataSource[], manifest: WcWidgetManifest): DataSource[] {
   const perm = manifest.permissions;
   if (!perm || perm.collections === "all") return dataSources;
