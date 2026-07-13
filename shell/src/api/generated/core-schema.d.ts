@@ -864,6 +864,8 @@ export interface components {
             firstName: string;
             /** Id */
             id: string;
+            /** Isadmin */
+            isAdmin: boolean;
             /** Lastname */
             lastName: string;
             /** Tenantid */
