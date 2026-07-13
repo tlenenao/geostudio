@@ -27,6 +27,8 @@ test("un widget d'extension chargé dynamiquement par URL se pose dans le builde
   const gauge = page.locator("gauge-extension-widget");
   await expect(gauge.getByText("0", { exact: true })).toBeVisible();
 
+  await page.getByLabel("Couleur du texte").fill("#ff0000");
+
   // Bouton (déclenchera reset) et Texte (affichera la variable count).
   await page.getByRole("button", { name: "Bouton" }).click();
   await page.getByRole("button", { name: "Texte" }).click();
@@ -54,6 +56,8 @@ test("un widget d'extension chargé dynamiquement par URL se pose dans le builde
   await page.goto("/apps/9");
   const runtimeGauge = page.locator("gauge-extension-widget");
   await expect(runtimeGauge.getByText("0", { exact: true })).toBeVisible();
+  const color = await runtimeGauge.locator("span").evaluate((el) => getComputedStyle(el).color);
+  expect(color).toBe("rgb(255, 0, 0)");
 
   await runtimeGauge.getByRole("button", { name: "+1" }).click();
   await runtimeGauge.getByRole("button", { name: "+1" }).click();
