@@ -107,6 +107,8 @@ export interface ItemClient {
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   listActiveExtensions(): Promise<ExtensionManifest[]>;
+  listAllExtensions(): Promise<AdminExtension[]>;
+  setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
@@ -198,6 +200,8 @@ export type ExtensionManifest = {
   permissions?: { collections: string[] | "all" };
   moduleUrl: string;
 };
+
+export type AdminExtension = ExtensionManifest & { enabled: boolean };
 
 export type DataRecord = {
   id: string | number;

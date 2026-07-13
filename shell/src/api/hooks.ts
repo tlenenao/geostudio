@@ -212,3 +212,23 @@ export function useActiveExtensions() {
     queryFn: () => client.listActiveExtensions?.() ?? Promise.resolve([]),
   });
 }
+
+export function useAllExtensions(options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["extensions", "all"],
+    queryFn: () => client.listAllExtensions(),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useSetExtensionEnabled() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => client.setExtensionEnabled(id, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["extensions"] });
+    },
+  });
+}

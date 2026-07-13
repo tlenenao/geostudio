@@ -753,3 +753,42 @@ test("createConfigItem seeds dataSources and messages from a template that defin
   expect(body.config.dataSources[0]).toMatchObject({ type: "features", layer: "incidents" });
   expect(body.config.messages).toHaveLength(1);
 });
+
+test("listAllExtensions requests all=true and keeps the enabled flag", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/extensions", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+          },
+        ],
+      });
+    }),
+  );
+  const result = await makeClient().listAllExtensions();
+  expect(url).toContain("all=true");
+  expect(result).toEqual([
+    {
+      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+      moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+    },
+  ]);
+});
+
+test("setExtensionEnabled PATCHes the extension with the new enabled value", async () => {
+  let body: unknown;
+  server.use(
+    http.patch("https://core.test/extensions/acme.gauge", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "acme.gauge" });
+    }),
+  );
+  await makeClient().setExtensionEnabled("acme.gauge", false);
+  expect(body).toEqual({ enabled: false });
+});
