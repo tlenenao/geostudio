@@ -34,6 +34,10 @@ vi.mock("../pages/AppRuntimePage", () => ({
   AppRuntimePage: ({ pk, pageId }: { pk: string; pageId?: string }) => <div>app-runtime-{pk}-{pageId ?? "none"}</div>,
 }));
 
+vi.mock("../pages/AdminExtensionsPage", () => ({
+  AdminExtensionsPage: () => <div>admin-extensions</div>,
+}));
+
 function wrap(children: ReactNode, initial = "/") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -89,6 +93,11 @@ test("the runtime route renders without going through the auth gate", () => {
   wrap(<AppRoutes />, "/apps/42");
   expect(screen.getByText("app-runtime-42-none")).toBeInTheDocument();
   authState.isAuthenticated = true;
+});
+
+test("renders the admin extensions route at /admin/extensions", () => {
+  wrap(<AppRoutes />, "/admin/extensions");
+  expect(screen.getByText("admin-extensions")).toBeInTheDocument();
 });
 
 test("protected routes still require authentication", () => {

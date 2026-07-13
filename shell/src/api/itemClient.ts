@@ -1,4 +1,4 @@
-import type { ActionMessage, AppConfig, CollectionSchema, CreateKind, DataRecord, DataSource, FieldError, GeoJSONFeatureInput, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -246,8 +246,10 @@ export function createItemClient(opts: {
     },
 
     async getMe(): Promise<Me> {
-      const data = await request<{ username: string; firstName: string; lastName: string }>("GET", `/me`);
-      return { username: data.username, firstName: data.firstName, lastName: data.lastName };
+      const data = await request<{ username: string; firstName: string; lastName: string; isAdmin: boolean }>(
+        "GET", `/me`,
+      );
+      return { username: data.username, firstName: data.firstName, lastName: data.lastName, isAdmin: data.isAdmin };
     },
 
     async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {
@@ -333,6 +335,51 @@ export function createItemClient(opts: {
         throw new Error("listLayerSources: all layer services failed");
       }
       return fulfilled.flatMap((r) => r.value);
+    },
+
+    async listActiveExtensions(): Promise<ExtensionManifest[]> {
+      const token = getToken();
+      const res = await fetch(`${coreUrl}/extensions`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      const data = (await res.json()) as {
+        extensions?: Array<{
+          id: string; tag: string; label: string; moduleUrl: string;
+          props: ExtensionManifest["props"]; events?: string[]; actions?: string[];
+          defaultSize: { w: number; h: number }; permissions?: { collections: string[] | "all" };
+        }>;
+      };
+      return (data.extensions ?? []).map((e) => ({
+        type: e.id, tag: e.tag, label: e.label, moduleUrl: e.moduleUrl,
+        props: e.props, events: e.events, actions: e.actions,
+        defaultSize: e.defaultSize, permissions: e.permissions,
+      }));
+    },
+
+    async listAllExtensions(): Promise<AdminExtension[]> {
+      const token = getToken();
+      const res = await fetch(`${coreUrl}/extensions?all=true`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
+      const data = (await res.json()) as {
+        extensions?: Array<{
+          id: string; tag: string; label: string; moduleUrl: string;
+          props: ExtensionManifest["props"]; events?: string[]; actions?: string[];
+          defaultSize: { w: number; h: number }; permissions?: { collections: string[] | "all" };
+          enabled: boolean;
+        }>;
+      };
+      return (data.extensions ?? []).map((e) => ({
+        type: e.id, tag: e.tag, label: e.label, moduleUrl: e.moduleUrl,
+        props: e.props, events: e.events, actions: e.actions,
+        defaultSize: e.defaultSize, permissions: e.permissions, enabled: e.enabled,
+      }));
+    },
+
+    async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
+      await request<void>("PATCH", `/extensions/${id}`, { enabled });
     },
 
     async createMapItem(input: { title: string; owner: string }): Promise<Item> {

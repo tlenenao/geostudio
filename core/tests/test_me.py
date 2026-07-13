@@ -9,20 +9,17 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-@pytest.fixture()
-def client():
+def _make_client(*, username: str, oidc_sub: str, bootstrap_admin: bool = False) -> TestClient:
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com",
-            first_name="Alice", last_name="Doe",
+            setup_session, tenant_id=tenant.id, oidc_sub=oidc_sub,
+            username=username, email=f"{username}@example.com",
+            first_name="Alice", last_name="Doe", bootstrap_admin=bootstrap_admin,
         )
-        # Repository functions only flush now; commit here to stand in for
-        # "a prior successful request that provisioned this tenant/user".
         setup_session.commit()
 
     app = create_app()
@@ -33,10 +30,17 @@ def client():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
+    return TestClient(app)
 
-    test_client = TestClient(app)
-    yield test_client
-    engine.dispose()
+
+@pytest.fixture()
+def client():
+    return _make_client(username="alice", oidc_sub="sub-1")
+
+
+@pytest.fixture()
+def admin_client():
+    return _make_client(username="admin", oidc_sub="sub-admin", bootstrap_admin=True)
 
 
 def test_get_me_returns_the_resolved_user(client):
@@ -46,3 +50,9 @@ def test_get_me_returns_the_resolved_user(client):
     assert body["username"] == "alice"
     assert body["email"] == "alice@example.com"
     assert body["firstName"] == "Alice"
+    assert body["isAdmin"] is False
+
+
+def test_get_me_reflects_admin_flag(admin_client):
+    response = admin_client.get("/me")
+    assert response.json()["isAdmin"] is True

@@ -402,7 +402,106 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   en tête pour tout futur widget WC en Lit. **421 tests shell** (404 avant
   + 17 : 13 sur `shell/src/builder/wc/`, 4 sur `counterWidgetWc.test.tsx`),
   **28 specs E2E vertes** (20 + 7 ajoutées depuis SP-7 +
-  `wc-widget-bridge.spec.ts`). PR #27 (sp8a-wc-widget-bridge→dev) ouverte.
+  `wc-widget-bridge.spec.ts`). PR #27 (sp8a-wc-widget-bridge→dev) **fusionnée**.
+- **SP-8b livré** (2026-07-13) : registre d'extensions + chargement dynamique
+  de modules ES — un widget Web Component écrit et hébergé **hors du repo
+  shell** (manifeste JSON + module ES servis par une URL) devient disponible
+  dans le builder après enregistrement/activation par un admin, **sans
+  redéploiement du shell**, et sa désactivation ne casse pas les apps qui
+  l'utilisaient. Cœur : table `app.extensions` (clé composite `id`+`tenant_id`
+  — deux tenants peuvent enregistrer le même type, pas de ressource physique
+  à découpler contrairement à `Collection`), écritures admin-only auditées
+  (`extension.create`/`update`), `GET /extensions` anonyme+scopé tenant
+  (défaut tenant si anonyme, même convention que `app.collections`). Shell :
+  `useActiveExtensions` (react-query, dégradation silencieuse à `[]`) récupère
+  la liste au bootstrap de `AppBuilderPage`/`AppRuntimePage` (fail-open : un
+  `/extensions` en échec ne bloque pas la page), `registerExtensionWidget`
+  enregistre chaque manifeste dans le registre de widgets existant
+  (`registerWidget` inchangé) via un `Component` qui importe paresseusement
+  et mémoïse le module (`ensureModuleLoaded`, un rejet est aussi mis en
+  cache — pas de retentative avant reload) et délègue au `WcHost` de SP-8a
+  (inchangé, réutilisé par composition), avec placeholder pendant le
+  chargement (« Chargement… ») ou en échec (« Extension indisponible » /
+  « Widget inconnu » si désactivée). `wc/manifest.ts` étendu (rétrocompatible)
+  avec un type de prop `dataSource` (rendu via `DataSourceSelect`, filtré par
+  `permissions.collections` — filtre d'autorat côté panneau, **pas une
+  frontière de sécurité** : le module WC reste libre d'appeler toute
+  collection permise par le token du visiteur, la frontière réelle reste
+  `can()`/RLS côté cœur, inchangée). Exécuté en subagent-driven-development
+  (10 tâches, revue par tâche + revue finale de branche modèle opus). 1
+  Important trouvé et corrigé en cours de route (Task 10) : la spec E2E
+  prouvait props/events/actions composées mais jamais la parité de thème,
+  alors que la checklist finale du plan l'exige et que la fixture avait été
+  écrite exprès pour ça (`var(--gs-color-text,...)`) — fixé en réutilisant
+  exactement le patron `getComputedStyle` de `wc-widget-bridge.spec.ts`
+  (SP-8a). Revue finale de branche : aucun Critical/Important, **ready to
+  merge**, 5 Minor non bloquants tous par conception ou compromis déjà
+  documenté (délai fail-open ~5-7s dû aux retries par défaut de react-query ;
+  désactivation effective seulement au reload complet, pas en navigation SPA,
+  car le registre est un singleton sans dé-enregistrement — cohérent avec le
+  critère E2E qui teste bien le reload ; `permissions.collections` cosmétique
+  côté panneau — commentaire ajouté au code ; import rejeté caché pour la
+  durée de la page ; `GET /extensions` anonyme résout au tenant par défaut
+  seulement, cohérent avec le reste du système). **369 tests cœur passed/62
+  skipped**, **435 tests shell** (421 avant SP-8a + 14), **30 specs E2E
+  vertes** (28 + `extension-widget.spec.ts`, 2 tests). Fusionnée dans `dev`
+  (`sp8b-extensions-registry`→`dev`, fast-forward local, sans PR formelle —
+  cohérent avec le patron SP-6a/SP-6b/SP-6c/SP-7).
+- **SP-8c livré et clos** (2026-07-13) : widget tiers réel, admin, permissions
+  serveur, containment — **clôt SP-8, jalon M5 (« SDK ouvrable ») atteint**.
+  Cœur : `isAdmin` exposé par `GET /me` ; `GET /extensions?all=true` réservé
+  aux admins (`include_disabled = bool(user and user.is_admin and all)`,
+  fail-closed pour anonyme/non-admin, vérifié pour les 4 combinaisons) ;
+  **frontière de sécurité serveur réelle** (contrairement au filtre client
+  `permissions.collections` de SP-8b, qui restait un confort d'autorat) :
+  `validate_extension_permissions` (`core/app/configs/extension_permissions.py`)
+  rejette (400) une config qui route la prop `dataSource` d'un widget
+  d'extension hors de son scope déclaré, câblée avant toute mutation dans
+  `create_config`/`update_config`/`update_config_by_item` **et** dans les 3
+  outils MCP qui écrivent des configs (`save_app_config`/`create_item`/
+  `create_form_app` — trouvé et corrigé en revue finale, cf. ci-dessous) ;
+  traverse aussi bien `layout.items` racine que `pages[*].layout.items`
+  (multi-pages, couverture ajoutée en revue de tâche après un défaut trouvé
+  dans le brief : branche non testée par les 6 tests initiaux). Shell :
+  `ActionBus.emit` isole chaque handler dans son propre try/catch — un widget
+  d'extension défaillant ne bloque plus les messages composés suivants vers
+  d'autres widgets ; `Me.isAdmin` ; page d'admin `/admin/extensions` (liste
+  incl. désactivées, activer/désactiver, fail-closed à 3 niveaux : route
+  cœur, gate `enabled` de la query, garde PATCH admin-only). Widget externe
+  de référence zéro-dépendance/zéro-build (`examples/external-widget/`,
+  copiable par un auteur tiers sans notre toolchain) ; serveur E2E statique
+  cross-origin dédié (`shell/e2e/external-widget-server.mjs`, port distinct
+  du serveur preview du shell) prouvant un `import()` réellement cross-origin,
+  pas un fixture same-origin déguisé ; guide `docs/guides/2026-07-13-ecrire-un-
+  widget-web-component.md` pour auteurs tiers.
+  Exécuté en subagent-driven-development (11 tâches, revue par tâche + revue
+  finale de branche modèle opus). **Revue finale : 1 Important trouvé et
+  corrigé** — la validation de scope de Task 3 n'était câblée que sur les 3
+  routes REST ; les 3 outils MCP qui écrivent des configs contournaient
+  totalement le contrôle (un agent MCP pouvait créer/enregistrer une config
+  hors scope, exactement ce que REST rejette désormais) — fixé en câblant
+  `validate_extension_permissions` aux 3 sites MCP avec la convention
+  `ValueError` déjà en place dans ce fichier (pas `HTTPException`, transport
+  MCP), test de régression via un vrai handshake `tools/call` (pas un appel
+  Python nu). 2 Minor corrigés dans la même passe (garde optionnelle
+  `useAllExtensions` alignée sur `useActiveExtensions` ; `AdminExtensionsPage`
+  surface désormais un échec de PATCH). **Ready to merge: Yes** en re-revue.
+  Défauts trouvés **dans le plan lui-même** (pas le code produit) pendant
+  l'exécution, chacun documenté et corrigé : un `ignore_imports` manquant
+  dans le contrat `layers` d'import-linter (`app.db -> app.extensions.models`,
+  trou pré-existant exposé par l'ajout de `app.extensions` au contrat) ;
+  un pattern glob Playwright (`**/extensions*`) qui collisionnait avec la
+  navigation SPA vers `/admin/extensions` (même classe de bug que le patron
+  déjà documenté pour `/items/1`/`/items/9` dans `mocks.ts`) ; le compte
+  final du plan disait "33 specs E2E", le compte réel est 34 (30+1+2+1,
+  confirmée coquille arithmétique par comptage direct fichiers/tests, pas
+  une régression). **384 tests cœur passed/62 skipped** (381 avant le fix
+  final +3), **lint-imports clean**, **445 tests shell** (444 +1, tsc
+  clean), **34/34 specs E2E** (mesurées en tâche 11, non affectées par les
+  fixes ultérieurs qui ne touchent aucun fichier E2E). Fusionnée dans `dev`
+  (fast-forward local) et poussée sur `origin/dev` ; PR #30 (dev→main)
+  ouverte pour synchroniser `main` (regroupe SP-8b + SP-8c, `main` n'avait
+  pas encore reçu SP-8b). **SP-8 est clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

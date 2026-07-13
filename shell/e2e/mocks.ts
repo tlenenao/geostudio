@@ -42,8 +42,26 @@ export async function mockCore(page: Page) {
 
   await page.route("**/me", async (route) => {
     await route.fulfill({
-      json: { id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User", email: null, tenantId: "t-mock" },
+      json: {
+        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
+        email: null, tenantId: "t-mock", isAdmin: false,
+      },
     });
+  });
+
+  // Extensions registry (SP-8b) — AppBuilderPage/AppRuntimePage call
+  // GET /extensions unconditionally on mount; default to none active so
+  // every pre-existing spec (which never registers an extension) behaves
+  // exactly as before. Specs that need one or more active extensions
+  // override this route themselves.
+  //
+  // Host-scoped (not "**/extensions*"): the shell's own client-side route
+  // "/admin/extensions" (SP-8c admin page) also matches a path-only glob
+  // ending in "extensions*" — that would intercept the browser's document
+  // navigation to that page and break rendering, same rationale as
+  // "/items/1"/"/items/9" below.
+  await page.route("https://core.test/extensions*", async (route) => {
+    await route.fulfill({ json: { extensions: [] } });
   });
 
   // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side
