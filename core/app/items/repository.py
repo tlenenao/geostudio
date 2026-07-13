@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+import procrastinate
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -31,7 +32,7 @@ def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
     from app.items.jobs import embed_item_task
     try:
         embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
-    except Exception:
+    except procrastinate.exceptions.ProcrastinateException:
         logger.exception(
             "échec de l'enqueue du job d'embedding pour l'item %s (l'écriture "
             "n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)",

@@ -1,3 +1,4 @@
+import procrastinate
 import pytest
 
 from app.db import make_engine, make_session_factory, init_db
@@ -220,3 +221,20 @@ def test_update_item_enqueues_an_embedding_job(session, tenant_and_user, monkeyp
         title="Y", abstract=None, keywords=None, is_published=None,
     )
     assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
+
+
+def test_create_item_still_succeeds_when_the_embedding_enqueue_fails(session, tenant_and_user, monkeypatch):
+    # Pins the actual contract _enqueue_embedding exists to guarantee: the
+    # procrastinate App shared with the FastAPI process is never .open()ed,
+    # so every unmocked .defer() raises AppNotOpen in practice. The write
+    # itself must stay fail-open — the embedding enqueue is best-effort only.
+    tenant, user = tenant_and_user
+    from app.items import jobs as item_jobs
+
+    def raise_app_not_open(**kwargs):
+        raise procrastinate.exceptions.AppNotOpen()
+
+    monkeypatch.setattr(item_jobs.embed_item_task, "defer", raise_app_not_open)
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    assert item is not None
+    assert item.title == "X"
