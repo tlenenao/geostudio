@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build postgis+pgvector image
-        run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
+        run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
         run: |
           docker run -d --name ci-postgres \
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build postgis+pgvector image
-        run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
+        run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
         run: |
           docker run -d --name ci-postgres \
