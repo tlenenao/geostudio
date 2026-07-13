@@ -3,7 +3,19 @@ process (docker-compose.yml, service `worker`) exécute toutes les tâches de
 tous les modules `*.jobs`/`*.tasks`, quel que soit le domaine qui les a
 déférées. Module volontairement hors du contrat de couches import-linter
 (comme app.db) : app.items et app.collections doivent pouvoir l'importer
-sans que ce soit une violation de couche."""
+sans que ce soit une violation de couche.
+
+`import_paths` est nécessaire (pas cosmétique) : docker-compose.yml lance le
+worker avec `procrastinate --app app.jobs.app worker ...`, qui n'importe QUE
+ce module (pour résoudre `app.jobs.app`) — pas app.ingestion.tasks,
+app.items.jobs ni app.collections.jobs, les modules qui enregistrent
+réellement les tâches (`@app.task(...)`) sur cette App partagée en import
+time. Sans `import_paths`, le worker démarre avec un registre de tâches vide
+(hors tâches builtin) et toute tâche déférée par un autre process (qui, lui,
+a bien importé ces modules) échoue faute d'être connue du worker. Procrastinate
+importe ces chemins lui-même, paresseusement, via `App.perform_import_paths()`
+au démarrage du worker (et de `configure_task`) — voir
+`tests/test_jobs.py::test_import_paths_registers_all_domain_tasks`."""
 import os
 
 import procrastinate
@@ -20,4 +32,7 @@ def _conninfo() -> str:
     return database_url.replace("postgresql+psycopg://", "postgresql://")
 
 
-app = procrastinate.App(connector=procrastinate.SyncPsycopgConnector(conninfo=_conninfo()))
+app = procrastinate.App(
+    connector=procrastinate.SyncPsycopgConnector(conninfo=_conninfo()),
+    import_paths=["app.ingestion.tasks", "app.items.jobs", "app.collections.jobs"],
+)

@@ -32,6 +32,16 @@ def get_uploads_bucket() -> str:
     return os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
 
 
+# Hors périmètre SP-7 (revue finale de branche, finding Important) : ce
+# `.defer(...)` suppose que le connecteur de app.jobs.app est ouvert, ce qui
+# n'est pas garanti dans le process FastAPI du cœur (contrairement au worker,
+# rien n'ouvre explicitement l'App procrastinate dans core/app/main.py) — un
+# déploiement réel peut voir POST /uploads échouer avec AppNotOpen. SP-7 a
+# rencontré et corrigé le même risque pour les nouveaux enqueues d'embedding
+# (voir le wrapper fail-open app/items/repository.py::_enqueue_embedding),
+# mais n'a pas touché ce call site pré-existant de SP-6a : le fixer (ouvrir
+# app.jobs.app dans le lifespan, ou appliquer le même wrapper fail-open ici)
+# est un changement de comportement distinct, à traiter séparément.
 def get_task_deferrer() -> Callable[[str, str], None]:
     def deferrer(job_id: str, tenant_id: str) -> None:
         run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id)
