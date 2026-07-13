@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collections import repository as repo
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -274,3 +275,57 @@ def test_canWrite_reflects_the_requesting_users_write_access(env):
     _as(app, regular)
     assert client.get("/collections/incidents").json()["canWrite"] is False
     assert client.get("/collections").json()["collections"][0]["canWrite"] is False
+
+
+def test_patch_collection_enqueues_embedding_only_when_title_or_description_change(env, monkeypatch):
+    # Évite un recalcul inutile d'embedding sur un simple toggle isPublic/
+    # editable (brief SP-7 Task 7, patch_collection) : l'enqueue ne doit se
+    # déclencher que si le titre ou la description ont effectivement changé.
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents", "title": "Incidents"})
+
+    deferred = []
+    monkeypatch.setattr(
+        repo, "enqueue_embedding",
+        lambda collection_id, tenant_id: deferred.append((collection_id, tenant_id)),
+    )
+
+    # Ni titre ni description : pas d'enqueue.
+    r = client.patch("/collections/incidents", json={"isPublic": True})
+    assert r.status_code == 200
+    assert deferred == []
+
+    # Titre inchangé (même valeur) : pas d'enqueue.
+    r = client.patch("/collections/incidents", json={"title": "Incidents"})
+    assert r.status_code == 200
+    assert deferred == []
+
+    # Titre réellement modifié : enqueue.
+    r = client.patch("/collections/incidents", json={"title": "Incidents voirie"})
+    assert r.status_code == 200
+    assert deferred == [("incidents", admin.tenant_id)]
+
+
+def test_list_collections_accepts_q_param_without_error(env):
+    app, client, Session, admin, regular, _ddl = env
+    _as(app, regular)
+    with Session() as s:
+        repo.create_collection(
+            s, tenant_id=admin.tenant_id, owner_id=admin.id, table_name="c1",
+            title="Communes", description="", is_public=True,
+            pk_column="id", geometry_column=None, geometry_type=None, srid=None,
+        )
+        s.commit()
+    resp = client.get("/collections?q=commun")
+    assert resp.status_code == 200
+    # SQLite (route de test) : repli ILIKE, "commun" est une sous-chaîne de "Communes".
+    assert [c["title"] for c in resp.json()["collections"]] == ["Communes"]
+
+    # Preuve que `q` est bien câblé jusqu'à list_visible_collections (et pas
+    # seulement accepté puis ignoré par FastAPI comme paramètre inconnu) :
+    # une requête qui ne matche ni le titre ni la description doit filtrer
+    # la collection, pas la laisser passer.
+    resp = client.get("/collections?q=xyzzy-no-match")
+    assert resp.status_code == 200
+    assert resp.json()["collections"] == []

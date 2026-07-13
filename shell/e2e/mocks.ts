@@ -151,12 +151,27 @@ export async function mockCore(page: Page) {
     });
   });
 
-  // Cœur OGC API collections — return empty list (no feature layers needed
-  // beyond the two below).
-  await page.route("**/collections", async (route) => {
-    await route.fulfill({
-      json: { collections: [] },
-    });
+  // Cœur OGC API collections — filtered by `q` when present (LayerPicker
+  // search, Task 11/12); default `q=null` → `[]`, matching the pre-Task-12
+  // behavior for every spec that never searches the LayerPicker.
+  const ALL_COLLECTIONS = [
+    { id: "communes", title: "Communes", featureCount: 12 },
+    { id: "incidents", title: "Incidents voirie", featureCount: 3 },
+  ];
+
+  // Trailing "*" is required: the LayerPicker search issues
+  // "/collections?q=…", and a bare "**/collections" glob (anchored at the
+  // end of the URL) does not match once a query string is appended — it
+  // would silently fall through to the real network in the browser. The
+  // "*" only matches non-"/" characters, so it still can't swallow the more
+  // specific "**/collections/villes/items*" etc. routes below.
+  await page.route("**/collections*", async (route) => {
+    const url = new URL(route.request().url());
+    const q = url.searchParams.get("q");
+    const collections = q
+      ? ALL_COLLECTIONS.filter((c) => c.title.toLowerCase().includes(q.toLowerCase()))
+      : [];
+    await route.fulfill({ json: { collections } });
   });
 
   // Cœur items for the "villes" collection — a statistics source aggregates

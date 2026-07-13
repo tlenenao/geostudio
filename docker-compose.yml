@@ -12,7 +12,7 @@ services:
   # ─── Base de données ───────────────────────────────────
 
   postgis:
-    image: postgis/postgis:16-3.4
+    build: ./deploy/postgis
     environment:
       POSTGRES_DB: gis
       POSTGRES_USER: gis
@@ -127,9 +127,14 @@ services:
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
   worker:
     build: ./core
+    # `python -m procrastinate` (pas le script `procrastinate` du PATH) : ce
+    # dernier ne met jamais le cwd (/app, où vit le paquet `app`) sur
+    # sys.path — seule l'invocation via `-m` (comme `-c`) le fait. Sans ça,
+    # le chargement de `app.jobs.app` échoue ("Could not load app from
+    # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
-      sh -c "procrastinate --app app.ingestion.tasks.app schema --apply &&
-             procrastinate --app app.ingestion.tasks.app worker -q ingestion"
+      sh -c "python -m procrastinate --app app.jobs.app schema --apply &&
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000

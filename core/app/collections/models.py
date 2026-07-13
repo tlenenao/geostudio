@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +28,7 @@ class Collection(Base):
     geometry_type: Mapped[str | None] = mapped_column(String, nullable=True)
     srid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     feature_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     editable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

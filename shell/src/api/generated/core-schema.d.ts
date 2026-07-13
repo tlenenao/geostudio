@@ -997,7 +997,9 @@ export interface operations {
     };
     list_collections_collections_get: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string | null;
+            };
             header?: {
                 authorization?: string;
             };

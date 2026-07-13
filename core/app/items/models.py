@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -21,6 +22,7 @@ class Item(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     abstract: Mapped[str] = mapped_column(String, default="")
     keywords: Mapped[list] = mapped_column(JSON, default=list)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     thumbnail_key: Mapped[str | None] = mapped_column(String, nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)

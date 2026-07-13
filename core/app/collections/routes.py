@@ -178,13 +178,14 @@ def register_collection(
 
 @router.get("/collections")
 def list_collections(
+    q: str | None = None,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
 ):
     from app.tenants.repository import get_or_create_default_tenant
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
     cols = repo.list_visible_collections(
         session, tenant_id=tenant_id, user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin),
+        is_admin=bool(user and user.is_admin), q=q,
     )
     return {"collections": [_collection_json(c, _can_write_collection(session, user, c)) for c in cols]}
 
@@ -243,11 +244,17 @@ def patch_collection(
     if not can(session, user_id=user.id, action="write", item=repo.get_access_facts(col),
                kind="collection", actor_is_admin=user.is_admin):
         raise HTTPException(status_code=403, detail="write access required")
+    text_changed = (
+        (body.title is not None and body.title != col.title)
+        or (body.description is not None and body.description != col.description)
+    )
     for attr, value in (("title", body.title), ("description", body.description),
                         ("is_public", body.isPublic), ("editable", body.editable)):
         if value is not None:
             setattr(col, attr, value)
     session.flush()
+    if text_changed:
+        repo.enqueue_embedding(col.id, user.tenant_id)
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.update", object_type="collection", object_id=col.id,
                 payload=body.model_dump(exclude_none=True))

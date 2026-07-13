@@ -5,12 +5,19 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs
+from app.collections import repository as collections_repo
+from app.collections.introspection import TableNotFound, UnsupportedTable
+from app.collections.introspection_pg import introspect_table
+from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
+from app.features.repository import FilterError, select_features
+from app.features.rls import rls_scope
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
+from app.mcp import form_app
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import Sharing
@@ -47,6 +54,32 @@ def _require_access(session, *, user: User, item_id: str, action: str) -> ItemAc
     return facts
 
 
+def _require_collection_read(session, *, user: User, collection_id: str):
+    """Mirrors app/collections/routes.py's get_readable_collection — ValueError
+    instead of HTTPException, same rationale as _require_access above."""
+    col = collections_repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    if col is None:
+        raise ValueError("collection not found")
+    readable = can(
+        session, user_id=user.id, action="read",
+        item=collections_repo.get_access_facts(col), kind="collection",
+        actor_is_admin=user.is_admin,
+    )
+    if not readable:
+        raise ValueError("collection not found")
+    return col
+
+
+def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise ValueError("bbox must be minx,miny,maxx,maxy")
+    try:
+        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+    except ValueError:
+        raise ValueError("bbox must be minx,miny,maxx,maxy") from None
+
+
 def register_tools(server: FastMCP, session_factory) -> None:
     @server.tool()
     async def whoami(ctx: Context) -> dict:
@@ -75,6 +108,64 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, current_user_id=user.id,
                 q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
             )
+
+    @server.tool()
+    async def search_catalog(
+        ctx: Context,
+        q: str | None = None,
+        type: str | None = None,
+        scope: str = "all",
+        page: int = 1,
+        pageSize: int = 12,
+    ) -> ItemPage:
+        """Search the catalog (hybrid trigram + vector ranking on q) — items
+        only, not collections. Same permissions/parameters as list_items;
+        registered as its own tool for agent discoverability of the search
+        capability (SP-7 MCP v1)."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            return items_repo.list_items(
+                session, tenant_id=user.tenant_id, current_user_id=user.id,
+                q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
+            )
+
+    @server.tool()
+    async def query_features(
+        ctx: Context,
+        collectionId: str,
+        bbox: str | None = None,
+        filters: dict[str, str] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        """Read features from a collection — mirrors GET
+        /collections/{id}/items (bbox, attribute filters, pagination), same
+        permissions/RLS. No natural-language-to-filter translation: filters
+        are structured field=value pairs, like any OGC client (SP-7 MCP v1)."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            col = _require_collection_read(session, user=user, collection_id=collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound:
+                raise ValueError("collection backing table not found")
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason)
+            parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
+            try:
+                with rls_scope(session, col.tenant_id):
+                    page = select_features(
+                        session, info, limit=min(limit, 1000), offset=offset,
+                        bbox=parsed_bbox, filters=filters or None,
+                    )
+            except FilterError as exc:
+                raise ValueError(f"unknown filter field: {exc.field}")
+            return {
+                "type": "FeatureCollection", "features": page.features,
+                "numberMatched": page.number_matched, "numberReturned": page.number_returned,
+            }
 
     @server.tool()
     async def get_item(ctx: Context, itemId: str) -> ItemRead:
@@ -111,7 +202,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             existing = configs_repo.get_config_by_item(session, itemId)
             if existing is None:
                 raise ValueError("config not found")
-            result = configs_repo.update_config(session, existing.id, config)
+            result = configs_repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
             if result is None:
                 raise ValueError("config not found")
             write_audit(
@@ -134,7 +225,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, owner_id=user.id,
                 resource_type=kind, title=title,
             )
-            config_result = configs_repo.create_config(session, config, item_id=item.id)
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
             write_audit(
                 session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
                 action="item.create", object_type="item", object_id=item.id,
@@ -147,6 +240,52 @@ def register_tools(server: FastMCP, session_factory) -> None:
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
             assert result is not None  # just created it, in the same transaction
+            return result
+
+    @server.tool()
+    async def create_form_app(
+        ctx: Context, collectionId: str, title: str | None = None,
+    ) -> ItemRead:
+        """Compose a Carte+Table(+Formulaire if the caller can write) app on
+        an existing collection, from its introspected schema — same shape as
+        the builder's "Application de saisie" gallery template (SP-4c),
+        generated instead of hand-picked. Formulaire is included only if the
+        caller has write access to the collection (mirrors the canWrite
+        predicate SP-4c exposes on collections). SP-7 MCP v1."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            col = _require_collection_read(session, user=user, collection_id=collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound:
+                raise ValueError("collection backing table not found")
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason)
+            schema = table_info_to_schema(info)
+            include_form = form_app.can_write_collection(session, user=user, col=col)
+            config = form_app.build_config(
+                collection_id=collectionId, schema=schema, include_form=include_form,
+            )
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type="app", title=title or f"Application {col.title}",
+            )
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": item.title, "collectionId": collectionId},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"collectionId": collectionId, "includeForm": include_form},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None
             return result
 
     @server.tool()

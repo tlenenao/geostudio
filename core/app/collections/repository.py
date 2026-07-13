@@ -1,9 +1,46 @@
-from sqlalchemy import delete, func, select
+import logging
+
+import procrastinate
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
+from app.search.providers import get_embedding_provider
+from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import AccessFacts
 from app.sharing.models import CollectionShare, Group, GroupMember
+
+logger = logging.getLogger(__name__)
+
+_RRF_CANDIDATE_LIMIT = 200
+
+
+def enqueue_embedding(collection_id: str, tenant_id: str) -> None:
+    # Best-effort, même contrat que app.items.repository._enqueue_embedding
+    # (Task 5) : le calcul d'embedding est déjà fail-open (app.collections.
+    # jobs.embed_collection_task ne bloque jamais l'écriture sur un
+    # fournisseur lent ou indisponible). L'ENQUEUE elle-même doit suivre le
+    # même principe — sans quoi une file procrastinate injoignable
+    # transformerait un simple "la collection restera cherchable par
+    # trigram seul" en 500 sur toute création/modification de collection.
+    # Import local (pas en tête de fichier) : évite un cycle d'import — même
+    # raison que items (app.collections.jobs importe app.collections.models,
+    # importé transitivement très tôt par app.db.core_table_names()).
+    # Pas de préfixe `_` (contrairement à l'équivalent items) : cette
+    # fonction est appelée depuis app.collections.routes (patch_collection),
+    # pas seulement en interne à ce module — patch_collection a besoin de
+    # conditionner l'enqueue à un changement de titre/description, logique
+    # qui vit dans la route (il n'existe pas d'`update_collection` en
+    # repository pour la porter, contrairement à items).
+    from app.collections.jobs import embed_collection_task
+    try:
+        embed_collection_task.defer(collection_id=collection_id, tenant_id=tenant_id)
+    except procrastinate.exceptions.ProcrastinateException:
+        logger.exception(
+            "échec de l'enqueue du job d'embedding pour la collection %s (l'écriture "
+            "n'est pas affectée ; l'embedding restera NULL jusqu'au prochain write)",
+            collection_id,
+        )
 
 
 def get_access_facts(col: Collection) -> AccessFacts:
@@ -31,11 +68,13 @@ def create_collection(session: Session, *, tenant_id: str, owner_id: str, table_
     )
     session.add(col)
     session.flush()
+    enqueue_embedding(col.id, tenant_id)
     return col
 
 
 def list_visible_collections(
-    session: Session, *, tenant_id: str, user_id: str | None, is_admin: bool
+    session: Session, *, tenant_id: str, user_id: str | None, is_admin: bool,
+    q: str | None = None,
 ) -> list[Collection]:
     stmt = select(Collection).where(Collection.tenant_id == tenant_id)
     if not is_admin:
@@ -53,6 +92,27 @@ def list_visible_collections(
                 | (Collection.owner_id == user_id)
                 | Collection.id.in_(shared_ids)
             )
+    # Filtre de visibilité posé AVANT toute recherche (spec §Recherche
+    # hybride + permissions), comme pour list_items.
+
+    if q and session.get_bind().dialect.name == "postgresql":
+        provider = get_embedding_provider()
+        candidate_ids = hybrid_search_ids(
+            session, base_stmt=stmt, id_column=Collection.id,
+            text_columns=[Collection.title, Collection.description],
+            embedding_column=Collection.embedding,
+            query_text=q, query_vector=provider.embed(q), limit=_RRF_CANDIDATE_LIMIT,
+        )
+        rows = session.execute(
+            select(Collection).where(Collection.id.in_(candidate_ids))
+        ).all()
+        by_id = {c.id: c for (c,) in rows}
+        return [by_id[i] for i in candidate_ids if i in by_id]
+
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(or_(Collection.title.ilike(like), Collection.description.ilike(like)))
+
     return list(session.scalars(stmt.order_by(Collection.title)).all())
 
 
