@@ -4,6 +4,9 @@ import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
 import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { useState, useEffect } from "react";
+import { useActiveExtensions } from "../api/hooks";
+import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -13,7 +16,17 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const itemQuery = useItem(pk);
   const query = useAppConfig(pk, { enabled: itemQuery.isSuccess });
   const navigate = useNavigate();
-  if (itemQuery.isLoading || (itemQuery.isSuccess && query.isLoading)) {
+
+  const extensionsQuery = useActiveExtensions();
+  const [extensionsRegistered, setExtensionsRegistered] = useState(false);
+
+  useEffect(() => {
+    if (extensionsQuery.isLoading) return;
+    (extensionsQuery.data ?? []).forEach(registerExtensionWidget);
+    setExtensionsRegistered(true);
+  }, [extensionsQuery.isLoading, extensionsQuery.data]);
+
+  if (itemQuery.isLoading || (itemQuery.isSuccess && query.isLoading) || !extensionsRegistered) {
     return <p role="status">Chargement…</p>;
   }
   if (itemQuery.isError) {

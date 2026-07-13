@@ -13,6 +13,8 @@ import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
 import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
+import { useActiveExtensions } from "../api/hooks";
+import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
@@ -34,6 +36,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
   const [activePageId, setActivePageId] = useState<string | null>(null);
 
+  const extensionsQuery = useActiveExtensions();
+  const [extensionsRegistered, setExtensionsRegistered] = useState(false);
+
+  useEffect(() => {
+    if (extensionsQuery.isLoading) return;
+    (extensionsQuery.data ?? []).forEach(registerExtensionWidget);
+    setExtensionsRegistered(true);
+    // Se déclenche une fois les données arrivées OU en erreur (fail-open :
+    // un /extensions en échec ne doit pas rendre le builder inutilisable) —
+    // jamais tant que isLoading est vrai.
+  }, [extensionsQuery.isLoading, extensionsQuery.data]);
+
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change
     // (e.g. the refetch after a save) would clobber in-flight local edits.
@@ -52,7 +66,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     [activeLayout, selectedId],
   );
 
-  if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
+  if (query.isLoading || !extensionsRegistered || (!draft && !query.isError))
+    return <p role="status">Chargement…</p>;
   if (query.isError || !draft || !activeLayout || !activePage)
     return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
 
