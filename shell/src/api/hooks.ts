@@ -217,7 +217,9 @@ export function useAllExtensions(options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
     queryKey: ["extensions", "all"],
-    queryFn: () => client.listAllExtensions(),
+    // Même garde défensive que useActiveExtensions ci-dessus, pour les mêmes
+    // mocks de test (Partial<ItemClient>).
+    queryFn: () => client.listAllExtensions?.() ?? Promise.resolve([]),
     enabled: options?.enabled ?? true,
   });
 }

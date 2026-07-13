@@ -66,3 +66,29 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
   await userEvent.click(toggle);
   await waitFor(() => expect(patchedBody).toEqual({ enabled: true }));
 });
+
+test("surfaces an alert when the PATCH to toggle an extension fails", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+    ),
+    http.get("https://core.test/extensions", () =>
+      HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+          },
+        ],
+      }),
+    ),
+    http.patch("https://core.test/extensions/acme.gauge", () => HttpResponse.json({}, { status: 500 })),
+  );
+  render(<Harness />);
+  const toggle = await screen.findByRole("checkbox", { name: "Actif : Jauge (extension)" });
+  await userEvent.click(toggle);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent("Échec de la mise à jour de l'extension."),
+  );
+});
