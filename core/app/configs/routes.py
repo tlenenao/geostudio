@@ -57,7 +57,7 @@ def create_config(
         session, tenant_id=user.tenant_id, owner_id=user.id,
         resource_type=request.config.kind, title=request.title,
     )
-    result = repo.create_config(session, request.config, item_id=item.id)
+    result = repo.create_config(session, request.config, item_id=item.id, tenant_id=user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="config.create", object_type="config", object_id=result.id,
@@ -96,7 +96,7 @@ def update_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
 
-    result = repo.update_config(session, config_id, config)
+    result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
@@ -131,7 +131,7 @@ def rollback_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
 
-    result = repo.rollback_config(session, config_id, request.version)
+    result = repo.rollback_config(session, config_id, request.version, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")
     write_audit(
@@ -189,7 +189,7 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
-    result = repo.update_config(session, existing.id, config)
+    result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(

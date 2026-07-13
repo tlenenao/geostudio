@@ -40,11 +40,22 @@ def _latest_revision(session: Session, config_id: str) -> ConfigRevision | None:
     )
 
 
-def create_config(session: Session, config: BuilderConfig, item_id: str | None) -> ConfigRead:
+def create_config(
+    session: Session, config: BuilderConfig, item_id: str | None, *, tenant_id: str
+) -> ConfigRead:
     config_id = uuid.uuid4().hex
-    record = Config(id=config_id, kind=config.kind, item_id=item_id, current_version=1)
+    record = Config(
+        id=config_id,
+        tenant_id=tenant_id,
+        kind=config.kind,
+        item_id=item_id,
+        current_version=1,
+    )
     revision = ConfigRevision(
-        config_id=config_id, version=1, data=config.model_dump(by_alias=True)
+        tenant_id=tenant_id,
+        config_id=config_id,
+        version=1,
+        data=config.model_dump(by_alias=True),
     )
     session.add(record)
     session.add(revision)
@@ -73,13 +84,18 @@ def get_config_by_item(session: Session, item_id: str) -> ConfigRead | None:
     return _to_read(record, revision)
 
 
-def update_config(session: Session, config_id: str, config: BuilderConfig) -> ConfigRead | None:
+def update_config(
+    session: Session, config_id: str, config: BuilderConfig, *, tenant_id: str
+) -> ConfigRead | None:
     record = session.get(Config, config_id)
     if record is None:
         return None
     new_version = record.current_version + 1
     revision = ConfigRevision(
-        config_id=config_id, version=new_version, data=config.model_dump(by_alias=True)
+        tenant_id=tenant_id,
+        config_id=config_id,
+        version=new_version,
+        data=config.model_dump(by_alias=True),
     )
     record.current_version = new_version
     session.add(revision)
@@ -97,7 +113,9 @@ def list_revisions(session: Session, config_id: str) -> list[RevisionInfo]:
     return [RevisionInfo(version=r.version, created_at=r.created_at) for r in revisions]
 
 
-def rollback_config(session: Session, config_id: str, version: int) -> ConfigRead | None:
+def rollback_config(
+    session: Session, config_id: str, version: int, *, tenant_id: str
+) -> ConfigRead | None:
     record = session.get(Config, config_id)
     if record is None:
         return None
@@ -108,7 +126,9 @@ def rollback_config(session: Session, config_id: str, version: int) -> ConfigRea
     if source is None:
         return None
     new_version = record.current_version + 1
-    revision = ConfigRevision(config_id=config_id, version=new_version, data=source.data)
+    revision = ConfigRevision(
+        tenant_id=tenant_id, config_id=config_id, version=new_version, data=source.data
+    )
     record.current_version = new_version
     session.add(revision)
     session.flush()

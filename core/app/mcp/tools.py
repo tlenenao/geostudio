@@ -202,7 +202,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             existing = configs_repo.get_config_by_item(session, itemId)
             if existing is None:
                 raise ValueError("config not found")
-            result = configs_repo.update_config(session, existing.id, config)
+            result = configs_repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
             if result is None:
                 raise ValueError("config not found")
             write_audit(
@@ -225,7 +225,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, owner_id=user.id,
                 resource_type=kind, title=title,
             )
-            config_result = configs_repo.create_config(session, config, item_id=item.id)
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
             write_audit(
                 session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
                 action="item.create", object_type="item", object_id=item.id,
@@ -269,7 +271,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, owner_id=user.id,
                 resource_type="app", title=title or f"Application {col.title}",
             )
-            config_result = configs_repo.create_config(session, config, item_id=item.id)
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
             write_audit(
                 session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
                 action="item.create", object_type="item", object_id=item.id,
