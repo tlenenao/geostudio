@@ -1,33 +1,20 @@
 """Tâche procrastinate (SP-6a) : orchestre téléchargement S3 → pipeline
 d'import (app.ingestion.importer.run_import) → mise à jour du statut du job.
 Toute erreur (parsing ou inattendue) marque le job "error", jamais de job
-bloqué en pending/running ("zombie", critère d'acceptation SP-6a)."""
+bloqué en pending/running ("zombie", critère d'acceptation SP-6a).
+L'instance procrastinate.App vit dans app.jobs (SP-7 Task 1) — partagée avec
+les tâches d'embedding d'app.items/app.collections."""
 import logging
 import os
-
-import procrastinate
 
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.ingestion import repository as ingestion_repo
 from app.ingestion.importer import run_import
 from app.ingestion.parsers import IngestionParseError
 from app.ingestion.storage import download_object, make_s3_client
+from app.jobs import app
 
 logger = logging.getLogger(__name__)
-
-
-def _conninfo() -> str:
-    # .get() avec repli, jamais os.environ[...] : ce module est importé
-    # transitivement par app.main (via app.ingestion.routes, Task 4) dans
-    # TOUTE la suite de tests, y compris les tests SQLite qui ne définissent
-    # jamais DATABASE_URL — un KeyError ici casserait la collecte pytest
-    # entière. Le repli n'est jamais utilisé pour de vrai (le worker/cœur
-    # déployés reçoivent toujours DATABASE_URL via docker-compose).
-    database_url = os.environ.get("DATABASE_URL", "postgresql://localhost/geostudio_dev")
-    return database_url.replace("postgresql+psycopg://", "postgresql://")
-
-
-app = procrastinate.App(connector=procrastinate.SyncPsycopgConnector(conninfo=_conninfo()))
 
 
 def _make_s3_client_from_env():

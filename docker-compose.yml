@@ -128,8 +128,8 @@ services:
   worker:
     build: ./core
     command: >
-      sh -c "procrastinate --app app.ingestion.tasks.app schema --apply &&
-             procrastinate --app app.ingestion.tasks.app worker -q ingestion"
+      sh -c "procrastinate --app app.jobs.app schema --apply &&
+             procrastinate --app app.jobs.app worker -q ingestion,search"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
