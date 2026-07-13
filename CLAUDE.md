@@ -402,7 +402,50 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   en tête pour tout futur widget WC en Lit. **421 tests shell** (404 avant
   + 17 : 13 sur `shell/src/builder/wc/`, 4 sur `counterWidgetWc.test.tsx`),
   **28 specs E2E vertes** (20 + 7 ajoutées depuis SP-7 +
-  `wc-widget-bridge.spec.ts`). PR #27 (sp8a-wc-widget-bridge→dev) ouverte.
+  `wc-widget-bridge.spec.ts`). PR #27 (sp8a-wc-widget-bridge→dev) **fusionnée**.
+- **SP-8b livré** (2026-07-13) : registre d'extensions + chargement dynamique
+  de modules ES — un widget Web Component écrit et hébergé **hors du repo
+  shell** (manifeste JSON + module ES servis par une URL) devient disponible
+  dans le builder après enregistrement/activation par un admin, **sans
+  redéploiement du shell**, et sa désactivation ne casse pas les apps qui
+  l'utilisaient. Cœur : table `app.extensions` (clé composite `id`+`tenant_id`
+  — deux tenants peuvent enregistrer le même type, pas de ressource physique
+  à découpler contrairement à `Collection`), écritures admin-only auditées
+  (`extension.create`/`update`), `GET /extensions` anonyme+scopé tenant
+  (défaut tenant si anonyme, même convention que `app.collections`). Shell :
+  `useActiveExtensions` (react-query, dégradation silencieuse à `[]`) récupère
+  la liste au bootstrap de `AppBuilderPage`/`AppRuntimePage` (fail-open : un
+  `/extensions` en échec ne bloque pas la page), `registerExtensionWidget`
+  enregistre chaque manifeste dans le registre de widgets existant
+  (`registerWidget` inchangé) via un `Component` qui importe paresseusement
+  et mémoïse le module (`ensureModuleLoaded`, un rejet est aussi mis en
+  cache — pas de retentative avant reload) et délègue au `WcHost` de SP-8a
+  (inchangé, réutilisé par composition), avec placeholder pendant le
+  chargement (« Chargement… ») ou en échec (« Extension indisponible » /
+  « Widget inconnu » si désactivée). `wc/manifest.ts` étendu (rétrocompatible)
+  avec un type de prop `dataSource` (rendu via `DataSourceSelect`, filtré par
+  `permissions.collections` — filtre d'autorat côté panneau, **pas une
+  frontière de sécurité** : le module WC reste libre d'appeler toute
+  collection permise par le token du visiteur, la frontière réelle reste
+  `can()`/RLS côté cœur, inchangée). Exécuté en subagent-driven-development
+  (10 tâches, revue par tâche + revue finale de branche modèle opus). 1
+  Important trouvé et corrigé en cours de route (Task 10) : la spec E2E
+  prouvait props/events/actions composées mais jamais la parité de thème,
+  alors que la checklist finale du plan l'exige et que la fixture avait été
+  écrite exprès pour ça (`var(--gs-color-text,...)`) — fixé en réutilisant
+  exactement le patron `getComputedStyle` de `wc-widget-bridge.spec.ts`
+  (SP-8a). Revue finale de branche : aucun Critical/Important, **ready to
+  merge**, 5 Minor non bloquants tous par conception ou compromis déjà
+  documenté (délai fail-open ~5-7s dû aux retries par défaut de react-query ;
+  désactivation effective seulement au reload complet, pas en navigation SPA,
+  car le registre est un singleton sans dé-enregistrement — cohérent avec le
+  critère E2E qui teste bien le reload ; `permissions.collections` cosmétique
+  côté panneau — commentaire ajouté au code ; import rejeté caché pour la
+  durée de la page ; `GET /extensions` anonyme résout au tenant par défaut
+  seulement, cohérent avec le reste du système). **369 tests cœur passed/62
+  skipped**, **435 tests shell** (421 avant SP-8a + 14), **30 specs E2E
+  vertes** (28 + `extension-widget.spec.ts`, 2 tests). PR ouverte
+  (sp8b-extensions-registry→dev).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
