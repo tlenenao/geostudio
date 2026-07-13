@@ -142,7 +142,9 @@ def _seed_config(test_client, *, owner_id, title="Item") -> tuple[str, str]:
             resource_type="app", title=title,
         )
         session.flush()
-        config = configs_repo.create_config(session, BuilderConfig(**_config_body()), item_id=item.id)
+        config = configs_repo.create_config(
+            session, BuilderConfig(**_config_body()), item_id=item.id, tenant_id=test_client.tenant.id
+        )
         session.commit()
         return item.id, config.id
 
@@ -183,7 +185,9 @@ def test_save_app_config_by_group_viewer_errors(app_client):
             resource_type="app", title="Shared",
         )
         session.flush()
-        configs_repo.create_config(session, BuilderConfig(**_config_body()), item_id=item.id)
+        configs_repo.create_config(
+            session, BuilderConfig(**_config_body()), item_id=item.id, tenant_id=app_client.tenant.id
+        )
         group = Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=owner.id)
         session.add(group)
         session.flush()
