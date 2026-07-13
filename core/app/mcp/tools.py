@@ -8,6 +8,7 @@ from app.auth.dependency import admin_subs
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
+from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
@@ -16,6 +17,7 @@ from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
+from app.mcp import form_app
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import Sharing
@@ -236,6 +238,50 @@ def register_tools(server: FastMCP, session_factory) -> None:
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
             assert result is not None  # just created it, in the same transaction
+            return result
+
+    @server.tool()
+    async def create_form_app(
+        ctx: Context, collectionId: str, title: str | None = None,
+    ) -> ItemRead:
+        """Compose a Carte+Table(+Formulaire if the caller can write) app on
+        an existing collection, from its introspected schema — same shape as
+        the builder's "Application de saisie" gallery template (SP-4c),
+        generated instead of hand-picked. Formulaire is included only if the
+        caller has write access to the collection (mirrors the canWrite
+        predicate SP-4c exposes on collections). SP-7 MCP v1."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            col = _require_collection_read(session, user=user, collection_id=collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound:
+                raise ValueError("collection backing table not found")
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason)
+            schema = table_info_to_schema(info)
+            include_form = form_app.can_write_collection(session, user=user, col=col)
+            config = form_app.build_config(
+                collection_id=collectionId, schema=schema, include_form=include_form,
+            )
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type="app", title=title or f"Application {col.title}",
+            )
+            config_result = configs_repo.create_config(session, config, item_id=item.id)
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": item.title, "collectionId": collectionId},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"collectionId": collectionId, "includeForm": include_form},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None
             return result
 
     @server.tool()
