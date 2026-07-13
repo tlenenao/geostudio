@@ -363,6 +363,46 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   `create_config`/`update_config`/`rollback_config` prennent un
   `tenant_id` obligatoire, tous les appelants mis à jour (routes, outils
   MCP, importeur d'ingestion).
+- **SP-8a livré** (2026-07-13) : contrat de widget Web Component + pont
+  `WidgetHost` — un widget peut être écrit en Web Component standard (custom
+  element + manifeste JSON typé `WcWidgetManifest`) plutôt qu'en React et se
+  comporte comme un widget interne (palette, panneau de props, thème,
+  events, actions composées) sans toucher au renderer ni à la palette :
+  `registerWcWidget` construit un `WidgetDefinition` standard depuis le
+  manifeste et l'enregistre via `registerWidget` inchangé (`registry.ts`,
+  `WidgetHost.tsx`, `PropsPanel.tsx`, `ActionsPanel.tsx`, `WidgetPalette.tsx`
+  non modifiés — vérifié par diff), `WcHost` monte le custom element et lui
+  assigne `props`/`data`/`user`/`navigate` comme propriétés DOM (jamais
+  d'attributs sérialisés), relaie ses `CustomEvent` vers l'`ActionBus` et
+  invoque ses méthodes publiques pour les actions du bus, panneau de props
+  généré depuis le manifeste (aucun code React à la main), thème hérité
+  nativement via les `--gs-*` déjà posées par `AppRenderer` (rien à
+  construire dans le pont). `Compteur` porté en Lit (`gs-counter`,
+  `example.counter-wc`) comme widget de référence, à côté du `Compteur`
+  React existant (les deux coexistent). Exécuté en TDD (executing-plans, pas
+  de subagents dans cette session). Deux défauts trouvés et corrigés
+  **dans le plan** (pas dans le code produit) pendant l'implémentation :
+  les tests d'édition de props numériques (Task 1 + Task 4) éditaient un
+  champ number sans jamais faire suivre `onChange` vers `props` du
+  composant testé, ce qui déclenche le reset de valeur contrôlée de React
+  (un clear()+type() donne un résultat concaténé au lieu de remplacé) —
+  fixé en enveloppant le panneau testé dans un composant avec state, comme
+  le fait le vrai `PropsPanel` du builder ; l'E2E cliquait dans le widget
+  WC alors qu'il était encore en mode édition, où l'intérieur d'un widget
+  est couvert par l'overlay de sélection du canvas (même contrainte que
+  `theme.spec.ts`/`widget-sdk.spec.ts`) — réaligné pour vérifier le rendu
+  vivant (incréments, couleur du thème) en runtime après Enregistrer.
+  **Défaut d'environnement sans rapport découvert au passage** : les
+  décorateurs `lit/decorators.js` (`@customElement`/`@property`/`@state`)
+  lèvent `Unsupported decorator location: field` avec le tsconfig de ce
+  projet (`useDefineForClassFields: true`, pas d'`experimentalDecorators` →
+  esbuild émet des décorateurs TC39 standards que Lit 3 ne supporte pas
+  encore pleinement) ; `GsCounter` écrit avec l'API Lit sans décorateurs
+  (`static properties`) plutôt que de changer le tsconfig global — à garder
+  en tête pour tout futur widget WC en Lit. **421 tests shell** (404 avant
+  + 17 : 13 sur `shell/src/builder/wc/`, 4 sur `counterWidgetWc.test.tsx`),
+  **28 specs E2E vertes** (20 + 7 ajoutées depuis SP-7 +
+  `wc-widget-bridge.spec.ts`). PR #27 (sp8a-wc-widget-bridge→dev) ouverte.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
