@@ -33,6 +33,27 @@ export function makeWcHost(manifest: WcWidgetManifest) {
       el.navigate = ctx.navigate;
     });
 
+    useEffect(() => {
+      const el = elRef.current;
+      if (!el || !ctx.bus || !ctx.widgetId) return;
+      const bus = ctx.bus;
+      const widgetId = ctx.widgetId;
+      const offs = (manifest.events ?? []).map((name) => {
+        const listener = (e: Event) => bus.emit(widgetId, name, (e as CustomEvent).detail);
+        el.addEventListener(name, listener);
+        return () => el.removeEventListener(name, listener);
+      });
+      const unregs = (manifest.actions ?? []).map((name) =>
+        bus.register(widgetId, name, (payload) => {
+          (el as HTMLElement & Record<string, (payload?: unknown) => void>)[name]?.(payload);
+        }),
+      );
+      return () => {
+        offs.forEach((off) => off());
+        unregs.forEach((unreg) => unreg());
+      };
+    }, [ctx.bus, ctx.widgetId]);
+
     return <div ref={containerRef} className="h-full w-full" />;
   };
 }
