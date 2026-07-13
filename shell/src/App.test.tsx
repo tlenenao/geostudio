@@ -1,6 +1,9 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { createItemClient } from "./api/itemClient";
+import { ItemClientProvider } from "./api/ItemClientProvider";
 import type { AuthState } from "./auth/useAuth";
 
 const authState: AuthState = {
@@ -22,12 +25,18 @@ vi.mock("./shell/ImportFileButton", () => ({
 const { AppLayout } = await import("./shell/AppLayout");
 
 test("shell layout shows the GeoStudio brand", () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   render(
-    <MemoryRouter>
-      <AppLayout>
-        <div>x</div>
-      </AppLayout>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter>
+          <AppLayout>
+            <div>x</div>
+          </AppLayout>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
   );
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
 });
