@@ -53,3 +53,13 @@ test("filters the catalog to my items (empty for the mock user)", async ({ page 
   await expect(page.getByText("Aucun élément")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
 });
+
+test("catalog search still sends q to the core (regression)", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+
+  const request = page.waitForRequest((req) => req.url().includes("/items?") && req.url().includes("q=Alp"));
+  await page.getByRole("textbox", { name: "Rechercher" }).fill("Alp");
+  await request;
+});
