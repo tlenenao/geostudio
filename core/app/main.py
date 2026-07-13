@@ -10,6 +10,7 @@ from app.auth import routes as auth_routes
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
 from app.ingestion import routes as ingestion_routes
 from app.items import routes as items_routes
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.dependency_overrides[db.get_session] = get_session
 
     app.include_router(configs_routes.router)
+    app.include_router(extensions_routes.router)
     app.include_router(items_routes.router)
     app.include_router(auth_routes.router)
     app.include_router(sharing_routes.router)
