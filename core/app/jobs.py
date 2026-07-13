@@ -33,6 +33,14 @@ def _conninfo() -> str:
 
 
 app = procrastinate.App(
-    connector=procrastinate.SyncPsycopgConnector(conninfo=_conninfo()),
+    # PsycopgConnector (async), pas SyncPsycopgConnector : le CLI procrastinate
+    # refuse tout connecteur qui n'est pas une sous-classe de BaseAsyncConnector
+    # (`procrastinate --app app.jobs.app worker`, la commande exacte de
+    # docker-compose.yml, levait "The connector provided by the app is not
+    # async" — le worker ne démarrait jamais). PsycopgConnector reste
+    # utilisable en synchrone par `.defer(...)` dans les routes FastAPI (non
+    # async) : tant qu'il n'est pas ouvert explicitement en async, il crée un
+    # SyncPsycopgConnector interne à la demande (get_sync_connector()).
+    connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
     import_paths=["app.ingestion.tasks", "app.items.jobs", "app.collections.jobs"],
 )
