@@ -141,11 +141,11 @@ export function useSetSharing(pk: string) {
   });
 }
 
-export function useLayerSources(options?: { enabled?: boolean }) {
+export function useLayerSources(options?: { enabled?: boolean; q?: string }) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["layer-sources"],
-    queryFn: () => client.listLayerSources(),
+    queryKey: ["layer-sources", options?.q ?? ""],
+    queryFn: () => client.listLayerSources({ q: options?.q }),
     enabled: options?.enabled ?? true,
   });
 }

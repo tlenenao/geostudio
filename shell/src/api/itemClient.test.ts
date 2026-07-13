@@ -163,6 +163,29 @@ test("listLayerSources still returns one service when the other fails", async ()
   expect(sources[0].service).toBe("core");
 });
 
+test("listLayerSources passes q to /collections and filters Martin sources client-side", async () => {
+  let collectionsUrl: string | null = null;
+  server.use(
+    http.get("https://martin.test/catalog", () =>
+      HttpResponse.json({
+        tiles: {
+          communes: { description: "Communes" },
+          routes: { description: "Routes" },
+        },
+      }),
+    ),
+    http.get("https://core.test/collections", ({ request }) => {
+      collectionsUrl = request.url;
+      return HttpResponse.json({ collections: [{ id: "c1", title: "Communes" }] });
+    }),
+  );
+  const sources = await makeClient().listLayerSources({ q: "commun" });
+  expect(collectionsUrl).toContain("q=commun");
+  expect(sources.find((s) => s.id === "communes")).toBeDefined();
+  expect(sources.find((s) => s.id === "routes")).toBeUndefined();
+  expect(sources.find((s) => s.id === "c1")).toBeDefined();
+});
+
 test("listLayerSources throws when both services fail", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
