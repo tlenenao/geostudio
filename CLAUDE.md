@@ -277,7 +277,8 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   dépôt (tous construisent leur schéma via `Base.metadata.create_all`,
   jamais un vrai `alembic upgrade head`) ; un déploiement réel migré via
   Alembic puis écrivant `configs` via l'ORM lèverait une `IntegrityError`.
-  À traiter séparément. **326 tests cœur passed/43 skipped** (sans DB ;
+  À traiter séparément (**résolu 2026-07-13**, cf. entrée SP-7 plus bas).
+  **326 tests cœur passed/43 skipped** (sans DB ;
   369 passed avec `CORE_TEST_DATABASE_URL` contre un PostGIS jetable),
   **400 tests shell**, **19 specs E2E vertes** (18 + `ingestion-gpkg.
   spec.ts`). Poussé sur `dev`.
@@ -337,11 +338,31 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   `postgis` exécutés réellement contre un Postgres+pgvector réel à chaque
   tâche), **404 tests shell**, **20 specs E2E vertes** (19 +
   `layer-picker-search.spec.ts`). Poussé sur `dev`.
-- Suivi non bloquant en attente : connecteur procrastinate non-async
-  (`SyncPsycopgConnector`) empêchant le worker de démarrer via
-  `docker-compose.yml` en l'état (découvert SP-7, hors périmètre, cf.
-  ci-dessus) — à corriger avant tout déploiement réel s'appuyant sur les
-  jobs (ingestion, embeddings).
+- **Résolu (2026-07-13, hors SP, /systematic-debugging)** : connecteur
+  procrastinate non-async — `app.jobs.app` utilise désormais
+  `PsycopgConnector` (async, satisfait le CLI ; sert toujours `.defer(...)`
+  en synchrone via son `get_sync_connector()` interne) au lieu de
+  `SyncPsycopgConnector`. Deuxième bug compound trouvé en reproduisant la
+  vraie commande de `docker-compose.yml` dans l'image core réelle : le
+  script `procrastinate` du PATH ne met jamais le cwd (`/app`) sur
+  `sys.path`, donc `--app app.jobs.app` échouait à l'import même une fois
+  le connecteur corrigé — `docker-compose.yml` invoque maintenant `python -m
+  procrastinate` (comme `-c`/`-m`, qui ajoutent le cwd). Vérifié en
+  construisant l'image `core/Dockerfile` réelle et en lançant `schema
+  --apply` puis `worker` contre un Postgres vivant : le worker démarre et
+  reste up. Même session : correction du même défaut d'IntégrityError
+  latent que celui du SP-6b (voir plus haut), et de l'échec CI de PR #26
+  (image Postgres CI sans pgvector — `.github/workflows/ci.yml` construit
+  maintenant l'image `deploy/postgis/Dockerfile`, celle-là même déjà
+  utilisée par `docker-compose.yml`) ; au passage, dérive silencieuse
+  découverte sur `core/openapi.json`/`shell/.../core-schema.d.ts`
+  (paramètre `q` de `GET /collections` manquant, non détectée avant faute
+  du job `api-types-drift` bloqué en amont par l'échec pgvector) —
+  régénérés. `core/app/configs/models.py` (`Config`/`ConfigRevision`)
+  déclare maintenant `tenant_id` (mirroir du pattern `app.items`),
+  `create_config`/`update_config`/`rollback_config` prennent un
+  `tenant_id` obligatoire, tous les appelants mis à jour (routes, outils
+  MCP, importeur d'ingestion).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
