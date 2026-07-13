@@ -25,6 +25,7 @@ export type Me = {
   username: string;
   firstName: string;
   lastName: string;
+  isAdmin: boolean;
 };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";

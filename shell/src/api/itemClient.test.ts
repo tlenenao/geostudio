@@ -38,7 +38,17 @@ test("getItem missing returns 404 and throws", async () => {
 
 test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
   const me = await makeClient().getMe();
-  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin" });
+  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false });
+});
+
+test("getMe surfaces isAdmin", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
+    ),
+  );
+  const me = await makeClient().getMe();
+  expect(me.isAdmin).toBe(true);
 });
 
 test("createConfigItem does not send owner in the request body", async () => {

@@ -246,8 +246,10 @@ export function createItemClient(opts: {
     },
 
     async getMe(): Promise<Me> {
-      const data = await request<{ username: string; firstName: string; lastName: string }>("GET", `/me`);
-      return { username: data.username, firstName: data.firstName, lastName: data.lastName };
+      const data = await request<{ username: string; firstName: string; lastName: string; isAdmin: boolean }>(
+        "GET", `/me`,
+      );
+      return { username: data.username, firstName: data.firstName, lastName: data.lastName, isAdmin: data.isAdmin };
     },
 
     async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {

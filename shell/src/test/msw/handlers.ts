@@ -25,7 +25,7 @@ export const handlers = [
   http.get(`${CORE}/me`, () =>
     HttpResponse.json({
       id: "u1", username: "alice", firstName: "Alice", lastName: "Martin",
-      email: "alice@example.com", tenantId: "t1",
+      email: "alice@example.com", tenantId: "t1", isAdmin: false,
     }),
   ),
   http.post(`${CORE}/configs`, async ({ request }) => {
