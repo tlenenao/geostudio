@@ -57,8 +57,9 @@ GeoStudio monte votre élément puis lui assigne, comme **propriétés DOM**
 
 ```js
 set props(value) {
-  this._props = value;
+  this._props = value || {};
   // ré-affiche votre widget avec les nouvelles props
+  this._render();
 }
 ```
 
@@ -74,7 +75,7 @@ directement quand un message composé la cible :
 
 ```js
 reset() {
-  this._count = 0;
+  this._count = Number(this._props?.initial ?? 0);
   this._render();
 }
 ```
