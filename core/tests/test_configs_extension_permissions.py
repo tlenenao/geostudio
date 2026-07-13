@@ -55,6 +55,33 @@ def _config_body(data_source_layer: str) -> dict:
     }
 
 
+def _config_body_with_pages(data_source_layer: str) -> dict:
+    return {
+        "kind": "app",
+        "dataSources": [{"id": "ds1", "type": "features", "service": "core", "layer": data_source_layer, "query": {}}],
+        "layout": {"type": "grid", "items": []},
+        "pages": [
+            {
+                "id": "page1",
+                "name": "Page 1",
+                "layout": {"type": "grid", "items": [
+                    {"widget": "acme.gauge", "x": 0, "y": 0, "w": 2, "h": 2, "props": {"source": "ds1"}},
+                ]},
+            },
+        ],
+    }
+
+
+def test_create_config_rejects_extension_prop_outside_scope_in_pages(client):
+    # Le widget d'extension est uniquement dans pages[0].layout.items (le
+    # layout racine a une liste d'items vide) : ce test ne peut passer que
+    # si _all_layout_items parcourt bien config.pages, pas seulement
+    # config.layout.
+    response = client.post("/configs", json={"title": "App", "config": _config_body_with_pages("incidents")})
+    assert response.status_code == 400
+    assert "acme.gauge" in response.json()["detail"]
+
+
 def test_create_config_rejects_extension_prop_outside_scope(client):
     response = client.post("/configs", json={"title": "App", "config": _config_body("incidents")})
     assert response.status_code == 400
