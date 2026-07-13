@@ -10,6 +10,7 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
+from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
@@ -68,6 +69,17 @@ def _require_collection_read(session, *, user: User, collection_id: str):
     if not readable:
         raise ValueError("collection not found")
     return col
+
+
+def _validate_extension_scope(session, config: BuilderConfig, *, tenant_id: str) -> None:
+    """Mirrors app/configs/routes.py's _validate_extension_scope — same
+    ExtensionPermissionError source of truth, but re-raised as ValueError
+    (a normal tool-body exception the SDK turns into an is_error result)
+    instead of HTTPException, same rationale as _require_access above."""
+    try:
+        validate_extension_permissions(session, config, tenant_id=tenant_id)
+    except ExtensionPermissionError as err:
+        raise ValueError(str(err)) from err
 
 
 def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
@@ -202,6 +214,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             existing = configs_repo.get_config_by_item(session, itemId)
             if existing is None:
                 raise ValueError("config not found")
+            _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             result = configs_repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
             if result is None:
                 raise ValueError("config not found")
@@ -221,6 +234,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
+            _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
                 session, tenant_id=user.tenant_id, owner_id=user.id,
                 resource_type=kind, title=title,
@@ -267,6 +281,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             config = form_app.build_config(
                 collection_id=collectionId, schema=schema, include_form=include_form,
             )
+            _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
                 session, tenant_id=user.tenant_id, owner_id=user.id,
                 resource_type="app", title=title or f"Application {col.title}",
