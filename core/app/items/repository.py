@@ -8,11 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.items.models import Item
 from app.items.schemas import ItemPage, ItemRead
+from app.search.providers import get_embedding_provider
+from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import ItemAccessFacts
 from app.sharing.models import GroupMember, ItemShare
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
+
+_RRF_CANDIDATE_LIMIT = 200
 
 
 def _now() -> datetime:
@@ -112,9 +116,6 @@ def list_items(
     query = select(Item, User.username).join(User, User.id == Item.owner_id).where(Item.tenant_id == tenant_id)
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
-    if q:
-        like = f"%{q}%"
-        query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
     shared_exists = (
         select(ItemShare.item_id)
@@ -142,6 +143,31 @@ def list_items(
                 shared_exists,
             )
         )
+    # À ce stade, `query` ne contient que des lignes visibles par
+    # current_user_id — c'est la base sur laquelle la recherche (hybride ou
+    # ILIKE) s'exécute ensuite (spec §Recherche hybride + permissions : le
+    # filtre can()/scope passe TOUJOURS avant le scoring).
+
+    if q and session.get_bind().dialect.name == "postgresql":
+        provider = get_embedding_provider()
+        candidate_ids = hybrid_search_ids(
+            session, base_stmt=query, id_column=Item.id,
+            text_columns=[Item.title, Item.abstract], embedding_column=Item.embedding,
+            query_text=q, query_vector=provider.embed(q), limit=_RRF_CANDIDATE_LIMIT,
+        )
+        total = len(candidate_ids)
+        page_ids = candidate_ids[(page - 1) * page_size: (page - 1) * page_size + page_size]
+        rows = session.execute(
+            select(Item, User.username).join(User, User.id == Item.owner_id)
+            .where(Item.id.in_(page_ids))
+        ).all()
+        by_id = {item.id: (item, owner_username) for item, owner_username in rows}
+        items = [_to_read(*by_id[i]) for i in page_ids if i in by_id]
+        return ItemPage(items=items, total=total, page=page, pageSize=page_size)
+
+    if q:
+        like = f"%{q}%"
+        query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = session.execute(
