@@ -105,6 +105,7 @@ export interface ItemClient {
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
+  listActiveExtensions(): Promise<ExtensionManifest[]>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
@@ -175,6 +176,26 @@ export type DataSource = {
   service: string;
   layer: string;
   query: Record<string, unknown>;
+};
+
+// Écho documenté de WcWidgetManifest (shell/src/builder/wc/manifest.ts) — même
+// forme, dupliquée ici plutôt qu'importée : api/ ne dépend jamais de builder/.
+// Si WcWidgetManifest change de forme, répercuter le changement ici aussi.
+export type ExtensionManifest = {
+  type: string;
+  tag: string;
+  label: string;
+  props: Array<{
+    name: string;
+    type: "string" | "number" | "boolean" | "dataSource";
+    label: string;
+    default: unknown;
+  }>;
+  events?: string[];
+  actions?: string[];
+  defaultSize: { w: number; h: number };
+  permissions?: { collections: string[] | "all" };
+  moduleUrl: string;
 };
 
 export type DataRecord = {
