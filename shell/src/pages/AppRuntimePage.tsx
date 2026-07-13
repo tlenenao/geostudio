@@ -3,9 +3,11 @@ import { useAppConfig, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
+import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
+registerCounterWcExampleWidget();
 
 export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) {
   const itemQuery = useItem(pk);
