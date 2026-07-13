@@ -77,6 +77,27 @@ def register_tools(server: FastMCP, session_factory) -> None:
             )
 
     @server.tool()
+    async def search_catalog(
+        ctx: Context,
+        q: str | None = None,
+        type: str | None = None,
+        scope: str = "all",
+        page: int = 1,
+        pageSize: int = 12,
+    ) -> ItemPage:
+        """Search the catalog (hybrid trigram + vector ranking on q) — items
+        only, not collections. Same permissions/parameters as list_items;
+        registered as its own tool for agent discoverability of the search
+        capability (SP-7 MCP v1)."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            return items_repo.list_items(
+                session, tenant_id=user.tenant_id, current_user_id=user.id,
+                q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
+            )
+
+    @server.tool()
     async def get_item(ctx: Context, itemId: str) -> ItemRead:
         """Get one catalog item by id — mirrors GET /items/{id}."""
         access_token = get_access_token()
