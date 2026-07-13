@@ -5,10 +5,15 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs
+from app.collections import repository as collections_repo
+from app.collections.introspection import TableNotFound, UnsupportedTable
+from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.repository import ConfigRead
 from app.configs.schemas import BuilderConfig
 from app.db import request_scoped_session
+from app.features.repository import FilterError, select_features
+from app.features.rls import rls_scope
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
 from app.sharing import repository as sharing_repo
@@ -45,6 +50,32 @@ def _require_access(session, *, user: User, item_id: str, action: str) -> ItemAc
     if action != "read" and not can(session, user_id=user.id, action=action, item=facts):
         raise ValueError("not allowed to modify this item")
     return facts
+
+
+def _require_collection_read(session, *, user: User, collection_id: str):
+    """Mirrors app/collections/routes.py's get_readable_collection — ValueError
+    instead of HTTPException, same rationale as _require_access above."""
+    col = collections_repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    if col is None:
+        raise ValueError("collection not found")
+    readable = can(
+        session, user_id=user.id, action="read",
+        item=collections_repo.get_access_facts(col), kind="collection",
+        actor_is_admin=user.is_admin,
+    )
+    if not readable:
+        raise ValueError("collection not found")
+    return col
+
+
+def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise ValueError("bbox must be minx,miny,maxx,maxy")
+    try:
+        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+    except ValueError:
+        raise ValueError("bbox must be minx,miny,maxx,maxy") from None
 
 
 def register_tools(server: FastMCP, session_factory) -> None:
@@ -96,6 +127,43 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, current_user_id=user.id,
                 q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
             )
+
+    @server.tool()
+    async def query_features(
+        ctx: Context,
+        collectionId: str,
+        bbox: str | None = None,
+        filters: dict[str, str] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        """Read features from a collection — mirrors GET
+        /collections/{id}/items (bbox, attribute filters, pagination), same
+        permissions/RLS. No natural-language-to-filter translation: filters
+        are structured field=value pairs, like any OGC client (SP-7 MCP v1)."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            col = _require_collection_read(session, user=user, collection_id=collectionId)
+            try:
+                info = introspect_table(session, col.table_name)
+            except TableNotFound:
+                raise ValueError("collection backing table not found")
+            except UnsupportedTable as exc:
+                raise ValueError(exc.reason)
+            parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
+            try:
+                with rls_scope(session, col.tenant_id):
+                    page = select_features(
+                        session, info, limit=min(limit, 1000), offset=offset,
+                        bbox=parsed_bbox, filters=filters or None,
+                    )
+            except FilterError as exc:
+                raise ValueError(f"unknown filter field: {exc.field}")
+            return {
+                "type": "FeatureCollection", "features": page.features,
+                "numberMatched": page.number_matched, "numberReturned": page.number_returned,
+            }
 
     @server.tool()
     async def get_item(ctx: Context, itemId: str) -> ItemRead:
