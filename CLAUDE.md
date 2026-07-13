@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-12 (mise à jour à chaque jalon)
+## État au 2026-07-13 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -277,11 +277,92 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   dépôt (tous construisent leur schéma via `Base.metadata.create_all`,
   jamais un vrai `alembic upgrade head`) ; un déploiement réel migré via
   Alembic puis écrivant `configs` via l'ORM lèverait une `IntegrityError`.
-  À traiter séparément. **326 tests cœur passed/43 skipped** (sans DB ;
+  À traiter séparément (**résolu 2026-07-13**, cf. entrée SP-7 plus bas).
+  **326 tests cœur passed/43 skipped** (sans DB ;
   369 passed avec `CORE_TEST_DATABASE_URL` contre un PostGIS jetable),
   **400 tests shell**, **19 specs E2E vertes** (18 + `ingestion-gpkg.
-  spec.ts`). Poussé sur `dev`. Prochain chantier : périmètre suivant à
-  re-cadrer (cf. feuille de route, SP-7 ou re-priorisation).
+  spec.ts`). Poussé sur `dev`.
+- **SP-6c livré et clos** (2026-07-12) : nombre d'entités par collection
+  (`feature_count`) — calculé à l'ingestion (`run_import`) et à
+  l'enregistrement admin (`COUNT(*)` réel), maintenu atomiquement (`UPDATE
+  ... feature_count = feature_count ± 1`, même transaction, jamais de cycle
+  lire-Python-puis-réécrire) à chaque `create_feature`/`remove_feature` OGC
+  API Features, exposé par l'API collections et affiché en badge dans
+  `LayerPicker`. Migration 0011 avec backfill `COUNT(*)` sur les collections
+  déjà enregistrées. Revue finale : aucun Critical/Important, 3 Minor non
+  bloquants. **331 tests cœur passed/44 skipped** (375 avec PostGIS réel),
+  **402 tests shell**. Poussé sur `dev`.
+- **SP-7 livré et clos** (2026-07-13) : recherche sémantique + MCP v1 —
+  pgvector (colonne `embedding vector(1536)` directe sur `items`/
+  `collections`, image Postgres custom `deploy/postgis/Dockerfile` car
+  `postgis/postgis` ne bundle pas pgvector), fournisseur d'embeddings
+  enfichable (`FakeProvider` déterministe par défaut, `OpenAICompatibleProvider`
+  en option, `CORE_EMBEDDING_PROVIDER`), recherche hybride trigram+vecteur
+  combinée par Reciprocal Rank Fusion (permissions filtrées **avant** tout
+  scoring, vérifié par des tests adversariaux sur items et collections) dans
+  `list_items`/`list_visible_collections` (Postgres-only ; SQLite garde
+  l'`ILIKE` actuel inchangé), `LayerPicker` gagne une recherche de
+  collections, 3 outils MCP v1 (`search_catalog`, `query_features`,
+  `create_form_app` — génère Carte+Table+Formulaire depuis le schéma d'une
+  collection, Formulaire conditionné à `canWrite`, mapping schéma→champs
+  dupliqué côté Python en écho documenté à `fieldsFromSchema` TS, même
+  arbitrage que CEL/A8). Exécuté en subagent-driven-development (12 tâches,
+  revue par tâche + revue finale de branche modèle opus). Plusieurs défauts
+  réels trouvés **dans le plan lui-même** (pas dans le code produit) et
+  corrigés en cours de route, chacun documenté et re-vérifié : `hybrid_search_ids`
+  sans seuil de qualité sur la branche vecteur (RRF laissait un item
+  sémantiquement opposé battre un item proche par double-comptage) ; jobs
+  d'embedding cassant 75+ tests préexistants (`app.jobs.app`, l'App
+  procrastinate partagée, n'est jamais `.open()`-ée par le process FastAPI —
+  fixé en fail-open, `ProcrastinateException` narrow, pas `Exception` nu) ;
+  plusieurs tests `postgis` du plan qui n'exerçaient jamais vraiment
+  Postgres (`@pytest.mark.postgis` seul ne route pas vers Postgres dans ce
+  dépôt, seule la fixture `pg_engine` le fait) ; un pattern glob Playwright
+  (`**/collections`) qui ne matche pas une URL avec query string. **Revue
+  finale de branche : 1 Critical trouvé et corrigé** — `app/jobs.py` n'avait
+  pas `import_paths`, donc le worker réel (`docker-compose.yml`) n'important
+  que `app.jobs`, n'enregistrait **aucune** tâche de domaine (régression de
+  l'ingestion SP-6a en plus des nouveaux jobs d'embedding jamais exécutés) ;
+  fixé avec `import_paths=[...]` + test de régression en sous-process dédié
+  (un test in-process aurait été un faux positif). **Défaut pré-existant
+  sévère découvert au passage, hors périmètre SP-7, non corrigé** :
+  procrastinate 3.9.0 (version installée) rejette `SyncPsycopgConnector`
+  comme non-async pour sa CLI — `procrastinate --app app.jobs.app worker`
+  (la commande exacte de `docker-compose.yml`) ne démarre pas du tout,
+  indépendamment du fix `import_paths` ; choix de connecteur datant de SP-6a,
+  signifie qu'en l'état le service `worker` ne peut pas démarrer en
+  déploiement réel (ingestion **et** embeddings non fonctionnels via
+  `docker compose up`) ; à traiter dans une session dédiée (changer de
+  connecteur = changement de comportement à revoir séparément, pas un simple
+  fix). **359 tests cœur passed/62 skipped** (sans DB ; tous les tests
+  `postgis` exécutés réellement contre un Postgres+pgvector réel à chaque
+  tâche), **404 tests shell**, **20 specs E2E vertes** (19 +
+  `layer-picker-search.spec.ts`). Poussé sur `dev`.
+- **Résolu (2026-07-13, hors SP, /systematic-debugging)** : connecteur
+  procrastinate non-async — `app.jobs.app` utilise désormais
+  `PsycopgConnector` (async, satisfait le CLI ; sert toujours `.defer(...)`
+  en synchrone via son `get_sync_connector()` interne) au lieu de
+  `SyncPsycopgConnector`. Deuxième bug compound trouvé en reproduisant la
+  vraie commande de `docker-compose.yml` dans l'image core réelle : le
+  script `procrastinate` du PATH ne met jamais le cwd (`/app`) sur
+  `sys.path`, donc `--app app.jobs.app` échouait à l'import même une fois
+  le connecteur corrigé — `docker-compose.yml` invoque maintenant `python -m
+  procrastinate` (comme `-c`/`-m`, qui ajoutent le cwd). Vérifié en
+  construisant l'image `core/Dockerfile` réelle et en lançant `schema
+  --apply` puis `worker` contre un Postgres vivant : le worker démarre et
+  reste up. Même session : correction du même défaut d'IntégrityError
+  latent que celui du SP-6b (voir plus haut), et de l'échec CI de PR #26
+  (image Postgres CI sans pgvector — `.github/workflows/ci.yml` construit
+  maintenant l'image `deploy/postgis/Dockerfile`, celle-là même déjà
+  utilisée par `docker-compose.yml`) ; au passage, dérive silencieuse
+  découverte sur `core/openapi.json`/`shell/.../core-schema.d.ts`
+  (paramètre `q` de `GET /collections` manquant, non détectée avant faute
+  du job `api-types-drift` bloqué en amont par l'échec pgvector) —
+  régénérés. `core/app/configs/models.py` (`Config`/`ConfigRevision`)
+  déclare maintenant `tenant_id` (mirroir du pattern `app.items`),
+  `create_config`/`update_config`/`rollback_config` prennent un
+  `tenant_id` obligatoire, tous les appelants mis à jour (routes, outils
+  MCP, importeur d'ingestion).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

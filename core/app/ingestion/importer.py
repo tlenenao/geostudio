@@ -179,6 +179,6 @@ def run_import(
             )],
         ),
     )
-    configs_repo.create_config(session, config, item_id=item.id)
+    configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
 
     return ImportResult(collection_id=col.id, item_id=item.id)

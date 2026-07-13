@@ -15,6 +15,7 @@ class Config(Base):
     __tablename__ = "configs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     kind: Mapped[str] = mapped_column(String, nullable=False)
     item_id: Mapped[str] = mapped_column(
         ForeignKey("items.id", ondelete="CASCADE"), nullable=False
@@ -28,6 +29,7 @@ class ConfigRevision(Base):
     __tablename__ = "config_revisions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     config_id: Mapped[str] = mapped_column(ForeignKey("configs.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)

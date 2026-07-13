@@ -28,9 +28,13 @@ def test_can_persist_config_and_revision():
             # guaranteed to insert `items` before `configs` in the same
             # flush; force it so the now-enforced FK doesn't fail.
             session.flush()
-            config = Config(id="c1", kind="app", item_id="item-1", current_version=1)
+            config = Config(
+                id="c1", tenant_id=tenant.id, kind="app", item_id="item-1", current_version=1
+            )
             session.add(config)
-            session.add(ConfigRevision(config_id="c1", version=1, data={"kind": "app"}))
+            session.add(ConfigRevision(
+                tenant_id=tenant.id, config_id="c1", version=1, data={"kind": "app"}
+            ))
             session.commit()
 
         with Session() as session:

@@ -1,7 +1,10 @@
+import procrastinate
 import pytest
+from sqlalchemy import text
 
-from app.db import make_engine, make_session_factory, init_db
+from app.db import Base, make_engine, make_session_factory, init_db
 from app.items import repository as repo
+from app.search.providers import FakeProvider
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -21,6 +24,34 @@ def tenant_and_user(session):
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
         session, tenant_id=tenant.id, oidc_sub="sub-1",
+        username="alice", email=None, first_name="", last_name="",
+    )
+    return tenant, user
+
+
+@pytest.fixture()
+def pg_session(pg_engine):
+    # `session`/`tenant_and_user` ci-dessus créent un moteur SQLite en
+    # mémoire — insuffisant pour les tests `postgis` de ce module : la
+    # branche hybride de list_items() ne s'active que sur dialect ==
+    # "postgresql", et hybrid_search_ids() utilise func.similarity()
+    # (pg_trgm) et .cosine_distance() (pgvector), tous deux absents de
+    # SQLite. Même pattern que test_search_ranking.py/test_items_jobs.py :
+    # un moteur PostGIS réel (pg_engine, skip via CORE_TEST_DATABASE_URL
+    # absent) avec TRUNCATE en teardown.
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        yield s
+    with pg_engine.begin() as conn:
+        conn.execute(text("TRUNCATE items, users, tenants CASCADE"))
+
+
+@pytest.fixture()
+def pg_tenant_and_user(pg_session):
+    tenant = get_or_create_default_tenant(pg_session)
+    user = get_or_create_user(
+        pg_session, tenant_id=tenant.id, oidc_sub="sub-1",
         username="alice", email=None, first_name="", last_name="",
     )
     return tenant, user
@@ -192,3 +223,123 @@ def test_update_item_patches_fields(session, tenant_and_user):
     assert updated is not None
     assert updated.title == "New title"
     assert updated.abstract == "New abstract"
+
+
+def test_create_item_enqueues_an_embedding_job(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    deferred = []
+    from app.items import jobs as item_jobs
+    monkeypatch.setattr(
+        item_jobs.embed_item_task, "defer",
+        lambda **kwargs: deferred.append(kwargs),
+    )
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
+
+
+def test_update_item_enqueues_an_embedding_job(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    deferred = []
+    from app.items import jobs as item_jobs
+    monkeypatch.setattr(
+        item_jobs.embed_item_task, "defer",
+        lambda **kwargs: deferred.append(kwargs),
+    )
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title="Y", abstract=None, keywords=None, is_published=None,
+    )
+    assert deferred == [{"item_id": item.id, "tenant_id": tenant.id}]
+
+
+@pytest.mark.postgis
+def test_list_items_hybrid_search_ranks_semantic_match_ahead_of_weak_text_match(
+    pg_session, pg_tenant_and_user, monkeypatch,
+):
+    tenant, user = pg_tenant_and_user
+
+    close_vector = [1.0] * 1536
+    query_vector = [0.99] * 1536
+    far_vector = [-1.0] * 1536
+
+    semantically_close = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id,
+        resource_type="app", title="Sujet totalement différent",
+    )
+    semantically_close.embedding = close_vector
+    weak_text_match = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id,
+        resource_type="app", title="incidents",
+    )
+    weak_text_match.embedding = far_vector
+    # Troisième item, meilleur match trigram qu'"incidents" seul et pas
+    # encore embeddé — même correctif que test_search_ranking.py::
+    # test_hybrid_search_ids_ranks_a_vector_match_ahead_of_a_weak_text_match
+    # (Task 4) : sans lui, "Sujet totalement différent" (rang 1 vecteur
+    # seul) et "incidents" (rang 1 trigramme seul) arrivent à égalité RRF
+    # stricte (chacun 1/61, présent dans une seule liste), et l'ordre
+    # observé dépend alors de l'ordre d'insertion dans reciprocal_rank_
+    # fusion() plutôt que d'un vrai différentiel de pertinence — vérifié
+    # empiriquement : la version sans filler de ce test échouait
+    # (['incidents', 'Sujet totalement différent']) malgré une implémentation
+    # correcte de list_items(). Cet item pousse "incidents" au rang 2
+    # trigramme, départageant les deux candidats sans ambiguïté.
+    unrelated_but_unembedded = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id,
+        resource_type="app", title="incidents voirie",
+    )
+    pg_session.flush()
+
+    from app.items import repository as items_repo_module
+    fake = FakeProvider(vectors={"incidents voirie": query_vector})
+    monkeypatch.setattr(items_repo_module, "get_embedding_provider", lambda: fake)
+
+    page = repo.list_items(
+        pg_session, tenant_id=tenant.id, current_user_id=user.id,
+        q="incidents voirie", resource_type=None, scope="all", page=1, page_size=12,
+    )
+    titles = [i.title for i in page.items]
+    assert titles.index("Sujet totalement différent") < titles.index("incidents")
+
+
+@pytest.mark.postgis
+def test_list_items_hybrid_search_never_leaks_an_invisible_item(pg_session, pg_tenant_and_user, monkeypatch):
+    tenant, user = pg_tenant_and_user
+    other = get_or_create_user(
+        pg_session, tenant_id=tenant.id, oidc_sub="sub-other",
+        username="other", email=None, first_name="", last_name="",
+    )
+    invisible = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=other.id,
+        resource_type="app", title="incidents secrets",
+    )
+    invisible.embedding = [1.0] * 1536
+    pg_session.flush()
+
+    from app.items import repository as items_repo_module
+    fake = FakeProvider(vectors={"incidents": [1.0] * 1536})
+    monkeypatch.setattr(items_repo_module, "get_embedding_provider", lambda: fake)
+
+    page = repo.list_items(
+        pg_session, tenant_id=tenant.id, current_user_id=user.id,
+        q="incidents", resource_type=None, scope="mine", page=1, page_size=12,
+    )
+    assert page.items == []
+
+
+def test_create_item_still_succeeds_when_the_embedding_enqueue_fails(session, tenant_and_user, monkeypatch):
+    # Pins the actual contract _enqueue_embedding exists to guarantee: the
+    # procrastinate App shared with the FastAPI process is never .open()ed,
+    # so every unmocked .defer() raises AppNotOpen in practice. The write
+    # itself must stay fail-open — the embedding enqueue is best-effort only.
+    tenant, user = tenant_and_user
+    from app.items import jobs as item_jobs
+
+    def raise_app_not_open(**kwargs):
+        raise procrastinate.exceptions.AppNotOpen()
+
+    monkeypatch.setattr(item_jobs.embed_item_task, "defer", raise_app_not_open)
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+    assert item is not None
+    assert item.title == "X"

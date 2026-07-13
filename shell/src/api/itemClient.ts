@@ -190,14 +190,14 @@ export function createItemClient(opts: {
     return (await res.json()) as T;
   }
 
-  async function fetchMartinSources(): Promise<LayerSource[]> {
+  async function fetchMartinSources(q?: string): Promise<LayerSource[]> {
     if (!martinUrl) return [];
     const res = await fetch(`${martinUrl}/catalog`);
     if (!res.ok) throw new Error(`Request failed: ${res.status} /catalog`);
     const data = (await res.json()) as {
       tiles?: Record<string, { description?: string }>;
     };
-    return Object.entries(data.tiles ?? {}).map(([id, meta]) => ({
+    const sources = Object.entries(data.tiles ?? {}).map(([id, meta]) => ({
       id,
       title: meta.description ?? id,
       service: "martin" as const,
@@ -205,11 +205,15 @@ export function createItemClient(opts: {
       tilesUrl: `${martinUrl}/${id}/{z}/{x}/{y}`,
       sourceLayer: id,
     }));
+    if (!q) return sources;
+    const needle = q.toLowerCase();
+    return sources.filter((s) => s.title.toLowerCase().includes(needle));
   }
 
-  async function fetchCoreCollections(): Promise<LayerSource[]> {
+  async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const token = getToken();
-    const res = await fetch(`${coreUrl}/collections`, {
+    const query = q ? `?q=${encodeURIComponent(q)}` : "";
+    const res = await fetch(`${coreUrl}/collections${query}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
@@ -317,10 +321,10 @@ export function createItemClient(opts: {
       await request<void>("PUT", `/items/${pk}/sharing`, sharing);
     },
 
-    async listLayerSources(): Promise<LayerSource[]> {
+    async listLayerSources(params?: { q?: string }): Promise<LayerSource[]> {
       const results = await Promise.allSettled([
-        fetchMartinSources(),
-        fetchCoreCollections(),
+        fetchMartinSources(params?.q),
+        fetchCoreCollections(params?.q),
       ]);
       const fulfilled = results.filter(
         (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",

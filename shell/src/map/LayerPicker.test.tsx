@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { ItemClient, LayerSource, MapLayer } from "../api/types";
@@ -81,4 +81,23 @@ test("shows no feature-count badge for a martin source or an unknown count", asy
   expect(martinItem).not.toHaveTextContent(/entités/);
   const legacyItem = (await screen.findByRole("button", { name: /Legacy/ })).closest("li")!;
   expect(legacyItem).not.toHaveTextContent(/entités/);
+});
+
+test("has a search field that calls listLayerSources with q", async () => {
+  const onAdd = vi.fn();
+  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <LayerPicker onAdd={onAdd} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole("button", { name: /Communes/ });
+  const search = screen.getByRole("searchbox", { name: /rechercher/i });
+  await userEvent.type(search, "commun");
+  await waitFor(() => {
+    expect(client.listLayerSources).toHaveBeenLastCalledWith({ q: "commun" });
+  });
 });
