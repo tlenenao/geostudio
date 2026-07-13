@@ -4,6 +4,7 @@ import { useState } from "react";
 import { expect, test, vi } from "vitest";
 import { makeGeneratedPropsPanel } from "./generatedPropsPanel";
 import type { WcWidgetManifest } from "./manifest";
+import type { DataSource } from "../../api/types";
 
 // Panel is a plain controlled component: like the real PropsPanel usage in
 // the builder, onChange must feed back into props for typed input to work
@@ -66,4 +67,50 @@ test("editing a boolean field calls onChange with a boolean", async () => {
   renderControlled(Panel, { initial: 3, title: "", loud: false }, onChange);
   await userEvent.click(screen.getByLabelText("Bruyant"));
   expect(onChange).toHaveBeenLastCalledWith({ initial: 3, title: "", loud: true });
+});
+
+const DS: DataSource[] = [
+  { id: "ds-a", type: "features", service: "core", layer: "incidents", query: {} },
+  { id: "ds-b", type: "features", service: "core", layer: "villes", query: {} },
+];
+
+const manifestWithDataSource: WcWidgetManifest = {
+  type: "test.panel-ds",
+  tag: "test-panel-ds-widget",
+  label: "Test panneau DS",
+  props: [{ name: "source", type: "dataSource", label: "Source de données", default: "" }],
+  permissions: { collections: ["incidents"] },
+  defaultSize: { w: 2, h: 2 },
+};
+
+test("a dataSource prop renders a DataSourceSelect filtered by permissions.collections", () => {
+  const Panel = makeGeneratedPropsPanel(manifestWithDataSource);
+  render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />);
+  const select = screen.getByLabelText("Source de données") as HTMLSelectElement;
+  const optionLabels = Array.from(select.options).map((o) => o.textContent);
+  expect(optionLabels).toEqual(["Aucune", "incidents"]);
+});
+
+test("permissions.collections: \"all\" proposes every data source", () => {
+  const manifest: WcWidgetManifest = { ...manifestWithDataSource, permissions: { collections: "all" } };
+  const Panel = makeGeneratedPropsPanel(manifest);
+  render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />);
+  const select = screen.getByLabelText("Source de données") as HTMLSelectElement;
+  expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Aucune", "incidents", "villes"]);
+});
+
+test("no permissions declared proposes every data source (backward compatible)", () => {
+  const manifest: WcWidgetManifest = { ...manifestWithDataSource, permissions: undefined };
+  const Panel = makeGeneratedPropsPanel(manifest);
+  render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />);
+  const select = screen.getByLabelText("Source de données") as HTMLSelectElement;
+  expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Aucune", "incidents", "villes"]);
+});
+
+test("selecting a data source calls onChange with its id", async () => {
+  const Panel = makeGeneratedPropsPanel(manifestWithDataSource);
+  const onChange = vi.fn();
+  render(<Panel props={{ source: "" }} dataSources={DS} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds-a");
+  expect(onChange).toHaveBeenCalledWith({ source: "ds-a" });
 });
