@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { useMe } from "../api/hooks";
 import { Button } from "../ui/button";
 import { NewItemButton } from "./NewItemButton";
 import { ImportFileButton } from "./ImportFileButton";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { username, signOut } = useAuth();
+  const meQuery = useMe();
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
@@ -24,6 +26,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Link to="/" className="text-sm font-medium hover:underline">
             Catalogue
           </Link>
+          {meQuery.data?.isAdmin === true && (
+            <Link to="/admin/extensions" className="mt-2 block text-sm font-medium hover:underline">
+              Administration
+            </Link>
+          )}
         </nav>
         <main className="flex-1 p-6">{children}</main>
       </div>
