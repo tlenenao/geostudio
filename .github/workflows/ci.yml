@@ -8,16 +8,6 @@ on:
 jobs:
   migrations:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_USER: gis
-          POSTGRES_PASSWORD: gis
-          POSTGRES_DB: gis
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd="pg_isready -U gis" --health-interval=5s --health-timeout=5s --health-retries=10
     defaults:
       run:
         working-directory: core
@@ -25,6 +15,17 @@ jobs:
       DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
     steps:
       - uses: actions/checkout@v4
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis \
+            -p 5432:5432 geostudio-postgis-ci:latest
+          for i in $(seq 1 30); do
+            docker exec ci-postgres pg_isready -U gis && break
+            sleep 2
+          done
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
       - run: uv run alembic upgrade head
@@ -32,18 +33,6 @@ jobs:
 
   core:
     runs-on: ubuntu-latest
-    services:
-      postgis:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_USER: gis
-          POSTGRES_PASSWORD: gis
-          POSTGRES_DB: gis_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U gis" --health-interval 5s
-          --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: core
@@ -51,6 +40,17 @@ jobs:
       CORE_TEST_DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis_test
     steps:
       - uses: actions/checkout@v4
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_test \
+            -p 5432:5432 geostudio-postgis-ci:latest
+          for i in $(seq 1 30); do
+            docker exec ci-postgres pg_isready -U gis && break
+            sleep 2
+          done
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
       - run: uv run pytest
