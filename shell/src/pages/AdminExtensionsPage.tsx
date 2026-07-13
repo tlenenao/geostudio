@@ -25,6 +25,11 @@ export function AdminExtensionsPage() {
           Échec du chargement des extensions.
         </p>
       )}
+      {setEnabled.isError && (
+        <p role="alert" className="text-sm text-red-600">
+          Échec de la mise à jour de l'extension.
+        </p>
+      )}
       {extensionsQuery.data && (
         <table className="w-full text-left text-sm">
           <thead>
