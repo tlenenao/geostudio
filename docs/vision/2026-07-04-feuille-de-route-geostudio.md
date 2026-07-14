@@ -11,7 +11,10 @@
 > Étendue le 2026-07-05 (SP-10→13, A16–A27) puis le **2026-07-09** (SP-14/SP-15,
 > A28–A30, amendements A22/A27, jalons M11/M12 — issus du
 > [brainstorm Analytics Platform](./2026-07-09-brainstorm-geostudio-analytics-platform.md),
-> validé Q-A1→Q-A5).
+> validé Q-A1→Q-A5), puis le **2026-07-14** (SP-16 « Portails & Sites », quick
+> win Storytelling, arbitrages A31/A33–A38, jalon M13 — issus du
+> [gap analysis dataviz/analytics/BI/portails](./geostudio-dataviz-analytics-gap-analysis.md),
+> arbitrages tranchés par Tanguy).
 
 ---
 
@@ -185,7 +188,8 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-13 | 3D & impression | 50–90 h | SP-1 | **M10 3D & print** |
 | SP-14 | Analytics UX : datasets, requête visuelle, contexte global | 60–100 h | SP-11 | **M11 BI géospatiale** |
 | SP-15 | Alertes & reporting : exports, rapports planifiés | 50–80 h | SP-13, SP-14 | **M12 la plateforme prévient** |
-| | **Total** | **≈ 705–1 230 h** | | ≈ 16–32 mois à 10–25 h/sem |
+| SP-16 | Portails & Sites : portails publics de marque, découverte éditorialisée | 60–100 h | SP-11 | **M13 portails ouverts** |
+| | **Total** | **≈ 765–1 330 h** | | ≈ 17–34 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
@@ -206,6 +210,22 @@ structurelle : SP-15 dépend du worker d'export de SP-13 pour ses rapports PDF.
 Les quick wins de la « vague 0 » du brainstorm (auto-refresh par source, types
 ECharts additionnels, KPI enrichie) restent opportunistes au fil de SP-4/SP-5,
 hors périmètre formel.
+
+**Le SP-16 a été ajouté le 2026-07-14** (gap analysis dataviz/analytics/BI/
+portails, arbitrages A31/A33–A38 tranchés par Tanguy) : chantier **Portails &
+Sites**, qui dote GeoStudio d'un objet de plateforme absent jusqu'ici — la
+façade publique multi-app éditorialisée (face à ArcGIS Hub/CKAN/data.gouv.fr
+thématiques). Il ne dépend techniquement d'aucun autre chantier (un portail
+v1 fonctionne déjà avec les seuls items publiés existants) mais s'exécute
+**juste après SP-11, avant SP-12/SP-13** (A34/A35 tranchés — SP-11 conditionne
+la maturité produit générale avant d'ouvrir un nouveau front public). Son
+ordre relatif à SP-14 reste libre : les deux chantiers sont mutuellement
+indépendants, le premier prêt peut démarrer. **Le storytelling, lui,
+n'attend aucun SP** : livré en quick win indépendant (A36/A37), il s'appuie
+uniquement sur des briques déjà acquises (`PageManager`, bindings CEL,
+`ActionBus`/`map.flyTo`) et peut être fait dès maintenant, en parallèle de
+SP-9 — voir
+[la spec dédiée](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md).
 
 ---
 
@@ -687,6 +707,81 @@ en page) — différé explicite, la demande réelle décidera.
 
 ---
 
+### Quick win — Storytelling (hors SP, livrable immédiatement)
+
+> Ajouté le 2026-07-14 (arbitrages A36/A37, tranchés par Tanguy). Ne dépend
+> d'aucun SP ; peut être livré dès maintenant, en parallèle de SP-9. Spec
+> détaillée :
+> [`2026-07-14-storytelling-pagemanager-design.md`](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md).
+
+**Objectif.** Un auteur active un mode narratif sur une app existante, sans
+code : les pages deviennent des chapitres séquencés (barre de progression,
+navigation précédent/suivant), chacun pouvant piloter la carte vers une
+emprise cible à l'entrée (réutilise `map.flyTo`, déjà câblé depuis SP-0d3).
+
+**Contenu.** `AppConfig.navigationMode?: "tabs" | "story"` (défaut `tabs`,
+rétrocompatible) ; mode de layout sur `PageManager` existant (**A36** : pas de
+nouveau widget conteneur) ; `PageConfig.onEnter?: ActionMessage[]` qui réutilise
+`ActionBus.emit` et la validation de conditions déjà en place (SP-5b) ; gabarit
+de galerie « Story cartographique ».
+
+**Critères d'acceptation.** Une story cartographique de 3 chapitres, créée
+sans code, où la carte vole d'une emprise à l'autre à chaque chapitre ; les
+apps existantes (sans `navigationMode`) restent inchangées.
+
+**Risques.** Quasi nuls — réutilisation stricte de briques déjà testées
+(`ActionBus`, `ActionsPanel`, validation d'expressions) ; aucune nouvelle
+brique cœur.
+
+---
+
+### SP-16 — Portails & Sites
+
+> Ajouté le 2026-07-14 (arbitrages A31/A33–A35/A38, tranchés par Tanguy —
+> gap analysis dataviz/analytics/BI/portails). Chantier dédié (**A35**),
+> exécuté après SP-11, avant SP-12/SP-13 (**A34**). Spec détaillée :
+> [`2026-07-14-sp16-portails-sites-design.md`](../superpowers/specs/2026-07-14-sp16-portails-sites-design.md).
+
+**Objectif.** GeoStudio dote son catalogue d'une façade publique de marque —
+le manque structurel face à ArcGIS Hub/CKAN/data.gouv.fr thématiques
+(argument commercial direct pour la cible collectivités, persona n° 8). Un
+admin construit, sans code, un portail : page d'accueil éditoriale, galerie
+de découverte filtrable des items publiés, fiches de jeux de données
+téléchargeables.
+
+**Contenu.**
+- Nouveau type d'item **`site`** (à côté d'app/dashboard/map) — même table
+  `items`, même `can()`, même `audit_log`, mêmes révisions de config ; aucun
+  nouveau module cœur, extension du module `items` existant.
+- `items.slug` (unique par tenant), route publique `GET /public/sites/{slug}`
+  (miroir exact de `GET /public/items/{id}`, même politique d'accès anonyme,
+  404 si non publié — jamais 403).
+- Nouveaux widgets de contenu, disponibles pour tout type d'item : `Hero`,
+  `RichSection` (markdown simple), `Gallery` (découverte filtrable par
+  tag/type), `DatasetCard`/`DatasetPage` (fiche + téléchargement).
+- Téléchargement v1 volontairement limité : GeoJSON (OGC API Features déjà
+  exposée, SP-3) + CSV client-side sous un seuil de volumétrie explicite —
+  export DCAT-AP/STAC (SP-12) et export serveur gros volumes (SP-15) upgradent
+  ce module plus tard, sans le bloquer aujourd'hui.
+- **Domaine personnalisé et fonctions communautaires (commentaires, follow,
+  discussions) explicitement différés** (A33/A38) — accès v1 via
+  `/sites/{slug}`, portail catalogue+éditorial seulement.
+
+**Critères d'acceptation.** Un admin publie un portail (accueil + galerie +
+au moins une fiche dataset téléchargeable) sur une URL stable ; un visiteur
+anonyme le parcourt et télécharge un jeu de données sans jamais voir un item
+non publié ; aucun chemin ne contourne `can()`/la politique de publication
+existante (vérifié en revue finale de branche, comme chaque SP touchant à la
+sécurité depuis SP-1c).
+
+**Risques.** Confusion de tenant par résolution de slug (mitigé par un test
+d'isolation tenant×slug dédié, symétrique aux matrices rôle×action déjà
+exigées) ; dérive vers un CMS complet (périmètre `RichSection` fermé
+explicitement à un bloc markdown simple) ; étalement du chantier (sous-phases
+livrables obligatoires à la rédaction du plan, sur le modèle SP-4/SP-8).
+
+---
+
 ## 7. Points d'arbitrage technique
 
 Chaque point : options, avantages/inconvénients, recommandation. Les décisions
@@ -1005,6 +1100,74 @@ print professionnel.
 
 **Décision (Q-A5, 2026-07-09) : (a)** — gabarits différés (§9), sur demande réelle.
 
+### A31 — Modèle de config du portail/site (SP-16)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Sous-gabarit d'`AppConfig`** (nouveau type d'item `site`, même schéma de base, mêmes modes edit/preview/runtime) | Un seul runtime (règle n° 3) ; hérite instantanément de thèmes/pages/partage/MCP ; nouveaux widgets de contenu réutilisables partout | Le schéma `AppConfig` doit rester générique (widgets de contenu = nouveaux widgets, pas un fork de schéma) |
+| (b) Nouveau type de config entièrement séparé | Liberté de modéliser une navigation multi-item différente | Deuxième runtime (viole la règle n° 3) ; double la surface de maintenance et de génération MCP |
+
+**Décision (2026-07-14) : (a).**
+
+### A33 — Domaine personnalisé par site (SP-16)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) V1 sans domaine personnalisé** (accès via `/sites/{slug}`) | Livrable rapidement, zéro complexité TLS/DNS multi-tenant à durcir tout de suite | Moins impressionnant face à ArcGIS Hub pour une démo commerciale |
+| (b) Domaine personnalisé dès v1 | Argument de vente fort immédiat | Complexité TLS/DNS/routage multi-tenant à durcir avant toute exposition publique — risque de confusion de tenant par Host si mal isolé |
+
+**Décision (2026-07-14) : (a)**, domaine personnalisé réévalué en v2 du
+module une fois le routage multi-tenant par chemin éprouvé et audité.
+
+### A34 — Séquencement de SP-16 vis-à-vis de SP-12/13/14 (amendement A27)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) SP-16 après SP-11, avant SP-12/13** | Le portail v1 s'appuie sur les items déjà publiés, n'a pas besoin du catalogue standard (SP-12) ni de la 3D/print (SP-13) pour son v1 | Le catalogue standard/3D restent en jachère plus longtemps que dans l'ordre A27 originel |
+| (b) SP-16 après SP-12 (catalogue standard) | Alimente nativement les fiches dataset du portail en DCAT/STAC dès le départ | Retarde le portail sans raison technique — le v1 du portail assume déjà l'absence de DCAT (upgrade documenté) |
+| (c) SP-16 après SP-14 (BI géospatiale) | Les portails embarquent d'emblée des widgets analytiques | Retarde un chantier commercialement stratégique (obligation open-data) sans nécessité technique |
+
+**Décision (2026-07-14) : (a).** L'ordre relatif de SP-16 à SP-14 reste
+libre (chantiers mutuellement indépendants) ; l'ordre relatif de SP-12/13/14
+entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
+
+### A35 — Structure du chantier Portails & Sites
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) SP-16 dédié** | Périmètre net, critères d'acceptation propres, évite de diluer SP-9 (déjà en cours) ou SP-12 (déjà chargé de 4-5 connecteurs, risque d'étalement documenté) | Un SP de plus à la feuille de route (≈ 60–100 h) |
+| (b) Sous-lot de SP-12 (« le catalogue devient aussi un portail ») | Un SP de moins à nommer | Aggrave le risque d'étalement déjà noté sur SP-12 |
+| (c) Sous-lot de SP-9 (durcissement v0.1) | Traité pendant la phase en cours | Retarderait la sortie v0.1, contraire au principe « ne pas toucher au chemin critique » |
+
+**Décision (2026-07-14) : (a).**
+
+### A36 — Storytelling : mode d'intégration au builder
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Mode de layout sur `PageManager`** (une app peut activer une navigation séquentielle scrollée sur ses pages existantes) | Zéro nouveau widget ; toute app peut devenir story a posteriori ; hérite du thème/des variables de l'app parente | Le mode doit rester optionnel et non intrusif pour le cas dashboard classique |
+| (b) Nouveau widget conteneur « Story » dédié | Isolation du code, pas de risque de régression sur `PageManager` | Duplique la notion de page ; n'hérite pas gratuitement du thème/des variables de l'app parente |
+
+**Décision (2026-07-14) : (a).**
+
+### A37 — Storytelling : timing de livraison
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Quick win immédiat, indépendant** | Livrable dès maintenant, sans attendre SP-11/14/16 ; réutilise des briques déjà acquises (`PageManager`, CEL, `ActionBus`) | Aucun — c'est un quick win par construction |
+| (b) Regroupé avec le chantier Portails & Sites (SP-16) | Une seule spec, un seul plan | Retarde inutilement une fonctionnalité qui ne dépend techniquement de rien dans SP-16 |
+
+**Décision (2026-07-14) : (a).**
+
+### A38 — Fonctions communautaires des portails (SP-16)
+
+| Option | Avantages | Inconvénients |
+|---|---|---|
+| **(a) Différées, hors périmètre v1** (pas de commentaires, follow, discussions) | Catalogue + éditorial seulement — pas de charge de modération à porter tout de suite | Moins complet qu'ArcGIS Hub sur cet axe |
+| (b) Incluses dès la v1 | Se rapproche davantage d'ArcGIS Hub complet | Surface d'abus/modération à gérer dès le départ, disproportionnée pour la cible (patrimoine territorial, pas réseau social) |
+
+**Décision (2026-07-14) : (a)** — réévaluées sur demande réelle explicite.
+
 ---
 
 ## 8. Décisions d'arbitrage
@@ -1047,6 +1210,13 @@ print professionnel.
 | A28 | Datasets | **Objet de plateforme** (nouveau type d'item) + datasets inline dans les apps | SP-14 |
 | A29 | Réactivité à l'emprise | **Opt-in par dataset** ; refetch au déplacement de carte activable en config | SP-14 |
 | A30 | Exports tabulaires | **Export sec CSV/XLSX** ; classeurs mis en forme (gabarits) différés | SP-15 |
+| A31 | Modèle de config du portail | **Sous-gabarit d'`AppConfig`** (nouveau type d'item `site`), un seul runtime | SP-16 |
+| A33 | Domaine personnalisé | **Différé** — v1 via `/sites/{slug}`, pas de domaine tiers | SP-16 |
+| A34 | Séquencement SP-16 | **Après SP-11, avant SP-12/13** ; ordre libre vis-à-vis de SP-14 | SP-16 |
+| A35 | Structure du chantier | **SP dédié (SP-16)**, pas un sous-lot de SP-9/SP-12 | SP-16 |
+| A36 | Storytelling : intégration | **Mode de layout sur `PageManager`**, pas de nouveau widget conteneur | Quick win |
+| A37 | Storytelling : timing | **Quick win immédiat, indépendant** de SP-16/SP-11/SP-14 | Quick win |
+| A38 | Communauté des portails | **Différée** (commentaires, follow, discussions) — hors périmètre v1 | SP-16 |
 
 **Conséquences immédiates des décisions** :
 - SP-1a démarre par le renommage `core/` (A14) et l'ajout de la génération
@@ -1125,12 +1295,21 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M10 3D & print** (SP-13) | Couches 3D Tiles + terrain ; export PNG/PDF mis en page | Tileset public navigable > 30 fps ; PDF A3 avec légende/échelle fidèles |
 | **M11 BI géospatiale** (SP-14) | Datasets partagés, requête visuelle, contexte global, cross-filter, SQL Lab | Une question spatiale (« incidents à < 500 m d'une école, par commune, ce trimestre ») résolue sans code ni SQL par un non-technicien |
 | **M12 La plateforme prévient** (SP-15) | Alertes, rapports planifiés diffusés, exports secs | Rapport PDF hebdo reçu par email ; alerte de seuil déclenchée et journalisée < 5 min ; export XLSX permissionné |
+| **M13 Portails ouverts** (SP-16) | Portail public de marque publié, galerie de découverte, fiche dataset téléchargeable | Un visiteur anonyme parcourt un portail et télécharge un jeu de données sans jamais voir un item non publié |
 
 ---
 
 *Feuille de route rédigée le 2026-07-04 sur l'état de la branche `dev`
 (commit `b8eb71f`) ; étendue le 2026-07-05 (SP-10→SP-13, arbitrages A16–A27,
 jalons M7–M10) puis le 2026-07-09 (SP-14/SP-15, arbitrages A28–A30, amendements
-A22/A27, jalons M11–M12 — brainstorm Analytics Platform validé Q-A1→Q-A5). Les
-arbitrages A1–A30 sont tranchés en §8 ; toute révision d'un arbitrage après
-lancement du SP concerné passe par une mise à jour explicite de ce document.*
+A22/A27, jalons M11–M12 — brainstorm Analytics Platform validé Q-A1→Q-A5), puis
+le 2026-07-14 (SP-16 « Portails & Sites », quick win Storytelling, arbitrages
+A31/A33–A38, jalon M13 — gap analysis dataviz/analytics/BI/portails, arbitrages
+tranchés par Tanguy ; specs détaillées :
+[storytelling](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md)
+et
+[SP-16](../superpowers/specs/2026-07-14-sp16-portails-sites-design.md)). Les
+arbitrages A1–A31, A33–A38 sont tranchés en §8 (A32, proposition de copilote IA
+embarqué, reste ouverte — voir le gap analysis) ; toute révision d'un
+arbitrage après lancement du SP concerné passe par une mise à jour explicite
+de ce document.*
