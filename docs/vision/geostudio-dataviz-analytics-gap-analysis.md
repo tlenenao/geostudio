@@ -1,7 +1,18 @@
 # GeoStudio — Gap analysis : dataviz, analytics, BI, portails & sites, géospatial avancé
 
-> **Date : 2026-07-14 · Statut : analyse stratégique, à valider par Tanguy avant toute
-> déclinaison en spec/plan.** Ce document ne modifie **aucun** arbitrage déjà tranché
+> **Date : 2026-07-14 · Statut : validé** — les arbitrages proposés en §9.2 ont
+> été tranchés par Tanguy le 2026-07-14 et déclinés le même jour dans la
+> [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) : **SP-16
+> « Portails & Sites », quick win Storytelling, arbitrages A31/A33–A38, jalon
+> M13**, avec deux specs détaillées
+> ([SP-16](../superpowers/specs/2026-07-14-sp16-portails-sites-design.md),
+> [storytelling](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md)).
+> Seul **A32** (copilote IA embarqué comme client MCP interne) reste une
+> proposition ouverte, à trancher au cadrage de ce chantier. La feuille de
+> route reste LA référence opérationnelle ; ce document en est le matériau
+> d'analyse (benchmark, gap analysis, architecture cible).
+>
+> Ce document ne modifie **aucun** arbitrage déjà tranché
 > (A1–A30) ni le phasage SP-1→SP-15 de la
 > [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) : il les reprend,
 > les recoupe avec un périmètre plus large que le seul
@@ -836,6 +847,15 @@ la moitié du catalogue §6.
 avantages/inconvénients, recommandation — pour compléter A1–A30 sans les
 modifier.
 
+> **Statut (2026-07-14)** : arbitrages tranchés par Tanguy et consignés dans
+> la feuille de route (§7/§8), qui fait désormais foi — **A31, A33, A34, A35,
+> A36** validés dans le sens recommandé ci-dessous, complétés à la validation
+> par **A37** (storytelling en quick win immédiat, indépendant de SP-16) et
+> **A38** (fonctions communautaires des portails différées). **A32** (copilote
+> IA embarqué = client MCP interne) reste ouvert, à trancher au cadrage du
+> chantier copilote. Le texte ci-dessous est conservé tel que proposé, comme
+> matériau d'analyse.
+
 #### A31 — Le portail/site est-il un `AppConfig` ou un type de config séparé ?
 
 | Option | Avantages | Inconvénients |
@@ -1012,9 +1032,10 @@ route (§10) et le brainstorm (§9).
 *Document rédigé le 2026-07-14 sur la base de l'état du dépôt à cette date
 (branche `dev`, SP-1→8 clos, SP-9 en cours). Il complète — sans les modifier —
 la feuille de route 2026-07-04/09 et le brainstorm Analytics Platform
-2026-07-09. Les arbitrages A31–A36 proposés en §9.2, ainsi que la question de
-priorité Q-A3 rouverte en §8/A34, doivent être validés explicitement par
-Tanguy avant toute déclinaison en spec/plan — conformément à la règle du
-projet (« un arbitrage ne se rediscute pas en session ; s'il doit changer, on
-met à jour le document explicitement »), qui s'applique symétriquement à
-l'introduction de nouveaux arbitrages.*
+2026-07-09. Les arbitrages proposés en §9.2 ont été **validés par Tanguy le
+2026-07-14** et déclinés le même jour dans la feuille de route (A31/A33–A38,
+SP-16, jalon M13, quick win Storytelling + specs associées) — conformément à
+la règle du projet (« un arbitrage ne se rediscute pas en session ; s'il doit
+changer, on met à jour le document explicitement »). Seul A32 (copilote IA
+embarqué) reste une proposition ouverte, à trancher au cadrage de ce
+chantier.*
