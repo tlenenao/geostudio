@@ -584,9 +584,62 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   **387 tests cœur passed/64 skipped**, `lint-imports` clean — aucune
   régression (les en-têtes n'affectent ni tsc ni pytest). Poussé sur `dev`
   (checkout principal, pas de worktree dédié, même patron que les autres
-  sous-parties SP-9). Les 4 autres sous-parties de SP-9 (CI publique/
-  release, install/secrets, sécurité minimale, démo lecture seule) restent
-  à planifier et exécuter — specs déjà écrites, cf. plus haut.
+  sous-parties SP-9).
+- **SP-9 « CI publique & release » livré et clos** (2026-07-16, sous-partie
+  de SP-9, cf. spec `2026-07-15-sp9-ci-publique-release-design.md` et plan
+  `2026-07-16-sp9-ci-publique-release.md`) : nouveau job `shell` dans
+  `.github/workflows/ci.yml` (npm ci → test → e2e Chromium seul → build) à
+  chaque push/PR, aux côtés des jobs `migrations`/`core`/`api-types-drift`
+  déjà existants (`retries: process.env.CI ? 2 : 0` ajouté à
+  `playwright.config.ts`, comportement local inchangé) ; nouveau workflow
+  `.github/workflows/release.yml`, déclenché sur push de tag `v*.*.*` :
+  `test-gate` (migrations+core+shell dupliqués depuis `ci.yml` par choix
+  explicite du spec — un tag est un événement rare, la duplication coûte
+  moins cher que `workflow_call` pour ce dépôt) gate un `build-and-push`
+  matriciel (3 images `core`/`shell`/`postgis`, tag double `vX.Y.Z`+
+  `latest`, `ghcr.io/tlenenao/geostudio-*`, `packages: write` scopée au
+  seul job qui pousse) ; `CHANGELOG.md` (Keep a Changelog, entrée
+  rétroactive `[0.1.0]` résumant M1→SP-9 gouvernance/légal) ; section
+  « Release process » dans `CONTRIBUTING.md` (bump version manuel,
+  déplacement `Unreleased`→version datée, tag+push, vérification
+  `docker pull` réelle, pas de suppression de tag en cas d'échec —
+  retag à la place). Exécuté en subagent-driven-development (5 tâches,
+  revue par tâche + revue finale de branche modèle opus). 1 défaut trouvé
+  et corrigé en cours de route (Task 3, revue) : la section CHANGELOG
+  « Fixed » attribuait à tort 2 des 3 correctifs à des revues de branche
+  SP-5→SP-8, alors qu'ils avaient été trouvés en SP-6b/SP-7 mais corrigés
+  dans une session de debug dédiée hors-SP le 2026-07-13 — corrigé, re-revue
+  clean. **Validation réelle effectuée** (pas seulement lecture de logs,
+  confirmation utilisateur obtenue avant chaque push/tag) : push `dev` réel
+  → 4 jobs CI verts dont le nouveau `shell` (36/36 E2E) ; dry-run d'un tag
+  jetable `v0.1.0-rc1` contre `release.yml` — 1er essai a révélé un défaut
+  réel (hors périmètre de cette sous-partie, dans `admin-collections.
+  spec.ts` de SP-9-gestion-collections) : `test-gate` fusionne
+  migrations+core+shell dans un seul job (contrairement au job `shell`
+  isolé de `ci.yml`), et le conteneur `ci-postgres` restait démarré pendant
+  l'étape Playwright — contention suffisante sur le runner GitHub partagé
+  pour faire échouer déterministiquement (3/3, retries inclus) l'assertion
+  finale de ce test (fenêtre de 5s pour fermeture de dialogue + refetch),
+  sans rapport avec le code de cette sous-partie ; `build-and-push`
+  correctement sauté (garde conforme au spec). Root-cause investigué
+  (`/systematic-debugging`), fixé par une étape `docker rm -f ci-postgres`
+  ciblée juste après "Core tests" dans `release.yml` (pas de modification
+  du test lui-même, hors périmètre). Re-dry-run : pipeline complet vert,
+  **3 images vérifiées par un `docker pull` réel** depuis
+  `ghcr.io/tlenenao/geostudio-{core,shell,postgis}:v0.1.0-rc1`, tag jetable
+  supprimé ensuite. **Point de vigilance non résolu, signalé à
+  l'utilisateur** : le pattern `v*.*.*` matche aussi les pré-releases, donc
+  ce dry-run a réellement déplacé le tag `:latest` de GHCR vers le build
+  rc1 — à corriger en retaguant un `v0.1.0` réel prochainement (`:latest`
+  s'auto-corrigera au prochain tag stable). Revue finale de branche : aucun
+  Critical/Important, **Ready to merge: Yes** ; 2 autres Minor notés (garde
+  `api-types-drift` intentionnellement absente de `test-gate`, cf. spec ;
+  cette entrée CLAUDE.md elle-même attendue en commit séparé, désormais
+  faite). **387 tests cœur, 466 tests shell, 36/36 specs E2E** — aucune
+  régression (validé par CI réelle, pas seulement en local). Poussé sur
+  `dev`. Les 3 autres sous-parties de SP-9 (install/secrets, sécurité
+  minimale, démo lecture seule) restent à planifier et exécuter — specs
+  déjà écrites, cf. plus haut.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
