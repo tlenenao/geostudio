@@ -27,9 +27,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             Catalogue
           </Link>
           {meQuery.data?.isAdmin === true && (
-            <Link to="/admin/extensions" className="mt-2 block text-sm font-medium hover:underline">
-              Administration
-            </Link>
+            <>
+              <Link to="/admin/extensions" className="mt-2 block text-sm font-medium hover:underline">
+                Extensions
+              </Link>
+              <Link to="/admin/collections" className="mt-1 block text-sm font-medium hover:underline">
+                Collections
+              </Link>
+            </>
           )}
         </nav>
         <main className="flex-1 p-6">{children}</main>

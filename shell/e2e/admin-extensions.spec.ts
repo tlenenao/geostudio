@@ -37,7 +37,7 @@ test("un admin voit les extensions (actives et désactivées) et peut les active
   });
 
   await page.goto("/admin/extensions");
-  await expect(page.getByRole("link", { name: "Administration" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Extensions" })).toBeVisible();
   const toggle = page.getByRole("checkbox", { name: "Actif : Jauge (extension)" });
   await expect(toggle).toBeChecked();
   await toggle.click();
@@ -55,6 +55,6 @@ test("un utilisateur non-admin voit un message d'accès refusé et n'appelle jam
 
   await page.goto("/admin/extensions");
   await expect(page.getByRole("alert")).toHaveText("Accès réservé aux administrateurs.");
-  expect(await page.getByRole("link", { name: "Administration" }).count()).toBe(0);
+  expect(await page.getByRole("link", { name: "Extensions" }).count()).toBe(0);
   expect(extensionsCalled).toBe(false);
 });
