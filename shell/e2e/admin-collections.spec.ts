@@ -48,13 +48,15 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     }
     await route.fulfill({
       json: {
-        collections: registered
-          ? [{
-              id: "points_interet", title: patchedTitle ?? "Points d'intérêt", description: "",
-              tableName: "points_interet", isPublic: false, editable: true, geometryType: "Point",
-              srid: 4326, pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
-            }]
-          : deleted ? [] : [],
+        collections: deleted
+          ? []
+          : registered
+            ? [{
+                id: "points_interet", title: patchedTitle ?? "Points d'intérêt", description: "",
+                tableName: "points_interet", isPublic: false, editable: true, geometryType: "Point",
+                srid: 4326, pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+              }]
+            : [],
       },
     });
   });
@@ -120,6 +122,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await titleInput.fill("POI (édité)");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect.poll(() => patchedTitle).toBe("POI (édité)");
+  await expect(page.getByText("POI (édité)")).toBeVisible();
 
   await page.getByRole("button", { name: "Partager" }).click();
   await page.getByLabel("Groupe Équipe terrain").click();
@@ -134,6 +137,9 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   // dialog, same fix as CollectionsAdminPage.test.tsx (Task 5, Step 5).
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect.poll(() => deleted).toBe(true);
+  // Observable through the refetch triggered by useDeleteCollection's cache
+  // invalidation, not just the DELETE request having been sent.
+  await expect(page.getByText("POI (édité)")).not.toBeVisible();
 });
 
 test("un utilisateur non-admin ne voit pas le lien Collections et une navigation forcée affiche un message d'accès refusé", async ({ page }) => {
