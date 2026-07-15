@@ -3,6 +3,7 @@ import { useCollectionsAdmin, useDeleteCollection, useMe } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { CollectionShareDialog } from "../shell/CollectionShareDialog";
 import { EditCollectionDialog } from "../shell/EditCollectionDialog";
 import { RegisterCollectionDialog } from "../shell/RegisterCollectionDialog";
 
@@ -13,6 +14,7 @@ export function CollectionsAdminPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
   const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
+  const [sharing, setSharing] = useState<CollectionAdmin | null>(null);
 
   if (meQuery.isLoading) {
     return <p role="status">Chargement…</p>;
@@ -80,6 +82,9 @@ export function CollectionsAdminPage() {
                   <Button type="button" variant="outline" size="sm" onClick={() => setEditing(col)}>
                     Éditer
                   </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSharing(col)}>
+                    Partager
+                  </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(col)}>
                     Supprimer
                   </Button>
@@ -92,6 +97,9 @@ export function CollectionsAdminPage() {
       <RegisterCollectionDialog open={registerOpen} onClose={() => setRegisterOpen(false)} />
       {editing && (
         <EditCollectionDialog collection={editing} open={true} onClose={() => setEditing(null)} />
+      )}
+      {sharing && (
+        <CollectionShareDialog collectionId={sharing.id} open={true} onClose={() => setSharing(null)} />
       )}
       <ConfirmDialog
         open={!!deleting}
