@@ -176,6 +176,101 @@ Les mises à jour doivent être réversibles.
 
 ---
 
+# Backlog GitHub et milestones
+
+## Milestone v0.1 — Deployment Foundation
+
+Objectif : rendre le déploiement reproductible.
+
+Issues :
+
+- Create production Docker images
+- Add Docker Compose profiles (minimal/demo/production)
+- Add environment configuration templates
+- Add service health checks
+- Document installation architecture
+
+---
+
+## Milestone v0.2 — GeoStudio Appliance
+
+Objectif : installer GeoStudio sur un serveur autonome.
+
+Issues :
+
+- Create installation wizard
+- Add hardware detection
+- Generate configuration automatically
+- Initialize PostGIS database
+- Create demo dataset installation
+
+---
+
+## Milestone v0.3 — GeoStudio CLI
+
+Objectif : fournir une interface d'administration officielle.
+
+Issues :
+
+- Implement geostudio-cli Python package
+- Add install command
+- Add status command
+- Add doctor command
+- Add upgrade workflow
+- Add backup/restore commands
+
+---
+
+## Milestone v0.4 — Production Ready
+
+Objectif : exploitation professionnelle.
+
+Issues :
+
+- Add GitHub Actions release pipeline
+- Publish Docker images to registry
+- Add monitoring stack
+- Add centralized logs
+- Add database migration system
+- Add rollback mechanism
+
+---
+
+## Milestone v1.0 — Enterprise Platform
+
+Objectif : déploiement organisationnel.
+
+Issues :
+
+- Create Helm charts
+- Kubernetes deployment
+- Multi-tenant architecture
+- Enterprise authentication
+- Audit logging
+- Plugin marketplace
+
+---
+
+# Processus de développement recommandé
+
+Chaque fonctionnalité suit le cycle :
+
+```
+Issue GitHub
+    ↓
+Développement
+    ↓
+Tests automatiques
+    ↓
+Pull Request
+    ↓
+Release
+    ↓
+Déploiement
+```
+
+---
+
 # Positionnement
 
 GeoStudio vise une approche entre :
