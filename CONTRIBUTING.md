@@ -87,6 +87,46 @@ Common `type`s: `feat`, `fix`, `test`, `docs`, `chore`, `refactor`. Common
   [`docs/superpowers/plans/`](docs/superpowers/plans/) — dated spec/plan pairs
   for each sub-project.
 
+## Release process
+
+Releases are manual and tag-driven — there is no automated versioning tool
+(`release-please`, `changesets`, etc.) in this repo today, by explicit
+choice (single human committer, cf. `docs/superpowers/specs/2026-07-15-sp9-
+ci-publique-release-design.md`).
+
+To cut a release:
+
+1. Make sure `dev` is green (all CI jobs passing) and merged into `main`.
+2. Bump the version in both `core/pyproject.toml` (`[project].version`) and
+   `shell/package.json` (`.version`) to the new `X.Y.Z`. Keep them in sync.
+3. In `CHANGELOG.md`, move the `## [Unreleased]` entries under a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading (create the entries if `Unreleased` was
+   empty, by summarizing the commits since the previous tag — the
+   `type(scope): …` convention makes this easy to skim — but write the
+   final wording by hand, not a raw commit list).
+4. Commit: `git commit -m "chore: release vX.Y.Z"`.
+5. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+6. Pushing the tag triggers `.github/workflows/release.yml`, which
+   re-runs the full test suite and, if it passes, builds and pushes three
+   images to `ghcr.io/tlenenao/geostudio-{core,shell,postgis}`, tagged both
+   `vX.Y.Z` and `latest`.
+7. Verify the images are pullable:
+   `docker pull ghcr.io/tlenenao/geostudio-core:vX.Y.Z` (repeat for `shell`
+   and `postgis`).
+
+If the tests fail on a tag that's already been pushed, the tag stays (tags
+are not deleted automatically — that's a destructive action, out of scope
+here) and no image is published. Fix the issue, then cut a new tag
+(`vX.Y.Z+1` or a corrected `vX.Y.Z`, whichever fits) rather than force-moving
+the existing one.
+
+Note: the published `geostudio-shell` image bakes `VITE_CORE_URL`/
+`VITE_OIDC_*` at build time with the same defaults as the dev compose file
+(`localhost`-based). It's directly usable only for that default config or
+after a local rebuild with different `--build-arg` values — see the
+Dockerfile. Making these configurable at container start is a separate, not-yet-scheduled
+piece of work.
+
 ## Reporting a bug or proposing a feature
 
 Open a [GitHub issue](https://github.com/tlenenao/geostudio/issues). Include:
