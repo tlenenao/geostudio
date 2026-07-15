@@ -109,6 +109,13 @@ export interface ItemClient {
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
+  listCollections(): Promise<CollectionAdmin[]>;
+  listCandidateTables(): Promise<CandidateTable[]>;
+  createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
+  updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin>;
+  deleteCollection(id: string): Promise<void>;
+  getCollectionSharing(id: string): Promise<Sharing>;
+  setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
@@ -202,6 +209,39 @@ export type ExtensionManifest = {
 };
 
 export type AdminExtension = ExtensionManifest & { enabled: boolean };
+
+export type CollectionAdmin = {
+  id: string;
+  title: string;
+  description: string;
+  tableName: string;
+  isPublic: boolean;
+  editable: boolean;
+  geometryType: string | null;
+  srid: number | null;
+  pkColumn: string;
+  canWrite: boolean;
+  featureCount: number | null;
+  owner: string | null;
+};
+
+export type CandidateTable =
+  | { tableName: string; registrable: true; geometryType: string | null; srid: number | null; columnCount: number }
+  | { tableName: string; registrable: false; reason: string };
+
+export type CollectionCreateInput = {
+  tableName: string;
+  title?: string;
+  description?: string;
+  isPublic?: boolean;
+};
+
+export type CollectionPatchInput = {
+  title?: string;
+  description?: string;
+  isPublic?: boolean;
+  editable?: boolean;
+};
 
 export type DataRecord = {
   id: string | number;
