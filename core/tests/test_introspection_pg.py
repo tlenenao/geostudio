@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import text
 
 from app.collections.introspection import TableNotFound, UnsupportedTable
-from app.collections.introspection_pg import introspect_table
+from app.collections.introspection_pg import introspect_table, list_public_tables
 
 pytestmark = pytest.mark.postgis
 
@@ -103,3 +103,20 @@ def test_two_geometry_columns_refused(pg_session, pg_engine):
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE t_twogeom"))
+
+
+def test_lists_public_base_tables_only(pg_session, pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_extra"))
+        conn.execute(text("DROP VIEW IF EXISTS t_a_view"))
+        conn.execute(text("CREATE TABLE t_extra (id serial PRIMARY KEY)"))
+        conn.execute(text("CREATE VIEW t_a_view AS SELECT id FROM t_extra"))
+    try:
+        names = list_public_tables(pg_session)
+        assert "t_incidents" in names  # from the pg_session fixture
+        assert "t_extra" in names
+        assert "t_a_view" not in names  # views are excluded
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP VIEW IF EXISTS t_a_view"))
+            conn.execute(text("DROP TABLE IF EXISTS t_extra"))
