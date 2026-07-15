@@ -6,7 +6,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useAppConfig, useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -160,4 +160,49 @@ test("useSaveApp saves an app config", async () => {
     layout: { type: "grid" as const, breakpoints: {}, items: [] } };
   await result.current.mutateAsync(cfg);
   expect(client.saveAppConfig).toHaveBeenCalledWith("5", cfg);
+});
+
+test("useCollectionsAdmin returns the mapped collections", async () => {
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+          },
+        ],
+      }),
+    ),
+  );
+  const { result } = renderHook(() => useCollectionsAdmin(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.[0]?.owner).toBe("admin");
+});
+
+test("useCandidateTables returns the candidates list", async () => {
+  server.use(
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({
+        candidates: [{ tableName: "widgets", registrable: false, reason: "table has no primary key" }],
+      }),
+    ),
+  );
+  const { result } = renderHook(() => useCandidateTables(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual([
+    { tableName: "widgets", registrable: false, reason: "table has no primary key" },
+  ]);
+});
+
+test("useCollectionSharing returns the collection's sharing", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents/sharing", () =>
+      HttpResponse.json({ public: true, groups: [] }),
+    ),
+  );
+  const { result } = renderHook(() => useCollectionSharing("incidents"), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual({ public: true, groups: [] });
 });

@@ -2,6 +2,7 @@ import logging
 from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -46,6 +47,11 @@ def get_introspector() -> Introspector:  # overridé en test ; task 7 branche le
 def get_ddl_applier() -> Callable[[Session, str], None]:  # task 8 branche le vrai
     from app.collections.ddl import apply_collection_ddl
     return apply_collection_ddl
+
+
+def get_table_lister() -> Callable[[Session], list[str]]:  # overridé en test
+    from app.collections.introspection_pg import list_public_tables
+    return list_public_tables
 
 
 def get_extent_provider():
@@ -108,12 +114,12 @@ def _can_write_collection(session, user, col) -> bool:
     )
 
 
-def _collection_json(col, can_write: bool) -> dict:
+def _collection_json(col, can_write: bool, owner: str | None = None) -> dict:
     return {
         "id": col.id, "title": col.title, "description": col.description,
         "tableName": col.table_name, "isPublic": col.is_public, "editable": col.editable,
         "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
-        "canWrite": can_write, "featureCount": col.feature_count,
+        "canWrite": can_write, "featureCount": col.feature_count, "owner": owner,
     }
 
 
@@ -182,12 +188,49 @@ def list_collections(
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
 ):
     from app.tenants.repository import get_or_create_default_tenant
+    from app.users.models import User
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
     cols = repo.list_visible_collections(
         session, tenant_id=tenant_id, user_id=user.id if user else None,
         is_admin=bool(user and user.is_admin), q=q,
     )
-    return {"collections": [_collection_json(c, _can_write_collection(session, user, c)) for c in cols]}
+    owner_ids = {c.owner_id for c in cols}
+    owners = dict(session.execute(
+        select(User.id, User.username).where(User.id.in_(owner_ids))
+    ).all()) if owner_ids else {}
+    return {"collections": [
+        _collection_json(c, _can_write_collection(session, user, c), owner=owners.get(c.owner_id))
+        for c in cols
+    ]}
+
+
+@router.get("/collections/candidates")
+def list_candidate_tables(
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    list_tables: Callable[[Session], list[str]] = Depends(get_table_lister),
+    introspect: Introspector = Depends(get_introspector),
+):
+    _require_admin(user)
+    core = _core_tables()
+    candidates = []
+    for table_name in list_tables(session):
+        if table_name in core:
+            continue
+        if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=table_name) is not None:
+            continue
+        try:
+            info = introspect(session, table_name)
+        except UnsupportedTable as exc:
+            candidates.append({"tableName": table_name, "registrable": False, "reason": exc.reason})
+            continue
+        except TableNotFound:
+            continue  # can't happen by construction: table_name came from list_tables itself
+        candidates.append({
+            "tableName": table_name, "registrable": True,
+            "geometryType": info.geometry_type, "srid": info.srid,
+            "columnCount": len(info.columns),
+        })
+    return {"candidates": candidates}
 
 
 @router.get("/collections/{collection_id}")

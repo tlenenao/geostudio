@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-13 (mise à jour à chaque jalon)
+## État au 2026-07-15 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -502,6 +502,63 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   (fast-forward local) et poussée sur `origin/dev` ; PR #30 (dev→main)
   ouverte pour synchroniser `main` (regroupe SP-8b + SP-8c, `main` n'avait
   pas encore reçu SP-8b). **SP-8 est clos.**
+- **SP-9 « gestion des collections » livré et clos** (2026-07-15, sous-partie
+  de SP-9 durcissement produit public v0.1, brainstormée indépendamment du
+  reste de SP-9 — cf. specs `2026-07-13-sp9-gestion-collections-design.md`
+  et les 5 autres sous-parties écrites le même jour, `2026-07-15-sp9-{
+  gouvernance-legale,ci-publique-release,install-secrets,securite-minimale,
+  demo-lecture-seule}-design.md`, non encore planifiées/exécutées) : un
+  admin gère le cycle de vie complet d'une collection depuis le shell —
+  lister, enregistrer une table PostGIS candidate (sélecteur admin-only,
+  candidats non-enregistrables désactivés + raison affichée, jamais de
+  saisie manuelle de nom de table), éditer, partager (groupes×rôles),
+  désenregistrer (la table PostGIS survit, inchangé) — en pure façade sur
+  des routes déjà autorisées/auditées (aucun nouveau modèle de permission).
+  Cœur : un seul nouveau point d'entrée, `GET /collections/candidates`
+  (admin-only, réutilise l'`Introspector` existant, denylist des tables
+  cœur + exclusion des tables déjà enregistrées **pour le tenant courant**,
+  déclaré avant `GET /collections/{collection_id}` dans le routeur — ordre
+  chargé de sens, sans quoi Starlette route `candidates` comme un
+  `collection_id` littéral) ; `GET /collections` gagne un champ `owner`
+  (résolu en une seule requête `IN (...)`, pas de N+1). Shell : 7 méthodes
+  `ItemClient`/hooks react-query, `CollectionsAdminPage` + 3 dialogues
+  (`RegisterCollectionDialog`, `EditCollectionDialog`,
+  `CollectionShareDialog` — ce dernier un quasi-doublon assumé de
+  `ShareDialog.tsx`, même arbitrage que les échos déjà actés dans ce
+  projet), lien de nav « Administration » scindé en « Extensions »/
+  « Collections » (gating `isAdmin` fail-open côté client, la frontière
+  réelle reste les 403 serveur inchangés, vérifié sur tout le diff en
+  revue finale). Exécuté en subagent-driven-development (8 tâches, revue
+  par tâche + revue finale de branche modèle opus). 1 Important trouvé et
+  corrigé en cours de route (Task 8, spec E2E) : le mock de test
+  `GET /collections` après suppression avait un branchement mort
+  (`deleted` jamais prioritaire), le test de suppression ne prouvait que
+  l'envoi de la requête DELETE, jamais la disparition réelle de la ligne —
+  fixé + assertions DOM ajoutées (post-suppression **et** post-édition),
+  stabilité vérifiée sur 12 exécutions répétées. Une dérive `openapi.json`/
+  `core-schema.d.ts` détectée et corrigée juste après la Task 1 (nouvelle
+  route + nouveau champ jamais régénérés, trouvé par le reviewer de tâche,
+  résolu par le contrôleur sans re-dispatch). Revue finale de branche :
+  **Ready to merge: Yes**, aucun Critical/Important — frontière de sécurité
+  vérifiée intacte sur les 10 commits (chaque route de mutation garde son
+  403 serveur préexistant, la seule route neuve applique `_require_admin`,
+  aucune décision d'autorisation shell non adossée à un contrôle serveur),
+  duplication `CollectionShareDialog` confirmée fidèle (pas de divergence
+  bugguée), E2E confirmée comme une vraie preuve bout-en-bout et pas 8
+  tranches recousues. 5 Minor non bloquants notés (`EditCollectionDialog`
+  n'a pas le garde `.trim()||undefined` de `RegisterCollectionDialog` —
+  question produit, pas un bug évident ; bannière d'erreur de suppression
+  persistante entre actions non liées ; introspection O(tables) par requête
+  `/collections/candidates`, acceptable à l'échelle d'un dialogue admin peu
+  ouvert ; petite duplication exclude-core/exclude-registered entre
+  `register_collection` et `list_candidate_tables`). **387 tests cœur passed/64 skipped** (sans
+  DB ; 451 avec Postgres+pgvector réel), **lint-imports clean**, **466
+  tests shell** (445 avant cette sous-partie +21), **36/36 specs E2E** (34 + `admin-
+  collections.spec.ts`, 2 tests). Poussé sur `dev` (checkout principal,
+  pas de worktree dédié — cohérent avec SP-6a/SP-6b/SP-6c/SP-7/SP-8b). Les
+  5 autres sous-parties de SP-9 (gouvernance/légal, CI publique/release,
+  install/secrets, sécurité minimale, démo lecture seule) restent à
+  planifier et exécuter — specs déjà écrites, cf. plus haut.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
