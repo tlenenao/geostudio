@@ -49,7 +49,7 @@ uv run pytest        # tests marked `postgis` are skipped unless CORE_TEST_DATAB
 uv run lint-imports   # enforces the module-boundary contracts in pyproject.toml
 ```
 
-All four commands (`npm run test`, `npm run e2e`, `npm run build`, `uv run
+All five commands (`npm run test`, `npm run e2e`, `npm run build`, `uv run
 pytest`, `uv run lint-imports`) must be green before opening a pull request.
 
 ## Commit convention
