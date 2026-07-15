@@ -179,6 +179,13 @@ uv run uvicorn app.main:app --reload --port 8200
 | [`docs/archive/`](docs/archive/) | Études préalables (générations dépassées, conservées pour traçabilité) |
 | [`CLAUDE.md`](CLAUDE.md) | Guide de travail pour les sessions de développement (Claude) |
 
+## Contribuer
+
+Les instructions pour lancer les tests, la convention de commits et le
+processus de pull request sont dans
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Le code de conduite du projet est dans
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
 ## Licence
 
 [Apache-2.0](LICENSE).
