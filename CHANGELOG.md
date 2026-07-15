@@ -69,14 +69,18 @@ history this summarizes.
 
 ### Fixed
 
-- Several latent bugs found and fixed during branch-final reviews across
-  SP-5 through SP-8 (see `CLAUDE.md` for the detailed list per sub-part):
-  notably a `procrastinate` connector that prevented the worker service
-  from starting under `docker compose up`, a missing `tenant_id` on the
-  `Config`/`ConfigRevision` ORM models that a real Alembic-migrated
-  deployment would have hit as an `IntegrityError`, and an MCP write path
-  that bypassed the extension-widget permission-scope check enforced on
-  the equivalent REST routes.
+- A `procrastinate` connector (`SyncPsycopgConnector`) that prevented the
+  `worker` service from starting under `docker compose up` — found during
+  SP-7's branch-final review but left unresolved there, then fixed in a
+  dedicated debugging session on 2026-07-13, outside any SP branch.
+- A missing `tenant_id` on the `Config`/`ConfigRevision` ORM models that a
+  real Alembic-migrated deployment would have hit as an `IntegrityError` —
+  found as a pre-existing, unrelated defect during SP-6b's branch-final
+  review, deferred, and fixed in the same 2026-07-13 dedicated debugging
+  session as the item above.
+- An MCP write path that bypassed the extension-widget permission-scope
+  check enforced on the equivalent REST routes — found and fixed during
+  SP-8c's branch-final review.
 
 [Unreleased]: https://github.com/tlenenao/geostudio/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/tlenenao/geostudio/releases/tag/v0.1.0
