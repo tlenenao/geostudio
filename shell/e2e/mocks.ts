@@ -177,13 +177,19 @@ export async function mockCore(page: Page) {
     { id: "incidents", title: "Incidents voirie", featureCount: 3 },
   ];
 
+  // Host-scoped (not "**/collections*"): the shell's own client-side route
+  // "/admin/collections" (SP-9 admin page) also matches a path-only glob
+  // ending in "collections*" — that would intercept the browser's document
+  // navigation to that page and break rendering, same rationale as
+  // "**/extensions*" above and "/items/1"/"/items/9" below.
+  //
   // Trailing "*" is required: the LayerPicker search issues
-  // "/collections?q=…", and a bare "**/collections" glob (anchored at the
-  // end of the URL) does not match once a query string is appended — it
-  // would silently fall through to the real network in the browser. The
-  // "*" only matches non-"/" characters, so it still can't swallow the more
-  // specific "**/collections/villes/items*" etc. routes below.
-  await page.route("**/collections*", async (route) => {
+  // "/collections?q=…", and a bare pattern anchored at the end of the URL
+  // does not match once a query string is appended — it would silently fall
+  // through to the real network in the browser. The "*" only matches
+  // non-"/" characters, so it still can't swallow the more specific
+  // "**/collections/villes/items*" etc. routes below.
+  await page.route("https://core.test/collections*", async (route) => {
     const url = new URL(route.request().url());
     const q = url.searchParams.get("q");
     const collections = q

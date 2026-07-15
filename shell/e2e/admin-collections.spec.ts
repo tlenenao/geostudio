@@ -1,0 +1,151 @@
+import { test, expect } from "@playwright/test";
+import { mockCore } from "./mocks";
+
+test("un admin gère le cycle de vie complet d'une collection depuis le shell", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/me", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
+        email: null, tenantId: "t-mock", isAdmin: true,
+      },
+    });
+  });
+
+  let registered: unknown = null;
+  let patchedTitle: string | null = null;
+  let sharedBody: unknown = null;
+  let deleted = false;
+
+  // Host-scoped (not "**/collections*"): the shell's own client-side route to
+  // this very page is "/admin/collections" — a path-only glob would also
+  // intercept the browser's document navigation and break rendering (same
+  // rationale as "/items/1"/"/items/9" and "/admin/extensions" elsewhere in
+  // this suite). Registered after mockCore(page), so its more specific
+  // pattern wins over mockCore's own "**/collections*" catch-all.
+  await page.route("https://core.test/collections/candidates", async (route) => {
+    await route.fulfill({
+      json: {
+        candidates: [
+          { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+        ],
+      },
+    });
+  });
+
+  await page.route("https://core.test/collections", async (route) => {
+    if (route.request().method() === "POST") {
+      registered = await route.request().postDataJSON();
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: "points_interet", title: "Points d'intérêt", description: "", tableName: "points_interet",
+          isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+          pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        collections: registered
+          ? [{
+              id: "points_interet", title: patchedTitle ?? "Points d'intérêt", description: "",
+              tableName: "points_interet", isPublic: false, editable: true, geometryType: "Point",
+              srid: 4326, pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+            }]
+          : deleted ? [] : [],
+      },
+    });
+  });
+
+  await page.route("https://core.test/collections/points_interet**", async (route) => {
+    const method = route.request().method();
+    if (method === "PATCH") {
+      const body = await route.request().postDataJSON();
+      patchedTitle = body.title ?? patchedTitle;
+      await route.fulfill({
+        json: {
+          id: "points_interet", title: patchedTitle, description: "", tableName: "points_interet",
+          isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+          pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+        },
+      });
+      return;
+    }
+    if (method === "DELETE") {
+      deleted = true;
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    if (route.request().url().endsWith("/sharing")) {
+      if (method === "PUT") {
+        sharedBody = await route.request().postDataJSON();
+        await route.fulfill({ json: sharedBody });
+        return;
+      }
+      await route.fulfill({ json: { public: false, groups: [] } });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("https://core.test/groups", async (route) => {
+    await route.fulfill({ json: [{ id: "g1", name: "Équipe terrain" }] });
+  });
+
+  await page.goto("/admin/collections");
+  await expect(page.getByRole("link", { name: "Collections" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Enregistrer une table" }).click();
+  // Scoped to the dialog: the RegisterCollectionDialog's own role="dialog"
+  // element carries aria-label="Enregistrer une table" (its title), whose
+  // accessible name contains the substring "Table" — an unscoped
+  // getByLabel("Table") resolves to both that dialog and the <select>,
+  // tripping Playwright's strict mode. Same fix pattern as the "Supprimer"
+  // scoping below (ConfirmDialog vs. row action button).
+  const registerDialog = page.getByRole("dialog", { name: "Enregistrer une table" });
+  await registerDialog.getByLabel("Table").selectOption("points_interet");
+  await registerDialog.getByLabel("Titre").fill("Points d'intérêt");
+  // exact: true — the page's own "Enregistrer une table" button (behind the
+  // dialog overlay, still in the DOM) is a substring superstring match of
+  // "Enregistrer" and would otherwise trip Playwright's strict mode.
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect.poll(() => registered).toEqual({ tableName: "points_interet", title: "Points d'intérêt", isPublic: false });
+  await expect(page.getByText("Points d'intérêt")).toBeVisible();
+
+  await page.getByRole("button", { name: "Éditer" }).click();
+  const titleInput = page.getByLabel("Titre");
+  await titleInput.fill("");
+  await titleInput.fill("POI (édité)");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect.poll(() => patchedTitle).toBe("POI (édité)");
+
+  await page.getByRole("button", { name: "Partager" }).click();
+  await page.getByLabel("Groupe Équipe terrain").click();
+  await page.getByLabel("Rôle Équipe terrain").selectOption("editor");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect.poll(() => sharedBody).toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
+
+  await page.getByRole("button", { name: "Supprimer" }).click();
+  // The row-action button and the ConfirmDialog's confirm button share the
+  // exact same accessible name once the dialog is open — Playwright's
+  // strict mode would reject an unscoped getByRole here. Scope to the
+  // dialog, same fix as CollectionsAdminPage.test.tsx (Task 5, Step 5).
+  await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+  await expect.poll(() => deleted).toBe(true);
+});
+
+test("un utilisateur non-admin ne voit pas le lien Collections et une navigation forcée affiche un message d'accès refusé", async ({ page }) => {
+  await mockCore(page);
+  let collectionsAdminCalled = false;
+  await page.route("https://core.test/collections", async (route) => {
+    collectionsAdminCalled = true;
+    await route.fulfill({ json: { collections: [] } });
+  });
+
+  await page.goto("/admin/collections");
+  await expect(page.getByRole("alert")).toHaveText("Accès réservé aux administrateurs.");
+  expect(await page.getByRole("link", { name: "Collections" }).count()).toBe(0);
+  expect(collectionsAdminCalled).toBe(false);
+});
