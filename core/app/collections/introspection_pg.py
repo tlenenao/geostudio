@@ -23,6 +23,15 @@ _GEOM_TYPES = {
 }
 
 
+def list_public_tables(session: Session) -> list[str]:
+    rows = session.execute(text(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+        "ORDER BY table_name"
+    )).scalars().all()
+    return list(rows)
+
+
 def introspect_table(session: Session, table_name: str) -> TableInfo:
     exists = session.execute(text(
         "SELECT relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "

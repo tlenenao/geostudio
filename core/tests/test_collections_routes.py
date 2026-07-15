@@ -5,7 +5,7 @@ from app import db
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections import routes as collections_routes
-from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
+from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound, UnsupportedTable
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
@@ -329,3 +329,42 @@ def test_list_collections_accepts_q_param_without_error(env):
     resp = client.get("/collections?q=xyzzy-no-match")
     assert resp.status_code == 200
     assert resp.json()["collections"] == []
+
+
+def test_candidates_requires_admin(env):
+    app, client, _, admin, regular, _ddl = env
+    _as(app, regular)
+    assert client.get("/collections/candidates").status_code == 403
+
+
+def test_candidates_lists_registrable_and_unsupported_excludes_core_and_registered(env):
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})  # already registered
+
+    def fake_lister(session):
+        return ["incidents", "widgets", "items"]  # "items" is a core table
+
+    def fake_introspector_2(session, table_name):
+        if table_name == "incidents":
+            return INCIDENTS
+        if table_name == "widgets":
+            raise UnsupportedTable("table has no primary key")
+        raise TableNotFound(table_name)
+
+    app.dependency_overrides[collections_routes.get_table_lister] = lambda: fake_lister
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector_2
+
+    r = client.get("/collections/candidates")
+    assert r.status_code == 200
+    assert r.json()["candidates"] == [
+        {"tableName": "widgets", "registrable": False, "reason": "table has no primary key"},
+    ]
+
+
+def test_list_collections_includes_owner_username(env):
+    app, client, _, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    body = client.get("/collections").json()
+    assert body["collections"][0]["owner"] == "admin"
