@@ -43,6 +43,18 @@ jobs:
           uv run pytest
           uv run lint-imports
 
+      - name: Stop Postgres
+        if: always()
+        run: docker rm -f ci-postgres
+        # Frees the runner's CPU/memory before the Playwright step, which
+        # unlike ci.yml's isolated `shell` job shares this single runner
+        # with the migrations/core steps above (test-gate merges all three
+        # by design, cf. spec). An idle-but-running container left over
+        # here was enough contention to make admin-collections.spec.ts's
+        # final assertion (5s window for a dialog-close + refetch cycle)
+        # miss deterministically, while the same test passes cleanly when
+        # `shell` runs alone.
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
