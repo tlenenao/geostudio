@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { buildOption } from "./chartOption";
 import type { DataRecord } from "../../api/types";

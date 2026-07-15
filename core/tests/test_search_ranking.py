@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from app.search.ranking import reciprocal_rank_fusion
 
 

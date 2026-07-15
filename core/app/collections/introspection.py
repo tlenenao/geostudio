@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Types d'introspection + exceptions. L'implémentation Postgres réelle
 (pg_catalog) arrive dans introspection_pg (task 7) ; les routes reçoivent
 l'introspecteur par dépendance injectable."""

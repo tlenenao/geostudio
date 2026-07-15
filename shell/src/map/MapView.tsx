@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";

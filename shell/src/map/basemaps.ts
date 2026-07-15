@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type Basemap = { id: string; label: string; style: string };
 
 export const BASEMAPS: Basemap[] = [

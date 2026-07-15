@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Validation d'un GeoJSON Feature contre le schéma introspecté (SP-3 §4).
 Pur : aucune DB. Les erreurs structurées sont le contrat consommé par les
 formulaires SP-4 ({"field", "code", "message"})."""

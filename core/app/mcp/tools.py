@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from typing import Literal
 
 from mcp.server.auth.middleware.auth_context import get_access_token

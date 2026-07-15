@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Colonnes embedding (SP-7 Task 2) : la colonne existe, un vecteur écrit se
 relit identique, NULL par défaut (dégradation gracieuse tant que le job
 d'embedding n'est pas passé — voir Task 5/7)."""

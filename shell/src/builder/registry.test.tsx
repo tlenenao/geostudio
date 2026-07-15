@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { registerWidget, getWidget, listWidgets, _resetRegistry } from "./registry";

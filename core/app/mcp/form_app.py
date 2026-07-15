@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Génération d'AppConfig pour l'outil MCP create_form_app (SP-7) — mêmes
 briques que le gabarit builder « Application de saisie » (SP-4c,
 shell/src/builder/templates.ts), assemblées côté serveur à partir du schéma

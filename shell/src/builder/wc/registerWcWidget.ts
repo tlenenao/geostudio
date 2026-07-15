@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
 import { makeGeneratedPropsPanel } from "./generatedPropsPanel";
 import { makeWcHost } from "./WcHost";

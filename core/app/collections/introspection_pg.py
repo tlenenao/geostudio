@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Introspection réelle : information_schema + geometry_columns + pg_enum.
 Toutes les requêtes sont paramétrées — le nom de table est une *valeur* ici,
 jamais un identifiant interpolé."""

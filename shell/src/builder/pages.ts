@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AppConfig, AppLayout, Page } from "../api/types";
 
 const IMPLICIT_PAGE_ID = "page-1";

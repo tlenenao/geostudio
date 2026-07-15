@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from sqlalchemy import select
 
 from app.audit.models import AuditLog

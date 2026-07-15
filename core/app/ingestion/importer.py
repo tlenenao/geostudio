@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Pipeline d'import (SP-6a) : table PostGIS + collection + item carte, à
 partir d'un flux de (géométrie, propriétés) déjà parsé (app.ingestion.parsers).
 Séparé de tasks.py pour rester testable sans procrastinate ni S3 (postgis

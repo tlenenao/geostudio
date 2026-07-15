@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'une collection (SP-7) — même patron que
 app.items.jobs.embed_item_task."""
 import logging

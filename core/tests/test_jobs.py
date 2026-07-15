@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Une seule instance procrastinate.App pour tout le process (Task 1, SP-7) —
 sinon une tâche déférée par un module et exécutée par le worker d'un autre
 App échoue (nom de tâche absent de son registre)."""

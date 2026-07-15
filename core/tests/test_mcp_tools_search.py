@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """search_catalog (SP-7 Task 8) — mince adaptateur au-dessus de
 items_repo.list_items, même patron de test que test_mcp_tools_create.py."""
 from tests.test_mcp_tools_create import app_client, call_tool  # noqa: F401 (fixtures/helpers réutilisés)

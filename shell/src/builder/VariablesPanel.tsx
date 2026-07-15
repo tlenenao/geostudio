@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Variable, VariableType } from "../api/types";
 
 const TYPE_LABELS: Record<VariableType, string> = {

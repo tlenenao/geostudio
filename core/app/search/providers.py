@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Fournisseur d'embeddings enfichable (SP-7). Deux implémentations : un
 provider HTTP compatible OpenAI/Voyage pour la production, et un provider
 déterministe sans réseau pour dev/test/mock (CORE_EMBEDDING_PROVIDER=fake,

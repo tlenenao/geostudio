@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { http, HttpResponse } from "msw";
 
 const CORE = "https://core.test";

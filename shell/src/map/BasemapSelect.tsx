@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { BASEMAPS } from "./basemaps";
 
 export function BasemapSelect({ value, onChange }: { value: string; onChange: (style: string) => void }) {

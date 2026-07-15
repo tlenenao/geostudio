@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Instance procrastinate.App partagée par tout le cœur — un seul worker
 process (docker-compose.yml, service `worker`) exécute toutes les tâches de
 tous les modules `*.jobs`/`*.tasks`, quel que soit le domaine qui les a

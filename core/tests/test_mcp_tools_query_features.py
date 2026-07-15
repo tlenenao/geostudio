@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """query_features (SP-7 Task 9) — mince adaptateur MCP au-dessus de
 select_features, même permissions que GET /collections/{id}/items.
 

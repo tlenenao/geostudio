@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """DDL par collection (spec SP-3 §2/§5, arbitrage A3) : tenant_id + RLS +
 GRANTs au rôle non-propriétaire gis_rls. Idempotent — ré-enregistrer une table
 ou rejouer un seed ne casse rien. Les identifiants sont quotés via le preparer

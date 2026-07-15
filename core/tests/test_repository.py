@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import pytest
 
 from app.db import make_engine, make_session_factory, init_db

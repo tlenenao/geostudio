@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useCandidateTables, useCreateCollection } from "../api/hooks";
 import { Button } from "../ui/button";

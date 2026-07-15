@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Wrapper S3 fin — testé avec un client boto3 factice (pas de MinIO réel
 nécessaire), même patron que fake_introspector dans test_collections_routes.py."""
 from app.ingestion.storage import (

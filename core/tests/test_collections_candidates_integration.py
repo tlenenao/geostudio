@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Bout en bout sur PostGIS réel : /collections/candidates avec la vraie
 introspection Postgres (information_schema.tables), pas de fake — même
 patron que test_features_integration.py (Base.metadata.create_all sur

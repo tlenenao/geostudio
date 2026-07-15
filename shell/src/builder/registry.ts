@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
 import type { ActionBus } from "./ActionBus";

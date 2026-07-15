@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { Routes, Route, Outlet, useNavigate, useParams } from "react-router-dom";
 import { CatalogPage } from "../pages/CatalogPage";
 import { ItemDetailPage } from "../pages/ItemDetailPage";
