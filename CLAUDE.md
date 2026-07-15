@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-15 (mise à jour à chaque jalon)
+## État au 2026-07-16 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -555,10 +555,38 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   DB ; 451 avec Postgres+pgvector réel), **lint-imports clean**, **466
   tests shell** (445 avant cette sous-partie +21), **36/36 specs E2E** (34 + `admin-
   collections.spec.ts`, 2 tests). Poussé sur `dev` (checkout principal,
-  pas de worktree dédié — cohérent avec SP-6a/SP-6b/SP-6c/SP-7/SP-8b). Les
-  5 autres sous-parties de SP-9 (gouvernance/légal, CI publique/release,
-  install/secrets, sécurité minimale, démo lecture seule) restent à
-  planifier et exécuter — specs déjà écrites, cf. plus haut.
+  pas de worktree dédié — cohérent avec SP-6a/SP-6b/SP-6c/SP-7/SP-8b).
+- **SP-9 « gouvernance & légal » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-gouvernance-legale-design.md` et plan
+  `2026-07-16-sp9-gouvernance-legale.md`) : `CONTRIBUTING.md` (prérequis,
+  lancer le projet/les tests, convention de commits, process de PR, où
+  trouver le contexte, comment signaler un bug/proposer une feature,
+  convention d'en-tête de licence) et `CODE_OF_CONDUCT.md` (Contributor
+  Covenant v2.1 verbatim, contact `lenenaon.tanguy@gmail.com`) à la racine,
+  tous deux en anglais (exception documentée à la règle « docs en français »
+  de ce fichier — convention GitHub habituelle pour ces deux documents de
+  gouvernance communautaire) ; section « Contribuer » ajoutée au
+  `README.md` ; en-têtes SPDX (`# SPDX-License-Identifier: Apache-2.0` /
+  `// SPDX-License-Identifier: Apache-2.0`) posés sur les 314 fichiers
+  source applicatifs de `core/app/`, `core/tests/`, `shell/src/` (hors
+  `shell/src/api/generated/`, exclu) via un script ponctuel idempotent
+  (`scripts/add-license-headers.py`, laissé dans le dépôt, pas un hook ni
+  un job CI — YAGNI assumé pour un projet à un seul committer humain, cf.
+  spec). Exécuté en subagent-driven-development (3 tâches, revue par tâche
+  + revue finale de branche modèle opus). Aucun défaut Critical/Important
+  sur les 3 tâches ni en revue finale — le seul point trouvé (revue finale)
+  était cosmétique (« All four commands » pour une liste de 5 commandes
+  dans `CONTRIBUTING.md`), corrigé dans la foulée. Diff du script
+  d'en-têtes vérifié structurellement par le reviewer de tâche (376
+  insertions/0 suppressions = 314 en-têtes d'une ligne + le script de 62
+  lignes, aucune autre modification) et sa logique (exclusion, idempotence)
+  ré-exécutée indépendamment dans un bac à sable isolé. **466 tests shell**,
+  **387 tests cœur passed/64 skipped**, `lint-imports` clean — aucune
+  régression (les en-têtes n'affectent ni tsc ni pytest). Poussé sur `dev`
+  (checkout principal, pas de worktree dédié, même patron que les autres
+  sous-parties SP-9). Les 4 autres sous-parties de SP-9 (CI publique/
+  release, install/secrets, sécurité minimale, démo lecture seule) restent
+  à planifier et exécuter — specs déjà écrites, cf. plus haut.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
