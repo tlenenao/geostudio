@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { useCollectionsAdmin, useMe } from "../api/hooks";
+import { useCollectionsAdmin, useDeleteCollection, useMe } from "../api/hooks";
+import type { CollectionAdmin } from "../api/types";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { EditCollectionDialog } from "../shell/EditCollectionDialog";
 import { RegisterCollectionDialog } from "../shell/RegisterCollectionDialog";
 
 export function CollectionsAdminPage() {
   const meQuery = useMe();
   const collectionsQuery = useCollectionsAdmin({ enabled: meQuery.data?.isAdmin === true });
+  const deleteCollection = useDeleteCollection();
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [editing, setEditing] = useState<CollectionAdmin | null>(null);
+  const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
 
   if (meQuery.isLoading) {
     return <p role="status">Chargement…</p>;
@@ -17,6 +23,16 @@ export function CollectionsAdminPage() {
         Accès réservé aux administrateurs.
       </p>
     );
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    try {
+      await deleteCollection.mutateAsync(deleting.id);
+      setDeleting(null);
+    } catch {
+      // surfaced via deleteCollection.isError
+    }
   }
 
   return (
@@ -33,6 +49,11 @@ export function CollectionsAdminPage() {
           Échec du chargement des collections.
         </p>
       )}
+      {deleteCollection.isError && (
+        <p role="alert" className="text-sm text-red-600">
+          Échec de la suppression.
+        </p>
+      )}
       {collectionsQuery.data && (
         <table className="w-full text-left text-sm">
           <thead>
@@ -43,6 +64,7 @@ export function CollectionsAdminPage() {
               <th className="py-2">Éditable</th>
               <th className="py-2">Entités</th>
               <th className="py-2">Propriétaire</th>
+              <th className="py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -54,12 +76,32 @@ export function CollectionsAdminPage() {
                 <td className="py-2">{col.editable ? "Oui" : "Non"}</td>
                 <td className="py-2">{col.featureCount ?? "—"}</td>
                 <td className="py-2">{col.owner ?? "—"}</td>
+                <td className="py-2 flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditing(col)}>
+                    Éditer
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(col)}>
+                    Supprimer
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <RegisterCollectionDialog open={registerOpen} onClose={() => setRegisterOpen(false)} />
+      {editing && (
+        <EditCollectionDialog collection={editing} open={true} onClose={() => setEditing(null)} />
+      )}
+      <ConfirmDialog
+        open={!!deleting}
+        title="Supprimer la collection"
+        message={deleting ? `Désenregistrer « ${deleting.title} » ? La table PostGIS ne sera pas supprimée.` : ""}
+        confirmLabel="Supprimer"
+        pending={deleteCollection.isPending}
+        onCancel={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
