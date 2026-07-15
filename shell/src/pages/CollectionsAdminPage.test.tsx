@@ -146,3 +146,37 @@ test("deletes a collection after confirming", async () => {
   await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(deleteCalled).toBe(true));
 });
+
+test("shares a collection via the row action", async () => {
+  let putBody: unknown;
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+    ),
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/collections/candidates", () => HttpResponse.json({ candidates: [] })),
+    http.get("https://core.test/groups", () => HttpResponse.json([{ id: "g1", name: "Équipe terrain" }])),
+    http.get("https://core.test/collections/incidents/sharing", () =>
+      HttpResponse.json({ public: false, groups: [] }),
+    ),
+    http.put("https://core.test/collections/incidents/sharing", async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ public: true, groups: [] });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
+  await userEvent.click(await screen.findByLabelText("Public"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));
+});
