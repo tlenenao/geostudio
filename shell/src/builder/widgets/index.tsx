@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { getWidget, registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { DataRecord } from "../../api/types";

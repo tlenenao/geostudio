@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'une collection (SP-7 Task 7) — même pattern que
 test_items_jobs.py."""
 import pytest

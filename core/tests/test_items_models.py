@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from sqlalchemy import select
 
 from app.db import Base, make_engine, make_session_factory, init_db

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { ActionMessage, AppLayout, DataSource, Theme } from "../api/types";
 
 export type Template = {

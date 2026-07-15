@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Bout en bout : run_ingestion_task, connecteur procrastinate remplacé par
 InMemoryConnector (pattern documenté procrastinate.testing) pour ne dépendre
 d'aucun vrai worker en CI ; PostGIS réel pour les écritures du pipeline."""

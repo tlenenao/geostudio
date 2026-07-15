@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { Component, type ReactNode } from "react";
 import type { Page, RenderMode, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";

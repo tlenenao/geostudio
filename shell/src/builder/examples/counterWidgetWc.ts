@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { LitElement, css, html } from "lit";
 import { registerWcWidget } from "../wc/registerWcWidget";
 import type { WcWidgetManifest } from "../wc/manifest";

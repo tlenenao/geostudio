@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useAllExtensions, useMe, useSetExtensionEnabled } from "../api/hooks";
 
 export function AdminExtensionsPage() {

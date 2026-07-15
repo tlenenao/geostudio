@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useItem } from "../api/hooks";
 import { Button } from "../ui/button";
 import { ItemActions } from "../shell/ItemActions";

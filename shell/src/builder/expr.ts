@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { evaluate, parse } from "cel-js";
 
 export type ExprContext = {

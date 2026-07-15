@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type ResourceType = "app" | "dashboard" | "map";
 
 export type CreateKind = "app" | "dashboard";

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.collections.schema_json import table_info_to_schema
 

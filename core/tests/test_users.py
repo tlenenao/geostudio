@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from app.db import make_engine, make_session_factory, init_db
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user

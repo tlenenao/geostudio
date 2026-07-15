@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
 import { useAppConfig, useSaveApp, useUploadThumbnail } from "../api/hooks";

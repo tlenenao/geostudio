@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from app.db import init_db, make_engine, make_session_factory
 from app.collections.models import Collection
 from app.sharing.models import CollectionShare

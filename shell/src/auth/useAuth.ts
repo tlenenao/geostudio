@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
 export type AuthState = {

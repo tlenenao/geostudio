@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Validation du critère M4 (feuille de route, §SP-6) : un GeoPackage de
 50 000 entités s'importe en un temps trivial devant le budget UI de 5 min
 (le budget UI couvre aussi le transfert réseau du fichier, hors périmètre

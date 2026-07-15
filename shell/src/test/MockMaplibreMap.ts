@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type Recorded = { id: string; spec: unknown };
 
 export const mapInstances: MockMap[] = [];

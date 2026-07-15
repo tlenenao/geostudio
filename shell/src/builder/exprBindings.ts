@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { evaluateExpression, type ExprContext } from "./expr";
 
 function isExprBinding(value: unknown): value is { $expr: string } {

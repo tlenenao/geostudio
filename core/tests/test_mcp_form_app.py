@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Génération d'AppConfig pour create_form_app (SP-7 Task 10) — pure, sans
 DB. Sert aussi de test de non-régression structurel pour le mapping
 schéma->champs, dupliqué côté TS dans

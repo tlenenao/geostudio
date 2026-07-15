@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DataSource, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient

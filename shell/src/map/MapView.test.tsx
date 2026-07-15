@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { render } from "@testing-library/react";
 import { createRef } from "react";
 import { beforeEach, expect, test, vi } from "vitest";

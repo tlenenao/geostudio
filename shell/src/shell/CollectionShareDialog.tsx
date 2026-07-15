@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useCollectionSharing, useGroups, useSetCollectionSharing } from "../api/hooks";
 import type { ShareRole } from "../api/types";

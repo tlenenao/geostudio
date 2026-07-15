@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
 (pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle."""
 import os

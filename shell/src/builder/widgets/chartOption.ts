@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { EChartsOption } from "echarts";
 import type { DataRecord } from "../../api/types";
 

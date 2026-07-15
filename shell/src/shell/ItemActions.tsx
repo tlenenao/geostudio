@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useDeleteItem, useUpdateItem, useUploadThumbnail } from "../api/hooks";
 import type { Item } from "../api/types";

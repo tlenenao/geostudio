@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'un item (SP-7 Task 5) — même pattern que
 test_ingestion_tasks.py : connecteur procrastinate remplacé par
 InMemoryConnector, écritures contre PostGIS réel."""
