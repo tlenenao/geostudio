@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
@@ -79,4 +79,70 @@ test("lists collections and registers a new one via the dialog", async () => {
   // never dropped by JSON.stringify), only the untouched title/description
   // fields drop out (empty string → undefined via `.trim() || undefined`).
   await waitFor(() => expect(posted).toEqual({ tableName: "points_interet", isPublic: false }));
+});
+
+test("edits a collection via the row action", async () => {
+  let patched: unknown;
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+    ),
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/collections/candidates", () => HttpResponse.json({ candidates: [] })),
+    http.patch("https://core.test/collections/incidents", async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json({
+        id: "incidents", title: "Incidents (v2)", description: "", tableName: "incidents",
+        isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+        pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+      });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const titleInput = await screen.findByLabelText("Titre");
+  await userEvent.clear(titleInput);
+  await userEvent.type(titleInput, "Incidents (v2)");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(patched).toMatchObject({ title: "Incidents (v2)" }));
+});
+
+test("deletes a collection after confirming", async () => {
+  let deleteCalled = false;
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+    ),
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/collections/candidates", () => HttpResponse.json({ candidates: [] })),
+    http.delete("https://core.test/collections/incidents", () => {
+      deleteCalled = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+  await waitFor(() => expect(deleteCalled).toBe(true));
 });
