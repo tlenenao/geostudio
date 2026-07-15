@@ -5,6 +5,7 @@ import { MapEditorPage } from "../pages/MapEditorPage";
 import { AppBuilderPage } from "../pages/AppBuilderPage";
 import { AppRuntimePage } from "../pages/AppRuntimePage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
+import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
 
@@ -65,6 +66,7 @@ export function AppRoutes() {
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
+        <Route path="/admin/collections" element={<CollectionsAdminPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
     </Routes>

@@ -51,18 +51,20 @@ test("shows brand, username and sign-out", async () => {
   expect(authState.signOut).toHaveBeenCalled();
 });
 
-test("shows the admin link only when the current user is admin", async () => {
+test("shows the Extensions and Collections admin links only when the current user is admin", async () => {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
     ),
   );
   renderLayout();
-  expect(await screen.findByRole("link", { name: "Administration" })).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Extensions" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Collections" })).toBeInTheDocument();
 });
 
-test("hides the admin link for a non-admin user", async () => {
+test("hides the admin links for a non-admin user", async () => {
   renderLayout();
   await screen.findByText("GeoStudio");
-  expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Extensions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
 });
