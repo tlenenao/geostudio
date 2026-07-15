@@ -792,3 +792,113 @@ test("setExtensionEnabled PATCHes the extension with the new enabled value", asy
   await makeClient().setExtensionEnabled("acme.gauge", false);
   expect(body).toEqual({ enabled: false });
 });
+
+test("listCollections returns the admin collection shape including owner", async () => {
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+          },
+        ],
+      }),
+    ),
+  );
+  const result = await makeClient().listCollections();
+  expect(result).toEqual([
+    {
+      id: "incidents", title: "Incidents", description: "", tableName: "incidents",
+      isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+      pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+    },
+  ]);
+});
+
+test("listCandidateTables returns the candidates array as-is", async () => {
+  server.use(
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({
+        candidates: [
+          { tableName: "widgets", registrable: false, reason: "table has no primary key" },
+          { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+        ],
+      }),
+    ),
+  );
+  const result = await makeClient().listCandidateTables();
+  expect(result).toEqual([
+    { tableName: "widgets", registrable: false, reason: "table has no primary key" },
+    { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+  ]);
+});
+
+test("createCollection POSTs the input and returns the created collection", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/collections", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        id: "points_interet", title: "Points d'intérêt", description: "", tableName: "points_interet",
+        isPublic: false, editable: true, geometryType: "Point", srid: 4326,
+        pkColumn: "id", canWrite: true, featureCount: 0, owner: "admin",
+      });
+    }),
+  );
+  const result = await makeClient().createCollection({ tableName: "points_interet", title: "Points d'intérêt" });
+  expect(body).toEqual({ tableName: "points_interet", title: "Points d'intérêt" });
+  expect(result.id).toBe("points_interet");
+});
+
+test("updateCollection PATCHes the patch and returns the updated collection", async () => {
+  let body: unknown;
+  server.use(
+    http.patch("https://core.test/collections/incidents", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        id: "incidents", title: "Incidents (v2)", description: "", tableName: "incidents",
+        isPublic: true, editable: true, geometryType: "Point", srid: 4326,
+        pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+      });
+    }),
+  );
+  const result = await makeClient().updateCollection("incidents", { title: "Incidents (v2)", isPublic: true });
+  expect(body).toEqual({ title: "Incidents (v2)", isPublic: true });
+  expect(result.title).toBe("Incidents (v2)");
+});
+
+test("deleteCollection DELETEs the collection", async () => {
+  let called = false;
+  server.use(
+    http.delete("https://core.test/collections/incidents", () => {
+      called = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().deleteCollection("incidents");
+  expect(called).toBe(true);
+});
+
+test("getCollectionSharing passes through the core's Sharing shape directly", async () => {
+  server.use(
+    http.get("https://core.test/collections/incidents/sharing", () =>
+      HttpResponse.json({ public: false, groups: [{ groupId: "g1", role: "editor" }] }),
+    ),
+  );
+  const result = await makeClient().getCollectionSharing("incidents");
+  expect(result).toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
+});
+
+test("setCollectionSharing PUTs the sharing object as-is", async () => {
+  let body: unknown;
+  server.use(
+    http.put("https://core.test/collections/incidents/sharing", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ public: false, groups: [] });
+    }),
+  );
+  await makeClient().setCollectionSharing("incidents", { public: false, groups: [{ groupId: "g1", role: "viewer" }] });
+  expect(body).toEqual({ public: false, groups: [{ groupId: "g1", role: "viewer" }] });
+});

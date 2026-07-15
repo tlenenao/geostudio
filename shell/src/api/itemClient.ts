@@ -1,4 +1,4 @@
-import type { ActionMessage, AdminExtension, AppConfig, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -380,6 +380,36 @@ export function createItemClient(opts: {
 
     async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
       await request<void>("PATCH", `/extensions/${id}`, { enabled });
+    },
+
+    async listCollections(): Promise<CollectionAdmin[]> {
+      const data = await request<{ collections: CollectionAdmin[] }>("GET", `/collections`);
+      return data.collections ?? [];
+    },
+
+    async listCandidateTables(): Promise<CandidateTable[]> {
+      const data = await request<{ candidates: CandidateTable[] }>("GET", `/collections/candidates`);
+      return data.candidates ?? [];
+    },
+
+    async createCollection(input: CollectionCreateInput): Promise<CollectionAdmin> {
+      return request<CollectionAdmin>("POST", `/collections`, input);
+    },
+
+    async updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin> {
+      return request<CollectionAdmin>("PATCH", `/collections/${id}`, patch);
+    },
+
+    async deleteCollection(id: string): Promise<void> {
+      await request<void>("DELETE", `/collections/${id}`);
+    },
+
+    async getCollectionSharing(id: string): Promise<Sharing> {
+      return request<Sharing>("GET", `/collections/${id}/sharing`);
+    },
+
+    async setCollectionSharing(id: string, sharing: Sharing): Promise<void> {
+      await request<void>("PUT", `/collections/${id}/sharing`, sharing);
     },
 
     async createMapItem(input: { title: string; owner: string }): Promise<Item> {
