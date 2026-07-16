@@ -29,6 +29,7 @@ export const handlers = [
       email: "alice@example.com", tenantId: "t1", isAdmin: false,
     }),
   ),
+  http.get(`${CORE}/instance`, () => HttpResponse.json({ readOnly: false })),
   http.post(`${CORE}/configs`, async ({ request }) => {
     const body = (await request.json()) as { title: string; config: { kind: string } };
     return HttpResponse.json(

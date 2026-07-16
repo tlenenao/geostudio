@@ -49,6 +49,15 @@ export async function mockCore(page: Page) {
     });
   });
 
+  // Instance info (SP-9 démo lecture seule) — AppLayout appelle
+  // GET /instance sans condition sur chaque page via useInstanceInfo().
+  // Défaut readOnly: false pour que toute spec pré-existante (qui ne
+  // surcharge jamais cette route) se comporte exactement comme avant.
+  // La spec dédiée au mode lecture seule surcharge cette route elle-même.
+  await page.route("https://core.test/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false } });
+  });
+
   // Extensions registry (SP-8b) — AppBuilderPage/AppRuntimePage call
   // GET /extensions unconditionally on mount; default to none active so
   // every pre-existing spec (which never registers an extension) behaves

@@ -7,7 +7,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateItem, useCreateMap, useDeleteItem, useGroups, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateItem, useCreateMap, useDeleteItem, useGroups, useInstanceInfo, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -47,6 +47,24 @@ test("useMe returns the current user", async () => {
   const { result } = renderHook(() => useMe(), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.username).toBe("alice");
+});
+
+test("useInstanceInfo returns readOnly from the core", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  const { result } = renderHook(() => useInstanceInfo(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.readOnly).toBe(true);
+});
+
+test("useInstanceInfo degrades fail-open (data stays undefined, never a false positive) on network failure", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.error()),
+  );
+  const { result } = renderHook(() => useInstanceInfo(), { wrapper });
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(result.current.data?.readOnly).not.toBe(true);
 });
 
 test("useCreateItem creates an item and returns it", async () => {
