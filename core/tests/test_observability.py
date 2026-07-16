@@ -38,6 +38,7 @@ def test_setup_only_builds_providers_once(monkeypatch):
 def test_json_formatter_includes_trace_and_span_id_when_a_span_is_active():
     # TracerProvider local, pas le global : ce test ne doit pas dépendre de
     # si observability.setup() a déjà tourné ailleurs dans la session pytest.
+    observability.setup()
     tracer = SDKTracerProvider().get_tracer(__name__)
     record_holder: dict = {}
 

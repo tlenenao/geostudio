@@ -21,36 +21,19 @@ from opentelemetry.sdk.trace import TracerProvider
 
 _configured = False
 
-# Mémoïse le handle() original pour la pièce de monkey-patch
-_original_handler_handle = logging.Handler.handle
+_original_record_factory = logging.getLogRecordFactory()
 
 
-def _inject_trace_context_in_handle(self, record: logging.LogRecord) -> None:
-    """Enveloppe Handler.handle pour capturer la trace context avant que emit()
-    ne soit appelé, même pour les handlers qui override emit(). Le handle()
-    fait le filtrage et appelle emit(), donc c'est le bon endroit."""
-    if not hasattr(record, "trace_id"):
-        span_context = trace.get_current_span().get_span_context()
-        record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
-        record.span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
-    return _original_handler_handle(self, record)
-
-
-# Applique la pièce de monkey-patch immédiatement (avant même setup())
-# afin que les tests qui créent des loggers avant d'appeler setup()
-# captent quand même la trace context.
-logging.Handler.handle = _inject_trace_context_in_handle
-
-
-class _TraceContextFilter(logging.Filter):
-    """Capte la trace_id et span_id au moment de la création du log,
-    avant que le contexte ne soit perdu."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        span_context = trace.get_current_span().get_span_context()
-        record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
-        record.span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
-        return True
+def _record_factory_with_trace_context(*args, **kwargs):
+    """Ajoute trace_id/span_id à chaque LogRecord au moment de sa création
+    (pas au moment du format()) — un log peut être formaté après la fin du
+    span actif, la capture doit donc se faire à la création. Installé par
+    setup(), donc uniquement actif une fois l'observabilité configurée."""
+    record = _original_record_factory(*args, **kwargs)
+    span_context = trace.get_current_span().get_span_context()
+    record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
+    record.span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
+    return record
 
 
 class JSONFormatter(logging.Formatter):
@@ -59,26 +42,13 @@ class JSONFormatter(logging.Formatter):
     non — `docker compose logs` reste corrélable dans les deux cas."""
 
     def format(self, record: logging.LogRecord) -> str:
-        # Récupère trace_id/span_id capturés par _TraceContextFilter au moment
-        # du log, ou les récupère du span actif si le filtre n'a pas tourné.
-        trace_id = getattr(record, "trace_id", None)
-        span_id = getattr(record, "span_id", None)
-
-        if trace_id is None or span_id is None:
-            # Fallback si le filtre n'a pas tourné (e.g., en test direct)
-            span_context = trace.get_current_span().get_span_context()
-            if trace_id is None:
-                trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
-            if span_id is None:
-                span_id = format(span_context.span_id, "016x") if span_context.is_valid else None
-
         payload = {
             "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
-            "trace_id": trace_id,
-            "span_id": span_id,
+            "trace_id": getattr(record, "trace_id", None),
+            "span_id": getattr(record, "span_id", None),
         }
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -114,6 +84,7 @@ def setup() -> None:
     if _configured:
         return
     _configured = True
+    logging.setLogRecordFactory(_record_factory_with_trace_context)
 
     service_name = os.environ.get("OTEL_SERVICE_NAME", "geostudio-core")
     resource = Resource.create({"service.name": service_name})
@@ -125,6 +96,5 @@ def setup() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
     root_logger = logging.getLogger()
-    root_logger.addFilter(_TraceContextFilter())
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
