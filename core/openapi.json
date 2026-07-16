@@ -2424,6 +2424,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -3105,6 +3121,26 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/instance": {
+      "get": {
+        "operationId": "get_instance_info_instance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Instance Info Instance Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Instance Info"
       }
     },
     "/items": {
