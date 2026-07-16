@@ -14,7 +14,7 @@ RUN uv pip install --system --no-cache \
     "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" \
     "alembic>=1.13" "pyjwt[crypto]>=2.8" "boto3>=1.34" "python-multipart>=0.0.9" \
     "mcp>=1.12" "shapely>=2.0" "procrastinate>=2.0" "pyogrio>=0.9" "pyproj>=3.6" \
-    "pgvector>=0.3"
+    "pgvector>=0.3" "opentelemetry-sdk>=1.27" "opentelemetry-exporter-otlp-proto-http>=1.27"
 
 COPY app ./app
 COPY alembic ./alembic
