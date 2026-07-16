@@ -116,3 +116,31 @@ def instrument_engine(engine, *, tracer_provider=None) -> None:
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
     SQLAlchemyInstrumentor().instrument(engine=engine, tracer_provider=tracer_provider)
+
+
+def make_worker_middleware(*, tracer_provider=None):
+    from opentelemetry.trace import Status, StatusCode
+
+    tracer = (tracer_provider or trace.get_tracer_provider()).get_tracer(__name__)
+
+    async def _otel_worker_middleware(call_next, context, worker):
+        job = context.job
+        with tracer.start_as_current_span(
+            f"procrastinate.job.{job.task_name}",
+            attributes={
+                "procrastinate.job.id": job.id if job.id is not None else -1,
+                "procrastinate.job.task_name": job.task_name,
+                "procrastinate.job.queue": job.queue,
+            },
+        ) as span:
+            try:
+                return await call_next()
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
+
+    return _otel_worker_middleware
+
+
+otel_worker_middleware = make_worker_middleware()
