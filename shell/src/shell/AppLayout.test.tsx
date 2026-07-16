@@ -69,3 +69,19 @@ test("hides the admin links for a non-admin user", async () => {
   expect(screen.queryByRole("link", { name: "Extensions" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
 });
+
+test("shows the read-only demo banner when the instance is in read-only mode", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  renderLayout();
+  expect(
+    await screen.findByText("Mode démo — lecture seule, les modifications ne sont pas enregistrées."),
+  ).toBeInTheDocument();
+});
+
+test("hides the read-only demo banner by default", async () => {
+  renderLayout();
+  await screen.findByText("GeoStudio");
+  expect(screen.queryByText(/Mode démo/)).not.toBeInTheDocument();
+});

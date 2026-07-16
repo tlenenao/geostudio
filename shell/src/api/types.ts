@@ -29,6 +29,8 @@ export type Me = {
   isAdmin: boolean;
 };
 
+export type InstanceInfo = { readOnly: boolean };
+
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
 export type ListItemsParams = {
@@ -99,6 +101,7 @@ export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getMe(): Promise<Me>;
+  getInstanceInfo(): Promise<InstanceInfo>;
   createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
