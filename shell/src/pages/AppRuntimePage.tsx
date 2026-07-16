@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useNavigate } from "react-router-dom";
 import { useAppConfig, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";

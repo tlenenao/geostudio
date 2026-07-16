@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 const cache = new Map<string, Promise<unknown>>();
 
 function defaultImport(url: string): Promise<unknown> {

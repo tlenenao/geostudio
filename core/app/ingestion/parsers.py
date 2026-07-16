@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Parseurs GeoJSON, CSV+lat/lon (SP-6a) et GeoPackage/Shapefile zippé
 (SP-6b, via pyogrio — wheels manylinux, GDAL/GEOS/PROJ embarqués, aucun
 paquet système requis). Chaque parseur produit un flux (géométrie shapely,

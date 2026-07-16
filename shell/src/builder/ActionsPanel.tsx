@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";

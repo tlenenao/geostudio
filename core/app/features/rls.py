@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Scope d'exécution RLS (spec SP-3 §2/§5, décision tenant 2026-07-10).
 
 Toute requête sur une table métier s'exécute sous le rôle NON-propriétaire

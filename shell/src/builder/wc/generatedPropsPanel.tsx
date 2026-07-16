@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../../api/types";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { WcWidgetManifest } from "./manifest";

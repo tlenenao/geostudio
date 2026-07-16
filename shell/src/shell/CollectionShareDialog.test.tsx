@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,4 +42,14 @@ test("pre-fills sharing state and PUTs the chosen roles on submit", async () => 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(body).toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
+});
+
+test("disables the submit button when the instance is in read-only demo mode", async () => {
+  server.use(
+    http.get("https://core.test/groups", () => HttpResponse.json([{ id: "g1", name: "Équipe terrain" }])),
+    http.get("https://core.test/collections/incidents/sharing", () => HttpResponse.json({ public: false, groups: [] })),
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
 });

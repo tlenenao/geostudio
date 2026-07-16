@@ -1,18 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
 import contextlib
 import os
 from collections.abc import Iterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import db
 from app.auth import routes as auth_routes
+from app.auth.dependency import is_read_only_mode
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
 from app.ingestion import routes as ingestion_routes
+from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
@@ -41,6 +45,19 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def read_only_guard(request: Request, call_next):
+        if (
+            is_read_only_mode()
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path != "/mcp"
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Mode démo : lecture seule, écritures désactivées."},
+            )
+        return await call_next(request)
+
     def get_session() -> Iterator[Session]:
         with request_scoped_session(session_factory) as session:
             yield session
@@ -49,6 +66,7 @@ def create_app() -> FastAPI:
 
     app.include_router(configs_routes.router)
     app.include_router(extensions_routes.router)
+    app.include_router(instance_routes.router)
     app.include_router(items_routes.router)
     app.include_router(auth_routes.router)
     app.include_router(sharing_routes.router)

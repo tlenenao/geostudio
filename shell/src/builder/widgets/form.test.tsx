@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -594,4 +595,11 @@ test("hides the write buttons once the collection permission resolves to canWrit
   // Réinitialiser/Annuler restent visibles : ce ne sont pas des actions d'écriture.
   expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Annuler" })).toBeInTheDocument();
+});
+
+test("hides the write buttons when the instance is in read-only demo mode, even if canWrite is true", async () => {
+  const getInstanceInfo = vi.fn().mockResolvedValue({ readOnly: true });
+  renderConnectedForm({ client: { getInstanceInfo } });
+  await waitFor(() => expect(getInstanceInfo).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
 });

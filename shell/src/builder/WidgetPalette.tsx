@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { listWidgets } from "./registry";
 
 export function WidgetPalette({ onAdd }: { onAdd: (type: string) => void }) {

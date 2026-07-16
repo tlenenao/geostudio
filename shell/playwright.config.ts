@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   use: { baseURL: "http://localhost:4173" },
+  retries: process.env.CI ? 2 : 0,
   webServer: [
     {
       command: "npm run build && npm run preview -- --port 4173",

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import uuid
 
 import pytest
@@ -99,6 +100,18 @@ def test_sharing_requires_owner_or_admin(env):
     client.post("/collections", json={"tableName": "incidents", "isPublic": True})
     _as(app, regular)  # lisible (publique) mais pas partageable
     r = client.put("/collections/incidents/sharing", json={"public": True, "groups": []})
+    assert r.status_code == 403
+
+
+def test_get_sharing_requires_owner_or_admin(env):
+    # get_sharing calls the same _require_share guard as put_sharing, but
+    # every existing GET .../sharing call in this file runs as admin (after
+    # a PUT) — the 403 branch on the read side was never exercised.
+    app, client, _, admin, regular, _group_id = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    _as(app, regular)  # lisible (publique) mais pas partageable
+    r = client.get("/collections/incidents/sharing")
     assert r.status_code == 403
 
 

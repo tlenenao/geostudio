@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Variable } from "../api/types";
 

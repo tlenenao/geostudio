@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Emprise spatiale d'une collection (description OGC). Dans app.collections
 (pas app.features) : consommé par collections.routes, qui ne peut pas
 importer vers le haut. L'appelant pose rls_scope() si l'emprise doit être

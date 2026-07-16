@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AppConfig } from "../api/types";
 import { getPages } from "./pages";
 import { validateExpression } from "./expr";

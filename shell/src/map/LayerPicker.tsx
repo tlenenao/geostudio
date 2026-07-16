@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";

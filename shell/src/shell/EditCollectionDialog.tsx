@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useUpdateCollection } from "../api/hooks";
+import { useInstanceInfo, useUpdateCollection } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -15,6 +16,8 @@ export function EditCollectionDialog({
   onClose: () => void;
 }) {
   const updateCollection = useUpdateCollection(collection.id);
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
   const [title, setTitle] = useState(collection.title);
   const [description, setDescription] = useState(collection.description);
   const [isPublic, setIsPublic] = useState(collection.isPublic);
@@ -78,7 +81,7 @@ export function EditCollectionDialog({
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Annuler
           </Button>
-          <Button type="submit" size="sm" disabled={updateCollection.isPending}>
+          <Button type="submit" size="sm" disabled={updateCollection.isPending || readOnly}>
             Enregistrer
           </Button>
         </div>

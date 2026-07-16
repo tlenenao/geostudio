@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useItems, useMe } from "../api/hooks";
 import type { ItemScope, ResourceType } from "../api/types";

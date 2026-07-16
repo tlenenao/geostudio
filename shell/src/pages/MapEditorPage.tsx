@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useMapConfig, useSaveMap } from "../api/hooks";
 import type { MapConfig, MapLayer } from "../api/types";

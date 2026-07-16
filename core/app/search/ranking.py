@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Recherche hybride générique (SP-7) : combine des listes classées
 (trigram, vecteur) par Reciprocal Rank Fusion, et une requête SQLAlchemy
 paramétrique qui construit ces deux listes candidates au-dessus d'un

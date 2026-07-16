@@ -1,10 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
 from typing import Literal
 
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.audit.writer import write_audit
-from app.auth.dependency import admin_subs
+from app.auth.dependency import admin_subs, is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -25,6 +26,8 @@ from app.sharing.schemas import Sharing
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
+
+READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing"}
 
 
 def _resolve_actor(session, access_token) -> User:
@@ -207,6 +210,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
     async def save_app_config(ctx: Context, itemId: str, config: BuilderConfig) -> ConfigRead:
         """Save (and version) the app/dashboard config for an item — mirrors
         PUT /configs/by-item/{id}."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
@@ -231,6 +236,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
         """Create a new app or dashboard — mirrors POST /configs. The item's
         owner is always the authenticated caller; there is no owner
         parameter to accept from the agent."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
@@ -266,6 +273,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
         generated instead of hand-picked. Formulaire is included only if the
         caller has write access to the collection (mirrors the canWrite
         predicate SP-4c exposes on collections). SP-7 MCP v1."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
@@ -319,6 +328,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
     @server.tool()
     async def set_sharing(ctx: Context, itemId: str, sharing: Sharing) -> None:
         """Set an item's sharing settings — mirrors PUT /items/{id}/sharing."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)

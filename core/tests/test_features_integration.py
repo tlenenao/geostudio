@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Bout en bout sur PostGIS réel : enregistrement (vrai introspecteur + vraie
 DDL RLS) puis CRUD via l'API — le critère d'acceptation §9 de la spec.
 Fixture : même pattern que test_seed_demo.py (Base.metadata.create_all sur

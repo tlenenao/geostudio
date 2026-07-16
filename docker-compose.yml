@@ -104,6 +104,13 @@ services:
   # Cœur GeoStudio (ex builder-service, renommé — arbitrage A14 de la feuille de route).
   core:
     build: ./core
+    # Applique les migrations Alembic à chaque démarrage du conteneur, avant
+    # de servir — idempotent (Alembic ne réapplique jamais une révision déjà
+    # appliquée), même patron que le `command:` du service `worker` plus bas
+    # (`schema --apply && …`). `alembic upgrade head`, pas `uv run alembic
+    # upgrade head` : cette image n'est pas gérée en mode projet uv (cf.
+    # commentaire du service `worker`).
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
@@ -112,6 +119,7 @@ services:
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
+      CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
@@ -122,6 +130,21 @@ services:
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.core.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.core.entrypoints=websecure
+      - traefik.http.routers.core.tls.certresolver=letsencrypt
+      - traefik.http.routers.core.priority=10
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker
+      - traefik.http.services.core.loadbalancer.server.port=8200
+      - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
+      - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers.headers.frameDeny=true
+      - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.rate-limit.ratelimit.average=100
+      - traefik.http.middlewares.rate-limit.ratelimit.burst=200
 
   # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
@@ -181,14 +204,20 @@ services:
       - "8300:8300"
     networks: [gis-net]
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.shell.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.shell.entrypoints=websecure
+      - traefik.http.routers.shell.tls.certresolver=letsencrypt
+      - traefik.http.routers.shell.priority=1
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.services.shell.loadbalancer.server.port=8300
 
   # ─── Ingress ───────────────────────────────────────────
 
   traefik:
     image: traefik:v3.0
     command:
-      - --api.dashboard=true
-      - --api.insecure=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
@@ -199,7 +228,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8090:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/certs

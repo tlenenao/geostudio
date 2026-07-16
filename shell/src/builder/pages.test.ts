@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { getPages, getPageLayout, setPageLayout } from "./pages";
 import type { AppConfig, AppLayout } from "../api/types";

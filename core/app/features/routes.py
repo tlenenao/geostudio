@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Routes OGC API Features (Part 1 lecture, Part 4 écriture).
 Le repository et le scope RLS sont injectables : les tests SQLite substituent
 un fake et un scope nul ; le vrai chemin est PostGIS-only."""
