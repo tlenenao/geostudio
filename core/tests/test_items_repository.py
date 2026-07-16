@@ -344,3 +344,42 @@ def test_create_item_still_succeeds_when_the_embedding_enqueue_fails(session, te
     item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
     assert item is not None
     assert item.title == "X"
+
+
+def test_create_item_increments_items_created_counter(session, tenant_and_user, monkeypatch):
+    from unittest.mock import Mock
+
+    tenant, user = tenant_and_user
+    mock_counter = Mock()
+    monkeypatch.setattr(repo, "_items_created_counter", mock_counter)
+
+    repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Incident")
+
+    mock_counter.add.assert_called_once_with(1)
+
+
+def test_update_item_increments_published_counter_only_when_publishing(session, tenant_and_user, monkeypatch):
+    from unittest.mock import Mock
+
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Incident")
+    mock_counter = Mock()
+    monkeypatch.setattr(repo, "_items_published_counter", mock_counter)
+
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title=None, abstract=None, keywords=None, is_published=None,
+    )
+    mock_counter.add.assert_not_called()
+
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title=None, abstract=None, keywords=None, is_published=False,
+    )
+    mock_counter.add.assert_not_called()
+
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title=None, abstract=None, keywords=None, is_published=True,
+    )
+    mock_counter.add.assert_called_once_with(1)
