@@ -26,7 +26,7 @@ const vulnerabilities = report.vulnerabilities ?? {};
 const blocking = [];
 for (const [pkg, info] of Object.entries(vulnerabilities)) {
   if (info.severity !== "high" && info.severity !== "critical") continue;
-  if (ALLOWLIST[pkg]) {
+  if (Object.prototype.hasOwnProperty.call(ALLOWLIST, pkg)) {
     console.log(`ignoré (accepted-risk documenté) : ${pkg} (${info.severity})`);
     continue;
   }
