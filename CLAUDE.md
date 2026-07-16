@@ -682,6 +682,58 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   code applicatif Python/TS). Poussé sur `dev`. Les 2 autres sous-parties
   de SP-9 (sécurité minimale, démo lecture seule) restent à planifier et
   exécuter — specs déjà écrites, cf. plus haut.
+- **SP-9 « sécurité minimale » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-securite-minimale-design.md` et plan
+  `2026-07-16-sp9-securite-minimale.md`) : ingress Traefik réellement câblé
+  (jusqu'ici les labels `traefik.*` n'existaient sur aucun service malgré le
+  service `traefik` déjà présent dans le compose) — `core`/`shell` routés
+  par `Host(${DOMAIN})` (`core` en plus sur `PathPrefix(/api)`, priorité
+  explicite 10 > 1, `strip-api` retire le préfixe avant le cœur), middleware
+  d'en-têtes de sécurité partagé (HSTS, `nosniff`, `frameDeny`,
+  `referrer-policy`) et de rate limiting (average=100/burst=200) définis une
+  fois sur `core` et référencés `@docker` par les deux routers,
+  `--api.dashboard=true`/`--api.insecure=true` et le port `8090:8080`
+  retirés (dashboard non authentifié qui était exposé publiquement).
+  **Revue authz complète** : les 48 endpoints REST + 11 outils MCP audités
+  contre la couverture de test réelle (~25 fichiers, périmètre plus large
+  que les 8 fichiers illustratifs cités par la feuille de route) —
+  **0 trou de sécurité réel trouvé**, 9 trous de couverture comblés (tests
+  ajoutés dans les fichiers existants les plus proches, jamais de nouveau
+  fichier), rapport complet dans
+  `docs/superpowers/specs/2026-07-15-sp9-securite-minimale-revue-authz.md`.
+  **Audit de dépendances en CI** : jobs `core-deps-audit` (`pip-audit`,
+  bloquant sur toute vulnérabilité connue — `pip-audit` n'a pas de filtre de
+  sévérité natif, déviation assumée du "High/Critical seulement" demandé)
+  et `shell-deps-audit` (`npm audit --audit-level=high` derrière
+  `shell/scripts/check-npm-audit.mjs`, un filtre accepted-risk nécessaire
+  car une vraie vulnérabilité High préexistante et sans correctif upstream
+  — `lodash-es` via `cel-js`→`chevrotain`, arbitrage SP-5a — aurait sinon
+  cassé la CI immédiatement). Exécuté en subagent-driven-development (4
+  tâches, revue par tâche + revue finale de branche modèle opus). **1
+  Important trouvé en revue et corrigé** (Task 4) : `ALLOWLIST[pkg]` était
+  un lookup d'objet brut vulnérable aux propriétés héritées
+  d'`Object.prototype` — un paquet réellement nommé `constructor` (publié
+  sur npm, vérifié) contournait silencieusement le gate ; corrigé par
+  `Object.prototype.hasOwnProperty.call(ALLOWLIST, pkg)`. **Les deux jobs
+  vérifiés bloquants sur un vrai run CI**, pas seulement en local : deux
+  dry-runs réels (PR jetables non fusionnées, `ci.yml` ne déclenchant que
+  sur push vers `main`/`dev` ou `pull_request` — un push nu vers une branche
+  jetable ne suffit pas, découverte faite en exécutant) — `pyjwt==2.4.0`
+  fait échouer `core-deps-audit` (9 vulnérabilités connues), `minimist@1.2.5`
+  fait échouer `shell-deps-audit` (`critical`, non allowlisté) ; les deux PR
+  fermées sans fusion et branches supprimées immédiatement après. Revue
+  finale de branche : **Ready to merge: Yes**, aucun Critical/Important, 5
+  Minor non bloquants (coquille "44" vs 48 endpoints dans la prose d'un
+  rapport ; couplage `shell`→middlewares définis sur `core`, acceptable pour
+  un déploiement stack complète ; `check-npm-audit.mjs` fail-open si la clé
+  `vulnerabilities` est absente d'un rapport malformé ; pas de redirection
+  `web`→`websecure`, hors périmètre explicite ; pas de re-run Vitest/
+  Playwright, diff ne touchant aucun code applicatif shell). **395 tests
+  cœur passed/65 skipped** (460 passed/0 skipped validé contre un
+  PostGIS+pgvector jetable réel), **lint-imports clean**, **6/6 jobs CI
+  verts sur `dev`** (les 4 existants + les 2 nouveaux). Poussé sur `dev`.
+  L'unique sous-partie restante de SP-9 (démo lecture seule) reste à
+  planifier et exécuter — spec déjà écrite, cf. plus haut.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
