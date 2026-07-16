@@ -23,6 +23,17 @@ import procrastinate
 
 from app import observability
 
+# Le worker réel (docker-compose.yml, `python -m procrastinate --app
+# app.jobs.app worker ...`) n'exécute jamais app.main/create_app() — la même
+# raison exacte que celle documentée ci-dessus pour import_paths : quel que
+# soit le process qui importe ce module EST le point d'entrée du worker.
+# setup() doit donc être appelé ici pour que le worker ait un TracerProvider/
+# MeterProvider OTLP et des logs JSON — sans quoi otel_worker_middleware crée
+# des spans contre un tracer proxy no-op jamais exportés. Idempotent
+# (_configured), donc sans risque même si create_app() l'appelle aussi dans
+# le même process (API + worker co-localisés, tests, etc.).
+observability.setup()
+
 
 def _conninfo() -> str:
     # .get() avec repli, jamais os.environ[...] : ce module est importé
