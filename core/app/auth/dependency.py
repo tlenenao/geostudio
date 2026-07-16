@@ -16,6 +16,13 @@ def _mock_mode() -> bool:
     return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
 
 
+def is_read_only_mode() -> bool:
+    """CORE_READ_ONLY_MODE (mode démo, SP-9) — lu à chaque appel, sans cache,
+    même convention que _mock_mode() ci-dessus : les tests basculent le mode
+    via monkeypatch sans recréer l'app."""
+    return os.environ.get("CORE_READ_ONLY_MODE", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par
