@@ -98,3 +98,15 @@ def setup() -> None:
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
+
+
+def instrument_app(app, *, tracer_provider=None) -> None:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+
+
+def instrument_engine(engine, *, tracer_provider=None) -> None:
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    SQLAlchemyInstrumentor().instrument(engine=engine, tracer_provider=tracer_provider)

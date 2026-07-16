@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app import db
+from app import db, observability
 from app.auth import routes as auth_routes
 from app.auth.dependency import is_read_only_mode
 from app.collections import routes as collections_routes
@@ -25,8 +25,10 @@ from app.sharing import routes as sharing_routes
 
 
 def create_app() -> FastAPI:
+    observability.setup()
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
+    observability.instrument_engine(engine)
     init_db(engine)
     session_factory = make_session_factory(engine)
 
@@ -44,6 +46,7 @@ def create_app() -> FastAPI:
             yield
 
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
+    observability.instrument_app(app)
 
     @app.middleware("http")
     async def read_only_guard(request: Request, call_next):
