@@ -56,8 +56,8 @@ Détail, arbitrages techniques et estimations :
 Prérequis : Docker 24+, Node 20+, [uv](https://docs.astral.sh/uv/) (Python).
 
 ```bash
-cp .env.example .env       # renseigner les mots de passe
-docker compose up -d       # stack complète
+./scripts/bootstrap-env.sh   # génère .env avec des secrets forts (no-op si .env existe déjà)
+docker compose up -d         # stack complète — migrations du cœur appliquées automatiquement
 ```
 
 | Service | URL |
@@ -68,21 +68,30 @@ docker compose up -d       # stack complète
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 
+Pour peupler des données de démo (collections `incidents`/`points_interet`,
+publiques, éditables — utile pour explorer le catalogue et le builder sans
+importer ses propres données) : ouvrir http://localhost:8300 une fois en
+mode `mock` (par défaut — promeut automatiquement l'utilisateur `mockuser`
+admin dès la première requête authentifiée), puis :
+
+```bash
+docker compose exec core python -m scripts.seed_demo
+```
+
+Commande idempotente — relançable sans effet si les collections existent déjà.
+
 ### Vérifier le mode `oidc` réel (manuel)
 
 Le mode `mock` (`VITE_AUTH_MODE=mock`, `CORE_AUTH_MODE=mock`) suffit pour le
-développement courant et pour les 13 specs E2E — aucun accès réseau à
+développement courant et pour les 36 specs E2E — aucun accès réseau à
 Keycloak n'est nécessaire. Le mode `oidc` réel (utilisé en usage réel, pas en
 CI) se vérifie manuellement :
 
 1. `docker compose up -d` (stack complète, y compris `keycloak` avec le realm
    `geostudio` importé automatiquement — voir `docker compose ps keycloak`
-   pour confirmer `healthy`), puis appliquer les migrations du cœur :
-   `cd core && DATABASE_URL=postgresql+psycopg://gis:${PG_PASSWORD}@localhost:5432/gis uv run alembic upgrade head`.
-   Sans cette étape, `GET /me` échoue même avec un token Keycloak valide —
-   `get_current_user` écrit dans les tables `tenants`/`users`, absentes tant
-   que les migrations n'ont pas tourné sur une base Postgres neuve
-   (`init_db()` ne les crée qu'en SQLite, jamais en Postgres).
+   pour confirmer `healthy` ; `core` applique ses migrations Alembic
+   automatiquement à chaque démarrage de conteneur, aucune étape manuelle
+   requise).
 2. Construire et lancer le shell avec `CORE_AUTH_MODE=oidc` côté cœur et sans
    `VITE_AUTH_MODE=mock` côté shell (retirer la variable ou la mettre à
    `oidc`).
