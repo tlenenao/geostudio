@@ -93,6 +93,12 @@ def setup() -> None:
     trace.set_tracer_provider(_build_tracer_provider(resource, endpoint))
     metrics.set_meter_provider(_build_meter_provider(resource, endpoint))
 
+    from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+    HTTPXClientInstrumentor().instrument()
+    BotocoreInstrumentor().instrument()
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
     root_logger = logging.getLogger()
