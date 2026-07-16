@@ -25,6 +25,7 @@
     "html-to-image": "^1.11.13",
     "lit": "^3.3.3",
     "maplibre-gl": "^4.7.0",
+    "minimist": "1.2.5",
     "oidc-client-ts": "^3.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
