@@ -111,6 +111,41 @@ def test_get_upload_job_404_for_unknown_job(env):
     assert client.get("/uploads/does-not-exist").status_code == 404
 
 
+def test_get_upload_job_cross_tenant_returns_404(env):
+    # repo.get_job filters by tenant_id (app/ingestion/repository.py) — a job
+    # created under one tenant must be invisible (404, not the job's real
+    # status) to a user authenticated in a different tenant. Only the
+    # unknown-job-id 404 case was covered before this review.
+    import uuid
+
+    from app.tenants.models import Tenant
+    from app.users.repository import get_or_create_user
+
+    client, Session, tenant, alice, deferred, _fake_s3 = env
+    job_id = client.post("/uploads", json={
+        "key": f"{tenant.id}/abc-villes.geojson", "filename": "villes.geojson",
+        "collectionTitle": "Villes",
+    }).json()["jobId"]
+
+    with Session() as s:
+        other_tenant = Tenant(id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
+        s.add(other_tenant)
+        s.flush()
+        outsider = get_or_create_user(
+            s, tenant_id=other_tenant.id, oidc_sub="sub-outsider",
+            username="outsider", email=None, first_name="", last_name="",
+        )
+        s.commit()
+        s.refresh(outsider)
+
+    client.app.dependency_overrides[get_current_user] = lambda: outsider
+    try:
+        response = client.get(f"/uploads/{job_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: alice
+    assert response.status_code == 404
+
+
 def test_create_upload_job_is_audited(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
     client.post("/uploads", json={

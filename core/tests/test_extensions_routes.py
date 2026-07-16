@@ -110,6 +110,34 @@ def test_get_extensions_never_leaks_across_tenants(env):
     assert client.get("/extensions").json()["extensions"] == []
 
 
+def test_patch_extension_cross_tenant_returns_404(env):
+    # repo.get_extension filters by (tenant_id, id) — an admin of a DIFFERENT
+    # tenant must not be able to disable/alter an extension registered under
+    # another tenant just by guessing its id. test_get_extensions_never_leaks_
+    # across_tenants already covers GET; PATCH had no equivalent before this
+    # review (brief explicitly calls out extensions as a module requiring
+    # cross-tenant coverage, SP-8c).
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    client.post("/extensions", json=GAUGE_BODY)
+
+    with Session() as s:
+        other_tenant = Tenant(id=uuid.uuid4().hex, slug="other-patch", name="Other")
+        s.add(other_tenant)
+        s.flush()
+        other_admin = get_or_create_user(
+            s, tenant_id=other_tenant.id, oidc_sub="oa-patch", username="other-admin-patch",
+            email=None, first_name="", last_name="", bootstrap_admin=True,
+        )
+        s.commit()
+
+    _as(app, other_admin)
+    assert client.patch("/extensions/acme.gauge", json={"enabled": False}).status_code == 404
+
+    _as(app, admin)
+    assert client.get("/extensions").json()["extensions"][0]["enabled"] is True
+
+
 def test_mutations_are_audited(env):
     app, client, Session, admin, _regular = env
     _as(app, admin)

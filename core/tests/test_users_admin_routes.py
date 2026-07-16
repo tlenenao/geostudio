@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,6 +8,7 @@ from app import db
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -68,6 +71,31 @@ def test_patch_unknown_user_404_and_non_admin_403(env):
     assert client.patch("/users/nope", json={"isAdmin": True}).status_code == 404
     _as(app, regular)
     assert client.patch(f"/users/{admin.id}", json={"isAdmin": False}).status_code == 403
+
+
+def test_patch_user_cross_tenant_returns_404(env):
+    # Un admin d'un tenant ne doit pas pouvoir promouvoir/rétrograder un
+    # utilisateur d'un AUTRE tenant en devinant son id : PATCH /users/{id}
+    # filtre déjà par tenant_id (app/auth/routes.py::patch_user), mais ce
+    # n'était couvert par aucun test avant cette revue authz SP-9.
+    app, client, Session, admin, _regular = env
+    with Session() as s:
+        other_tenant = Tenant(id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
+        s.add(other_tenant)
+        s.flush()
+        outsider = get_or_create_user(
+            s, tenant_id=other_tenant.id, oidc_sub="sub-outsider",
+            username="outsider", email=None, first_name="", last_name="",
+        )
+        s.commit()
+        s.refresh(outsider)
+
+    _as(app, admin)
+    assert client.patch(f"/users/{outsider.id}", json={"isAdmin": True}).status_code == 404
+    with Session() as s:
+        from app.users.models import User
+        refreshed = s.get(User, outsider.id)
+        assert refreshed.is_admin is False
 
 
 def test_promotion_is_audited(env):
