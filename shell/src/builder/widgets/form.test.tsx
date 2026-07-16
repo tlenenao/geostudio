@@ -596,3 +596,10 @@ test("hides the write buttons once the collection permission resolves to canWrit
   expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Annuler" })).toBeInTheDocument();
 });
+
+test("hides the write buttons when the instance is in read-only demo mode, even if canWrite is true", async () => {
+  const getInstanceInfo = vi.fn().mockResolvedValue({ readOnly: true });
+  renderConnectedForm({ client: { getInstanceInfo } });
+  await waitFor(() => expect(getInstanceInfo).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
+});
