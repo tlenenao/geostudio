@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
+import { useInstanceInfo } from "../../api/hooks";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
@@ -294,7 +295,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     queryFn: () => client.getCollectionPermission(collectionId),
     enabled: collectionId !== "",
   });
-  const canWrite = permissionQuery.data ?? true;
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
+  const canWrite = (permissionQuery.data ?? true) && !readOnly;
 
   const write = useMutation({
     mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
