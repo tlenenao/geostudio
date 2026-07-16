@@ -248,6 +248,21 @@ def test_patch_and_delete(env):
     assert client.get("/collections/incidents").status_code == 404
 
 
+def test_patch_by_non_owner_without_editor_role_returns_403(env):
+    # patch_collection's own "write access required" 403 branch
+    # (app/collections/routes.py) had no test at all before this review —
+    # test_patch_and_delete only exercises the DELETE guard (_require_admin,
+    # a different check). A user who can read the (public) collection but
+    # has no editor share and isn't admin must be refused the PATCH.
+    app, client, _, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    _as(app, regular)
+    r = client.patch("/collections/incidents", json={"title": "Hijacked"})
+    assert r.status_code == 403
+    assert r.json()["detail"] == "write access required"
+
+
 def test_mutations_are_audited(env):
     app, client, Session, admin, _regular, _ddl = env
     _as(app, admin)
