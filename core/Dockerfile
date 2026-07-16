@@ -17,6 +17,9 @@ RUN uv pip install --system --no-cache \
     "pgvector>=0.3"
 
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
+COPY scripts ./scripts
 
 EXPOSE 8200
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8200"]

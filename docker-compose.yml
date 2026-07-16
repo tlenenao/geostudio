@@ -104,6 +104,13 @@ services:
   # Cœur GeoStudio (ex builder-service, renommé — arbitrage A14 de la feuille de route).
   core:
     build: ./core
+    # Applique les migrations Alembic à chaque démarrage du conteneur, avant
+    # de servir — idempotent (Alembic ne réapplique jamais une révision déjà
+    # appliquée), même patron que le `command:` du service `worker` plus bas
+    # (`schema --apply && …`). `alembic upgrade head`, pas `uv run alembic
+    # upgrade head` : cette image n'est pas gérée en mode projet uv (cf.
+    # commentaire du service `worker`).
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8200"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
