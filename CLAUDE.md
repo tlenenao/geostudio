@@ -640,6 +640,48 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   `dev`. Les 3 autres sous-parties de SP-9 (install/secrets, sécurité
   minimale, démo lecture seule) restent à planifier et exécuter — specs
   déjà écrites, cf. plus haut.
+- **SP-9 « install & secrets » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-install-secrets-design.md` et plan
+  `2026-07-16-sp9-install-secrets.md`) : `git clone` + un unique script de
+  bootstrap + `docker compose up -d` produit désormais une installation
+  fonctionnelle, sans étape manuelle oubliable et sans secret faible.
+  `scripts/bootstrap-env.sh` (racine, nouveau) génère `.env` depuis
+  `.env.example` avec 4 secrets alphanumériques forts (`PG_PASSWORD`,
+  `MINIO_PASSWORD`, `KC_PASSWORD`, `MARTIN_SECRET` — `openssl rand`, jamais
+  de `@`/`:`/`/` qui casserait un DSN Postgres), n'écrase jamais un `.env`
+  existant ; `core/Dockerfile` embarque désormais `alembic/`, `alembic.ini`
+  et `scripts/` (absents jusqu'ici de l'image — gap réel découvert en
+  écrivant le plan, pas seulement supposé par la spec) et le service `core`
+  du compose enchaîne `alembic upgrade head && uvicorn …` à chaque
+  démarrage de conteneur (idempotent, même patron que le `worker`
+  existant) — la migration manuelle documentée jusqu'ici comme une étape
+  séparée dans le README disparaît. Exécuté en subagent-driven-development
+  (3 tâches, revue par tâche + revue finale de branche modèle opus), les 3
+  tâches et la revue finale toutes clean (0 Critical/Important). Un vrai
+  piège découvert et documenté au passage (Task 3) : `seed_demo.py` exige
+  un admin déjà existant (`SystemExit` sinon) — en mode `mock`, `mockuser`
+  n'est promu admin qu'à la **première requête authentifiée**, jamais par
+  un `curl` anonyme ; le README documente maintenant explicitement ce
+  prérequis plutôt que de laisser la commande de seed échouer sur une
+  install vraiment neuve. Test de bout en bout réel effectué contre un
+  volume Postgres vraiment neuf (13 migrations 0001→0013 appliquées
+  automatiquement, `GET /me` anonyme → 401 pas 500, bootstrap admin mock,
+  `seed_demo` idempotent, `docker compose restart core` → migration no-op
+  confirmée) — les 4 critères d'acceptation du spec §6 vérifiés
+  empiriquement, pas seulement asserés ; déviation assumée du `docker
+  compose down -v` littéral du plan (bloqué par le classifieur de
+  permissions du harness, protection d'un volume de dev pré-existant) vers
+  un projet compose isolé (`COMPOSE_PROJECT_NAME`), jugée preuve
+  strictement plus forte par les deux revues. 1 Minor réel trouvé en revue
+  finale et corrigé dans la foulée (commit séparé) : `CONTRIBUTING.md`
+  pointait encore vers l'ancien flux `cp .env.example .env` (secrets
+  faibles) et vers une phrase « planned... SP-9 sub-part » désormais fausse
+  puisque cette sous-partie est justement celle-là — resynchronisé avec le
+  README. **387 tests cœur passed/64 skipped, 466 tests shell, 36/36 specs
+  E2E** — aucune régression (aucun de ces trois changements ne touche du
+  code applicatif Python/TS). Poussé sur `dev`. Les 2 autres sous-parties
+  de SP-9 (sécurité minimale, démo lecture seule) restent à planifier et
+  exécuter — specs déjà écrites, cf. plus haut.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
