@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tâche procrastinate (SP-6a) : orchestre téléchargement S3 → pipeline
 d'import (app.ingestion.importer.run_import) → mise à jour du statut du job.
 Toute erreur (parsing ou inattendue) marque le job "error", jamais de job

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+from fastapi import APIRouter
+
+from app.auth.dependency import is_read_only_mode
+
+router = APIRouter()
+
+
+@router.get("/instance")
+def get_instance_info() -> dict:
+    return {"readOnly": is_read_only_mode()}

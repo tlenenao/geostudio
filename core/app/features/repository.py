@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Lecture et écriture des features : SQL brut paramétré, identifiants
 quotés. Les fonctions supposent que l'appelant a posé rls_scope() — elles ne
 gèrent ni rôle ni tenant (sauf le stampage explicite du tenant à l'insert).

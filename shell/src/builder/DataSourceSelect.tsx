@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../api/types";
 
 export function DataSourceSelect({

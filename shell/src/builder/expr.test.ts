@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, test, vi } from "vitest";
 import { evaluateExpression, validateExpression } from "./expr";
 

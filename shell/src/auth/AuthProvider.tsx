@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { AuthProvider as OidcProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
 import { createContext, useRef } from "react";

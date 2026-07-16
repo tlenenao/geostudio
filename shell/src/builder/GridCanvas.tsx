@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 import type { WidgetItem } from "../api/types";
 import { GRID_COLS, posFor, styleForPos, type Breakpoint } from "./grid";

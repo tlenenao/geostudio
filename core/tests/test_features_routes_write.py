@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from types import SimpleNamespace
 
 import pytest
@@ -131,6 +132,21 @@ def test_viewer_write_is_403_editor_ok(env):
     r = client.post("/collections/incidents/items", json=VALID)
     assert r.status_code == 201
     assert r.headers["Location"].endswith("/collections/incidents/items/2")
+
+
+def test_non_owner_write_on_private_collection_is_404_not_403(env):
+    # `_get_writable` calls `get_readable_collection` first (404-before-403,
+    # same helper as app/collections/routes.py) — a user who cannot even
+    # read the (private, unshared) collection must get 404, not 403, on
+    # every write verb. Only the "can read (public) but not write" 403 case
+    # was covered before this review (test_viewer_write_is_403_editor_ok);
+    # this closes the "cannot even read" branch.
+    app, client, Session, admin, regular, _repo = env
+    _register(app, client, admin, public=False)
+    _as(app, regular)
+    assert client.post("/collections/incidents/items", json=VALID).status_code == 404
+    assert client.put("/collections/incidents/items/1", json=VALID).status_code == 404
+    assert client.delete("/collections/incidents/items/1").status_code == 404
 
 
 def test_not_editable_collection_is_403(env):

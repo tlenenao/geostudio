@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Mapping pur TableInfo -> contrat JSON du schéma d'une collection (spec §3).
 Aucune dépendance DB ici : uniquement une transformation de données."""
 from app.collections.introspection import TableInfo

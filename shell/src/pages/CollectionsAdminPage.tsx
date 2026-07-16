@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useCollectionsAdmin, useDeleteCollection, useMe } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";

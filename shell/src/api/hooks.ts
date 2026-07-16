@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
 import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
@@ -24,6 +25,20 @@ export function useItem(pk: string) {
 export function useMe() {
   const client = useItemClientInternal();
   return useQuery({ queryKey: ["me"], queryFn: () => client.getMe() });
+}
+
+export function useInstanceInfo() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["instance"],
+    // Garde défensive identique à useActiveExtensions ci-dessous : un
+    // ItemClient de test qui n'implémente pas encore la méthode (mocks
+    // Partial<ItemClient>) résout silencieusement à { readOnly: false }
+    // plutôt que de planter la query. Une vraie panne réseau laisse `data`
+    // undefined (react-query), et chaque appelant traite ça en fail-open
+    // via `?.readOnly === true` — jamais un faux positif "lecture seule".
+    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false }),
+  });
 }
 
 export function useCreateItem() {

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 import jwt

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from "react";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";

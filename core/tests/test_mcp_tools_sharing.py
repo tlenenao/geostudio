@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import json
 
 import pytest
@@ -154,6 +155,60 @@ def test_set_sharing_then_get_sharing_round_trips(app_client):
         result = call_tool(app_client, "get_sharing", {"itemId": item_id})
 
     assert result == {"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]}
+
+
+def test_get_sharing_invisible_to_a_stranger_errors(app_client):
+    # Mirrors test_get_item_invisible_to_a_stranger_errors
+    # (test_mcp_tools_items.py) — every existing test in this file calls
+    # get_sharing/set_sharing on an item mock_user owns; the denial path was
+    # never exercised for either tool.
+    with app_client.session_factory() as session:
+        stranger = get_or_create_user(
+            session, tenant_id=app_client.tenant.id, oidc_sub="sub-stranger",
+            username="stranger", email=None, first_name="", last_name="",
+        )
+        session.commit()
+        stranger_id = stranger.id
+    item_id = _seed_item(app_client, owner_id=stranger_id, title="Not mine")
+
+    with app_client:
+        error_text = call_tool_expecting_error(app_client, "get_sharing", {"itemId": item_id})
+
+    assert "not found" in error_text.lower()
+
+
+def test_set_sharing_by_group_viewer_errors(app_client):
+    # Mirrors test_save_app_config_by_group_viewer_errors
+    # (test_mcp_tools_configs.py): mock_user can read the item (viewer share)
+    # but has no editor/share role — set_sharing (action="share") must
+    # refuse, not silently succeed.
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    with app_client.session_factory() as session:
+        owner = get_or_create_user(
+            session, tenant_id=app_client.tenant.id, oidc_sub="sub-owner",
+            username="owner", email=None, first_name="", last_name="",
+        )
+        session.flush()
+        item = items_repo.create_item(
+            session, tenant_id=app_client.tenant.id, owner_id=owner.id,
+            resource_type="app", title="Shared",
+        )
+        group = Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=owner.id)
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id))
+        session.add(ItemShare(item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"))
+        session.commit()
+        item_id = item.id
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client, "set_sharing",
+            {"itemId": item_id, "sharing": {"public": True, "groups": []}},
+        )
+
+    assert "not allowed" in error_text.lower()
 
 
 def test_set_sharing_with_unknown_group_errors(app_client):

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { ActionBus } from "../ActionBus";

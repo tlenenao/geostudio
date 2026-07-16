@@ -1,9 +1,12 @@
-import { useAllExtensions, useMe, useSetExtensionEnabled } from "../api/hooks";
+// SPDX-License-Identifier: Apache-2.0
+import { useAllExtensions, useInstanceInfo, useMe, useSetExtensionEnabled } from "../api/hooks";
 
 export function AdminExtensionsPage() {
   const meQuery = useMe();
   const extensionsQuery = useAllExtensions({ enabled: meQuery.data?.isAdmin === true });
   const setEnabled = useSetExtensionEnabled();
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
 
   if (meQuery.isLoading) {
     return <p role="status">Chargement…</p>;
@@ -51,7 +54,7 @@ export function AdminExtensionsPage() {
                     type="checkbox"
                     aria-label={`Actif : ${ext.label}`}
                     checked={ext.enabled}
-                    disabled={setEnabled.isPending}
+                    disabled={setEnabled.isPending || readOnly}
                     onChange={(e) => setEnabled.mutate({ id: ext.type, enabled: e.target.checked })}
                   />
                 </td>

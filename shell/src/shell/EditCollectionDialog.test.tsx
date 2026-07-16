@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -58,4 +59,12 @@ test("surfaces an alert when the PATCH fails", async () => {
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent("Échec de la mise à jour."),
   );
+});
+
+test("disables the submit button when the instance is in read-only demo mode", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
 });

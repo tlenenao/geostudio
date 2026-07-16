@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export const overlayInstances: MockMapboxOverlay[] = [];
 
 export class MockDeckLayer {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import type { ActionBus, BusHandler } from "./ActionBus";
 

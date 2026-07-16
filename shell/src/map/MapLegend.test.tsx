@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import type { MapConfig } from "../api/types";
 import { MapLegend } from "./MapLegend";

@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useCollectionSharing, useGroups, useSetCollectionSharing } from "../api/hooks";
+import { useCollectionSharing, useGroups, useInstanceInfo, useSetCollectionSharing } from "../api/hooks";
 import type { ShareRole } from "../api/types";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -16,6 +17,8 @@ export function CollectionShareDialog({
   const groupsQuery = useGroups({ enabled: open });
   const sharingQuery = useCollectionSharing(collectionId, { enabled: open });
   const setSharing = useSetCollectionSharing(collectionId);
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
 
   const [isPublic, setIsPublic] = useState(false);
   const [roles, setRoles] = useState<Record<string, ShareRole | undefined>>({});
@@ -110,7 +113,7 @@ export function CollectionShareDialog({
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Annuler
             </Button>
-            <Button type="button" size="sm" disabled={setSharing.isPending} onClick={submit}>
+            <Button type="button" size="sm" disabled={setSharing.isPending || readOnly} onClick={submit}>
               Enregistrer
             </Button>
           </div>

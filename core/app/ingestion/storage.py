@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stockage S3/MinIO pour l'ingestion (SP-6a) : URL présignée pour l'upload
 direct navigateur→bucket (arbitrage A6 — le cœur ne doit pas être sur le
 chemin des octets pour les uploads de données) et lecture par le worker."""

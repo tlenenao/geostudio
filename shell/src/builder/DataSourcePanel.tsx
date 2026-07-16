@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../api/types";
 
 type Measure = { field?: string; agg: string; label?: string };

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from app.audit.writer import write_audit

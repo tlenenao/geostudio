@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'un item (SP-7) — recalcule embedding après chaque
 create/update (app.items.routes), asynchrone (jamais de blocage de
 l'écriture sur un fournisseur d'embeddings lent/indisponible). Échec

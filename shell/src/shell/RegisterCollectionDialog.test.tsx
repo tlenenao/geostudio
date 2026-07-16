@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -80,4 +81,18 @@ test("submits the chosen table and closes on success", async () => {
   // left blank, since `"".trim() || undefined` turns an empty string into
   // an actually-undefined value.
   expect(body).toEqual({ tableName: "points_interet", title: "Points d'intérêt", isPublic: false });
+});
+
+test("disables the submit button when the instance is in read-only demo mode", async () => {
+  server.use(
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({
+        candidates: [{ tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 }],
+      }),
+    ),
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  render(<Harness />);
+  await userEvent.selectOptions(await screen.findByLabelText("Table"), "points_interet");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
 });

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { getConfigExpressionErrors } from "./configExpressionErrors";
 import type { AppConfig } from "../api/types";

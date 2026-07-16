@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-15 (mise à jour à chaque jalon)
+## État au 2026-07-16 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -555,10 +555,218 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   DB ; 451 avec Postgres+pgvector réel), **lint-imports clean**, **466
   tests shell** (445 avant cette sous-partie +21), **36/36 specs E2E** (34 + `admin-
   collections.spec.ts`, 2 tests). Poussé sur `dev` (checkout principal,
-  pas de worktree dédié — cohérent avec SP-6a/SP-6b/SP-6c/SP-7/SP-8b). Les
-  5 autres sous-parties de SP-9 (gouvernance/légal, CI publique/release,
-  install/secrets, sécurité minimale, démo lecture seule) restent à
-  planifier et exécuter — specs déjà écrites, cf. plus haut.
+  pas de worktree dédié — cohérent avec SP-6a/SP-6b/SP-6c/SP-7/SP-8b).
+- **SP-9 « gouvernance & légal » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-gouvernance-legale-design.md` et plan
+  `2026-07-16-sp9-gouvernance-legale.md`) : `CONTRIBUTING.md` (prérequis,
+  lancer le projet/les tests, convention de commits, process de PR, où
+  trouver le contexte, comment signaler un bug/proposer une feature,
+  convention d'en-tête de licence) et `CODE_OF_CONDUCT.md` (Contributor
+  Covenant v2.1 verbatim, contact `lenenaon.tanguy@gmail.com`) à la racine,
+  tous deux en anglais (exception documentée à la règle « docs en français »
+  de ce fichier — convention GitHub habituelle pour ces deux documents de
+  gouvernance communautaire) ; section « Contribuer » ajoutée au
+  `README.md` ; en-têtes SPDX (`# SPDX-License-Identifier: Apache-2.0` /
+  `// SPDX-License-Identifier: Apache-2.0`) posés sur les 314 fichiers
+  source applicatifs de `core/app/`, `core/tests/`, `shell/src/` (hors
+  `shell/src/api/generated/`, exclu) via un script ponctuel idempotent
+  (`scripts/add-license-headers.py`, laissé dans le dépôt, pas un hook ni
+  un job CI — YAGNI assumé pour un projet à un seul committer humain, cf.
+  spec). Exécuté en subagent-driven-development (3 tâches, revue par tâche
+  + revue finale de branche modèle opus). Aucun défaut Critical/Important
+  sur les 3 tâches ni en revue finale — le seul point trouvé (revue finale)
+  était cosmétique (« All four commands » pour une liste de 5 commandes
+  dans `CONTRIBUTING.md`), corrigé dans la foulée. Diff du script
+  d'en-têtes vérifié structurellement par le reviewer de tâche (376
+  insertions/0 suppressions = 314 en-têtes d'une ligne + le script de 62
+  lignes, aucune autre modification) et sa logique (exclusion, idempotence)
+  ré-exécutée indépendamment dans un bac à sable isolé. **466 tests shell**,
+  **387 tests cœur passed/64 skipped**, `lint-imports` clean — aucune
+  régression (les en-têtes n'affectent ni tsc ni pytest). Poussé sur `dev`
+  (checkout principal, pas de worktree dédié, même patron que les autres
+  sous-parties SP-9).
+- **SP-9 « CI publique & release » livré et clos** (2026-07-16, sous-partie
+  de SP-9, cf. spec `2026-07-15-sp9-ci-publique-release-design.md` et plan
+  `2026-07-16-sp9-ci-publique-release.md`) : nouveau job `shell` dans
+  `.github/workflows/ci.yml` (npm ci → test → e2e Chromium seul → build) à
+  chaque push/PR, aux côtés des jobs `migrations`/`core`/`api-types-drift`
+  déjà existants (`retries: process.env.CI ? 2 : 0` ajouté à
+  `playwright.config.ts`, comportement local inchangé) ; nouveau workflow
+  `.github/workflows/release.yml`, déclenché sur push de tag `v*.*.*` :
+  `test-gate` (migrations+core+shell dupliqués depuis `ci.yml` par choix
+  explicite du spec — un tag est un événement rare, la duplication coûte
+  moins cher que `workflow_call` pour ce dépôt) gate un `build-and-push`
+  matriciel (3 images `core`/`shell`/`postgis`, tag double `vX.Y.Z`+
+  `latest`, `ghcr.io/tlenenao/geostudio-*`, `packages: write` scopée au
+  seul job qui pousse) ; `CHANGELOG.md` (Keep a Changelog, entrée
+  rétroactive `[0.1.0]` résumant M1→SP-9 gouvernance/légal) ; section
+  « Release process » dans `CONTRIBUTING.md` (bump version manuel,
+  déplacement `Unreleased`→version datée, tag+push, vérification
+  `docker pull` réelle, pas de suppression de tag en cas d'échec —
+  retag à la place). Exécuté en subagent-driven-development (5 tâches,
+  revue par tâche + revue finale de branche modèle opus). 1 défaut trouvé
+  et corrigé en cours de route (Task 3, revue) : la section CHANGELOG
+  « Fixed » attribuait à tort 2 des 3 correctifs à des revues de branche
+  SP-5→SP-8, alors qu'ils avaient été trouvés en SP-6b/SP-7 mais corrigés
+  dans une session de debug dédiée hors-SP le 2026-07-13 — corrigé, re-revue
+  clean. **Validation réelle effectuée** (pas seulement lecture de logs,
+  confirmation utilisateur obtenue avant chaque push/tag) : push `dev` réel
+  → 4 jobs CI verts dont le nouveau `shell` (36/36 E2E) ; dry-run d'un tag
+  jetable `v0.1.0-rc1` contre `release.yml` — 1er essai a révélé un défaut
+  réel (hors périmètre de cette sous-partie, dans `admin-collections.
+  spec.ts` de SP-9-gestion-collections) : `test-gate` fusionne
+  migrations+core+shell dans un seul job (contrairement au job `shell`
+  isolé de `ci.yml`), et le conteneur `ci-postgres` restait démarré pendant
+  l'étape Playwright — contention suffisante sur le runner GitHub partagé
+  pour faire échouer déterministiquement (3/3, retries inclus) l'assertion
+  finale de ce test (fenêtre de 5s pour fermeture de dialogue + refetch),
+  sans rapport avec le code de cette sous-partie ; `build-and-push`
+  correctement sauté (garde conforme au spec). Root-cause investigué
+  (`/systematic-debugging`), fixé par une étape `docker rm -f ci-postgres`
+  ciblée juste après "Core tests" dans `release.yml` (pas de modification
+  du test lui-même, hors périmètre). Re-dry-run : pipeline complet vert,
+  **3 images vérifiées par un `docker pull` réel** depuis
+  `ghcr.io/tlenenao/geostudio-{core,shell,postgis}:v0.1.0-rc1`, tag jetable
+  supprimé ensuite. **Point de vigilance non résolu, signalé à
+  l'utilisateur** : le pattern `v*.*.*` matche aussi les pré-releases, donc
+  ce dry-run a réellement déplacé le tag `:latest` de GHCR vers le build
+  rc1 — à corriger en retaguant un `v0.1.0` réel prochainement (`:latest`
+  s'auto-corrigera au prochain tag stable). Revue finale de branche : aucun
+  Critical/Important, **Ready to merge: Yes** ; 2 autres Minor notés (garde
+  `api-types-drift` intentionnellement absente de `test-gate`, cf. spec ;
+  cette entrée CLAUDE.md elle-même attendue en commit séparé, désormais
+  faite). **387 tests cœur, 466 tests shell, 36/36 specs E2E** — aucune
+  régression (validé par CI réelle, pas seulement en local). Poussé sur
+  `dev`. Les 3 autres sous-parties de SP-9 (install/secrets, sécurité
+  minimale, démo lecture seule) restent à planifier et exécuter — specs
+  déjà écrites, cf. plus haut.
+- **SP-9 « install & secrets » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-install-secrets-design.md` et plan
+  `2026-07-16-sp9-install-secrets.md`) : `git clone` + un unique script de
+  bootstrap + `docker compose up -d` produit désormais une installation
+  fonctionnelle, sans étape manuelle oubliable et sans secret faible.
+  `scripts/bootstrap-env.sh` (racine, nouveau) génère `.env` depuis
+  `.env.example` avec 4 secrets alphanumériques forts (`PG_PASSWORD`,
+  `MINIO_PASSWORD`, `KC_PASSWORD`, `MARTIN_SECRET` — `openssl rand`, jamais
+  de `@`/`:`/`/` qui casserait un DSN Postgres), n'écrase jamais un `.env`
+  existant ; `core/Dockerfile` embarque désormais `alembic/`, `alembic.ini`
+  et `scripts/` (absents jusqu'ici de l'image — gap réel découvert en
+  écrivant le plan, pas seulement supposé par la spec) et le service `core`
+  du compose enchaîne `alembic upgrade head && uvicorn …` à chaque
+  démarrage de conteneur (idempotent, même patron que le `worker`
+  existant) — la migration manuelle documentée jusqu'ici comme une étape
+  séparée dans le README disparaît. Exécuté en subagent-driven-development
+  (3 tâches, revue par tâche + revue finale de branche modèle opus), les 3
+  tâches et la revue finale toutes clean (0 Critical/Important). Un vrai
+  piège découvert et documenté au passage (Task 3) : `seed_demo.py` exige
+  un admin déjà existant (`SystemExit` sinon) — en mode `mock`, `mockuser`
+  n'est promu admin qu'à la **première requête authentifiée**, jamais par
+  un `curl` anonyme ; le README documente maintenant explicitement ce
+  prérequis plutôt que de laisser la commande de seed échouer sur une
+  install vraiment neuve. Test de bout en bout réel effectué contre un
+  volume Postgres vraiment neuf (13 migrations 0001→0013 appliquées
+  automatiquement, `GET /me` anonyme → 401 pas 500, bootstrap admin mock,
+  `seed_demo` idempotent, `docker compose restart core` → migration no-op
+  confirmée) — les 4 critères d'acceptation du spec §6 vérifiés
+  empiriquement, pas seulement asserés ; déviation assumée du `docker
+  compose down -v` littéral du plan (bloqué par le classifieur de
+  permissions du harness, protection d'un volume de dev pré-existant) vers
+  un projet compose isolé (`COMPOSE_PROJECT_NAME`), jugée preuve
+  strictement plus forte par les deux revues. 1 Minor réel trouvé en revue
+  finale et corrigé dans la foulée (commit séparé) : `CONTRIBUTING.md`
+  pointait encore vers l'ancien flux `cp .env.example .env` (secrets
+  faibles) et vers une phrase « planned... SP-9 sub-part » désormais fausse
+  puisque cette sous-partie est justement celle-là — resynchronisé avec le
+  README. **387 tests cœur passed/64 skipped, 466 tests shell, 36/36 specs
+  E2E** — aucune régression (aucun de ces trois changements ne touche du
+  code applicatif Python/TS). Poussé sur `dev`. Les 2 autres sous-parties
+  de SP-9 (sécurité minimale, démo lecture seule) restent à planifier et
+  exécuter — specs déjà écrites, cf. plus haut.
+- **SP-9 « sécurité minimale » livré et clos** (2026-07-16, sous-partie de
+  SP-9, cf. spec `2026-07-15-sp9-securite-minimale-design.md` et plan
+  `2026-07-16-sp9-securite-minimale.md`) : ingress Traefik réellement câblé
+  (jusqu'ici les labels `traefik.*` n'existaient sur aucun service malgré le
+  service `traefik` déjà présent dans le compose) — `core`/`shell` routés
+  par `Host(${DOMAIN})` (`core` en plus sur `PathPrefix(/api)`, priorité
+  explicite 10 > 1, `strip-api` retire le préfixe avant le cœur), middleware
+  d'en-têtes de sécurité partagé (HSTS, `nosniff`, `frameDeny`,
+  `referrer-policy`) et de rate limiting (average=100/burst=200) définis une
+  fois sur `core` et référencés `@docker` par les deux routers,
+  `--api.dashboard=true`/`--api.insecure=true` et le port `8090:8080`
+  retirés (dashboard non authentifié qui était exposé publiquement).
+  **Revue authz complète** : les 48 endpoints REST + 11 outils MCP audités
+  contre la couverture de test réelle (~25 fichiers, périmètre plus large
+  que les 8 fichiers illustratifs cités par la feuille de route) —
+  **0 trou de sécurité réel trouvé**, 9 trous de couverture comblés (tests
+  ajoutés dans les fichiers existants les plus proches, jamais de nouveau
+  fichier), rapport complet dans
+  `docs/superpowers/specs/2026-07-15-sp9-securite-minimale-revue-authz.md`.
+  **Audit de dépendances en CI** : jobs `core-deps-audit` (`pip-audit`,
+  bloquant sur toute vulnérabilité connue — `pip-audit` n'a pas de filtre de
+  sévérité natif, déviation assumée du "High/Critical seulement" demandé)
+  et `shell-deps-audit` (`npm audit --audit-level=high` derrière
+  `shell/scripts/check-npm-audit.mjs`, un filtre accepted-risk nécessaire
+  car une vraie vulnérabilité High préexistante et sans correctif upstream
+  — `lodash-es` via `cel-js`→`chevrotain`, arbitrage SP-5a — aurait sinon
+  cassé la CI immédiatement). Exécuté en subagent-driven-development (4
+  tâches, revue par tâche + revue finale de branche modèle opus). **1
+  Important trouvé en revue et corrigé** (Task 4) : `ALLOWLIST[pkg]` était
+  un lookup d'objet brut vulnérable aux propriétés héritées
+  d'`Object.prototype` — un paquet réellement nommé `constructor` (publié
+  sur npm, vérifié) contournait silencieusement le gate ; corrigé par
+  `Object.prototype.hasOwnProperty.call(ALLOWLIST, pkg)`. **Les deux jobs
+  vérifiés bloquants sur un vrai run CI**, pas seulement en local : deux
+  dry-runs réels (PR jetables non fusionnées, `ci.yml` ne déclenchant que
+  sur push vers `main`/`dev` ou `pull_request` — un push nu vers une branche
+  jetable ne suffit pas, découverte faite en exécutant) — `pyjwt==2.4.0`
+  fait échouer `core-deps-audit` (9 vulnérabilités connues), `minimist@1.2.5`
+  fait échouer `shell-deps-audit` (`critical`, non allowlisté) ; les deux PR
+  fermées sans fusion et branches supprimées immédiatement après. Revue
+  finale de branche : **Ready to merge: Yes**, aucun Critical/Important, 5
+  Minor non bloquants (coquille "44" vs 48 endpoints dans la prose d'un
+  rapport ; couplage `shell`→middlewares définis sur `core`, acceptable pour
+  un déploiement stack complète ; `check-npm-audit.mjs` fail-open si la clé
+  `vulnerabilities` est absente d'un rapport malformé ; pas de redirection
+  `web`→`websecure`, hors périmètre explicite ; pas de re-run Vitest/
+  Playwright, diff ne touchant aucun code applicatif shell). **395 tests
+  cœur passed/65 skipped** (460 passed/0 skipped validé contre un
+  PostGIS+pgvector jetable réel), **lint-imports clean**, **6/6 jobs CI
+  verts sur `dev`** (les 4 existants + les 2 nouveaux). Poussé sur `dev`.
+- **SP-9 « démo lecture seule » livré et clos** (2026-07-16, dernière
+  sous-partie de SP-9 — **SP-9 est intégralement clos**, cf. spec
+  `2026-07-15-sp9-demo-lecture-seule-design.md` et plan
+  `2026-07-16-sp9-demo-lecture-seule.md`) : un déploiement démarré avec
+  `CORE_READ_ONLY_MODE=true` refuse toute écriture (REST et MCP, tout
+  utilisateur y compris admin) sans affecter la lecture ; le shell l'affiche
+  (bannière) et masque en fail-open les actions d'écriture déjà identifiées
+  (Formulaire, dialogues admin collections, page admin extensions) — la
+  frontière réelle reste le 403 serveur. Cœur : `is_read_only_mode()`
+  (`app/auth/dependency.py`), **un seul point d'interception** — middleware
+  ASGI dans `app/main.py` qui 403 toute requête `POST`/`PUT`/`PATCH`/`DELETE`
+  (hors `/mcp`) avant même le routing FastAPI, indépendant de l'utilisateur —
+  plus une garde identique (`ValueError`) en tête des 4 outils MCP d'écriture
+  (`save_app_config`, `create_item`, `create_form_app`, `set_sharing`), même
+  message exact partout. Nouvel endpoint public `GET /instance` →
+  `{"readOnly": bool}`. Shell : `useInstanceInfo()` (react-query, fail-open —
+  jamais de faux positif `readOnly:true` sur panne réseau), consommé
+  directement par chaque composant d'écriture (pas via `WidgetContext`/
+  `WidgetHost`, qui reste sans `QueryClientProvider` dans ses tests),
+  bannière `AppLayout`. Exécuté en subagent-driven-development (6 tâches,
+  revue par tâche + revue finale de branche modèle opus, toutes clean, 0
+  Critical/Important sur l'ensemble). Revue finale : **Ready to merge:
+  Yes** ; 3 Minor non bloquants, tous des décisions de scope du plan plutôt
+  que des défauts d'exécution — les boutons d'en-tête (`NewItemButton`/
+  `ImportFileButton`) et le Save du builder/`ShareDialog` d'item ne sont pas
+  masqués en mode démo (le 403 serveur les couvre déjà, mais l'UX reste
+  incohérente pour une démo publique soignée, suivi optionnel) ; assertion
+  MCP `in` plutôt que `==` sur le message (le SDK MCP enveloppe potentiellement
+  le `ValueError`) ; message dupliqué en 6 littéraux + 3 constantes de test
+  sans constante partagée, prescrit tel quel par le plan. **410 tests cœur
+  passed/65 skipped** (395+9+6), **475 tests shell** (466+4+1+4), **37/37
+  specs E2E** (36+1). Poussé sur `dev`. **SP-9 (durcissement produit public
+  v0.1, 6 sous-parties : gestion-collections, gouvernance-légale,
+  ci-publique-release, install-secrets, sécurité-minimale, démo-lecture-seule)
+  est intégralement clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Bout en bout sur PostGIS réel : run_import seul (table + collection + item
 carte), sans procrastinate ni S3 — même infra que test_features_integration.py."""
 import numpy as np
