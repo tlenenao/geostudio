@@ -17,14 +17,12 @@ same terms.
 ## Running the project locally
 
 ```bash
-cp .env.example .env       # fill in the passwords
-docker compose up -d       # full stack (see README.md "Démarrage rapide" for service URLs)
+./scripts/bootstrap-env.sh  # generates .env with strong random secrets
+docker compose up -d        # full stack (see README.md "Démarrage rapide" for service URLs)
 ```
 
 See the README's ["Démarrage rapide (dev)"](README.md#démarrage-rapide-dev)
-section for service URLs and how to verify the real `oidc` auth mode. A more
-complete install guide is planned as part of a separate SP-9 sub-part
-(install & secrets hardening).
+section for service URLs and how to verify the real `oidc` auth mode.
 
 ## Running the tests
 
