@@ -327,6 +327,22 @@ test("getAppConfig throws when the config has no layout", async () => {
   await expect(makeClient().getAppConfig("5")).rejects.toThrow();
 });
 
+test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
+  let requestedUrl = "";
+  server.use(
+    http.get("https://core.test/configs/by-item/5", ({ request }) => {
+      requestedUrl = request.url;
+      return HttpResponse.json({
+        id: "cfg-5", itemId: "5", kind: "app",
+        config: { kind: "app", theme: {}, dataSources: [], messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [] } },
+      });
+    }),
+  );
+  await makeClient().getAppConfig("5", "runtime");
+  expect(requestedUrl).toContain("mode=runtime");
+});
+
 test("saveAppConfig PUTs the app config by item", async () => {
   let body: any;
   server.use(

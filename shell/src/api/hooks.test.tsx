@@ -172,6 +172,15 @@ test("useAppConfig loads an app config", async () => {
   expect(result.current.data).toEqual(cfg);
 });
 
+test("useAppConfig forwards mode to the client", async () => {
+  const cfg = { kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] } };
+  const client = { getAppConfig: vi.fn().mockResolvedValue(cfg) } as unknown as ItemClient;
+  const { result } = renderHook(() => useAppConfig("5", { mode: "runtime" }), { wrapper: makeWrapper(client) });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(client.getAppConfig).toHaveBeenCalledWith("5", "runtime");
+});
+
 test("useSaveApp saves an app config", async () => {
   const client = { saveAppConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
   const { result } = renderHook(() => useSaveApp("5"), { wrapper: makeWrapper(client) });

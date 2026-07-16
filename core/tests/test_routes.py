@@ -564,3 +564,20 @@ def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_
         headers={"Authorization": "Bearer anything"},
     )
     assert response.status_code == 201, response.text
+
+
+from unittest.mock import Mock
+
+
+def test_get_config_by_item_with_mode_runtime_increments_counter(client, monkeypatch):
+    body = _create(client)
+    item_id = body["itemId"]
+    mock_counter = Mock()
+    monkeypatch.setattr(routes, "_apps_runtime_executions_counter", mock_counter)
+
+    client.get(f"/configs/by-item/{item_id}")
+    mock_counter.add.assert_not_called()
+
+    response = client.get(f"/configs/by-item/{item_id}", params={"mode": "runtime"})
+    assert response.status_code == 200
+    mock_counter.add.assert_called_once_with(1)
