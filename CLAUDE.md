@@ -732,8 +732,41 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   cœur passed/65 skipped** (460 passed/0 skipped validé contre un
   PostGIS+pgvector jetable réel), **lint-imports clean**, **6/6 jobs CI
   verts sur `dev`** (les 4 existants + les 2 nouveaux). Poussé sur `dev`.
-  L'unique sous-partie restante de SP-9 (démo lecture seule) reste à
-  planifier et exécuter — spec déjà écrite, cf. plus haut.
+- **SP-9 « démo lecture seule » livré et clos** (2026-07-16, dernière
+  sous-partie de SP-9 — **SP-9 est intégralement clos**, cf. spec
+  `2026-07-15-sp9-demo-lecture-seule-design.md` et plan
+  `2026-07-16-sp9-demo-lecture-seule.md`) : un déploiement démarré avec
+  `CORE_READ_ONLY_MODE=true` refuse toute écriture (REST et MCP, tout
+  utilisateur y compris admin) sans affecter la lecture ; le shell l'affiche
+  (bannière) et masque en fail-open les actions d'écriture déjà identifiées
+  (Formulaire, dialogues admin collections, page admin extensions) — la
+  frontière réelle reste le 403 serveur. Cœur : `is_read_only_mode()`
+  (`app/auth/dependency.py`), **un seul point d'interception** — middleware
+  ASGI dans `app/main.py` qui 403 toute requête `POST`/`PUT`/`PATCH`/`DELETE`
+  (hors `/mcp`) avant même le routing FastAPI, indépendant de l'utilisateur —
+  plus une garde identique (`ValueError`) en tête des 4 outils MCP d'écriture
+  (`save_app_config`, `create_item`, `create_form_app`, `set_sharing`), même
+  message exact partout. Nouvel endpoint public `GET /instance` →
+  `{"readOnly": bool}`. Shell : `useInstanceInfo()` (react-query, fail-open —
+  jamais de faux positif `readOnly:true` sur panne réseau), consommé
+  directement par chaque composant d'écriture (pas via `WidgetContext`/
+  `WidgetHost`, qui reste sans `QueryClientProvider` dans ses tests),
+  bannière `AppLayout`. Exécuté en subagent-driven-development (6 tâches,
+  revue par tâche + revue finale de branche modèle opus, toutes clean, 0
+  Critical/Important sur l'ensemble). Revue finale : **Ready to merge:
+  Yes** ; 3 Minor non bloquants, tous des décisions de scope du plan plutôt
+  que des défauts d'exécution — les boutons d'en-tête (`NewItemButton`/
+  `ImportFileButton`) et le Save du builder/`ShareDialog` d'item ne sont pas
+  masqués en mode démo (le 403 serveur les couvre déjà, mais l'UX reste
+  incohérente pour une démo publique soignée, suivi optionnel) ; assertion
+  MCP `in` plutôt que `==` sur le message (le SDK MCP enveloppe potentiellement
+  le `ValueError`) ; message dupliqué en 6 littéraux + 3 constantes de test
+  sans constante partagée, prescrit tel quel par le plan. **410 tests cœur
+  passed/65 skipped** (395+9+6), **475 tests shell** (466+4+1+4), **37/37
+  specs E2E** (36+1). Poussé sur `dev`. **SP-9 (durcissement produit public
+  v0.1, 6 sous-parties : gestion-collections, gouvernance-légale,
+  ci-publique-release, install-secrets, sécurité-minimale, démo-lecture-seule)
+  est intégralement clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
