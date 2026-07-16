@@ -93,3 +93,26 @@ test("surfaces an alert when the PATCH to toggle an extension fails", async () =
     expect(screen.getByRole("alert")).toHaveTextContent("Échec de la mise à jour de l'extension."),
   );
 });
+
+test("disables the enabled toggle when the instance is in read-only demo mode", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+    ),
+    http.get("https://core.test/extensions", () =>
+      HttpResponse.json({
+        extensions: [
+          {
+            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
+            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+          },
+        ],
+      }),
+    ),
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  render(<Harness />);
+  const toggle = await screen.findByRole("checkbox", { name: "Actif : Jauge (extension)" });
+  expect(toggle).toBeDisabled();
+});

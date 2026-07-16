@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useCandidateTables, useCreateCollection } from "../api/hooks";
+import { useCandidateTables, useCreateCollection, useInstanceInfo } from "../api/hooks";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -14,6 +14,8 @@ export function RegisterCollectionDialog({
 }) {
   const candidatesQuery = useCandidateTables({ enabled: open });
   const createCollection = useCreateCollection();
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
   const [tableName, setTableName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -103,7 +105,7 @@ export function RegisterCollectionDialog({
             <Button type="button" variant="outline" size="sm" onClick={close}>
               Annuler
             </Button>
-            <Button type="submit" size="sm" disabled={!tableName || createCollection.isPending}>
+            <Button type="submit" size="sm" disabled={!tableName || createCollection.isPending || readOnly}>
               Enregistrer
             </Button>
           </div>
