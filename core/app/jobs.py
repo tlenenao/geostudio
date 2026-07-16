@@ -21,6 +21,8 @@ import os
 
 import procrastinate
 
+from app import observability
+
 
 def _conninfo() -> str:
     # .get() avec repli, jamais os.environ[...] : ce module est importé
@@ -44,4 +46,5 @@ app = procrastinate.App(
     # SyncPsycopgConnector interne à la demande (get_sync_connector()).
     connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
     import_paths=["app.ingestion.tasks", "app.items.jobs", "app.collections.jobs"],
+    worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
