@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import text
 
@@ -77,6 +79,36 @@ def test_backfill_table_with_null_geometry_row(pg_session_factory, pg_engine):
     geom_row = by_v["has_geom"]
     assert geom_row.geometry_wkb_hex is not None
     assert "geom" not in geom_row.columns
+
+
+def test_backfill_table_normalizes_decimal_numeric_column_to_float(pg_session_factory, pg_engine):
+    """Régression Critère 3 (task-11-report.md) : SELECT * brut renvoie une
+    colonne NUMERIC comme decimal.Decimal via SQLAlchemy/psycopg — sans
+    normalisation, un lot mélangeant une ligne de backfill (Decimal) et une
+    ligne rejouée du flux live (float, décodée du JSON wal2json) pour la
+    même colonne NUMERIC fait crasher pa.Table.from_pandas. isinstance()
+    volontairement utilisé plutôt qu'une égalité numérique : Decimal("1.5")
+    == 1.5 est vrai en Python, un test par égalité passerait même si le bug
+    n'était pas corrigé."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_numeric"))
+        conn.execute(text(
+            "CREATE TABLE t_backfill_numeric (id serial PRIMARY KEY, score numeric(3,1))"
+        ))
+        conn.execute(text("INSERT INTO t_backfill_numeric (score) VALUES (1.5)"))
+    with pg_session_factory() as session:
+        rows = backfill_table(
+            session, table_name="t_backfill_numeric", pk_column="id", geometry_column=None,
+            boundary_lsn=1, flush_ts=0.0,
+        )
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_numeric"))
+
+    assert len(rows) == 1
+    score = rows[0].columns["score"]
+    assert isinstance(score, float)
+    assert not isinstance(score, Decimal)
+    assert score == 1.5
 
 
 def test_backfill_table_without_geometry_column(pg_session_factory, pg_engine):
