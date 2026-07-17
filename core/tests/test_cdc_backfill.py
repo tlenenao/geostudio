@@ -46,6 +46,39 @@ def test_backfill_table_reads_all_rows_as_inserts(seeded_table, pg_session_facto
     assert all(r.geometry_wkb_hex is not None for r in rows)
 
 
+def test_backfill_table_with_null_geometry_row(pg_session_factory, pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_nullgeom"))
+        conn.execute(text(
+            "CREATE TABLE t_backfill_nullgeom (id serial PRIMARY KEY, v text, "
+            "geom geometry(Point, 4326))"
+        ))
+        conn.execute(text(
+            "INSERT INTO t_backfill_nullgeom (v, geom) VALUES "
+            "('has_geom', ST_SetSRID(ST_MakePoint(1, 1), 4326)), "
+            "('null_geom', NULL)"
+        ))
+    with pg_session_factory() as session:
+        boundary = current_wal_lsn(session)
+        rows = backfill_table(
+            session, table_name="t_backfill_nullgeom", pk_column="id", geometry_column="geom",
+            boundary_lsn=boundary, flush_ts=1.0,
+        )
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_nullgeom"))
+
+    assert len(rows) == 2
+    by_v = {r.columns["v"]: r for r in rows}
+
+    null_row = by_v["null_geom"]
+    assert null_row.geometry_wkb_hex is None
+    assert "geom" not in null_row.columns
+
+    geom_row = by_v["has_geom"]
+    assert geom_row.geometry_wkb_hex is not None
+    assert "geom" not in geom_row.columns
+
+
 def test_backfill_table_without_geometry_column(pg_session_factory, pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_nogeom"))
