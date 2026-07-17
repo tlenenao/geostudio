@@ -157,6 +157,45 @@ def test_backfill_table_normalizes_date_timestamp_columns_to_str(pg_session_fact
     assert cols["tstz"] == "2026-03-05 14:30:00+00"
 
 
+def test_backfill_table_trims_trailing_zero_microseconds(pg_session_factory, pg_engine):
+    """Régression Important (task-11-fix-report.md, addendum) :
+    `_pg_timestamp_str` paddait toujours les microsecondes sur 6 chiffres
+    (`.500000`) au lieu de reproduire le format texte natif de Postgres, qui
+    retire les zéros de fin (`.5`). Sans ce fix, une ligne de backfill et
+    une ligne rejouée du flux live pour le MÊME instant produiraient deux
+    chaînes différentes pour une même colonne TIMESTAMPTZ — pas un crash
+    (les deux restent des `str`), mais une dérive silencieuse entre les deux
+    producteurs. Couvre aussi le cas sans zéro de fin (`.123456`), pour
+    vérifier que le trim ne retire pas de chiffres significatifs."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_frac"))
+        conn.execute(text(
+            "CREATE TABLE t_backfill_frac (id serial PRIMARY KEY, "
+            "half timestamptz, hundredths timestamptz, full_precision timestamptz)"
+        ))
+        conn.execute(text(
+            "INSERT INTO t_backfill_frac (half, hundredths, full_precision) "
+            "VALUES (:half, :hundredths, :full_precision)"
+        ), {
+            "half": datetime(2026, 3, 5, 14, 30, 0, 500000, tzinfo=timezone.utc),
+            "hundredths": datetime(2026, 3, 5, 14, 30, 0, 120000, tzinfo=timezone.utc),
+            "full_precision": datetime(2026, 3, 5, 14, 30, 0, 123456, tzinfo=timezone.utc),
+        })
+    with pg_session_factory() as session:
+        rows = backfill_table(
+            session, table_name="t_backfill_frac", pk_column="id", geometry_column=None,
+            boundary_lsn=1, flush_ts=0.0,
+        )
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_backfill_frac"))
+
+    assert len(rows) == 1
+    cols = rows[0].columns
+    assert cols["half"] == "2026-03-05 14:30:00.5+00"
+    assert cols["hundredths"] == "2026-03-05 14:30:00.12+00"
+    assert cols["full_precision"] == "2026-03-05 14:30:00.123456+00"
+
+
 def test_backfill_table_normalizes_uuid_column_to_str(pg_session_factory, pg_engine):
     """Extension Critère 3 : `SELECT *` brut renvoie UUID comme
     `uuid.UUID` (adaptateur psycopg), wal2json l'émet comme chaîne."""

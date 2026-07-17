@@ -63,12 +63,15 @@ def _pg_timestamp_str(dt: datetime) -> str:
     """Reproduit le format texte natif de Postgres pour TIMESTAMP/
     TIMESTAMPTZ (celui que wal2json émet dans son payload JSON), PAS
     `datetime.isoformat()` : séparateur espace (pas "T"), microsecondes
-    omises si nulles (comme isoformat, déjà cohérent), offset UTC omettant
-    les minutes/secondes quand elles sont nulles (`+00`, `+05`, `+05:30` —
-    jamais `+00:00`, contrairement à isoformat)."""
+    omises si nulles et sinon rendues SANS les zéros de fin (Postgres émet
+    `.5` pour 500000µs, `.12` pour 120000µs, `.123456` seulement quand les 6
+    chiffres sont significatifs — contrairement à `isoformat()`, qui pad
+    toujours sur 6 chiffres), offset UTC omettant les minutes/secondes
+    quand elles sont nulles (`+00`, `+05`, `+05:30` — jamais `+00:00`,
+    contrairement à isoformat)."""
     s = dt.strftime("%Y-%m-%d %H:%M:%S")
     if dt.microsecond:
-        s += f".{dt.microsecond:06d}"
+        s += f".{dt.microsecond:06d}".rstrip("0")
     if dt.tzinfo is not None:
         offset = dt.utcoffset()
         total_seconds = int(offset.total_seconds())
