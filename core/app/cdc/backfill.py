@@ -44,9 +44,7 @@ def backfill_table(
     out = []
     for r in rows:
         record = dict(r)
-        geom_wkb_hex = None
-        if geometry_column and record.get(geometry_column) is not None:
-            geom_wkb_hex = record.pop(geometry_column)
+        geom_wkb_hex = record.pop(geometry_column, None) if geometry_column else None
         pk_value = record.get(pk_column)
         out.append(ChangeRow(
             op="insert", lsn=boundary_lsn, ts=flush_ts, pk_column=pk_column,
