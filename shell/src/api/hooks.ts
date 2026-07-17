@@ -196,11 +196,11 @@ export function useSaveMap(pk: string) {
   });
 }
 
-export function useAppConfig(pk: string, options?: { enabled?: boolean }) {
+export function useAppConfig(pk: string, options?: { enabled?: boolean; mode?: "runtime" }) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["app", pk],
-    queryFn: () => client.getAppConfig(pk),
+    queryKey: ["app", pk, options?.mode],
+    queryFn: () => client.getAppConfig(pk, options?.mode),
     enabled: options?.enabled ?? true,
   });
 }

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from opentelemetry import metrics
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,11 @@ from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
+
+_meter = metrics.get_meter(__name__)
+_apps_runtime_executions_counter = _meter.create_counter(
+    "geostudio.apps.runtime_executions", unit="1", description="GET config calls with mode=runtime",
+)
 
 
 class CreateConfigRequest(BaseModel):
@@ -179,6 +185,7 @@ def delete_config(
 @router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
 def get_config_by_item(
     item_id: str,
+    mode: str | None = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
@@ -186,6 +193,8 @@ def get_config_by_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
+    if mode == "runtime":
+        _apps_runtime_executions_counter.add(1)
     return result
 
 

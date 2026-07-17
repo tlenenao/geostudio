@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-16 (mise à jour à chaque jalon)
+## État au 2026-07-17 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -767,6 +767,131 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   v0.1, 6 sous-parties : gestion-collections, gouvernance-légale,
   ci-publique-release, install-secrets, sécurité-minimale, démo-lecture-seule)
   est intégralement clos.**
+- **SP-10a livré et clos** (2026-07-17, cf. spec
+  `docs/superpowers/specs/2026-07-16-sp10a-instrumentation-otel-design.md`
+  et plan `docs/superpowers/plans/2026-07-16-sp10a-instrumentation-otel.md`) :
+  instrumentation OTel du cœur et du worker — un déploiement pointant
+  `OTEL_EXPORTER_OTLP_ENDPOINT` vers un collecteur obtient traces, métriques
+  et logs JSON corrélés bout-en-bout, comportement inchangé quand la
+  variable est absente (défaut de `docker compose up` et de toute la suite
+  de tests). `core/app/observability.py` (nouveau module) : `setup()`
+  idempotent (providers traces/métriques, `logging.setLogRecordFactory()`
+  pour corréler trace_id/span_id dans les logs JSON), auto-instrumentation
+  FastAPI/SQLAlchemy/httpx/botocore, spans procrastinate par job
+  (`worker_middleware`, exceptions enregistrées puis re-levées, jamais
+  avalées). 3 métriques métier : `geostudio.items.created`/`geostudio.
+  configs.published` dans `app/items/repository.py` (comptées aussi côté
+  MCP, mêmes fonctions partagées que REST, cf. SP-2/SP-7) ;
+  `geostudio.apps.runtime_executions` dans `app/configs/routes.py` (seule
+  exception route-level, pilotée par `GET /configs/by-item/{id}?mode=
+  runtime`, câblé jusqu'au shell — `AppRuntimePage` seul appelant, builder/
+  éditeur non affecté). Protocole OTLP fixé HTTP/protobuf en dur (pas de
+  dépendance grpcio) ; aucun changement `docker-compose.yml` dans cette
+  sous-partie (SP-10b câblera le profil `--profile observability`).
+  Exécuté en subagent-driven-development (6 tâches, revue par tâche + revue
+  finale de branche modèle opus). Trois défauts de bibliothèque légitimes
+  trouvés et corrigés en cours de route (pas des erreurs d'implémentation,
+  des tests littéraux du plan qui ne survivaient pas à la réalité d'une
+  suite de 400+ tests) : (1) le test du brief pour `JSONFormatter`
+  formatait un log après la fin du span actif — premier essai par
+  monkeypatch global et inconditionnel de `logging.Handler.handle` (effet
+  de bord process-wide dès l'import), jugé Important en revue de tâche et
+  remplacé par `logging.setLogRecordFactory()` posé dans `setup()` (gated
+  par `_configured`) ; (2) `SQLAlchemyInstrumentor` est un singleton
+  process-wide (`BaseInstrumentor.__new__`) — le premier `create_app()` de
+  la suite fige son flag "instrumenté", tout appel ultérieur (dont celui du
+  test dédié) devenant un no-op silencieux ; fixé en isolant ce test dans
+  un sous-processus frais (même motif déjà utilisé par le Task 3 pour
+  httpx/botocore, juste pas appliqué par le plan à ce test précis) ; (3)
+  découvert à la vérification finale (Task 7, E2E complet) : le mock
+  `configs/by-item` de `shell/e2e/mocks.ts` extrayait l'id via
+  `url().split("/").pop()`, cassé par le nouveau `?mode=runtime` (11 specs
+  E2E en échec, fixture attendue jamais servie) — fixé en retirant la query
+  string avant extraction. **Revue finale de branche : 1 Important trouvé
+  et corrigé** — le worker réel (`docker-compose.yml`, `python -m
+  procrastinate --app app.jobs.app worker`) n'importe jamais `app.main`/
+  `create_app()`, donc `observability.setup()` n'y tournait jamais : aucun
+  exportateur OTLP installé côté worker, spans de job créés contre un
+  tracer proxy no-op jamais exportés, métriques d'ingestion jamais
+  envoyées — alors que le but explicite du plan est d'instrumenter
+  « core/worker », pas seulement le process API. Aucun test de tâche ne
+  pouvait le détecter (le test de la Task 4 injecte son propre
+  `tracer_provider`). Fixé en appelant `observability.setup()` au niveau
+  module dans `core/app/jobs.py` (seul point d'entrée réellement exécuté
+  par le worker), idempotent donc sans risque en co-location avec
+  `create_app()`. Fumée manuelle réalisée contre un vrai collecteur
+  (`grafana/otel-lgtm` jetable, port OTLP seul publié pour contourner un
+  conflit de port-forwarding WSL2 sur le port Grafana) : `GET /health`
+  confirmé produire un trace réel `service.name="geostudio-core-smoke"`,
+  requêté via l'API search de Tempo — export OTLP bout-en-bout vérifié
+  contre un vrai collecteur, pas seulement des exporteurs en mémoire. 4
+  Minor non bloquants notés en revue finale, aucun corrigé : nom de
+  métrique `geostudio.configs.published` incohérent avec `items.created`
+  (mandaté littéralement par le texte du plan §Global Constraints, donc
+  non renommé unilatéralement — à reconsidérer avec l'utilisateur avant que
+  SP-10b construise des dashboards dessus) ; `_items_published_counter`
+  incrémenté avant `session.flush()` contrairement à `_items_created_counter`
+  (après) ; docstring "zéro appel réseau" toujours légèrement imprécis
+  cumulativement (httpx/botocore injectent des en-têtes de propagation même
+  sans exportateur, déjà noté au Task 3) ; idiome `split("/").pop()`
+  fragile aux query strings ailleurs dans `mocks.ts`, non déclenché
+  actuellement. **422 tests cœur passed/65 skipped** (410+5+1+1+2+2+1),
+  **477 tests shell** (475+2), **37/37 specs E2E**. Poussé sur `dev`.
+  **SP-10a est clos.**
+- **SP-10b livré et clos** (2026-07-17, cf. spec
+  `docs/superpowers/specs/2026-07-17-sp10b-observabilite-dashboards-slo-design.md`
+  et plan `docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo.md`) :
+  observabilité packagée — un opérateur qui lance `docker compose --profile
+  observability up` obtient 4 dashboards Grafana (cœur, Martin, jobs,
+  Postgres) alimentés en données réelles, 4 SLO visibles dans Grafana
+  Alerting, et peut déclencher une alerte de test de façon reproductible,
+  sans rien changer à un `docker compose up` classique. Service
+  `otel-lgtm` (Prometheus/Loki/Tempo/Grafana packagés, port hôte Grafana
+  `3001` — `3000` déjà pris par `martin`) + `postgres-exporter`, tous deux
+  `profiles: ["observability"]` ; `core`/`worker` gagnent un export OTLP
+  inconditionnel (`http://otel-lgtm:4318`, sans risque si non démarré —
+  vérifié empiriquement, `/health` reste rapide) ; `martin` bascule en
+  `v0.18.0` (seule version exposant `/_/metrics`, `v0.13.0` ne l'expose
+  pas). Config du collecteur OTel étendue (scrape Prometheus de
+  `martin`/`postgres-exporter`, receiver nommé `prometheus/geostudio`).
+  Nouveau `geostudio.jobs.backlog` (`ObservableGauge`, compte les jobs
+  procrastinate `todo`/`doing` par file, `unit=""` — pas `"1"` — pour éviter
+  le suffixe `_ratio` de la convention de nommage OTel→Prometheus). 4
+  dashboards provisionnés par fichiers (Martin : 3 panneaux seulement, pas
+  de cache-hit, métrique inexistante côté Martin) + 5 règles d'alerte
+  Grafana (4 SLO réels + 1 règle de test toujours vraie, `isPaused: true`
+  par défaut — preuve reproductible que le pipeline d'alerting fonctionne,
+  jamais active en continu). Plan écrit avec 8 corrections empiriques
+  documentées vs la spec initiale (version Martin, absence de cache-hit,
+  nom du datasource Prometheus embarqué, layout de montage des dashboards
+  Grafana — provider au niveau racine, JSON dans un sous-dossier séparé —,
+  port Grafana, suffixe `_ratio`, colonne `queue_name` vs `queue`,
+  non-idempotence de `apply_schema()`). Exécuté en
+  subagent-driven-development (6 tâches, revue par tâche + revue finale de
+  branche modèle opus). Aucun défaut Critical/Important sur les 6 tâches ni
+  en revue finale — seuls des Minor cosmétiques/défensifs, 2 corrigés dans
+  la foulée (coquille accentuée `géostudio_jobs_backlog` dans un docstring,
+  garde `try/except` sur le callback de la gauge si `procrastinate_jobs`
+  n'existe pas encore — pertinent car l'export OTLP est désormais
+  inconditionnel). **Task 6 (validation empirique bout en bout contre la
+  vraie stack) a confirmé les 5 critères d'acceptation** : dashboards
+  alimentés (vérifié aussi en insérant une ligne de test dans
+  `procrastinate_jobs`), traçage bout en bout avec spans SQL sous HTTP
+  (`trace_id` réel documenté), 4 SLO visibles et évalués, alerte de test
+  dépausée temporairement puis observée `firing` (fichier reverté avant
+  commit), `docker compose up` par défaut inchangé. **Point de suivi
+  hors-périmètre signalé, non corrigé par cette branche** : le service
+  `worker` entre en boucle de redémarrage après un premier succès sous le
+  profil observability (`schema --apply && worker` non idempotent une fois
+  les types procrastinate créés) — vérifié par `git log -p` comme
+  pré-existant depuis SP-6a/SP-7, non touché par SP-10b
+  (`register_jobs_backlog_gauge` vit uniquement dans `app.main`, jamais
+  dans `app.jobs`) ; n'affecte aucun des 5 critères d'acceptation, mais un
+  déploiement réel laissé longtemps up pourrait perdre silencieusement son
+  worker d'ingestion après ce premier crash — à traiter dans une session
+  dédiée. **422 tests cœur passed/66 skipped** (422+1 nouveau test postgis
+  skippé sans DB, 488 passed avec DB réelle), `lint-imports` clean. Poussé
+  sur `dev`.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

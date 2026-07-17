@@ -1661,7 +1661,9 @@ export interface operations {
     };
     get_config_by_item_configs_by_item__item_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: string | null;
+            };
             header?: {
                 authorization?: string;
             };

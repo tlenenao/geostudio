@@ -118,7 +118,10 @@ export async function mockCore(page: Page) {
 
   await page.route("**/configs/by-item/**", async (route) => {
     const method = route.request().method();
-    const itemId = route.request().url().split("/").pop() ?? "";
+    // .split("?")[0] before .pop(): AppRuntimePage appends "?mode=runtime"
+    // (SP-10a), which would otherwise leak into the id and miss every
+    // savedConfigs lookup keyed by the plain item id.
+    const itemId = route.request().url().split("?")[0].split("/").pop() ?? "";
 
     if (method === "DELETE") {
       deleted.add(itemId);
