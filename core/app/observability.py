@@ -144,3 +144,38 @@ def make_worker_middleware(*, tracer_provider=None):
 
 
 otel_worker_middleware = make_worker_middleware()
+
+
+def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
+    """ObservableGauge geostudio.jobs.backlog, un point de données par file
+    (attribut `queue`) — compte les lignes procrastinate_jobs en statut
+    todo/doing. Callback appelé paresseusement à chaque tick d'export du
+    PeriodicExportingMetricReader (déjà posé par setup(), SP-10a) — aucune
+    nouvelle boucle de polling, aucun nouveau thread.
+
+    unit="" et pas "1" : un ObservableGauge avec unit="1" se traduit côté
+    Prometheus par un nom suffixé _ratio (convention de nommage OTel→
+    Prometheus : l'unité UCUM "1" est interprétée comme un ratio sur les
+    gauges) — vérifié empiriquement en faisant transiter la métrique par un
+    vrai collecteur. geostudio.jobs.backlog est un compte, pas un ratio ;
+    unit="" produit le nom géostudio_jobs_backlog attendu par les dashboards
+    et règles d'alerte (Tasks 4/5)."""
+    from opentelemetry.metrics import Observation
+    from sqlalchemy import text
+
+    meter = meter or metrics.get_meter(__name__)
+
+    def _callback(options):
+        with engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
+                "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
+            ))
+            return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
+
+    meter.create_observable_gauge(
+        "geostudio.jobs.backlog",
+        callbacks=[_callback],
+        unit="",
+        description="Jobs procrastinate en attente ou en cours, par file",
+    )

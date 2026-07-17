@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
+    observability.register_jobs_backlog_gauge(engine)
     init_db(engine)
     session_factory = make_session_factory(engine)
 

@@ -33,3 +33,24 @@ def pg_engine():
 @pytest.fixture()
 def pg_session_factory(pg_engine):
     return make_session_factory(pg_engine)
+
+
+@pytest.fixture(scope="session")
+def pg_engine_with_procrastinate_schema(pg_engine):
+    """pg_engine, avec le schéma procrastinate (table procrastinate_jobs et
+    dépendances) appliqué s'il est absent. apply_schema() n'est PAS
+    idempotent — un second appel sur une base où le schéma existe déjà lève
+    (CREATE TYPE échoue), vérifié empiriquement — d'où la garde has_table()
+    pour rester rejouable d'une session pytest à l'autre sur une base de
+    test persistante."""
+    import procrastinate
+    from sqlalchemy import inspect as sa_inspect
+
+    if not sa_inspect(pg_engine).has_table("procrastinate_jobs"):
+        conninfo = os.environ["CORE_TEST_DATABASE_URL"].replace(
+            "postgresql+psycopg://", "postgresql://"
+        )
+        app = procrastinate.App(connector=procrastinate.PsycopgConnector(conninfo=conninfo))
+        with app.open():
+            app.schema_manager.apply_schema()
+    return pg_engine
