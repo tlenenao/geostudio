@@ -3107,6 +3107,26 @@
         "summary": "Health"
       }
     },
+    "/instance": {
+      "get": {
+        "operationId": "get_instance_info_instance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Instance Info Instance Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Instance Info"
+      }
+    },
     "/items": {
       "get": {
         "operationId": "list_items_items_get",
