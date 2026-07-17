@@ -6,6 +6,8 @@ SQLAlchemy (le nom vient du registre, mais la défense vaut pour tout appelant).
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.collections.publication import add_table_to_publication
+
 
 def quote_ident(session: Session, identifier: str) -> str:
     return session.get_bind().dialect.identifier_preparer.quote(identifier)
@@ -45,3 +47,4 @@ def apply_collection_ddl(session: Session, table_name: str) -> None:
     ).scalar()
     if seq:
         session.execute(text(f"GRANT USAGE, SELECT ON SEQUENCE {seq} TO gis_rls"))
+    add_table_to_publication(session, table_name)
