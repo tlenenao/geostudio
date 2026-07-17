@@ -5,6 +5,7 @@ est donc appelé ici au niveau module, même patron et même raison que
 app/jobs.py (SP-10a) — quel que soit le process qui importe ce module EST le
 point d'entrée du worker."""
 import os
+import threading
 import time
 import uuid
 
@@ -32,10 +33,26 @@ class _WorkerState:
     def __init__(self) -> None:
         self.last_seen_lsn = 0
         self.last_flush_ts: dict = {}
+        # Garde last_flush_ts : lu depuis le thread background OTel
+        # (PeriodicExportingMetricReader appelle get_lag_seconds() sur son
+        # propre thread) pendant que le thread worker principal écrit dedans
+        # (_flush_table) — sans ce verrou, une mutation concurrente pendant
+        # l'itération de get_lag_seconds() peut lever `RuntimeError:
+        # dictionary changed size during iteration`, non rattrapée par OTel,
+        # ce qui tue silencieusement le thread d'export et désactive la
+        # gauge geostudio.cdc.lag_seconds pour le reste du process.
+        # last_seen_lsn n'a pas besoin du même verrou : jamais lu par le
+        # callback de la gauge, seulement écrit/lu par le thread du flux CDC.
+        self._lock = threading.Lock()
 
     def get_lag_seconds(self) -> dict:
         now = time.time()
-        return {cid: now - ts for cid, ts in self.last_flush_ts.items()}
+        with self._lock:
+            return {cid: now - ts for cid, ts in self.last_flush_ts.items()}
+
+    def record_flush(self, collection_id, ts: float) -> None:
+        with self._lock:
+            self.last_flush_ts[collection_id] = ts
 
 
 def build_s3_key(*, tenant_id: str, collection_id: str, dt: str) -> str:
@@ -48,6 +65,23 @@ def _load_collection_meta(session) -> dict:
         c.table_name: (c.id, c.tenant_id, c.geometry_column, c.srid, c.pk_column)
         for c in session.scalars(select(Collection)).all()
     }
+
+
+def _write_and_upload(rows, *, srid: int, local_path: str, s3_client, bucket: str, key: str) -> None:
+    """Écrit le GeoParquet local puis l'uploade, en garantissant que le
+    fichier temporaire est toujours supprimé (succès ou échec) — extrait de
+    _flush_table pour rester testable indépendamment de run() (qui exige
+    DB/S3 réels). Une exception de write_geoparquet/upload_parquet_file
+    (panne MinIO/réseau transitoire, géométrie malformée, pression disque)
+    continue de se propager telle quelle après nettoyage : le crash-and-
+    restart du worker (`restart: unless-stopped`) reste le comportement de
+    récupération voulu, seul le leak de fichier est fermé ici."""
+    try:
+        write_geoparquet(rows, srid=srid, path=local_path)
+        storage.upload_parquet_file(s3_client, bucket=bucket, key=key, local_path=local_path)
+    finally:
+        if os.path.exists(local_path):
+            os.remove(local_path)
 
 
 def run() -> None:
@@ -87,10 +121,11 @@ def run() -> None:
         dt = time.strftime("%Y-%m-%d", time.gmtime())
         key = build_s3_key(tenant_id=tenant_id, collection_id=collection_id, dt=dt)
         local_path = f"/tmp/cdc-{uuid.uuid4().hex}.parquet"
-        write_geoparquet(rows, srid=srid or 4326, path=local_path)
-        storage.upload_parquet_file(s3_client, bucket=s3_bucket, key=key, local_path=local_path)
-        os.remove(local_path)
-        state.last_flush_ts[collection_id] = time.time()
+        _write_and_upload(
+            rows, srid=srid or 4326, local_path=local_path,
+            s3_client=s3_client, bucket=s3_bucket, key=key,
+        )
+        state.record_flush(collection_id, time.time())
 
     def _do_flush():
         for table_name in buffer.tables_due_for_flush():
