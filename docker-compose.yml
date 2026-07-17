@@ -34,6 +34,7 @@ services:
         -c max_connections=200
         -c random_page_cost=1.1
         -c max_parallel_workers_per_gather=4
+        -c wal_level=logical
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
