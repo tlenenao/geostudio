@@ -27,8 +27,30 @@ flux live (float) pour la MÊME colonne NUMERIC fait échouer
 même backfill et rejoue les mêmes messages non ackés à chaque redémarrage).
 `_normalize_record` convertit tout `Decimal` en `float` ici, pour aligner
 le backfill sur le type déjà produit par le chemin live — pas une perte de
-précision par rapport à ce que ce dernier produit déjà."""
+précision par rapport à ce que ce dernier produit déjà.
+
+Normalisation DATE/TIMESTAMP/UUID→str (extension post-Task 11, même classe
+de bug, cf. task-11-fix-report.md) : `SELECT *` brut renvoie aussi
+`datetime.date`/`datetime.datetime` (colonnes DATE/TIMESTAMP/TIMESTAMPTZ)
+et `uuid.UUID` (colonnes UUID) comme objets Python typés, alors que
+wal2json n'a aucun type JSON natif pour ceux-ci et les émet comme chaînes
+dans le payload JSON — `json.loads` produit donc des `str` côté
+`decode_wal2json_message`. Même risque de mélange de types dans un même lot
+de flush que pour NUMERIC. Vérifié empiriquement (contre un PostGIS+
+wal2json réel, colonnes DATE/TIMESTAMP/TIMESTAMPTZ/UUID, script one-off non
+commité) que le format de chaîne émis par wal2json pour DATE et UUID
+coïncide exactement avec `date.isoformat()`/`str(uuid.UUID)`, mais PAS pour
+TIMESTAMP/TIMESTAMPTZ : `datetime.isoformat()` sépare date et heure par
+"T" et affiche toujours les minutes d'offset UTC (ex. `+00:00`), alors que
+wal2json (qui reprend la représentation texte native de Postgres) sépare
+par un espace et omet les minutes/secondes d'offset quand elles sont
+nulles (ex. `+00`, `+05:30` mais jamais `+00:00`) — confirmé pour plusieurs
+offsets (`+00`, `+05`, `+05:30`, `-05:30`) via `SET timezone` + lecture
+`::text` côté serveur. `_pg_timestamp_str` reproduit ce format Postgres
+plutôt que `.isoformat()` brut pour les valeurs `datetime.datetime`."""
+from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -37,15 +59,55 @@ from app.cdc.parquet_writer import ChangeRow
 from app.collections.ddl import quote_ident
 
 
+def _pg_timestamp_str(dt: datetime) -> str:
+    """Reproduit le format texte natif de Postgres pour TIMESTAMP/
+    TIMESTAMPTZ (celui que wal2json émet dans son payload JSON), PAS
+    `datetime.isoformat()` : séparateur espace (pas "T"), microsecondes
+    omises si nulles (comme isoformat, déjà cohérent), offset UTC omettant
+    les minutes/secondes quand elles sont nulles (`+00`, `+05`, `+05:30` —
+    jamais `+00:00`, contrairement à isoformat)."""
+    s = dt.strftime("%Y-%m-%d %H:%M:%S")
+    if dt.microsecond:
+        s += f".{dt.microsecond:06d}"
+    if dt.tzinfo is not None:
+        offset = dt.utcoffset()
+        total_seconds = int(offset.total_seconds())
+        sign = "+" if total_seconds >= 0 else "-"
+        total_seconds = abs(total_seconds)
+        hh, rem = divmod(total_seconds, 3600)
+        mm, ss = divmod(rem, 60)
+        s += f"{sign}{hh:02d}"
+        if mm or ss:
+            s += f":{mm:02d}"
+            if ss:
+                s += f":{ss:02d}"
+    return s
+
+
+def _normalize_value(v):
+    """Convertit une valeur issue d'un `SELECT *` brut vers la même
+    représentation que produirait `decode_wal2json_message` (JSON n'a pas de
+    type décimal/date/UUID natif) pour le même type de colonne — générique,
+    aucun nom de colonne codé en dur. `datetime.datetime` est une
+    sous-classe de `datetime.date` : l'ordre des `isinstance` compte."""
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, datetime):
+        return _pg_timestamp_str(v)
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, UUID):
+        return str(v)
+    return v
+
+
 def _normalize_record(record: dict) -> dict:
-    """Convertit toute valeur `decimal.Decimal` du dict en `float`, générique
-    (aucune colonne codée en dur) — toute colonne NUMERIC/DECIMAL de
-    n'importe quelle table backfillée peut être concernée, pas seulement
-    celle qui a déclenché le rapport initial."""
-    return {
-        k: float(v) if isinstance(v, Decimal) else v
-        for k, v in record.items()
-    }
+    """Convertit toute valeur `decimal.Decimal`/`datetime.date`/
+    `datetime.datetime`/`uuid.UUID` du dict vers la représentation déjà
+    produite par le chemin live (`decode_wal2json_message`), générique
+    (aucune colonne codée en dur) — toute colonne NUMERIC/DATE/TIMESTAMP/
+    UUID de n'importe quelle table backfillée peut être concernée."""
+    return {k: _normalize_value(v) for k, v in record.items()}
 
 
 def current_wal_lsn(session: Session) -> int:
