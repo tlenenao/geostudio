@@ -158,20 +158,31 @@ def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
     Prometheus : l'unité UCUM "1" est interprétée comme un ratio sur les
     gauges) — vérifié empiriquement en faisant transiter la métrique par un
     vrai collecteur. geostudio.jobs.backlog est un compte, pas un ratio ;
-    unit="" produit le nom géostudio_jobs_backlog attendu par les dashboards
+    unit="" produit le nom geostudio_jobs_backlog attendu par les dashboards
     et règles d'alerte (Tasks 4/5)."""
     from opentelemetry.metrics import Observation
     from sqlalchemy import text
+    from sqlalchemy.exc import ProgrammingError
 
     meter = meter or metrics.get_meter(__name__)
 
     def _callback(options):
-        with engine.connect() as conn:
-            rows = conn.execute(text(
-                "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
-                "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
-            ))
-            return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text(
+                    "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
+                    "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
+                ))
+                return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
+        except ProgrammingError:
+            # procrastinate_jobs peut ne pas encore exister (worker pas
+            # encore démarré / `schema --apply` pas encore joué) — le
+            # endpoint OTLP étant désormais inconditionnel (SP-10b Task 1),
+            # ce callback tourne à chaque tick d'export dans tout
+            # déploiement, y compris avant que la table existe. On ne
+            # laisse pas cette exception remonter du callback ; le prochain
+            # tick réessaiera une fois la table créée.
+            return []
 
     meter.create_observable_gauge(
         "geostudio.jobs.backlog",
