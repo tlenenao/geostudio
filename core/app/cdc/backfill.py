@@ -12,12 +12,40 @@ LSN (plus grande), qui l'emporte dans la réduction (pk, max(_lsn)) côté
 lecteur : au pire quelques doublons inoffensifs, jamais de perte ni de
 fantôme. Pour une collection enregistrée APRÈS que le slot existe déjà, le
 même mécanisme s'applique au premier changement vu pour une table inconnue
-(app.cdc.main, Task 9) — pas de notification poussée depuis apply_collection_ddl."""
+(app.cdc.main, Task 9) — pas de notification poussée depuis apply_collection_ddl.
+
+Normalisation Decimal→float (correctif post-Task 11, cf. task-11-report.md
+§Critère 3) : `SELECT *` en SQL brut renvoie les colonnes NUMERIC/DECIMAL
+comme `decimal.Decimal` via SQLAlchemy/psycopg, alors que
+`consumer.decode_wal2json_message` décode le même type de colonne depuis le
+JSON wal2json en `float` Python (JSON n'a pas de type décimal). Les deux
+chemins alimentent le même buffer/flush (CdcBufferManager, app.cdc.main) ;
+un lot qui mélange une ligne de backfill (Decimal) et une ligne rejouée du
+flux live (float) pour la MÊME colonne NUMERIC fait échouer
+`pa.Table.from_pandas` (appelé par `GeoDataFrame.to_parquet`) avec
+`ArrowTypeError`, de façon déterministe et permanente (le worker refait le
+même backfill et rejoue les mêmes messages non ackés à chaque redémarrage).
+`_normalize_record` convertit tout `Decimal` en `float` ici, pour aligner
+le backfill sur le type déjà produit par le chemin live — pas une perte de
+précision par rapport à ce que ce dernier produit déjà."""
+from decimal import Decimal
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.cdc.parquet_writer import ChangeRow
 from app.collections.ddl import quote_ident
+
+
+def _normalize_record(record: dict) -> dict:
+    """Convertit toute valeur `decimal.Decimal` du dict en `float`, générique
+    (aucune colonne codée en dur) — toute colonne NUMERIC/DECIMAL de
+    n'importe quelle table backfillée peut être concernée, pas seulement
+    celle qui a déclenché le rapport initial."""
+    return {
+        k: float(v) if isinstance(v, Decimal) else v
+        for k, v in record.items()
+    }
 
 
 def current_wal_lsn(session: Session) -> int:
@@ -43,7 +71,7 @@ def backfill_table(
     rows = session.execute(text(f'SELECT * FROM public.{t}')).mappings().all()
     out = []
     for r in rows:
-        record = dict(r)
+        record = _normalize_record(dict(r))
         geom_wkb_hex = record.pop(geometry_column, None) if geometry_column else None
         pk_value = record.get(pk_column)
         out.append(ChangeRow(
