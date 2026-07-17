@@ -1,0 +1,56 @@
+{
+  "title": "GeoStudio — Jobs",
+  "uid": "geostudio-jobs",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["geostudio", "sp10b"],
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Backlog par file",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "geostudio_jobs_backlog",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Durée des jobs (traces)",
+      "type": "traces",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "queryType": "traceqlSearch",
+          "query": "{name=~\"procrastinate\\\\.job\\\\..*\"}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Échecs de jobs (spans ERROR)",
+      "type": "traces",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "queryType": "traceqlSearch",
+          "query": "{name=~\"procrastinate\\\\.job\\\\..*\" && status=error}"
+        }
+      ]
+    }
+  ]
+}

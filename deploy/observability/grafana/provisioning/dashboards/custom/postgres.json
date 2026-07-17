@@ -1,0 +1,56 @@
+{
+  "title": "GeoStudio — Postgres",
+  "uid": "geostudio-postgres",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["geostudio", "sp10b"],
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Connexions actives (gis)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "pg_stat_database_numbackends{datname=\"gis\"}",
+          "legendFormat": "connexions"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Taux de cache hit",
+      "type": "timeseries",
+      "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(rate(pg_stat_database_blks_hit{datname=\"gis\"}[5m])) / (sum(rate(pg_stat_database_blks_hit{datname=\"gis\"}[5m])) + sum(rate(pg_stat_database_blks_read{datname=\"gis\"}[5m])))",
+          "legendFormat": "cache hit"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Taille de la base (gis, bytes)",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "pg_database_size_bytes{datname=\"gis\"}",
+          "legendFormat": "taille"
+        }
+      ]
+    }
+  ]
+}
