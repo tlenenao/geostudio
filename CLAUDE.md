@@ -837,9 +837,61 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   fragile aux query strings ailleurs dans `mocks.ts`, non déclenché
   actuellement. **422 tests cœur passed/65 skipped** (410+5+1+1+2+2+1),
   **477 tests shell** (475+2), **37/37 specs E2E**. Poussé sur `dev`.
-  **SP-10a est clos ; SP-10b (profil compose `--profile observability`,
-  dashboards, alertes SLO — spec déjà écrite) reste à planifier et
-  exécuter.**
+  **SP-10a est clos.**
+- **SP-10b livré et clos** (2026-07-17, cf. spec
+  `docs/superpowers/specs/2026-07-17-sp10b-observabilite-dashboards-slo-design.md`
+  et plan `docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo.md`) :
+  observabilité packagée — un opérateur qui lance `docker compose --profile
+  observability up` obtient 4 dashboards Grafana (cœur, Martin, jobs,
+  Postgres) alimentés en données réelles, 4 SLO visibles dans Grafana
+  Alerting, et peut déclencher une alerte de test de façon reproductible,
+  sans rien changer à un `docker compose up` classique. Service
+  `otel-lgtm` (Prometheus/Loki/Tempo/Grafana packagés, port hôte Grafana
+  `3001` — `3000` déjà pris par `martin`) + `postgres-exporter`, tous deux
+  `profiles: ["observability"]` ; `core`/`worker` gagnent un export OTLP
+  inconditionnel (`http://otel-lgtm:4318`, sans risque si non démarré —
+  vérifié empiriquement, `/health` reste rapide) ; `martin` bascule en
+  `v0.18.0` (seule version exposant `/_/metrics`, `v0.13.0` ne l'expose
+  pas). Config du collecteur OTel étendue (scrape Prometheus de
+  `martin`/`postgres-exporter`, receiver nommé `prometheus/geostudio`).
+  Nouveau `geostudio.jobs.backlog` (`ObservableGauge`, compte les jobs
+  procrastinate `todo`/`doing` par file, `unit=""` — pas `"1"` — pour éviter
+  le suffixe `_ratio` de la convention de nommage OTel→Prometheus). 4
+  dashboards provisionnés par fichiers (Martin : 3 panneaux seulement, pas
+  de cache-hit, métrique inexistante côté Martin) + 5 règles d'alerte
+  Grafana (4 SLO réels + 1 règle de test toujours vraie, `isPaused: true`
+  par défaut — preuve reproductible que le pipeline d'alerting fonctionne,
+  jamais active en continu). Plan écrit avec 8 corrections empiriques
+  documentées vs la spec initiale (version Martin, absence de cache-hit,
+  nom du datasource Prometheus embarqué, layout de montage des dashboards
+  Grafana — provider au niveau racine, JSON dans un sous-dossier séparé —,
+  port Grafana, suffixe `_ratio`, colonne `queue_name` vs `queue`,
+  non-idempotence de `apply_schema()`). Exécuté en
+  subagent-driven-development (6 tâches, revue par tâche + revue finale de
+  branche modèle opus). Aucun défaut Critical/Important sur les 6 tâches ni
+  en revue finale — seuls des Minor cosmétiques/défensifs, 2 corrigés dans
+  la foulée (coquille accentuée `géostudio_jobs_backlog` dans un docstring,
+  garde `try/except` sur le callback de la gauge si `procrastinate_jobs`
+  n'existe pas encore — pertinent car l'export OTLP est désormais
+  inconditionnel). **Task 6 (validation empirique bout en bout contre la
+  vraie stack) a confirmé les 5 critères d'acceptation** : dashboards
+  alimentés (vérifié aussi en insérant une ligne de test dans
+  `procrastinate_jobs`), traçage bout en bout avec spans SQL sous HTTP
+  (`trace_id` réel documenté), 4 SLO visibles et évalués, alerte de test
+  dépausée temporairement puis observée `firing` (fichier reverté avant
+  commit), `docker compose up` par défaut inchangé. **Point de suivi
+  hors-périmètre signalé, non corrigé par cette branche** : le service
+  `worker` entre en boucle de redémarrage après un premier succès sous le
+  profil observability (`schema --apply && worker` non idempotent une fois
+  les types procrastinate créés) — vérifié par `git log -p` comme
+  pré-existant depuis SP-6a/SP-7, non touché par SP-10b
+  (`register_jobs_backlog_gauge` vit uniquement dans `app.main`, jamais
+  dans `app.jobs`) ; n'affecte aucun des 5 critères d'acceptation, mais un
+  déploiement réel laissé longtemps up pourrait perdre silencieusement son
+  worker d'ingestion après ce premier crash — à traiter dans une session
+  dédiée. **422 tests cœur passed/66 skipped** (422+1 nouveau test postgis
+  skippé sans DB, 488 passed avec DB réelle), `lint-imports` clean. Poussé
+  sur `dev`.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
