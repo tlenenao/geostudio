@@ -190,3 +190,34 @@ def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
         unit="",
         description="Jobs procrastinate en attente ou en cours, par file",
     )
+
+
+def register_cdc_lag_gauge(get_lag_seconds, *, meter=None) -> None:
+    """ObservableGauge geostudio.cdc.lag_seconds (SP-11a), un point de donnée
+    par collection (attribut collection_id) — écart en secondes entre
+    l'horloge murale et l'horodatage du dernier flush GeoParquet réussi pour
+    cette collection. `get_lag_seconds` est un callable fourni par le
+    cdc-worker (état en mémoire du process, pas une requête DB —
+    contrairement à register_jobs_backlog_gauge) qui retourne
+    {collection_id: lag_secondes} à l'instant de l'appel ; c'est lui qui
+    calcule time.time() - last_flush_ts, pas ce module, pour rester
+    testable sans horloge réelle (cf. test_observability_cdc_lag.py)."""
+    from opentelemetry.metrics import Observation
+
+    meter = meter or metrics.get_meter(__name__)
+
+    def _callback(options):
+        return [
+            Observation(lag, {"collection_id": collection_id})
+            for collection_id, lag in get_lag_seconds().items()
+        ]
+
+    meter.create_observable_gauge(
+        "geostudio.cdc.lag_seconds",
+        callbacks=[_callback],
+        unit="s",
+        description=(
+            "Écart entre l'horloge murale et le dernier flush GeoParquet "
+            "réussi, par collection"
+        ),
+    )
