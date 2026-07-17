@@ -49,7 +49,51 @@ d'être absorbé et pousse `cur.wal_end` à une valeur qui avance réellement
 délai aussi court que 50ms (`_SETTLE_S` prend une marge à 100ms). Compromis
 assumé : ce settle ajoute ~100ms de latence par message reçu (acceptable
 pour ce produit, pas un système haute fréquence) ; un message supplémentaire
-capté pendant ce settle est traité lui aussi, jamais perdu."""
+capté pendant ce settle est traité lui aussi, jamais perdu.
+
+INVARIANT INTER-MESSAGES (important pour Task 8, backfill/dedup — pas
+encore écrite) : quand le settle capte un message "extra" (une deuxième
+transaction, potentiellement indépendante, arrivée dans la fenêtre de
+~100ms), `msg` ET `extra` sont tous deux tagués avec la MÊME valeur de
+`lsn` (`cur.wal_end`, lue une seule fois — cf. `stream_changes` ci-dessous).
+Deux transactions réellement différentes peuvent donc porter un
+`ChangeRow.lsn` identique. L'ORDRE D'AJOUT est préservé (`msg` est toujours
+traité/bufferisé avant `extra` — cf. `on_message(msg...)` puis
+`on_message(extra...)` dans `stream_changes`) : c'est cet ordre, PAS la
+valeur numérique de `_lsn`, qui fait foi pour départager deux lignes de
+même LSN. Toute logique future de dédoublonnage/backfill qui réduit par
+`(pk, max(_lsn))` DOIT traiter les ex-aequo comme "dernier écrit gagne par
+ordre d'ajout" et non prendre un maximum arbitraire — une réduction naïve
+façon `groupby(pk)['_lsn'].idxmax()` résout les ex-aequo à la PREMIÈRE
+occurrence rencontrée, ce qui garderait silencieusement une ligne PÉRIMÉE
+au lieu de la plus récente pour deux modifications rapprochées du même
+enregistrement tombées dans la même fenêtre de settle.
+
+DÉBIT MESURÉ (review Task 7, Finding 2 — l'estimation a priori de
+"10-20 messages/s" au design n'avait jamais été mesurée réellement ; mesure
+empirique faite après coup avec `core/scripts/measure_cdc_consumer_throughput.py`,
+contre un PostGIS jetable réel, rafales de N INSERT individuels — 1 commit
+chacun, simulant N écritures OGC API Features séparées) : le débit réel est
+NETTEMENT PLUS ÉLEVÉ que l'estimation a priori, parce que celle-ci supposait
+un settle plein (~100ms) payé pour CHAQUE message, alors qu'en pratique
+`select.select(..., _SETTLE_S)` retourne dès que le socket a déjà des
+octets en attente (ce qui est le cas en continu pendant une rafale déjà
+écrite) — le coût du settle n'est réellement payé en entier que lorsque le
+flux redevient calme entre deux messages. Mesuré : rafale de 100 messages
+(5 runs indépendants) → 61 à 70 messages/s (médiane ~65/s, ~1.4-1.6s de lag
+total pour consommer toute la rafale) ; rafale de 300 messages → ~210
+messages/s (le coût du settle s'amortit encore mieux sur une rafale plus
+large et continue). Aucune perte de données observée sur aucun run (contenu
+intégral vérifié). Verdict : ces chiffres sont ACCEPTABLES pour la portée
+affichée de ce produit (pas un système haute fréquence — cf. arbitrages
+CLAUDE.md) ; un burst de 100 écritures individuelles absorbé en ~1.5s est
+largement sous tout seuil de rafale réaliste pour ce produit. Mitigation
+déjà en place si le débit réel devait un jour dépasser ce qui est mesuré
+ici : `geostudio.cdc.lag_seconds` (Task 3, déjà mergée) rend le retard
+observable en production — un consommateur qui prend du retard le fait
+VISIBLEMENT (gauge qui grimpe), pas silencieusement, et ne perd aucune
+donnée dans l'intervalle (le slot de réplication retient tout jusqu'à
+l'ack, le buffer en mémoire n'est jamais vidé avant un flush réussi)."""
 import json
 import select
 import time
