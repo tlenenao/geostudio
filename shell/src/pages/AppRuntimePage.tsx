@@ -15,7 +15,7 @@ registerCounterWcExampleWidget();
 
 export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) {
   const itemQuery = useItem(pk);
-  const query = useAppConfig(pk, { enabled: itemQuery.isSuccess });
+  const query = useAppConfig(pk, { enabled: itemQuery.isSuccess, mode: "runtime" });
   const navigate = useNavigate();
 
   const extensionsQuery = useActiveExtensions();

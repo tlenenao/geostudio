@@ -2424,6 +2424,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,

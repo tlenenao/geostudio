@@ -1,0 +1,145 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: SLO
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: slo-api-features-latency-p95
+        title: "SLO: latence API Features P95 < 200ms"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              editorMode: code
+              expr: histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{http_route=~"/collections/.*/items.*"}[5m])) by (le))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [200]}
+              refId: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: warning, slo: api-features-latency}
+        annotations: {summary: "Latence P95 des routes OGC API Features au-dessus de 200ms depuis 5 minutes"}
+        isPaused: false
+
+      - uid: slo-martin-tiles-latency-p95
+        title: "SLO: latence tuiles Martin P95 < 50ms"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              editorMode: code
+              expr: histogram_quantile(0.95, sum(rate(martin_http_requests_duration_seconds_bucket{endpoint="/{source_ids}/{z}/{x}/{y}"}[5m])) by (le))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}
+              refId: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: warning, slo: martin-tiles-latency}
+        annotations: {summary: "Latence P95 des tuiles Martin au-dessus de 50ms depuis 5 minutes"}
+        isPaused: false
+
+      - uid: slo-jobs-backlog
+        title: "SLO: backlog de jobs sous seuil"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              editorMode: code
+              expr: sum(geostudio_jobs_backlog)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                # Seuil provisoire (aucun trafic réel pour le calibrer) —
+                # ajustable sans changer la structure de la règle.
+                - evaluator: {type: gt, params: [50]}
+              refId: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: warning, slo: jobs-backlog}
+        annotations: {summary: "Backlog de jobs procrastinate au-dessus du seuil depuis 5 minutes"}
+        isPaused: false
+
+      - uid: slo-api-5xx-rate
+        title: "SLO: taux de 5xx < 1%"
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              editorMode: code
+              expr: sum(rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m])) / sum(rate(http_server_duration_milliseconds_count[5m]))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0.01]}
+              refId: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: critical, slo: api-5xx-rate}
+        annotations: {summary: "Taux de réponses 5xx au-dessus de 1% depuis 5 minutes"}
+        isPaused: false
+
+  # Dossier séparé, volontairement distinct de SLO : preuve reproductible
+  # que le pipeline d'alerting fonctionne bout en bout (condition
+  # mathématique triviale, ne dépend d'aucune métrique/trafic réel),
+  # PAS un SLO. isPaused: true par défaut — mettre à `false` juste avant
+  # une démo pour observer l'état "firing" en quelques secondes, remettre
+  # à `true` ensuite (ne pas laisser cette règle active en continu : elle
+  # sonne toujours vraie par construction, cf. Task 6 Step 5).
+  - orgId: 1
+    name: test-alert-do-not-keep-in-prod
+    folder: SLO-test-alert-do-not-keep-in-prod
+    interval: 10s
+    rules:
+      - uid: test-alert-always-firing
+        title: "TEST — preuve que le pipeline d'alerting fonctionne (pas un SLO)"
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: "__expr__"
+            model:
+              type: math
+              expression: "1 == 1"
+              refId: A
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels: {severity: test}
+        annotations: {summary: "Alerte de test toujours déclenchée — preuve du pipeline d'alerting, à laisser en pause hors démo"}
+        isPaused: true

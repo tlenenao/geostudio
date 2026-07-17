@@ -123,7 +123,7 @@ export interface ItemClient {
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
-  getAppConfig(pk: string): Promise<AppConfig>;
+  getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   featuresUrl(source: DataSource): string;

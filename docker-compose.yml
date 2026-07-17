@@ -73,7 +73,7 @@ services:
   # ─── Serveurs de tuiles ────────────────────────────────
 
   martin:
-    image: ghcr.io/maplibre/martin:v0.13.0
+    image: ghcr.io/maplibre/martin:v0.18.0
     environment:
       DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
     volumes:
@@ -120,6 +120,8 @@ services:
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
@@ -165,9 +167,42 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: geostudio-worker
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
     restart: unless-stopped
+
+  # ─── Observabilité (SP-10b, profil optionnel) ──────────
+
+  # Grafana (:3001 côté hôte — :3000 est déjà pris par martin ci-dessus,
+  # le port interne du conteneur reste 3000) + Prometheus/Loki/Tempo
+  # embarqués. `otelcol-config.yaml` remplace entièrement la config par
+  # défaut du collecteur embarqué (pas de fusion partielle) et lui ajoute
+  # le scraping Prometheus de martin/postgres-exporter (cf. Task 2).
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.11.4
+    profiles: ["observability"]
+    ports:
+      - "3001:3000"
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./deploy/observability/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml
+      - ./deploy/observability/grafana/provisioning/dashboards/geostudio-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/geostudio-dashboards.yaml
+      - ./deploy/observability/grafana/provisioning/dashboards/custom:/otel-lgtm/grafana/conf/provisioning/dashboards/custom
+      - ./deploy/observability/grafana/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting
+    networks: [gis-net]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    profiles: ["observability"]
+    environment:
+      DATA_SOURCE_NAME: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis?sslmode=disable
+    networks: [gis-net]
+    depends_on:
+      pgbouncer:
+        condition: service_started
 
   # ─── Auth ──────────────────────────────────────────────
 

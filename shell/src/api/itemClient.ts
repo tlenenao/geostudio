@@ -453,7 +453,8 @@ export function createItemClient(opts: {
       await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map: config });
     },
 
-    async getAppConfig(pk: string): Promise<AppConfig> {
+    async getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig> {
+      const qs = mode ? `?mode=${mode}` : "";
       const data = await request<{
         config?: {
           kind?: "app" | "dashboard";
@@ -464,7 +465,7 @@ export function createItemClient(opts: {
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
         };
-      }>("GET", `/configs/by-item/${pk}`);
+      }>("GET", `/configs/by-item/${pk}${qs}`);
       const c = data.config;
       if (!c?.layout) throw new Error("getAppConfig: config has no layout");
       return {

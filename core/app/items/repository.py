@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import procrastinate
+from opentelemetry import metrics
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,14 @@ from app.users.models import User
 logger = logging.getLogger(__name__)
 
 _RRF_CANDIDATE_LIMIT = 200
+
+_meter = metrics.get_meter(__name__)
+_items_created_counter = _meter.create_counter(
+    "geostudio.items.created", unit="1", description="Items created via REST or MCP",
+)
+_items_published_counter = _meter.create_counter(
+    "geostudio.configs.published", unit="1", description="Items patched with isPublished=True",
+)
 
 
 def _now() -> datetime:
@@ -75,6 +84,7 @@ def create_item(
     session.flush()
     session.refresh(item)
     _enqueue_embedding(item.id, tenant_id)
+    _items_created_counter.add(1)
     return item
 
 
@@ -217,6 +227,8 @@ def update_item(
         item.keywords = keywords
     if is_published is not None:
         item.is_published = is_published
+    if is_published is True:
+        _items_published_counter.add(1)
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
