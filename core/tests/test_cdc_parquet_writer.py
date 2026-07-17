@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import geopandas as gpd
@@ -98,6 +99,52 @@ def test_write_geoparquet_mixed_backfill_and_live_numeric_batch_does_not_crash(t
 
     gdf = gpd.read_parquet(path)
     assert list(gdf["score"]) == [1.5, 2.7]
+
+
+def test_write_geoparquet_mixed_backfill_and_live_timestamptz_batch_does_not_crash(tmp_path):
+    """Extension Critère 3 (même classe de bug, task-11-fix-report.md) :
+    mélange backfill (datetime.datetime -> str via _normalize_record) et
+    live (wal2json -> str via json.loads) pour la MÊME colonne TIMESTAMPTZ
+    "vu_le" de la table "points_interet", dans le même lot de flush. Le
+    payload wal2json ci-dessous utilise le format texte natif de Postgres
+    vérifié empiriquement (espace, pas "T" ; offset "+00", pas "+00:00") —
+    si _normalize_record produisait encore `.isoformat()` brut, les deux
+    chaînes ("2026-03-05T14:30:00+00:00" vs "2026-03-05 14:30:00+00")
+    resteraient homogènes en type (str/str, donc pas d'ArrowTypeError) mais
+    incohérentes en valeur ; ce test vérifie donc le CONTENU, pas seulement
+    l'absence de crash."""
+    backfill_record = _normalize_record({
+        "id": 1, "vu_le": datetime(2026, 3, 5, 14, 30, 0, tzinfo=timezone.utc),
+    })
+    assert isinstance(backfill_record["vu_le"], str)  # précondition du test
+    assert backfill_record["vu_le"] == "2026-03-05 14:30:00+00"
+    backfill_row = ChangeRow(
+        op="insert", lsn=100, ts=1.0, pk_column="id", pk_value=1,
+        columns=backfill_record, geometry_column=None, geometry_wkb_hex=None,
+    )
+
+    # Chemin live : payload wal2json réel décodé — même format texte natif
+    # Postgres (vérifié empiriquement contre wal2json réel, cf. docstring
+    # de app/cdc/backfill.py), pour la même colonne "vu_le".
+    payload = json.dumps({
+        "change": [{
+            "table": "points_interet",
+            "kind": "update",
+            "columnnames": ["id", "vu_le"],
+            "columnvalues": [1, "2026-03-05 15:00:00+00"],
+        }],
+    })
+    decoded = decode_wal2json_message(
+        payload, lsn=200, collection_meta={"points_interet": ("id", None)},
+    )
+    live_row = decoded[0].row
+    assert isinstance(live_row.columns["vu_le"], str)  # précondition du test
+
+    path = str(tmp_path / "mixed_timestamptz.parquet")
+    write_geoparquet([backfill_row, live_row], srid=4326, path=path)
+
+    gdf = gpd.read_parquet(path)
+    assert list(gdf["vu_le"]) == ["2026-03-05 14:30:00+00", "2026-03-05 15:00:00+00"]
 
 
 def test_write_geoparquet_roundtrip_preserves_crs_and_columns(tmp_path):
