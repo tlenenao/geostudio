@@ -213,6 +213,27 @@ def test_list_items_search_and_type_filter(session, tenant_and_user):
     assert [i.title for i in page.items] == ["Sales dashboard"]
 
 
+def test_update_item_patches_keywords_and_get_item_returns_them(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+
+    repo.update_item(
+        session, tenant_id=tenant.id, item_id=item.id,
+        title=None, abstract=None, keywords=["geo", "risques"], is_published=None,
+    )
+
+    result = repo.get_item(session, tenant_id=tenant.id, item_id=item.id)
+    assert result.keywords == ["geo", "risques"]
+
+
+def test_get_item_defaults_keywords_to_empty_list(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="X")
+
+    result = repo.get_item(session, tenant_id=tenant.id, item_id=item.id)
+    assert result.keywords == []
+
+
 def test_update_item_patches_fields(session, tenant_and_user):
     tenant, user = tenant_and_user
     item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Old title")

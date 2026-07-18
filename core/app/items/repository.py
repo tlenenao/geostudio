@@ -72,6 +72,7 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
         date=item.created_at.isoformat(),
         configId=None,
         isPublished=item.is_published,
+        keywords=item.keywords or [],
     )
 
 
