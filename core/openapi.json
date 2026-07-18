@@ -223,6 +223,15 @@
             "title": "Messages",
             "type": "array"
           },
+          "navigationMode": {
+            "default": "tabs",
+            "enum": [
+              "tabs",
+              "story"
+            ],
+            "title": "Navigationmode",
+            "type": "string"
+          },
           "pages": {
             "items": {
               "$ref": "#/components/schemas/Page"
@@ -1436,6 +1445,18 @@
             "title": "From",
             "type": "string"
           },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
           "to": {
             "title": "To",
             "type": "string"
@@ -1473,6 +1494,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "onEnter": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "title": "Onenter",
+            "type": "array"
           }
         },
         "required": [
