@@ -5,6 +5,7 @@ import { ItemDetailPage } from "../pages/ItemDetailPage";
 import { MapEditorPage } from "../pages/MapEditorPage";
 import { AppBuilderPage } from "../pages/AppBuilderPage";
 import { AppRuntimePage } from "../pages/AppRuntimePage";
+import { SitePublicPage } from "../pages/SitePublicPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
@@ -48,6 +49,11 @@ function AppRuntimeRoute() {
   return <AppRuntimePage pk={pk!} pageId={pageId} />;
 }
 
+function SitePublicRoute() {
+  const { slug } = useParams();
+  return <SitePublicPage slug={slug!} />;
+}
+
 function ProtectedLayout() {
   return (
     <RequireAuth>
@@ -70,6 +76,7 @@ export function AppRoutes() {
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
+      <Route path="/sites/:slug" element={<SitePublicRoute />} />
     </Routes>
   );
 }
