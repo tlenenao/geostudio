@@ -128,6 +128,7 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
       S3_UPLOADS_BUCKET: geostudio-uploads
+      S3_CDC_BUCKET: geostudio-cdc
     ports:
       - "8200:8200"
     networks: [gis-net]
@@ -160,13 +161,14 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m procrastinate --app app.jobs.app schema --apply &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
+      S3_CDC_BUCKET: geostudio-cdc
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
