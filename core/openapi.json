@@ -1576,6 +1576,19 @@
         "title": "Sharing",
         "type": "object"
       },
+      "SqlQueryBody": {
+        "properties": {
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "title": "SqlQueryBody",
+        "type": "object"
+      },
       "UserAdminPatch": {
         "properties": {
           "isAdmin": {
@@ -1723,6 +1736,54 @@
           }
         },
         "summary": "Landing Page"
+      }
+    },
+    "/analytics/sql": {
+      "post": {
+        "operationId": "analytics_sql_analytics_sql_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analytics Sql"
       }
     },
     "/collections": {
