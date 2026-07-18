@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-17 (mise à jour à chaque jalon)
+## État au 2026-07-18 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -891,6 +891,102 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   worker d'ingestion après ce premier crash — à traiter dans une session
   dédiée. **422 tests cœur passed/66 skipped** (422+1 nouveau test postgis
   skippé sans DB, 488 passed avec DB réelle), `lint-imports` clean. Poussé
+  sur `dev`.
+- **SP-11a livré et clos** (2026-07-17/18, cf. spec
+  `docs/superpowers/specs/2026-07-17-sp11a-spike-cdc-geoparquet-design.md`
+  et plan `docs/superpowers/plans/2026-07-17-sp11a-spike-cdc-geoparquet.md`) :
+  spike CDC + pipeline de réplication PostgreSQL → GeoParquet — un nouveau
+  service `cdc-worker` (connexion directe `postgis`, jamais pgbouncer)
+  réplique en continu les écritures de toute collection enregistrée vers
+  `s3://<bucket>/cdc/tenant_id=.../collection_id=.../dt=.../part-*.parquet`
+  via réplication logique Postgres (`wal2json`, gate A18/A27 franchi
+  empiriquement — spike réel 8/8 checks contre un PostGIS jetable
+  reconstruit avec `wal2json`). `core/app/cdc/` : `parquet_writer.py`
+  (écriture GeoParquet géré par geopandas/pyarrow, tombstone PK-seule sur
+  delete), `storage.py` (S3), `buffer.py` (bufferisation par table,
+  `safe_ack_lsn` re-dérivé indépendamment en revue — borné par le pending
+  le plus ancien tous tableaux confondus), `consumer.py` (décodage
+  wal2json, feedback de réplication via `cur.wal_end` — jamais `msg.
+  data_start`, déviation empirique critique trouvée par le spike), `backfill.py`
+  (backfill paresseux d'une collection tardive, normalisation Decimal/date/
+  timestamp/UUID→types natifs pour éviter un crash PyArrow), `main.py`
+  (assemblage, gauge `geostudio.cdc.lag_seconds` par collection). Publication
+  logique Postgres gérée par `app/collections/publication.py`, câblée à
+  l'enregistrement/désenregistrement d'une collection. Exécuté en
+  subagent-driven-development (11 tâches, revue par tâche + revue finale de
+  branche modèle opus). **1 FAIL réel trouvé en validation empirique finale
+  (Task 11, critère 3 : redémarrage sans perte après kill -9)**, corrigé en 3
+  commits revus (`c8d8289`/`448f50f`/`171f5dd`) : mélange `Decimal`(backfill)/
+  `float`(flux live) pour une colonne NUMERIC dans un même batch de flush →
+  crash PyArrow **permanent** (violait la garantie at-least-once) — généralisé
+  au passage à DATE/TIMESTAMP/UUID (`_pg_timestamp_str` reproduit le format
+  texte natif Postgres, troncature des zéros de fin des microsecondes).
+  Re-validation empirique finale : 5/5 critères PASS (écriture visible <5min,
+  collection tardive backfillée et suivie, redémarrage sans perte, gauge par
+  collection, `docker compose up` par défaut inchangé), 37/37 specs E2E.
+  **449 tests cœur passed/76 skipped** (512 avec DB réelle), lint-imports
+  clean. **Défaut pré-existant signalé, non corrigé** : le volume `pg-data`
+  du projet compose par défaut est cassé (`alembic_version` jamais stampée) —
+  réparation non destructive hors périmètre de cette branche. Poussé sur
+  `dev`.
+- **SP-11b livré et clos** (2026-07-18, cf. spec
+  `docs/superpowers/specs/2026-07-17-sp11b-compaction-analytique-duckdb-design.md`
+  et plan `docs/superpowers/plans/2026-07-18-sp11b-compaction-analytique-duckdb.md`) :
+  compaction GeoParquet + module analytique DuckDB — un widget Graphique/
+  Indicateur agrège désormais les données d'une collection via une nouvelle
+  API du cœur (`POST /collections/{id}/aggregate`, DuckDB in-process
+  interrogeant le GeoParquet CDC de SP-11a) au lieu de fetcher les features
+  brutes et d'agréger côté client, pendant qu'un job de compaction périodique
+  réduit le nombre de fichiers Parquet par partition. Deux pièces
+  indépendantes ne partageant que le layout S3 de SP-11a : (1) job
+  procrastinate périodique (nouvelle queue `cdc`, tourne dans le process
+  `worker` existant — jamais `cdc-worker`, occupé par la boucle de
+  réplication bloquante), `core/app/cdc/compaction.py` fusionne les petits
+  fichiers d'une partition en un seul, toujours écriture-avant-suppression
+  (sûreté à l'interruption re-dérivée indépendamment en revue — un crash
+  entre les deux laisse des doublons inoffensifs, jamais de perte), jamais
+  de déduplication/suppression de tombstone à l'écriture (la sémantique du
+  change-log reste inchangée) ; (2) nouveau domaine `core/app/analytics/`
+  (aucune dépendance à `app.cdc`) : connexion DuckDB in-process éphémère par
+  requête (`httpfs`+`spatial`), `run_collection_aggregate` réduit à l'état
+  courant par fenêtre SQL (`QUALIFY row_number() ... = 1`, tombstone exclue,
+  dans cet ordre avant tout filtre/group-by), noms de colonnes validés
+  contre le schéma introspecté avant toute interpolation SQL (même
+  frontière de confiance que `_where` pour `GET /items`), coercion
+  numérique `TRY_CAST(...AS DOUBLE)`+`COALESCE(...,0)`. Shell :
+  `queryDataSource` (source `statistics`) appelle le nouvel endpoint au
+  lieu d'agréger côté client — `aggregateRecords`/`reduceValues`/
+  `measureLabel` supprimés (code mort, aucun compat shim). Exécuté en
+  subagent-driven-development (11 tâches, revue par tâche + revue finale de
+  branche modèle opus). **Déviation empirique critique du spike d'ouverture
+  (Task 1, gate bloquante)** : l'incantation bbox présumée par le plan
+  (`ST_GeomFromWKB(...)`) ne fonctionne PAS contre un GeoParquet réel écrit
+  par geopandas — l'incantation retenue est la lecture directe de la
+  colonne géométrie comme `GEOMETRY` natif (DuckDB `spatial` la reconnaît
+  nativement) ; appliquée proactivement en Task 6, reproduite
+  indépendamment en revue (`ST_GeomFromWKB` sur une colonne déjà `GEOMETRY`
+  lève `BinderException`). **Revue finale de branche : 1 Important trouvé
+  et corrigé** (fix `fca6adb`, re-revue clean) : les extensions DuckDB
+  `httpfs`/`spatial` n'étaient pas embarquées dans l'image au build (le
+  docstring de `duckdb_conn.py` l'affirmait à tort) — un conteneur
+  fraîchement démarré aurait déclenché un `INSTALL` réseau vers
+  `extensions.duckdb.org` au premier `POST .../aggregate`, cassant
+  silencieusement tout widget Graphique/Indicateur en déploiement à égress
+  restreint ; corrigé par une étape `RUN` dédiée dans `core/Dockerfile`
+  juste après l'installation des paquets Python, vérifié empiriquement à
+  deux reprises indépendantes (conteneur réel lancé avec `--network none`,
+  extensions chargées avec succès hors-ligne). Script de performance réel
+  contre un scénario multi-fichiers réaliste (900k lignes backfill + 200
+  lots incrémentaux de 500 lignes = 1M lignes/201 fichiers) : **~0.28s
+  avant compaction, ~0.13s après**, très sous le budget de 2s. **482 tests
+  cœur passed/80 skipped**, lint-imports clean, **477 tests shell** + tsc/
+  build clean, **37/37 specs E2E**. 4 Minor notés en revue finale, non
+  corrigés (déjà tracés/acceptés depuis la revue de Task 6 : validation
+  `agg` invalide sur collection vide retourne `[]` au lieu de 400, sans
+  risque de sécurité ; construction du glob dupliquée entre deux fonctions ;
+  agrégats numériques sérialisés en float même pour des sommes entières ;
+  test de sûreté à l'interruption vérifié via un helper pandas plutôt que
+  la vraie requête DuckDB `QUALIFY`, logiquement équivalent ici). Poussé
   sur `dev`.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
