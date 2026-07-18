@@ -15,6 +15,7 @@ from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import ItemAccessFacts
 from app.sharing.models import GroupMember, ItemShare
+from app.tenants.repository import DEFAULT_TENANT_SLUG
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,41 @@ def list_items(
         query.order_by(Item.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
     items = [_to_read(item, owner_username) for item, owner_username in rows]
+    return ItemPage(items=items, total=total, page=page, pageSize=page_size)
+
+
+def list_published_items(
+    session: Session,
+    *,
+    tenant_id: str = DEFAULT_TENANT_SLUG,
+    resource_type: str | None = None,
+    tag: str | None = None,
+    page: int = 1,
+    page_size: int = 12,
+) -> ItemPage:
+    # Published-only, tenant-scoped, anonymous-safe: deliberately NOT a
+    # variant of list_items() (which is gated by current_user_id/scope) —
+    # this is the sole entry point for GET /public/items, so it must never
+    # accidentally regain access to unpublished or cross-tenant rows.
+    query = (
+        select(Item, User.username)
+        .join(User, User.id == Item.owner_id)
+        .where(Item.tenant_id == tenant_id, Item.is_published.is_(True))
+    )
+    if resource_type:
+        query = query.where(Item.resource_type == resource_type)
+
+    rows = session.execute(query.order_by(Item.created_at.desc())).all()
+    # Tag filter done in Python, not as a DB-side JSON-contains predicate:
+    # portable across SQLite (tests) and Postgres (prod) without a
+    # dialect-specific operator. Small scale (published items of one
+    # tenant), so recomputing `total` post-filter is cheap.
+    if tag:
+        rows = [row for row in rows if tag in (row[0].keywords or [])]
+
+    total = len(rows)
+    page_rows = rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
+    items = [_to_read(item, owner_username) for item, owner_username in page_rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 

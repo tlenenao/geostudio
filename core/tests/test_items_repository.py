@@ -404,3 +404,63 @@ def test_update_item_increments_published_counter_only_when_publishing(session, 
         title=None, abstract=None, keywords=None, is_published=True,
     )
     mock_counter.add.assert_called_once_with(1)
+
+
+def test_list_published_items_returns_only_published(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    published = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Publie")
+    published.is_published = True
+    repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Brouillon")
+    session.commit()
+
+    page = repo.list_published_items(session, tenant_id=tenant.id, page=1, page_size=12)
+    assert [i.title for i in page.items] == ["Publie"]
+
+
+def test_list_published_items_filters_by_resource_type(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    app_item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="App")
+    app_item.is_published = True
+    dash_item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="dashboard", title="Dashboard")
+    dash_item.is_published = True
+    session.commit()
+
+    page = repo.list_published_items(session, tenant_id=tenant.id, resource_type="dashboard", page=1, page_size=12)
+    assert [i.title for i in page.items] == ["Dashboard"]
+
+
+def test_list_published_items_filters_by_tag(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    tagged = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Avec tag")
+    tagged.is_published = True
+    tagged.keywords = ["risques"]
+    untagged = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Sans tag")
+    untagged.is_published = True
+    session.commit()
+
+    page = repo.list_published_items(session, tenant_id=tenant.id, tag="risques", page=1, page_size=12)
+    assert [i.title for i in page.items] == ["Avec tag"]
+
+
+def test_list_published_items_paginates(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    for i in range(3):
+        item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title=f"Item {i}")
+        item.is_published = True
+    session.commit()
+
+    page = repo.list_published_items(session, tenant_id=tenant.id, page=1, page_size=2)
+    assert page.total == 3
+    assert len(page.items) == 2
+    assert page.page == 1
+    assert page.pageSize == 2
+
+
+def test_list_published_items_defaults_to_default_tenant(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    item = repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Publie")
+    item.is_published = True
+    session.commit()
+
+    page = repo.list_published_items(session, page=1, page_size=12)
+    assert [i.title for i in page.items] == ["Publie"]
