@@ -773,6 +773,33 @@ test("getCollectionPermission defaults to false when the field is absent", async
   expect(await makeClient().getCollectionPermission("incidents")).toBe(false);
 });
 
+test("getCollection returns the full collection metadata for a single id", async () => {
+  server.use(
+    http.get("https://core.test/collections/parcs", () =>
+      HttpResponse.json({
+        id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
+        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: false, featureCount: 2, owner: null,
+      }),
+    ),
+  );
+  const col = await makeClient(undefined).getCollection("parcs");
+  expect(col).toEqual({
+    id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
+    isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+    canWrite: false, featureCount: 2, owner: null,
+  });
+});
+
+test("getCollection propagates a 404 for a non-public or unknown collection", async () => {
+  server.use(
+    http.get("https://core.test/collections/private-x", () =>
+      HttpResponse.json({ detail: "collection not found" }, { status: 404 }),
+    ),
+  );
+  await expect(makeClient(undefined).getCollection("private-x")).rejects.toThrow();
+});
+
 test("createConfigItem seeds dataSources and messages from a template that defines them", async () => {
   let body: any = null;
   server.use(
