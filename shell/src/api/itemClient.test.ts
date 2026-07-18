@@ -1029,3 +1029,34 @@ test("createConfigItem omits slug from the POST body when not given", async () =
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" });
   expect(body).not.toHaveProperty("slug");
 });
+
+test("listPublicItems calls GET /public/items with type/tag/page/pageSize", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/public/items", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 6 });
+    }),
+  );
+  await makeClient().listPublicItems({ type: "app", tag: "risques", page: 1, pageSize: 6 });
+  expect(url).toContain("type=app");
+  expect(url).toContain("tag=risques");
+  expect(url).toContain("page=1");
+  expect(url).toContain("pageSize=6");
+});
+
+test("listPublicItems round-trips keywords from the response", async () => {
+  server.use(
+    http.get("https://core.test/public/items", () =>
+      HttpResponse.json({
+        items: [{
+          pk: "8", resourceType: "app", title: "Carte des risques", abstract: "", owner: "alice",
+          thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: true, keywords: ["risques"],
+        }],
+        total: 1, page: 1, pageSize: 12,
+      }),
+    ),
+  );
+  const page = await makeClient().listPublicItems();
+  expect(page.items[0].keywords).toEqual(["risques"]);
+});
