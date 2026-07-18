@@ -6,6 +6,7 @@ from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
+from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import can
@@ -69,11 +70,16 @@ def update_item(
     if not can(session, user_id=user.id, action="write", item=facts):
         raise HTTPException(status_code=403, detail="not allowed to modify this item")
 
-    result = repo.update_item(
-        session, tenant_id=user.tenant_id, item_id=item_id,
-        title=patch.title, abstract=patch.abstract, keywords=patch.keywords,
-        is_published=patch.isPublished,
-    )
+    try:
+        result = repo.update_item(
+            session, tenant_id=user.tenant_id, item_id=item_id,
+            title=patch.title, abstract=patch.abstract, keywords=patch.keywords,
+            is_published=patch.isPublished, slug=patch.slug,
+        )
+    except SlugCollisionError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    except InvalidSlugError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
 

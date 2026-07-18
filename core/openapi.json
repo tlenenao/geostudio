@@ -191,7 +191,8 @@
             "enum": [
               "app",
               "dashboard",
-              "map"
+              "map",
+              "site"
             ],
             "title": "Kind",
             "type": "string"
@@ -222,6 +223,15 @@
             },
             "title": "Messages",
             "type": "array"
+          },
+          "navigationMode": {
+            "default": "tabs",
+            "enum": [
+              "tabs",
+              "story"
+            ],
+            "title": "Navigationmode",
+            "type": "string"
           },
           "pages": {
             "items": {
@@ -383,6 +393,17 @@
         "properties": {
           "config": {
             "$ref": "#/components/schemas/BuilderConfig"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "title": {
             "title": "Title",
@@ -985,6 +1006,17 @@
             "title": "Resourcetype",
             "type": "string"
           },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
           "thumbnailUrl": {
             "anyOf": [
               {
@@ -1052,6 +1084,17 @@
               }
             ],
             "title": "Keywords"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "title": {
             "anyOf": [
@@ -1436,6 +1479,18 @@
             "title": "From",
             "type": "string"
           },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
           "to": {
             "title": "To",
             "type": "string"
@@ -1473,6 +1528,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "onEnter": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "title": "Onenter",
+            "type": "array"
           }
         },
         "required": [
@@ -3967,6 +4029,45 @@
           }
         },
         "summary": "Get Public Item"
+      }
+    },
+    "/public/sites/{slug}": {
+      "get": {
+        "operationId": "get_public_site_public_sites__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Public Site"
       }
     },
     "/schemas/app-config": {

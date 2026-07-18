@@ -19,6 +19,14 @@ def get_public_item(item_id: str, session: Session = Depends(get_session)) -> It
     return result
 
 
+@router.get("/sites/{slug}", response_model=ItemRead)
+def get_public_site(slug: str, session: Session = Depends(get_session)) -> ItemRead:
+    result = items_repo.get_published_site_by_slug(session, slug=slug)
+    if result is None:
+        raise HTTPException(status_code=404, detail="site not found")
+    return result
+
+
 @router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
 def get_public_config_by_item(item_id: str, session: Session = Depends(get_session)) -> ConfigRead:
     item = items_repo.get_published_item(session, item_id=item_id)

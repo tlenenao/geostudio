@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.items.models import Item
 from app.items.schemas import ItemPage, ItemRead
+from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import ItemAccessFacts
@@ -63,6 +64,7 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
     return ItemRead(
         pk=item.id,
         resourceType=item.resource_type,
+        slug=item.slug,
         title=item.title,
         abstract=item.abstract,
         owner=owner_username,
@@ -73,12 +75,46 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
     )
 
 
+def slug_exists(
+    session: Session, *, tenant_id: str, slug: str, exclude_item_id: str | None = None
+) -> bool:
+    stmt = select(Item.id).where(Item.tenant_id == tenant_id, Item.slug == slug)
+    if exclude_item_id is not None:
+        stmt = stmt.where(Item.id != exclude_item_id)
+    return session.execute(stmt).first() is not None
+
+
+def ensure_unique_slug(session: Session, *, tenant_id: str, base: str) -> str:
+    if not slug_exists(session, tenant_id=tenant_id, slug=base):
+        return base
+    n = 2
+    while slug_exists(session, tenant_id=tenant_id, slug=f"{base}-{n}"):
+        n += 1
+    return f"{base}-{n}"
+
+
+def _resolve_site_slug(
+    session: Session, *, tenant_id: str, title: str, slug: str | None
+) -> str:
+    if slug is None:
+        return ensure_unique_slug(session, tenant_id=tenant_id, base=slugify(title))
+    if not is_valid_slug(slug):
+        raise InvalidSlugError(f"slug invalide: {slug!r}")
+    if slug_exists(session, tenant_id=tenant_id, slug=slug):
+        raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
+    return slug
+
+
 def create_item(
-    session: Session, *, tenant_id: str, owner_id: str, resource_type: str, title: str
+    session: Session, *, tenant_id: str, owner_id: str, resource_type: str, title: str,
+    slug: str | None = None,
 ) -> Item:
+    resolved_slug = None
+    if resource_type == "site":
+        resolved_slug = _resolve_site_slug(session, tenant_id=tenant_id, title=title, slug=slug)
     item = Item(
         id=uuid.uuid4().hex, tenant_id=tenant_id, owner_id=owner_id,
-        resource_type=resource_type, title=title,
+        resource_type=resource_type, title=title, slug=resolved_slug,
     )
     session.add(item)
     session.flush()
@@ -213,6 +249,7 @@ def update_item(
     abstract: str | None,
     keywords: list[str] | None,
     is_published: bool | None,
+    slug: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
@@ -229,6 +266,12 @@ def update_item(
         item.is_published = is_published
     if is_published is True:
         _items_published_counter.add(1)
+    if slug is not None:
+        if not is_valid_slug(slug):
+            raise InvalidSlugError(f"slug invalide: {slug!r}")
+        if slug_exists(session, tenant_id=tenant_id, slug=slug, exclude_item_id=item_id):
+            raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
+        item.slug = slug
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
@@ -241,6 +284,29 @@ def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
         .where(Item.id == item_id, Item.is_published.is_(True))
+    ).first()
+    if row is None:
+        return None
+    item, owner_username = row
+    return _to_read(item, owner_username)
+
+
+def get_published_site_by_slug(
+    session: Session, *, slug: str, tenant_id: str = "default"
+) -> ItemRead | None:
+    # tenant_id filtré explicitement (contrairement à get_published_item, qui
+    # ne le fait pas) : le slug n'est unique que PAR tenant (cf. slug_exists),
+    # donc sans ce filtre deux tenants pourraient se voler mutuellement leurs
+    # slugs via cette route publique.
+    row = session.execute(
+        select(Item, User.username)
+        .join(User, User.id == Item.owner_id)
+        .where(
+            Item.resource_type == "site",
+            Item.slug == slug,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+        )
     ).first()
     if row is None:
         return None

@@ -190,6 +190,10 @@ export function createItemClient(opts: {
       return request<Item>("GET", `/items/${pk}`);
     },
 
+    async getItemBySlug(slug: string): Promise<Item> {
+      return request<Item>("GET", `/public/sites/${encodeURIComponent(slug)}`);
+    },
+
     async getMe(): Promise<Me> {
       const data = await request<{
         username: string;
@@ -211,18 +215,23 @@ export function createItemClient(opts: {
       return request<InstanceInfo>("GET", "/instance");
     },
 
-    async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {
+    async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item> {
       const template = input.templateId ? getTemplate(input.templateId) : undefined;
+      const firstPageLayout = template?.pages?.[0]?.layout;
       const config = {
         version: 1,
         kind: input.kind,
         theme: template?.theme ?? {},
         dataSources: template?.dataSources ?? [],
-        layout: template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
+        layout: firstPageLayout ?? template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
         messages: template?.messages ?? [],
+        pages: template?.pages ?? [],
+        navigationMode: template?.navigationMode ?? "tabs",
       };
+      const payload: Record<string, unknown> = { title: input.title, config };
+      if (input.slug) payload.slug = input.slug;
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST", `/configs`, payload,
       );
       if (!data.itemId) {
         throw new Error("createConfigItem: core returned no itemId");
@@ -230,6 +239,7 @@ export function createItemClient(opts: {
       return {
         pk: String(data.itemId),
         resourceType: data.kind as ResourceType,
+        slug: input.slug,
         title: input.title,
         abstract: "",
         owner: input.owner,
@@ -418,6 +428,7 @@ export function createItemClient(opts: {
           pages?: Page[];
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
+          navigationMode?: "tabs" | "story";
         };
       }>("GET", `/configs/by-item/${pk}${qs}`);
       const c = data.config;
@@ -430,6 +441,34 @@ export function createItemClient(opts: {
         pages: c.pages,
         variables: c.variables,
         layout: c.layout,
+        navigationMode: c.navigationMode,
+      };
+    },
+
+    async getPublicAppConfig(pk: string): Promise<AppConfig> {
+      const data = await request<{
+        config?: {
+          kind?: "app" | "dashboard";
+          theme?: Theme;
+          dataSources?: DataSource[];
+          messages?: ActionMessage[];
+          pages?: Page[];
+          variables?: Variable[];
+          layout?: AppConfig["layout"] | null;
+          navigationMode?: "tabs" | "story";
+        };
+      }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);
+      const c = data.config;
+      if (!c?.layout) throw new Error("getPublicAppConfig: config has no layout");
+      return {
+        kind: c.kind ?? "app",
+        theme: c.theme ?? {},
+        dataSources: c.dataSources ?? [],
+        messages: c.messages ?? [],
+        pages: c.pages,
+        variables: c.variables,
+        layout: c.layout,
+        navigationMode: c.navigationMode,
       };
     },
 
@@ -443,6 +482,7 @@ export function createItemClient(opts: {
         pages: config.pages,
         variables: config.variables,
         layout: config.layout,
+        navigationMode: config.navigationMode,
       });
     },
 

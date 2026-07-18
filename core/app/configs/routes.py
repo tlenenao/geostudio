@@ -13,6 +13,7 @@ from app.configs.extension_permissions import ExtensionPermissionError, validate
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
+from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -27,6 +28,7 @@ _apps_runtime_executions_counter = _meter.create_counter(
 class CreateConfigRequest(BaseModel):
     title: str
     config: BuilderConfig
+    slug: str | None = None
 
 
 class RollbackRequest(BaseModel):
@@ -69,10 +71,16 @@ def create_config(
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
-    item = items_repo.create_item(
-        session, tenant_id=user.tenant_id, owner_id=user.id,
-        resource_type=request.config.kind, title=request.title,
-    )
+    try:
+        item = items_repo.create_item(
+            session, tenant_id=user.tenant_id, owner_id=user.id,
+            resource_type=request.config.kind, title=request.title,
+            slug=request.slug,
+        )
+    except SlugCollisionError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    except InvalidSlugError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
     result = repo.create_config(session, request.config, item_id=item.id, tenant_id=user.tenant_id)
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",

@@ -111,7 +111,7 @@ export function AppRenderer({
   // the first page. A widget-triggered navigation (e.g. the Navigation widget)
   // calls handleNavigate, which either bubbles to the controlling parent
   // (editor page selector, runtime route) or updates this local fallback.
-  const pages = getPages(config);
+  const pages = useMemo(() => getPages(config), [config]);
   const [internalPageId, setInternalPageId] = useState<string | null>(null);
   const activePageId = pageId ?? internalPageId ?? pages[0].id;
   const activeLayout = getPageLayout(config, activePageId);
@@ -121,6 +121,18 @@ export function AppRenderer({
     else setInternalPageId(nextPageId);
   }
 
+  const storyMode = config.navigationMode === "story" && mode !== "edit";
+  const chapterIndex = pages.findIndex((p) => p.id === activePageId);
+
+  // À l'entrée d'un chapitre (preview/runtime, mode story), déclenche ses onEnter.
+  // Ré-émis à chaque entrée, y compris en revenant en arrière — cohérent avec
+  // map.flyTo qui est idempotent (comportement par défaut acté au plan).
+  useEffect(() => {
+    if (!storyMode) return;
+    const page = pages.find((p) => p.id === activePageId);
+    if (page?.onEnter && page.onEnter.length > 0) bus.dispatch(page.onEnter);
+  }, [storyMode, activePageId, pages, bus]);
+
   function handleMove(id: string, dx: number, dy: number) {
     if (!onChange) return;
     const items = activeLayout.items.map((it) => (it.id === id ? moveItemAt(it, bp, dx, dy) : it));
@@ -128,26 +140,49 @@ export function AppRenderer({
   }
 
   return (
-    <div ref={containerRef} className="h-full w-full bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
-      <ActionBusProvider bus={bus}>
-        <VariablesProvider variables={config.variables ?? []}>
-          <ActionConditionBridge bus={bus} />
-          {(config.variables ?? []).map((v) => (
-            <VariableBusBridge key={v.id} variable={v} bus={bus} />
-          ))}
-          <DataProvider sources={config.dataSources}>
-            <GridCanvas
-              items={activeLayout.items}
-              breakpoint={bp}
-              editable={editable}
-              selectedId={selectedId}
-              onSelect={(id) => onSelect?.(id)}
-              onMoveItem={handleMove}
-              renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
-            />
-          </DataProvider>
-        </VariablesProvider>
-      </ActionBusProvider>
+    <div ref={containerRef} className="flex h-full w-full flex-col bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
+      {storyMode && (
+        <nav className="flex items-center gap-2 border-b border-[var(--gs-color-border)] p-2 text-sm">
+          <button
+            type="button"
+            className="rounded-[var(--gs-radius)] border border-[var(--gs-color-border)] px-2 py-1 disabled:opacity-30"
+            disabled={chapterIndex <= 0}
+            onClick={() => handleNavigate(pages[chapterIndex - 1].id)}
+          >
+            Précédent
+          </button>
+          <span className="text-[var(--gs-color-muted)]">Chapitre {chapterIndex + 1} / {pages.length}</span>
+          <button
+            type="button"
+            className="rounded-[var(--gs-radius)] border border-[var(--gs-color-border)] px-2 py-1 disabled:opacity-30"
+            disabled={chapterIndex >= pages.length - 1}
+            onClick={() => handleNavigate(pages[chapterIndex + 1].id)}
+          >
+            Suivant
+          </button>
+        </nav>
+      )}
+      <div className="min-h-0 flex-1">
+        <ActionBusProvider bus={bus}>
+          <VariablesProvider variables={config.variables ?? []}>
+            <ActionConditionBridge bus={bus} />
+            {(config.variables ?? []).map((v) => (
+              <VariableBusBridge key={v.id} variable={v} bus={bus} />
+            ))}
+            <DataProvider sources={config.dataSources}>
+              <GridCanvas
+                items={activeLayout.items}
+                breakpoint={bp}
+                editable={editable}
+                selectedId={selectedId}
+                onSelect={(id) => onSelect?.(id)}
+                onMoveItem={handleMove}
+                renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
+              />
+            </DataProvider>
+          </VariablesProvider>
+        </ActionBusProvider>
+      </div>
     </div>
   );
 }
