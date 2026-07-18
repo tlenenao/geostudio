@@ -14,6 +14,7 @@ export type Item = {
   configId: string | null;
   isPublished: boolean;
   slug?: string;
+  keywords?: string[];
 };
 
 export type ItemPage = {
@@ -103,6 +104,7 @@ export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
+  listPublicItems(params?: { type?: ResourceType; tag?: string; page?: number; pageSize?: number }): Promise<ItemPage>;
   getMe(): Promise<Me>;
   getInstanceInfo(): Promise<InstanceInfo>;
   createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item>;
