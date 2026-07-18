@@ -9,6 +9,7 @@ import { AppRenderer } from "./AppRenderer";
 import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { AuthState } from "../auth/useAuth";
+import { useBusAction } from "./ActionBusContext";
 
 const authState: AuthState = {
   isLoading: false, isAuthenticated: true, username: "tanguy",
@@ -358,4 +359,93 @@ test("a list-typed variable receives the emitter's whole payload when it is an a
   render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
   await userEvent.click(screen.getByRole("button", { name: "emit" }));
   expect(await screen.findByText("Items : [1,2,3]")).toBeInTheDocument();
+});
+
+const flySpy = vi.fn();
+
+function registerFlyTarget() {
+  registerWidget({
+    type: "flytarget",
+    label: "FlyTarget",
+    defaultProps: {},
+    defaultSize: { w: 2, h: 1 },
+    actions: ["flyTo"],
+    PropsPanel: () => null,
+    Component: ({ ctx }) => {
+      useBusAction(ctx.bus, ctx.widgetId, "flyTo", (p) => flySpy(p));
+      return <div>cible</div>;
+    },
+  });
+}
+
+function storyConfig(): AppConfig {
+  return {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    navigationMode: "story",
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    pages: [
+      {
+        id: "p1", name: "Intro",
+        layout: { type: "grid", breakpoints: {}, items: [
+          { id: "m1", widget: "flytarget", x: 0, y: 0, w: 2, h: 1, props: {} },
+          { id: "txt1", widget: "text", x: 0, y: 1, w: 4, h: 1, props: { text: "Chapitre un" } },
+        ] },
+        onEnter: [{ id: "oe1", from: "p1", event: "enter", to: "m1", action: "flyTo", payload: { center: [1, 2] } }],
+      },
+      {
+        id: "p2", name: "Suite",
+        layout: { type: "grid", breakpoints: {}, items: [
+          { id: "txt2", widget: "text", x: 0, y: 0, w: 4, h: 1, props: { text: "Chapitre deux" } },
+        ] },
+        onEnter: [],
+      },
+    ],
+  };
+}
+
+test("story mode shows a progress bar and prev/next; prev is disabled on the first chapter", () => {
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="runtime" />, { wrapper: Wrapper });
+  expect(screen.getByText("Chapitre 1 / 2")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Suivant" })).toBeEnabled();
+});
+
+test("story mode dispatches the active page's onEnter to its widget on entry", () => {
+  flySpy.mockClear();
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="runtime" />, { wrapper: Wrapper });
+  expect(flySpy).toHaveBeenCalledWith({ center: [1, 2] });
+});
+
+test("story mode navigates to the next chapter and updates the progress counter", async () => {
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="runtime" />, { wrapper: Wrapper });
+  expect(screen.getByText("Chapitre un")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+  expect(screen.getByText("Chapitre 2 / 2")).toBeInTheDocument();
+  expect(screen.getByText("Chapitre deux")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Suivant" })).toBeDisabled();
+});
+
+test("tabs-mode config (no navigationMode) shows no story chrome and no onEnter dispatch", () => {
+  flySpy.mockClear();
+  registerFlyTarget();
+  const cfg = storyConfig();
+  cfg.navigationMode = "tabs";
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  expect(screen.queryByText(/Chapitre 1 \/ 2/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Suivant" })).toBeNull();
+  expect(flySpy).not.toHaveBeenCalled();
+});
+
+test("edit mode never dispatches onEnter and shows no story chrome", () => {
+  flySpy.mockClear();
+  registerFlyTarget();
+  render(<AppRenderer config={storyConfig()} mode="edit" />, { wrapper: Wrapper });
+  expect(screen.queryByRole("button", { name: "Suivant" })).toBeNull();
+  expect(flySpy).not.toHaveBeenCalled();
 });
