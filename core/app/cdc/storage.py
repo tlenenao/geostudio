@@ -17,3 +17,32 @@ def ensure_cdc_bucket(client, bucket: str) -> None:
 
 def upload_parquet_file(client, *, bucket: str, key: str, local_path: str) -> None:
     client.upload_file(local_path, bucket, key)
+
+
+def list_objects(client, *, bucket: str, prefix: str) -> list[dict]:
+    """Liste paginée (list_objects_v2 ne renvoie qu'1000 clés par appel) —
+    une collection à forte écriture accumule aisément plus de fichiers que
+    ça avant un cycle de compaction ; une boucle non paginée tronquerait
+    silencieusement la découverte des partitions (cf. test dédié)."""
+    objects: list[dict] = []
+    token = None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": prefix}
+        if token:
+            kwargs["ContinuationToken"] = token
+        resp = client.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            objects.append({"key": obj["Key"], "size": obj["Size"]})
+        if resp.get("IsTruncated"):
+            token = resp.get("NextContinuationToken")
+        else:
+            break
+    return objects
+
+
+def delete_objects(client, *, bucket: str, keys: list[str]) -> None:
+    client.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
+
+
+def upload_bytes(client, *, bucket: str, key: str, data: bytes) -> None:
+    client.put_object(Bucket=bucket, Key=key, Body=data)
