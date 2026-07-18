@@ -5,6 +5,7 @@ import { useAppConfig, useSaveApp, useUploadThumbnail } from "../api/hooks";
 import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
+import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
 import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
@@ -129,6 +130,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setPages = (nextPages: typeof pages) =>
     setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
 
+  const setNavigationMode = (navigationMode: "tabs" | "story") =>
+    setDraft((d) => (d ? { ...d, navigationMode } : d));
+
+  const setActivePageOnEnter = (updated: (typeof pages)[number]) =>
+    setDraft((d) => (d ? { ...d, pages: getPages(d).map((p) => (p.id === updated.id ? updated : p)) } : d));
+
   const setVariables = (variables: typeof draft.variables) =>
     setDraft((d) => (d ? { ...d, variables } : d));
 
@@ -178,6 +185,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
             <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
+            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
+            <NavigationPanel
+              navigationMode={draft.navigationMode ?? "tabs"}
+              onNavigationModeChange={setNavigationMode}
+              page={pages.find((p) => p.id === activePage) ?? pages[0]}
+              onPageChange={setActivePageOnEnter}
+            />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
             <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
