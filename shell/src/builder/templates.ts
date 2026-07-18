@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AppLayout, DataSource, Theme } from "../api/types";
+import type { ActionMessage, AppLayout, DataSource, Page, Theme } from "../api/types";
 
 export type Template = {
   id: string;
@@ -9,6 +9,8 @@ export type Template = {
   theme?: Theme;
   dataSources?: DataSource[];
   messages?: ActionMessage[];
+  pages?: Page[];
+  navigationMode?: "tabs" | "story";
 };
 
 const TWO_COLUMN_LAYOUT: AppLayout = {
@@ -58,12 +60,43 @@ const INCIDENT_APP_MESSAGES: ActionMessage[] = [
   { id: "tpl-incident-msg", from: "tpl-incident-table", event: "itemSelected", to: "tpl-incident-form", action: "loadRecord" },
 ];
 
+function storyChapter(idx: number, title: string, center: [number, number]): Page {
+  const mapId = `tpl-story-map-${idx}`;
+  return {
+    id: `tpl-story-page-${idx}`,
+    name: title,
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: `tpl-story-text-${idx}`, widget: "text", x: 0, y: 0, w: 4, h: 6,
+          props: { text: `## ${title}\n\nRacontez ce chapitre ici.` } },
+        { id: mapId, widget: "map", x: 4, y: 0, w: 8, h: 6, props: {} },
+      ],
+    },
+    onEnter: [
+      { id: `tpl-story-onenter-${idx}`, from: `tpl-story-page-${idx}`, event: "enter",
+        to: mapId, action: "flyTo", payload: { center } },
+    ],
+  };
+}
+
+const STORY_PAGES: Page[] = [
+  storyChapter(1, "Introduction", [2.35, 48.85]),
+  storyChapter(2, "Développement", [4.83, 45.76]),
+  storyChapter(3, "Conclusion", [-1.55, 47.22]),
+];
+
 export const TEMPLATES: Template[] = [
   { id: "two-column", name: "Deux colonnes", kind: "app", layout: TWO_COLUMN_LAYOUT },
   { id: "basic-dashboard", name: "Tableau de bord basique", kind: "dashboard", layout: BASIC_DASHBOARD_LAYOUT },
   {
     id: "application-de-saisie", name: "Application de saisie", kind: "app",
     layout: INCIDENT_APP_LAYOUT, dataSources: INCIDENT_APP_DATA_SOURCES, messages: INCIDENT_APP_MESSAGES,
+  },
+  {
+    id: "story-cartographique", name: "Story cartographique", kind: "app",
+    layout: STORY_PAGES[0].layout, pages: STORY_PAGES, navigationMode: "story",
   },
 ];
 
