@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.items.models import Item
 from app.items.schemas import ItemPage, ItemRead
+from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import ItemAccessFacts
@@ -73,12 +74,46 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
     )
 
 
+def slug_exists(
+    session: Session, *, tenant_id: str, slug: str, exclude_item_id: str | None = None
+) -> bool:
+    stmt = select(Item.id).where(Item.tenant_id == tenant_id, Item.slug == slug)
+    if exclude_item_id is not None:
+        stmt = stmt.where(Item.id != exclude_item_id)
+    return session.execute(stmt).first() is not None
+
+
+def ensure_unique_slug(session: Session, *, tenant_id: str, base: str) -> str:
+    if not slug_exists(session, tenant_id=tenant_id, slug=base):
+        return base
+    n = 2
+    while slug_exists(session, tenant_id=tenant_id, slug=f"{base}-{n}"):
+        n += 1
+    return f"{base}-{n}"
+
+
+def _resolve_site_slug(
+    session: Session, *, tenant_id: str, title: str, slug: str | None
+) -> str:
+    if slug is None:
+        return ensure_unique_slug(session, tenant_id=tenant_id, base=slugify(title))
+    if not is_valid_slug(slug):
+        raise InvalidSlugError(f"slug invalide: {slug!r}")
+    if slug_exists(session, tenant_id=tenant_id, slug=slug):
+        raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
+    return slug
+
+
 def create_item(
-    session: Session, *, tenant_id: str, owner_id: str, resource_type: str, title: str
+    session: Session, *, tenant_id: str, owner_id: str, resource_type: str, title: str,
+    slug: str | None = None,
 ) -> Item:
+    resolved_slug = None
+    if resource_type == "site":
+        resolved_slug = _resolve_site_slug(session, tenant_id=tenant_id, title=title, slug=slug)
     item = Item(
         id=uuid.uuid4().hex, tenant_id=tenant_id, owner_id=owner_id,
-        resource_type=resource_type, title=title,
+        resource_type=resource_type, title=title, slug=resolved_slug,
     )
     session.add(item)
     session.flush()
