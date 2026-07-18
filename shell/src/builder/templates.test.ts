@@ -5,6 +5,7 @@ import { TEMPLATES, getTemplate } from "./templates";
 test("exposes the expected number of templates per kind", () => {
   expect(TEMPLATES.filter((t) => t.kind === "app")).toHaveLength(3);
   expect(TEMPLATES.filter((t) => t.kind === "dashboard")).toHaveLength(1);
+  expect(TEMPLATES.filter((t) => t.kind === "site")).toHaveLength(1);
 });
 
 test("story cartographique template has 3 chapters each with a flyTo onEnter", () => {
@@ -53,4 +54,19 @@ test("application-de-saisie template wires a Formulaire, une Carte et une Table 
   expect(tpl.messages![0]).toMatchObject({
     from: tableItem.id, event: "itemSelected", to: formItem.id, action: "loadRecord",
   });
+});
+
+test("portail-de-donnees template wires Hero, Gallery, DatasetCard, and a Carte/Table demo on the same public collection", () => {
+  const tpl = getTemplate("portail-de-donnees")!;
+  expect(tpl.kind).toBe("site");
+  expect(tpl.dataSources).toHaveLength(1);
+  const ds = tpl.dataSources![0];
+  expect(ds).toMatchObject({ type: "features", service: "core", layer: "incidents" });
+  const widgetTypes = tpl.layout.items.map((i) => i.widget).sort();
+  expect(widgetTypes).toEqual(["datasetCard", "gallery", "hero", "map", "table"]);
+  for (const item of tpl.layout.items) {
+    if (item.widget === "datasetCard" || item.widget === "map" || item.widget === "table") {
+      expect(item.props.dataSourceId).toBe(ds.id);
+    }
+  }
 });
