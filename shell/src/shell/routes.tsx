@@ -6,6 +6,7 @@ import { MapEditorPage } from "../pages/MapEditorPage";
 import { AppBuilderPage } from "../pages/AppBuilderPage";
 import { AppRuntimePage } from "../pages/AppRuntimePage";
 import { SitePublicPage } from "../pages/SitePublicPage";
+import { PublicItemPage } from "../pages/PublicItemPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
@@ -54,6 +55,11 @@ function SitePublicRoute() {
   return <SitePublicPage slug={slug!} />;
 }
 
+function PublicItemRoute() {
+  const { pk } = useParams();
+  return <PublicItemPage pk={pk!} />;
+}
+
 function ProtectedLayout() {
   return (
     <RequireAuth>
@@ -77,6 +83,7 @@ export function AppRoutes() {
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
+      <Route path="/public/items/:pk" element={<PublicItemRoute />} />
     </Routes>
   );
 }
