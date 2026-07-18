@@ -514,6 +514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/sites/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Site */
+        get: operations["get_public_site_public_sites__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schemas/app-config": {
         parameters: {
             query?: never;
@@ -704,7 +721,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map";
+            kind: "app" | "dashboard" | "map" | "site";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -772,6 +789,8 @@ export interface components {
         /** CreateConfigRequest */
         CreateConfigRequest: {
             config: components["schemas"]["BuilderConfig"];
+            /** Slug */
+            slug?: string | null;
             /** Title */
             title: string;
         };
@@ -962,6 +981,8 @@ export interface components {
             pk: string;
             /** Resourcetype */
             resourceType: string;
+            /** Slug */
+            slug?: string | null;
             /** Thumbnailurl */
             thumbnailUrl: string | null;
             /** Title */
@@ -975,6 +996,8 @@ export interface components {
             isPublished?: boolean | null;
             /** Keywords */
             keywords?: string[] | null;
+            /** Slug */
+            slug?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -2714,6 +2737,37 @@ export interface operations {
             header?: never;
             path: {
                 item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_site_public_sites__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
             };
             cookie?: never;
         };
