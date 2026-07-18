@@ -529,6 +529,10 @@ export function createItemClient(opts: {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
     },
 
+    async getCollection(collectionId: string): Promise<CollectionAdmin> {
+      return request<CollectionAdmin>("GET", `/collections/${collectionId}`);
+    },
+
     async getCollectionPermission(collectionId: string): Promise<boolean> {
       const data = await request<{ canWrite?: boolean }>("GET", `/collections/${collectionId}`);
       return data.canWrite ?? false;

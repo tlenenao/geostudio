@@ -134,6 +134,7 @@ export interface ItemClient {
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   featuresUrl(source: DataSource): string;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
+  getCollection(collectionId: string): Promise<CollectionAdmin>;
   getCollectionPermission(collectionId: string): Promise<boolean>;
   createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }>;
   updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
