@@ -951,3 +951,81 @@ test("setCollectionSharing PUTs the sharing object as-is", async () => {
   await makeClient().setCollectionSharing("incidents", { public: false, groups: [{ groupId: "g1", role: "viewer" }] });
   expect(body).toEqual({ public: false, groups: [{ groupId: "g1", role: "viewer" }] });
 });
+
+test("getItemBySlug requests /public/sites/{slug} and returns the item", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/public/sites/mon-portail", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({
+        pk: "s1", resourceType: "site", slug: "mon-portail", title: "Portail",
+        abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: true,
+      });
+    }),
+  );
+  const item = await makeClient().getItemBySlug("mon-portail");
+  expect(url).toBe("https://core.test/public/sites/mon-portail");
+  expect(item.slug).toBe("mon-portail");
+  expect(item.pk).toBe("s1");
+});
+
+test("getItemBySlug propagates a 404 as a rejection", async () => {
+  server.use(
+    http.get("https://core.test/public/sites/nexiste-pas", () => new HttpResponse(null, { status: 404 })),
+  );
+  await expect(makeClient().getItemBySlug("nexiste-pas")).rejects.toThrow();
+});
+
+test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not top-level)", async () => {
+  server.use(
+    http.get("https://core.test/public/configs/by-item/s1", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "s1", kind: "site", version: 1,
+        config: {
+          kind: "site", theme: {}, dataSources: [], messages: [], pages: [],
+          layout: { type: "grid", breakpoints: {}, items: [
+            { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Bienvenue" } },
+          ] },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getPublicAppConfig("s1");
+  expect(cfg.layout).toBeDefined();
+  expect(cfg.layout.items[0]).toMatchObject({ id: "w1", widget: "text" });
+});
+
+test("getPublicAppConfig throws when the config has no layout", async () => {
+  server.use(
+    http.get("https://core.test/public/configs/by-item/s1", () =>
+      HttpResponse.json({ id: "cfg-1", itemId: "s1", kind: "site", config: { kind: "site", layout: null } }),
+    ),
+  );
+  await expect(makeClient().getPublicAppConfig("s1")).rejects.toThrow();
+});
+
+test("createConfigItem transmits the slug in the POST body when given", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "s1", kind: "site", version: 1, config: body.config });
+    }),
+  );
+  const item = await makeClient().createConfigItem({ kind: "site", title: "Portail", owner: "alice", slug: "mon-portail" });
+  expect(body.slug).toBe("mon-portail");
+  expect(body.config.kind).toBe("site");
+  expect(item.slug).toBe("mon-portail");
+});
+
+test("createConfigItem omits slug from the POST body when not given", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", itemId: "1", kind: "app", version: 1, config: body.config });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" });
+  expect(body).not.toHaveProperty("slug");
+});

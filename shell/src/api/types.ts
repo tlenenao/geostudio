@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map";
+export type ResourceType = "app" | "dashboard" | "map" | "site";
 
-export type CreateKind = "app" | "dashboard";
+export type CreateKind = "app" | "dashboard" | "site";
 
 export type Item = {
   pk: string;
@@ -13,6 +13,7 @@ export type Item = {
   date: string;
   configId: string | null;
   isPublished: boolean;
+  slug?: string;
 };
 
 export type ItemPage = {
@@ -43,7 +44,7 @@ export type ListItemsParams = {
   me?: string;
 };
 
-export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[]; isPublished?: boolean };
+export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[]; isPublished?: boolean; slug?: string };
 
 export type Group = { id: string; title: string };
 export type ShareRole = "viewer" | "editor";
@@ -101,9 +102,10 @@ export type GeoJSONFeatureInput = {
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
+  getItemBySlug(slug: string): Promise<Item>;
   getMe(): Promise<Me>;
   getInstanceInfo(): Promise<InstanceInfo>;
-  createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item>;
+  createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
@@ -125,6 +127,7 @@ export interface ItemClient {
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
+  getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   featuresUrl(source: DataSource): string;
