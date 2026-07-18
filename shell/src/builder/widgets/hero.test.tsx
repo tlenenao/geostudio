@@ -57,3 +57,33 @@ test("hero cta click emits the wired action and opens ctaHref in a new tab", asy
   expect(handler).toHaveBeenCalled();
   expect(openSpy).toHaveBeenCalledWith("https://example.com", "_blank", "noopener");
 });
+
+test("hero cta click with a javascript: ctaHref does not open a window", async () => {
+  const bus = new ActionBus();
+  const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+  const Hero = getWidget("hero")!.Component;
+  render(
+    <Hero
+      props={{ title: "Bienvenue", ctaLabel: "Voir", ctaHref: "javascript:alert(1)" }}
+      ctx={{ mode: "runtime", bus, widgetId: "hero1" } as WidgetContext}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Voir" }));
+  expect(openSpy).not.toHaveBeenCalled();
+});
+
+test("hero cta click with a relative ctaHref still opens it", async () => {
+  const bus = new ActionBus();
+  const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+  const Hero = getWidget("hero")!.Component;
+  render(
+    <Hero
+      props={{ title: "Bienvenue", ctaLabel: "Voir", ctaHref: "/some-page" }}
+      ctx={{ mode: "runtime", bus, widgetId: "hero1" } as WidgetContext}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Voir" }));
+  expect(openSpy).toHaveBeenCalledWith("/some-page", "_blank", "noopener");
+});

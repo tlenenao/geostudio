@@ -4,6 +4,20 @@ import { registerWidget } from "../registry";
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
 
+const SAFE_HREF_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+
+/** Author-controlled hrefs must be validated before being handed to window.open — a bare
+ * scheme allowlist against the resolved URL, matching the anti-injection intent of
+ * RichSection's sanitizeMarkdown() chokepoint (author -> anonymous visitor trust boundary). */
+export function isSafeHref(href: string): boolean {
+  try {
+    const resolved = new URL(href, window.location.origin);
+    return SAFE_HREF_SCHEMES.has(resolved.protocol);
+  } catch {
+    return false;
+  }
+}
+
 export function registerHeroWidget(): void {
   registerWidget({
     type: "hero",
@@ -66,7 +80,7 @@ export function registerHeroWidget(): void {
               onClick={() => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "cta", { widgetId: ctx.widgetId });
                 const href = String(props.ctaHref ?? "");
-                if (href) window.open(href, "_blank", "noopener");
+                if (href && isSafeHref(href)) window.open(href, "_blank", "noopener");
               }}
             >
               {String(props.ctaLabel)}
