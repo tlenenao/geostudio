@@ -219,14 +219,25 @@ def analytics_sql(
             conn, sql=body.sql, allowed=allowed, base_uri=base_uri, tenant_id=user.tenant_id,
         )
     except SqlSandboxError as exc:
+        _sql_queries_counter.add(1, {"outcome": "error"})
+        write_audit(
+            session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+            action="analytics.sql", object_type="analytics", object_id="sql",
+            payload={"sql": body.sql[:500], "outcome": "error"},
+        )
+        # Commit the abuse/failure trail on the request session itself: the outer
+        # request_scoped_session rolls back on the raised 400, so we must persist
+        # the audit row here (this route is otherwise read-only, so the audit is
+        # the only pending write). The later rollback is then a harmless no-op.
+        session.commit()
         raise _validation_error([{"field": "sql", "code": "sql_error", "message": str(exc)}])
     finally:
         conn.close()
-    _sql_queries_counter.add(1)
+    _sql_queries_counter.add(1, {"outcome": "success"})
     write_audit(
         session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
         action="analytics.sql", object_type="analytics", object_id="sql",
-        payload={"sql": body.sql[:500]},
+        payload={"sql": body.sql[:500], "outcome": "success"},
     )
     return {"columns": columns, "rows": rows, "truncated": truncated}
 

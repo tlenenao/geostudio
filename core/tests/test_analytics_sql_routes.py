@@ -9,8 +9,10 @@ import geopandas as gpd
 import pytest
 from fastapi.testclient import TestClient
 from shapely.geometry import Point
+from sqlalchemy import select
 
 from app import db
+from app.audit.models import AuditLog
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
@@ -76,7 +78,7 @@ def _build_env(tmp_path, *, with_analyst=False):
     app.dependency_overrides[features_routes.get_analytics_base_uri] = lambda: monkeypatch_base_uri
 
     client = TestClient(app)
-    return app, client, admin, regular, analyst, tmp_path, tenant_id
+    return app, client, admin, regular, analyst, tmp_path, tenant_id, Session
 
 
 def _as(app, user):
@@ -91,47 +93,47 @@ def _register(app, client, admin, public=False):
 
 @pytest.fixture()
 def env(tmp_path):
-    app, client, admin, regular, _analyst, tmp_path, tenant_id = _build_env(tmp_path)
-    return app, client, admin, regular, tmp_path, tenant_id
+    app, client, admin, regular, _analyst, tmp_path, tenant_id, Session = _build_env(tmp_path)
+    return app, client, admin, regular, tmp_path, tenant_id, Session
 
 
 @pytest.fixture()
 def env_with_analyst(tmp_path):
-    app, client, admin, _regular, analyst, tmp_path, tenant_id = _build_env(tmp_path, with_analyst=True)
+    app, client, admin, _regular, analyst, tmp_path, tenant_id, Session = _build_env(tmp_path, with_analyst=True)
     col = _register(app, client, admin, public=True)
     _write_partition(tmp_path, tenant_id=tenant_id, collection_id=col["id"], rows=[
         {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
         {"id": 2, "region": "Sud", "pop": 5, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(1, 1)},
     ])
-    return app, client, analyst, tmp_path, tenant_id, col
+    return app, client, analyst, tmp_path, tenant_id, col, Session
 
 
 @pytest.fixture()
 def env_with_analyst_and_private(tmp_path):
-    app, client, admin, _regular, analyst, tmp_path, tenant_id = _build_env(tmp_path, with_analyst=True)
+    app, client, admin, _regular, analyst, tmp_path, tenant_id, Session = _build_env(tmp_path, with_analyst=True)
     private_col = _register(app, client, admin, public=False)
     _write_partition(tmp_path, tenant_id=tenant_id, collection_id=private_col["id"], rows=[
         {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
     ])
-    return app, client, analyst, private_col
+    return app, client, analyst, private_col, Session
 
 
 def test_non_analyst_gets_403(env):
-    app, client, _admin, regular, _tmp, _tid = env
+    app, client, _admin, regular, _tmp, _tid, _Session = env
     _as(app, regular)  # regular : ni admin ni analyste
     resp = client.post("/analytics/sql", json={"sql": "SELECT 1"})
     assert resp.status_code == 403
 
 
 def test_admin_without_analyst_gets_403(env):
-    app, client, admin, _r, _tmp, _tid = env
+    app, client, admin, _r, _tmp, _tid, _Session = env
     _as(app, admin)  # admin mais is_analyst=False
     resp = client.post("/analytics/sql", json={"sql": "SELECT 1"})
     assert resp.status_code == 403
 
 
 def test_analyst_queries_readable_view(env_with_analyst):
-    app, client, analyst, tmp_path, tenant_id, col = env_with_analyst
+    app, client, analyst, tmp_path, tenant_id, col, Session = env_with_analyst
     _as(app, analyst)
     resp = client.post("/analytics/sql",
                        json={"sql": f'SELECT region, sum(pop) AS total FROM {col["id"]} GROUP BY region ORDER BY region'})
@@ -140,19 +142,38 @@ def test_analyst_queries_readable_view(env_with_analyst):
     assert body["columns"] == ["region", "total"]
     assert body["truncated"] is False
     assert body["rows"] == [["Nord", 10], ["Sud", 5]]
+    with Session() as s:
+        log = s.execute(select(AuditLog).where(AuditLog.action == "analytics.sql")).scalar_one()
+        assert log.payload["outcome"] == "success"
 
 
 def test_analyst_cannot_reach_unauthorized_collection(env_with_analyst_and_private):
     # Une collection privée non partagée à l'analyste n'est pas dans list_visible_collections
     # → non matérialisée → "table introuvable" → 400 (jamais de fuite).
-    app, client, analyst, private_col = env_with_analyst_and_private
+    app, client, analyst, private_col, _Session = env_with_analyst_and_private
     _as(app, analyst)
     resp = client.post("/analytics/sql", json={"sql": f'SELECT * FROM {private_col["id"]}'})
     assert resp.status_code == 400
 
 
 def test_invalid_sql_returns_400(env_with_analyst):
-    app, client, analyst, *_ = env_with_analyst
+    app, client, analyst, *rest = env_with_analyst
     _as(app, analyst)
     resp = client.post("/analytics/sql", json={"sql": "DROP TABLE villes"})
     assert resp.status_code == 400
+
+
+def test_rejected_sql_attempt_is_audited(env_with_analyst):
+    app, client, analyst, tmp_path, tenant_id, col, Session = env_with_analyst
+    _as(app, analyst)
+    resp = client.post("/analytics/sql", json={"sql": "DROP TABLE villes"})
+    assert resp.status_code == 400
+
+    # Le trail doit persister malgré le rollback de request_scoped_session sur
+    # l'exception 400 re-levée : preuve qu'une nouvelle session voit bien la ligne.
+    with Session() as s:
+        log = s.execute(select(AuditLog).where(AuditLog.action == "analytics.sql")).scalar_one()
+        assert log.actor_id == analyst.id
+        assert log.tenant_id == tenant_id
+        assert log.payload["outcome"] == "error"
+        assert "DROP TABLE villes" in log.payload["sql"]
