@@ -25,6 +25,11 @@ export function getConfigExpressionErrors(config: AppConfig): string[] {
         }
       }
     }
+    for (const m of page.onEnter ?? []) {
+      if (!m.when || typeof m.when !== "string") continue;
+      const err = validateExpression(m.when);
+      if (err) errors.push(`Chapitre "${page.name}", action ${m.id} (condition) : ${err}`);
+    }
   }
   for (const m of config.messages) {
     if (!m.when || typeof m.when !== "string") continue;
