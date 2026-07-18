@@ -227,3 +227,60 @@ def test_variable_type_list_round_trips_list_initial_value():
     payload["variables"] = [{"id": "v1", "name": "items", "type": "list", "initialValue": [1, 2, 3]}]
     config = BuilderConfig.model_validate(payload)
     assert config.variables[0].initialValue == [1, 2, 3]
+
+
+def test_navigation_mode_round_trips():
+    payload = _valid_payload("app")
+    payload["navigationMode"] = "story"
+    config = BuilderConfig.model_validate(payload)
+    assert config.navigationMode == "story"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["navigationMode"] == "story"
+
+
+def test_navigation_mode_defaults_to_tabs():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.navigationMode == "tabs"
+
+
+def test_navigation_mode_rejects_unknown_value():
+    payload = _valid_payload("app")
+    payload["navigationMode"] = "carousel"
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(payload)
+
+
+def test_page_on_enter_round_trips_with_payload():
+    payload = _valid_payload("app")
+    payload["pages"] = [
+        {
+            "id": "p1",
+            "name": "Chapitre 1",
+            "layout": payload["layout"],
+            "onEnter": [
+                {
+                    "id": "oe1",
+                    "from": "p1",
+                    "event": "enter",
+                    "to": "map",
+                    "action": "flyTo",
+                    "payload": {"center": [2.35, 48.85]},
+                    "when": None,
+                }
+            ],
+        }
+    ]
+    config = BuilderConfig.model_validate(payload)
+    assert len(config.pages[0].onEnter) == 1
+    assert config.pages[0].onEnter[0].payload == {"center": [2.35, 48.85]}
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["pages"][0]["onEnter"][0]["payload"] == {"center": [2.35, 48.85]}
+    # from est bien re-sérialisé sous son alias, comme les messages de wiring
+    assert dumped["pages"][0]["onEnter"][0]["from"] == "p1"
+
+
+def test_page_on_enter_defaults_empty():
+    payload = _valid_payload("app")
+    payload["pages"] = [{"id": "p1", "name": "Chapitre 1", "layout": payload["layout"]}]
+    config = BuilderConfig.model_validate(payload)
+    assert config.pages[0].onEnter == []
