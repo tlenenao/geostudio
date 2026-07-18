@@ -90,7 +90,7 @@ class BuilderConfig(BaseModel):
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map"]
+    kind: Literal["app", "dashboard", "map", "site"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -102,7 +102,7 @@ class BuilderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
-        if self.kind in ("app", "dashboard") and self.layout is None:
+        if self.kind in ("app", "dashboard", "site") and self.layout is None:
             raise ValueError(f"{self.kind} config requires a layout")
         if self.kind == "map" and self.map is None:
             raise ValueError("map config requires a map")

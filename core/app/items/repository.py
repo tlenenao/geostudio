@@ -64,6 +64,7 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
     return ItemRead(
         pk=item.id,
         resourceType=item.resource_type,
+        slug=item.slug,
         title=item.title,
         abstract=item.abstract,
         owner=owner_username,
