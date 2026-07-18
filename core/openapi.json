@@ -14,6 +14,132 @@
         "title": "AddMemberRequest",
         "type": "object"
       },
+      "AggregateMeasure": {
+        "properties": {
+          "agg": {
+            "default": "count",
+            "title": "Agg",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "AggregateMeasure",
+        "type": "object"
+      },
+      "AggregateRequestBody": {
+        "properties": {
+          "agg": {
+            "default": "count",
+            "title": "Agg",
+            "type": "string"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "filters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Filters",
+            "type": "object"
+          },
+          "groupBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupby"
+          },
+          "measures": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AggregateMeasure"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measures"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split"
+          }
+        },
+        "title": "AggregateRequestBody",
+        "type": "object"
+      },
       "BaseMap": {
         "properties": {
           "style": {
@@ -1266,6 +1392,10 @@
             "title": "Isadmin",
             "type": "boolean"
           },
+          "isAnalyst": {
+            "title": "Isanalyst",
+            "type": "boolean"
+          },
           "lastName": {
             "title": "Lastname",
             "type": "string"
@@ -1286,7 +1416,8 @@
           "email",
           "firstName",
           "lastName",
-          "isAdmin"
+          "isAdmin",
+          "isAnalyst"
         ],
         "title": "MeResponse",
         "type": "object"
@@ -1448,13 +1579,28 @@
       "UserAdminPatch": {
         "properties": {
           "isAdmin": {
-            "title": "Isadmin",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isadmin"
+          },
+          "isAnalyst": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isanalyst"
           }
         },
-        "required": [
-          "isAdmin"
-        ],
         "title": "UserAdminPatch",
         "type": "object"
       },
@@ -1857,6 +2003,63 @@
           }
         },
         "summary": "Patch Collection"
+      }
+    },
+    "/collections/{collection_id}/aggregate": {
+      "post": {
+        "operationId": "aggregate_features_collections__collection_id__aggregate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggregateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Aggregate Features"
       }
     },
     "/collections/{collection_id}/items": {

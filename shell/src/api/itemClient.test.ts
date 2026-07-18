@@ -38,14 +38,33 @@ test("getItem missing returns 404 and throws", async () => {
 });
 
 test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+        isAnalyst: false,
+      }),
+    ),
+  );
   const me = await makeClient().getMe();
-  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false });
+  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false, isAnalyst: false });
 });
 
 test("getMe surfaces isAdmin", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: true,
+        isAnalyst: false,
+      }),
     ),
   );
   const me = await makeClient().getMe();
