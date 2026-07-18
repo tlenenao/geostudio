@@ -291,6 +291,29 @@ def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
     return _to_read(item, owner_username)
 
 
+def get_published_site_by_slug(
+    session: Session, *, slug: str, tenant_id: str = "default"
+) -> ItemRead | None:
+    # tenant_id filtré explicitement (contrairement à get_published_item, qui
+    # ne le fait pas) : le slug n'est unique que PAR tenant (cf. slug_exists),
+    # donc sans ce filtre deux tenants pourraient se voler mutuellement leurs
+    # slugs via cette route publique.
+    row = session.execute(
+        select(Item, User.username)
+        .join(User, User.id == Item.owner_id)
+        .where(
+            Item.resource_type == "site",
+            Item.slug == slug,
+            Item.tenant_id == tenant_id,
+            Item.is_published.is_(True),
+        )
+    ).first()
+    if row is None:
+        return None
+    item, owner_username = row
+    return _to_read(item, owner_username)
+
+
 def set_is_public(session: Session, *, tenant_id: str, item_id: str, is_public: bool) -> None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
