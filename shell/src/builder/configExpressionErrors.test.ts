@@ -78,3 +78,36 @@ test("does not throw when a message's when is not a string (corrupted config)", 
   expect(() => getConfigExpressionErrors(config([], messages))).not.toThrow();
   expect(getConfigExpressionErrors(config([], messages))).toEqual([]);
 });
+
+test("reports an invalid when condition on a page onEnter message", () => {
+  const config: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    navigationMode: "story",
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    pages: [
+      {
+        id: "p1", name: "Intro",
+        layout: { type: "grid", breakpoints: {}, items: [] },
+        onEnter: [{ id: "oe1", from: "p1", event: "enter", to: "m1", action: "flyTo", payload: {}, when: "vars.(" }],
+      },
+    ],
+  };
+  const errors = getConfigExpressionErrors(config);
+  expect(errors.some((e) => e.includes("Intro") && e.includes("oe1"))).toBe(true);
+});
+
+test("accepts a valid when condition on a page onEnter message", () => {
+  const config: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    navigationMode: "story",
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    pages: [
+      {
+        id: "p1", name: "Intro",
+        layout: { type: "grid", breakpoints: {}, items: [] },
+        onEnter: [{ id: "oe1", from: "p1", event: "enter", to: "m1", action: "flyTo", payload: {}, when: "vars.ready" }],
+      },
+    ],
+  };
+  expect(getConfigExpressionErrors(config)).toEqual([]);
+});

@@ -1043,6 +1043,107 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   pour synchroniser `main` (qui n'avait pas encore SP-11a/b/c). **SP-11
   (lakehouse : CDC→GeoParquet, compaction+DuckDB analytique, SQL analyste
   sandboxé) est intégralement clos.**
+- **Storytelling (mode narratif sur `PageManager`) livré et clos** (2026-07-18,
+  cf. plan `docs/superpowers/plans/2026-07-18-storytelling-pagemanager.md`) :
+  un auteur active un mode « story » sur une app existante, associe à chaque
+  page/chapitre une action de navigation (`map.flyTo` vers une emprise
+  statique), et obtient une narration séquencée (barre de progression +
+  Précédent/Suivant) — sans nouveau widget, sans nouveau backend, sans code.
+  Shell quasi exclusivement : `AppConfig.navigationMode?: "tabs" | "story"`
+  (défaut `"tabs"`) et `Page.onEnter?: ActionMessage[]` (déclenchés à l'entrée
+  du chapitre via le `ActionBus` existant, `ActionMessage` gagne un
+  `payload?` statique pour l'emprise cible — un chapitre n'a pas d'émetteur
+  runtime). `AppRenderer` rend la barre de story et dispatche les `onEnter`
+  de la page active en preview/runtime (jamais en edit, jamais en mode
+  `tabs` — gate unique `storyMode`). Nouveau panneau `NavigationPanel` dans
+  le builder (déviation assumée du spec initial : **pas** une réutilisation
+  d'`ActionsPanel`, qui est centré émetteur — incompatible avec un
+  émetteur-page), `getConfigExpressionErrors` valide aussi les conditions
+  `when` des `onEnter` (bouton Enregistrer désactivé si invalide), gabarit de
+  galerie « Story cartographique » (3 chapitres texte+carte+flyTo). Seul
+  changement cœur : déclaration Pydantic des 3 nouveaux champs dans
+  `core/app/configs/schemas.py`, round-trip testé explicitement pour éviter
+  de répéter la régression silencieuse de SP-5b (champ non déclaré supprimé
+  par `model_validate`/`model_dump`). Exécuté en subagent-driven-development
+  (7 tâches, revue par tâche + revue finale de branche modèle opus, 0
+  Critical/Important sur les 7 tâches et en revue finale). **1 Important
+  trouvé et corrigé** (Task 5) : `NavigationPanel.add()` acceptait
+  Longitude/Latitude vides (`Number("")===0`, pas `NaN`) et posait
+  silencieusement `payload:{center:[0,0]}` — fix + 3 tests de régression,
+  re-revue clean. **1 vrai bug applicatif trouvé et corrigé en Task 7**, hors
+  périmètre anticipé du brief E2E : `itemClient.ts`
+  `getAppConfig`/`saveAppConfig` reconstruisaient le config champ par champ
+  et omettaient `navigationMode`, perdu silencieusement à tout GET/PUT réel
+  malgré le reste de la pile (types, `NavigationPanel`, gabarit) le posant
+  correctement — même classe de bug que la régression `visibleWhen` SP-5b,
+  cette fois côté TS ; seule l'E2E réelle l'a détecté (`Received:"tabs"` au
+  lieu de `"story"`), aucun test unitaire de tâche ne le couvrait. Fix
+  symétrique GET+PUT ; revue finale a vérifié indépendamment (chasse
+  adversariale dédiée) que les 8 champs d'`AppConfig` sont désormais tous
+  round-trippés symétriquement — pas seulement celui qui a révélé le bug.
+  **Dérive OpenAPI détectée et corrigée après les 7 tâches** (commit
+  bca3f61) : contrairement à la spéculation du plan, `BuilderConfig`/`Page`/
+  `Message` sont des modèles Pydantic typés exposés par le schéma FastAPI —
+  `core/openapi.json`/`core-schema.d.ts` régénérés. Revue finale de branche :
+  **Ready to merge: Yes**, 0 Critical/Important, 3 Minor non bloquants (SPDX
+  incohérent sur le seul fichier `shell/e2e/*.spec.ts` qui en a un ;
+  restructuration DOM inconditionnelle d'`AppRenderer`, visuellement
+  équivalente, sans régression observée ; `navigationMode` typé requis par
+  openapi-typescript malgré son défaut Pydantic, quirk pré-existant inerte).
+  **515 tests cœur passed/80 skipped** (sans DB), **497 tests shell**,
+  build/tsc clean, **38/38 specs E2E** (37 + `storytelling.spec.ts`). Poussé
+  sur `dev`.
+- **SP-16a « modèle site/slug + route publique + résolution shell » livré et
+  clos** (2026-07-18, première sous-phase de SP-16 « Portails & Sites », cf. spec
+  `docs/superpowers/specs/2026-07-16-sp16a-modele-site-slug-design.md` et plan
+  `docs/superpowers/plans/2026-07-18-sp16a-modele-site-slug.md`) : un admin/
+  utilisateur crée un item de type `site` (slug auto-généré depuis le titre,
+  éditable, validé), le publie, et un visiteur **anonyme** le consulte à
+  `/sites/{slug}` qui rend `AppRenderer(config, "runtime")`. **Aucun nouveau
+  chemin d'autorisation** : un `site` est un item ordinaire (`can()`, politique
+  de publication SP-1c, `audit_log`). Cœur : helpers de slug purs
+  (`app/items/slug.py` — `slugify`/`is_valid_slug`, format
+  `^[a-z0-9]+(?:-[a-z0-9]+)*$` ≤100, repli `site`), colonne `items.slug` +
+  **index unique partiel `(tenant_id, slug) WHERE slug IS NOT NULL`** (migration
+  0015, unicité **par tenant** — deux tenants peuvent porter le même slug),
+  génération à la création (collision implicite → suffixe silencieux ; collision
+  explicite → 409 ; format invalide → 422, mêmes gardes en création via `POST
+  /configs kind=site` et en édition via `PATCH /items {slug}`), `ItemRead.slug`
+  sérialisé, `GET /public/sites/{slug}` **404 jamais 403** (non-publié/inexistant/
+  autre-tenant/non-site — pas de fuite d'existence), tenant public résolu à
+  `"default"` seulement (A33). Shell : `getItemBySlug`/`getPublicAppConfig`
+  (miroir exact de `getAppConfig`, unwrap du wrapper `ConfigRead.config`),
+  `slugify` client (**écho documenté du serveur, PAS une frontière** — le serveur
+  reste l'autorité 409/422, même arbitrage que CEL/A8), page publique
+  `SitePublicPage` sur route `/sites/:slug` **hors `ProtectedLayout`** (widgets
+  builtin uniquement — pas d'extensions, évite le délai fail-open ~5-7s), type
+  « Site » dans `NewItemButton` (champ slug auto-suivi du titre, éditable, validé,
+  Créer désactivé si invalide). Exécuté en subagent-driven-development (10 tâches,
+  revue par tâche + revue finale de branche modèle opus). Plusieurs hypothèses du
+  plan corrigées à l'exécution (documentées, non des défauts de code) : la
+  migration ne doit PAS utiliser `schema="app"` (aucune migration du dépôt n'en
+  utilise) ; les fixtures de test route du plan (`client_admin`/`pg_session`/
+  `seed_tenant_user`, répertoires `tests/configs|items|public/`) n'existent pas —
+  tests écrits plats dans `core/tests/` sur le vrai patron SQLite `client()`/
+  `session`/`tenant_and_user` (logique slug = SELECT pur, fidèle et always-run) ;
+  le test `getPublicAppConfig` du plan lisait un layout top-level alors que
+  l'endpoint renvoie un `ConfigRead` **wrappé** ; le plan aurait régressé
+  `configId` (édit minimal `createConfigItem` : `String(data.id)` préservé) ; les
+  tests shell utilisent MSW, pas `vi.spyOn(fetch)`. **Revue finale de branche :
+  Ready to merge: Yes, 0 Critical/0 Important, 7 Minor non bloquants** (dont 2
+  trouvés en revue finale, hardening hors périmètre : PATCH peut poser un slug
+  sur un item non-site — namespace-squat, pas de fuite car filtré à la lecture ;
+  TOCTOU sur unicité en création concurrente → 500 au lieu de 409, l'index garde
+  l'intégrité). Propriété de sécurité tracée bout-en-bout sous inputs adverses.
+  **Follow-up unique du reviewer fermé par le contrôleur** : l'index unique
+  partiel de 0015 (vraie garantie d'unicité par-tenant, non couvrable par SQLite)
+  vérifié empiriquement contre un PostGIS réel — `(td,'dup')` accepté puis REJETÉ
+  au 2e insert (`uq_items_tenant_slug`), `(to,'dup')` autre tenant accepté, deux
+  `slug=NULL` même tenant tous deux acceptés. **550 tests cœur passed/80 skipped**
+  (sans DB ; migration 0015 apply/downgrade + rejet-doublon validés contre
+  Postgres réel), lint-imports clean, **517 tests shell**, build/tsc clean,
+  **40/40 specs E2E** (38 + `sites-portal-shell.spec.ts`, 2 tests). Poussé sur
+  `dev`. **SP-16b/c (widgets de contenu de portail) restent à faire.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

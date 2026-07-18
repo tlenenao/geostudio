@@ -23,6 +23,7 @@ class Item(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     abstract: Mapped[str] = mapped_column(String, default="")
     keywords: Mapped[list] = mapped_column(JSON, default=list)
+    slug: Mapped[str | None] = mapped_column(String, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     thumbnail_key: Mapped[str | None] = mapped_column(String, nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)

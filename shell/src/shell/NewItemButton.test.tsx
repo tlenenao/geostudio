@@ -170,3 +170,55 @@ test("does not show a Modèle select for the map type", async () => {
   await userEvent.selectOptions(screen.getByLabelText("Type"), "map");
   expect(screen.queryByLabelText("Modèle")).not.toBeInTheDocument();
 });
+
+test("auto-generates the slug from the title when the type is Site", async () => {
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "site");
+  await userEvent.type(screen.getByLabelText("Titre"), "Mon Portail");
+  expect(screen.getByLabelText("Slug")).toHaveValue("mon-portail");
+});
+
+test("disables the Créer button when the edited slug is invalid", async () => {
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "site");
+  await userEvent.type(screen.getByLabelText("Titre"), "Mon Portail");
+  await userEvent.clear(screen.getByLabelText("Slug"));
+  await userEvent.type(screen.getByLabelText("Slug"), "Pas Valide");
+  expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
+});
+
+test("submits a Site with its slug in the POST body", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        { id: "cfg-1", kind: "site", itemId: "site-9", version: 1, config: body.config },
+        { status: 201 },
+      );
+    }),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "site");
+  await userEvent.type(screen.getByLabelText("Titre"), "Mon Portail");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  await waitFor(() => expect(body).not.toBeNull());
+  expect(body.slug).toBe("mon-portail");
+  expect(body.config.kind).toBe("site");
+  expect(await screen.findByText("app-builder-site-9")).toBeInTheDocument();
+});

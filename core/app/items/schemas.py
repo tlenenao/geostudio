@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class ItemRead(BaseModel):
     pk: str
     resourceType: str
+    slug: str | None = None
     title: str
     abstract: str
     owner: str
@@ -26,3 +27,4 @@ class ItemUpdatePatch(BaseModel):
     abstract: str | None = None
     keywords: list[str] | None = None
     isPublished: bool | None = Field(default=None)
+    slug: str | None = None

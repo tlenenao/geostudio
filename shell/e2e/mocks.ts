@@ -28,6 +28,17 @@ export async function mockCore(page: Page) {
   const savedConfigs = new Map<string, unknown>();
   let published = false;
 
+  // Site portal (SP-16a) — state for the created-then-published site.
+  let siteSlug: string | null = null;
+  let sitePublished = false;
+  const SITE_APP_CONFIG = {
+    version: 1, kind: "site", theme: {}, dataSources: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Bienvenue sur le portail" } },
+    ] },
+    messages: [], pages: [],
+  } as const;
+
   await page.route("**/items*", async (route) => {
     const url = new URL(route.request().url());
     const scope = url.searchParams.get("scope");
@@ -84,7 +95,10 @@ export async function mockCore(page: Page) {
   await page.route("**/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = await route.request().postDataJSON();
-    if (body?.config?.kind === "map") {
+    if (body?.config?.kind === "site") {
+      siteSlug = body.slug ?? "mon-portail";
+      await route.fulfill({ status: 201, json: { id: "cfg-site", kind: "site", itemId: "site-1" } });
+    } else if (body?.config?.kind === "map") {
       // Map creation path — return itemId "77" so the test lands on /maps/77.
       await route.fulfill({
         status: 201,
@@ -316,5 +330,52 @@ export async function mockCore(page: Page) {
     } else {
       await route.fallback();
     }
+  });
+
+  // Site portal (SP-16a) — appended last so these precise routes win over
+  // the generic "**/items*" / "**/configs" / "**/configs/by-item/**"
+  // handlers registered above (Playwright runs the last-registered matching
+  // handler first).
+
+  // PATCH publish of the site item — host-scoped like "/items/1"/"/items/9"
+  // above: the shell's own client-side route is also "/items/site-1".
+  await page.route("https://core.test/items/site-1", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = await route.request().postDataJSON();
+      if (typeof body?.isPublished === "boolean") sitePublished = body.isPublished;
+    }
+    await route.fulfill({
+      json: {
+        pk: "site-1", resourceType: "site", slug: siteSlug, title: "Mon Portail",
+        abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
+        configId: null, isPublished: sitePublished,
+      },
+    });
+  });
+
+  // Public consultation by slug — 200 only when published and slug matches,
+  // 404 otherwise (never 403 — anonymous access is the point).
+  await page.route("https://core.test/public/sites/*", async (route) => {
+    const wanted = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+    if (sitePublished && wanted === siteSlug) {
+      await route.fulfill({
+        json: {
+          pk: "site-1", resourceType: "site", slug: siteSlug, title: "Mon Portail",
+          abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
+          configId: null, isPublished: true,
+        },
+      });
+    } else {
+      await route.fulfill({ status: 404, json: { detail: "site not found" } });
+    }
+  });
+
+  // Public config for the site item — getPublicAppConfig unwraps `data.config`,
+  // so this mock must wrap SITE_APP_CONFIG (unlike the internal /configs/by-item
+  // GET handler above, which returns the same shape for a different reason).
+  await page.route("https://core.test/public/configs/by-item/site-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-site", itemId: "site-1", kind: "site", version: 1, config: SITE_APP_CONFIG },
+    });
   });
 }
