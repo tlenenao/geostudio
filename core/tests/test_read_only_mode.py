@@ -78,3 +78,13 @@ def test_read_only_mode_off_by_default_leaves_mutations_working(env):
         json={"title": "T", "config": {"kind": "app", "layout": {"type": "grid", "items": []}}},
     )
     assert response.status_code == 201
+
+
+def test_read_only_mode_does_not_block_the_aggregate_endpoint(env, monkeypatch):
+    """POST /collections/{id}/aggregate est une lecture malgré son verbe HTTP
+    (le corps est structuré, pas une liste de query params — cf. spec SP-11b) ;
+    le exempter du garde read-only évite de casser tout widget Graphique/
+    Indicateur dans une démo publique."""
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    response = env.post("/collections/does-not-exist/aggregate", json={"groupBy": "x"})
+    assert response.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
