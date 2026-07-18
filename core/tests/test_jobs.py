@@ -66,3 +66,4 @@ def test_import_paths_registers_all_domain_tasks():
     assert "app.ingestion.tasks.run_ingestion_task" in task_names
     assert "app.items.jobs.embed_item_task" in task_names
     assert "app.collections.jobs.embed_collection_task" in task_names
+    assert "app.cdc.jobs.run_compaction_cycle_task" in task_names
