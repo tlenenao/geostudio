@@ -74,3 +74,41 @@ test("shows an inline error for an invalid when condition", async () => {
   );
   expect(screen.getByRole("alert")).toBeInTheDocument();
 });
+
+test("rejects adding onEnter when longitude is blank", async () => {
+  const onPageChange = vi.fn();
+  render(
+    <NavigationPanel navigationMode="story" onNavigationModeChange={vi.fn()} page={pageWithMap()} onPageChange={onPageChange} />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Widget cible"), "m1");
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "flyTo");
+  await userEvent.type(screen.getByLabelText("Latitude"), "48.85");
+  // Longitude left blank
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter à ce chapitre" }));
+  expect(onPageChange).not.toHaveBeenCalled();
+});
+
+test("rejects adding onEnter when latitude is blank", async () => {
+  const onPageChange = vi.fn();
+  render(
+    <NavigationPanel navigationMode="story" onNavigationModeChange={vi.fn()} page={pageWithMap()} onPageChange={onPageChange} />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Widget cible"), "m1");
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "flyTo");
+  await userEvent.type(screen.getByLabelText("Longitude"), "2.35");
+  // Latitude left blank
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter à ce chapitre" }));
+  expect(onPageChange).not.toHaveBeenCalled();
+});
+
+test("rejects adding onEnter when both longitude and latitude are blank", async () => {
+  const onPageChange = vi.fn();
+  render(
+    <NavigationPanel navigationMode="story" onNavigationModeChange={vi.fn()} page={pageWithMap()} onPageChange={onPageChange} />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Widget cible"), "m1");
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "flyTo");
+  // Both left blank
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter à ce chapitre" }));
+  expect(onPageChange).not.toHaveBeenCalled();
+});
