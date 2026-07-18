@@ -107,3 +107,54 @@ def test_promotion_is_audited(env):
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     assert "user.promote" in actions
+
+
+def test_patch_user_grants_analyst(env):
+    app, client, _, admin, regular = env
+    _as(app, admin)
+    resp = client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
+    assert resp.status_code == 200
+    assert resp.json()["isAnalyst"] is True
+
+
+def test_patch_user_revokes_analyst(env):
+    app, client, _, admin, regular = env
+    _as(app, admin)
+    client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
+    resp = client.patch(f"/users/{regular.id}", json={"isAnalyst": False})
+    assert resp.status_code == 200
+    assert resp.json()["isAnalyst"] is False
+
+
+def test_patch_user_isAdmin_omitted_leaves_admin_flag_unchanged(env):
+    # isAdmin devient optionnel : un PATCH qui ne fournit que isAnalyst ne
+    # doit pas toucher isAdmin (régression possible si le corps appliquait
+    # `body.isAdmin` sans garde de présence).
+    app, client, _, admin, regular = env
+    _as(app, admin)
+    resp = client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
+    assert resp.status_code == 200
+    assert resp.json()["isAdmin"] is False
+
+
+def test_grant_analyst_is_audited(env):
+    app, client, Session, admin, regular = env
+    _as(app, admin)
+    client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
+    from app.audit.models import AuditLog
+    from sqlalchemy import select
+    with Session() as s:
+        actions = list(s.scalars(select(AuditLog.action)))
+    assert "user.grant_analyst" in actions
+
+
+def test_revoke_analyst_is_audited(env):
+    app, client, Session, admin, regular = env
+    _as(app, admin)
+    client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
+    client.patch(f"/users/{regular.id}", json={"isAnalyst": False})
+    from app.audit.models import AuditLog
+    from sqlalchemy import select
+    with Session() as s:
+        actions = list(s.scalars(select(AuditLog.action)))
+    assert "user.revoke_analyst" in actions
