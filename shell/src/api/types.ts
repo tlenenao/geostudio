@@ -174,6 +174,8 @@ export type Page = {
   id: string;
   name: string;
   layout: AppLayout;
+  // Messages déclenchés à l'entrée du chapitre en mode story (SP storytelling).
+  onEnter?: ActionMessage[];
 };
 
 export type VariableType = "string" | "number" | "bool" | "date" | "record" | "list";
@@ -299,4 +301,5 @@ export type AppConfig = {
   layout: AppLayout;
   pages?: Page[];
   variables?: Variable[];
+  navigationMode?: "tabs" | "story";
 };
