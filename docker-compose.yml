@@ -34,6 +34,7 @@ services:
         -c max_connections=200
         -c random_page_cost=1.1
         -c max_parallel_workers_per_gather=4
+        -c wal_level=logical
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
@@ -127,6 +128,7 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
       S3_UPLOADS_BUCKET: geostudio-uploads
+      S3_CDC_BUCKET: geostudio-cdc
     ports:
       - "8200:8200"
     networks: [gis-net]
@@ -159,18 +161,43 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m procrastinate --app app.jobs.app schema --apply &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
+      S3_CDC_BUCKET: geostudio-cdc
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
+    restart: unless-stopped
+
+  # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
+  # A16). Connexion DIRECTE à postgis:5432, PAS à pgbouncer:6432 : PgBouncer
+  # est en POOL_MODE transaction, incompatible avec le protocole de
+  # réplication logique. Service métier essentiel dès que SP-11 est livré,
+  # pas un outil d'exploitation optionnel — pas de profil, comme core/worker.
+  cdc-worker:
+    build: ./core
+    command: python -m app.cdc.main
+    environment:
+      CDC_DATABASE_URL: postgresql://gis:${PG_PASSWORD}@postgis:5432/gis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_CDC_BUCKET: geostudio-cdc
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_SERVICE_NAME: geostudio-cdc-worker
+    networks: [gis-net]
+    depends_on:
+      postgis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────

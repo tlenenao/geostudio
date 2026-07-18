@@ -2,17 +2,23 @@
 """Routes OGC API Features (Part 1 lecture, Part 4 écriture).
 Le repository et le scope RLS sont injectables : les tests SQLite substituent
 un fake et un scope nul ; le vrai chemin est PostGIS-only."""
+import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from opentelemetry import metrics
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
-from app.collections.repository import get_access_facts
+from app.collections.introspection import TableNotFound
+from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
 from app.features.repository import FilterError
@@ -20,6 +26,16 @@ from app.features.validation import validate_feature
 from app.sharing.authorization import can
 
 router = APIRouter()
+
+_meter = metrics.get_meter(__name__)
+_sql_queries_counter = _meter.create_counter(
+    "geostudio.analytics.sql_queries", unit="1",
+    description="Analyst read-only SQL queries executed via POST /analytics/sql",
+)
+
+
+class SqlQueryBody(BaseModel):
+    sql: str
 
 RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "f"}
 MAX_LIMIT = 1000
@@ -134,6 +150,96 @@ def list_features(
         "timeStamp": datetime.now(timezone.utc).isoformat(),
         "links": _page_links(request, limit=limit, offset=offset, page=page),
     }
+
+
+def get_duckdb_connection_factory():  # overridé en test
+    from app.analytics.duckdb_conn import open_connection
+
+    def factory():
+        return open_connection(
+            endpoint_url=os.environ["S3_ENDPOINT_URL"],
+            access_key=os.environ["S3_ACCESS_KEY"],
+            secret_key=os.environ["S3_SECRET_KEY"],
+        )
+    return factory
+
+
+def get_analytics_base_uri():  # overridé en test (pointe un répertoire tmp_path local)
+    bucket = os.environ.get("S3_CDC_BUCKET", "geostudio-cdc")
+    return f"s3://{bucket}/cdc"
+
+
+@router.post("/collections/{collection_id}/aggregate")
+def aggregate_features(
+    collection_id: str, body: AggregateRequestBody,
+    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    conn = conn_factory()
+    try:
+        try:
+            category_key, rows = run_collection_aggregate(
+                conn, base_uri=base_uri, tenant_id=col.tenant_id, collection_id=col.id,
+                table_info=info, request=body,
+            )
+        except UnknownAggregateField as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_field", "message": exc.message}])
+    finally:
+        conn.close()
+    return {"categoryKey": category_key, "rows": rows}
+
+
+@router.post("/analytics/sql")
+def analytics_sql(
+    body: SqlQueryBody,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    if not user.is_analyst:
+        raise HTTPException(status_code=403, detail="analyst role required")
+    cols = list_visible_collections(
+        session, tenant_id=user.tenant_id, user_id=user.id, is_admin=user.is_admin,
+    )
+    allowed: dict = {}
+    for col in cols:
+        try:
+            allowed[col.id] = introspect(session, col.table_name)
+        except TableNotFound:
+            continue
+    conn = conn_factory()
+    try:
+        columns, rows, truncated = run_analyst_sql(
+            conn, sql=body.sql, allowed=allowed, base_uri=base_uri, tenant_id=user.tenant_id,
+        )
+    except SqlSandboxError as exc:
+        _sql_queries_counter.add(1, {"outcome": "error"})
+        write_audit(
+            session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+            action="analytics.sql", object_type="analytics", object_id="sql",
+            payload={"sql": body.sql[:500], "outcome": "error"},
+        )
+        # Commit the abuse/failure trail on the request session itself: the outer
+        # request_scoped_session rolls back on the raised 400, so we must persist
+        # the audit row here (this route is otherwise read-only, so the audit is
+        # the only pending write). The later rollback is then a harmless no-op.
+        session.commit()
+        raise _validation_error([{"field": "sql", "code": "sql_error", "message": str(exc)}])
+    finally:
+        conn.close()
+    _sql_queries_counter.add(1, {"outcome": "success"})
+    write_audit(
+        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+        action="analytics.sql", object_type="analytics", object_id="sql",
+        payload={"sql": body.sql[:500], "outcome": "success"},
+    )
+    return {"columns": columns, "rows": rows, "truncated": truncated}
 
 
 @router.get("/collections/{collection_id}/items/{fid}")

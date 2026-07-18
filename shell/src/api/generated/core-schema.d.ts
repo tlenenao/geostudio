@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/analytics/sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analytics Sql */
+        post: operations["analytics_sql_analytics_sql_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/collections": {
         parameters: {
             query?: never;
@@ -73,6 +90,23 @@ export interface paths {
         head?: never;
         /** Patch Collection */
         patch: operations["patch_collection_collections__collection_id__patch"];
+        trace?: never;
+    };
+    "/collections/{collection_id}/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aggregate Features */
+        post: operations["aggregate_features_collections__collection_id__aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/collections/{collection_id}/items": {
@@ -608,6 +642,48 @@ export interface components {
             /** Userid */
             userId: string;
         };
+        /** AggregateMeasure */
+        AggregateMeasure: {
+            /**
+             * Agg
+             * @default count
+             */
+            agg: string;
+            /** Field */
+            field?: string | null;
+            /** Label */
+            label?: string | null;
+        };
+        /** AggregateRequestBody */
+        AggregateRequestBody: {
+            /**
+             * Agg
+             * @default count
+             */
+            agg: string;
+            /** Bbox */
+            bbox?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Field */
+            field?: string | null;
+            /**
+             * Filters
+             * @default {}
+             */
+            filters: {
+                [key: string]: string;
+            };
+            /** Groupby */
+            groupBy?: string | null;
+            /** Measures */
+            measures?: components["schemas"]["AggregateMeasure"][] | null;
+            /** Split */
+            split?: string | null;
+        };
         /** BaseMap */
         BaseMap: {
             /** Style */
@@ -1010,6 +1086,8 @@ export interface components {
             id: string;
             /** Isadmin */
             isAdmin: boolean;
+            /** Isanalyst */
+            isAnalyst: boolean;
             /** Lastname */
             lastName: string;
             /** Tenantid */
@@ -1074,10 +1152,17 @@ export interface components {
             /** Public */
             public: boolean;
         };
+        /** SqlQueryBody */
+        SqlQueryBody: {
+            /** Sql */
+            sql: string;
+        };
         /** UserAdminPatch */
         UserAdminPatch: {
             /** Isadmin */
-            isAdmin: boolean;
+            isAdmin?: boolean | null;
+            /** Isanalyst */
+            isAnalyst?: boolean | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1137,6 +1222,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    analytics_sql_analytics_sql_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlQueryBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1318,6 +1438,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CollectionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aggregate_features_collections__collection_id__aggregate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AggregateRequestBody"];
             };
         };
         responses: {

@@ -13,6 +13,7 @@ from app.collections import repository as repo
 from app.collections.introspection import (
     Introspector, TableNotFound, UnsupportedTable,
 )
+from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch
 from app.db import core_table_names, get_session
@@ -312,6 +313,7 @@ def unregister_collection(
 ):
     col = get_readable_collection(session, user, collection_id)
     _require_admin(user)  # après le 404 : un non-admin qui la voit reçoit 403
+    remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="collection.delete", object_type="collection", object_id=collection_id,

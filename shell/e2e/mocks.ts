@@ -210,8 +210,7 @@ export async function mockCore(page: Page) {
     await route.fulfill({ json: { collections } });
   });
 
-  // Cœur items for the "villes" collection — a statistics source aggregates
-  // these client-side (groupBy region, split annee → 2 series).
+  // Cœur items for the "villes" collection — used by regular (non-statistics) data sources.
   await page.route("**/collections/villes/items*", async (route) => {
     await route.fulfill({
       json: {
@@ -221,6 +220,22 @@ export async function mockCore(page: Page) {
           { id: 2, properties: { region: "Nord", annee: "2026", pop: 12 } },
           { id: 3, properties: { region: "Sud", annee: "2025", pop: 5 } },
           { id: 4, properties: { region: "Sud", annee: "2026", pop: 7 } },
+        ],
+      },
+    });
+  });
+
+  // POST /collections/villes/aggregate (SP-11b) — le cœur agrège désormais
+  // côté serveur (DuckDB) ; le mock renvoie directement la forme large déjà
+  // pivotée (groupBy region, split annee → 2 series), même contrat que
+  // l'ancienne agrégation client qu'il remplace.
+  await page.route("**/collections/villes/aggregate", async (route) => {
+    await route.fulfill({
+      json: {
+        categoryKey: "region",
+        rows: [
+          { region: "Nord", "2025": 10, "2026": 12 },
+          { region: "Sud", "2025": 5, "2026": 7 },
         ],
       },
     });

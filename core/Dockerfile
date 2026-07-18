@@ -11,12 +11,21 @@ COPY pyproject.toml ./
 # mcp was added in SP-2a for the same reason — kept it in sync here too.
 RUN uv pip install --system --no-cache \
     "fastapi>=0.111" "uvicorn[standard]>=0.30" "sqlalchemy>=2.0" \
-    "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" \
+    "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" "psycopg2-binary>=2.9" \
     "alembic>=1.13" "pyjwt[crypto]>=2.8" "boto3>=1.34" "python-multipart>=0.0.9" \
     "mcp>=1.12" "shapely>=2.0" "procrastinate>=2.0" "pyogrio>=0.9" "pyproj>=3.6" \
-    "pgvector>=0.3" "opentelemetry-sdk>=1.27" "opentelemetry-exporter-otlp-proto-http>=1.27" \
+    "geopandas>=0.14" "pyarrow>=15.0" "pgvector>=0.3" "duckdb>=1.0" "opentelemetry-sdk>=1.27" "opentelemetry-exporter-otlp-proto-http>=1.27" \
     "opentelemetry-instrumentation-fastapi>=0.48b0" "opentelemetry-instrumentation-sqlalchemy>=0.48b0" \
     "opentelemetry-instrumentation-httpx>=0.48b0" "opentelemetry-instrumentation-botocore>=0.48b0"
+
+# Pré-installe les extensions DuckDB httpfs/spatial (SP-11b, module
+# app/analytics/duckdb_conn.py) sur le disque de l'image, au build — sans
+# quoi le premier POST /collections/{id}/aggregate en runtime déclencherait
+# un INSTALL réseau vers extensions.duckdb.org, qui échoue en déploiement
+# à égress restreint/air-gapped. Aucun USER switch dans cette image : le
+# process de build et le process runtime tournent sous le même utilisateur,
+# donc le même répertoire d'extensions (~/.duckdb/extensions) est réutilisé.
+RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial')"
 
 COPY app ./app
 COPY alembic ./alembic

@@ -170,3 +170,15 @@ def test_jwks_client_is_memoized(monkeypatch):
     client2 = dependency._jwks_client()
 
     assert client1 is client2
+
+
+def test_analyst_subs_parses_env(monkeypatch):
+    from app.auth.dependency import analyst_subs
+    monkeypatch.setenv("CORE_ANALYST_SUBS", " a , b ,, c ")
+    assert analyst_subs() == {"a", "b", "c"}
+
+
+def test_analyst_subs_empty_when_unset(monkeypatch):
+    from app.auth.dependency import analyst_subs
+    monkeypatch.delenv("CORE_ANALYST_SUBS", raising=False)
+    assert analyst_subs() == set()
