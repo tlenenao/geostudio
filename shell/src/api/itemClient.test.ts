@@ -38,14 +38,33 @@ test("getItem missing returns 404 and throws", async () => {
 });
 
 test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+        isAnalyst: false,
+      }),
+    ),
+  );
   const me = await makeClient().getMe();
-  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false });
+  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false, isAnalyst: false });
 });
 
 test("getMe surfaces isAdmin", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: true,
+        isAnalyst: false,
+      }),
     ),
   );
   const me = await makeClient().getMe();
@@ -418,13 +437,12 @@ test("featuresUrl omits empty/nullish query entries", () => {
 
 test("queryDataSource aggregates a statistics source by count per group", async () => {
   server.use(
-    http.get("https://core.test/collections/villes/items", () =>
+    http.post("https://core.test/collections/villes/aggregate", () =>
       HttpResponse.json({
-        type: "FeatureCollection",
-        features: [
-          { id: 1, properties: { region: "Nord", pop: 10 } },
-          { id: 2, properties: { region: "Nord", pop: 20 } },
-          { id: 3, properties: { region: "Sud", pop: 5 } },
+        categoryKey: "region",
+        rows: [
+          { region: "Nord", value: 2 },
+          { region: "Sud", value: 1 },
         ],
       }),
     ),
@@ -440,17 +458,17 @@ test("queryDataSource aggregates a statistics source by count per group", async 
 });
 
 test("queryDataSource supports sum/avg/min/max aggregations per group", async () => {
-  const feats = {
-    type: "FeatureCollection",
-    features: [
-      { id: 1, properties: { region: "Nord", pop: 10 } },
-      { id: 2, properties: { region: "Nord", pop: 20 } },
-      { id: 3, properties: { region: "Sud", pop: 6 } },
-    ],
-  };
   const run = async (agg: string) => {
     server.use(
-      http.get("https://core.test/collections/villes/items", () => HttpResponse.json(feats)),
+      http.post("https://core.test/collections/villes/aggregate", () =>
+        HttpResponse.json({
+          categoryKey: "region",
+          rows: [
+            { region: "Nord", value: agg === "sum" ? 30 : agg === "avg" ? 15 : agg === "min" ? 10 : 20 },
+            { region: "Sud", value: 6 },
+          ],
+        }),
+      ),
     );
     return makeClient().queryDataSource({
       id: "s", type: "statistics", service: "core", layer: "villes",
@@ -477,13 +495,12 @@ test("queryDataSource supports sum/avg/min/max aggregations per group", async ()
 
 test("queryDataSource pivots a statistics source into one column per split value", async () => {
   server.use(
-    http.get("https://core.test/collections/villes/items", () =>
+    http.post("https://core.test/collections/villes/aggregate", () =>
       HttpResponse.json({
-        type: "FeatureCollection",
-        features: [
-          { id: 1, properties: { region: "Nord", annee: "2025", pop: 10 } },
-          { id: 2, properties: { region: "Nord", annee: "2026", pop: 12 } },
-          { id: 3, properties: { region: "Sud", annee: "2025", pop: 5 } },
+        categoryKey: "region",
+        rows: [
+          { region: "Nord", "2025": 10, "2026": 12 },
+          { region: "Sud", "2025": 5, "2026": 0 },
         ],
       }),
     ),
@@ -500,12 +517,11 @@ test("queryDataSource pivots a statistics source into one column per split value
 
 test("queryDataSource produces one wide column per measure", async () => {
   server.use(
-    http.get("https://core.test/collections/villes/items", () =>
+    http.post("https://core.test/collections/villes/aggregate", () =>
       HttpResponse.json({
-        type: "FeatureCollection",
-        features: [
-          { id: 1, properties: { region: "Nord", pop: 10, rev: 4 } },
-          { id: 2, properties: { region: "Nord", pop: 20, rev: 8 } },
+        categoryKey: "region",
+        rows: [
+          { region: "Nord", Population: 30, avg_rev: 6 },
         ],
       }),
     ),

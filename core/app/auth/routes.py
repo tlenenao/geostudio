@@ -7,7 +7,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.users.models import User
-from app.users.repository import count_admins, list_users, set_admin
+from app.users.repository import count_admins, list_users, set_admin, set_analyst
 
 router = APIRouter()
 
@@ -20,6 +20,7 @@ class MeResponse(BaseModel):
     firstName: str
     lastName: str
     isAdmin: bool
+    isAnalyst: bool
 
 
 @router.get("/me", response_model=MeResponse)
@@ -32,11 +33,13 @@ def get_me(user: User = Depends(get_current_user)) -> MeResponse:
         firstName=user.first_name,
         lastName=user.last_name,
         isAdmin=user.is_admin,
+        isAnalyst=user.is_analyst,
     )
 
 
 class UserAdminPatch(BaseModel):
-    isAdmin: bool
+    isAdmin: bool | None = None
+    isAnalyst: bool | None = None
 
 
 def _require_admin(user: User) -> None:
@@ -45,7 +48,12 @@ def _require_admin(user: User) -> None:
 
 
 def _user_json(user: User) -> dict:
-    return {"id": user.id, "username": user.username, "isAdmin": user.is_admin}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "isAdmin": user.is_admin,
+        "isAnalyst": user.is_analyst,
+    }
 
 
 @router.get("/users")
@@ -75,23 +83,41 @@ def patch_user(
     )
     if target is None:
         raise HTTPException(status_code=404, detail="user not found")
-    if (
-        not body.isAdmin
-        and target.is_admin
-        and count_admins(session, tenant_id=user.tenant_id) == 1
-    ):
-        raise HTTPException(status_code=409, detail="cannot demote the last admin")
-    updated = set_admin(
-        session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin
+    if body.isAdmin is not None:
+        if (
+            not body.isAdmin
+            and target.is_admin
+            and count_admins(session, tenant_id=user.tenant_id) == 1
+        ):
+            raise HTTPException(status_code=409, detail="cannot demote the last admin")
+        set_admin(
+            session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin
+        )
+        write_audit(
+            session,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="user.promote" if body.isAdmin else "user.demote",
+            object_type="user",
+            object_id=user_id,
+            payload={"isAdmin": body.isAdmin},
+        )
+    if body.isAnalyst is not None:
+        set_analyst(
+            session, tenant_id=user.tenant_id, user_id=user_id, is_analyst=body.isAnalyst
+        )
+        write_audit(
+            session,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="user.grant_analyst" if body.isAnalyst else "user.revoke_analyst",
+            object_type="user",
+            object_id=user_id,
+            payload={"isAnalyst": body.isAnalyst},
+        )
+    target = session.scalar(
+        select(User).where(User.tenant_id == user.tenant_id, User.id == user_id)
     )
-    write_audit(
-        session,
-        tenant_id=user.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action="user.promote" if body.isAdmin else "user.demote",
-        object_type="user",
-        object_id=user_id,
-        payload={"isAdmin": body.isAdmin},
-    )
-    return _user_json(updated)
+    return _user_json(target)

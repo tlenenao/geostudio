@@ -10,6 +10,11 @@ dependencies = [
     "pydantic>=2.7",
     "httpx>=0.27",
     "psycopg[binary]>=3.1",
+    "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
+                             # de réplication logique (psycopg v3 ne l'expose pas) ;
+                             # utilisé uniquement par app/cdc/ pour la connexion de
+                             # réplication elle-même, psycopg[binary] reste le driver
+                             # de tout le reste du cœur.
     "alembic>=1.13",
     "pyjwt[crypto]>=2.8",
     "boto3>=1.34",
@@ -19,7 +24,14 @@ dependencies = [
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
+    "geopandas>=0.14",  # SP-11a : GeoDataFrame.to_parquet gère nativement les
+                        # métadonnées GeoParquet 1.0 ; s'appuie sur shapely,
+                        # déjà présent.
+    "pyarrow>=15.0",  # SP-11a : requis pour geopandas.to_parquet
     "pgvector>=0.3",
+    "duckdb>=1.0",  # SP-11b : module analytique — lit le GeoParquet CDC (SP-11a)
+                    # via httpfs (S3/MinIO) + spatial (ST_Intersects sur la colonne
+                    # géométrie WKB), connexion in-process éphémère par requête.
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
     "opentelemetry-instrumentation-fastapi>=0.48b0",

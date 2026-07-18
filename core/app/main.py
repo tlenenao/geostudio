@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import contextlib
 import os
+import re
 from collections.abc import Iterator
 
 from fastapi import FastAPI, Request
@@ -22,6 +23,8 @@ from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
 from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
+
+_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 
 
 def create_app() -> FastAPI:
@@ -55,6 +58,8 @@ def create_app() -> FastAPI:
             is_read_only_mode()
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and request.url.path != "/mcp"
+            and request.url.path != "/analytics/sql"
+            and not _AGGREGATE_PATH_RE.match(request.url.path)
         ):
             return JSONResponse(
                 status_code=403,

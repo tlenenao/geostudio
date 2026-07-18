@@ -31,6 +31,13 @@ def admin_subs() -> set[str]:
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
+def analyst_subs() -> set[str]:
+    """OIDC subs à promouvoir analyste au prochain get_or_create_user
+    (source de vérité de CORE_ANALYST_SUBS) — miroir de admin_subs()."""
+    raw = os.environ.get("CORE_ANALYST_SUBS", "")
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
@@ -60,6 +67,7 @@ def get_current_user(
             first_name="Mock",
             last_name="User",
             bootstrap_admin=True,
+            bootstrap_analyst=True,
         )
 
     try:
@@ -87,6 +95,7 @@ def get_current_user(
         first_name=claims.get("given_name", ""),
         last_name=claims.get("family_name", ""),
         bootstrap_admin=claims["sub"] in admin_subs(),
+        bootstrap_analyst=claims["sub"] in analyst_subs(),
     )
 
 
