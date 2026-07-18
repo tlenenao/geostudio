@@ -191,10 +191,20 @@ export function createItemClient(opts: {
     },
 
     async getMe(): Promise<Me> {
-      const data = await request<{ username: string; firstName: string; lastName: string; isAdmin: boolean }>(
-        "GET", `/me`,
-      );
-      return { username: data.username, firstName: data.firstName, lastName: data.lastName, isAdmin: data.isAdmin };
+      const data = await request<{
+        username: string;
+        firstName: string;
+        lastName: string;
+        isAdmin: boolean;
+        isAnalyst: boolean;
+      }>("GET", `/me`);
+      return {
+        username: data.username,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        isAdmin: data.isAdmin,
+        isAnalyst: data.isAnalyst,
+      };
     },
 
     async getInstanceInfo(): Promise<InstanceInfo> {

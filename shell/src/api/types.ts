@@ -27,6 +27,7 @@ export type Me = {
   firstName: string;
   lastName: string;
   isAdmin: boolean;
+  isAnalyst: boolean;
 };
 
 export type InstanceInfo = { readOnly: boolean };
