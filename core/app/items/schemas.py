@@ -13,6 +13,7 @@ class ItemRead(BaseModel):
     date: str
     configId: str | None
     isPublished: bool
+    keywords: list[str] = []
 
 
 class ItemPage(BaseModel):
