@@ -279,7 +279,32 @@ export async function mockCore(page: Page) {
       { id: 2, properties: { nom: "Bois Test" } },
     ];
     const features = nom ? all.filter((f) => f.properties.nom === nom) : all;
-    await route.fulfill({ json: { type: "FeatureCollection", features } });
+    await route.fulfill({
+      headers: { "Content-Disposition": 'attachment; filename="parcs.geojson"' },
+      json: { type: "FeatureCollection", features },
+    });
+  });
+
+  // Collection detail + schema for "parcs" (SP-16c) — a genuinely public
+  // collection (unlike "incidents", kept private above for the incident-form
+  // scenario), reusing the existing "**/collections/parcs/items*" fixture.
+  await page.route("**/collections/parcs", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "parcs", title: "Parcs", description: "Parcs publics de la ville", tableName: "parcs",
+        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: false, featureCount: 2,
+      },
+    });
+  });
+
+  await page.route("**/collections/parcs/schema", async (route) => {
+    await route.fulfill({
+      json: {
+        collection: "parcs", pk: "id", geometry: null,
+        fields: [{ name: "nom", type: "string", required: true }],
+      },
+    });
   });
 
   // Collection "incidents" — schéma introspecté, permission d'écriture, et
