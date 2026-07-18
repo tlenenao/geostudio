@@ -30,19 +30,6 @@ class Layout(BaseModel):
     items: list[LayoutItem] = Field(default_factory=list)
 
 
-class Page(BaseModel):
-    id: str
-    name: str
-    layout: Layout
-
-
-class Variable(BaseModel):
-    id: str
-    name: str
-    type: Literal["string", "number", "bool", "date", "record", "list"] = "string"
-    initialValue: str | bool | float | dict | list | None = ""
-
-
 class Message(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -51,6 +38,21 @@ class Message(BaseModel):
     to: str
     action: str
     when: str | None = None
+    payload: dict | None = None
+
+
+class Page(BaseModel):
+    id: str
+    name: str
+    layout: Layout
+    onEnter: list[Message] = Field(default_factory=list)
+
+
+class Variable(BaseModel):
+    id: str
+    name: str
+    type: Literal["string", "number", "bool", "date", "record", "list"] = "string"
+    initialValue: str | bool | float | dict | list | None = ""
 
 
 class MapView(BaseModel):
@@ -94,6 +96,7 @@ class BuilderConfig(BaseModel):
     layout: Layout | None = None
     messages: list[Message] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)
+    navigationMode: Literal["tabs", "story"] = "tabs"
     variables: list[Variable] = Field(default_factory=list)
     map: MapConfig | None = None
 
