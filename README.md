@@ -80,6 +80,28 @@ docker compose exec core python -m scripts.seed_demo
 
 Commande idempotente — relançable sans effet si les collections existent déjà.
 
+### Rôles : administrateur et analyste
+
+Deux variables d'environnement du cœur promeuvent des subs OIDC à un rôle
+au moment où l'utilisateur se connecte pour la première fois (elles
+n'affectent jamais un utilisateur déjà créé — repromouvoir ensuite passe
+par `PATCH /users`, voir plus bas) :
+
+- **`CORE_ADMIN_SUBS`** — liste de subs OIDC (séparés par des virgules)
+  promus **administrateur** au login : gestion des collections, des
+  extensions et des utilisateurs.
+- **`CORE_ANALYST_SUBS`** — même mécanique, miroir de `CORE_ADMIN_SUBS`,
+  pour le rôle **analyste** : un analyste peut exécuter du SQL en lecture
+  seule via `POST /analytics/sql`, borné aux collections qu'il a le droit
+  de lire (`can(read)`, RLS inchangée — l'endpoint ne contourne aucune
+  frontière de sécurité existante).
+
+**Un administrateur n'est pas analyste par défaut** : les deux rôles sont
+indépendants. Pour accorder le rôle analyste à un utilisateur, soit
+peupler `CORE_ANALYST_SUBS` avant sa première connexion, soit, une fois
+l'utilisateur créé, appeler `PATCH /users/{user_id}` avec
+`{"isAnalyst": true}` (réservé à un administrateur, comme pour `isAdmin`).
+
 ### Vérifier le mode `oidc` réel (manuel)
 
 Le mode `mock` (`VITE_AUTH_MODE=mock`, `CORE_AUTH_MODE=mock`) suffit pour le
