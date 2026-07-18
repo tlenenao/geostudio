@@ -49,4 +49,18 @@ export class ActionBus {
       }
     }
   }
+
+  // Dispatch a fixed list of messages (a page's onEnter) directly, bypassing the
+  // wiring map. Each message carries its own static payload. Same when-evaluation
+  // (no emitter record) and per-handler isolation as emit.
+  dispatch(messages: ActionMessage[]): void {
+    for (const m of messages) {
+      if (m.when && !evaluateExpression(m.when, { ...this.context })) continue;
+      try {
+        this.actions.get(`${m.to} ${m.action}`)?.(m.payload);
+      } catch (err) {
+        console.error(`Action bus: onEnter handler for "${m.to} ${m.action}" threw`, err);
+      }
+    }
+  }
 }

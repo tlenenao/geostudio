@@ -269,6 +269,10 @@ export type ActionMessage = {
   to: string;
   action: string;
   when?: string;
+  // Payload statique porté par un message onEnter de page (SP storytelling) :
+  // un chapitre configure ici l'emprise cible de son map.flyTo. Ignoré par les
+  // messages de wiring classiques, dont le payload vient de l'émetteur runtime.
+  payload?: Record<string, unknown>;
 };
 
 export type ThemeColors = {

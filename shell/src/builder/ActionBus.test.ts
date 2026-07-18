@@ -119,3 +119,44 @@ test("a handler that throws does not prevent the next handler in the same emit f
   expect(consoleError).toHaveBeenCalled();
   consoleError.mockRestore();
 });
+
+test("dispatch calls each message's target handler with the message's static payload", () => {
+  const bus = new ActionBus();
+  const fly = vi.fn();
+  bus.register("map1", "flyTo", fly);
+  bus.dispatch([
+    { id: "oe1", from: "p1", event: "enter", to: "map1", action: "flyTo", payload: { center: [2, 48] } },
+  ]);
+  expect(fly).toHaveBeenCalledWith({ center: [2, 48] });
+});
+
+test("dispatch skips a message whose when condition is false", () => {
+  const bus = new ActionBus();
+  const fly = vi.fn();
+  bus.register("map1", "flyTo", fly);
+  bus.setContext({ vars: { ready: false }, user: { name: "" } });
+  bus.dispatch([
+    { id: "oe1", from: "p1", event: "enter", to: "map1", action: "flyTo", payload: {}, when: "vars.ready" },
+  ]);
+  expect(fly).not.toHaveBeenCalled();
+});
+
+test("dispatch is a no-op when no handler is registered for the target", () => {
+  const bus = new ActionBus();
+  expect(() =>
+    bus.dispatch([{ id: "oe1", from: "p1", event: "enter", to: "ghost", action: "flyTo", payload: {} }]),
+  ).not.toThrow();
+});
+
+test("dispatch isolates a throwing handler so later messages still run", () => {
+  const bus = new ActionBus();
+  const boom = vi.fn(() => { throw new Error("boom"); });
+  const ok = vi.fn();
+  bus.register("a", "x", boom);
+  bus.register("b", "y", ok);
+  bus.dispatch([
+    { id: "1", from: "p1", event: "enter", to: "a", action: "x", payload: {} },
+    { id: "2", from: "p1", event: "enter", to: "b", action: "y", payload: {} },
+  ]);
+  expect(ok).toHaveBeenCalled();
+});
