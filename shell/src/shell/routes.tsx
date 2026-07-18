@@ -7,6 +7,7 @@ import { AppBuilderPage } from "../pages/AppBuilderPage";
 import { AppRuntimePage } from "../pages/AppRuntimePage";
 import { SitePublicPage } from "../pages/SitePublicPage";
 import { PublicItemPage } from "../pages/PublicItemPage";
+import { DatasetPage } from "../pages/DatasetPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
@@ -60,6 +61,11 @@ function PublicItemRoute() {
   return <PublicItemPage pk={pk!} />;
 }
 
+function DatasetRoute() {
+  const { collectionId } = useParams();
+  return <DatasetPage collectionId={collectionId!} />;
+}
+
 function ProtectedLayout() {
   return (
     <RequireAuth>
@@ -84,6 +90,7 @@ export function AppRoutes() {
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
       <Route path="/public/items/:pk" element={<PublicItemRoute />} />
+      <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
     </Routes>
   );
 }
