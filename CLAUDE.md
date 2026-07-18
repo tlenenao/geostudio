@@ -1043,6 +1043,56 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   pour synchroniser `main` (qui n'avait pas encore SP-11a/b/c). **SP-11
   (lakehouse : CDC→GeoParquet, compaction+DuckDB analytique, SQL analyste
   sandboxé) est intégralement clos.**
+- **Storytelling (mode narratif sur `PageManager`) livré et clos** (2026-07-18,
+  cf. plan `docs/superpowers/plans/2026-07-18-storytelling-pagemanager.md`) :
+  un auteur active un mode « story » sur une app existante, associe à chaque
+  page/chapitre une action de navigation (`map.flyTo` vers une emprise
+  statique), et obtient une narration séquencée (barre de progression +
+  Précédent/Suivant) — sans nouveau widget, sans nouveau backend, sans code.
+  Shell quasi exclusivement : `AppConfig.navigationMode?: "tabs" | "story"`
+  (défaut `"tabs"`) et `Page.onEnter?: ActionMessage[]` (déclenchés à l'entrée
+  du chapitre via le `ActionBus` existant, `ActionMessage` gagne un
+  `payload?` statique pour l'emprise cible — un chapitre n'a pas d'émetteur
+  runtime). `AppRenderer` rend la barre de story et dispatche les `onEnter`
+  de la page active en preview/runtime (jamais en edit, jamais en mode
+  `tabs` — gate unique `storyMode`). Nouveau panneau `NavigationPanel` dans
+  le builder (déviation assumée du spec initial : **pas** une réutilisation
+  d'`ActionsPanel`, qui est centré émetteur — incompatible avec un
+  émetteur-page), `getConfigExpressionErrors` valide aussi les conditions
+  `when` des `onEnter` (bouton Enregistrer désactivé si invalide), gabarit de
+  galerie « Story cartographique » (3 chapitres texte+carte+flyTo). Seul
+  changement cœur : déclaration Pydantic des 3 nouveaux champs dans
+  `core/app/configs/schemas.py`, round-trip testé explicitement pour éviter
+  de répéter la régression silencieuse de SP-5b (champ non déclaré supprimé
+  par `model_validate`/`model_dump`). Exécuté en subagent-driven-development
+  (7 tâches, revue par tâche + revue finale de branche modèle opus, 0
+  Critical/Important sur les 7 tâches et en revue finale). **1 Important
+  trouvé et corrigé** (Task 5) : `NavigationPanel.add()` acceptait
+  Longitude/Latitude vides (`Number("")===0`, pas `NaN`) et posait
+  silencieusement `payload:{center:[0,0]}` — fix + 3 tests de régression,
+  re-revue clean. **1 vrai bug applicatif trouvé et corrigé en Task 7**, hors
+  périmètre anticipé du brief E2E : `itemClient.ts`
+  `getAppConfig`/`saveAppConfig` reconstruisaient le config champ par champ
+  et omettaient `navigationMode`, perdu silencieusement à tout GET/PUT réel
+  malgré le reste de la pile (types, `NavigationPanel`, gabarit) le posant
+  correctement — même classe de bug que la régression `visibleWhen` SP-5b,
+  cette fois côté TS ; seule l'E2E réelle l'a détecté (`Received:"tabs"` au
+  lieu de `"story"`), aucun test unitaire de tâche ne le couvrait. Fix
+  symétrique GET+PUT ; revue finale a vérifié indépendamment (chasse
+  adversariale dédiée) que les 8 champs d'`AppConfig` sont désormais tous
+  round-trippés symétriquement — pas seulement celui qui a révélé le bug.
+  **Dérive OpenAPI détectée et corrigée après les 7 tâches** (commit
+  bca3f61) : contrairement à la spéculation du plan, `BuilderConfig`/`Page`/
+  `Message` sont des modèles Pydantic typés exposés par le schéma FastAPI —
+  `core/openapi.json`/`core-schema.d.ts` régénérés. Revue finale de branche :
+  **Ready to merge: Yes**, 0 Critical/Important, 3 Minor non bloquants (SPDX
+  incohérent sur le seul fichier `shell/e2e/*.spec.ts` qui en a un ;
+  restructuration DOM inconditionnelle d'`AppRenderer`, visuellement
+  équivalente, sans régression observée ; `navigationMode` typé requis par
+  openapi-typescript malgré son défaut Pydantic, quirk pré-existant inerte).
+  **515 tests cœur passed/80 skipped** (sans DB), **497 tests shell**,
+  build/tsc clean, **38/38 specs E2E** (37 + `storytelling.spec.ts`). Poussé
+  sur `dev`.
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
