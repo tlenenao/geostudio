@@ -213,13 +213,16 @@ export function createItemClient(opts: {
 
     async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string }): Promise<Item> {
       const template = input.templateId ? getTemplate(input.templateId) : undefined;
+      const firstPageLayout = template?.pages?.[0]?.layout;
       const config = {
         version: 1,
         kind: input.kind,
         theme: template?.theme ?? {},
         dataSources: template?.dataSources ?? [],
-        layout: template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
+        layout: firstPageLayout ?? template?.layout ?? { type: "grid", breakpoints: {}, items: [] },
         messages: template?.messages ?? [],
+        pages: template?.pages ?? [],
+        navigationMode: template?.navigationMode ?? "tabs",
       };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
         "POST", `/configs`, { title: input.title, config },

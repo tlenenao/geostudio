@@ -2,9 +2,20 @@
 import { expect, test } from "vitest";
 import { TEMPLATES, getTemplate } from "./templates";
 
-test("exposes exactly one app template and one dashboard template", () => {
-  expect(TEMPLATES.filter((t) => t.kind === "app")).toHaveLength(2);
+test("exposes the expected number of templates per kind", () => {
+  expect(TEMPLATES.filter((t) => t.kind === "app")).toHaveLength(3);
   expect(TEMPLATES.filter((t) => t.kind === "dashboard")).toHaveLength(1);
+});
+
+test("story cartographique template has 3 chapters each with a flyTo onEnter", () => {
+  const story = getTemplate("story-cartographique");
+  expect(story?.navigationMode).toBe("story");
+  expect(story?.pages).toHaveLength(3);
+  for (const page of story!.pages!) {
+    expect(page.onEnter).toHaveLength(1);
+    expect(page.onEnter![0].action).toBe("flyTo");
+    expect(page.onEnter![0].payload).toHaveProperty("center");
+  }
 });
 
 test("every template has at least one layout item", () => {

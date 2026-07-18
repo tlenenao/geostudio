@@ -787,6 +787,22 @@ test("createConfigItem seeds dataSources and messages from a template that defin
   expect(body.config.messages).toHaveLength(1);
 });
 
+test("createConfigItem seeds pages and navigationMode from a story template", async () => {
+  let body: any = null;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "story-cartographique" });
+  expect(body.config.navigationMode).toBe("story");
+  expect(body.config.pages).toHaveLength(3);
+  expect(body.config.pages[0].onEnter[0].action).toBe("flyTo");
+  // layout top-level reflète la première page (le cœur l'exige pour app/dashboard)
+  expect(body.config.layout.items.length).toBeGreaterThan(0);
+});
+
 test("listAllExtensions requests all=true and keeps the enabled flag", async () => {
   let url: string | null = null;
   server.use(
