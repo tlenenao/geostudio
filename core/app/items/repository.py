@@ -249,6 +249,7 @@ def update_item(
     abstract: str | None,
     keywords: list[str] | None,
     is_published: bool | None,
+    slug: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
@@ -265,6 +266,12 @@ def update_item(
         item.is_published = is_published
     if is_published is True:
         _items_published_counter.add(1)
+    if slug is not None:
+        if not is_valid_slug(slug):
+            raise InvalidSlugError(f"slug invalide: {slug!r}")
+        if slug_exists(session, tenant_id=tenant_id, slug=slug, exclude_item_id=item_id):
+            raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
+        item.slug = slug
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""

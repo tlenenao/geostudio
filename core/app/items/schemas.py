@@ -27,3 +27,4 @@ class ItemUpdatePatch(BaseModel):
     abstract: str | None = None
     keywords: list[str] | None = None
     isPublished: bool | None = Field(default=None)
+    slug: str | None = None
