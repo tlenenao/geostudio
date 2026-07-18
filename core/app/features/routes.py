@@ -2,6 +2,7 @@
 """Routes OGC API Features (Part 1 lecture, Part 4 écriture).
 Le repository et le scope RLS sont injectables : les tests SQLite substituent
 un fake et un scope nul ; le vrai chemin est PostGIS-only."""
+import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -10,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.repository import get_access_facts
@@ -134,6 +136,48 @@ def list_features(
         "timeStamp": datetime.now(timezone.utc).isoformat(),
         "links": _page_links(request, limit=limit, offset=offset, page=page),
     }
+
+
+def get_duckdb_connection_factory():  # overridé en test
+    from app.analytics.duckdb_conn import open_connection
+
+    def factory():
+        return open_connection(
+            endpoint_url=os.environ["S3_ENDPOINT_URL"],
+            access_key=os.environ["S3_ACCESS_KEY"],
+            secret_key=os.environ["S3_SECRET_KEY"],
+        )
+    return factory
+
+
+def get_analytics_base_uri():  # overridé en test (pointe un répertoire tmp_path local)
+    bucket = os.environ.get("S3_CDC_BUCKET", "geostudio-cdc")
+    return f"s3://{bucket}/cdc"
+
+
+@router.post("/collections/{collection_id}/aggregate")
+def aggregate_features(
+    collection_id: str, body: AggregateRequestBody,
+    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    conn = conn_factory()
+    try:
+        try:
+            category_key, rows = run_collection_aggregate(
+                conn, base_uri=base_uri, tenant_id=col.tenant_id, collection_id=col.id,
+                table_info=info, request=body,
+            )
+        except UnknownAggregateField as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_field", "message": exc.message}])
+    finally:
+        conn.close()
+    return {"categoryKey": category_key, "rows": rows}
 
 
 @router.get("/collections/{collection_id}/items/{fid}")
