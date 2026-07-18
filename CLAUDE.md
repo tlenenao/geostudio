@@ -988,6 +988,61 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   test de sûreté à l'interruption vérifié via un helper pandas plutôt que
   la vraie requête DuckDB `QUALIFY`, logiquement équivalent ici). Poussé
   sur `dev`.
+- **SP-11c livré et clos** (2026-07-18, cf. spec
+  `docs/superpowers/specs/2026-07-18-sp11c-sql-analyste-sandbox-design.md` et
+  plan `docs/superpowers/plans/2026-07-18-sp11c-sql-analyste-sandbox.md`) :
+  endpoint SQL analyste read-only sandboxé — **clôt SP-11**. Un utilisateur
+  porteur du nouveau rôle *analyste* (`users.is_analyst`, migration 0014,
+  bootstrap `CORE_ANALYST_SUBS`, `PATCH /users {isAnalyst}`, `GET /me`,
+  **admin ≠ analyste** : capacités distinctes, un admin non-analyste reçoit
+  aussi 403) exécute du SQL read-only via `POST /analytics/sql` sur les
+  collections qu'il a le droit de lire — chacune exposée comme une vue DuckDB
+  déjà réduite à l'état courant sur le GeoParquet CDC (réutilise
+  `_dedup_cte`/`_qi`/`_has_any_file` de SP-11b). **La frontière de sécurité
+  est DuckDB, pas un parseur maison** : par requête, une connexion DuckDB
+  éphémère **matérialise en tables temporaires les seules vues référencées ∩
+  autorisées** (accès externe encore ouvert), **puis verrouille la connexion**
+  (`SET enable_external_access=false; SET lock_configuration=true`) de sorte
+  que DuckDB refuse tout accès fichier/S3/`ATTACH`/`LOAD`/`COPY`/`read_parquet`
+  arbitraire à l'exécution du SQL analyste ; l'extraction d'AST natif
+  (`json_serialize_sql`) sert seulement à rejeter tôt le non-SELECT et à
+  choisir quoi matérialiser (jamais load-bearing pour la sécurité). Requête
+  bornée (timeout 10s via `threading.Timer`+`conn.interrupt`, plafond 10 000
+  lignes, `memory_limit=512MB`, `threads=2`), périmètre = `list_visible_
+  collections` (même surface que `GET /items`), `tenant_id` toujours du
+  principal authentifié (jamais du body), exemptée du middleware read-only/
+  démo (c'est une lecture, exemption exacte `!=` non sur-large), auditée et
+  comptée (`geostudio.analytics.sql_queries`, attribut `outcome`). Cœur only
+  (pas de MCP, conforme spec). Exécuté en subagent-driven-development (10
+  tâches + 1 fix post-revue, revue par tâche + revue finale de branche modèle
+  opus). **Spike d'ouverture GATE (Task 1)** validé empiriquement contre MinIO
+  réel (GO 10/10, dont les 7 cas d'abus bloqués incl. la ré-tentative de
+  re-`SET` après verrouillage). **Découverte empirique répercutée sur tout le
+  code (Tasks 7/8)** : `duckdb.Exception` N'EXISTE PAS en DuckDB 1.5.4 — la
+  vraie classe de base est `duckdb.Error` (le code présumé du plan aurait levé
+  `AttributeError` au runtime). **Revue finale de branche : 0 Critical/
+  Important**, invariant de sécurité tracé bout-en-bout sous traçage
+  adversarial (lecture cross-tenant, `read_parquet` arbitraire = TABLE_FUNCTION
+  jamais matérialisé et bloqué par le lock via `PermissionException` APRÈS le
+  verrouillage, shadowing de CTE confirmé leak-free, non-SELECT, admin-non-
+  analyste, anonyme→401) ; **1 Minor corrigé sur décision utilisateur** (fix
+  5ae2db8, re-revue clean) : l'audit + le compteur ne se déclenchaient qu'au
+  succès — désormais les tentatives **rejetées** (SqlSandboxError→400) sont
+  auditées aussi, l'audit d'échec `commit()`é explicitement sur la session de
+  requête avant le raise (le `request_scoped_session` rollback sinon la trace ;
+  seule écriture en attente sur ce chemin read-only, rollback ultérieur =
+  no-op). 3 Minor différés en suivi non bloquant (introspection N par requête
+  au lieu de `refs ∩ visible-ids` ; robustesse `_coerce` sur géométrie brute
+  non wrappée `ST_AsText` → 500 possible, pas de fuite ; re-fetch `patch_user`).
+  **Perf empirique réelle contre MinIO** : requête analyste ~0.5-1.0s sur
+  ~992 500 lignes réparties sur 201 fichiers Parquet (10-20x sous le budget de
+  10s). **510 tests cœur passed/80 skipped** (sans DB ; **589 passed/0 skipped
+  contre PostGIS+pgvector+wal2json réel**), lint-imports clean, **477 tests
+  shell** + build/tsc clean, **37/37 specs E2E** (aucune UI ajoutée, forme de
+  `GET /me` élargie sans régression). Poussé sur `dev`, PR dev→main ouverte
+  pour synchroniser `main` (qui n'avait pas encore SP-11a/b/c). **SP-11
+  (lakehouse : CDC→GeoParquet, compaction+DuckDB analytique, SQL analyste
+  sandboxé) est intégralement clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
