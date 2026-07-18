@@ -709,6 +709,12 @@ export interface components {
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
             messages?: components["schemas"]["Message"][];
+            /**
+             * Navigationmode
+             * @default tabs
+             * @enum {string}
+             */
+            navigationMode: "tabs" | "story";
             /** Pages */
             pages?: components["schemas"]["Page"][];
             /** Theme */
@@ -1103,6 +1109,10 @@ export interface components {
             event: string;
             /** From */
             from: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
             /** To */
             to: string;
             /** When */
@@ -1115,6 +1125,8 @@ export interface components {
             layout: components["schemas"]["Layout"];
             /** Name */
             name: string;
+            /** Onenter */
+            onEnter?: components["schemas"]["Message"][];
         };
         /** PresignRequest */
         PresignRequest: {
