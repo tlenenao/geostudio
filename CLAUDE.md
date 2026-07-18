@@ -1144,6 +1144,53 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   Postgres réel), lint-imports clean, **517 tests shell**, build/tsc clean,
   **40/40 specs E2E** (38 + `sites-portal-shell.spec.ts`, 2 tests). Poussé sur
   `dev`. **SP-16b/c (widgets de contenu de portail) restent à faire.**
+- **SP-16b « widgets de contenu (Hero/RichSection/Gallery) » livré et clos**
+  (2026-07-18, deuxième sous-phase de SP-16, cf. spec
+  `docs/superpowers/specs/2026-07-18-sp16b-widgets-contenu-design.md` et plan
+  `docs/superpowers/plans/2026-07-18-sp16b-widgets-contenu.md`) : trois
+  nouveaux widgets de contenu (`Hero`, `RichSection`, `Gallery`) dans le
+  builder, plus la plomberie cœur+shell minimale pour que `Gallery` liste et
+  lie des items publiés à un visiteur anonyme. Cœur : `ItemRead.keywords`
+  (colonne JSON déjà existante sur l'ORM, jamais sérialisée jusqu'ici),
+  `list_published_items` — fonction repository **dédiée**, published-only,
+  tenant-scopée, délibérément indépendante de `list_items` (jamais de
+  `current_user_id`/`scope`) —, `GET /public/items` (anonyme, list-before-
+  detail, leakage matrix non-publié/autre-tenant/tenant-défaut-publié).
+  Shell : `ItemClient.listPublicItems` + `Item.keywords?` (optionnel, non-
+  régression sur les literals `Item` existants), `PublicItemPage` sur route
+  `/public/items/:pk` (simplification 1-requête de `SitePublicPage`, hors
+  `ProtectedLayout`), `Hero` (bandeau titre/sous-titre/CTA, event `cta`
+  câblé sur l'`ActionBus` réel), `RichSection` (Markdown via `sanitizeMarkdown()`
+  — chokepoint unique et non-contournable `marked`+`DOMPurify`, jamais
+  d'appel direct à `marked.parse` ailleurs), `Gallery` (liste `listPublicItems`,
+  filtre `type`/`tag`/`limit` fixé par l'auteur du widget — aucun contrôle
+  interactif pour le visiteur —, vignettes liées à `/public/items/{pk}`).
+  Exécuté en subagent-driven-development (9 tâches, revue par tâche + revue
+  finale de branche modèle opus). **Revue finale : 1 Important trouvé et
+  corrigé** — le CTA `href` du `Hero` était passé sans validation de schéma à
+  `window.open`, incohérent avec le hardening `RichSection` de la même
+  branche (l'auteur d'un widget `Hero` est un utilisateur authentifié
+  quelconque via SP-16a, donc semi-fiable du point de vue du visiteur
+  anonyme d'un site publié) ; fixé par une allowlist de schéma (`http`/
+  `https`/`mailto`, résolution via `new URL()` natif — jamais un check
+  regex/substring maison, donc insensible par construction aux contournements
+  de casse/espaces/tabs) avant tout `window.open`, événement `cta` toujours
+  émis indépendamment de la validité du href. Fix re-vérifié par une revue
+  dédiée : Resolved. 0 Critical, 0 Important résiduel, 8 Minor non bloquants
+  (tag-filter et pagination en Python dans `list_published_items` — accepté,
+  échelle catalogue public ; `NaN` possible sur `columns`/`limit` Gallery si
+  prop auteur non numérique ; quelques stylings de `PropsPanel` non alignés
+  sur les variables `--gs-*` du thème ; couverture de test non exhaustive sur
+  quelques schémas d'URL rejetés par construction). Propriété de sécurité
+  tracée bout-en-bout au niveau branche entière (pas seulement par tâche) :
+  chaîne `Gallery→listPublicItems→GET /public/items→list_published_items`
+  rederivée sans fuite d'identité/tenant possible ; chokepoint sanitize
+  confirmé unique par grep sur tout le diff, pas seulement le commit qui
+  l'introduit. Aucun scope creep vers SP-16c (`DatasetCard`/téléchargement
+  multi-format/gabarit « Portail de données »). **564 tests cœur
+  passed/80 skipped**, lint-imports clean, **541 tests shell**, build/tsc
+  clean, **41/41 specs E2E** (40 + `sites-portal-content.spec.ts`). Poussé
+  sur `dev`. **SP-16c (widgets dataset) reste à faire.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
