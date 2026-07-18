@@ -17,6 +17,7 @@ def get_or_create_user(
     first_name: str,
     last_name: str,
     bootstrap_admin: bool = False,
+    bootstrap_analyst: bool = False,
 ) -> User:
     user = session.scalar(
         select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
@@ -41,6 +42,10 @@ def get_or_create_user(
         # Promotion par env uniquement — la rétrogradation passe par set_admin()
         # (retirer un sub de CORE_ADMIN_SUBS ne doit pas destituer silencieusement).
         user.is_admin = True
+    if bootstrap_analyst and not user.is_analyst:
+        # Promotion par env uniquement (retirer un sub de CORE_ANALYST_SUBS
+        # ne doit pas destituer silencieusement) — miroir de bootstrap_admin.
+        user.is_analyst = True
     session.flush()
     session.refresh(user)
     return user
@@ -53,6 +58,17 @@ def set_admin(session: Session, *, tenant_id: str, user_id: str, is_admin: bool)
     if user is None:
         return None
     user.is_admin = is_admin
+    session.flush()
+    return user
+
+
+def set_analyst(session: Session, *, tenant_id: str, user_id: str, is_analyst: bool) -> User | None:
+    user = session.scalar(
+        select(User).where(User.tenant_id == tenant_id, User.id == user_id)
+    )
+    if user is None:
+        return None
+    user.is_analyst = is_analyst
     session.flush()
     return user
 
