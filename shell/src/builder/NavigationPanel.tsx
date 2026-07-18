@@ -34,9 +34,11 @@ export function NavigationPanel({
   const [lat, setLat] = useState("");
 
   function add() {
-    const lonNum = Number(lon);
-    const latNum = Number(lat);
-    if (!to || !action || Number.isNaN(lonNum) || Number.isNaN(latNum)) return;
+    const lonTrimmed = lon.trim();
+    const latTrimmed = lat.trim();
+    const lonNum = Number(lonTrimmed);
+    const latNum = Number(latTrimmed);
+    if (!to || !action || !lonTrimmed || !latTrimmed || Number.isNaN(lonNum) || Number.isNaN(latNum)) return;
     const message: ActionMessage = {
       id: crypto.randomUUID(),
       from: page.id,
