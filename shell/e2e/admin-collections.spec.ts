@@ -137,9 +137,15 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   // dialog, same fix as CollectionsAdminPage.test.tsx (Task 5, Step 5).
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect.poll(() => deleted).toBe(true);
-  // Observable through the refetch triggered by useDeleteCollection's cache
-  // invalidation, not just the DELETE request having been sent.
-  await expect(page.getByText("POI (édité)")).not.toBeVisible();
+  // Scoped locators, not a bare getByText("POI (édité)"): while the DELETE
+  // response is still unwinding (mutateAsync -> setDeleting(null)), the
+  // ConfirmDialog's own message ("Désenregistrer « POI (édité) » ...") is a
+  // second match for that text and trips Playwright's strict mode — wait for
+  // the dialog to actually close first, then assert the row is gone (observed
+  // through the refetch triggered by useDeleteCollection's cache invalidation,
+  // not just the DELETE request having been sent).
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.getByRole("cell", { name: "POI (édité)" })).not.toBeVisible();
 });
 
 test("un utilisateur non-admin ne voit pas le lien Collections et une navigation forcée affiche un message d'accès refusé", async ({ page }) => {
