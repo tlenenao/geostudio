@@ -29,8 +29,38 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
 }
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
-// URL (they configure client-side aggregation, not the feature request).
+// URL (they configure aggregation, not the feature request).
+type StatMeasure = { field?: string; agg: string; label?: string };
+
+// Construit le corps JSON de POST /collections/{id}/aggregate depuis
+// DataSource.query (SP-11b) — même vocabulaire que l'agrégation client
+// supprimée par cette migration (groupBy/split/agg/field/measures), plus
+// toute autre clé de query non reconnue traitée comme un filtre attributaire
+// (même convention que buildFeaturesUrl pour une source "features").
 const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures"]);
+
+function buildAggregateBody(query: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (query.groupBy) body.groupBy = String(query.groupBy);
+  if (query.split) body.split = String(query.split);
+  if (query.agg) body.agg = String(query.agg);
+  if (query.field) body.field = String(query.field);
+  if (Array.isArray(query.measures) && query.measures.length) {
+    body.measures = (query.measures as StatMeasure[]).map((m) => ({
+      field: m.field || undefined, agg: m.agg, label: m.label || undefined,
+    }));
+  }
+  const filters: Record<string, string> = {};
+  for (const [k, v] of Object.entries(query)) {
+    if (STAT_KEYS.has(k)) continue;
+    if (v === null || v === undefined || v === "") continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      filters[k] = String(v);
+    }
+  }
+  if (Object.keys(filters).length) body.filters = filters;
+  return body;
+}
 
 export class FeatureValidationError extends Error {
   errors: FieldError[];
@@ -79,92 +109,6 @@ function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
-}
-
-type StatMeasure = { field?: string; agg: string; label?: string };
-
-function reduceValues(values: number[], agg: string): number {
-  if (agg === "sum") return values.reduce((a, b) => a + b, 0);
-  if (agg === "avg") return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-  if (agg === "min") return values.length ? Math.min(...values) : 0;
-  if (agg === "max") return values.length ? Math.max(...values) : 0;
-  return values.length; // count
-}
-
-function measureLabel(m: StatMeasure): string {
-  return m.label || (m.field ? `${m.agg}_${m.field}` : m.agg);
-}
-
-// Client-side aggregation for a "statistics" source. Emits a WIDE dataset — one
-// row per groupBy category, one column per series — ready for an ECharts
-// dataset. Series come from either a `split` field (pivot, single measure) or a
-// list of measures (query.measures, else the single {agg, field}).
-function aggregateRecords(records: DataRecord[], query: Record<string, unknown>): DataRecord[] {
-  const groupBy = String(query.groupBy ?? "");
-  const split = String(query.split ?? "");
-  const categoryKey = groupBy || "group";
-  const NUL = "\u0000";
-
-  const categories: string[] = [];
-  const catRows = new Map<string, Record<string, unknown>>();
-  const ensureRow = (cat: string): Record<string, unknown> => {
-    let row = catRows.get(cat);
-    if (!row) {
-      row = { [categoryKey]: cat };
-      catRows.set(cat, row);
-      categories.push(cat);
-    }
-    return row;
-  };
-  const catOf = (r: DataRecord): string => (groupBy ? String(r.properties[groupBy] ?? "") : "Total");
-
-  if (split) {
-    const agg = String(query.agg ?? "count");
-    const field = String(query.field ?? "");
-    const buckets = new Map<string, number[]>();
-    const splitValues: string[] = [];
-    const seenSplit = new Set<string>();
-    for (const r of records) {
-      const cat = catOf(r);
-      ensureRow(cat);
-      const sv = String(r.properties[split] ?? "");
-      if (!seenSplit.has(sv)) { seenSplit.add(sv); splitValues.push(sv); }
-      const key = `${cat}${NUL}${sv}`;
-      const arr = buckets.get(key) ?? [];
-      arr.push(Number(r.properties[field]) || 0);
-      buckets.set(key, arr);
-    }
-    for (const cat of categories) {
-      const row = catRows.get(cat)!;
-      for (const sv of splitValues) {
-        row[sv] = reduceValues(buckets.get(`${cat}${NUL}${sv}`) ?? [], agg);
-      }
-    }
-  } else {
-    const rawMeasures = Array.isArray(query.measures) ? (query.measures as StatMeasure[]) : [];
-    const measures: StatMeasure[] = rawMeasures.length
-      ? rawMeasures
-      : [{ field: String(query.field ?? ""), agg: String(query.agg ?? "count"), label: "value" }];
-    const buckets = new Map<string, number[]>();
-    for (const r of records) {
-      const cat = catOf(r);
-      ensureRow(cat);
-      measures.forEach((m, mi) => {
-        const key = `${cat}${NUL}${mi}`;
-        const arr = buckets.get(key) ?? [];
-        arr.push(Number(r.properties[m.field ?? ""]) || 0);
-        buckets.set(key, arr);
-      });
-    }
-    for (const cat of categories) {
-      const row = catRows.get(cat)!;
-      measures.forEach((m, mi) => {
-        row[measureLabel(m)] = reduceValues(buckets.get(`${cat}${NUL}${mi}`) ?? [], m.agg);
-      });
-    }
-  }
-
-  return categories.map((cat) => ({ id: cat, properties: catRows.get(cat)! }));
 }
 
 export function createItemClient(opts: {
@@ -500,6 +444,13 @@ export function createItemClient(opts: {
       if (source.type === "static") {
         return (source.query.records as DataRecord[] | undefined) ?? [];
       }
+      if (source.type === "statistics") {
+        const body = buildAggregateBody(source.query);
+        const data = await request<{ categoryKey: string; rows: Record<string, unknown>[] }>(
+          "POST", `/collections/${source.layer}/aggregate`, body,
+        );
+        return data.rows.map((row) => ({ id: String(row[data.categoryKey] ?? ""), properties: row }));
+      }
       const token = getToken();
       const res = await fetch(buildFeaturesUrl(coreUrl, source), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -508,12 +459,11 @@ export function createItemClient(opts: {
       const data = (await res.json()) as {
         features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
       };
-      const records = (data.features ?? []).map((f, i) => ({
+      return (data.features ?? []).map((f, i) => ({
         id: f.id ?? i,
         properties: f.properties ?? {},
         geometry: f.geometry,
       }));
-      return source.type === "statistics" ? aggregateRecords(records, source.query) : records;
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
