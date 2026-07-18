@@ -421,6 +421,7 @@ export function createItemClient(opts: {
           pages?: Page[];
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
+          navigationMode?: "tabs" | "story";
         };
       }>("GET", `/configs/by-item/${pk}${qs}`);
       const c = data.config;
@@ -433,6 +434,7 @@ export function createItemClient(opts: {
         pages: c.pages,
         variables: c.variables,
         layout: c.layout,
+        navigationMode: c.navigationMode,
       };
     },
 
@@ -446,6 +448,7 @@ export function createItemClient(opts: {
         pages: config.pages,
         variables: config.variables,
         layout: config.layout,
+        navigationMode: config.navigationMode,
       });
     },
 
