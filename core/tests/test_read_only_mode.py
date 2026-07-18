@@ -88,3 +88,16 @@ def test_read_only_mode_does_not_block_the_aggregate_endpoint(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     response = env.post("/collections/does-not-exist/aggregate", json={"groupBy": "x"})
     assert response.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+
+
+def test_analytics_sql_is_exempt_from_read_only(env, monkeypatch):
+    """POST /analytics/sql est une lecture (SP-11c) malgré son verbe HTTP ;
+    en mode démo lecture seule, le middleware ne doit pas le 403-er avant même
+    que la route ne s'exécute. La fixture `env` authentifie un admin qui n'est
+    pas analyste, donc la route elle-même renvoie 403 (analyst role required)
+    — mais ce n'est PAS le message du middleware read-only, ce qui prouve que
+    la requête a bien traversé le garde."""
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    response = env.post("/analytics/sql", json={"sql": "SELECT 1"})
+    assert response.status_code == 403
+    assert response.json() != {"detail": READ_ONLY_MESSAGE}

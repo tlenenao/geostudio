@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
             is_read_only_mode()
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and request.url.path != "/mcp"
+            and request.url.path != "/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
         ):
             return JSONResponse(
