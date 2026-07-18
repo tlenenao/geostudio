@@ -7,14 +7,18 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from opentelemetry import metrics
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
-from app.collections.repository import get_access_facts
+from app.collections.introspection import TableNotFound
+from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
 from app.features.repository import FilterError
@@ -22,6 +26,16 @@ from app.features.validation import validate_feature
 from app.sharing.authorization import can
 
 router = APIRouter()
+
+_meter = metrics.get_meter(__name__)
+_sql_queries_counter = _meter.create_counter(
+    "geostudio.analytics.sql_queries", unit="1",
+    description="Analyst read-only SQL queries executed via POST /analytics/sql",
+)
+
+
+class SqlQueryBody(BaseModel):
+    sql: str
 
 RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "f"}
 MAX_LIMIT = 1000
@@ -178,6 +192,43 @@ def aggregate_features(
     finally:
         conn.close()
     return {"categoryKey": category_key, "rows": rows}
+
+
+@router.post("/analytics/sql")
+def analytics_sql(
+    body: SqlQueryBody,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    if not user.is_analyst:
+        raise HTTPException(status_code=403, detail="analyst role required")
+    cols = list_visible_collections(
+        session, tenant_id=user.tenant_id, user_id=user.id, is_admin=user.is_admin,
+    )
+    allowed: dict = {}
+    for col in cols:
+        try:
+            allowed[col.id] = introspect(session, col.table_name)
+        except TableNotFound:
+            continue
+    conn = conn_factory()
+    try:
+        columns, rows, truncated = run_analyst_sql(
+            conn, sql=body.sql, allowed=allowed, base_uri=base_uri, tenant_id=user.tenant_id,
+        )
+    except SqlSandboxError as exc:
+        raise _validation_error([{"field": "sql", "code": "sql_error", "message": str(exc)}])
+    finally:
+        conn.close()
+    _sql_queries_counter.add(1)
+    write_audit(
+        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+        action="analytics.sql", object_type="analytics", object_id="sql",
+        payload={"sql": body.sql[:500]},
+    )
+    return {"columns": columns, "rows": rows, "truncated": truncated}
 
 
 @router.get("/collections/{collection_id}/items/{fid}")
