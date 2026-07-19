@@ -773,6 +773,33 @@ test("getCollectionPermission defaults to false when the field is absent", async
   expect(await makeClient().getCollectionPermission("incidents")).toBe(false);
 });
 
+test("getCollection returns the full collection metadata for a single id", async () => {
+  server.use(
+    http.get("https://core.test/collections/parcs", () =>
+      HttpResponse.json({
+        id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
+        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: false, featureCount: 2, owner: null,
+      }),
+    ),
+  );
+  const col = await makeClient(undefined).getCollection("parcs");
+  expect(col).toEqual({
+    id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
+    isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+    canWrite: false, featureCount: 2, owner: null,
+  });
+});
+
+test("getCollection propagates a 404 for a non-public or unknown collection", async () => {
+  server.use(
+    http.get("https://core.test/collections/private-x", () =>
+      HttpResponse.json({ detail: "collection not found" }, { status: 404 }),
+    ),
+  );
+  await expect(makeClient(undefined).getCollection("private-x")).rejects.toThrow();
+});
+
 test("createConfigItem seeds dataSources and messages from a template that defines them", async () => {
   let body: any = null;
   server.use(
@@ -1028,4 +1055,35 @@ test("createConfigItem omits slug from the POST body when not given", async () =
   );
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" });
   expect(body).not.toHaveProperty("slug");
+});
+
+test("listPublicItems calls GET /public/items with type/tag/page/pageSize", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/public/items", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 6 });
+    }),
+  );
+  await makeClient().listPublicItems({ type: "app", tag: "risques", page: 1, pageSize: 6 });
+  expect(url).toContain("type=app");
+  expect(url).toContain("tag=risques");
+  expect(url).toContain("page=1");
+  expect(url).toContain("pageSize=6");
+});
+
+test("listPublicItems round-trips keywords from the response", async () => {
+  server.use(
+    http.get("https://core.test/public/items", () =>
+      HttpResponse.json({
+        items: [{
+          pk: "8", resourceType: "app", title: "Carte des risques", abstract: "", owner: "alice",
+          thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: true, keywords: ["risques"],
+        }],
+        total: 1, page: 1, pageSize: 12,
+      }),
+    ),
+  );
+  const page = await makeClient().listPublicItems();
+  expect(page.items[0].keywords).toEqual(["risques"]);
 });

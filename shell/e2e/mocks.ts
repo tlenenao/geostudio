@@ -39,6 +39,20 @@ export async function mockCore(page: Page) {
     messages: [], pages: [],
   } as const;
 
+  // Content widgets (SP-16b) — a second published item, distinct from the
+  // site itself, for the Gallery to list and link to.
+  const GALLERY_ITEM = {
+    pk: "8", resourceType: "app", title: "Carte des risques", abstract: "Resume des risques",
+    owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: null,
+    isPublished: true, keywords: ["risques"],
+  } as const;
+  const GALLERY_ITEM_CONFIG = {
+    version: 1, kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Detail de l'article" } },
+    ] },
+  } as const;
+
   await page.route("**/items*", async (route) => {
     const url = new URL(route.request().url());
     const scope = url.searchParams.get("scope");
@@ -265,7 +279,32 @@ export async function mockCore(page: Page) {
       { id: 2, properties: { nom: "Bois Test" } },
     ];
     const features = nom ? all.filter((f) => f.properties.nom === nom) : all;
-    await route.fulfill({ json: { type: "FeatureCollection", features } });
+    await route.fulfill({
+      headers: { "Content-Disposition": 'attachment; filename="parcs.geojson"' },
+      json: { type: "FeatureCollection", features },
+    });
+  });
+
+  // Collection detail + schema for "parcs" (SP-16c) — a genuinely public
+  // collection (unlike "incidents", kept private above for the incident-form
+  // scenario), reusing the existing "**/collections/parcs/items*" fixture.
+  await page.route("**/collections/parcs", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "parcs", title: "Parcs", description: "Parcs publics de la ville", tableName: "parcs",
+        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
+        canWrite: false, featureCount: 2,
+      },
+    });
+  });
+
+  await page.route("**/collections/parcs/schema", async (route) => {
+    await route.fulfill({
+      json: {
+        collection: "parcs", pk: "id", geometry: null,
+        fields: [{ name: "nom", type: "string", required: true }],
+      },
+    });
   });
 
   // Collection "incidents" — schéma introspecté, permission d'écriture, et
@@ -370,12 +409,27 @@ export async function mockCore(page: Page) {
     }
   });
 
-  // Public config for the site item — getPublicAppConfig unwraps `data.config`,
-  // so this mock must wrap SITE_APP_CONFIG (unlike the internal /configs/by-item
-  // GET handler above, which returns the same shape for a different reason).
+  // Public config for the site item — getPublicAppConfig unwraps `data.config`.
+  // Serves whatever was actually PUT through the builder (savedConfigs, set by
+  // the generic "**/configs/by-item/**" handler above) so that content widgets
+  // added via the palette in a test genuinely round-trip to the public view —
+  // not a fixture disconnected from what the test actually saved.
   await page.route("https://core.test/public/configs/by-item/site-1", async (route) => {
     await route.fulfill({
-      json: { id: "cfg-site", itemId: "site-1", kind: "site", version: 1, config: SITE_APP_CONFIG },
+      json: { id: "cfg-site", itemId: "site-1", kind: "site", version: 1, config: savedConfigs.get("site-1") ?? SITE_APP_CONFIG },
+    });
+  });
+
+  // Public items list (SP-16b) — Gallery's data source. Always returns the
+  // one fixed published item; the site itself is not included (the fixture
+  // only needs to prove the Gallery→vignette→PublicItemPage path).
+  await page.route("https://core.test/public/items*", async (route) => {
+    await route.fulfill({ json: { items: [GALLERY_ITEM], total: 1, page: 1, pageSize: 12 } });
+  });
+
+  await page.route("https://core.test/public/configs/by-item/8", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-8", itemId: "8", kind: "app", version: 1, config: GALLERY_ITEM_CONFIG },
     });
   });
 }

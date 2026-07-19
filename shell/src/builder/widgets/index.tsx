@@ -9,6 +9,10 @@ import { registerFilterWidget } from "./filter";
 import { registerChartWidget } from "./chart";
 import { registerNavigationWidget } from "./navigation";
 import { registerFormWidget } from "./form";
+import { registerHeroWidget } from "./hero";
+import { registerRichSectionWidget } from "./richSection";
+import { registerGalleryWidget } from "./gallery";
+import { registerDatasetCardWidget } from "./datasetCard";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
 // bound source), then {{champ}} tokens from the record's properties (only
@@ -150,4 +154,8 @@ export function registerBuiltinWidgets(): void {
   registerChartWidget();
   registerNavigationWidget();
   registerFormWidget();
+  registerHeroWidget();
+  registerRichSectionWidget();
+  registerGalleryWidget();
+  registerDatasetCardWidget();
 }
