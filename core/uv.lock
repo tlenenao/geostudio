@@ -416,6 +416,18 @@ wheels = [
 ]
 
 [[package]]
+name = "geojson-pydantic"
+version = "2.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d9/76/77c6f2e608028a2885e4d9d9a28cb6801879972d4bb3106c1dca02201df6/geojson_pydantic-2.1.1.tar.gz", hash = "sha256:3b64fa2dcd98108ff8a19bfb01eee3dab41bc230be2481804aefd7c1659d1c23", size = 8156, upload-time = "2026-04-07T09:48:07.252Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/97/d59d999f00aec90fc7a4efb742fc11e6c160552aa1b313438d3497998644/geojson_pydantic-2.1.1-py3-none-any.whl", hash = "sha256:55354f22ededc3c070e3210fec6f518d784b65c4368c1763f2c6dc4bab79b898", size = 9456, upload-time = "2026-04-07T09:48:05.772Z" },
+]
+
+[[package]]
 name = "geopandas"
 version = "1.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -470,6 +482,7 @@ dev = [
     { name = "import-linter" },
     { name = "pip-audit" },
     { name = "pytest" },
+    { name = "stac-pydantic" },
 ]
 
 [package.metadata]
@@ -507,6 +520,7 @@ dev = [
     { name = "import-linter", specifier = ">=2.0" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "pytest", specifier = ">=8.2" },
+    { name = "stac-pydantic", specifier = ">=3.1" },
 ]
 
 [[package]]
@@ -2179,6 +2193,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d2/1b/bc9e3e7a72dcdad7dc7888758f5d00f56f8909ed5cfdff822bd72bb4c520/sse_starlette-3.4.5.tar.gz", hash = "sha256:83072538bc211a2f68b7b0422226c4af3e9b62e106e07034664b832ca019842a", size = 35249, upload-time = "2026-06-20T17:36:58.322Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/75/c88d3f5dafd59c791da1ce27650d30bf5b70cbf1cbf01cd00e5f9e360915/sse_starlette-3.4.5-py3-none-any.whl", hash = "sha256:e71bad53323f65573c3864a6c3bd0c1eb6e5f092b2e48082b0c35927d19ca296", size = 16518, upload-time = "2026-06-20T17:36:56.729Z" },
+]
+
+[[package]]
+name = "stac-pydantic"
+version = "3.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "geojson-pydantic" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/40/efef25a9a0f3d36b1264fbdd11f136bca7d3d069dc6dbd5c77c432ed20ff/stac_pydantic-3.6.0.tar.gz", hash = "sha256:29aa0b98e5223e0b0172663575a6df25f4dd359c577a2b6bfafdaa4cad18a917", size = 16287, upload-time = "2026-06-26T16:13:08.855Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/43/46bf5ba8595c563213a76e652d63839686b6819378b921a09d040a7faf8b/stac_pydantic-3.6.0-py3-none-any.whl", hash = "sha256:7e5ca441639274fca12d299e2a9d58c327153940f775729924e200d7103e2d5f", size = 25505, upload-time = "2026-06-26T16:13:07.955Z" },
 ]
 
 [[package]]
