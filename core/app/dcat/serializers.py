@@ -86,3 +86,16 @@ def dataset(*, base: str, collection_id: str, title: str, description: str,
             ),
         ],
     }
+
+
+def catalog(*, base: str, tenant_name: str, datasets: list[dict]) -> dict:
+    return {
+        "@context": CONTEXT,
+        "@id": f"{base}/dcat/catalog",
+        "@type": "dcat:Catalog",
+        "dct:title": "Catalogue GeoStudio",
+        "dct:description": "Export DCAT-AP du catalogue de données GeoStudio (lecture seule).",
+        "dct:publisher": publisher(base=base, name=tenant_name),
+        "dct:language": "fr",
+        "dcat:dataset": datasets,
+    }
