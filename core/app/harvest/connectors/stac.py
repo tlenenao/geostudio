@@ -49,6 +49,12 @@ class StacConnector:
             logger.warning("stac harvest: échec de récupération de %s : %s", url, exc)
             return
 
+        if not isinstance(doc, dict):
+            logger.warning(
+                "stac harvest: document racine non-objet ignoré à %s (type=%s)", url, type(doc).__name__
+            )
+            return
+
         if isinstance(doc.get("collections"), list):
             for coll in doc["collections"]:
                 if len(records) >= _MAX_COLLECTIONS:
@@ -70,6 +76,9 @@ class StacConnector:
                 logger.warning("stac harvest: profondeur maximale atteinte à %s", url)
                 return
             for link in doc.get("links", []) or []:
+                if not isinstance(link, dict):
+                    logger.warning("stac harvest: lien non-objet ignoré à %s", url)
+                    continue
                 if link.get("rel") != "child" or not link.get("href"):
                     continue
                 child_url = urljoin(url, link["href"])
@@ -80,33 +89,48 @@ class StacConnector:
         # Type inconnu/absent : document ignoré silencieusement (tolérance §2.7).
 
     @staticmethod
-    def _collection_to_record(coll: dict, *, base_url: str) -> HarvestedRecord | None:
-        external_id = coll.get("id")
-        if not external_id:
+    def _collection_to_record(coll: object, *, base_url: str) -> HarvestedRecord | None:
+        if not isinstance(coll, dict):
+            logger.warning(
+                "stac harvest: entrée de collection non-objet ignorée à %s (type=%s)",
+                base_url, type(coll).__name__,
+            )
             return None
-        title = coll.get("title") or str(external_id)
-        abstract = coll.get("description") or ""
-        keywords = list(coll.get("keywords") or [])
+        try:
+            external_id = coll.get("id")
+            if not external_id:
+                return None
+            title = coll.get("title") or str(external_id)
+            abstract = coll.get("description") or ""
+            keywords_raw = coll.get("keywords")
+            keywords = list(keywords_raw) if isinstance(keywords_raw, list) else []
 
-        bbox = _WORLD_BBOX
-        extent = coll.get("extent")
-        spatial = extent.get("spatial") if isinstance(extent, dict) else None
-        bboxes = spatial.get("bbox") if isinstance(spatial, dict) else None
-        if isinstance(bboxes, list) and bboxes and isinstance(bboxes[0], list) and len(bboxes[0]) >= 4:
-            bbox = [float(v) for v in bboxes[0][:4]]
+            bbox = _WORLD_BBOX
+            extent = coll.get("extent")
+            spatial = extent.get("spatial") if isinstance(extent, dict) else None
+            bboxes = spatial.get("bbox") if isinstance(spatial, dict) else None
+            if isinstance(bboxes, list) and bboxes and isinstance(bboxes[0], list) and len(bboxes[0]) >= 4:
+                bbox = [float(v) for v in bboxes[0][:4]]
 
-        self_href, items_href = None, None
-        for link in coll.get("links", []) or []:
-            rel, href = link.get("rel"), link.get("href")
-            if not href:
-                continue
-            if rel == "self" and self_href is None:
-                self_href = urljoin(base_url, href)
-            if rel == "items" and items_href is None:
-                items_href = urljoin(base_url, href)
+            self_href, items_href = None, None
+            for link in coll.get("links", []) or []:
+                if not isinstance(link, dict):
+                    continue
+                rel, href = link.get("rel"), link.get("href")
+                if not href:
+                    continue
+                if rel == "self" and self_href is None:
+                    self_href = urljoin(base_url, href)
+                if rel == "items" and items_href is None:
+                    items_href = urljoin(base_url, href)
 
-        return HarvestedRecord(
-            external_id=str(external_id), title=title, abstract=abstract,
-            keywords=keywords, bbox=bbox, external_url=self_href or base_url,
-            items_url=items_href,
-        )
+            return HarvestedRecord(
+                external_id=str(external_id), title=title, abstract=abstract,
+                keywords=keywords, bbox=bbox, external_url=self_href or base_url,
+                items_url=items_href,
+            )
+        except (AttributeError, TypeError, KeyError, ValueError) as exc:
+            logger.warning(
+                "stac harvest: entrée de collection malformée ignorée à %s : %s", base_url, exc
+            )
+            return None
