@@ -4,7 +4,7 @@ import type { ActionMessage, AppLayout, DataSource, Page, Theme } from "../api/t
 export type Template = {
   id: string;
   name: string;
-  kind: "app" | "dashboard";
+  kind: "app" | "dashboard" | "site";
   layout: AppLayout;
   theme?: Theme;
   dataSources?: DataSource[];
@@ -87,6 +87,42 @@ const STORY_PAGES: Page[] = [
   storyChapter(3, "Conclusion", [-1.55, 47.22]),
 ];
 
+const PORTAL_DATA_SOURCE_ID = "tpl-portal-ds";
+
+const PORTAL_DATA_SOURCES: DataSource[] = [
+  { id: PORTAL_DATA_SOURCE_ID, type: "features", service: "core", layer: "incidents", query: {} },
+];
+
+const PORTAL_LAYOUT: AppLayout = {
+  type: "grid",
+  breakpoints: {},
+  items: [
+    {
+      id: "tpl-portal-hero", widget: "hero", x: 0, y: 0, w: 12, h: 3,
+      props: {
+        title: "Portail de données", subtitle: "Explorez et téléchargez nos jeux de données ouverts.",
+        backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left",
+      },
+    },
+    {
+      id: "tpl-portal-gallery", widget: "gallery", x: 0, y: 3, w: 12, h: 4,
+      props: { type: "", tag: "", limit: 12, columns: 3 },
+    },
+    {
+      id: "tpl-portal-dataset-card", widget: "datasetCard", x: 0, y: 7, w: 4, h: 4,
+      props: { dataSourceId: PORTAL_DATA_SOURCE_ID, showDownload: true, title: "" },
+    },
+    {
+      id: "tpl-portal-map", widget: "map", x: 4, y: 7, w: 4, h: 4,
+      props: { dataSourceId: PORTAL_DATA_SOURCE_ID },
+    },
+    {
+      id: "tpl-portal-table", widget: "table", x: 8, y: 7, w: 4, h: 4,
+      props: { dataSourceId: PORTAL_DATA_SOURCE_ID, columns: [], pageSize: 10 },
+    },
+  ],
+};
+
 export const TEMPLATES: Template[] = [
   { id: "two-column", name: "Deux colonnes", kind: "app", layout: TWO_COLUMN_LAYOUT },
   { id: "basic-dashboard", name: "Tableau de bord basique", kind: "dashboard", layout: BASIC_DASHBOARD_LAYOUT },
@@ -97,6 +133,10 @@ export const TEMPLATES: Template[] = [
   {
     id: "story-cartographique", name: "Story cartographique", kind: "app",
     layout: STORY_PAGES[0].layout, pages: STORY_PAGES, navigationMode: "story",
+  },
+  {
+    id: "portail-de-donnees", name: "Portail de données", kind: "site",
+    layout: PORTAL_LAYOUT, dataSources: PORTAL_DATA_SOURCES,
   },
 ];
 

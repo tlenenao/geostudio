@@ -6,9 +6,22 @@ from app.configs import repository as configs_repo
 from app.configs.repository import ConfigRead
 from app.db import get_session
 from app.items import repository as items_repo
-from app.items.schemas import ItemRead
+from app.items.schemas import ItemPage, ItemRead
 
 router = APIRouter(prefix="/public")
+
+
+@router.get("/items", response_model=ItemPage)
+def list_public_items(
+    type: str | None = None,
+    tag: str | None = None,
+    page: int = 1,
+    pageSize: int = 12,
+    session: Session = Depends(get_session),
+) -> ItemPage:
+    return items_repo.list_published_items(
+        session, resource_type=type, tag=tag, page=page, page_size=pageSize,
+    )
 
 
 @router.get("/items/{item_id}", response_model=ItemRead)

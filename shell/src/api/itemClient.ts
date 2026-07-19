@@ -194,6 +194,15 @@ export function createItemClient(opts: {
       return request<Item>("GET", `/public/sites/${encodeURIComponent(slug)}`);
     },
 
+    async listPublicItems(params: { type?: ResourceType; tag?: string; page?: number; pageSize?: number } = {}): Promise<ItemPage> {
+      const q = new URLSearchParams();
+      if (params.type) q.set("type", params.type);
+      if (params.tag) q.set("tag", params.tag);
+      q.set("page", String(params.page ?? 1));
+      q.set("pageSize", String(params.pageSize ?? 12));
+      return request<ItemPage>("GET", `/public/items?${q.toString()}`);
+    },
+
     async getMe(): Promise<Me> {
       const data = await request<{
         username: string;
@@ -518,6 +527,10 @@ export function createItemClient(opts: {
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
+    },
+
+    async getCollection(collectionId: string): Promise<CollectionAdmin> {
+      return request<CollectionAdmin>("GET", `/collections/${collectionId}`);
     },
 
     async getCollectionPermission(collectionId: string): Promise<boolean> {

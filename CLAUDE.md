@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-18 (mise à jour à chaque jalon)
+## État au 2026-07-19 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -1144,6 +1144,103 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   Postgres réel), lint-imports clean, **517 tests shell**, build/tsc clean,
   **40/40 specs E2E** (38 + `sites-portal-shell.spec.ts`, 2 tests). Poussé sur
   `dev`. **SP-16b/c (widgets de contenu de portail) restent à faire.**
+- **SP-16b « widgets de contenu (Hero/RichSection/Gallery) » livré et clos**
+  (2026-07-18, deuxième sous-phase de SP-16, cf. spec
+  `docs/superpowers/specs/2026-07-18-sp16b-widgets-contenu-design.md` et plan
+  `docs/superpowers/plans/2026-07-18-sp16b-widgets-contenu.md`) : trois
+  nouveaux widgets de contenu (`Hero`, `RichSection`, `Gallery`) dans le
+  builder, plus la plomberie cœur+shell minimale pour que `Gallery` liste et
+  lie des items publiés à un visiteur anonyme. Cœur : `ItemRead.keywords`
+  (colonne JSON déjà existante sur l'ORM, jamais sérialisée jusqu'ici),
+  `list_published_items` — fonction repository **dédiée**, published-only,
+  tenant-scopée, délibérément indépendante de `list_items` (jamais de
+  `current_user_id`/`scope`) —, `GET /public/items` (anonyme, list-before-
+  detail, leakage matrix non-publié/autre-tenant/tenant-défaut-publié).
+  Shell : `ItemClient.listPublicItems` + `Item.keywords?` (optionnel, non-
+  régression sur les literals `Item` existants), `PublicItemPage` sur route
+  `/public/items/:pk` (simplification 1-requête de `SitePublicPage`, hors
+  `ProtectedLayout`), `Hero` (bandeau titre/sous-titre/CTA, event `cta`
+  câblé sur l'`ActionBus` réel), `RichSection` (Markdown via `sanitizeMarkdown()`
+  — chokepoint unique et non-contournable `marked`+`DOMPurify`, jamais
+  d'appel direct à `marked.parse` ailleurs), `Gallery` (liste `listPublicItems`,
+  filtre `type`/`tag`/`limit` fixé par l'auteur du widget — aucun contrôle
+  interactif pour le visiteur —, vignettes liées à `/public/items/{pk}`).
+  Exécuté en subagent-driven-development (9 tâches, revue par tâche + revue
+  finale de branche modèle opus). **Revue finale : 1 Important trouvé et
+  corrigé** — le CTA `href` du `Hero` était passé sans validation de schéma à
+  `window.open`, incohérent avec le hardening `RichSection` de la même
+  branche (l'auteur d'un widget `Hero` est un utilisateur authentifié
+  quelconque via SP-16a, donc semi-fiable du point de vue du visiteur
+  anonyme d'un site publié) ; fixé par une allowlist de schéma (`http`/
+  `https`/`mailto`, résolution via `new URL()` natif — jamais un check
+  regex/substring maison, donc insensible par construction aux contournements
+  de casse/espaces/tabs) avant tout `window.open`, événement `cta` toujours
+  émis indépendamment de la validité du href. Fix re-vérifié par une revue
+  dédiée : Resolved. 0 Critical, 0 Important résiduel, 8 Minor non bloquants
+  (tag-filter et pagination en Python dans `list_published_items` — accepté,
+  échelle catalogue public ; `NaN` possible sur `columns`/`limit` Gallery si
+  prop auteur non numérique ; quelques stylings de `PropsPanel` non alignés
+  sur les variables `--gs-*` du thème ; couverture de test non exhaustive sur
+  quelques schémas d'URL rejetés par construction). Propriété de sécurité
+  tracée bout-en-bout au niveau branche entière (pas seulement par tâche) :
+  chaîne `Gallery→listPublicItems→GET /public/items→list_published_items`
+  rederivée sans fuite d'identité/tenant possible ; chokepoint sanitize
+  confirmé unique par grep sur tout le diff, pas seulement le commit qui
+  l'introduit. Aucun scope creep vers SP-16c (`DatasetCard`/téléchargement
+  multi-format/gabarit « Portail de données »). **564 tests cœur
+  passed/80 skipped**, lint-imports clean, **541 tests shell**, build/tsc
+  clean, **41/41 specs E2E** (40 + `sites-portal-content.spec.ts`). Poussé
+  sur `dev`. **SP-16c (widgets dataset) reste à faire.**
+- **SP-16c « fiche dataset + téléchargement + template galerie » livré et clos**
+  (2026-07-18/19, dernière sous-phase de SP-16 — **SP-16 est intégralement clos,
+  jalon M13 atteint**, cf. spec
+  `docs/superpowers/specs/2026-07-18-sp16c-fiche-dataset-telechargement-design.md`
+  et plan `docs/superpowers/plans/2026-07-18-sp16c-fiche-dataset-telechargement.md`) :
+  un widget `DatasetCard` + une page publique `/public/datasets/:collectionId`
+  permettent à un visiteur **anonyme** de voir les métadonnées/l'aperçu d'une
+  collection publique et de la télécharger (GeoJSON toujours ; CSV sous 10 000
+  entités), plus un gabarit de galerie « Portail de données » pré-câblant
+  Hero+Gallery+DatasetCard+Carte/Table. **Shell-only, zéro changement cœur** :
+  chaque lecture utilisée (`GET /collections/{id}`, `.../schema`, `.../items`)
+  est déjà anonyme-lisible pour une collection publique via le chemin
+  `get_readable_collection` (404-avant-403, non-fuyant), aucune nouvelle surface
+  serveur. Pièces : `datasetDownload.ts` (URL GeoJSON directe capée à la page
+  serveur de 1000 + export CSV côté client borné/paginé ≤1000, cap 10 000 lignes,
+  échappement RFC4180), `ItemClient.getCollection` (lecture métadonnées mono-
+  collection anonyme, réutilise `CollectionAdmin`), `DatasetDownloadButtons`
+  (UI partagée widget×page, styling slate délibéré car réutilisée dans/hors
+  thème), widget `datasetCard` (résout sa collection via `ctx.data?.layer`,
+  convention `DataSourceSelect` des widgets map/table — pas une prop brute),
+  route `/public/datasets/:collectionId` + `DatasetPage` **hors `ProtectedLayout`**
+  (aperçu = `previewConfig` synthétisé en mémoire rendu par l'unique
+  `AppRenderer(config, "runtime")`, A31 — pas de 2e moteur), gabarit
+  `portail-de-donnees` (`Template.kind` élargi +`"site"`, additif). Exécuté en
+  subagent-driven-development (7 tâches, revue par tâche + revue finale de
+  branche modèle opus). **Aucun Critical/Important sur les 7 tâches ni en revue
+  finale** — la revue finale (whole-branch, opus) a tracé bout-en-bout les deux
+  propriétés critiques (frontière d'anonymat non-fuyante : les 2 branches
+  « introuvable » sont structurellement sans interpolation d'id/nom ; bornes
+  CSV/GeoJSON double-gardées de `datasetDownload` jusqu'au widget et à la page)
+  et confirmé **Ready to merge: Yes**. Un seul Minor visible utilisateur corrigé
+  dans la foulée (commit `6db1410`, sur décision utilisateur) : `csvAvailable(null)`
+  étant faux, la bannière « trop volumineux » s'affichait à tort pour un
+  `featureCount` inconnu (nombre inconnu, pas surdimensionné — état de fait
+  inatteignable pour une collection enregistrée depuis SP-6c, mais faux message
+  public) ; ajout de `csvTooLarge()` (vrai seulement pour un compte **connu**
+  strictement au-dessus du cap) et bannière gatée dessus, le bouton CSV reste
+  désactivé sur compte inconnu. 3 Minor résiduels non bloquants tracés en suivi
+  (warning React `act()` sur un test ; injection de formule CSV non neutralisée
+  — RFC4180-only scopé par le plan, à durcir avec l'export serveur SP-15 ;
+  `getCollectionSchema` fetché inconditionnellement sans `retry:false`).
+  Déviations mécaniques de tâche disclosed et vérifiées non affaiblissantes
+  (`vi.waitFor` sur un test async, `getByRole heading`/`toContainText` en E2E).
+  **573 tests shell** (568 + 5 du fix M1), build/tsc clean, **43/43 specs E2E**
+  (`sites-portal-dataset.spec.ts` +2 tests, incl. 404 non-fuyant), **pytest cœur
+  inchangé** (aucun fichier cœur touché), **aucun drift OpenAPI**. Poussé sur
+  `dev`, PR dev→main ouverte pour synchroniser `main` (qui n'avait pas encore
+  SP-16a/b/c). **SP-16 (Portails & Sites : modèle site/slug+route publique,
+  widgets de contenu Hero/RichSection/Gallery, fiche dataset+téléchargement) est
+  intégralement clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

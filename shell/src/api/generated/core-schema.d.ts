@@ -497,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Public Items */
+        get: operations["list_public_items_public_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/items/{item_id}": {
         parameters: {
             query?: never;
@@ -975,6 +992,11 @@ export interface components {
             date: string;
             /** Ispublished */
             isPublished: boolean;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
             /** Owner */
             owner: string;
             /** Pk */
@@ -2718,6 +2740,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_public_items_public_items_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                tag?: string | null;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemPage"];
                 };
             };
             /** @description Validation Error */
