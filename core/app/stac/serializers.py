@@ -53,7 +53,7 @@ def collection(*, base: str, collection_id: str, title: str, description: str,
         "stac_version": STAC_VERSION,
         "id": collection_id,
         "title": title,
-        "description": description or "",
+        "description": description or title or "No description provided.",
         "license": "other",
         "extent": {
             "spatial": {"bbox": [bbox if bbox is not None else list(WORLD_BBOX)]},
