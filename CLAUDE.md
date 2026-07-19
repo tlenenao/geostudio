@@ -106,7 +106,7 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
                       # core, keycloak, shell, traefik)
 ```
 
-## État au 2026-07-18 (mise à jour à chaque jalon)
+## État au 2026-07-19 (mise à jour à chaque jalon)
 
 - **Fait** : tout SP-0 (shell : catalogue, partage/publication, éditeur de carte,
   builder complet — pages, variables, thèmes, templates, breakpoints, SDK
@@ -1191,6 +1191,56 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   passed/80 skipped**, lint-imports clean, **541 tests shell**, build/tsc
   clean, **41/41 specs E2E** (40 + `sites-portal-content.spec.ts`). Poussé
   sur `dev`. **SP-16c (widgets dataset) reste à faire.**
+- **SP-16c « fiche dataset + téléchargement + template galerie » livré et clos**
+  (2026-07-18/19, dernière sous-phase de SP-16 — **SP-16 est intégralement clos,
+  jalon M13 atteint**, cf. spec
+  `docs/superpowers/specs/2026-07-18-sp16c-fiche-dataset-telechargement-design.md`
+  et plan `docs/superpowers/plans/2026-07-18-sp16c-fiche-dataset-telechargement.md`) :
+  un widget `DatasetCard` + une page publique `/public/datasets/:collectionId`
+  permettent à un visiteur **anonyme** de voir les métadonnées/l'aperçu d'une
+  collection publique et de la télécharger (GeoJSON toujours ; CSV sous 10 000
+  entités), plus un gabarit de galerie « Portail de données » pré-câblant
+  Hero+Gallery+DatasetCard+Carte/Table. **Shell-only, zéro changement cœur** :
+  chaque lecture utilisée (`GET /collections/{id}`, `.../schema`, `.../items`)
+  est déjà anonyme-lisible pour une collection publique via le chemin
+  `get_readable_collection` (404-avant-403, non-fuyant), aucune nouvelle surface
+  serveur. Pièces : `datasetDownload.ts` (URL GeoJSON directe capée à la page
+  serveur de 1000 + export CSV côté client borné/paginé ≤1000, cap 10 000 lignes,
+  échappement RFC4180), `ItemClient.getCollection` (lecture métadonnées mono-
+  collection anonyme, réutilise `CollectionAdmin`), `DatasetDownloadButtons`
+  (UI partagée widget×page, styling slate délibéré car réutilisée dans/hors
+  thème), widget `datasetCard` (résout sa collection via `ctx.data?.layer`,
+  convention `DataSourceSelect` des widgets map/table — pas une prop brute),
+  route `/public/datasets/:collectionId` + `DatasetPage` **hors `ProtectedLayout`**
+  (aperçu = `previewConfig` synthétisé en mémoire rendu par l'unique
+  `AppRenderer(config, "runtime")`, A31 — pas de 2e moteur), gabarit
+  `portail-de-donnees` (`Template.kind` élargi +`"site"`, additif). Exécuté en
+  subagent-driven-development (7 tâches, revue par tâche + revue finale de
+  branche modèle opus). **Aucun Critical/Important sur les 7 tâches ni en revue
+  finale** — la revue finale (whole-branch, opus) a tracé bout-en-bout les deux
+  propriétés critiques (frontière d'anonymat non-fuyante : les 2 branches
+  « introuvable » sont structurellement sans interpolation d'id/nom ; bornes
+  CSV/GeoJSON double-gardées de `datasetDownload` jusqu'au widget et à la page)
+  et confirmé **Ready to merge: Yes**. Un seul Minor visible utilisateur corrigé
+  dans la foulée (commit `6db1410`, sur décision utilisateur) : `csvAvailable(null)`
+  étant faux, la bannière « trop volumineux » s'affichait à tort pour un
+  `featureCount` inconnu (nombre inconnu, pas surdimensionné — état de fait
+  inatteignable pour une collection enregistrée depuis SP-6c, mais faux message
+  public) ; ajout de `csvTooLarge()` (vrai seulement pour un compte **connu**
+  strictement au-dessus du cap) et bannière gatée dessus, le bouton CSV reste
+  désactivé sur compte inconnu. 3 Minor résiduels non bloquants tracés en suivi
+  (warning React `act()` sur un test ; injection de formule CSV non neutralisée
+  — RFC4180-only scopé par le plan, à durcir avec l'export serveur SP-15 ;
+  `getCollectionSchema` fetché inconditionnellement sans `retry:false`).
+  Déviations mécaniques de tâche disclosed et vérifiées non affaiblissantes
+  (`vi.waitFor` sur un test async, `getByRole heading`/`toContainText` en E2E).
+  **573 tests shell** (568 + 5 du fix M1), build/tsc clean, **43/43 specs E2E**
+  (`sites-portal-dataset.spec.ts` +2 tests, incl. 404 non-fuyant), **pytest cœur
+  inchangé** (aucun fichier cœur touché), **aucun drift OpenAPI**. Poussé sur
+  `dev`, PR dev→main ouverte pour synchroniser `main` (qui n'avait pas encore
+  SP-16a/b/c). **SP-16 (Portails & Sites : modèle site/slug+route publique,
+  widgets de contenu Hero/RichSection/Gallery, fiche dataset+téléchargement) est
+  intégralement clos.**
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins
