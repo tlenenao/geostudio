@@ -46,6 +46,8 @@ dev = [
     "import-linter>=2.0",
     "pip-audit>=2.7",
     "stac-pydantic>=3.1",  # SP-12a : validation de conformité STAC, offline, dep de test uniquement
+    "rdflib>=7.0",  # SP-12b : parse JSON-LD pour validation SHACL, dep de test uniquement
+    "pyshacl>=0.25",  # SP-12b : validation SHACL contre les shapes DCAT-AP vendues hors-ligne, dep de test uniquement
 ]
 
 [tool.pytest.ini_options]
@@ -55,6 +57,7 @@ filterwarnings = [
     "error",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::DeprecationWarning:rdflib.plugins.parsers.jsonld",
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
