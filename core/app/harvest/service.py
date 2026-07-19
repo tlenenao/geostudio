@@ -54,21 +54,38 @@ def harvest_source(
         session.flush()
         return
 
-    seen_external_ids: set[str] = set()
-    for rec in records:
-        seen_external_ids.add(rec.external_id)
-        digest = _content_hash(rec)
-        existing = harvest_repo.get_record(
-            session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
-        )
-        if source.mode == "copy":
-            _upsert_copy(session, source, rec, existing, digest, items_fetcher)
-        else:
-            _upsert_reference(session, source, rec, existing, digest)
+    # Le traitement par enregistrement (upsert, y compris items_fetcher/
+    # run_import en mode copy — fail-fast, réseau) est capturé au même titre
+    # que le fetch ci-dessus : le contrat de harvest_source est de ne JAMAIS
+    # lever, pour que le job procrastinate (Task 5) ne retente jamais un
+    # zombie. Décision : en cas d'échec en cours de boucle, les
+    # enregistrements déjà upsertés plus tôt dans la même boucle restent
+    # (progrès partiel accepté — le moissonnage suivant réconcilie), mais on
+    # ne lance PAS mark_missing_as_stale et on ne marque PAS "ok" : la source
+    # passe "error" pour que sa santé soit visible.
+    try:
+        seen_external_ids: set[str] = set()
+        for rec in records:
+            seen_external_ids.add(rec.external_id)
+            digest = _content_hash(rec)
+            existing = harvest_repo.get_record(
+                session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
+            )
+            if source.mode == "copy":
+                _upsert_copy(session, source, rec, existing, digest, items_fetcher)
+            else:
+                _upsert_reference(session, source, rec, existing, digest)
 
-    harvest_repo.mark_missing_as_stale(
-        session, tenant_id=source.tenant_id, source_id=source.id, seen_external_ids=seen_external_ids,
-    )
+        harvest_repo.mark_missing_as_stale(
+            session, tenant_id=source.tenant_id, source_id=source.id, seen_external_ids=seen_external_ids,
+        )
+    except Exception as exc:
+        logger.exception("harvest source %s: échec de traitement des enregistrements", source.id)
+        source.last_status = "error"
+        source.last_error = str(exc)[:500]
+        session.flush()
+        return
+
     source.last_run_at = _now()
     source.last_status = "ok"
     source.last_error = None
