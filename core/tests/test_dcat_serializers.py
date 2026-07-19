@@ -116,3 +116,27 @@ def test_dataset_no_bbox_falls_back_to_world():
                     is_public=True, publisher_name="Default", bbox=None)
     poly = json.loads(doc["dct:spatial"]["locn:geometry"]["@value"])
     assert poly["coordinates"][0][0] == [-180.0, -90.0]
+
+
+def test_catalog_embeds_datasets_and_is_shacl_valid(dcat_shacl_shapes):
+    ds = s.dataset(base=BASE, collection_id="roads", title="Routes",
+                  description="Réseau routier", created_at="2026-07-01T00:00:00Z",
+                  updated_at="2026-07-10T00:00:00Z", is_public=True,
+                  publisher_name="Default", bbox=[1.0, 44.0, 2.0, 45.0])
+    cat = s.catalog(base=BASE, tenant_name="Default", datasets=[ds])
+    assert cat["@type"] == "dcat:Catalog"
+    assert cat["@context"] == s.CONTEXT
+    assert cat["dcat:dataset"] == [ds]
+    assert cat["dct:publisher"]["foaf:name"] == "Default"
+    g = rdflib.Graph()
+    g.parse(data=json.dumps(cat), format="json-ld")
+    conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
+    assert conforms, text
+
+
+def test_catalog_empty_dataset_list_still_valid(dcat_shacl_shapes):
+    cat = s.catalog(base=BASE, tenant_name="Default", datasets=[])
+    g = rdflib.Graph()
+    g.parse(data=json.dumps(cat), format="json-ld")
+    conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
+    assert conforms, text
