@@ -74,6 +74,7 @@ layers = [
     "app.mcp",
     "app.public",
     "app.ingestion",
+    "app.dcat",
     "app.stac",
     "app.features",
     "app.collections",
