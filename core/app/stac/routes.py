@@ -6,6 +6,7 @@ permission existantes (list_visible_collections, get_readable_collection,
 import base64
 import json
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -243,8 +244,17 @@ def _run_search(request, session, user, *, bbox, datetime_param, collections, id
     links = [{"rel": "self", "type": "application/geo+json", "href": str(request.url)},
              {"rel": "root", "type": "application/json", "href": f"{base}/stac"}]
     if next_token:
-        links.append({"rel": "next", "type": "application/geo+json",
-                      "href": f"{base}/stac/search?token={next_token}&limit={limit}"})
+        params = {"token": next_token, "limit": limit}
+        if collections:
+            params["collections"] = ",".join(collections)
+        if bbox:
+            params["bbox"] = ",".join(str(x) for x in bbox)
+        if datetime_param:
+            params["datetime"] = datetime_param
+        if ids:
+            params["ids"] = ",".join(ids)
+        href = f"{base}/stac/search?{urlencode(params)}"
+        links.append({"rel": "next", "type": "application/geo+json", "href": href})
     return serializers.item_collection(items=results, links=links)
 
 
