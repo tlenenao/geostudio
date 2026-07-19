@@ -15,7 +15,12 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
 
   let created: unknown = null;
   let runCount = 0;
-  let harvestedItem: Record<string, unknown> | null = null;
+  // Magasin honnête, keyé par id externe (pk) : le handler "/run" UPSERT
+  // dedans plutôt que de réassigner un objet unique — la taille du
+  // catalogue reflète donc le nombre réel d'ids externes distincts
+  // moissonnés, et peut structurellement dépasser 1 (aucune de-duplication
+  // n'est faite ici, contrairement à une ancienne version de ce mock).
+  const harvestedById = new Map<string, Record<string, unknown>>();
 
   await page.route("https://core.test/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
@@ -46,11 +51,11 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
 
   await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
-    harvestedItem = {
+    harvestedById.set("ext-1", {
       pk: "ext-1", resourceType: "external", title: "Bâtiments (STAC distant)",
       abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
       configId: null, isPublished: false,
-    };
+    });
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
@@ -58,7 +63,7 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   // un glob non scopé casserait la navigation (même rationale que
   // "/items/1"/"/items/9" ailleurs dans cette suite).
   await page.route("https://core.test/items*", async (route) => {
-    const items = harvestedItem ? [harvestedItem] : [];
+    const items = Array.from(harvestedById.values());
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
 
@@ -86,5 +91,15 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   await page.getByRole("button", { name: "Moissonner maintenant" }).click();
   await expect.poll(() => runCount).toBe(2);
   await page.goto("/");
+  // Le shell rend tel quel ce que "/items" renvoie — il ne dé-duplique rien
+  // lui-même. Ici le magasin mocké est un vrai upsert keyé par id externe
+  // (pas un objet unique réassigné), donc cette assertion a un échec
+  // possible : si "/run" avait ajouté un id externe distinct au lieu de
+  // ré-upserter "ext-1", le compte serait 2. L'invariant "un re-moissonnage
+  // ne duplique jamais" est prouvé côté cœur, contre un vrai Postgres, dans
+  // core/tests/test_harvest_repository.py (contrainte unique) et
+  // core/tests/test_harvest_service.py (re-harvest-no-reimport) ; cette E2E
+  // prouve le parcours visible + que re-lancer la même source garde le
+  // catalogue à une seule carte.
   await expect(page.getByText("Bâtiments (STAC distant)")).toHaveCount(1);
 });
