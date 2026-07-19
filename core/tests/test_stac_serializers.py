@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from stac_pydantic import Catalog, Collection
+from stac_pydantic import Catalog, Collection, Item, ItemCollection
 
 from app.stac import serializers as s
 
@@ -61,3 +61,45 @@ def test_collection_without_bbox_falls_back_to_world():
     # (stac-pydantic Collection exige min_length=1).
     assert col["description"] == "Vide"
     Collection.model_validate(col)
+
+
+DT = "2026-07-10T12:00:00Z"
+FEAT = {"type": "Feature", "id": 7,
+        "geometry": {"type": "Point", "coordinates": [1.85, 45.27]},
+        "properties": {"titre": "Nid de poule", "datetime": "OVERRIDE-ME"}}
+
+
+def test_item_valid_with_bbox_and_synthetic_datetime():
+    it = s.item(base=BASE, collection_id="roads", feature=FEAT, datetime_value=DT)
+    assert it["type"] == "Feature"
+    assert it["id"] == "7"  # coercé en str
+    assert it["collection"] == "roads"
+    assert it["bbox"] == [1.85, 45.27, 1.85, 45.27]
+    assert it["properties"]["datetime"] == DT  # écrase l'attribut homonyme de la feature
+    assert it["properties"]["titre"] == "Nid de poule"
+    assert it["assets"] == {}
+    rels = {l["rel"]: l["href"] for l in it["links"]}
+    assert rels["self"] == f"{BASE}/stac/collections/roads/items/7"
+    assert rels["collection"] == f"{BASE}/stac/collections/roads"
+    Item.model_validate(it)
+
+
+def test_item_null_geometry_has_null_bbox():
+    feat = {"type": "Feature", "id": "abc", "geometry": None, "properties": {}}
+    it = s.item(base=BASE, collection_id="roads", feature=feat, datetime_value=DT)
+    assert it["geometry"] is None
+    assert it["bbox"] is None
+    Item.model_validate(it)
+
+
+def test_geojson_bbox_polygon():
+    geom = {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 3], [0, 3], [0, 0]]]}
+    assert s._geojson_bbox(geom) == [0.0, 0.0, 2.0, 3.0]
+
+
+def test_item_collection_wraps():
+    it = s.item(base=BASE, collection_id="roads", feature=FEAT, datetime_value=DT)
+    ic = s.item_collection(items=[it], links=[{"rel": "self", "href": f"{BASE}/stac/search"}])
+    assert ic["type"] == "FeatureCollection"
+    assert ic["features"] == [it]
+    ItemCollection.model_validate(ic)

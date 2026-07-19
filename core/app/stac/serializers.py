@@ -71,3 +71,54 @@ def collection(*, base: str, collection_id: str, title: str, description: str,
     if bbox is None:
         doc["note"] = "Emprise indisponible (pas de géométrie ou table vide) : repli emprise monde."
     return doc
+
+
+def _iter_coords(coords):
+    # coords est soit une paire [x, y(, z)], soit une liste imbriquée.
+    if coords and isinstance(coords[0], (int, float)):
+        yield coords
+        return
+    for sub in coords:
+        yield from _iter_coords(sub)
+
+
+def _geojson_bbox(geometry: dict | None) -> list[float] | None:
+    if not geometry or not geometry.get("coordinates"):
+        return None
+    xs, ys = [], []
+    for x, y, *_ in _iter_coords(geometry["coordinates"]):
+        xs.append(float(x))
+        ys.append(float(y))
+    if not xs:
+        return None
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def item(*, base: str, collection_id: str, feature: dict, datetime_value: str) -> dict:
+    fid = str(feature["id"])
+    geometry = feature.get("geometry")
+    properties = dict(feature.get("properties") or {})
+    properties["datetime"] = datetime_value  # clé réservée : écrase un homonyme (§2.2)
+    return {
+        "type": "Feature",
+        "stac_version": STAC_VERSION,
+        "id": fid,
+        "collection": collection_id,
+        "geometry": geometry,
+        "bbox": _geojson_bbox(geometry),
+        "properties": properties,
+        "assets": {},
+        "links": [
+            {"rel": "self", "type": "application/geo+json",
+             "href": f"{base}/stac/collections/{collection_id}/items/{fid}"},
+            {"rel": "parent", "type": "application/json",
+             "href": f"{base}/stac/collections/{collection_id}"},
+            {"rel": "collection", "type": "application/json",
+             "href": f"{base}/stac/collections/{collection_id}"},
+            {"rel": "root", "type": "application/json", "href": f"{base}/stac"},
+        ],
+    }
+
+
+def item_collection(*, items: list[dict], links: list[dict]) -> dict:
+    return {"type": "FeatureCollection", "features": items, "links": links}
