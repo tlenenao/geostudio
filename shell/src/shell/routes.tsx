@@ -10,6 +10,7 @@ import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
+import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
 
@@ -86,6 +87,7 @@ export function AppRoutes() {
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
+        <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
