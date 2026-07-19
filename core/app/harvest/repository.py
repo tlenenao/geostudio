@@ -121,7 +121,14 @@ def list_due_sources(session: Session) -> list[HarvestSource]:
         if source.last_run_at is None:
             due.append(source)
             continue
-        threshold = source.last_run_at + timedelta(minutes=source.interval_minutes)
+        last_run_at = source.last_run_at
+        if last_run_at.tzinfo is None:
+            # Reloaded from a fresh query, the naive `DateTime()` column
+            # deserializes tz-naive even though it was written as UTC
+            # (see _now()). Normalize before comparing against `now`,
+            # which is always tz-aware.
+            last_run_at = last_run_at.replace(tzinfo=timezone.utc)
+        threshold = last_run_at + timedelta(minutes=source.interval_minutes)
         if threshold <= now:
             due.append(source)
     return due

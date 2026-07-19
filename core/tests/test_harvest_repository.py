@@ -151,7 +151,14 @@ def test_list_due_sources_includes_never_run_and_overdue_enabled_sources(session
     fresh = make("https://c", last_run_at=datetime.now(timezone.utc))
     make("https://d", enabled=False, last_run_at=None)
     make("https://e", interval_minutes=None, last_run_at=None)
-    session.flush()
+    session.commit()
+
+    # Force a cold fetch: expire the identity map so `last_run_at` is
+    # re-deserialized from the DB (tz-naive column) instead of returning the
+    # same tz-aware in-memory object we just assigned above. This is the
+    # path a real scheduler (fresh session per job) always takes, and it is
+    # the path that reproduced the tz-naive/tz-aware TypeError.
+    session.expire_all()
 
     due_ids = {s.id for s in repo.list_due_sources(session)}
     assert due_ids == {never_run.id, overdue.id}
