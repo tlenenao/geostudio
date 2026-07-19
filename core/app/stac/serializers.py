@@ -41,3 +41,33 @@ def catalog(*, base: str, collection_ids: list[str]) -> dict:
         "conformsTo": list(CONFORMANCE_CLASSES),
         "links": links,
     }
+
+
+WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
+
+
+def collection(*, base: str, collection_id: str, title: str, description: str,
+               bbox: list[float] | None, temporal_start: str | None) -> dict:
+    doc = {
+        "type": "Collection",
+        "stac_version": STAC_VERSION,
+        "id": collection_id,
+        "title": title,
+        "description": description or "",
+        "license": "other",
+        "extent": {
+            "spatial": {"bbox": [bbox if bbox is not None else list(WORLD_BBOX)]},
+            "temporal": {"interval": [[temporal_start, None]]},
+        },
+        "links": [
+            {"rel": "self", "type": "application/json",
+             "href": f"{base}/stac/collections/{collection_id}"},
+            {"rel": "root", "type": "application/json", "href": f"{base}/stac"},
+            {"rel": "parent", "type": "application/json", "href": f"{base}/stac"},
+            {"rel": "items", "type": "application/geo+json",
+             "href": f"{base}/stac/collections/{collection_id}/items"},
+        ],
+    }
+    if bbox is None:
+        doc["note"] = "Emprise indisponible (pas de géométrie ou table vide) : repli emprise monde."
+    return doc
