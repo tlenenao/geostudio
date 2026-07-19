@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
-import { csvAvailable, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDownload";
+import { csvAvailable, csvTooLarge, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDownload";
 
 // Plain slate styling (not --gs-* theme vars): this component is reused both
 // inside a themed AppRenderer (DatasetCard widget) and outside any theme root
@@ -40,7 +40,7 @@ export function DatasetDownloadButtons({
       >
         Télécharger CSV
       </button>
-      {!available && (
+      {csvTooLarge(featureCount) && (
         <p className="w-full text-[10px] text-slate-500">
           Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).
         </p>
