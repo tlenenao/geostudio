@@ -2,6 +2,7 @@
 """Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
 (pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle."""
 import os
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -54,3 +55,17 @@ def pg_engine_with_procrastinate_schema(pg_engine):
         with app.open():
             app.schema_manager.apply_schema()
     return pg_engine
+
+
+@pytest.fixture(scope="session")
+def dcat_shacl_shapes():
+    """Shapes SHACL DCAT-AP 2.1.1 officielles, vendues statiquement (jamais de
+    récupération réseau en test). Chargées une fois par session pytest."""
+    import rdflib
+
+    g = rdflib.Graph()
+    g.parse(
+        Path(__file__).parent / "fixtures" / "dcat" / "dcat-ap-SHACL.ttl",
+        format="turtle",
+    )
+    return g
