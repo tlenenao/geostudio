@@ -17,6 +17,7 @@ from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
+from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(ingestion_routes.router)
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
+    app.include_router(harvest_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
