@@ -98,7 +98,7 @@ npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 340 tests (302 exécutés + 38 marqués postgis, nécessitent docker)
+uv run pytest        # 606 exécutés + 87 skipped (postgis marqués, nécessitent docker)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -1241,6 +1241,105 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   SP-16a/b/c). **SP-16 (Portails & Sites : modèle site/slug+route publique,
   widgets de contenu Hero/RichSection/Gallery, fiche dataset+téléchargement) est
   intégralement clos.**
+- **SP-12a « API STAC native (lecture seule) » livré et clos** (2026-07-19, cf.
+  spec `docs/superpowers/specs/2026-07-12-sp12a-api-stac-lecture-seule-design.md`
+  et plan `docs/superpowers/plans/2026-07-19-sp12a-api-stac-lecture-seule.md`) :
+  le catalogue GeoStudio est exposé en **STAC 1.0.0 lecture seule** dans le cœur,
+  sur les tables `collections`/features existantes, sans nouveau modèle de
+  permission. Nouveau module `core/app/stac/` = serializers **purs** (dicts STAC
+  construits à la main, zéro I/O : `conformance`, Catalog landing, Collection,
+  Item, ItemCollection) + `extent.py` (emprise `ST_EstimatedExtent`→repli
+  `ST_Extent`, **toujours reprojetée en 4326**, None→emprise monde) + `routes.py`
+  (routeur sous `/stac`). Classes STAC servies : **core** (`GET /stac` landing +
+  `conformsTo` 7 URIs, `/stac/conformance`), **collections** (`/stac/collections`
+  list + `/stac/collections/{id}` detail, `license:"other"` en dur), **features**
+  (`/…/items` paginé lien `next` + `/…/items/{fid}`), **item-search**
+  (`GET/POST /stac/search` cross-collections, token `next` base64 `{c,o}`,
+  filtres `collections`/`ids`/`bbox`/`datetime` à granularité collection). Chaque
+  Item porte un **`datetime` synthétique = `updated_at` de sa collection** (clé
+  réservée, écrase l'homonyme). **Réutilise strictement le chemin OGC Features de
+  SP-3b** (`select_features`/`get_feature` sous `rls_scope`) et les portes
+  existantes (`list_visible_collections`, `get_readable_collection`, **404
+  non-fuyant** : collection non lisible/cross-tenant/non-publiée → 404 jamais
+  403, indistinguable d'inexistante ; anonyme → tenant `default` + publié/public
+  seulement). `stac-pydantic` = **dépendance de test uniquement** (validation de
+  conformité offline sur la sortie réelle, jamais un import runtime). Frontière
+  import-linter : `app.stac` inséré entre `app.ingestion` et `app.features`
+  (contrat Kept). **Aucune surface shell ni MCP** (hors régénération
+  OpenAPI/types). Exécuté en subagent-driven-development (9 tâches, revue par
+  tâche + revue finale de branche modèle opus). Plusieurs défauts trouvés et
+  corrigés en cours de route (chacun re-revu) : **décision utilisateur** sur le
+  fallback de `description` (le serializer fait `description or title or "No
+  description provided."`, déviation assumée du plan `description or ""`, sinon
+  stac-pydantic `min_length=1` rejette la sortie réelle d'une collection sans
+  description) ; test d'emprise renforcé (le cas 4326→4326 était une transform
+  identité ne prouvant rien → ajout d'un cas **Lambert-93 EPSG:2154→4326** qui
+  échoue si `ST_Transform` disparaît) ; **1 Important** en revue de tâche : le
+  lien `next` de `/search` laissait tomber les filtres (`collections`/`bbox`/
+  `datetime`/`ids`) → page 2 d'une recherche filtrée cherchait toutes les
+  collections visibles ; fixé (next href reproduit la requête filtrée,
+  `urlencode`, round-trip exact + test filter+pagination). **Revue finale de
+  branche : 0 Critical/0 Important, Ready to merge** — les deux propriétés
+  bout-en-bout tracées et TIENNENT (anonymat non-fuyant sur toutes les surfaces
+  de lecture y compris token forgé qui ne peut élargir la visibilité ; discipline
+  RLS sur les 6 sites de lecture, tous sous `with rls(col.tenant_id)`) ; **2 fixes
+  de durcissement gatés par la revue et appliqués** (POST `SearchBody.limit` →
+  `Field(ge=1)`, `limit=0` fermait une boucle `next` infinie ; POST `bbox`
+  non-longueur-4 → 400 explicite au lieu de 500). Validation empirique réelle
+  contre PostGIS+pgvector jetable : `test_stac_extent` (dont Lambert-93) +
+  `test_stac_integration` (navigation complète, bbox narrow, next, adversarial
+  anonyme non-fuyant) verts. **589 tests cœur passed/84 skipped** (sans DB ;
+  tests postgis STAC verts contre DB réelle), **lint-imports clean**, **build
+  shell clean** (types régénérés, non consommés), **aucun drift OpenAPI**. Poussé
+  sur `dev`, PR dev→main ouverte. **SP-12a est clos** (première brique de la
+  fédération STAC ; connecteurs de moissonnage ArcGIS FS/GetCapabilities/CSW/CKAN
+  et export DCAT-AP restent à faire).
+- **SP-12b « export DCAT-AP (JSON-LD moissonnable) » livré et clos** (2026-07-19,
+  cf. spec `docs/superpowers/specs/2026-07-19-sp12b-export-dcat-ap-design.md` et
+  plan `docs/superpowers/plans/2026-07-19-sp12b-export-dcat-ap.md`) : le
+  catalogue GeoStudio est exposé en **DCAT-AP (JSON-LD, lecture seule)** via deux
+  nouvelles routes cœur — dump complet (`GET /dcat/catalog`) et `dcat:Dataset`
+  dé-référençable (`GET /dcat/datasets/{id}`), moissonnable par un portail
+  open-data (data.gouv.fr, CKAN, GeoNetwork) sans API interactive ni SPARQL
+  (A21). Nouveau module `core/app/dcat/` = serializers **purs** (`publisher()`,
+  `distribution()`, `dataset()`, `catalog()`, zéro I/O, même discipline que
+  `app.stac.serializers`) + `routes.py` (routeur sous `/dcat`). Mapping :
+  `dcat:Catalog` = catalogue du tenant courant ; `dcat:Dataset` = une
+  plateforme `Collection` (même granularité que STAC Collection, SP-12a) ;
+  `dcat:Distribution` = un point d'accès existant (GeoJSON OGC API Features
+  puis STAC item-search, aucun nouveau chemin de requête sur les features).
+  **`dct:accessRights` reflète `collection.is_public` réel** (PUBLIC/RESTRICTED,
+  jamais une constante — contrairement à STAC dont l'audience anonyme est
+  filtrée en amont : un admin voit ses propres collections non-publiques en
+  RESTRICTED, un anonyme ne les voit jamais du tout). `dct:license` constante EU
+  "autre" en dur (symétrique à STAC). `dct:spatial` réutilise
+  `app.stac.extent.estimated_bbox_4326` (aucun nouveau calcul d'emprise),
+  `dct:temporal` simplifié (startDate seul), `dct:publisher` = `Tenant.name`.
+  Pas de pagination (dump complet, YAGNI A21), 404 non-fuyant identique à STAC/
+  SP-16, `Content-Type: application/ld+json` explicite. `rdflib`/`pyshacl` =
+  **dépendances de test uniquement** (validation de conformité offline contre
+  les shapes SHACL officielles DCAT-AP 2.1.1 vendues statiquement, jamais un
+  import runtime) — gate empirique prouvé dans les deux sens (positif : un
+  document valide passe ; négatif : un Dataset sans `dct:title`/`dct:description`
+  est rejeté). Frontière import-linter : `app.dcat` inséré entre `app.ingestion`
+  et `app.stac` (`app.dcat` importe `app.stac.extent` sans inverser la
+  dépendance). **Aucune surface shell ni MCP** (hors régénération OpenAPI/
+  types). Exécuté en subagent-driven-development (6 tâches, revue par tâche +
+  revue finale de branche modèle opus). **Aucun défaut Critical/Important sur
+  les 6 tâches ni en revue finale** — les deux propriétés de sécurité
+  bout-en-bout tracées et TIENNENT (accessRights reflète is_public réel sans
+  fuite d'information ; 404 non-fuyant + `read_only_guard` n'affecte jamais ces
+  routes, toutes deux `GET`). Task 5 validé contre PostGIS réel (conteneur
+  jetable relancé) : SHACL vérifié sur un payload **réellement produit par les
+  routes** (bbox PostGIS réel, RLS réel), pas seulement les serializers en
+  isolation. **606 tests cœur passed/87 skipped** (sans DB ; 87 passed avec
+  PostGIS réel dont les 3 tests d'intégration DCAT), lint-imports clean, build
+  shell clean, aucun drift OpenAPI. Smoke d'acceptation externe (validateur
+  DCAT-AP data.gouv.fr/SHACL en ligne) documenté comme non exécuté cette
+  session — non bloquant, non exécuté par la CI, suivi optionnel resté ouvert.
+  Poussé sur `dev`, PR dev→main ouverte pour synchroniser `main`. **SP-12b est
+  clos** (deuxième brique de la fédération STAC/DCAT ; connecteurs de
+  moissonnage ArcGIS FS/GetCapabilities/CSW/CKAN restent à faire).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

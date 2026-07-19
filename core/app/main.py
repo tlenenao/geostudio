@@ -13,6 +13,7 @@ from app.auth import routes as auth_routes
 from app.auth.dependency import is_read_only_mode
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
+from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
@@ -23,6 +24,7 @@ from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
 from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
+from app.stac import routes as stac_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 
@@ -84,6 +86,8 @@ def create_app() -> FastAPI:
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
     app.include_router(ingestion_routes.router)
+    app.include_router(stac_routes.router)
+    app.include_router(dcat_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
