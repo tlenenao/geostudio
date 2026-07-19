@@ -111,3 +111,15 @@ def test_search_post_body(env):
     app, client = env
     body = client.post("/stac/search", json={"collections": ["roads"], "limit": 100}).json()
     assert {f["collection"] for f in body["features"]} == {"roads"}
+
+
+def test_search_filter_preserved_across_pagination(env):
+    app, client = env
+    page1 = client.get("/stac/search?collections=rivers&limit=1").json()
+    assert len(page1["features"]) == 1
+    assert page1["features"][0]["collection"] == "rivers"
+    nxt = next(l["href"] for l in page1["links"] if l["rel"] == "next")
+    assert "collections=rivers" in nxt
+    page2 = client.get(nxt.replace("http://testserver", "")).json()
+    assert len(page2["features"]) >= 1
+    assert {f["collection"] for f in page2["features"]} == {"rivers"}
