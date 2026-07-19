@@ -123,3 +123,21 @@ def test_search_filter_preserved_across_pagination(env):
     page2 = client.get(nxt.replace("http://testserver", "")).json()
     assert len(page2["features"]) >= 1
     assert {f["collection"] for f in page2["features"]} == {"rivers"}
+
+
+def test_search_post_rejects_zero_limit(env):
+    app, client = env
+    resp = client.post("/stac/search", json={"limit": 0})
+    assert resp.status_code == 422
+
+
+def test_search_post_rejects_malformed_bbox(env):
+    app, client = env
+    resp = client.post("/stac/search", json={"bbox": [1, 2, 3]})
+    assert resp.status_code == 400
+
+
+def test_search_post_accepts_valid_bbox(env):
+    app, client = env
+    resp = client.post("/stac/search", json={"bbox": [0, 40, 2, 46], "collections": ["roads"]})
+    assert resp.status_code == 200
