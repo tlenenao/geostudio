@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "external";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -123,6 +123,11 @@ export interface ItemClient {
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
   updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin>;
   deleteCollection(id: string): Promise<void>;
+  listHarvestSources(): Promise<HarvestSource[]>;
+  createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource>;
+  updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
+  deleteHarvestSource(id: string): Promise<void>;
+  runHarvestSource(id: string): Promise<void>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
@@ -254,6 +259,37 @@ export type CollectionPatchInput = {
   description?: string;
   isPublic?: boolean;
   editable?: boolean;
+};
+
+export type HarvestSourceType = "stac";
+export type HarvestSourceMode = "reference" | "copy";
+export type HarvestSourceStatus = "running" | "ok" | "error" | null;
+
+export type HarvestSource = {
+  id: string;
+  type: HarvestSourceType;
+  url: string;
+  mode: HarvestSourceMode;
+  enabled: boolean;
+  intervalMinutes: number | null;
+  lastRunAt: string | null;
+  lastStatus: HarvestSourceStatus;
+  lastError: string | null;
+};
+
+export type HarvestSourceCreateInput = {
+  type: HarvestSourceType;
+  url: string;
+  mode: HarvestSourceMode;
+  enabled: boolean;
+  intervalMinutes?: number;
+};
+
+export type HarvestSourcePatchInput = {
+  url?: string;
+  mode?: HarvestSourceMode;
+  enabled?: boolean;
+  intervalMinutes?: number;
 };
 
 export type DataRecord = {

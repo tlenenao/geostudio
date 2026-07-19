@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -380,6 +380,27 @@ export function createItemClient(opts: {
 
     async deleteCollection(id: string): Promise<void> {
       await request<void>("DELETE", `/collections/${id}`);
+    },
+
+    async listHarvestSources(): Promise<HarvestSource[]> {
+      const data = await request<{ sources: HarvestSource[] }>("GET", `/harvest/sources`);
+      return data.sources ?? [];
+    },
+
+    async createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource> {
+      return request<HarvestSource>("POST", `/harvest/sources`, input);
+    },
+
+    async updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource> {
+      return request<HarvestSource>("PATCH", `/harvest/sources/${id}`, patch);
+    },
+
+    async deleteHarvestSource(id: string): Promise<void> {
+      await request<void>("DELETE", `/harvest/sources/${id}`);
+    },
+
+    async runHarvestSource(id: string): Promise<void> {
+      await request<void>("POST", `/harvest/sources/${id}/run`);
     },
 
     async getCollectionSharing(id: string): Promise<Sharing> {

@@ -7,7 +7,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateItem, useCreateMap, useDeleteItem, useGroups, useInstanceInfo, useItems, useMapConfig, useMe, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateHarvestSource, useCreateItem, useCreateMap, useDeleteItem, useGroups, useHarvestSources, useInstanceInfo, useItems, useMapConfig, useMe, useRunHarvestSource, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -233,4 +233,52 @@ test("useCollectionSharing returns the collection's sharing", async () => {
   const { result } = renderHook(() => useCollectionSharing("incidents"), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data).toEqual({ public: true, groups: [] });
+});
+
+test("useHarvestSources returns the mapped sources", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1", type: "stac", url: "https://stac.example.com/collections",
+            mode: "reference", enabled: true, intervalMinutes: 60,
+            lastRunAt: null, lastStatus: null, lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+  const { result } = renderHook(() => useHarvestSources(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.[0]?.url).toBe("https://stac.example.com/collections");
+});
+
+test("useCreateHarvestSource posts the input and invalidates the list", async () => {
+  let posted: unknown;
+  server.use(
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json({
+        id: "src-2", type: "stac", url: "https://a", mode: "reference",
+        enabled: true, intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
+      }, { status: 201 });
+    }),
+  );
+  const { result } = renderHook(() => useCreateHarvestSource(), { wrapper });
+  await result.current.mutateAsync({ type: "stac", url: "https://a", mode: "reference", enabled: true });
+  expect(posted).toEqual({ type: "stac", url: "https://a", mode: "reference", enabled: true });
+});
+
+test("useRunHarvestSource posts to the run endpoint", async () => {
+  let called = false;
+  server.use(
+    http.post("https://core.test/harvest/sources/src-1/run", () => {
+      called = true;
+      return HttpResponse.json({ status: "queued" }, { status: 202 });
+    }),
+  );
+  const { result } = renderHook(() => useRunHarvestSource(), { wrapper });
+  await result.current.mutateAsync("src-1");
+  expect(called).toBe(true);
 });
