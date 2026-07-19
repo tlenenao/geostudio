@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DataRecord, ItemClient } from "../api/types";
 import {
   csvAvailable,
+  csvTooLarge,
   downloadCsv,
   fetchRecordsForCsv,
   geojsonDownloadUrl,
@@ -17,6 +18,19 @@ test.each([
   [null, false],
 ])("csvAvailable(%s) = %s", (count, expected) => {
   expect(csvAvailable(count)).toBe(expected);
+});
+
+// csvTooLarge is true only for a *known* count above the cap — a null (unknown)
+// count is unavailable but not "too large", so the two predicates must diverge
+// on null (guards against showing the "trop volumineux" message for an unknown
+// count).
+test.each([
+  [10000, false],
+  [10001, true],
+  [0, false],
+  [null, false],
+])("csvTooLarge(%s) = %s", (count, expected) => {
+  expect(csvTooLarge(count)).toBe(expected);
 });
 
 test("geojsonDownloadUrl delegates to client.featuresUrl with a synthetic features source capped at the server's max page size", () => {

@@ -58,6 +58,13 @@ test("disables the CSV button above the 10000-row cap and shows the explanatory 
   expect(screen.getByText(/trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-15\)/)).toBeInTheDocument();
 });
 
+test("disables the CSV button for an unknown feature count without showing the too-large message", async () => {
+  renderButtons(null);
+  const button = await screen.findByRole("button", { name: "Télécharger CSV" });
+  expect(button).toBeDisabled();
+  expect(screen.queryByText(/trop volumineux/)).not.toBeInTheDocument();
+});
+
 test("clicking the CSV button fetches records via the client and triggers a download", async () => {
   const client = renderButtons(1, { queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "X" }, geometry: null }]) });
   const button = await screen.findByRole("button", { name: "Télécharger CSV" });

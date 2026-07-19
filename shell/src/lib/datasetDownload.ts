@@ -8,6 +8,13 @@ export function csvAvailable(featureCount: number | null): boolean {
   return featureCount !== null && featureCount <= CSV_ROW_CAP;
 }
 
+// Distinct from `!csvAvailable`: an unknown (null) count is unavailable but NOT
+// "too large" — only a known count strictly above the cap is. Callers use this
+// to show the "trop volumineux" message without mislabelling an unknown count.
+export function csvTooLarge(featureCount: number | null): boolean {
+  return featureCount !== null && featureCount > CSV_ROW_CAP;
+}
+
 // OGC API Features caps `limit` server-side at 1000 (core/app/features/routes.py
 // MAX_LIMIT, verified while writing this plan) — a direct browser download of a
 // collection with more features than that only returns the first page. Accepted
