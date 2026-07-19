@@ -23,6 +23,7 @@ from app.mcp.server import create_mcp_server
 from app.public import routes as public_routes
 from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
+from app.stac import routes as stac_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
     app.include_router(ingestion_routes.router)
+    app.include_router(stac_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
