@@ -56,6 +56,9 @@ app = procrastinate.App(
     # async) : tant qu'il n'est pas ouvert explicitement en async, il crée un
     # SyncPsycopgConnector interne à la demande (get_sync_connector()).
     connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
-    import_paths=["app.ingestion.tasks", "app.items.jobs", "app.collections.jobs", "app.cdc.jobs"],
+    import_paths=[
+        "app.ingestion.tasks", "app.items.jobs", "app.collections.jobs",
+        "app.cdc.jobs", "app.harvest.jobs",
+    ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
