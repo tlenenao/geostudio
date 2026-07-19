@@ -138,6 +138,31 @@ def test_connector_fetch_failure_sets_error_status_without_raising(session, tena
     assert "boom" in source.last_error
 
 
+def test_copy_mode_items_fetch_failure_sets_error_status_without_raising(session, tenant_and_user, monkeypatch):
+    # Reproduit le défaut de revue Task 4 : en mode copy, items_fetcher (ou
+    # run_import) est appelé DANS la boucle par-enregistrement, pas dans le
+    # bloc try du fetch initial. Ce test tourne toujours en SQLite (jamais
+    # postgis-gated) car il échoue avant tout appel à run_import — seul
+    # items_fetcher est exercé.
+    tenant, user = tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="stac",
+        url="https://a", mode="copy", enabled=True, interval_minutes=None,
+    )
+
+    def _raise(url):
+        raise RuntimeError("network boom")
+
+    service.harvest_source(session, source, items_fetcher=_raise)  # ne doit pas lever
+
+    assert source.last_status == "error"
+    assert "network boom" in source.last_error
+    # mark_missing_as_stale n'a pas dû tourner : aucun harvest_record créé.
+    count = session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
+    assert count == 0
+
+
 GEOJSON_ITEMS = (
     b'{"type":"FeatureCollection","features":['
     b'{"type":"Feature","properties":{"nom":"A"},'
