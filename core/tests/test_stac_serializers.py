@@ -57,7 +57,7 @@ def test_collection_without_bbox_falls_back_to_world():
     assert col["extent"]["spatial"]["bbox"] == [[-180.0, -90.0, 180.0, 90.0]]
     assert col["extent"]["temporal"]["interval"] == [[None, None]]
     assert "note" in col
-    # stac-pydantic Collection exige description non vide (min_length=1) ; le serializer peut
-    # légitimement produire "" (aucune description fournie) — substituer un texte neutre avant
-    # validation seulement, la forme du dict produit par collection() reste inchangée.
-    Collection.model_validate({**col, "description": col["description"] or "(sans description)"})
+    # description vide en entrée : le serializer replie sur le title, jamais une chaîne vide
+    # (stac-pydantic Collection exige min_length=1).
+    assert col["description"] == "Vide"
+    Collection.model_validate(col)
