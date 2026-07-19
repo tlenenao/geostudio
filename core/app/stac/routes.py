@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
@@ -165,7 +165,7 @@ class SearchBody(BaseModel):
     datetime: str | None = None
     collections: list[str] | None = None
     ids: list[str] | None = None
-    limit: int = DEFAULT_LIMIT
+    limit: int = Field(DEFAULT_LIMIT, ge=1)
     token: str | None = None
 
 
@@ -280,6 +280,8 @@ def search_post(request: Request, body: SearchBody,
                 session: Session = Depends(get_session),
                 introspect=Depends(get_introspector), repo=Depends(get_features_repo),
                 rls=Depends(get_rls_scope)):
+    if body.bbox is not None and len(body.bbox) != 4:
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
     return _run_search(
         request, session, user,
         bbox=tuple(body.bbox) if body.bbox else None, datetime_param=body.datetime,
