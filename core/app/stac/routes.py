@@ -5,7 +5,7 @@ permission existantes (list_visible_collections, get_readable_collection,
 404 non-fuyant). Aucune écriture, aucune surface shell/MCP."""
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
@@ -98,3 +98,59 @@ def get_collection(collection_id: str, request: Request,
         base=_base(request), collection_id=col.id, title=col.title,
         description=col.description or "", bbox=bbox,
         temporal_start=_rfc3339(col.created_at))
+
+
+def _parse_bbox(raw: str | None):
+    if raw is None:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+    try:
+        return tuple(float(p) for p in parts)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+
+
+@router.get("/collections/{collection_id}/items")
+def list_items(collection_id: str, request: Request,
+               limit: int = Query(DEFAULT_LIMIT, ge=1), offset: int = Query(0, ge=0),
+               bbox: str | None = None,
+               user=Depends(get_current_user_optional),
+               session: Session = Depends(get_session),
+               introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+               rls=Depends(get_rls_scope)):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    limit = min(limit, MAX_LIMIT)
+    parsed_bbox = _parse_bbox(bbox)
+    with rls(session, col.tenant_id):
+        page = repo.select_features(session, info, limit=limit, offset=offset,
+                                    bbox=parsed_bbox, filters=None)
+    dtv = _rfc3339(col.updated_at)
+    base = _base(request)
+    items = [serializers.item(base=base, collection_id=col.id, feature=f, datetime_value=dtv)
+             for f in page.features]
+    links = [{"rel": "self", "type": "application/geo+json", "href": str(request.url)},
+             {"rel": "root", "type": "application/json", "href": f"{base}/stac"}]
+    if offset + page.number_returned < page.number_matched:
+        links.append({"rel": "next", "type": "application/geo+json",
+                      "href": str(request.url.include_query_params(
+                          limit=limit, offset=offset + limit))})
+    return serializers.item_collection(items=items, links=links)
+
+
+@router.get("/collections/{collection_id}/items/{feature_id}")
+def get_item(collection_id: str, feature_id: str, request: Request,
+             user=Depends(get_current_user_optional),
+             session: Session = Depends(get_session),
+             introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+             rls=Depends(get_rls_scope)):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    with rls(session, col.tenant_id):
+        feature = repo.get_feature(session, info, fid=feature_id)
+    if feature is None:
+        raise HTTPException(status_code=404, detail="item not found")
+    return serializers.item(base=_base(request), collection_id=col.id,
+                            feature=feature, datetime_value=_rfc3339(col.updated_at))
