@@ -151,6 +151,59 @@ def test_fetch_returns_empty_on_http_error_without_raising():
     assert records == []
 
 
+def test_fetch_skips_malformed_collection_entries_and_keeps_valid_ones():
+    payload = {
+        "collections": [
+            {
+                "id": "buildings",
+                "title": "Bâtiments",
+                "links": [{"rel": "self", "href": "https://stac.example.com/collections/buildings"}],
+            },
+            None,
+            {"id": "bad-bbox", "extent": {"spatial": {"bbox": [["a", "b", "c", "d"]]}}},
+            "not-a-dict",
+            {
+                "id": "roads",
+                "title": "Routes",
+                "links": [{"rel": "self", "href": "https://stac.example.com/collections/roads"}],
+            },
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    records = list(_connector(handler).fetch("https://stac.example.com/collections"))
+    assert {r.external_id for r in records} == {"buildings", "roads"}
+
+
+def test_fetch_returns_empty_on_non_object_top_level_json():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2, 3])
+
+    records = list(_connector(handler).fetch("https://stac.example.com/collections"))
+    assert records == []
+
+
+def test_fetch_returns_empty_on_null_top_level_json():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=None)
+
+    records = list(_connector(handler).fetch("https://stac.example.com/collections"))
+    assert records == []
+
+
+def test_fetch_coerces_non_list_keywords_to_empty_list():
+    payload = {"collections": [{"id": "x", "title": "X", "keywords": "not-a-list", "links": []}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    records = list(_connector(handler).fetch("https://stac.example.com/collections"))
+    assert len(records) == 1
+    assert records[0].keywords == []
+
+
 def test_get_connector_returns_stac_connector():
     connector = get_connector("stac")
     assert connector.type == "stac"

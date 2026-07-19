@@ -1,205 +1,193 @@
-# Task 2 — Rapport : revue authz — audit complet + comblement des trous réels
-
-## Statut : DONE
+# Task 2 Report — Connecteur STAC (HarvestConnector/HarvestedRecord + StacConnector, SP-12c)
 
 ## Résumé
 
-Audit exhaustif de la couverture de test authz du cœur : 9 modules REST
-(44 endpoints) + 11 outils MCP + les 2 composants transverses de recherche
-sémantique (SP-7), sur la liste complète fournie par le brief (~25 fichiers
-de test réels, pas la liste illustrative à 8 fichiers de la spec d'origine).
-Chaque fichier de test associé a été lu en entier (pas seulement les noms de
-fonctions), et le code source de chaque route/outil a été relu pour vérifier
-que la garde citée par le test correspond bien à ce que le code fait
-réellement.
+Implémenté exactement selon le brief `.superpowers/sdd/task-2-brief.md`, en TDD (RED confirmé
+puis GREEN). Aucun écart de code par rapport au code fourni verbatim dans le brief — les trois
+fichiers source ont été copiés tels quels (avec l'en-tête SPDX en ligne 1).
 
-**Résultat : 0 trou de sécurité réel.** 9 trous de **couverture** trouvés
-(un comportement déjà correct, jamais exercé par un test) et comblés — les 9
-tests ajoutés ont tous passé du premier coup, confirmant le code existant
-plutôt que de révéler un bug. Aucun correctif de code n'a été nécessaire.
+## Fichiers créés
 
-La matrice complète endpoint-par-endpoint/outil-par-outil, la liste détaillée
-des 9 trous comblés (avec repro) et les points documentés-mais-non-ouverts
-(hors budget) sont dans
-`docs/superpowers/specs/2026-07-15-sp9-securite-minimale-revue-authz.md` —
-ce fichier-ci résume l'exécution, ce fichier-là est la matrice/l'audit
-proprement dit.
+- `core/app/harvest/connectors/__init__.py` — registre `_REGISTRY = {"stac": StacConnector()}`,
+  `get_connector(source_type) -> HarvestConnector` (lève `ValueError` si type inconnu).
+- `core/app/harvest/connectors/base.py` — `HarvestedRecord` (dataclass frozen) +
+  `HarvestConnector` (Protocol : `type`, `supports_copy`, `fetch(url) -> Iterable[HarvestedRecord]`).
+- `core/app/harvest/connectors/stac.py` — `StacConnector` (`type="stac"`, `supports_copy=True`,
+  HTTP-only via `httpx.Client` injectable/interne, zéro I/O DB). Parsing tolérant/borné :
+  `_MAX_CATALOG_DEPTH=5`, `_MAX_COLLECTIONS=500`, timeout 10s, anti-cycle via `seen_docs: set[str]`,
+  gère 3 formes de document (API `{"collections":[...]}`, `Collection` unique, `Catalog` avec
+  `links[rel=child]` récursif), toute erreur HTTP/JSON (`httpx.HTTPError`, `ValueError`) est
+  loggée en warning et retourne un résultat vide plutôt que de lever.
+- `core/tests/test_harvest_stac_connector.py` — 8 tests, copiés verbatim depuis le brief.
 
-## Vérification de la liste d'endpoints (Step contexte du brief)
+## TDD — RED puis GREEN
 
+**RED** (avant implémentation) :
 ```
-grep -rn "@router\.\(get\|post\|put\|patch\|delete\)" app --include="routes.py"
+cd core && uv run pytest tests/test_harvest_stac_connector.py -v
+...
+ImportError while importing test module '.../tests/test_harvest_stac_connector.py'.
+tests/test_harvest_stac_connector.py:5: in <module>
+    from app.harvest.connectors import get_connector
+E   ModuleNotFoundError: No module named 'app.harvest.connectors'
+=========================== short test summary info ============================
+ERROR tests/test_harvest_stac_connector.py
+Interrupted: 1 error during collection
 ```
+Conforme à l'attendu du brief (Step 2).
 
-exécuté et comparé à la table du brief : identique (44 routes, 9 fichiers
-`routes.py`), aucune mise à jour de la matrice nécessaire pour cette raison.
-
-## Méthode suivie
-
-Pour chacun des 9 modules REST + le module `app/mcp/tools.py`, j'ai :
-
-1. Lu en entier le(s) fichier(s) de test associé(s) (pas de survol par nom
-   de fonction — les assertions et le contenu des requêtes ont été vérifiés).
-2. Lu le code source de la route/l'outil pour identifier la garde réellement
-   appliquée (`can()`, `_require_admin`, `get_readable_collection`,
-   `_require_access` côté MCP, filtre `tenant_id` en repository).
-3. Rempli la matrice (Autorisé / Refusé / Anonyme / Cross-tenant / Trou)
-   endpoint par endpoint, en distinguant explicitement les cas « N/A » (le
-   critère ne s'applique pas), « Non testé (structurel) » (protégé par
-   construction mais non exercé isolément) et « Trou » (vraiment absent).
-4. Pour chaque trou identifié, écrit le test dans le fichier existant le
-   plus proche, en suivant le patron déjà en place dans ce fichier
-   (fixtures `env`/`client`, convention `_as(app, user)`), puis exécuté :
-   - S'il passait du premier coup → « couverture ajoutée, pas de trou de
-     sécurité réel » (documenté ainsi dans la spec).
-   - S'il avait échoué (aucun cas ici) → root-cause puis correctif du code,
-     puis re-exécution jusqu'au vert.
-
-## Les 9 trous de couverture comblés (résumé — détail complet + repro dans la spec)
-
-| # | Fichier modifié | Test ajouté | Endpoint/outil concerné |
-|---|---|---|---|
-| 1 | `tests/test_collections_routes.py` | `test_patch_by_non_owner_without_editor_role_returns_403` | `PATCH /collections/{id}` |
-| 2 | `tests/test_collections_sharing_routes.py` | `test_get_sharing_requires_owner_or_admin` | `GET /collections/{id}/sharing` |
-| 3 | `tests/test_users_admin_routes.py` | `test_patch_user_cross_tenant_returns_404` | `PATCH /users/{id}` |
-| 4 | `tests/test_features_routes_write.py` | `test_non_owner_write_on_private_collection_is_404_not_403` | `POST`/`PUT`/`DELETE /collections/{id}/items…` |
-| 5 | `tests/test_ingestion_routes.py` | `test_get_upload_job_cross_tenant_returns_404` | `GET /uploads/{job_id}` |
-| 6 | `tests/test_extensions_routes.py` | `test_patch_extension_cross_tenant_returns_404` | `PATCH /extensions/{id}` |
-| 7 | `tests/test_mcp_tools_sharing.py` | `test_get_sharing_invisible_to_a_stranger_errors` | outil MCP `get_sharing` |
-| 8 | `tests/test_mcp_tools_sharing.py` | `test_set_sharing_by_group_viewer_errors` | outil MCP `set_sharing` |
-| 9 | `tests/test_mcp_tools_query_features.py` | `test_query_features_on_private_unshared_collection_errors` (marqué `postgis`) | outil MCP `query_features` |
-
-Chacun a été vérifié individuellement :
-
-```bash
-uv run pytest tests/test_collections_routes.py::test_patch_by_non_owner_without_editor_role_returns_403 -v
-uv run pytest tests/test_collections_sharing_routes.py::test_get_sharing_requires_owner_or_admin -v
-uv run pytest tests/test_users_admin_routes.py::test_patch_user_cross_tenant_returns_404 -v
-uv run pytest tests/test_features_routes_write.py::test_non_owner_write_on_private_collection_is_404_not_403 -v
-uv run pytest tests/test_ingestion_routes.py::test_get_upload_job_cross_tenant_returns_404 -v
-uv run pytest tests/test_extensions_routes.py::test_patch_extension_cross_tenant_returns_404 -v
-uv run pytest tests/test_mcp_tools_sharing.py -v
+**GREEN** (après implémentation) :
 ```
-→ tous `PASSED` au premier essai (aucun `FAILED`, pas de cycle rouge→vert
-car le code était déjà correct — vérifié par lecture avant écriture de
-chaque test, cf. citations exactes des lignes de garde dans la spec).
-
-Pour le test #9 (`query_features`, marqué `postgis` comme le reste de son
-fichier), la vérification a nécessité un vrai PostGIS+pgvector — voir
-§Infra PostGIS ci-dessous.
-
-## Infra PostGIS utilisée pour la validation réelle
-
-`core/tests/conftest.py::pg_engine` saute (`pytest.skip`) sans
-`CORE_TEST_DATABASE_URL`. La machine avait déjà un conteneur Postgres
-persistant sur le port 5432, mais appartenant à un tout autre projet
-(`monitoring-stack`, vérifié via `docker inspect` avant tout usage — je ne
-l'ai pas touché). J'ai donc construit et lancé un PostGIS+pgvector jetable
-dédié, en suivant exactement la recette de `.github/workflows/ci.yml` (même
-`deploy/postgis/Dockerfile`), sur un port différent :
-
-```bash
-docker build -t geostudio-postgis-ci-local:latest deploy/postgis
-docker run -d --name geostudio-authz-review-pg -e POSTGRES_USER=gis \
-  -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_test -p 15432:5432 \
-  geostudio-postgis-ci-local:latest
-CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:15432/gis_test" uv run pytest -m postgis
+cd core && uv run pytest tests/test_harvest_stac_connector.py -v
+tests/test_harvest_stac_connector.py::test_fetch_api_collections_endpoint_maps_all_fields PASSED
+tests/test_harvest_stac_connector.py::test_fetch_tolerates_missing_optional_fields PASSED
+tests/test_harvest_stac_connector.py::test_fetch_follows_static_catalog_child_links_recursively PASSED
+tests/test_harvest_stac_connector.py::test_fetch_terminates_on_cyclic_catalog_links PASSED
+tests/test_harvest_stac_connector.py::test_fetch_caps_number_of_collections PASSED
+tests/test_harvest_stac_connector.py::test_fetch_returns_empty_on_http_error_without_raising PASSED
+tests/test_harvest_stac_connector.py::test_get_connector_returns_stac_connector PASSED
+tests/test_harvest_stac_connector.py::test_get_connector_unknown_type_raises PASSED
+============================== 8 passed in 0.07s ===============================
 ```
 
-→ **65 passed** (les 64 tests `postgis` préexistants + le nouveau
-`test_query_features_on_private_unshared_collection_errors`), aucune
-régression. Conteneur et image supprimés après usage
-(`docker rm -f geostudio-authz-review-pg && docker rmi
-geostudio-postgis-ci-local:latest`, vérifié).
+## Vérifications supplémentaires
 
-## Suite complète — avant/après
-
-- **Avant** (base `dev`, avant cette tâche) : 387 passed / 64 skipped (sans
-  `CORE_TEST_DATABASE_URL`).
-- **Après** : **395 passed / 65 skipped** (sans `CORE_TEST_DATABASE_URL`,
-  +8 tests non-`postgis` +1 test `postgis` qui passe en `skipped` sans DB) —
-  et **460 passed / 0 skipped** validé réellement contre le PostGIS jetable
-  ci-dessus (387+64=451 avant, 395+65=460 après, arithmétique cohérente).
-
-### `uv run pytest` (sortie complète, sans `CORE_TEST_DATABASE_URL`)
-
-```
-======================= 395 passed, 65 skipped in 20.31s =======================
-```
-
-### `uv run pytest` (sortie complète, avec `CORE_TEST_DATABASE_URL` réel)
-
-```
-============================= 460 passed in 28.41s =============================
-```
-
-### `uv run lint-imports`
-
-```
----------
-Contracts
----------
-
-Analyzed 76 files, 195 dependencies.
-------------------------------------
-
-layered architecture KEPT
-
-Contracts: 1 kept, 0 broken.
-```
-
-Clean — cohérent avec le brief (aucune modification de ce plan ne touche les
-frontières de modules ; seuls des fichiers de test ont été modifiés).
-
-## Auto-revue
-
-- **Exhaustivité** : les ~25 fichiers de test de la table du brief ont tous
-  été lus en entier (pas de survol), ainsi que 3 fichiers non nommés
-  explicitement par le brief mais directement responsables de garanties de
-  sécurité transverses (`test_items_repository.py`,
-  `test_collections_repository.py` pour le filtre permission-avant-scoring
-  de la recherche hybride) — mentionnés dans la matrice comme preuve, pas
-  ignorés parce qu'absents de la liste du brief.
-- **Rigueur** : chaque « Oui » de la matrice cite le nom du test exact ; les
-  neuf trous ont chacun été vérifiés en relisant le code de la garde AVANT
-  d'écrire le test (pas après), pour prédire correctement qu'ils passeraient
-  du premier coup — prédiction confirmée dans les 9 cas.
-- **Ce qui n'a délibérément pas été comblé** : une douzaine de combinaisons
-  cross-tenant/refus supplémentaires sur des endpoints qui partagent déjà une
-  garde éprouvée ailleurs dans le même fichier (ex. `GET
-  /collections/{id}/schema` partage `get_readable_collection` avec `GET
-  /collections/{id}`, lui-même testé) ont été documentées explicitement dans
-  la spec comme choix d'arbitrage assumé plutôt que comme trous ouverts et
-  laissés sans suite — la lecture du code source de chacune n'a montré
-  aucune garde manquante ou incorrecte.
-- **Aucun correctif de code produit** — uniquement des tests ajoutés (9
-  fichiers de test modifiés, aucun fichier `app/` touché) + le fichier de
-  spec/matrice créé.
-- **Limite assumée** : je n'ai pas cherché à tester chacune des ~4
-  combinaisons (autorisé/refusé/anonyme/cross-tenant) pour chacun des 44
-  endpoints + 11 outils dans l'absolu (ça ferait plus de 200 tests) — j'ai
-  ciblé les combinaisons qui, une fois identifiées comme non testées,
-  présentaient un risque réel de dérive silencieuse (garde spécifique à
-  l'endpoint, pas partagée avec un voisin déjà testé) ; le reste est
-  documenté avec sa justification dans la spec plutôt que passé sous
-  silence.
+- Suite complète cœur : `uv run pytest -q` → **616 passed, 87 skipped** (aucune régression ; les
+  tests `postgis` restent skippés sans `CORE_TEST_DATABASE_URL`, comportement inchangé).
+- `uv run lint-imports` → **1 kept, 0 broken** (le nouveau sous-package `app.harvest.connectors`
+  ne viole aucune frontière de module — `app.harvest` n'importe que `app.db`/`httpx`, aucune
+  inversion de dépendance).
+- Tous les nouveaux fichiers source commencent par `# SPDX-License-Identifier: Apache-2.0` en
+  ligne 1 (vérifié par lecture directe des fichiers créés).
 
 ## Commit
 
 ```
-test(core): revue authz — comble les trous réels trouvés dans la couverture existante
+d048dff feat(core): connecteur STAC externe tolérant/borné (SP-12c)
+ 4 files changed, 308 insertions(+)
+ create mode 100644 core/app/harvest/connectors/__init__.py
+ create mode 100644 core/app/harvest/connectors/base.py
+ create mode 100644 core/app/harvest/connectors/stac.py
+ create mode 100644 core/tests/test_harvest_stac_connector.py
 ```
 
-Fichiers commités : les 7 fichiers de test modifiés (9 tests dans 7
-fichiers) + le fichier de spec/matrice créé. Aucun fichier `app/` modifié.
+Seuls les 4 fichiers listés au brief ont été stagés/commités (`git add core/app/harvest/connectors/
+core/tests/test_harvest_stac_connector.py`) — les fichiers `.superpowers/sdd/*.md` déjà modifiés
+avant le début de cette tâche (visibles en `git status` initial) n'ont pas été touchés ni inclus.
+
+## Auto-revue
+
+- **Fidélité au brief** : code des 3 fichiers source copié caractère pour caractère depuis le
+  brief (aucune réécriture, aucune "amélioration" non demandée) — cohérent avec le format SDD qui
+  fournit le code exact à utiliser.
+- **Portée** : module autonome, zéro dépendance vers `app.harvest.models`/DB — confirmé par lecture
+  du fichier (`stac.py` n'importe que `logging`, `collections.abc`, `urllib.parse`, `httpx`, et
+  `app.harvest.connectors.base`).
+- **Tolérance/bornes** : les 4 gardes citées dans la description de tâche sont bien présentes et
+  couvertes par un test dédié chacune : profondeur catalogue (`test_fetch_follows_static_catalog_
+  child_links_recursively`, 2 niveaux < 5, passe), cycle (`test_fetch_terminates_on_cyclic_catalog_
+  links`, le même URL revisité est bloqué par `seen_docs`), cap de 500 (`test_fetch_caps_number_of_
+  collections`, 600→500), timeout 10s (non testé unitairement — `httpx.MockTransport` ne simule pas
+  de délai réseau ; c'est un paramètre statique passé à chaque `client.get(...)`, cohérent avec le
+  brief qui ne demande pas de test dédié dessus).
+- **Comportement fail-open** : une erreur HTTP (500) ou un corps non-JSON valide (`ValueError` levée
+  par `response.json()`) est interceptée et journalisée en `warning`, jamais propagée — vérifié par
+  `test_fetch_returns_empty_on_http_error_without_raising`.
+- **Registre** : `get_connector("stac")` retourne une instance déjà construite (partagée, pas de
+  nouvelle instance par appel) — sûr car `StacConnector.fetch` construit ses propres `records`/
+  `seen_docs` locaux à chaque invocation (pas d'état mutable partagé entre appels).
 
 ## Concerns
 
-Aucun. Le résultat « 0 trou de sécurité réel » n'est pas un résultat de
-complaisance : chaque garde a été relue dans le code source avant d'écrire
-le test correspondant (citée par numéro de ligne dans la spec), et les 9
-tests ajoutés ont été exécutés individuellement puis dans la suite complète,
-y compris contre un vrai PostGIS+pgvector jetable pour le seul test marqué
-`postgis`. Le point le plus proche d'un trou réel — `PATCH
-/collections/{id}` n'ayant jamais exercé sa propre garde 403 — s'est avéré,
-à l'exécution, être un comportement déjà correct.
+Aucun concern bloquant. Deux observations mineures, non correctives (comportement voulu par le
+brief, pas des défauts) :
+1. Le paramètre `timeout` est passé deux fois (au constructeur du client interne ET à chaque
+   `client.get(...)`) — redondant mais inoffensif, et nécessaire pour le cas où un client externe
+   est injecté sans timeout configuré (comme dans les tests, via `httpx.MockTransport`).
+2. Aucun test unitaire ne couvre `depth >= _MAX_CATALOG_DEPTH` au-delà de 2 niveaux réels (le test
+   fourni ne descend qu'à 2 sur 5 autorisés) — la garde de profondeur reste donc vérifiée seulement
+   par lecture de code, pas par un test adversarial dédié à une profondeur >5. Non bloquant : le
+   brief ne demande pas ce test, et le code est trivialement correct (`depth >= _MAX_CATALOG_DEPTH:
+   return` avant toute récursion supplémentaire).
+
+## Fix de revue (Important) — tolérance élargie au-delà du try/except HTTP
+
+**Constat du reviewer** : le `try/except` de `_walk` ne couvrait que la requête HTTP + le
+`response.json()` top-level. Tout ce qui suivait (`doc.get(...)`, l'itération sur
+`doc["collections"]`/`coll.get(...)`/`link.get(...)`, et `float(v)` sur les coordonnées bbox)
+tournait NON gardé — un payload JSON syntaxiquement valide mais structurellement hostile
+(`[1,2,3]`, `null`, une entrée `None` dans `collections`, un lien qui est une chaîne, une bbox
+avec des coordonnées non numériques) faisait planter tout le connecteur et jetait TOUS les
+enregistrements déjà collectés, en violation directe de la contrainte globale SP-12c « parsing
+STAC tolérant et borné … erreur → retourne ce qui a été collecté sans lever ».
+
+**Correctif appliqué** (`core/app/harvest/connectors/stac.py`) :
+- `_walk` : garde `isinstance(doc, dict)` juste après le `response.json()` — un top-level non-objet
+  (`[1,2,3]`, `null`, chaîne, nombre) est loggé en warning et le document est ignoré (return),
+  sans lever.
+- `_walk` (branche `Catalog`) : chaque `link` de `doc.get("links", [])` est vérifié
+  `isinstance(link, dict)` avant tout `.get(...)` — un lien non-objet (ex. une chaîne) est loggé et
+  sauté (`continue`) au lieu de crasher toute la boucle.
+- `_collection_to_record` : signature élargie à `coll: object` (au lieu de `dict`) ; garde
+  `isinstance(coll, dict)` en tête — une entrée non-objet (`None`, chaîne, etc.) est loggée et
+  retourne `None` (l'appelant l'ignore déjà, `if record is not None`), sans affecter les autres
+  entrées du même batch. Le corps de la fonction est en plus enveloppé dans un
+  `try/except (AttributeError, TypeError, KeyError, ValueError)` qui logge et retourne `None` — 
+  couvre en particulier `float(v)` sur une bbox aux coordonnées non numériques (`["a","b","c","d"]`
+  → `ValueError`) et les `link.get(...)` internes sur des liens non-objets (déjà gardés séparément
+  par `isinstance(link, dict)` dans la boucle de liens de la collection, en écho à la même garde
+  posée dans `_walk`).
+- `keywords` : `coll.get("keywords")` n'est plus passé tel quel à `list(...)` (une chaîne
+  `"foo"` serait devenue `["f","o","o"]`) — coercition explicite : `list(keywords_raw) if
+  isinstance(keywords_raw, list) else []`.
+
+Aucun changement d'interface publique (`fetch(url) -> Iterable[HarvestedRecord]` inchangé), aucune
+régression sur les 8 tests déjà verts (bornes `_MAX_CATALOG_DEPTH`/`_MAX_COLLECTIONS`, anti-cycle
+`seen_docs`, fail-open HTTP/JSON — tous préservés à l'identique).
+
+### Tests ajoutés (`core/tests/test_harvest_stac_connector.py`)
+
+4 nouveaux tests, même style (`httpx.MockTransport` + `_connector(handler)`) :
+- `test_fetch_skips_malformed_collection_entries_and_keeps_valid_ones` : une liste `collections`
+  contenant 2 entrées valides, une `None`, une avec bbox non numérique (`[["a","b","c","d"]]`), et
+  une chaîne (`"not-a-dict"`) — vérifie que seules les 2 entrées valides (`buildings`, `roads`) sont
+  retournées, les 3 entrées hostiles étant silencieusement droppées (loggées, pas levées).
+- `test_fetch_returns_empty_on_non_object_top_level_json` : corps `[1, 2, 3]` (liste top-level) →
+  `records == []`, pas d'exception.
+- `test_fetch_returns_empty_on_null_top_level_json` : corps `null` → `records == []`, pas
+  d'exception.
+- `test_fetch_coerces_non_list_keywords_to_empty_list` : `"keywords": "not-a-list"` → 
+  `records[0].keywords == []` (pas `["n","o","t",...]`).
+
+### Commande + résultat
+
+```
+cd /home/lenen/projets/geostudio/core && uv run pytest tests/test_harvest_stac_connector.py -v
+...
+tests/test_harvest_stac_connector.py::test_fetch_api_collections_endpoint_maps_all_fields PASSED
+tests/test_harvest_stac_connector.py::test_fetch_tolerates_missing_optional_fields PASSED
+tests/test_harvest_stac_connector.py::test_fetch_follows_static_catalog_child_links_recursively PASSED
+tests/test_harvest_stac_connector.py::test_fetch_terminates_on_cyclic_catalog_links PASSED
+tests/test_harvest_stac_connector.py::test_fetch_caps_number_of_collections PASSED
+tests/test_harvest_stac_connector.py::test_fetch_returns_empty_on_http_error_without_raising PASSED
+tests/test_harvest_stac_connector.py::test_fetch_skips_malformed_collection_entries_and_keeps_valid_ones PASSED
+tests/test_harvest_stac_connector.py::test_fetch_returns_empty_on_non_object_top_level_json PASSED
+tests/test_harvest_stac_connector.py::test_fetch_returns_empty_on_null_top_level_json PASSED
+tests/test_harvest_stac_connector.py::test_fetch_coerces_non_list_keywords_to_empty_list PASSED
+tests/test_harvest_stac_connector.py::test_get_connector_returns_stac_connector PASSED
+tests/test_harvest_stac_connector.py::test_get_connector_unknown_type_raises PASSED
+============================== 12 passed in 0.08s ===============================
+```
+
+Suite complète cœur re-vérifiée : `uv run pytest -q` → **620 passed, 87 skipped** (606→620 = +12 +
+2 nouveaux tests d'une autre tâche entre-temps ; aucune régression).
+
+### Commit du fix
+
+À suivre (commit séparé sur ce même correctif, cf. message conventional dans l'historique git).
+
+### Concerns
+
+Aucun. La frontière testée est désormais : n'importe quelle forme JSON syntaxiquement valide en
+entrée de `fetch()` retourne soit des `HarvestedRecord` valides, soit une liste partielle/vide —
+jamais une exception qui remonte à l'appelant (le worker de moissonnage SP-12c).
