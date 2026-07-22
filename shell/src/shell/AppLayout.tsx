@@ -42,6 +42,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Link to="/admin/collections" className="mt-1 block text-sm font-medium hover:underline">
                 Collections
               </Link>
+              <Link to="/admin/harvest" className="mt-1 block text-sm font-medium hover:underline">
+                Moissonnage
+              </Link>
             </>
           )}
         </nav>
