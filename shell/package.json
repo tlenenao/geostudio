@@ -34,6 +34,9 @@
     "react-router-dom": "^6.26.0",
     "tailwind-merge": "^2.5.0"
   },
+  "overrides": {
+    "js-yaml": "^4.3.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.47.0",
     "@tailwindcss/vite": "^4.0.0",
