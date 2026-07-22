@@ -8,6 +8,7 @@ from app.db import Base, init_db, make_engine, make_session_factory
 from app.harvest import repository as harvest_repo
 from app.harvest import service
 from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.models import HarvestRecord
 from app.items import repository as items_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -150,6 +151,10 @@ def test_copy_mode_items_fetch_failure_sets_error_status_without_raising(session
         session, tenant_id=tenant.id, owner_id=user.id, type="stac",
         url="https://a", mode="copy", enabled=True, interval_minutes=None,
     )
+    session.commit()  # comme jobs.run_harvest_task : la source existe déjà en base
+    # avant que harvest_source() ne tourne — le rollback inconditionnel de la
+    # nouvelle except-branch (fix revue finale) ne doit PAS faire disparaître
+    # cette ligne.
 
     def _raise(url):
         raise RuntimeError("network boom")
@@ -161,6 +166,42 @@ def test_copy_mode_items_fetch_failure_sets_error_status_without_raising(session
     # mark_missing_as_stale n'a pas dû tourner : aucun harvest_record créé.
     count = session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
     assert count == 0
+
+
+def test_loop_poisoned_transaction_is_rolled_back_before_error_status(session, tenant_and_user, monkeypatch):
+    # Reproduit le zombie visé par le fix de revue finale : si l'exception
+    # sortant de la boucle par-enregistrement empoisonne la transaction
+    # SQLAlchemy (échec réel au flush, ex. IntegrityError — pas une simple
+    # exception Python), l'ancien code faisait directement
+    # `source.last_status = "error"; session.flush()` sur une transaction
+    # déjà invalidée : ce flush lève à son tour (PendingRollbackError), la
+    # source reste bloquée au statut "running" committé par mark_running.
+    tenant, user = tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="stac",
+        url="https://a", mode="reference", enabled=True, interval_minutes=None,
+    )
+    harvest_repo.mark_running(session, tenant_id=tenant.id, source_id=source.id)
+    session.commit()  # comme jobs.run_harvest_task : "running" est committé avant harvest_source
+
+    def poison_create_record(sess, **kwargs):
+        # Insère un HarvestRecord sans ses colonnes NOT NULL : provoque une
+        # vraie IntegrityError au flush(), qui empoisonne la transaction
+        # SQLAlchemy exactement comme le ferait un IntegrityError de
+        # production (ex. contrainte unique heurtée par une exécution
+        # concurrente, ou un échec DB à l'intérieur de run_import).
+        sess.add(HarvestRecord(id="poison"))
+        sess.flush()
+
+    monkeypatch.setattr(harvest_repo, "create_record", poison_create_record)
+
+    service.harvest_source(session, source)  # ne doit pas lever
+
+    reloaded = harvest_repo.get_source(session, tenant_id=tenant.id, source_id=source.id)
+    assert reloaded is not None
+    assert reloaded.last_status == "error"
+    assert "NOT NULL" in reloaded.last_error
 
 
 GEOJSON_ITEMS = (
@@ -229,3 +270,42 @@ def test_copy_mode_reharvest_does_not_reimport(pg_session, pg_tenant_and_user, m
     assert len(fetch_calls) == 1
     count = pg_session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
     assert count == 1
+
+
+@pytest.mark.postgis
+def test_loop_real_integrity_error_is_rolled_back_before_error_status(pg_session, pg_tenant_and_user, monkeypatch):
+    # Version la plus forte du test SQLite ci-dessus (test_loop_poisoned_
+    # transaction_is_rolled_back_before_error_status) : reproduit une VRAIE
+    # IntegrityError Postgres, exactement la race documentée dans le
+    # commentaire de _upsert_reference (« contrainte unique heurtée par une
+    # exécution concurrente ») — une autre exécution a déjà inséré le
+    # HarvestRecord entre notre get_record() et notre create_record(),
+    # heurtant la contrainte unique réelle uq_harvest_records_tenant_source_
+    # external. Contrairement à SQLite, Postgres abandonne réellement la
+    # transaction entière jusqu'à ROLLBACK : c'est le cas d'empoisonnement
+    # authentique que le fix de revue finale (session.rollback() avant de
+    # réécrire le statut d'erreur) vise à couvrir.
+    tenant, user = pg_tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    source = harvest_repo.create_source(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, type="stac",
+        url="https://a", mode="reference", enabled=True, interval_minutes=None,
+    )
+    harvest_repo.mark_running(pg_session, tenant_id=tenant.id, source_id=source.id)
+    # Simule la course : un enregistrement portant déjà le même external_id
+    # existe en base (comme si une autre exécution venait de l'insérer),
+    # mais get_record() sera forcé à ne pas le voir.
+    harvest_repo.create_record(
+        pg_session, tenant_id=tenant.id, source_id=source.id, external_id=RECORD_A.external_id,
+        item_id=None, collection_id=None, content_hash="already-there",
+    )
+    pg_session.commit()  # comme jobs.run_harvest_task : "running" est committé avant harvest_source
+
+    monkeypatch.setattr(harvest_repo, "get_record", lambda *a, **kw: None)
+
+    service.harvest_source(pg_session, source)  # ne doit pas lever
+
+    reloaded = harvest_repo.get_source(pg_session, tenant_id=tenant.id, source_id=source.id)
+    assert reloaded is not None
+    assert reloaded.last_status == "error"
+    assert reloaded.last_status != "running"

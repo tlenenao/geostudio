@@ -44,6 +44,15 @@ def _default_items_fetcher(url: str) -> bytes:
 def harvest_source(
     session: Session, source: HarvestSource, *, items_fetcher=_default_items_fetcher,
 ) -> None:
+    # Capturés avant tout accès DB : une IntegrityError de flush expire
+    # immédiatement TOUS les attributs des objets de la session (pas
+    # seulement au moment où on appelle nous-même session.rollback()) —
+    # relire `source.tenant_id`/`source.id` après un tel échec redéclenche
+    # une requête sur une transaction déjà invalidée (PendingRollbackError).
+    # Ces deux chaînes ne dépendent d'aucune transaction, donc restent
+    # utilisables même après un rollback.
+    tenant_id = source.tenant_id
+    source_id = source.id
     try:
         connector = get_connector(source.type)
         records = list(connector.fetch(source.url))
@@ -80,7 +89,25 @@ def harvest_source(
             session, tenant_id=source.tenant_id, source_id=source.id, seen_external_ids=seen_external_ids,
         )
     except Exception as exc:
-        logger.exception("harvest source %s: échec de traitement des enregistrements", source.id)
+        logger.exception("harvest source %s: échec de traitement des enregistrements", source_id)
+        # La boucle peut avoir empoisonné la transaction SQLAlchemy elle-même
+        # (ex. IntegrityError réelle heurtée par un flush interne — pas une
+        # simple exception Python — dans run_import en mode copy, ou une
+        # contrainte unique heurtée par une exécution concurrente) : écrire
+        # directement `source.last_status = "error"` puis flush() lèverait
+        # alors à son tour (le flush ne fait *aucune* vérification de l'état
+        # de la transaction tant qu'aucun objet n'est modifié : un flush "à
+        # blanc" ne suffit pas à sonder l'empoisonnement, il faut réellement
+        # rollback), laissant la source bloquée en "running" (committé par
+        # mark_running) — le zombie exact que ce fix vise à éliminer. On
+        # rollback donc TOUJOURS avant d'écrire le statut d'erreur, pour
+        # repartir d'une transaction saine dans tous les cas (poisoned ou
+        # non) ; cela expire l'objet `source`, on le recharge donc avant de
+        # le modifier.
+        session.rollback()
+        source = harvest_repo.get_source(session, tenant_id=tenant_id, source_id=source_id)
+        if source is None:
+            return
         source.last_status = "error"
         source.last_error = str(exc)[:500]
         session.flush()

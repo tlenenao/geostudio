@@ -16,4 +16,4 @@ class HarvestSourcePatch(BaseModel):
     url: str | None = Field(default=None, min_length=1)
     mode: Literal["reference", "copy"] | None = None
     enabled: bool | None = None
-    intervalMinutes: int | None = None
+    intervalMinutes: int | None = Field(default=None, ge=1)
