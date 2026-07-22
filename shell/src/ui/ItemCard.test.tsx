@@ -44,3 +44,13 @@ test("shows no image when thumbnailUrl is null", () => {
   render(<ItemCard item={item} onOpen={() => {}} />);
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
 });
+
+test("renders a French 'Externe' badge for resourceType external", () => {
+  render(<ItemCard item={{ ...item, resourceType: "external" }} onOpen={() => {}} />);
+  expect(screen.getByText("Externe")).toBeInTheDocument();
+});
+
+test("renders the raw resourceType for other types", () => {
+  render(<ItemCard item={{ ...item, resourceType: "map" }} onOpen={() => {}} />);
+  expect(screen.getByText("map")).toBeInTheDocument();
+});

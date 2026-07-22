@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateKind, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateKind, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -299,6 +299,59 @@ export function useDeleteCollection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
       queryClient.invalidateQueries({ queryKey: ["collections", "candidates"] });
+    },
+  });
+}
+
+export function useHarvestSources(options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["harvest-sources"],
+    queryFn: () => client.listHarvestSources(),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateHarvestSource() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: HarvestSourceCreateInput) => client.createHarvestSource(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+    },
+  });
+}
+
+export function useUpdateHarvestSource(id: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: HarvestSourcePatchInput) => client.updateHarvestSource(id, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+    },
+  });
+}
+
+export function useDeleteHarvestSource() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.deleteHarvestSource(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+    },
+  });
+}
+
+export function useRunHarvestSource() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.runHarvestSource(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
     },
   });
 }

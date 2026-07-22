@@ -1340,6 +1340,99 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   Poussé sur `dev`, PR dev→main ouverte pour synchroniser `main`. **SP-12b est
   clos** (deuxième brique de la fédération STAC/DCAT ; connecteurs de
   moissonnage ArcGIS FS/GetCapabilities/CSW/CKAN restent à faire).
+- **SP-12c « moteur de moissonnage + connecteur STAC externe » livré et clos**
+  (2026-07-19, cf. spec
+  `docs/superpowers/specs/2026-07-19-sp12c-moissonnage-stac-design.md` et plan
+  `docs/superpowers/plans/2026-07-19-sp12c-moissonnage-stac.md`) : un admin
+  déclare une source de moissonnage pointant un catalogue STAC externe ; le
+  cœur la moissonne en job procrastinate et référence chaque Collection
+  distante comme un item « externe » cherchable (mode `reference`, défaut) ou la
+  copie en collection PostGIS locale via le pipeline d'ingestion SP-6 (mode
+  `copy`) — un re-moissonnage met à jour sans jamais dupliquer. **Aucun nouveau
+  modèle d'autorisation** : le moteur compose les primitives déjà auditées
+  (`items.create_item`/`update_item`, `run_import` SP-6, `write_audit`,
+  `request_scoped_session`). Nouveau module `core/app/harvest/` : ORM
+  `HarvestSource`/`HarvestRecord` + migration 0016 (contrainte unique
+  `(tenant_id, source_id, external_id)` — vérifiée contre Postgres réel, non
+  couvrable SQLite, même discipline que `uq_items_tenant_slug` SP-16a), un seul
+  connecteur `StacConnector` (`type="stac"`, HTTP-only, zéro I/O DB, parsing
+  **tolérant et borné** : `_MAX_CATALOG_DEPTH=5`/`_MAX_COLLECTIONS=500`/timeout
+  10s, garde anti-cycle, fail-open — un catalogue distant malformé/cyclique/
+  hostile ne fait jamais tomber le moissonnage ni ne bloque le worker ;
+  abstraction `HarvestConnector` dimensionnée pour ArcGIS FS/GetCapabilities/
+  CSW/CKAN futurs, aucun autre écrit ici), repository CRUD + `list_due_sources`
+  + `mark_missing_as_stale` (une entité disparue est marquée `is_stale=true`,
+  **jamais supprimée**), moteur `service.harvest_source` (upsert idempotent
+  reference/copy — mode copy route les items GeoJSON distants vers `run_import`,
+  copie l'index interrogeable jamais les octets d'assets ; **ne lève JAMAIS** :
+  toute erreur de fetch OU d'import → `source.last_status="error"`, jamais de
+  job zombie), jobs procrastinate (`run_harvest_task` manuel +
+  `run_harvest_sweep_task` périodique `*/15`, les DEUX court-circuitent
+  `is_read_only_mode()` — mutation hors requête HTTP, invisible au middleware
+  ASGI SP-9), routes admin-only CRUD `/harvest/sources*` + `/run` (auditées
+  `harvest_source.create`/`update`/`delete`/`run`, patron `app.extensions`,
+  cross-tenant **404 non-fuyant** jamais 403), `import_paths` += `app.harvest.
+  jobs` (leçon SP-7), `app.harvest` inséré dans le contrat import-linter entre
+  `app.public` et `app.ingestion`. Shell (le shell consomme réellement ces
+  endpoints, contrairement à SP-12a/b) : `ItemClient`/hooks/types, page admin
+  `/admin/harvest` (CRUD sources + déclenchement manuel, gating admin fail-open,
+  la frontière reste le 403 serveur), dialogues Créer/Éditer, badge « Externe »
+  sur les items moissonnés du catalogue. **Un item moissonné (mode reference)
+  n'est jamais re-exporté par STAC/DCAT** (SP-12a/b n'exportent que nos
+  `collections`, pas les items externes — pas de blanchiment de catalogue
+  tiers ; en mode copy la collection PostGIS produite est une vraie collection
+  locale légitimement exportable). Exécuté en subagent-driven-development (11
+  tâches, revue par tâche + revue finale de branche modèle opus). Plusieurs
+  défauts réels trouvés et corrigés en cours de route, chacun re-vérifié : **1
+  Critical** (Task 3) — `list_due_sources` comparait un `_now()` aware à un
+  `last_run_at` désérialisé naïf (colonne `DateTime` naïve) → `TypeError` sur le
+  chemin cold-fetch (session fraîche) qu'un vrai scheduler emprunte, invisible
+  au test initial car l'identity map servait le même objet aware ; fixé
+  (normalisation aware-UTC avant comparaison) + test cold-fetch renforcé
+  (`session.expire_all()`, load-bearing car `expire_on_commit=False`), RED
+  reproduit empiriquement ; **1 Important** (Task 2) — la tolérance du
+  connecteur ne couvrait que le fetch HTTP + `json()` top-level, un JSON valide
+  mais structurellement hostile (top-level non-objet, entrée collections/links
+  non-dict, bbox non numérique) crashait `fetch()` et jetait les records déjà
+  collectés ; durci (`isinstance(dict)` + `try/except` élargi, `keywords`
+  non-liste coercé à `[]`) + 4 tests de régression hostiles ; **1 contradiction
+  plan** (Task 4, **décision utilisateur : PATCH**) — le contrat d'interface du
+  plan disait « ne lève jamais, toute erreur de fetch/**import** capturée » mais
+  son code exemple n'entourait que `fetch()` ; corrigé en enveloppant aussi le
+  loop de traitement (toute exception loop → `last_status="error"`). **Revue
+  finale de branche : 0 Critical/0 Important, Ready to merge** — les 9
+  propriétés de sécurité/intégrité tracées et TIENNENT bout-en-bout
+  (idempotence, isolation tenant 404 non-fuyant, admin-only+audit, read-only sur
+  les DEUX jobs, tolérance/bornes connecteur, `harvest_source` ne lève jamais,
+  `import_paths`, lint-imports, non-ré-export STAC/DCAT). **2 fixes gatés par la
+  revue et appliqués** (commit `08650ef`, re-revue Resolved) :
+  `HarvestSourcePatch.intervalMinutes` gagné `ge=1` (parité avec Create, `PATCH
+  intervalMinutes:0` → 422, OpenAPI régénéré) ; `session.rollback()` + refetch
+  avant l'écriture du statut d'erreur dans le loop except — sans quoi une
+  `IntegrityError` empoisonnant la transaction (ex. exécution concurrente
+  heurtant la contrainte unique) faisait re-lever le `flush()` du handler
+  d'erreur lui-même, laissant la source bloquée en « running » (le zombie exact
+  que Task 4 visait) ; prouvé par un test postgis reproduisant une vraie
+  `IntegrityError` (no-raise + statut « error »). Sémantique assumée : le
+  rollback annule désormais le progrès partiel du run échoué (sans dommage —
+  upsert idempotent, réconcilié au run suivant ; commentaire `service.py`
+  corrigé en conséquence, commit `1d9dfcf`). Validation empirique : **44/44
+  specs E2E** (43 + `harvest-stac.spec.ts`, dont l'assertion sans-doublon rendue
+  non-tautologique par un magasin mocké keyé par id externe), **cœur 644
+  passed/96 skipped** (sans DB ; **740 passed contre PostGIS+pgvector réel**,
+  contrainte unique harvest + jobs procrastinate), migration 0016 s'applique
+  proprement `0001→0016`, `lint-imports` 1 kept/0 broken, build shell clean,
+  OpenAPI/types régénérés. Poussé sur `dev`, **PR #43 dev→main ouverte** (porte
+  SP-12a+SP-12b+SP-12c, `main` n'ayant encore aucune des trois). **SP-12c est
+  clos** (troisième brique de la fédération STAC/DCAT). **Suivis post-merge
+  signalés, non implémentés** : cap global de documents fetchés dans
+  `StacConnector` ; balayage périodique qui saute les sources déjà `running`
+  (gap 2-phase-commit : crash entre `mark_running` et `harvest_source`) ;
+  masquage des boutons d'écriture de la page harvest en mode démo (aligné sur le
+  pattern SP-9 déjà accepté) ; SSRF/egress allowlist différée à **SP-12d** ;
+  re-synchronisation de contenu en mode `copy` hors périmètre ; miroir des
+  octets d'assets (COG) hors périmètre ; connecteurs ArcGIS FS/GetCapabilities/
+  CSW/CKAN = **SP-12d…g** (abstraction déjà dimensionnée).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

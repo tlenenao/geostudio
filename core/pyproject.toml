@@ -73,6 +73,7 @@ layers = [
     "app.main",
     "app.mcp",
     "app.public",
+    "app.harvest",
     "app.ingestion",
     "app.dcat",
     "app.stac",
@@ -97,4 +98,5 @@ ignore_imports = [
     "app.db -> app.sharing.models",
     "app.db -> app.ingestion.models",
     "app.db -> app.extensions.models",
+    "app.db -> app.harvest.models",
 ]
