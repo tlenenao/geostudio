@@ -93,6 +93,16 @@ def test_patch_requires_admin_and_toggles_enabled(env):
     assert r.json()["enabled"] is False
 
 
+def test_patch_interval_minutes_zero_is_422(env):
+    # Parité avec HarvestSourceCreate.intervalMinutes (ge=1) : un intervalle
+    # <= 0 rendrait list_due_sources() perpétuellement "due", cf. revue finale.
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
+    r = client.patch(f"/harvest/sources/{created['id']}", json={"intervalMinutes": 0})
+    assert r.status_code == 422
+
+
 def test_get_and_patch_cross_tenant_returns_404(env):
     app, client, Session, admin, _regular = env
     _as(app, admin)
