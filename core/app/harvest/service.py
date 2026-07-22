@@ -67,10 +67,11 @@ def harvest_source(
     # run_import en mode copy — fail-fast, réseau) est capturé au même titre
     # que le fetch ci-dessus : le contrat de harvest_source est de ne JAMAIS
     # lever, pour que le job procrastinate (Task 5) ne retente jamais un
-    # zombie. Décision : en cas d'échec en cours de boucle, les
-    # enregistrements déjà upsertés plus tôt dans la même boucle restent
-    # (progrès partiel accepté — le moissonnage suivant réconcilie), mais on
-    # ne lance PAS mark_missing_as_stale et on ne marque PAS "ok" : la source
+    # zombie. Décision : en cas d'échec en cours de boucle, on rollback (cf.
+    # bloc except plus bas) — les enregistrements déjà upsertés plus tôt dans
+    # la même boucle sont donc ANNULÉS, pas conservés ; c'est sans dommage car
+    # l'upsert est idempotent et le moissonnage suivant réconcilie tout. On ne
+    # lance PAS mark_missing_as_stale et on ne marque PAS "ok" : la source
     # passe "error" pour que sa santé soit visible.
     try:
         seen_external_ids: set[str] = set()
