@@ -9,6 +9,8 @@ from app.harvest import repository as repo
 from app.harvest.connectors import get_connector
 from app.harvest.jobs import run_harvest_task
 from app.harvest.schemas import HarvestSourceCreate, HarvestSourcePatch
+from app.items import repository as items_repo
+from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
@@ -66,6 +68,21 @@ def list_sources(user: User = Depends(get_current_user), session: Session = Depe
     _require_admin(user)
     sources = repo.list_sources(session, tenant_id=user.tenant_id)
     return {"sources": [_source_json(s) for s in sources]}
+
+
+@router.get("/harvest/layers")
+def list_layers(
+    q: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+):
+    rows = repo.list_layer_records(session, tenant_id=user.tenant_id, q=q)
+    layers = []
+    for item_id, title, tiles_url, _layer_kind in rows:
+        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+            continue
+        layers.append({"id": item_id, "title": title, "kind": "raster", "tilesUrl": tiles_url})
+    return {"layers": layers}
 
 
 @router.get("/harvest/sources/{source_id}")
