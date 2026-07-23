@@ -1155,7 +1155,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "stac" | "arcgis";
+            type: "stac" | "arcgis" | "wms" | "wfs" | "wmts";
             /** Url */
             url: string;
         };

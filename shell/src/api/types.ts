@@ -261,7 +261,7 @@ export type CollectionPatchInput = {
   editable?: boolean;
 };
 
-export type HarvestSourceType = "stac" | "arcgis";
+export type HarvestSourceType = "stac" | "arcgis" | "wms" | "wfs" | "wmts";
 export type HarvestSourceMode = "reference" | "copy";
 export type HarvestSourceStatus = "running" | "ok" | "error" | null;
 

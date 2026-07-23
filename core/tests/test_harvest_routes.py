@@ -97,9 +97,40 @@ def test_create_unknown_type_is_rejected(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post("/harvest/sources", json={
-        "type": "wms", "url": "https://x", "mode": "reference",
+        "type": "csw", "url": "https://x", "mode": "reference",
     })
     assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("type_", ["wms", "wfs", "wmts"])
+def test_create_ows_source_is_accepted(env, type_):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": type_, "url": "https://ows.example.com/x?request=GetCapabilities",
+        "mode": "reference",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["type"] == type_
+
+
+@pytest.mark.parametrize("type_", ["wms", "wmts"])
+def test_copy_mode_rejected_for_raster_connectors(env, type_):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": type_, "url": "https://ows.example.com/x", "mode": "copy",
+    })
+    assert resp.status_code == 400
+
+
+def test_copy_mode_accepted_for_wfs(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": "wfs", "url": "https://ows.example.com/wfs", "mode": "copy",
+    })
+    assert resp.status_code == 201
 
 
 def test_patch_requires_admin_and_toggles_enabled(env):

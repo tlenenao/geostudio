@@ -810,7 +810,10 @@
           "type": {
             "enum": [
               "stac",
-              "arcgis"
+              "arcgis",
+              "wms",
+              "wfs",
+              "wmts"
             ],
             "title": "Type",
             "type": "string"
