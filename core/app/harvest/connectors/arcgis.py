@@ -3,6 +3,7 @@
 Une couche = un jeu de données (§2.1) : chaque couche du FeatureServer devient un
 HarvestedRecord. Parsing tolérant et borné (§2.4) : un service malformé/hostile
 /géant ne fait jamais tomber le moissonnage ni ne bloque le worker."""
+import json
 import logging
 from collections.abc import Iterable
 
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _MAX_LAYERS = 200
 _MAX_DOCUMENTS = 250  # 1 service + N couches ; borne le nombre total de GET
+_COPY_PAGE_SIZE = 1000
+_MAX_COPY_FEATURES = 200000
 _WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 _WGS84 = pyproj.CRS.from_epsg(4326)
 
@@ -89,7 +92,39 @@ class ArcgisConnector:
             return None
 
     def fetch_copy_geojson(self, record, *, http_get) -> bytes | None:
-        raise NotImplementedError  # implémenté en Task 4
+        if record.items_url is None:
+            return None
+        features: list = []
+        offset = 0
+        while True:
+            page_url = (
+                f"{record.items_url}"
+                f"&resultOffset={offset}&resultRecordCount={_COPY_PAGE_SIZE}"
+            )
+            try:
+                page = http_get(page_url).json()
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("arcgis harvest: page de copie illisible à %s : %s", page_url, exc)
+                break
+            if not isinstance(page, dict) or not isinstance(page.get("features"), list):
+                logger.warning("arcgis harvest: page de copie malformée à %s, arrêt", page_url)
+                break
+            page_features = page["features"]
+            if not page_features:
+                break
+            features.extend(page_features)
+            offset += len(page_features)
+            if len(features) >= _MAX_COPY_FEATURES:
+                logger.warning(
+                    "arcgis harvest: plafond de %d entités atteint pour %s, tronqué",
+                    _MAX_COPY_FEATURES, record.external_id,
+                )
+                features = features[:_MAX_COPY_FEATURES]
+                break
+            if not page.get("exceededTransferLimit"):
+                break
+        collection = {"type": "FeatureCollection", "features": features}
+        return json.dumps(collection).encode("utf-8")
 
 
 def _service_keywords(meta: dict) -> list[str]:

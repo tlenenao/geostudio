@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
+
 import httpx
 import pytest
 
 from app.harvest.connectors import get_connector
 from app.harvest.connectors.arcgis import ArcgisConnector
+from app.harvest.connectors.base import HarvestedRecord
 
 SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer"
 
@@ -110,3 +113,75 @@ def test_get_connector_returns_arcgis_connector():
     c = get_connector("arcgis")
     assert c.type == "arcgis"
     assert c.supports_copy is True
+
+
+def _page(features, *, exceeded):
+    return {"type": "FeatureCollection", "features": features, "exceededTransferLimit": exceeded}
+
+
+def _feature(i):
+    return {"type": "Feature", "properties": {"n": i}, "geometry": {"type": "Point", "coordinates": [i, i]}}
+
+
+def test_copy_geojson_assembles_all_pages():
+    rec = HarvestedRecord(
+        external_id=f"{SERVICE}/0", title="B", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url=f"{SERVICE}/0",
+        items_url=f"{SERVICE}/0/query?where=1=1&outFields=*&f=geojson",
+    )
+    calls = []
+
+    def http_get(url: str) -> httpx.Response:
+        calls.append(url)
+        if "resultOffset=0" in url:
+            return httpx.Response(200, json=_page([_feature(0), _feature(1)], exceeded=True))
+        return httpx.Response(200, json=_page([_feature(2)], exceeded=False))
+
+    content = ArcgisConnector().fetch_copy_geojson(rec, http_get=http_get)
+    fc = json.loads(content)
+    assert fc["type"] == "FeatureCollection"
+    assert [f["properties"]["n"] for f in fc["features"]] == [0, 1, 2]
+    assert len(calls) == 2
+    assert all("resultOffset=" in c and "resultRecordCount=" in c for c in calls)
+
+
+def test_copy_geojson_none_when_no_items_url():
+    rec = HarvestedRecord(
+        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="x", items_url=None,
+    )
+    assert ArcgisConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
+
+
+def test_copy_geojson_truncates_at_max_features():
+    from app.harvest.connectors.arcgis import _MAX_COPY_FEATURES
+
+    rec = HarvestedRecord(
+        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+    )
+
+    def http_get(url: str) -> httpx.Response:
+        # Chaque page renvoie une page pleine et prétend qu'il en reste : sans
+        # plafond, la boucle serait infinie.
+        return httpx.Response(200, json=_page([_feature(0)] * 500, exceeded=True))
+
+    content = ArcgisConnector().fetch_copy_geojson(rec, http_get=http_get)
+    fc = json.loads(content)
+    assert len(fc["features"]) <= _MAX_COPY_FEATURES
+
+
+def test_copy_geojson_stops_cleanly_on_malformed_page():
+    rec = HarvestedRecord(
+        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+    )
+
+    def http_get(url: str) -> httpx.Response:
+        if "resultOffset=0" in url:
+            return httpx.Response(200, json=_page([_feature(0)], exceeded=True))
+        return httpx.Response(200, json={"features": "not-a-list"})  # malformé
+
+    content = ArcgisConnector().fetch_copy_geojson(rec, http_get=http_get)
+    fc = json.loads(content)
+    assert [f["properties"]["n"] for f in fc["features"]] == [0]
