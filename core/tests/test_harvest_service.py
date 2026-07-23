@@ -46,9 +46,13 @@ def tenant_and_user(session):
     return tenant, user
 
 
-def _fake_connector(records):
+def _fake_connector(records, *, copy_bytes=None, copy_error=None):
     connector = Mock()
     connector.fetch = Mock(return_value=records)
+    if copy_error is not None:
+        connector.fetch_copy_geojson = Mock(side_effect=copy_error)
+    else:
+        connector.fetch_copy_geojson = Mock(return_value=copy_bytes)
     return connector
 
 
@@ -139,31 +143,40 @@ def test_connector_fetch_failure_sets_error_status_without_raising(session, tena
     assert "boom" in source.last_error
 
 
-def test_copy_mode_items_fetch_failure_sets_error_status_without_raising(session, tenant_and_user, monkeypatch):
-    # Reproduit le défaut de revue Task 4 : en mode copy, items_fetcher (ou
-    # run_import) est appelé DANS la boucle par-enregistrement, pas dans le
-    # bloc try du fetch initial. Ce test tourne toujours en SQLite (jamais
-    # postgis-gated) car il échoue avant tout appel à run_import — seul
-    # items_fetcher est exercé.
+def test_copy_mode_fetch_copy_failure_sets_error_status_without_raising(session, tenant_and_user, monkeypatch):
+    # En mode copy, connector.fetch_copy_geojson est appelé DANS la boucle
+    # par-enregistrement, pas dans le bloc try du fetch initial. Échoue avant
+    # tout run_import → toujours SQLite (jamais postgis-gated).
     tenant, user = tenant_and_user
-    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    monkeypatch.setattr(
+        service, "get_connector",
+        lambda t: _fake_connector([RECORD_A], copy_error=RuntimeError("network boom")),
+    )
     source = harvest_repo.create_source(
         session, tenant_id=tenant.id, owner_id=user.id, type="stac",
         url="https://a", mode="copy", enabled=True, interval_minutes=None,
     )
-    session.commit()  # comme jobs.run_harvest_task : la source existe déjà en base
-    # avant que harvest_source() ne tourne — le rollback inconditionnel de la
-    # nouvelle except-branch (fix revue finale) ne doit PAS faire disparaître
-    # cette ligne.
-
-    def _raise(url):
-        raise RuntimeError("network boom")
-
-    service.harvest_source(session, source, items_fetcher=_raise)  # ne doit pas lever
-
+    session.commit()
+    service.harvest_source(session, source)  # ne doit pas lever
     assert source.last_status == "error"
     assert "network boom" in source.last_error
-    # mark_missing_as_stale n'a pas dû tourner : aucun harvest_record créé.
+    count = session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
+    assert count == 0
+
+
+def test_reference_mode_internal_url_is_blocked_by_egress_guard(session, tenant_and_user):
+    # Pas de monkeypatch de get_connector : le vrai StacConnector construit son
+    # client gardé (Task 1/2). L'URL vise le loopback → EgressBlockedError levée
+    # par le transport AVANT toute connexion, propagée jusqu'au moteur → error.
+    tenant, user = tenant_and_user
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="stac",
+        url="http://127.0.0.1:9/collections", mode="reference",
+        enabled=True, interval_minutes=None,
+    )
+    session.commit()
+    service.harvest_source(session, source)  # ne doit pas lever
+    assert source.last_status == "error"
     count = session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
     assert count == 0
 
@@ -237,12 +250,15 @@ def pg_tenant_and_user(pg_session):
 @pytest.mark.postgis
 def test_copy_mode_first_harvest_creates_local_collection(pg_session, pg_tenant_and_user, monkeypatch):
     tenant, user = pg_tenant_and_user
-    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    monkeypatch.setattr(
+        service, "get_connector",
+        lambda t: _fake_connector([RECORD_A], copy_bytes=GEOJSON_ITEMS),
+    )
     source = harvest_repo.create_source(
         pg_session, tenant_id=tenant.id, owner_id=user.id, type="stac",
         url="https://a", mode="copy", enabled=True, interval_minutes=None,
     )
-    service.harvest_source(pg_session, source, items_fetcher=lambda url: GEOJSON_ITEMS)
+    service.harvest_source(pg_session, source)
 
     assert source.last_status == "ok"
     rec = harvest_repo.get_record(pg_session, tenant_id=tenant.id, source_id=source.id, external_id="buildings")
@@ -253,21 +269,16 @@ def test_copy_mode_first_harvest_creates_local_collection(pg_session, pg_tenant_
 @pytest.mark.postgis
 def test_copy_mode_reharvest_does_not_reimport(pg_session, pg_tenant_and_user, monkeypatch):
     tenant, user = pg_tenant_and_user
-    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RECORD_A]))
+    connector = _fake_connector([RECORD_A], copy_bytes=GEOJSON_ITEMS)
+    monkeypatch.setattr(service, "get_connector", lambda t: connector)
     source = harvest_repo.create_source(
         pg_session, tenant_id=tenant.id, owner_id=user.id, type="stac",
         url="https://a", mode="copy", enabled=True, interval_minutes=None,
     )
-    fetch_calls = []
+    service.harvest_source(pg_session, source)
+    service.harvest_source(pg_session, source)
 
-    def counting_fetcher(url):
-        fetch_calls.append(url)
-        return GEOJSON_ITEMS
-
-    service.harvest_source(pg_session, source, items_fetcher=counting_fetcher)
-    service.harvest_source(pg_session, source, items_fetcher=counting_fetcher)
-
-    assert len(fetch_calls) == 1
+    assert connector.fetch_copy_geojson.call_count == 1  # jamais ré-importé
     count = pg_session.execute(text("SELECT COUNT(*) FROM harvest_records")).scalar()
     assert count == 1
 
