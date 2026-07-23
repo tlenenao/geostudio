@@ -165,6 +165,52 @@ def test_list_due_sources_includes_never_run_and_overdue_enabled_sources(session
     assert fresh.id not in due_ids
 
 
+def _make_source(session, tenant_id, owner_id, **overrides):
+    src = repo.create_source(
+        session, tenant_id=tenant_id, owner_id=owner_id, type="stac",
+        url="https://a", mode="reference", enabled=True, interval_minutes=15,
+    )
+    for k, v in overrides.items():
+        setattr(src, k, v)
+    session.flush()
+    return src
+
+
+def test_list_due_excludes_recently_running_source(session, tenant_and_user):
+    from app.harvest.repository import _RUNNING_RECLAIM_MINUTES
+    tenant, user = tenant_and_user
+    now = datetime.now(timezone.utc)
+    _make_source(
+        session, tenant.id, user.id,
+        last_status="running", updated_at=now - timedelta(minutes=1),
+    )
+    assert repo.list_due_sources(session) == []
+
+
+def test_list_due_reclaims_stuck_running_source(session, tenant_and_user):
+    from app.harvest.repository import _RUNNING_RECLAIM_MINUTES
+    tenant, user = tenant_and_user
+    now = datetime.now(timezone.utc)
+    src = _make_source(
+        session, tenant.id, user.id,
+        last_status="running",
+        updated_at=now - timedelta(minutes=_RUNNING_RECLAIM_MINUTES + 5),
+    )
+    due = repo.list_due_sources(session)
+    assert [s.id for s in due] == [src.id]
+
+
+def test_list_due_still_returns_a_due_idle_source(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    now = datetime.now(timezone.utc)
+    src = _make_source(
+        session, tenant.id, user.id,
+        last_status="ok", last_run_at=now - timedelta(minutes=30),
+    )
+    due = repo.list_due_sources(session)
+    assert src.id in [s.id for s in due]
+
+
 @pytest.mark.postgis
 def test_unique_constraint_rejects_duplicate_external_id_for_same_source(pg_session, pg_tenant_and_user):
     tenant, user = pg_tenant_and_user

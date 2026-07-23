@@ -808,7 +808,10 @@
             "type": "string"
           },
           "type": {
-            "const": "stac",
+            "enum": [
+              "stac",
+              "arcgis"
+            ],
             "title": "Type",
             "type": "string"
           },

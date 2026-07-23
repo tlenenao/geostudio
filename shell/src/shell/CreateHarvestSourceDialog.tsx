@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useCreateHarvestSource, useInstanceInfo } from "../api/hooks";
+import type { HarvestSourceType } from "../api/types";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -9,10 +10,12 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
   const createSource = useCreateHarvestSource();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
+  const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
 
   function close() {
+    setType("stac");
     setUrl("");
     setMode("reference");
     createSource.reset();
@@ -23,7 +26,7 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
     e.preventDefault();
     if (!url) return;
     try {
-      await createSource.mutateAsync({ type: "stac", url, mode, enabled: true });
+      await createSource.mutateAsync({ type, url, mode, enabled: true });
       close();
     } catch {
       // surfaced via createSource.isError
@@ -33,6 +36,18 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
   return (
     <Dialog open={open} onClose={close} title="Ajouter une source">
       <form onSubmit={submit} className="flex flex-col gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          Type
+          <select
+            aria-label="Type"
+            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            value={type}
+            onChange={(e) => setType(e.target.value as HarvestSourceType)}
+          >
+            <option value="stac">STAC</option>
+            <option value="arcgis">ArcGIS Feature Service</option>
+          </select>
+        </label>
         <label className="flex flex-col gap-1 text-sm">
           URL
           <Input aria-label="URL" value={url} onChange={(e) => setUrl(e.target.value)} />

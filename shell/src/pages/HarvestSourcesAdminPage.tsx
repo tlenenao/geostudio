@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useDeleteHarvestSource, useHarvestSources, useMe, useRunHarvestSource } from "../api/hooks";
+import { useDeleteHarvestSource, useHarvestSources, useInstanceInfo, useMe, useRunHarvestSource } from "../api/hooks";
 import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -9,6 +9,8 @@ import { EditHarvestSourceDialog } from "../shell/EditHarvestSourceDialog";
 
 export function HarvestSourcesAdminPage() {
   const meQuery = useMe();
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
   const sourcesQuery = useHarvestSources({ enabled: meQuery.data?.isAdmin === true });
   const deleteSource = useDeleteHarvestSource();
   const runSource = useRunHarvestSource();
@@ -41,9 +43,11 @@ export function HarvestSourcesAdminPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold">Moissonnage</h1>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          Ajouter une source
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            Ajouter une source
+          </Button>
+        )}
       </div>
       {sourcesQuery.isLoading && <p role="status">Chargement…</p>}
       {sourcesQuery.isError && (
@@ -77,15 +81,19 @@ export function HarvestSourcesAdminPage() {
                 <td className="py-2">{source.enabled ? "Oui" : "Non"}</td>
                 <td className="py-2">{source.lastStatus ?? "—"}</td>
                 <td className="py-2 flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => runSource.mutate(source.id)}>
-                    Moissonner maintenant
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setEditing(source)}>
-                    Éditer
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(source)}>
-                    Supprimer
-                  </Button>
+                  {!readOnly && (
+                    <>
+                      <Button type="button" variant="outline" size="sm" onClick={() => runSource.mutate(source.id)}>
+                        Moissonner maintenant
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setEditing(source)}>
+                        Éditer
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(source)}>
+                        Supprimer
+                      </Button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
