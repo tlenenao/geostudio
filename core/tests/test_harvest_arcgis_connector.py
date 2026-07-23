@@ -50,7 +50,7 @@ def test_fetch_maps_each_layer_to_a_record():
 
 def test_fetch_reprojects_non_4326_extent_to_wgs84():
     # EPSG:2154 (Lambert-93, région parisienne) → WGS84 ~ (2.29°, 48.85°).
-    # Échoue si on retire pyproj (les coords brutes 489353 ne sont pas du WGS84).
+    # Échoue si on retire pyproj (les coords brutes 647850 ne sont pas du WGS84).
     docs = {SERVICE: SERVICE_META, f"{SERVICE}/0": LAYER_0, f"{SERVICE}/1": LAYER_1}
     records = list(_connector(docs).fetch(SERVICE))
     b = next(r for r in records if r.external_id == f"{SERVICE}/0")
