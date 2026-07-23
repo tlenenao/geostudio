@@ -2,10 +2,12 @@
 from app.harvest.connectors.arcgis import ArcgisConnector
 from app.harvest.connectors.base import HarvestConnector
 from app.harvest.connectors.stac import StacConnector
+from app.harvest.connectors.wms import WmsConnector
 
 _REGISTRY: dict[str, HarvestConnector] = {
     "stac": StacConnector(),
     "arcgis": ArcgisConnector(),
+    "wms": WmsConnector(),
 }
 
 
