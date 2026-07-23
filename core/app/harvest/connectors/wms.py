@@ -82,8 +82,11 @@ def _layer_to_record(layer, name, crs, base, caps_url) -> HarvestedRecord:
     title = ows.child_text(layer, "Title") or name
     abstract = ows.child_text(layer, "Abstract") or ""
     kw_list = ows.child(layer, "KeywordList")
-    keywords = [k.text.strip() for k in ows.children(kw_list, "Keyword")] if kw_list is not None else []
-    keywords = [k for k in keywords if k]
+    keywords = (
+        [k.text.strip() for k in ows.children(kw_list, "Keyword") if k.text and k.text.strip()]
+        if kw_list is not None
+        else []
+    )
     bbox = _layer_bbox(layer)
     tiles = _getmap_template(base, name) if (crs & _WEB_MERCATOR_CODES) else None
     return HarvestedRecord(
