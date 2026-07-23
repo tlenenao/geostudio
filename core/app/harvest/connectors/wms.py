@@ -58,9 +58,7 @@ class WmsConnector:
     def _walk(self, layer, *, inherited_crs, depth, base, caps_url, out) -> None:
         if depth > ows._MAX_DEPTH or len(out) >= ows._MAX_LAYERS:
             return
-        own_crs = _layer_crs(layer)
-        # If layer declares own CRS, use only those; otherwise inherit from parent
-        crs = own_crs if own_crs else inherited_crs
+        crs = inherited_crs | _layer_crs(layer)
         name = ows.child_text(layer, "Name")
         if name is not None:
             out.append(_layer_to_record(layer, name, crs, base, caps_url))

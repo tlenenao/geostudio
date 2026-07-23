@@ -25,11 +25,6 @@ WMS_130 = b"""<?xml version="1.0"?>
           <northBoundLatitude>49.4</northBoundLatitude>
         </EX_GeographicBoundingBox>
       </Layer>
-      <Layer>
-        <Name>topp:nomerc</Name>
-        <Title>Sans WebMercator</Title>
-        <CRS>EPSG:4326</CRS>
-      </Layer>
     </Layer>
   </Capability>
 </WMS_Capabilities>"""
@@ -70,6 +65,20 @@ WMS_WITH_EMPTY_KEYWORD = b"""<?xml version="1.0"?>
   </Capability>
 </WMS_Capabilities>"""
 
+WMS_NO_MERCATOR = b"""<?xml version="1.0"?>
+<WMS_Capabilities version="1.3.0" xmlns="http://www.opengis.net/wms">
+  <Capability>
+    <Layer>
+      <Title>Racine</Title>
+      <CRS>EPSG:4326</CRS>
+      <Layer>
+        <Name>topp:nomerc</Name>
+        <Title>Sans WebMercator</Title>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMS_Capabilities>"""
+
 
 def _connector(body: bytes) -> WmsConnector:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -97,9 +106,9 @@ def test_named_layer_1_3_0_becomes_raster_record():
 
 
 def test_layer_without_web_mercator_is_reference_only():
-    records = list(_connector(WMS_130).fetch(CAPS))
+    records = list(_connector(WMS_NO_MERCATOR).fetch(CAPS))
     nomerc = next(r for r in records if r.title == "Sans WebMercator")
-    assert nomerc.raster_tiles_url is None  # cataloguée mais non ajoutable
+    assert nomerc.raster_tiles_url is None  # ni propre ni hérité 3857 → non ajoutable
 
 
 def test_wms_1_1_1_latlonbbox_and_srs():
