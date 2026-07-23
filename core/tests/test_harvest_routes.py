@@ -81,6 +81,27 @@ def test_create_copy_mode_on_unknown_type_is_422(env):
     assert client.post("/harvest/sources", json=body).status_code == 422
 
 
+def test_create_arcgis_source_is_accepted(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": "arcgis",
+        "url": "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
+        "mode": "reference",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["type"] == "arcgis"
+
+
+def test_create_unknown_type_is_rejected(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": "wms", "url": "https://x", "mode": "reference",
+    })
+    assert resp.status_code == 422
+
+
 def test_patch_requires_admin_and_toggles_enabled(env):
     app, client, _, admin, regular = env
     _as(app, admin)
