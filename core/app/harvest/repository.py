@@ -79,11 +79,14 @@ def get_record(
 def create_record(
     session: Session, *, tenant_id: str, source_id: str, external_id: str,
     item_id: str | None, collection_id: str | None, content_hash: str | None,
+    external_url: str | None = None, tiles_url: str | None = None,
+    layer_kind: str | None = None,
 ) -> HarvestRecord:
     record = HarvestRecord(
         id=uuid.uuid4().hex, tenant_id=tenant_id, source_id=source_id,
         external_id=external_id, item_id=item_id, collection_id=collection_id,
-        content_hash=content_hash,
+        content_hash=content_hash, external_url=external_url, tiles_url=tiles_url,
+        layer_kind=layer_kind,
     )
     session.add(record)
     session.flush()

@@ -35,6 +35,14 @@ def _content_hash(rec: HarvestedRecord) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _layer_kind(rec: HarvestedRecord) -> str | None:
+    if rec.raster_tiles_url is not None:
+        return "raster"
+    if rec.items_url is not None:
+        return "feature"
+    return None
+
+
 def harvest_source(
     session: Session, source: HarvestSource, *, http_get=guarded_get,
 ) -> None:
@@ -132,6 +140,7 @@ def _upsert_reference(session, source, rec: HarvestedRecord, existing, digest: s
         harvest_repo.create_record(
             session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
             item_id=item.id, collection_id=None, content_hash=digest,
+            external_url=rec.external_url, tiles_url=rec.raster_tiles_url, layer_kind=_layer_kind(rec),
         )
         return
 
@@ -140,7 +149,10 @@ def _upsert_reference(session, source, rec: HarvestedRecord, existing, digest: s
             session, tenant_id=source.tenant_id, item_id=existing.item_id,
             title=rec.title, abstract=rec.abstract, keywords=rec.keywords, is_published=None,
         )
-    harvest_repo.update_record(session, existing, content_hash=digest, harvested_at=_now(), is_stale=False)
+    harvest_repo.update_record(
+        session, existing, content_hash=digest, harvested_at=_now(), is_stale=False,
+        external_url=rec.external_url, tiles_url=rec.raster_tiles_url, layer_kind=_layer_kind(rec),
+    )
 
 
 def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, connector, http_get) -> None:
@@ -181,4 +193,5 @@ def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, c
     harvest_repo.create_record(
         session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
         item_id=result.item_id, collection_id=result.collection_id, content_hash=digest,
+        external_url=rec.external_url, tiles_url=None, layer_kind=_layer_kind(rec),
     )
