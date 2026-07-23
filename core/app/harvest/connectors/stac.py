@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _MAX_CATALOG_DEPTH = 5
 _MAX_COLLECTIONS = 500
+_MAX_DOCUMENTS = 2000
 _WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 
 
@@ -26,7 +27,9 @@ class StacConnector:
         self._client = client
 
     def fetch(self, url: str) -> Iterable[HarvestedRecord]:
-        client = self._client or httpx.Client(timeout=_DEFAULT_TIMEOUT_SECONDS)
+        from app.harvest.egress import build_guarded_client
+
+        client = self._client or build_guarded_client(_DEFAULT_TIMEOUT_SECONDS)
         owns_client = self._client is None
         records: list[HarvestedRecord] = []
         seen_docs: set[str] = set()
@@ -37,8 +40,17 @@ class StacConnector:
                 client.close()
         return records
 
+    def fetch_copy_geojson(self, record, *, http_get) -> bytes | None:
+        if record.items_url is None:
+            return None
+        return http_get(record.items_url).content
+
     def _walk(self, client, url, *, depth, records, seen_docs) -> None:
-        if len(records) >= _MAX_COLLECTIONS or url in seen_docs:
+        if (
+            len(seen_docs) >= _MAX_DOCUMENTS
+            or len(records) >= _MAX_COLLECTIONS
+            or url in seen_docs
+        ):
             return
         seen_docs.add(url)
         try:

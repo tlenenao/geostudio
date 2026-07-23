@@ -1433,6 +1433,74 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
   re-synchronisation de contenu en mode `copy` hors périmètre ; miroir des
   octets d'assets (COG) hors périmètre ; connecteurs ArcGIS FS/GetCapabilities/
   CSW/CKAN = **SP-12d…g** (abstraction déjà dimensionnée).
+- **SP-12d « connecteur ArcGIS FS + durcissement egress SSRF » livré et clos**
+  (2026-07-23, cf. spec
+  `docs/superpowers/specs/2026-07-22-sp12d-connecteur-arcgis-egress-design.md` et
+  plan `docs/superpowers/plans/2026-07-22-sp12d-connecteur-arcgis-egress.md`) : un
+  connecteur de moissonnage **ArcGIS Feature Service** (référence + copie GeoJSON
+  paginée) ajouté au moteur SP-12c, et une **garde d'egress SSRF partagée** par
+  tous les connecteurs réseau. **Zéro nouvelle route, zéro nouvelle table, zéro
+  nouveau modèle d'autorisation** : l'abstraction `HarvestConnector` (SP-12c)
+  gagne une méthode `fetch_copy_geojson(record, *, http_get) -> bytes | None`,
+  le seam brut `items_fetcher(url)->bytes` du moteur est remplacé par
+  `connector.fetch_copy_geojson(rec, http_get=guarded_get)`, et `ArcgisConnector`
+  entre au registre (validation par registre — `type` free-list — le `Literal`
+  schéma élargi à `{stac,arcgis}` n'est qu'une seconde barrière). Egress
+  (`core/app/harvest/egress.py`) : `assert_egress_allowed` bloque schémas non-http(s)
+  et plages internes (loopback/privé/link-local/réservé/multicast/unspecified),
+  **pour les IP-littérales ET les hôtes résolus par DNS**, allowlist optionnelle
+  `CORE_HARVEST_EGRESS_ALLOWLIST` ; l'enforcement est **au niveau du transport
+  httpx** (`_GuardedTransport`, lève `EgressBlockedError` AVANT toute connexion),
+  et le client par défaut des DEUX connecteurs (STAC + ArcGIS) plus le `http_get`
+  par défaut du moteur passent par cette garde — une URL interne finit en
+  `last_status="error"` sans jamais lever (résiduel documenté : DNS-rebinding
+  TOCTOU, pinning-IP différé). `ArcgisConnector` : une couche = un `HarvestedRecord`
+  (bbox reprojetée en WGS84 via pyproj, enveloppe seule, tolérante — repli bbox
+  monde jamais d'exception qui fuite), copie = pagination GeoJSON complète bornée
+  (`resultOffset`/`exceededTransferLimit`, offset avancé du nombre réel d'entités),
+  parsing tolérant et **borné** (`_MAX_LAYERS=200`, `_MAX_DOCUMENTS=250`,
+  `_MAX_COPY_FEATURES=200000`, `_MAX_COPY_PAGES=1000`). Trois suivis SP-12c repliés :
+  cap `_MAX_DOCUMENTS=2000` sur le `_walk` STAC, `list_due_sources` saute les
+  sources `running` (reclaim par âge `_RUNNING_RECLAIM_MINUTES=60` — le gap
+  2-phase-commit), masquage démo des boutons d'écriture de `/admin/harvest`
+  (fail-open, la frontière reste le 403 serveur). Shell : sélecteur de type
+  `stac`/`arcgis` dans le dialogue d'ajout de source. **Services ArcGIS publics
+  seulement en v0** (aucun token/OAuth vers le distant). Exécuté en
+  subagent-driven-development (10 tâches, revue par tâche + revue finale de
+  branche modèle opus). Deux défauts trouvés **dans le plan lui-même** (pas dans
+  le code produit) et corrigés en cours de route : les coordonnées Lambert-93 du
+  test de reprojection (Task 3) reprojetaient à `0.26°,46.36°`, hors de la plage
+  `2-3°/48-49°` assertée par le test lui-même — corrigées à `647850,6861300 →
+  2.289°,48.850°`, le test échoue toujours si pyproj est retiré ; le test
+  d'intégration copie (Task 7) ne câblait jamais un `http_get` mocké dans
+  `service.harvest_source(...)`, donc la pagination touchait le vrai réseau (bug
+  de câblage **de test uniquement**, pas de production — par conception le
+  `http_get` du moteur est découplé du `_client` injecté du connecteur) —
+  corrigé côté test de copie seul (référence/egress gardent la vraie garde),
+  assertion renforcée `feature_count == 3` (2 pages → 3 lignes PostGIS réelles).
+  **Revue finale de branche : Ready to merge: Yes, 0 Critical** — les 7 propriétés
+  bout-en-bout tracées adversarialement et TIENNENT (garde egress dans le chemin
+  des deux connecteurs + copie, IP-littérale & DNS ; `harvest_source` ne lève sur
+  aucune branche y compris `IntegrityError` empoisonnante ; anti-doublon intact ;
+  bornes dures respectées ; reprojection sans fuite ; pas de nouvel authz ; items
+  référencés jamais ré-exportés par STAC/DCAT — pas de blanchiment de catalogue).
+  **1 Important trouvé et corrigé** (commit `1aa4ed7`) : `fetch_copy_geojson`
+  bornait les entités (200000) mais pas les pages/requêtes — un service hostile
+  renvoyant 1 entité/page avec `exceededTransferLimit=true` forçait jusqu'à
+  200 000 GET séquentiels (worker bloqué borné mais long) ; `_MAX_COPY_PAGES=1000`
+  ajouté (pire cas 1000 GET, `test_copy_geojson_truncates_at_max_features`
+  vérifié tapant toujours le cap d'entités, 400<1000). Minors acceptés/suivis :
+  CGNAT `100.64.0.0/10` non bloqué (hors des 6 catégories du spec) ; churn du
+  client gardé par page (v0 ok) ; allowlist sensible à la casse (échoue fermé) ;
+  `EditHarvestSourceDialog` sans sélecteur de type — **correct** (`HarvestSourcePatch`
+  n'a pas de champ `type`, immuable après création). **679 tests cœur passed/100
+  skipped** (sans DB ; **100 passed contre PostGIS réel**, dont l'intégration
+  ArcGIS reference/copy + egress partagée), lint-imports 1 kept/0 broken, **583
+  tests shell**, **45/45 specs E2E** (44 + `harvest-arcgis.spec.ts`), build/tsc
+  clean, aucun drift OpenAPI. Poussé sur `dev`, PR dev→main ouverte. **SP-12d est
+  clos** (quatrième brique de la fédération STAC/DCAT ; connecteurs
+  GetCapabilities/CSW/CKAN = SP-12e…g restent à faire, abstraction déjà
+  dimensionnée).
 - 2026-07-09 : brainstorm **Analytics Platform** validé (Q-A1→Q-A5) et décliné
   dans la feuille de route — SP-14/SP-15, arbitrages A28–A30, amendements
   A22/A27, jalons M11/M12. Rien à exécuter avant SP-11 (sauf quick wins

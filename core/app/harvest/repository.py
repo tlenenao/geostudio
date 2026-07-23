@@ -12,6 +12,9 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_RUNNING_RECLAIM_MINUTES = 60
+
+
 def create_source(
     session: Session, *, tenant_id: str, owner_id: str, type: str, url: str,
     mode: str, enabled: bool, interval_minutes: int | None,
@@ -118,15 +121,25 @@ def list_due_sources(session: Session) -> list[HarvestSource]:
     ).all()
     due = []
     for source in candidates:
+        if source.last_status == "running":
+            # Une source déjà en cours de moissonnage est sautée pour éviter un
+            # double-travail concurrent (gap 2-phase-commit : crash entre le
+            # passage à "running" — committé par mark_running — et la fin de
+            # harvest_source). Reclaim par âge : si le run est plus vieux que
+            # _RUNNING_RECLAIM_MINUTES, il est présumé planté et redevient
+            # éligible — sinon un crash la coincerait en "running" à jamais.
+            updated = source.updated_at
+            if updated is not None and updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if updated is None or (now - updated) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
+                continue
+            due.append(source)
+            continue
         if source.last_run_at is None:
             due.append(source)
             continue
         last_run_at = source.last_run_at
         if last_run_at.tzinfo is None:
-            # Reloaded from a fresh query, the naive `DateTime()` column
-            # deserializes tz-naive even though it was written as UTC
-            # (see _now()). Normalize before comparing against `now`,
-            # which is always tz-aware.
             last_run_at = last_run_at.replace(tzinfo=timezone.utc)
         threshold = last_run_at + timedelta(minutes=source.interval_minutes)
         if threshold <= now:

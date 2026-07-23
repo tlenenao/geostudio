@@ -189,7 +189,8 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-14 | Analytics UX : datasets, requête visuelle, contexte global | 60–100 h | SP-11 | **M11 BI géospatiale** |
 | SP-15 | Alertes & reporting : exports, rapports planifiés | 50–80 h | SP-13, SP-14 | **M12 la plateforme prévient** |
 | SP-16 | Portails & Sites : portails publics de marque, découverte éditorialisée | 60–100 h | SP-11 | **M13 portails ouverts** |
-| | **Total** | **≈ 765–1 330 h** | | ≈ 17–34 mois à 10–25 h/sem |
+| SP-17 | ETL no-code « équivalent FME » : document `Pipeline`, canvas, runtime deux étages | 150–260 h | SP-11 | **M14 ETL no-code** |
+| | **Total** | **≈ 915–1 590 h** | | ≈ 20–40 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
@@ -226,6 +227,27 @@ uniquement sur des briques déjà acquises (`PageManager`, bindings CEL,
 `ActionBus`/`map.flyTo`) et peut être fait dès maintenant, en parallèle de
 SP-9 — voir
 [la spec dédiée](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md).
+
+**Le SP-17 a été ajouté le 2026-07-22** (étude de faisabilité ETL no-code,
+arbitrage A39 tranché par Tanguy — Go cœur-first) : chantier **ETL no-code
+« équivalent FME »**, qui dote GeoStudio de la brique manquante du cycle de vie
+de la donnée (transformer/nettoyer/enrichir/recombiner entre la source et la
+publication, **données tabulaires pures autant que géospatiales**), sans code.
+Il **subsume la partie « pipeline de transformations déclaratif » de SP-14/A28**
+(SP-14 conserve l'UX analytique — requête visuelle, contexte global,
+cross-filter, SQL Lab ; le moteur de transformation et son canvas visuel
+migrent ici). Approche **cœur-first** : document déclaratif `Pipeline`
+(MCP-opérable, `can()`/audit/tenant), **runtime de transformers à deux étages**
+(étage 1 in-process DuckDB+CEL+pandas+dlt pour les données pures et le spatial
+courant ; étage 2 **sidecar `qgis_process`** GPL, opt-in via profil compose
+`etl`, pour la longue traîne géo profonde — ~1000+ algorithmes sans en écrire
+un), formats GDAL, connecteurs **dlt**, orchestration **procrastinate + OTel**.
+**n8n / Kestra / Apache Hop restent des cartes de repli nommées, jamais le
+centre.** Dépend de SP-11 (runtime DuckDB) ; s'exécute en 4 phases livrables
+(socle headless → canvas → spatial+sidecar → automatisation). Le poste de risque
+n°1 est le canvas de graphe ; le runtime réutilise massivement l'existant
+(SP-6/SP-11). Voir
+[l'étude de faisabilité](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md).
 
 ---
 
@@ -369,7 +391,8 @@ calculés, filtres dynamiques — l'équivalent ouvert du rôle d'Arcade chez Es
   filtres de data sources paramétrés par expression — en remplacement/extension
   des bindings `{{champ}}`/`{{var:nom}}` actuels (compatibilité assurée).
 - Actions composées : une action peut en déclencher plusieurs, avec condition
-  (expression) — sans devenir un moteur de workflow (différé, §9).
+  (expression) — sans devenir un moteur de workflow (l'ETL déclaratif dédié est
+  SP-17, A39 ; les actions composées restent un mécanisme d'app, pas un ETL).
 - **Extension de périmètre 2026-07-09** (brainstorm Analytics, acté) :
   **bindings CEL généralisés** — toute prop de tout widget accepte une
   expression (`{ $expr: … }`) évaluée dans `WidgetHost` — et **variables
@@ -629,15 +652,24 @@ Playwright alourdit l'image du worker (image worker dédiée à l'export).
 question spatiale (« combien d'incidents à moins de 500 m d'une école, par
 commune, ce trimestre ? ») sans SQL, sur l'API analytique de SP-11.
 
+> **Amendement 2026-07-22 (A39) :** la partie **« pipeline de transformations
+> déclaratif »** ci-dessous **migre vers SP-17** (ETL no-code) — le document
+> `Pipeline` de SP-17 EST ce pipeline, avec un `writer.dataset`. SP-14 conserve
+> l'UX analytique (requête visuelle, contexte global, cross-filter, SQL Lab) et
+> consomme les datasets produits par le moteur de SP-17. Pas deux moteurs de
+> transformation (règle d'archi #3).
+
 **Contenu.**
 - **Datasets partagés** (A28) : nouveau type d'item (catalogué, partageable via
   `can()`, versionné, audité) = source + pipeline de transformations déclaratif
   (filter attributaire/spatial/CEL, aggregate, join, derive, pivot, opérations
   spatiales packagées : buffer, countWithin, intersection, agrégation H3) +
   métriques nommées CEL + libellés métier + `refreshPolicy` (à la demande /
-  intervalle / matérialisation planifiée). Datasets inline conservés dans les
-  apps ; « promouvoir en dataset partagé » depuis le builder. Le type
-  `statistics` actuel (agrégation client) migre vers le pipeline serveur.
+  intervalle / matérialisation planifiée). **Le moteur de ce pipeline est
+  livré par SP-17 (A39)** ; SP-14 en est le premier consommateur. Datasets
+  inline conservés dans les apps ; « promouvoir en dataset partagé » depuis le
+  builder. Le type `statistics` actuel (agrégation client) migre vers le
+  pipeline serveur.
 - **Requête visuelle** (Filtrer → Joindre → Résumer → Trier) compilant vers
   l'API analytique structurée (A19) — jamais de SQL fabriqué côté client ;
   suggestions de visualisation depuis le schéma introspecté (SP-3).
@@ -1217,6 +1249,7 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 | A36 | Storytelling : intégration | **Mode de layout sur `PageManager`**, pas de nouveau widget conteneur | Quick win |
 | A37 | Storytelling : timing | **Quick win immédiat, indépendant** de SP-16/SP-11/SP-14 | Quick win |
 | A38 | Communauté des portails | **Différée** (commentaires, follow, discussions) — hors périmètre v1 | SP-16 |
+| A39 | Moteur ETL (Go/No-Go) | **GO cœur-first** : document `Pipeline` déclaratif + canvas no-code + runtime deux étages (in-process DuckDB/CEL/pandas/dlt ; sidecar `qgis_process` GPL opt-in) + orchestration procrastinate. **NO-GO n8n au centre** (repli nommé avec Kestra/Apache Hop). Subsume le pipeline de transformations de SP-14/A28. Posture GPL = sous-processus (agrégation), cœur Apache-2.0 intact. | SP-17 |
 
 **Conséquences immédiates des décisions** :
 - SP-1a démarre par le renommage `core/` (A14) et l'ajout de la génération
@@ -1257,8 +1290,13 @@ Q2/Q10/Q11 tranchent autrement) :
   Tableau — extensions analytiques de deuxième étage.
 - Marketplace, sandbox dure des extensions, signature sigstore.
 - Multi-tenant *actif* (le schéma est prêt, l'activation attend une demande).
-- Workflows durables, versioning de données, agent runtime hébergé (briques §13 de
-  la vision).
+- ~~Workflows durables, versioning de données, agent runtime hébergé~~ →
+  **partiellement sorti du différé le 2026-07-22 (A39, SP-17)** : un **ETL
+  no-code déclaratif borné** (DAG source→transformers→writer, orchestré par
+  procrastinate) entre au périmètre. Restent différés : les **triggers durables
+  événementiels** au-delà de la planification simple (Phase 4 de SP-17, sur
+  demande), le **versioning de données** et l'**agent runtime hébergé** (briques
+  §13 de la vision).
 - CI « 8 Go » (décision Q7) — l'empreinte baissera de fait, sans garde-fou bloquant.
 
 ---
@@ -1276,6 +1314,9 @@ Q2/Q10/Q11 tranchent autrement) :
 | Dérive doc/code (3 générations de docs déjà) | Confusion contributeurs | SP-9 archive G1/G2 ; règle : un document de référence par sujet, les autres pointent dessus |
 | Le CDC déraille (slot qui gonfle le WAL, worker arrêté, schéma modifié) | Disque plein côté PostGIS, lakehouse périmé | Spike d'ouverture SP-11, alerte sur le lag et la taille du slot (SP-10), procédure de re-backfill documentée, `ALTER` = re-backfill assumé en v1 |
 | Étalement des connecteurs de moissonnage (4 retenus) | SP-12 sans fin | Un connecteur = un incrément livrable ; ordre A22 figé ; on peut s'arrêter entre deux |
+| Le canvas de graphe ETL dérape (SP-17) | Chantier qui gonfle | MVP borné (topologie linéaire+join, canvas hand-rolled), Phase 1 livrée sans UI (auteur MCP/JSON) avant le canvas ; React Flow (MIT) seulement si nécessaire |
+| Posture GPL du sidecar `qgis_process` (SP-17) | Blocage distribution | Étage 2 opt-in (profil compose `etl`), sidecar = sous-processus (agrégation) ; cœur Apache-2.0 intact ; posture confirmée avant release |
+| Deux moteurs de transformation (SP-17 vs SP-14) | Viole règle #3 | A39 : SP-14 consomme le moteur de SP-17, ne le duplique pas |
 
 ---
 
@@ -1296,6 +1337,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M11 BI géospatiale** (SP-14) | Datasets partagés, requête visuelle, contexte global, cross-filter, SQL Lab | Une question spatiale (« incidents à < 500 m d'une école, par commune, ce trimestre ») résolue sans code ni SQL par un non-technicien |
 | **M12 La plateforme prévient** (SP-15) | Alertes, rapports planifiés diffusés, exports secs | Rapport PDF hebdo reçu par email ; alerte de seuil déclenchée et journalisée < 5 min ; export XLSX permissionné |
 | **M13 Portails ouverts** (SP-16) | Portail public de marque publié, galerie de découverte, fiche dataset téléchargeable | Un visiteur anonyme parcourt un portail et télécharge un jeu de données sans jamais voir un item non publié |
+| **M14 ETL no-code** (SP-17) | Canvas `Pipeline` visuel, runtime deux étages, exécution planifiée, outils MCP | Un non-technicien câble sans code source→transformers→writer (data ET spatial) et publie une collection ; un agent MCP crée et exécute un pipeline |
 
 ---
 
@@ -1308,8 +1350,11 @@ A31/A33–A38, jalon M13 — gap analysis dataviz/analytics/BI/portails, arbitra
 tranchés par Tanguy ; specs détaillées :
 [storytelling](../superpowers/specs/2026-07-14-storytelling-pagemanager-design.md)
 et
-[SP-16](../superpowers/specs/2026-07-14-sp16-portails-sites-design.md)). Les
-arbitrages A1–A31, A33–A38 sont tranchés en §8 (A32, proposition de copilote IA
-embarqué, reste ouverte — voir le gap analysis) ; toute révision d'un
+[SP-16](../superpowers/specs/2026-07-14-sp16-portails-sites-design.md)), puis
+le 2026-07-22 (SP-17 « ETL no-code équivalent FME », arbitrage A39, jalon M14 —
+étude de faisabilité, Go cœur-first tranché par Tanguy ; spec :
+[étude ETL](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md)).
+Les arbitrages A1–A31, A33–A39 sont tranchés en §8 (A32, proposition de copilote
+IA embarqué, reste ouverte — voir le gap analysis) ; toute révision d'un
 arbitrage après lancement du SP concerné passe par une mise à jour explicite
 de ce document.*

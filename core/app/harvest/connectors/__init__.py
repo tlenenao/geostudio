@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+from app.harvest.connectors.arcgis import ArcgisConnector
 from app.harvest.connectors.base import HarvestConnector
 from app.harvest.connectors.stac import StacConnector
 
-_REGISTRY: dict[str, HarvestConnector] = {"stac": StacConnector()}
+_REGISTRY: dict[str, HarvestConnector] = {
+    "stac": StacConnector(),
+    "arcgis": ArcgisConnector(),
+}
 
 
 def get_connector(source_type: str) -> HarvestConnector:
