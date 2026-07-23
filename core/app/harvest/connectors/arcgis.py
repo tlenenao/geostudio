@@ -20,6 +20,13 @@ _MAX_LAYERS = 200
 _MAX_DOCUMENTS = 250  # 1 service + N couches ; borne le nombre total de GET
 _COPY_PAGE_SIZE = 1000
 _MAX_COPY_FEATURES = 200000
+# Borne le nombre de GET de pagination, indépendamment du plafond d'entités.
+# À la taille de page demandée (1000), une copie complète de 200 000 entités
+# nécessite ~200 pages ; 1000 pages laisse 5x de marge pour un serveur qui
+# renvoie des pages plus petites, tout en bornant le pire cas (un serveur
+# hostile qui prétend toujours exceededTransferLimit=true) à 1000 GET au lieu
+# de 200 000.
+_MAX_COPY_PAGES = 1000
 _WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 _WGS84 = pyproj.CRS.from_epsg(4326)
 
@@ -96,7 +103,15 @@ class ArcgisConnector:
             return None
         features: list = []
         offset = 0
+        pages = 0
         while True:
+            pages += 1
+            if pages >= _MAX_COPY_PAGES:
+                logger.warning(
+                    "arcgis harvest: plafond de %d pages atteint pour %s, tronqué",
+                    _MAX_COPY_PAGES, record.external_id,
+                )
+                break
             page_url = (
                 f"{record.items_url}"
                 f"&resultOffset={offset}&resultRecordCount={_COPY_PAGE_SIZE}"

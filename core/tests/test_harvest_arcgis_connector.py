@@ -171,6 +171,27 @@ def test_copy_geojson_truncates_at_max_features():
     assert len(fc["features"]) <= _MAX_COPY_FEATURES
 
 
+def test_copy_geojson_caps_number_of_pages():
+    from app.harvest.connectors.arcgis import _MAX_COPY_PAGES
+
+    rec = HarvestedRecord(
+        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+    )
+    calls = {"n": 0}
+
+    def http_get(url: str) -> httpx.Response:
+        # 1 feature/page, always claims more remain: without a page cap this
+        # would run _MAX_COPY_FEATURES (200k) GETs. The page cap must stop it.
+        calls["n"] += 1
+        return httpx.Response(200, json=_page([_feature(0)], exceeded=True))
+
+    content = ArcgisConnector().fetch_copy_geojson(rec, http_get=http_get)
+    fc = json.loads(content)
+    assert calls["n"] <= _MAX_COPY_PAGES
+    assert len(fc["features"]) <= _MAX_COPY_PAGES  # 1 feature/page, capped by pages
+
+
 def test_copy_geojson_stops_cleanly_on_malformed_page():
     rec = HarvestedRecord(
         external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
