@@ -49,6 +49,27 @@ WMS_111 = b"""<?xml version="1.0"?>
   </Capability>
 </WMT_MS_Capabilities>"""
 
+WMS_WITH_EMPTY_KEYWORD = b"""<?xml version="1.0"?>
+<WMS_Capabilities version="1.3.0" xmlns="http://www.opengis.net/wms">
+  <Capability>
+    <Layer>
+      <Title>Racine</Title>
+      <CRS>EPSG:3857</CRS>
+      <Layer>
+        <Name>test:layer</Name>
+        <Title>Test Layer</Title>
+        <KeywordList><Keyword>census</Keyword><Keyword></Keyword></KeywordList>
+        <EX_GeographicBoundingBox>
+          <westBoundLongitude>-124.7</westBoundLongitude>
+          <eastBoundLongitude>-66.9</eastBoundLongitude>
+          <southBoundLatitude>24.9</southBoundLatitude>
+          <northBoundLatitude>49.4</northBoundLatitude>
+        </EX_GeographicBoundingBox>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMS_Capabilities>"""
+
 
 def _connector(body: bytes) -> WmsConnector:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -102,3 +123,11 @@ def test_get_connector_returns_wms():
     c = get_connector("wms")
     assert c.type == "wms"
     assert c.supports_copy is False
+
+
+def test_empty_keyword_does_not_raise():
+    """Regression: empty <Keyword/> elements must not raise AttributeError."""
+    records = list(_connector(WMS_WITH_EMPTY_KEYWORD).fetch(CAPS))
+    test_layer = next(r for r in records if r.title == "Test Layer")
+    # Empty keyword should be dropped, leaving only "census"
+    assert test_layer.keywords == ["census"]
