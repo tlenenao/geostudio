@@ -49,3 +49,6 @@ class HarvestRecord(Base):
     content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     harvested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     is_stale: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    external_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    tiles_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    layer_kind: Mapped[str | None] = mapped_column(String, nullable=True)
