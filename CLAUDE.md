@@ -148,14 +148,15 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - **SP-16** (a+b+c) — Portails & Sites : modèle site/slug + route publique
   `/sites/{slug}`, widgets de contenu (Hero/RichSection/Gallery), fiche dataset
   + téléchargement + template galerie. **Jalon M13**.
-- **SP-12** (a+b+c+d) — fédération STAC/DCAT : API STAC native (lecture seule),
+- **SP-12** (a→e) — fédération STAC/DCAT : API STAC native (lecture seule),
   export DCAT-AP (JSON-LD), moteur de moissonnage + connecteur STAC externe,
-  connecteur ArcGIS FS + garde d'egress SSRF.
+  connecteur ArcGIS FS + garde d'egress SSRF, connecteurs GetCapabilities
+  WMS/WFS/WMTS + affichage raster (LayerPicker → `GET /harvest/layers`).
 
 ### À venir
 
-- **SP-12** (e→g) — connecteurs de moissonnage restants : GetCapabilities → CSW →
-  CKAN (abstraction `HarvestConnector` déjà dimensionnée).
+- **SP-12** (f→g) — connecteurs de moissonnage restants : CSW/ISO 19139 (f) →
+  CKAN (g) (abstraction `HarvestConnector` déjà dimensionnée).
 - **SP-13** — reste à cadrer (cf. feuille de route SP-1→SP-15, ordre SP-12→15 à
   arbitrer avant lancement).
 - **SP-14** — Analytics UX (requête visuelle, contexte global temps×emprise,
