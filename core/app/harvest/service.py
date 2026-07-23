@@ -9,13 +9,13 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.harvest import repository as harvest_repo
 from app.harvest.connectors import get_connector
 from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.egress import guarded_get
 from app.harvest.models import HarvestSource
 from app.ingestion.importer import run_import
 from app.items import repository as items_repo
@@ -35,14 +35,8 @@ def _content_hash(rec: HarvestedRecord) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _default_items_fetcher(url: str) -> bytes:
-    response = httpx.get(url, timeout=10.0)
-    response.raise_for_status()
-    return response.content
-
-
 def harvest_source(
-    session: Session, source: HarvestSource, *, items_fetcher=_default_items_fetcher,
+    session: Session, source: HarvestSource, *, http_get=guarded_get,
 ) -> None:
     # Capturés avant tout accès DB : une IntegrityError de flush expire
     # immédiatement TOUS les attributs des objets de la session (pas
@@ -63,7 +57,7 @@ def harvest_source(
         session.flush()
         return
 
-    # Le traitement par enregistrement (upsert, y compris items_fetcher/
+    # Le traitement par enregistrement (upsert, y compris fetch_copy_geojson/
     # run_import en mode copy — fail-fast, réseau) est capturé au même titre
     # que le fetch ci-dessus : le contrat de harvest_source est de ne JAMAIS
     # lever, pour que le job procrastinate (Task 5) ne retente jamais un
@@ -82,7 +76,7 @@ def harvest_source(
                 session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
             )
             if source.mode == "copy":
-                _upsert_copy(session, source, rec, existing, digest, items_fetcher)
+                _upsert_copy(session, source, rec, existing, digest, connector, http_get)
             else:
                 _upsert_reference(session, source, rec, existing, digest)
 
@@ -149,7 +143,7 @@ def _upsert_reference(session, source, rec: HarvestedRecord, existing, digest: s
     harvest_repo.update_record(session, existing, content_hash=digest, harvested_at=_now(), is_stale=False)
 
 
-def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, items_fetcher) -> None:
+def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, connector, http_get) -> None:
     if existing is not None:
         # v0 : un contenu déjà copié n'est jamais ré-importé — le pipeline
         # SP-6 (run_import) ne sait que CRÉER une nouvelle collection, jamais
@@ -167,7 +161,13 @@ def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, i
         )
         return
 
-    content = items_fetcher(rec.items_url)
+    content = connector.fetch_copy_geojson(rec, http_get=http_get)
+    if content is None:
+        logger.warning(
+            "harvest source %s: connecteur sans contenu copiable pour %s, ignoré",
+            source.id, rec.external_id,
+        )
+        return
     result = run_import(
         session, tenant_id=source.tenant_id, created_by=source.owner_id,
         filename="harvest.geojson", content=content, collection_title=rec.title,

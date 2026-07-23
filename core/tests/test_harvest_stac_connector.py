@@ -3,6 +3,7 @@ import httpx
 import pytest
 
 from app.harvest.connectors import get_connector
+from app.harvest.connectors.base import HarvestedRecord
 from app.harvest.connectors.stac import StacConnector
 
 API_COLLECTIONS = {
@@ -213,3 +214,61 @@ def test_get_connector_returns_stac_connector():
 def test_get_connector_unknown_type_raises():
     with pytest.raises(ValueError):
         get_connector("arcgis-fs")
+
+
+def test_stac_fetch_copy_geojson_single_get_returns_bytes():
+    calls = []
+
+    def http_get(url: str) -> httpx.Response:
+        calls.append(url)
+        return httpx.Response(200, content=b'{"type":"FeatureCollection","features":[]}')
+
+    rec = HarvestedRecord(
+        external_id="c", title="C", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="https://stac.example.com/collections/c",
+        items_url="https://stac.example.com/collections/c/items",
+    )
+    content = StacConnector().fetch_copy_geojson(rec, http_get=http_get)
+    assert content == b'{"type":"FeatureCollection","features":[]}'
+    assert calls == ["https://stac.example.com/collections/c/items"]
+
+
+def test_stac_fetch_copy_geojson_none_when_no_items_url():
+    rec = HarvestedRecord(
+        external_id="c", title="C", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="https://stac.example.com/collections/c", items_url=None,
+    )
+    called = []
+    assert StacConnector().fetch_copy_geojson(rec, http_get=lambda u: called.append(u)) is None
+    assert called == []
+
+
+def test_stac_walk_caps_total_documents():
+    # Un catalogue en éventail large : un Catalog racine liant plus de
+    # _MAX_DOCUMENTS enfants Collection. _MAX_DOCUMENTS borne le nombre total
+    # de GET, arrêt propre au plafond (§4.1).
+    from app.harvest.connectors.stac import _MAX_DOCUMENTS
+
+    n_children = _MAX_DOCUMENTS + 50
+    root = {
+        "type": "Catalog", "id": "root",
+        "links": [
+            {"rel": "child", "href": f"https://stac.example.com/c{i}.json"}
+            for i in range(n_children)
+        ],
+    }
+    seen = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["count"] += 1
+        url = str(request.url)
+        if url.endswith("root.json"):
+            return httpx.Response(200, json=root)
+        cid = url.rsplit("/", 1)[-1].removesuffix(".json")
+        return httpx.Response(200, json={
+            "type": "Collection", "id": cid, "title": cid,
+            "links": [{"rel": "self", "href": url}],
+        })
+
+    list(_connector(handler).fetch("https://stac.example.com/root.json"))
+    assert seen["count"] <= _MAX_DOCUMENTS

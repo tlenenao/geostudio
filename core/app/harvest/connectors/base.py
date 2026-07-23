@@ -3,6 +3,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
+import httpx
+
 
 @dataclass(frozen=True)
 class HarvestedRecord:
@@ -20,3 +22,14 @@ class HarvestConnector(Protocol):
     supports_copy: bool
 
     def fetch(self, url: str) -> Iterable[HarvestedRecord]: ...
+
+    def fetch_copy_geojson(
+        self, record: HarvestedRecord, *, http_get: "HttpGet"
+    ) -> bytes | None: ...
+
+
+# Getter HTTP gardé injecté par le moteur (egress.guarded_get en prod, un fake
+# retournant des httpx.Response en test). Lève EgressBlockedError sur cible
+# interne — non capturé par les connecteurs, propagé jusqu'au moteur.
+class HttpGet(Protocol):
+    def __call__(self, url: str) -> httpx.Response: ...
