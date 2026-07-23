@@ -111,3 +111,24 @@ test("delete removes the source from the list", async () => {
   await waitFor(() => expect(deleted).toBe(true));
   await waitFor(() => expect(screen.queryByText("https://a")).not.toBeInTheDocument());
 });
+
+test("masque les boutons d'écriture en mode démo (read-only)", async () => {
+  mockAdmin();
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [{
+          id: "s1", type: "stac", url: "https://stac/x", mode: "reference",
+          enabled: true, intervalMinutes: null, lastRunAt: null, lastStatus: "ok", lastError: null,
+        }],
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("https://stac/x");
+  expect(screen.queryByRole("button", { name: "Ajouter une source" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Moissonner maintenant" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Éditer" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Supprimer" })).toBeNull();
+});
