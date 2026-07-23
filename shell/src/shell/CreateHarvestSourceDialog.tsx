@@ -13,6 +13,8 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
   const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
+  const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs"];
+  const copyAllowed = COPY_TYPES.includes(type);
 
   function close() {
     setType("stac");
@@ -42,10 +44,17 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             aria-label="Type"
             className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
             value={type}
-            onChange={(e) => setType(e.target.value as HarvestSourceType)}
+            onChange={(e) => {
+              const next = e.target.value as HarvestSourceType;
+              setType(next);
+              if (!["stac", "arcgis", "wfs"].includes(next)) setMode("reference");
+            }}
           >
             <option value="stac">STAC</option>
             <option value="arcgis">ArcGIS Feature Service</option>
+            <option value="wms">WMS</option>
+            <option value="wfs">WFS</option>
+            <option value="wmts">WMTS</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -61,7 +70,9 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
           >
             <option value="reference">Référence</option>
-            <option value="copy">Copie</option>
+            <option value="copy" disabled={!copyAllowed}>
+              Copie
+            </option>
           </select>
         </label>
         {createSource.isError && (
