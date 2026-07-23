@@ -1153,9 +1153,9 @@ export interface components {
             mode: "reference" | "copy";
             /**
              * Type
-             * @constant
+             * @enum {string}
              */
-            type: "stac";
+            type: "stac" | "arcgis";
             /** Url */
             url: string;
         };
