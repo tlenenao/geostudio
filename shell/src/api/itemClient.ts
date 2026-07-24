@@ -175,6 +175,22 @@ export function createItemClient(opts: {
     }));
   }
 
+  async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
+    const token = getToken();
+    const query = q ? `?q=${encodeURIComponent(q)}` : "";
+    const res = await fetch(`${coreUrl}/harvest/layers${query}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
+    const data = (await res.json()) as {
+      layers?: { id: string; title: string; kind: "raster"; tilesUrl: string }[];
+    };
+    return (data.layers ?? []).map((l) => ({
+      id: l.id, title: l.title, service: "external" as const, kind: "raster" as const,
+      tilesUrl: l.tilesUrl,
+    }));
+  }
+
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
@@ -305,6 +321,7 @@ export function createItemClient(opts: {
       const results = await Promise.allSettled([
         fetchMartinSources(params?.q),
         fetchCoreCollections(params?.q),
+        fetchExternalRasterSources(params?.q),
       ]);
       const fulfilled = results.filter(
         (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",

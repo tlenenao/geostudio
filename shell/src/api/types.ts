@@ -66,8 +66,8 @@ export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[
 export type LayerSource = {
   id: string;
   title: string;
-  service: "martin" | "core";
-  kind: "vector" | "feature";
+  service: "martin" | "core" | "external";
+  kind: "vector" | "feature" | "raster";
   tilesUrl?: string;
   sourceLayer?: string;
   url?: string;
@@ -261,7 +261,7 @@ export type CollectionPatchInput = {
   editable?: boolean;
 };
 
-export type HarvestSourceType = "stac" | "arcgis";
+export type HarvestSourceType = "stac" | "arcgis" | "wms" | "wfs" | "wmts";
 export type HarvestSourceMode = "reference" | "copy";
 export type HarvestSourceStatus = "running" | "ok" | "error" | null;
 

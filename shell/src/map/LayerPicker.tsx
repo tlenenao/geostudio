@@ -15,6 +15,16 @@ function toMapLayer(source: LayerSource): MapLayer {
       sourceLayer: source.sourceLayer ?? "",
     };
   }
+  if (source.kind === "raster") {
+    return {
+      id,
+      title: source.title,
+      visible: true,
+      kind: "raster",
+      tilesUrl: source.tilesUrl ?? "",
+      opacity: 1,
+    };
+  }
   return { id, title: source.title, visible: true, kind: "feature", url: source.url ?? "" };
 }
 

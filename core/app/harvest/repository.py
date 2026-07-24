@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.harvest.models import HarvestRecord, HarvestSource
+from app.items.models import Item
 
 
 def _now() -> datetime:
@@ -79,11 +80,14 @@ def get_record(
 def create_record(
     session: Session, *, tenant_id: str, source_id: str, external_id: str,
     item_id: str | None, collection_id: str | None, content_hash: str | None,
+    external_url: str | None = None, tiles_url: str | None = None,
+    layer_kind: str | None = None,
 ) -> HarvestRecord:
     record = HarvestRecord(
         id=uuid.uuid4().hex, tenant_id=tenant_id, source_id=source_id,
         external_id=external_id, item_id=item_id, collection_id=collection_id,
-        content_hash=content_hash,
+        content_hash=content_hash, external_url=external_url, tiles_url=tiles_url,
+        layer_kind=layer_kind,
     )
     session.add(record)
     session.flush()
@@ -109,6 +113,20 @@ def mark_missing_as_stale(
         if record.external_id not in seen_external_ids and not record.is_stale:
             record.is_stale = True
     session.flush()
+
+
+def list_layer_records(session: Session, *, tenant_id: str, q: str | None = None):
+    stmt = (
+        select(HarvestRecord.item_id, Item.title, HarvestRecord.tiles_url, HarvestRecord.layer_kind)
+        .join(Item, Item.id == HarvestRecord.item_id)
+        .where(
+            HarvestRecord.tenant_id == tenant_id,
+            HarvestRecord.tiles_url.is_not(None),
+        )
+    )
+    if q:
+        stmt = stmt.where(Item.title.ilike(f"%{q}%"))
+    return list(session.execute(stmt).all())
 
 
 def list_due_sources(session: Session) -> list[HarvestSource]:

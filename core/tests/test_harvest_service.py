@@ -24,6 +24,13 @@ RECORD_B = HarvestedRecord(
     bbox=[-180.0, -90.0, 180.0, 90.0],
     external_url="https://stac.example.com/collections/roads", items_url=None,
 )
+RASTER_REC = HarvestedRecord(
+    external_id="wms#topp:states", title="USA", abstract="", keywords=[],
+    bbox=[-124.7, 24.9, -66.9, 49.4],
+    external_url="https://ows.example.com/wms?request=GetCapabilities",
+    items_url=None,
+    raster_tiles_url="https://ows.example.com/wms?service=WMS&request=GetMap&layers=topp:states&bbox={bbox-epsg-3857}",
+)
 
 
 @pytest.fixture()
@@ -77,6 +84,22 @@ def test_reference_mode_first_harvest_creates_external_items(session, tenant_and
     assert item.title == "Bâtiments"
     assert item.keywords == ["bati"]
     assert item.isPublished is False
+
+
+def test_reference_persists_tiles_url_and_layer_kind(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([RASTER_REC]))
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="wms",
+        url="https://ows.example.com/wms", mode="reference", enabled=True, interval_minutes=None,
+    )
+    session.commit()
+    service.harvest_source(session, source)
+    assert source.last_status == "ok"
+    rec = harvest_repo.get_record(session, tenant_id=tenant.id, source_id=source.id, external_id="wms#topp:states")
+    assert rec.tiles_url == RASTER_REC.raster_tiles_url
+    assert rec.layer_kind == "raster"
+    assert rec.external_url == RASTER_REC.external_url
 
 
 def test_reference_mode_reharvest_updates_without_duplicating(session, tenant_and_user, monkeypatch):
