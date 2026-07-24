@@ -173,8 +173,6 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   résiduel DNS-rebinding TOCTOU sur la garde egress (pinning-IP différé).
 - Tags d'images Docker `pgbouncer`/`martin`/`titiler` à repinner si dérive ;
   documenter dans `.env.example`.
-- Service `worker` en boucle de redémarrage sous profil observability
-  (`schema --apply && worker` non idempotent) — à traiter en session dédiée.
 - Volume `pg-data` du projet compose par défaut cassé (`alembic_version` jamais
   stampée) — réparation non destructive hors périmètre.
 - Questions produit ouvertes : Q2 (premiers utilisateurs réels), Q10 (temps

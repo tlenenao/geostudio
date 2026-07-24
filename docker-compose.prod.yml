@@ -1,0 +1,148 @@
+# Surcouche prod (SP-Deploy) — appliquée par-dessus docker-compose.yml :
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Différences avec le compose de dev : images depuis GHCR (au lieu de
+# `build:`), tunnel sortant (aucun port hôte publié), Traefik sans ACME (le
+# TLS est terminé au bord du tunnel — cf. service `tunnel`, Task 5), nom
+# d'hôte public unique `GEOSTUDIO_PUBLIC_HOST` (cf. Task 3).
+
+volumes:
+  tailscale-state:
+
+services:
+
+  postgis:
+    image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:-latest}
+    restart: unless-stopped
+
+  pgbouncer:
+    restart: unless-stopped
+
+  minio:
+    restart: unless-stopped
+    ports: !reset []
+
+  martin:
+    restart: unless-stopped
+    ports: !reset []
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.martin.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/tiles`)
+      - traefik.http.routers.martin.entrypoints=web
+      - traefik.http.routers.martin.priority=15
+      - traefik.http.routers.martin.middlewares=strip-tiles@docker
+      - traefik.http.services.martin.loadbalancer.server.port=3000
+      - traefik.http.middlewares.strip-tiles.stripprefix.prefixes=/tiles
+
+  titiler:
+    restart: unless-stopped
+    ports: !reset []
+
+  keycloak:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      GEOSTUDIO_PUBLIC_HOST: ${GEOSTUDIO_PUBLIC_HOST}
+      KC_HOSTNAME: https://${GEOSTUDIO_PUBLIC_HOST}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY_HEADERS: xforwarded
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        mkdir -p /opt/keycloak/data/import &&
+        sed 's#http://localhost:8300#https://'"$$GEOSTUDIO_PUBLIC_HOST"'#g'
+        /opt/keycloak/data/import-src/geostudio-realm.json
+        > /opt/keycloak/data/import/geostudio-realm.json &&
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm
+    volumes: !override
+      - keycloak-data:/opt/keycloak/data
+      - ./deploy/keycloak/geostudio-realm.json:/opt/keycloak/data/import-src/geostudio-realm.json:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.keycloak.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/auth`)
+      - traefik.http.routers.keycloak.entrypoints=web
+      - traefik.http.routers.keycloak.priority=20
+      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+    # KC_HTTP_RELATIVE_PATH=/auth déplace tout le service HTTP de Keycloak
+    # (y compris /health/ready) sous /auth ; le healthcheck de base
+    # (docker-compose.yml) sonde la racine et rapporte donc "unhealthy" en
+    # permanence malgré un Keycloak fonctionnel (défaut trouvé en Task 6).
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  core:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    ports: !reset []
+    environment:
+      CORE_AUTH_MODE: oidc
+      CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
+      CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
+      CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.core.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/api`)
+      - traefik.http.routers.core.entrypoints=web
+      - traefik.http.routers.core.priority=10
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker
+      - traefik.http.services.core.loadbalancer.server.port=8200
+      - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
+      - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers.headers.frameDeny=true
+      - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.rate-limit.ratelimit.average=100
+      - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+
+  # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
+  # `build: ./core` pour les trois, processus séparés par `command:`) —
+  # release.yml ne construit que core/shell/postgis (matrice
+  # build-and-push), donc ces deux services réutilisent geostudio-core.
+  worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  cdc-worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  shell:
+    image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
+    ports: !reset []
+    environment:
+      VITE_CORE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      VITE_MARTIN_URL: https://${GEOSTUDIO_PUBLIC_HOST}/tiles
+      VITE_OIDC_AUTHORITY: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
+      VITE_OIDC_CLIENT_ID: geostudio-shell
+      VITE_OIDC_REDIRECT_URI: https://${GEOSTUDIO_PUBLIC_HOST}/
+      VITE_AUTH_MODE: oidc
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.shell.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`)
+      - traefik.http.routers.shell.entrypoints=web
+      - traefik.http.routers.shell.priority=1
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.services.shell.loadbalancer.server.port=8300
+
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports: !reset []
+    volumes: !override
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  tunnel:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    network_mode: service:traefik
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_HOSTNAME: geostudio
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    depends_on:
+      traefik:
+        condition: service_started

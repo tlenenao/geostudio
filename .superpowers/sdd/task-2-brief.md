@@ -1,107 +1,119 @@
-## Task 2: `service.py` — extension du pipeline de copie partagé
+### Task 2 : `docker-compose.prod.yml` — squelette (images GHCR, restart, Traefik sans ACME)
 
 **Files:**
-- Modify: `core/app/harvest/service.py`
-- Modify: `core/tests/test_harvest_service.py`
+- Create: `docker-compose.prod.yml`
+- Modify: `.env.example` (nouvelle section « Déploiement prod »)
 
 **Interfaces:**
-- Consumes : `HarvestedRecord.copy_filename` (Task 1).
-- Produces : `_upsert_copy` transmet `rec.copy_filename or "harvest.geojson"`
-  à `run_import(..., filename=...)`, consommé par la Task 3 (`CkanConnector`,
-  via le moteur de moissonnage réel).
+- Consumes: `docker-compose.yml` (base, inchangé par cette tâche) ; images `ghcr.io/tlenenao/geostudio-{core,shell,postgis}` déjà publiées par `.github/workflows/release.yml` sur tag `vX.Y.Z`.
+- Produces: `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` valide ; variable `GEOSTUDIO_VERSION` (défaut `latest`) pilotant le tag des 3 images ; base pour les Tasks 3/5 qui étendent ce même fichier.
 
-- [ ] **Step 1: Ajouter les tests (RED)**
+**Contexte vérifié en lisant le code :**
+- Seuls `core`, `shell`, `postgis` sont construits/poussés par `release.yml` (matrice `build-and-push`) — `pgbouncer`/`minio`/`martin`/`titiler`/`keycloak` restent les images upstream déjà épinglées dans `docker-compose.yml`, **inchangées** par cet override.
+- `docker-compose.yml` service `traefik` (fin de fichier) a pour `command:` : `--providers.docker=true`, `--providers.docker.exposedbydefault=false`, `--entrypoints.web.address=:80`, `--entrypoints.websecure.address=:443`, 3 lignes `--certificatesresolvers.letsencrypt...`, et `ports: ["80:80", "443:443"]`, `volumes: [.../docker.sock:ro, ./certs:/certs]` — `command`/`ports`/`volumes` sont des champs **liste** : un override qui les redéfinit les **remplace entièrement** (pas de fusion), donc il faut réécrire la version prod complète ici, pas seulement la différence.
+- Tous les `labels:` Traefik des services `core`/`shell` (mêmes docker-compose.yml) sont aussi en forme liste — remplacés en entier dans la Task 3 (host + entrypoint changent tous les deux, sans quoi la fusion partielle laisserait `entrypoints=websecure` cohabiter avec une route `web`).
 
-Ajouter à `core/tests/test_harvest_service.py`, après l'import existant
-`from app.harvest.connectors.base import HarvestedRecord` (ligne 10) :
+- [ ] **Step 1: Ajouter la section prod à `.env.example`**
 
-```python
-from app.ingestion.importer import ImportResult
-```
-
-Ajouter à la fin du fichier :
-
-```python
-def test_upsert_copy_passes_copy_filename_to_run_import(session, tenant_and_user, monkeypatch):
-    tenant, user = tenant_and_user
-    fake_run_import = Mock(return_value=ImportResult(collection_id="c1", item_id="i1"))
-    monkeypatch.setattr(service, "run_import", fake_run_import)
-    source = harvest_repo.create_source(
-        session, tenant_id=tenant.id, owner_id=user.id, type="ckan",
-        url="https://data.example.com", mode="copy", enabled=True, interval_minutes=None,
-    )
-    session.commit()
-    rec = HarvestedRecord(
-        external_id="pkg-1", title="Sentiers", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="https://data.example.com/dataset/pkg-1",
-        items_url="https://data.example.com/dataset/pkg-1/resource/x.gpkg",
-        copy_filename="harvest.gpkg",
-    )
-    connector = _fake_connector([rec], copy_bytes=b"gpkg-bytes")
-    service._upsert_copy(
-        session, source, rec, existing=None, digest="d1", connector=connector, http_get=lambda u: None,
-    )
-    assert fake_run_import.call_args.kwargs["filename"] == "harvest.gpkg"
-
-
-def test_upsert_copy_defaults_filename_when_copy_filename_is_none(session, tenant_and_user, monkeypatch):
-    # Régression : STAC/ArcGIS ne renseignent jamais copy_filename (défaut
-    # None) — le littéral "harvest.geojson" doit rester inchangé pour eux.
-    tenant, user = tenant_and_user
-    fake_run_import = Mock(return_value=ImportResult(collection_id="c2", item_id="i2"))
-    monkeypatch.setattr(service, "run_import", fake_run_import)
-    source = harvest_repo.create_source(
-        session, tenant_id=tenant.id, owner_id=user.id, type="stac",
-        url="https://a", mode="copy", enabled=True, interval_minutes=None,
-    )
-    session.commit()
-    connector = _fake_connector([RECORD_A], copy_bytes=b"geojson-bytes")
-    service._upsert_copy(
-        session, source, RECORD_A, existing=None, digest="d2", connector=connector, http_get=lambda u: None,
-    )
-    assert fake_run_import.call_args.kwargs["filename"] == "harvest.geojson"
-```
-
-- [ ] **Step 2: Lancer les tests, vérifier l'échec**
-
-Run: `cd core && uv run pytest tests/test_harvest_service.py -k "copy_filename" -v`
-Expected: `test_upsert_copy_passes_copy_filename_to_run_import` FAIL (le code
-actuel appelle toujours `run_import` avec `filename="harvest.geojson"` codé
-en dur, jamais `"harvest.gpkg"`) ; `test_upsert_copy_defaults_filename_when_copy_filename_is_none`
-PASS déjà (comportement actuel = comportement attendu pour ce cas).
-
-- [ ] **Step 3: Modifier `_upsert_copy`**
-
-Dans `core/app/harvest/service.py`, remplacer (ligne 183-187) :
-
-```python
-    result = run_import(
-        session, tenant_id=source.tenant_id, created_by=source.owner_id,
-        filename="harvest.geojson", content=content, collection_title=rec.title,
-        lat_field=None, lon_field=None,
-    )
-```
-
-par :
-
-```python
-    result = run_import(
-        session, tenant_id=source.tenant_id, created_by=source.owner_id,
-        filename=rec.copy_filename or "harvest.geojson", content=content, collection_title=rec.title,
-        lat_field=None, lon_field=None,
-    )
-```
-
-- [ ] **Step 4: Lancer les tests, vérifier le succès**
-
-Run: `cd core && uv run pytest tests/test_harvest_service.py -v`
-Expected: PASS (tous les tests service, y compris les 2 nouveaux)
-
-- [ ] **Step 5: Commit**
+Ajouter à la fin de `.env.example` :
 
 ```bash
-git add core/app/harvest/service.py core/tests/test_harvest_service.py
-git commit -m "feat(core): _upsert_copy respecte HarvestedRecord.copy_filename (SP-12g)"
+# ─── Déploiement prod (SP-Deploy, docker-compose.prod.yml) ────
+# Nom d'hôte public unique — source de vérité pour Keycloak (issuer,
+# redirect_uri), le cœur (OIDC), le shell (API/tuiles) et Traefik (routage).
+# Changer cette seule ligne + redémarrer les services concernés (jamais de
+# `docker compose build`) suffit pour basculer d'un hôte à l'autre — ex.
+# `machine.tailnet.ts.net` → `geostudio.tondomaine.fr`.
+GEOSTUDIO_PUBLIC_HOST=changez-moi.exemple.ts.net
+# Tag des images ghcr.io/tlenenao/geostudio-{core,shell,postgis} à déployer.
+GEOSTUDIO_VERSION=latest
+```
+
+- [ ] **Step 2: Créer `docker-compose.prod.yml` — squelette Traefik + images + restart**
+
+Créer `docker-compose.prod.yml` :
+
+```yaml
+# Surcouche prod (SP-Deploy) — appliquée par-dessus docker-compose.yml :
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Différences avec le compose de dev : images depuis GHCR (au lieu de
+# `build:`), tunnel sortant (aucun port hôte publié), Traefik sans ACME (le
+# TLS est terminé au bord du tunnel — cf. service `tunnel`, Task 5), nom
+# d'hôte public unique `GEOSTUDIO_PUBLIC_HOST` (cf. Task 3).
+services:
+
+  postgis:
+    restart: unless-stopped
+
+  pgbouncer:
+    restart: unless-stopped
+
+  minio:
+    restart: unless-stopped
+    ports: []
+
+  martin:
+    restart: unless-stopped
+    ports: []
+
+  titiler:
+    restart: unless-stopped
+    ports: []
+
+  keycloak:
+    restart: unless-stopped
+    ports: []
+
+  core:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    ports: []
+
+  # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
+  # `build: ./core` pour les trois, processus séparés par `command:`) —
+  # release.yml ne construit que core/shell/postgis (matrice
+  # build-and-push), donc ces deux services réutilisent geostudio-core.
+  worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  cdc-worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  shell:
+    image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
+    ports: []
+
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports: []
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+Notes :
+- `worker`/`cdc-worker` pointent vers `geostudio-core` (pas des images dédiées) : le `command:` de chacun, déjà défini dans `docker-compose.yml`, reste hérité tel quel, l'override ne touchant que `image:`.
+- `traefik` perd son entrypoint `websecure` et ses 3 flags `--certificatesresolvers.letsencrypt...` : plus d'ACME en prod (TLS terminé par le tunnel, Task 5) — et perd le volume `./certs:/certs` (plus utile sans ACME).
+- Tous les `ports: []` : aucun port hôte publié — seul le sidecar `tunnel` (Task 5) rendra la stack joignable depuis l'extérieur.
+
+- [ ] **Step 3: Valider la syntaxe (sans `GEOSTUDIO_PUBLIC_HOST` défini pour l'instant — Task 3 l'introduit)**
+
+```bash
+./scripts/bootstrap-env.sh
+echo "GEOSTUDIO_PUBLIC_HOST=test.ts.net" >> .env
+echo "GEOSTUDIO_VERSION=latest" >> .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config >/dev/null && echo "compose prod OK"
+rm -f .env
+```
+
+Expected: `compose prod OK`. (`GEOSTUDIO_PUBLIC_HOST` n'est encore utilisée nulle part dans ce fichier — la Task 3 l'introduit dans les `environment:`/`labels:` — cette étape ne valide donc que la syntaxe YAML + le remplacement des images/ports/command, pas encore l'interpolation de la variable.)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docker-compose.prod.yml .env.example
+git commit -m "feat(deploy): squelette docker-compose.prod.yml (images GHCR, Traefik sans ACME)"
 ```
 
 ---
