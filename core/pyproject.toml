@@ -24,6 +24,7 @@ dependencies = [
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
+    "defusedxml>=0.7",  # SP-12e : parsing XML sûr (XXE + billion-laughs) des GetCapabilities OGC
     "geopandas>=0.14",  # SP-11a : GeoDataFrame.to_parquet gère nativement les
                         # métadonnées GeoParquet 1.0 ; s'appuie sur shapely,
                         # déjà présent.

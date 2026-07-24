@@ -238,6 +238,17 @@ export async function mockCore(page: Page) {
     await route.fulfill({ json: { collections } });
   });
 
+  // Cœur couches raster externes (SP-12e) — LayerPicker 3ᵉ source. Défaut vide :
+  // toute spec pré-existante (qui ne moissonne aucune couche raster) se comporte
+  // comme avant. La spec harvest-wms surcharge cette route.
+  await page.route("https://core.test/harvest/layers*", async (route) => {
+    const url = new URL(route.request().url());
+    const q = url.searchParams.get("q");
+    const all = [] as { id: string; title: string; kind: "raster"; tilesUrl: string }[];
+    const layers = q ? all.filter((l) => l.title.toLowerCase().includes(q.toLowerCase())) : all;
+    await route.fulfill({ json: { layers } });
+  });
+
   // Cœur items for the "villes" collection — used by regular (non-statistics) data sources.
   await page.route("**/collections/villes/items*", async (route) => {
     await route.fulfill({

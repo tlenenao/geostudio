@@ -14,6 +14,8 @@ const sources: LayerSource[] = [
     url: "https://core.test/collections/public.parcs/items", featureCount: 128 },
   { id: "public.legacy", title: "Legacy", service: "core", kind: "feature",
     url: "https://core.test/collections/public.legacy/items", featureCount: null },
+  { id: "ext-ortho", title: "Orthophoto (WMS)", service: "external", kind: "raster",
+    tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}" },
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
@@ -56,6 +58,19 @@ test("emits a feature MapLayer for a core source", async () => {
     title: "Parcs",
     visible: true,
     url: "https://core.test/collections/public.parcs/items",
+  });
+});
+
+test("emits a raster MapLayer for an external source", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  await userEvent.click(await screen.findByRole("button", { name: /Orthophoto \(WMS\)/ }));
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "raster",
+    title: "Orthophoto (WMS)",
+    visible: true,
+    tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}",
   });
 });
 

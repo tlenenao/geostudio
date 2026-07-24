@@ -15,6 +15,7 @@ class HarvestedRecord:
     bbox: list[float]
     external_url: str
     items_url: str | None
+    raster_tiles_url: str | None = None
 
 
 class HarvestConnector(Protocol):
