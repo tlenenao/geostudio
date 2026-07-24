@@ -11,6 +11,7 @@ volumes:
 services:
 
   postgis:
+    image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:-latest}
     restart: unless-stopped
 
   pgbouncer:
