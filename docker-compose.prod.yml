@@ -4,6 +4,10 @@
 # `build:`), tunnel sortant (aucun port hôte publié), Traefik sans ACME (le
 # TLS est terminé au bord du tunnel — cf. service `tunnel`, Task 5), nom
 # d'hôte public unique `GEOSTUDIO_PUBLIC_HOST` (cf. Task 3).
+
+volumes:
+  tailscale-state:
+
 services:
 
   postgis:
@@ -117,3 +121,17 @@ services:
     ports: !reset []
     volumes: !override
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  tunnel:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    network_mode: service:traefik
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_HOSTNAME: geostudio
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    depends_on:
+      traefik:
+        condition: service_started
