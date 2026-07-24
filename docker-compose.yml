@@ -160,7 +160,7 @@ services:
     # le chargement de `app.jobs.app` échoue ("Could not load app from
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
-      sh -c "python -m procrastinate --app app.jobs.app schema --apply &&
+      sh -c "python -m scripts.ensure_procrastinate_schema &&
              python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
