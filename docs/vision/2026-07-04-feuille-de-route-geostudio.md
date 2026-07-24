@@ -595,8 +595,7 @@ où ils sont ».
   secondes) ; ③ CSW/ISO 19139 (GeoNetwork/geOrchestra — parser tolérant,
   champs minimaux) **et son protocole successeur OGC API - Records**
   (extension documentée SP-12f, 2026-07-24) ; ④ **CKAN/data.gouv.fr**
-  (`package_search` paginé, **copie opt-in** — seul connecteur non-STAC/ArcGIS
-  à supporter la copie, SP-12g, 2026-07-24).
+  (`package_search` paginé, **copie opt-in** — formats GeoJSON/GPKG/SHP, SP-12g, 2026-07-24).
 - UI : administration des sources, badge « externe » sur les items, ajout d'une
   couche moissonnée (WMS/WFS) à une carte sans copie.
 
