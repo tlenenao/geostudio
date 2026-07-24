@@ -1,276 +1,551 @@
-### Task 1: `items` table, migration, layering, and cascade-safe deletion plumbing
+## Task 1: Connecteur CSW (`CswConnector`)
 
 **Files:**
-- Create: `core/app/items/__init__.py`, `core/app/items/models.py`
-- Create: `core/alembic/versions/0005_items.py`
-- Modify: `core/alembic/env.py`
-- Modify: `core/app/db.py` (SQLite FK enforcement)
-- Modify: `core/app/configs/models.py` (`item_id` becomes a real FK)
-- Modify: `core/pyproject.toml` (`import-linter` layers)
-- Create: `core/tests/test_items_models.py`
-- Modify: `core/tests/test_configs_models.py` (or wherever `Config`/`item_id` is constructed in tests — see Step 6)
+- Create: `core/app/harvest/connectors/csw.py`
+- Test: `core/tests/test_harvest_csw_connector.py`
 
 **Interfaces:**
-- Consumes: `app.db.Base`, `app.tenants.models.Tenant` (FK target only), `app.users.models.User` (FK target only).
-- Produces: `app.items.models.Item` with columns `id`, `tenant_id`, `owner_id`, `resource_type`, `title`, `abstract`, `keywords`, `thumbnail_key`, `is_published`, `created_at`, `updated_at`. `core/app/configs/models.py`'s `Config.item_id` becomes `Mapped[str]` (no longer `str | None`), a real FK with `ondelete="CASCADE"`.
+- Consumes : `app.harvest.connectors.ows` (`parse_capabilities`, `local`,
+  `children`, `child`, `child_text`, `descendants`, `_DEFAULT_TIMEOUT_SECONDS`,
+  `_WORLD_BBOX`) ; `app.harvest.connectors.base.HarvestedRecord` ;
+  `app.harvest.egress.build_guarded_client` (import différé, comme les autres
+  connecteurs).
+- Produces : classe `CswConnector` (`type = "csw"`, `supports_copy = False`,
+  `fetch(url) -> Iterable[HarvestedRecord]`,
+  `fetch_copy_geojson(record, *, http_get) -> None`), consommée par la Task 3
+  (registre) et les tests E2E (Task 5).
 
-- [ ] **Step 1: Write the failing test for the `Item` model**
+- [ ] **Step 1: Écrire le fichier de tests (RED)**
 
-`core/tests/test_items_models.py`:
+Créer `core/tests/test_harvest_csw_connector.py` :
+
 ```python
-from sqlalchemy import select
+# SPDX-License-Identifier: Apache-2.0
+import httpx
 
-from app.db import Base, make_engine, make_session_factory, init_db
-from app.items.models import Item
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.csw import CswConnector
+
+CSW_BASE = "https://geonetwork.example.com/geonetwork/srv/eng/csw"
+
+ISO_PAGE_1 = b"""<?xml version="1.0" encoding="UTF-8"?>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+    xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">
+  <csw:SearchStatus timestamp="2026-07-24T10:00:00Z"/>
+  <csw:SearchResults numberOfRecordsMatched="1" numberOfRecordsReturned="1" nextRecord="0" recordSchema="http://www.isotc211.org/2005/gmd">
+    <gmd:MD_Metadata>
+      <gmd:fileIdentifier><gco:CharacterString>iso-1</gco:CharacterString></gmd:fileIdentifier>
+      <gmd:identificationInfo>
+        <gmd:MD_DataIdentification>
+          <gmd:citation>
+            <gmd:CI_Citation>
+              <gmd:title><gco:CharacterString>Batiments</gco:CharacterString></gmd:title>
+            </gmd:CI_Citation>
+          </gmd:citation>
+          <gmd:abstract><gco:CharacterString>Empreintes de batiments</gco:CharacterString></gmd:abstract>
+          <gmd:descriptiveKeywords>
+            <gmd:MD_Keywords>
+              <gmd:keyword><gco:CharacterString>bati</gco:CharacterString></gmd:keyword>
+              <gmd:keyword><gco:CharacterString>urbain</gco:CharacterString></gmd:keyword>
+            </gmd:MD_Keywords>
+          </gmd:descriptiveKeywords>
+          <gmd:extent>
+            <gmd:EX_Extent>
+              <gmd:geographicElement>
+                <gmd:EX_GeographicBoundingBox>
+                  <gmd:westBoundLongitude><gco:Decimal>1.0</gco:Decimal></gmd:westBoundLongitude>
+                  <gmd:eastBoundLongitude><gco:Decimal>2.0</gco:Decimal></gmd:eastBoundLongitude>
+                  <gmd:southBoundLatitude><gco:Decimal>45.0</gco:Decimal></gmd:southBoundLatitude>
+                  <gmd:northBoundLatitude><gco:Decimal>46.0</gco:Decimal></gmd:northBoundLatitude>
+                </gmd:EX_GeographicBoundingBox>
+              </gmd:geographicElement>
+            </gmd:EX_Extent>
+          </gmd:extent>
+        </gmd:MD_DataIdentification>
+      </gmd:identificationInfo>
+    </gmd:MD_Metadata>
+  </csw:SearchResults>
+</csw:GetRecordsResponse>"""
+
+ISO_NO_BBOX = b"""<?xml version="1.0" encoding="UTF-8"?>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+    xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">
+  <csw:SearchResults numberOfRecordsMatched="1" numberOfRecordsReturned="1" nextRecord="0">
+    <gmd:MD_Metadata>
+      <gmd:fileIdentifier><gco:CharacterString>iso-nobbox</gco:CharacterString></gmd:fileIdentifier>
+    </gmd:MD_Metadata>
+  </csw:SearchResults>
+</csw:GetRecordsResponse>"""
+
+NO_ID_PAGE = b"""<?xml version="1.0" encoding="UTF-8"?>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+    xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">
+  <csw:SearchResults numberOfRecordsMatched="1" numberOfRecordsReturned="1" nextRecord="0">
+    <gmd:MD_Metadata>
+      <gmd:identificationInfo>
+        <gmd:MD_DataIdentification>
+          <gmd:citation><gmd:CI_Citation><gmd:title><gco:CharacterString>Sans identifiant</gco:CharacterString></gmd:title></gmd:CI_Citation></gmd:citation>
+        </gmd:MD_DataIdentification>
+      </gmd:identificationInfo>
+    </gmd:MD_Metadata>
+  </csw:SearchResults>
+</csw:GetRecordsResponse>"""
+
+EXCEPTION_REPORT = b"""<?xml version="1.0" encoding="UTF-8"?>
+<ows:ExceptionReport xmlns:ows="http://www.opengis.net/ows" version="1.2.0">
+  <ows:Exception exceptionCode="InvalidParameterValue" locator="outputSchema">
+    <ows:ExceptionText>outputSchema non supporte</ows:ExceptionText>
+  </ows:Exception>
+</ows:ExceptionReport>"""
+
+DC_PAGE_1 = b"""<?xml version="1.0" encoding="UTF-8"?>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+    xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dct="http://purl.org/dc/terms/"
+    xmlns:ows="http://www.opengis.net/ows">
+  <csw:SearchResults numberOfRecordsMatched="1" numberOfRecordsReturned="1" nextRecord="0">
+    <csw:Record>
+      <dc:identifier>dc-1</dc:identifier>
+      <dc:title>Parcelles</dc:title>
+      <dct:abstract>Parcelles cadastrales</dct:abstract>
+      <dc:subject>cadastre</dc:subject>
+      <dc:subject>foncier</dc:subject>
+      <ows:BoundingBox>
+        <ows:LowerCorner>3.0 47.0</ows:LowerCorner>
+        <ows:UpperCorner>4.0 48.0</ows:UpperCorner>
+      </ows:BoundingBox>
+    </csw:Record>
+  </csw:SearchResults>
+</csw:GetRecordsResponse>"""
+
+XXE_BOMB = b"""<?xml version="1.0"?>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"><title>&xxe;</title></csw:GetRecordsResponse>"""
 
 
-def test_can_persist_and_load_item():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
+def _connector(handler) -> CswConnector:
+    return CswConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def _iso_page(identifier: str, next_record: int) -> bytes:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+    xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">
+  <csw:SearchResults numberOfRecordsMatched="2" numberOfRecordsReturned="1" nextRecord="{next_record}">
+    <gmd:MD_Metadata>
+      <gmd:fileIdentifier><gco:CharacterString>{identifier}</gco:CharacterString></gmd:fileIdentifier>
+      <gmd:identificationInfo>
+        <gmd:MD_DataIdentification>
+          <gmd:citation><gmd:CI_Citation><gmd:title><gco:CharacterString>{identifier}-title</gco:CharacterString></gmd:title></gmd:CI_Citation></gmd:citation>
+        </gmd:MD_DataIdentification>
+      </gmd:identificationInfo>
+    </gmd:MD_Metadata>
+  </csw:SearchResults>
+</csw:GetRecordsResponse>""".encode()
+
+
+def test_iso_single_page_extracts_fields():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "outputSchema=http%3A%2F%2Fwww.isotc211.org%2F2005%2Fgmd" in str(request.url)
+        return httpx.Response(200, content=ISO_PAGE_1)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.external_id == "iso-1"
+    assert rec.title == "Batiments"
+    assert rec.abstract == "Empreintes de batiments"
+    assert rec.keywords == ["bati", "urbain"]
+    assert rec.bbox == [1.0, 45.0, 2.0, 46.0]
+    assert rec.items_url is None
+    assert rec.raster_tiles_url is None
+    assert "request=GetRecordById" in rec.external_url
+    assert "id=iso-1" in rec.external_url
+
+
+def test_iso_record_without_bbox_defaults_to_world():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=ISO_NO_BBOX)
+
+    rec = list(_connector(handler).fetch(CSW_BASE))[0]
+    assert rec.title == "iso-nobbox"  # pas de <title> trouve -> repli sur l'identifiant
+    assert rec.bbox == [-180.0, -90.0, 180.0, 90.0]
+
+
+def test_pagination_advances_via_next_record_and_stops_at_zero():
+    def handler(request: httpx.Request) -> httpx.Response:
+        qs = str(request.url)
+        if "startPosition=1" in qs:
+            return httpx.Response(200, content=_iso_page("iso-1", next_record=2))
+        if "startPosition=2" in qs:
+            return httpx.Response(200, content=_iso_page("iso-2", next_record=0))
+        raise AssertionError(f"unexpected page request: {qs}")
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert [r.external_id for r in records] == ["iso-1", "iso-2"]
+
+
+def test_loop_guard_stops_when_next_record_does_not_advance():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        qs = str(request.url)
+        if "startPosition=1" in qs:
+            return httpx.Response(200, content=_iso_page("iso-1", next_record=5))
+        return httpx.Response(200, content=_iso_page("iso-5", next_record=5))  # ne progresse plus
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert calls["n"] == 2
+    assert [r.external_id for r in records] == ["iso-1", "iso-5"]
+
+
+def test_pages_capped_at_max_pages():
+    from app.harvest.connectors.csw import _MAX_CSW_PAGES
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        start = int(str(request.url).split("startPosition=")[1].split("&")[0])
+        return httpx.Response(200, content=_iso_page(f"iso-{start}", next_record=start + 1))
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert calls["n"] <= _MAX_CSW_PAGES
+    assert len(records) == _MAX_CSW_PAGES
+
+
+def test_records_capped_at_max_within_single_page():
+    from app.harvest.connectors.csw import _MAX_CSW_RECORDS
+
+    blocks = "".join(
+        f'<gmd:MD_Metadata><gmd:fileIdentifier><gco:CharacterString>iso-{i}</gco:CharacterString></gmd:fileIdentifier></gmd:MD_Metadata>'
+        for i in range(600)
+    )
+    page = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" '
+        'xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">'
+        '<csw:SearchResults numberOfRecordsMatched="600" numberOfRecordsReturned="600" nextRecord="0">'
+        f"{blocks}"
+        "</csw:SearchResults></csw:GetRecordsResponse>"
+    ).encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=page)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert len(records) == _MAX_CSW_RECORDS
+
+
+def test_exception_report_on_first_page_falls_back_to_dublin_core():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "outputSchema=" in str(request.url):
+            return httpx.Response(200, content=EXCEPTION_REPORT)
+        return httpx.Response(200, content=DC_PAGE_1)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.external_id == "dc-1"
+    assert rec.title == "Parcelles"
+    assert rec.abstract == "Parcelles cadastrales"
+    assert rec.keywords == ["cadastre", "foncier"]
+    assert rec.bbox == [3.0, 47.0, 4.0, 48.0]
+    assert "request=GetRecordById" in rec.external_url
+    assert "outputSchema=" not in rec.external_url
+
+
+def test_malformed_first_page_falls_back_to_dublin_core():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "outputSchema=" in str(request.url):
+            return httpx.Response(200, content=b"<broken")
+        return httpx.Response(200, content=DC_PAGE_1)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert [r.external_id for r in records] == ["dc-1"]
+
+
+def test_xxe_on_first_page_neutralised_and_falls_back_to_dublin_core():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "outputSchema=" in str(request.url):
+            return httpx.Response(200, content=XXE_BOMB)
+        return httpx.Response(200, content=DC_PAGE_1)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert [r.external_id for r in records] == ["dc-1"]
+
+
+def test_both_attempts_fail_returns_empty():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    assert list(_connector(handler).fetch(CSW_BASE)) == []
+
+
+def test_next_page_failure_keeps_partial_results():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "startPosition=1" in str(request.url):
+            return httpx.Response(200, content=_iso_page("iso-1", next_record=2))
+        return httpx.Response(500)
+
+    records = list(_connector(handler).fetch(CSW_BASE))
+    assert [r.external_id for r in records] == ["iso-1"]
+
+
+def test_record_without_identifier_is_skipped():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=NO_ID_PAGE)
+
+    assert list(_connector(handler).fetch(CSW_BASE)) == []
+
+
+def test_fetch_copy_geojson_is_none():
+    rec = HarvestedRecord(
+        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="x", items_url=None,
+    )
+    assert CswConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
+```
+
+- [ ] **Step 2: Lancer les tests, vérifier l'échec**
+
+Run: `cd core && uv run pytest tests/test_harvest_csw_connector.py -v`
+Expected: FAIL avec `ModuleNotFoundError: No module named 'app.harvest.connectors.csw'`
+
+- [ ] **Step 3: Implémenter `CswConnector`**
+
+Créer `core/app/harvest/connectors/csw.py` :
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Connecteur CSW 2.0.2 (SP-12f) — GetRecords paginé en GET-KVP, ISO19139 en
+priorité avec repli Dublin Core si le serveur ne supporte pas l'outputSchema
+ISO (un seul essai, décidé une fois pour tout le fetch). Métadonnées pures :
+jamais de copie, jamais d'ajout carte (items_url et raster_tiles_url toujours
+None). HTTP uniquement, zéro I/O DB, parsing tolérant et borné (ows.py)."""
+import logging
+from collections.abc import Iterable
+from urllib.parse import quote
+
+import httpx
+
+from app.harvest.connectors import ows
+from app.harvest.connectors.base import HarvestedRecord
+
+logger = logging.getLogger(__name__)
+
+_MAX_CSW_RECORDS = 500
+_MAX_CSW_PAGES = 50
+_PAGE_SIZE = 100
+_ISO_OUTPUT_SCHEMA = "http://www.isotc211.org/2005/gmd"
+
+
+class CswConnector:
+    type = "csw"
+    supports_copy = False
+
+    def __init__(self, *, client: httpx.Client | None = None):
+        self._client = client
+
+    def fetch(self, url: str) -> Iterable[HarvestedRecord]:
+        from app.harvest.egress import build_guarded_client
+
+        client = self._client or build_guarded_client(ows._DEFAULT_TIMEOUT_SECONDS)
+        owns_client = self._client is None
+        try:
+            return self._fetch(client, url)
+        finally:
+            if owns_client:
+                client.close()
+
+    def fetch_copy_geojson(self, record, *, http_get) -> bytes | None:
+        return None  # métadonnées, non copiables (§1 décision 3 de la spec)
+
+    def _first_page(self, client, base_url: str):
+        iso_url = _page_url(base_url, start_position=1, iso=True)
+        root = _fetch_page(client, iso_url)
+        if root is not None and ows.local(root.tag) == "GetRecordsResponse":
+            return root, True
+        dc_url = _page_url(base_url, start_position=1, iso=False)
+        root = _fetch_page(client, dc_url)
+        if root is not None and ows.local(root.tag) == "GetRecordsResponse":
+            return root, False
+        return None, False
+
+    def _fetch(self, client, base_url: str) -> list[HarvestedRecord]:
+        root, iso = self._first_page(client, base_url)
+        if root is None:
+            return []
+        extractor = _extract_iso if iso else _extract_dc
+        records: list[HarvestedRecord] = []
+        start_position = 1
+        pages = 0
+        while True:
+            pages += 1
+            _collect(root, base_url, iso, extractor, records)
+            if len(records) >= _MAX_CSW_RECORDS:
+                break
+            next_record = _next_record(root)
+            if next_record is None or next_record <= start_position:
+                break  # nextRecord=0 (fin) ou n'avance pas (garde-fou de boucle)
+            if pages >= _MAX_CSW_PAGES:
+                logger.warning(
+                    "csw harvest: plafond de %d pages pour %s, tronqué", _MAX_CSW_PAGES, base_url,
+                )
+                break
+            start_position = next_record
+            page_url = _page_url(base_url, start_position=start_position, iso=iso)
+            next_root = _fetch_page(client, page_url)
+            if next_root is None or ows.local(next_root.tag) != "GetRecordsResponse":
+                break  # page suivante illisible : résultat partiel conservé (§3.1)
+            root = next_root
+        return records[:_MAX_CSW_RECORDS]
+
+
+def _fetch_page(client, url: str):
     try:
-        with Session() as session:
-            tenant = get_or_create_default_tenant(session)
-            user = get_or_create_user(
-                session, tenant_id=tenant.id, oidc_sub="sub-1",
-                username="alice", email=None, first_name="", last_name="",
-            )
-            item = Item(
-                id="item-1", tenant_id=tenant.id, owner_id=user.id,
-                resource_type="app", title="My App",
-            )
-            session.add(item)
-            session.commit()
-
-        with Session() as session:
-            loaded = session.scalar(select(Item).where(Item.id == "item-1"))
-            assert loaded is not None
-            assert loaded.title == "My App"
-            assert loaded.abstract == ""
-            assert loaded.keywords == []
-            assert loaded.is_published is False
-            assert loaded.thumbnail_key is None
-    finally:
-        engine.dispose()
+        response = client.get(url, timeout=ows._DEFAULT_TIMEOUT_SECONDS)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("csw harvest: échec de récupération de %s : %s", url, exc)
+        return None
+    return ows.parse_capabilities(response.content)
 
 
-def test_base_metadata_has_items_table():
-    assert "items" in Base.metadata.tables
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd core && uv run pytest tests/test_items_models.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.items'`.
-
-- [ ] **Step 3: Write the model**
-
-`core/app/items/__init__.py`: empty file.
-
-`core/app/items/models.py`:
-```python
-from datetime import datetime, timezone
-
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import JSON
-
-from app.db import Base
+def _collect(root, base_url: str, iso: bool, extractor, records: list[HarvestedRecord]) -> None:
+    search_results = ows.child(root, "SearchResults")
+    if search_results is None:
+        return
+    tag = "MD_Metadata" if iso else "Record"
+    for elem in ows.children(search_results, tag):
+        if len(records) >= _MAX_CSW_RECORDS:
+            return
+        rec = extractor(elem, base_url)
+        if rec is not None:
+            records.append(rec)
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+def _next_record(root) -> int | None:
+    search_results = ows.child(root, "SearchResults")
+    if search_results is None:
+        return None
+    try:
+        return int(search_results.get("nextRecord"))
+    except (TypeError, ValueError):
+        return None
 
 
-class Item(Base):
-    __tablename__ = "items"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    resource_type: Mapped[str] = mapped_column(String, nullable=False)  # "app" | "dashboard" | "map"
-    title: Mapped[str] = mapped_column(String, nullable=False)
-    abstract: Mapped[str] = mapped_column(String, default="")
-    keywords: Mapped[list] = mapped_column(JSON, default=list)
-    thumbnail_key: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
-```
-
-- [ ] **Step 4: Register the model in `init_db()` and `alembic/env.py`**
-
-In `core/app/db.py`'s `init_db()`, add alongside the existing imports:
-```python
-    from app.items import models as items_models  # noqa: F401
-```
-(before `Base.metadata.create_all(engine)`, same pattern as `configs`/`tenants`/`users`/`audit`.)
-
-In `core/alembic/env.py`, add:
-```python
-from app.items import models as items_models  # noqa: F401
-```
-
-- [ ] **Step 5: Enable SQLite foreign-key enforcement (required for the cascade this plan relies on)**
-
-`core/app/db.py` currently has no FK-pragma handling — SQLite ignores `ON DELETE CASCADE` and even basic FK integrity unless `PRAGMA foreign_keys = ON` is set per connection. Add this to `core/app/db.py`, near `make_engine`:
-
-```python
-from sqlalchemy import event
-
-
-def make_engine(url: str) -> Engine:
-    if "memory" in url and url.startswith("sqlite"):
-        engine = create_engine(
-            url,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
+def _page_url(base_url: str, *, start_position: int, iso: bool) -> str:
+    params = ["service=CSW", "version=2.0.2", "request=GetRecords", "resultType=results"]
+    if iso:
+        params += [
+            f"outputSchema={quote(_ISO_OUTPUT_SCHEMA, safe='')}",
+            "elementSetName=full",
+            "typeNames=gmd:MD_Metadata",
+        ]
     else:
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        engine = create_engine(url, connect_args=connect_args)
-
-    if engine.dialect.name == "sqlite":
-        @event.listens_for(engine, "connect")
-        def _enable_sqlite_fk(dbapi_connection, connection_record):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-
-    return engine
-```
-
-(This replaces the existing `if "memory" in url...` branch's body with the same logic, just restructured so both branches fall through to the shared FK-pragma wiring. Read the current `core/app/db.py` first and adapt precisely — don't duplicate the `StaticPool` logic.)
-
-- [ ] **Step 6: Make `Config.item_id` a real, non-null FK**
-
-In `core/app/configs/models.py`, change:
-```python
-    item_id: Mapped[str | None] = mapped_column(String, nullable=True)
-```
-to:
-```python
-    item_id: Mapped[str] = mapped_column(
-        ForeignKey("items.id", ondelete="CASCADE"), nullable=False
-    )
-```
-(Add `ForeignKey` to the existing `from sqlalchemy import ...` import line if not already there — check the file first.)
-
-This changes `create_config(session, config, item_id: str | None)`'s signature implicitly (the DB column no longer accepts `None`) — **do not change the Python function signature in this task**, that's Task 3's job once callers actually pass a real item id. For now, existing tests that call `repo.create_config(session, ..., item_id=None)` (e.g. in `core/tests/test_repository.py`) will break; fix them by passing a real (even if fake-looking, e.g. `item_id="item-1"`) non-null string, since this task only touches schema, not the creation flow — check each call site in `test_repository.py` and update any `item_id=None` to a placeholder string id. This is a mechanical fix; do not invent new items rows for these — the FK constraint isn't yet enforced against real `items` rows in these particular tests since SQLite only checks the referenced table has *a* matching row if FK enforcement is on and the column has a FK — wait: since Step 5 turns FK enforcement ON, a `create_config` call with `item_id="item-1"` when no `items` row `"item-1"` exists will now raise an `IntegrityError` in SQLite too. Read `test_repository.py` and any other place calling `create_config`/constructing a `Config` directly, and for each one, insert a matching `Item` row first (using the same pattern as `test_items_models.py`'s fixture: `get_or_create_default_tenant` + `get_or_create_user` + a plain `Item(...)`) before calling `create_config`. Do this for every failing test — there is no shortcut here, the FK is now real.
-
-- [ ] **Step 7: Update the import-linter layers contract**
-
-In `core/pyproject.toml`'s `[[tool.importlinter.contracts]]` block, change:
-```toml
-layers = [
-    "app.main",
-    "app.configs",
-    "app.auth",
-    "app.audit",
-    "app.users",
-    "app.tenants",
-]
-```
-to:
-```toml
-layers = [
-    "app.main",
-    "app.configs",
-    "app.items",
-    "app.auth",
-    "app.audit",
-    "app.users",
-    "app.tenants",
-]
-```
-(`app.items` sits directly below `app.configs` — `configs` may import `items`, `items` may not import `configs`.)
-
-- [ ] **Step 8: Write the migration**
-
-`core/alembic/versions/0005_items.py`:
-```python
-"""items table; configs.item_id becomes a real FK
-
-Revision ID: 0005
-Revises: 0004
-Create Date: 2026-07-05
-"""
-from alembic import op
-import sqlalchemy as sa
-
-revision = "0005"
-down_revision = "0004"
-branch_labels = None
-depends_on = None
+        params.append("elementSetName=full")
+    params += [f"startPosition={start_position}", f"maxRecords={_PAGE_SIZE}"]
+    sep = "&" if "?" in base_url else "?"
+    return f"{base_url}{sep}{'&'.join(params)}"
 
 
-def upgrade() -> None:
-    op.create_table(
-        "items",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
-        sa.Column("owner_id", sa.String(), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("resource_type", sa.String(), nullable=False),
-        sa.Column("title", sa.String(), nullable=False),
-        sa.Column("abstract", sa.String(), nullable=False, server_default=""),
-        sa.Column("keywords", sa.JSON(), nullable=False),
-        sa.Column("thumbnail_key", sa.String(), nullable=True),
-        sa.Column("is_published", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-    )
-    # No pre-existing `configs` rows are expected in any real deployment yet
-    # (no prod cutover has happened — see A15). If a dev database has stale
-    # rows from manual testing, reset it (`docker compose down -v` on
-    # `postgis`) rather than migrating them: there is no real title/owner
-    # data to reconstruct an `items` row from at the DB level.
-    op.drop_column("configs", "item_id")
-    op.add_column(
-        "configs",
-        sa.Column("item_id", sa.String(), sa.ForeignKey("items.id", ondelete="CASCADE"), nullable=False),
+def _record_by_id_url(base_url: str, identifier: str, *, iso: bool) -> str:
+    params = ["service=CSW", "version=2.0.2", "request=GetRecordById", f"id={quote(identifier, safe='')}"]
+    if iso:
+        params.append(f"outputSchema={quote(_ISO_OUTPUT_SCHEMA, safe='')}")
+    params.append("elementSetName=full")
+    sep = "&" if "?" in base_url else "?"
+    return f"{base_url}{sep}{'&'.join(params)}"
+
+
+def _first_descendant_text(elem, name: str) -> str | None:
+    for d in ows.descendants(elem, name):
+        text = ows.child_text(d, "CharacterString")
+        if text is not None:
+            return text
+    return None
+
+
+def _decimal_child(elem, name: str) -> float:
+    wrapper = ows.child(elem, name)
+    text = ows.child_text(wrapper, "Decimal") if wrapper is not None else None
+    return float(text)
+
+
+def _iso_bbox(elem) -> list[float]:
+    ex = next(ows.descendants(elem, "EX_GeographicBoundingBox"), None)
+    if ex is None:
+        return list(ows._WORLD_BBOX)
+    try:
+        return [
+            _decimal_child(ex, "westBoundLongitude"),
+            _decimal_child(ex, "southBoundLatitude"),
+            _decimal_child(ex, "eastBoundLongitude"),
+            _decimal_child(ex, "northBoundLatitude"),
+        ]
+    except (TypeError, ValueError):
+        return list(ows._WORLD_BBOX)
+
+
+def _extract_iso(elem, base_url: str) -> HarvestedRecord | None:
+    fid = ows.child(elem, "fileIdentifier")
+    identifier = ows.child_text(fid, "CharacterString") if fid is not None else None
+    if not identifier:
+        return None
+    title = _first_descendant_text(elem, "title") or identifier
+    abstract = _first_descendant_text(elem, "abstract") or ""
+    keywords = [
+        text for kw in ows.descendants(elem, "keyword")
+        if (text := ows.child_text(kw, "CharacterString")) is not None
+    ]
+    return HarvestedRecord(
+        external_id=identifier, title=title, abstract=abstract, keywords=keywords,
+        bbox=_iso_bbox(elem), external_url=_record_by_id_url(base_url, identifier, iso=True),
+        items_url=None, raster_tiles_url=None,
     )
 
 
-def downgrade() -> None:
-    op.drop_column("configs", "item_id")
-    op.add_column("configs", sa.Column("item_id", sa.String(), nullable=True))
-    op.drop_table("items")
+def _dc_bbox(elem) -> list[float]:
+    for tag in ("BoundingBox", "WGS84BoundingBox"):
+        box = ows.child(elem, tag)
+        if box is None:
+            continue
+        lower = ows.child_text(box, "LowerCorner")
+        upper = ows.child_text(box, "UpperCorner")
+        try:
+            xmin, ymin = (float(v) for v in lower.split())
+            xmax, ymax = (float(v) for v in upper.split())
+            return [xmin, ymin, xmax, ymax]
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return list(ows._WORLD_BBOX)
+
+
+def _extract_dc(elem, base_url: str) -> HarvestedRecord | None:
+    identifier = ows.child_text(elem, "identifier")
+    if not identifier:
+        return None
+    title = ows.child_text(elem, "title") or identifier
+    abstract = ows.child_text(elem, "abstract") or ows.child_text(elem, "description") or ""
+    keywords = [c.text.strip() for c in ows.children(elem, "subject") if c.text and c.text.strip()]
+    return HarvestedRecord(
+        external_id=identifier, title=title, abstract=abstract, keywords=keywords,
+        bbox=_dc_bbox(elem), external_url=_record_by_id_url(base_url, identifier, iso=False),
+        items_url=None, raster_tiles_url=None,
+    )
 ```
 
-- [ ] **Step 9: Run the model test to verify it passes**
+- [ ] **Step 4: Lancer les tests, vérifier le succès**
 
-Run: `cd core && uv run pytest tests/test_items_models.py -v`
-Expected: PASS (2 tests).
+Run: `cd core && uv run pytest tests/test_harvest_csw_connector.py -v`
+Expected: PASS (14 tests)
 
-- [ ] **Step 10: Fix the broken tests from Step 6, then run the full suite**
-
-Run: `cd core && uv run pytest`
-Expected: PASS — fix any remaining `item_id=None` or FK-violation failures per Step 6's instructions until this is green.
-
-- [ ] **Step 11: Verify `lint-imports` still passes with the new layer**
-
-Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.`
-
-- [ ] **Step 12: Run the migration round-trip against Postgres**
+- [ ] **Step 5: Commit**
 
 ```bash
-docker run -d --rm --name sp1b-migration-check -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis -p 55441:5432 postgis/postgis:16-3.4
-# wait for pg_isready, then:
-cd core
-DATABASE_URL=postgresql+psycopg://gis:gis@localhost:55441/gis uv run alembic upgrade head
-DATABASE_URL=postgresql+psycopg://gis:gis@localhost:55441/gis uv run alembic downgrade base
-docker rm -f sp1b-migration-check
-```
-Expected: both exit 0.
-
-- [ ] **Step 13: Commit**
-
-```bash
-git add core/app/items/__init__.py core/app/items/models.py core/app/db.py core/app/configs/models.py core/alembic/env.py core/alembic/versions/0005_items.py core/pyproject.toml core/uv.lock core/tests/test_items_models.py core/tests/test_repository.py
-git commit -m "feat(core): add items table; configs.item_id becomes a real cascading FK"
+git add core/app/harvest/connectors/csw.py core/tests/test_harvest_csw_connector.py
+git commit -m "feat(core): connecteur de moissonnage CSW 2.0.2 (ISO19139 + repli DC) (SP-12f)"
 ```
 
 ---
