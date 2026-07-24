@@ -66,7 +66,7 @@ services:
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
-    labels:
+    labels: !override
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/api`)
       - traefik.http.routers.core.entrypoints=web
@@ -101,7 +101,7 @@ services:
       VITE_OIDC_CLIENT_ID: geostudio-shell
       VITE_OIDC_REDIRECT_URI: https://${GEOSTUDIO_PUBLIC_HOST}/
       VITE_AUTH_MODE: oidc
-    labels:
+    labels: !override
       - traefik.enable=true
       - traefik.http.routers.shell.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`)
       - traefik.http.routers.shell.entrypoints=web
