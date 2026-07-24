@@ -5,10 +5,15 @@ Procédure de reprise sur perte totale (machine détruite/volée/disque mort).
 
 ## Prérequis
 
-- La clé **privée** `age` correspondant à `BACKUP_AGE_RECIPIENT` — stockée
-  **hors de la machine de production** (gestionnaire de mots de passe,
-  copie papier). Sans elle, les archives sont irrécupérables : c'est
-  volontaire (chiffrement au repos, spec SP-Deploy §4.1).
+- La clé **privée** `age` correspondant à `BACKUP_AGE_RECIPIENT`. Elle ne
+  vit **jamais** dans le dépôt git, dans l'image `backup` (ni aucune autre
+  image), ni dans un volume Docker — seule la clé **publique**
+  (`BACKUP_AGE_RECIPIENT`) a sa place en `.env`. La clé privée est stockée
+  **hors de la machine de production**, exclusivement chez l'opérateur
+  (gestionnaire de mots de passe, copie papier, ou tout autre stockage
+  personnel sécurisé équivalent). Sans elle, les archives sont
+  irrécupérables : c'est volontaire (chiffrement au repos, spec
+  SP-Deploy §4.1).
 - Accès à la cible hors-site (`BACKUP_S3_ENDPOINT`/`BACKUP_S3_BUCKET`) ou,
   à défaut, une copie locale d'une archive `.tar.gz.age`.
 - Ce dépôt cloné, `.env` reconstruit (`./scripts/bootstrap-env.sh` puis
@@ -136,12 +141,30 @@ curl -s -o /dev/null -w '%{http_code}\n' https://$GEOSTUDIO_PUBLIC_HOST/api/me
 Se connecter via le shell, confirmer qu'un utilisateur restauré peut se
 reconnecter et qu'une donnée écrite avant le sinistre est relisible.
 
-**Procédure exécutée et vérifiée de bout en bout (Task 2, Step 2, critère
-§7-5)** : cycle complet écriture → backup → destruction totale (`down -v`)
-→ étapes 1-5 ci-dessus → relecture, sur environnement isolé (volumes
-jetables). Un item `sp-deploy-restore-check` créé avant le backup
-(`GET /items/<id>` avant destruction) a été retrouvé identique après
-restauration (`GET /items/<id>` après l'étape 5 — même `id`, même `title`,
-même horodatage de création `date`), confirmant que la restauration
+**Ce qui a été vérifié en exécution réelle (Task 2, Step 2)** : la moitié
+« survie de la donnée » du critère §7-5 — cycle complet écriture → backup →
+destruction totale (`down -v`) → étapes 1-5 ci-dessus → relecture, sur
+environnement isolé (volumes jetables). Un item `sp-deploy-restore-check`
+créé avant le backup (`GET /items/<id>` avant destruction) a été retrouvé
+identique après restauration : d'abord relu **directement en base** via
+`psql -c 'select id, title, resource_type from items;'` juste après
+`pg_restore` (étape 3, avant même le redémarrage de `core`), puis via
+`GET /items/<id>` après l'étape 5 (même `id`, même `title`, même horodatage
+de création `date` à la microseconde près) — confirmant que la restauration
 réinjecte les données existantes plutôt que d'en créer de nouvelles.
+
+**Ce qui n'a PAS été vérifié** : la reconnexion utilisateur réelle via
+Keycloak/OIDC. Cette exécution a démarré `core` avec un override local non
+commité (`CORE_AUTH_MODE: mock`) pour appeler l'API avec un
+`Authorization: Bearer x` factice, spécifiquement pour isoler le test sur
+le cycle de restauration des données sans monter tout le flux OIDC
+Keycloak/Traefik (hors périmètre de ce test). La surcouche prod
+(`docker-compose.prod.yml`) fixe `CORE_AUTH_MODE: oidc` en dur en
+production réelle, donc ce contournement ne s'applique pas à un vrai
+déploiement — mais cela signifie que **le critère §7-5 n'a été vérifié qu'à
+moitié par cette exécution** : la connexion effective d'un compte Keycloak
+restauré via un vrai flux OIDC contre une stack restaurée reste un point
+ouvert, à couvrir lors d'un futur exercice de restauration grandeur nature
+(ou de la première restauration réelle en production).
+
 Détail de l'exécution : rapport `.superpowers/sdd/task-2-report.md`.
