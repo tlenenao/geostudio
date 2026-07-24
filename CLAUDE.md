@@ -173,10 +173,20 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   résiduel DNS-rebinding TOCTOU sur la garde egress (pinning-IP différé).
 - Tags d'images Docker `pgbouncer`/`martin`/`titiler` à repinner si dérive ;
   documenter dans `.env.example`.
-- Service `worker` en boucle de redémarrage sous profil observability
-  (`schema --apply && worker` non idempotent) — à traiter en session dédiée.
 - Volume `pg-data` du projet compose par défaut cassé (`alembic_version` jamais
   stampée) — réparation non destructive hors périmètre.
+- `core/Dockerfile` maintient à la main une liste `uv pip install` dérivée de
+  `pyproject.toml` (au lieu d'installer directement depuis ce fichier) —
+  `defusedxml` (ajouté par SP-12e pour le parsing XML sûr des connecteurs
+  OGC) manque à l'appel : `core` plante au démarrage
+  (`ModuleNotFoundError`, chaîne `app.main → app.harvest.routes →
+  connectors → ows.py`) sur toute image reconstruite fraîchement depuis
+  SP-12e (dev comme prod). Trouvé lors de la validation bout-en-bout de
+  SP-Deploy-a (Task 6) ; bloquant pour tout déploiement réel tant que non
+  corrigé — à traiter en session dédiée (idéalement en générant la liste
+  depuis `pyproject.toml` plutôt qu'en la dupliquant à la main, pour éviter
+  la récidive : ce même Dockerfile documente déjà un épisode similaire pour
+  alembic/pyjwt/boto3/python-multipart/mcp).
 - Questions produit ouvertes : Q2 (premiers utilisateurs réels), Q10 (temps
   réel), Q11 (offline) — cf. comparatif §8. Seule Q2 peut réordonner SP-3/SP-6.
 - Brainstorm Analytics Platform (2026-07-09) validé et décliné en SP-14/SP-15,
