@@ -1,135 +1,88 @@
-# Task 1 Report: SP-Deploy-c — Squelette + Détection/Installation des Prérequis Docker
+# Task 1 Report: install.sh — mode non-interactif par variables d'environnement
 
 ## Summary
-Task 1 of SP-Deploy-c completed successfully. The install script skeleton was created with Docker detection and interactive confirmation utilities that will be reused by Tasks 2, 3, and 4 in this SP.
 
-## What Was Implemented
+Successfully modified `scripts/install.sh` to support non-interactive mode via environment variables while maintaining full backward compatibility with interactive mode. All 4 functions modified as specified in task-1-brief.md.
 
-### File Created: `scripts/install.sh`
-- **SPDX-License-Identifier**: Apache-2.0 header as required by brief
-- **Skeleton**: `set -euo pipefail`, changes to repo root via `"$(dirname "$0")/.."`, defines `COMPOSE` variable for reuse
-- **confirm() function**: Interactive y/N confirmation with automatic `yes` when `INSTALL_YES=1` (non-interactive mode for automation)
-- **ensure_docker() function**: Detects Docker + Docker Compose v2, handles platform-specific installation guidance (Linux via get.docker.com, macOS manual steps, other OS guidance)
-- **Entry point**: Calls `ensure_docker()` at script end
-- **Total lines**: 58 (fits on single page for review)
+## Implementation Details
 
-### Code Structure
-Exactly as specified in brief:
-- Container for confirmation logic with INSTALL_YES override
-- Docker detection via `command -v docker` and `docker compose version` (the correct check for Compose v2 plugin)
-- Graceful handling of three cases: detected, Linux install available, macOS/other unsupported
-- User-facing messages in French, identifiers/functions in English per project rules
+### Functions Modified
 
-## Testing
+1. **`prompt_profiles` (lines 113-165)**
+   - Added support for `INSTALL_PROFILES` environment variable (comma-separated profile list)
+   - Added support for `INSTALL_SEED_DEMO` environment variable (value "1" to enable)
+   - Both use `${VAR+x}` syntax to distinguish "not provided" from "provided empty"
+   - Interactive else branch identical to original: `confirm` calls + `SELECTED_PROFILES` array
 
-### Test Location
-Test executed in **throwaway clone** as required (not in working repo):
-- `git clone` to `/tmp/geostudio-install-test`
-- Script made executable
-- Run in isolated environment
+2. **`prompt_public_host` (lines 187-236)**
+   - Added support for `GEOSTUDIO_PUBLIC_HOST` environment variable
+   - Uses `${VAR+x}` syntax; supports both set-with-value and set-empty cases
+   - Interactive else branch: exact same `read -r -p` as original
+   - Rest of function unchanged, already consuming `PUBLIC_HOST_INPUT` correctly
 
-### Nominal Case Test Results
-**Expected behavior**: Docker already installed (environment has Docker Compose v5.1.3)
+3. **`prompt_backup_target` (lines 246-276)**
+   - Added support for `BACKUP_S3_ENDPOINT`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`, `BACKUP_S3_BUCKET`
+   - Uses `${VAR+x}` syntax with `${VAR:-}` fallbacks for optional keys
+   - Refactored to declare local variables upfront for clarity
+   - Interactive else branch: exact same read sequence as original (endpoint, access key, secret key, bucket)
+   - `set_env_var` calls moved outside if/else to apply in both cases (correct)
 
-**Actual output**:
+4. **`prompt_admin` (lines 281-289)**
+   - Added support for `INSTALL_ADMIN_EMAIL` environment variable
+   - Uses `-n` test (non-empty required), not `+x` — email is mandatory field
+   - ADMIN_EMAIL remains global variable (not `local`), as required
+   - Interactive else branch: exact same `read -r -p` as original
+
+## Verification Results
+
+### Step 5: Bash Syntax Check
+```bash
+bash -n scripts/install.sh
 ```
-═══ GeoStudio — installeur guidé ═══
-✓ Docker + Docker Compose détectés (5.1.3).
+**Result:** ✓ No output, exit code 0 (success)
+
+### Step 6: Shellcheck Verification
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
+  koalaman/shellcheck:stable scripts/install.sh
 ```
+**Result:** ✓ No output (no new warnings introduced)
 
-**Verification**:
-- Header printed correctly
-- Docker and Compose v2 plugin detected
-- Version string extracted and displayed correctly
-- Script exited cleanly (exit code 0)
-- No subsequent code executed (Task 2 will add more logic after this point)
+### Step 7: Manual Non-Regression Review
 
-### Test Cleanup
-- Throwaway clone removed: `rm -rf /tmp/geostudio-install-test`
-- No modifications to working repo during testing
+All 4 modified functions verified:
+
+- **`prompt_profiles` else branch** (lines 140-148): Exact copy of original interactive loop + confirm logic
+- **`prompt_profiles` demo section** (line 162): Original `confirm` call preserved in elif clause
+- **`prompt_public_host` else branch** (line 197): Exact same `read -r -p` as original
+- **`prompt_backup_target` else branch** (lines 256-263): All 4 read calls identical to original sequence
+- **`prompt_admin` else branch** (line 287): Exact same `read -r -p` as original
+
+**Conclusion:** All else branches reproduce original interactive behavior exactly. ✓
 
 ## Files Changed
 
-### Created
-- `scripts/install.sh` (58 lines)
+- `scripts/install.sh`: 62 insertions, 16 deletions (net +46 lines)
+  - No lines removed from interactive paths
+  - Environment variable checks added using idiomatic bash patterns
 
-### Commit Details
-- **SHA**: 42f8900
-- **Message**: `feat(deploy): installeur guidé — squelette + détection Docker`
-- **Date**: 2026-07-24
+## Commit
+
+```
+1e552bb feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)
+```
 
 ## Self-Review Findings
 
-### Completeness
-- [x] Step 1: Skeleton + helpers implemented exactly as specified
-- [x] Step 2: ensure_docker() function implemented exactly as specified
-- [x] Step 3: Nominal case verified in throwaway clone (Docker already present)
-- [x] Step 4: Committed with exact message from brief
+✓ All 4 replacements applied exactly as specified in brief
+✓ No accidental edits beyond the 4 functions
+✓ Bash syntax valid
+✓ No new shellcheck warnings introduced
+✓ Non-regression: all else branches preserve original behavior
+✓ Commit message exact match to brief specification
+✓ Variable naming conventions consistent with brief (INSTALL_*, GEOSTUDIO_*, BACKUP_*)
+✓ Test syntax correct: `${VAR+x}` for presence test, `-n` for mandatory fields
 
-### Code Quality
-- Script header follows SPDX requirement
-- `set -euo pipefail` prevents silent failures
-- Proper quoting throughout (safe with spaces/special chars)
-- confirm() correctly implements INSTALL_YES=1 override for CI/automation
-- Functions designed for reuse (will be called by Tasks 2, 3, 4)
-- No hardcoded paths outside scope of Task 1
+## Issues/Concerns
 
-### Discipline
-- No scope creep (no menu, Q&A, or launch logic added)
-- No stubs for future tasks (lean implementation)
-- Follows brief's exact wording for user-facing messages
-- Global Constraints met: confirmation before actions, no silent installs
-
-### Verification Quality
-- Test executed in throwaway directory (not in real repo, preventing accidental damage)
-- Test covered nominal path (Docker already present) with real output shown
-- Cleanup performed properly on test clone
-
-## Issues or Concerns
-None. Task completed as specified.
-
-**Script is ready for Task 2 and subsequent tasks to append additional functions to `scripts/install.sh`.**
-
----
-
-## Review Fixes Applied (2026-07-24 - Later Session)
-
-Two findings from code review were fixed and verified:
-
-### Finding 1: Missing Executable Bit
-
-**Status**: FIXED
-
-- **Original state**: File committed as mode 100644 (non-executable)
-- **Fix applied**: `chmod +x scripts/install.sh && git add scripts/install.sh`
-- **Verification**: `git ls-files -s` shows `100755` after staging; commit diff confirms mode change from 100644 to 100755
-- **Impact**: Users can now run `./scripts/install.sh` directly without manual `chmod +x`
-
-### Finding 2: Incomplete Confirmation Message
-
-**Status**: FIXED
-
-- **Original state**: Confirmation prompt only mentioned "Installer Docker maintenant via le script officiel get.docker.com ?" but the `confirm()` call gates BOTH the Docker installation (curl get.docker.com) AND `sudo usermod -aG docker "$USER"` (system group modification)
-- **Fix applied**: Updated line 35 message to: "Installer Docker via le script officiel et ajouter l'utilisateur au groupe docker ?"
-- **Verification**: Grep confirms both actions are now explicitly disclosed in the single confirm prompt (line 35)
-- **Compliance**: Aligns with spec §5.1 requirement that "any action that installs a package or modifies system groups must be preceded by an explicit message"
-
-### Verification Tests
-
-1. **Syntax check**: `bash -n scripts/install.sh` ✓ Pass
-2. **Nominal execution**: Script runs and correctly detects Docker 5.1.3, exits cleanly with code 0 ✓ Pass
-3. **Message text**: Grep confirms message now discloses both actions (install + group membership) ✓ Pass
-4. **Cleanup**: Test clone removed ✓ Pass
-
-### Commit Details
-
-- **SHA**: 2d18792
-- **Message**: `fix(deploy): installeur — bit exécutable + confirmation explicite usermod (revue Task 1)`
-- **Changes**: 
-  - Mode change: 100644 → 100755 (executable bit)
-  - Content change: Line 35 confirmation message updated
-
----
-
-**Date**: 2026-07-24  
-**Status**: DONE
+None. Task completed successfully with all verification steps passing.
