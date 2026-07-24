@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class HarvestSourceCreate(BaseModel):
-    type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records"]
+    type: Literal["stac", "arcgis", "wms", "wfs", "wmts", "csw", "ogc-records", "ckan"]
     url: str = Field(min_length=1)
     mode: Literal["reference", "copy"] = "reference"
     enabled: bool = True

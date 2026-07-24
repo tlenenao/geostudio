@@ -240,3 +240,22 @@ def test_mutations_blocked_in_read_only_mode(env, monkeypatch):
     _as(app, admin)
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     assert client.post("/harvest/sources", json=SOURCE_BODY).status_code == 403
+
+
+def test_create_ckan_source_is_accepted(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": "ckan", "url": "https://demo.data.gouv.fr", "mode": "reference",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["type"] == "ckan"
+
+
+def test_copy_mode_accepted_for_ckan(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": "ckan", "url": "https://demo.data.gouv.fr", "mode": "copy",
+    })
+    assert resp.status_code == 201
