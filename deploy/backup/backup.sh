@@ -4,6 +4,12 @@ set -euo pipefail
 DATE="$(date -u +%Y%m%d-%H%M%S)"
 WORKDIR="/backup/work/${DATE}"
 ARCHIVES_DIR="/backup/archives"
+# Purge systématique du répertoire de travail en clair (dump Postgres, export
+# Keycloak, miroir MinIO) et de l'archive intermédiaire non chiffrée, quelle
+# que soit l'issue du script (succès, échec sous `set -e`, signal) — cf. plan
+# §4.1 : le contenu en clair ne doit jamais survivre au-delà de cette
+# exécution.
+trap 'rm -rf "$WORKDIR" "/tmp/${DATE}.tar.gz"' EXIT
 mkdir -p "$WORKDIR" "$ARCHIVES_DIR"
 
 echo "[backup] ${DATE} — début"
@@ -53,11 +59,8 @@ if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
   age -r "$BACKUP_AGE_RECIPIENT" -o "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "/tmp/${DATE}.tar.gz"
 else
   echo "[backup] ERREUR: BACKUP_AGE_RECIPIENT non défini — refus de stocker un backup en clair" >&2
-  rm -rf "/tmp/${DATE}.tar.gz" "$WORKDIR"
   exit 1
 fi
-rm -f "/tmp/${DATE}.tar.gz"
-rm -rf "$WORKDIR"
 echo "[backup] archive chiffrée: ${ARCHIVES_DIR}/${DATE}.tar.gz.age"
 
 # ── 5. Envoi hors-site (optionnel — avertissement clair si absent) ──
