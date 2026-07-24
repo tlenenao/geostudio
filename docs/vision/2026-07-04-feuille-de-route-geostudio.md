@@ -588,11 +588,13 @@ où ils sont ».
   pur par défaut, copie opt-in** par source (A23) qui route vers le pipeline
   d'ingestion SP-6. Items moissonnés typés « référence externe » (source, lien,
   fraîcheur, re-moissonnage).
-- **Connecteurs** (A22 — les quatre retenus), *chacun livrable séparément et
-  dans cet ordre* : ① catalogues STAC externes ; ② WMS/WFS GetCapabilities
-  (référencer un GeoServer existant en secondes) ; ③ CSW/ISO 19139
-  (GeoNetwork/geOrchestra — parser tolérant, champs minimaux) ; ④ CKAN/
-  data.gouv.fr.
+- **Connecteurs** (A22 — les cinq retenus, amendé 2026-07-09), *chacun
+  livrable séparément* : ① catalogues STAC externes ; ArcGIS Feature Services
+  (référencement + copie, inséré en 2ᵉ position) ; ② WMS/WFS/WMTS
+  GetCapabilities (référencer un GeoServer existant en secondes) ; ③ CSW/ISO
+  19139 (GeoNetwork/geOrchestra — parser tolérant, champs minimaux) **et son
+  protocole successeur OGC API - Records** (extension documentée SP-12f,
+  2026-07-24) ; ④ CKAN/data.gouv.fr.
 - UI : administration des sources, badge « externe » sur les items, ajout d'une
   couche moissonnée (WMS/WFS) à une carte sans copie.
 
@@ -602,7 +604,7 @@ sont moissonnés, cherchables, et une couche WMS moissonnée s'affiche dans une
 carte ; le re-moissonnage met à jour sans dupliquer.
 
 **Risques.** L'hétérogénéité ISO 19139 (profils, encodages) — parser tolérant et
-périmètre de champs minimal assumé. Quatre connecteurs = risque d'étalement :
+périmètre de champs minimal assumé. Cinq connecteurs = risque d'étalement :
 chaque connecteur est un incrément autonome, on peut s'arrêter entre deux.
 
 ---
@@ -1049,6 +1051,14 @@ pénible), CKAN en dernier (métadonnées géo pauvres).
 > collectivités équipées Esri, le pont de sortie. Le *référencement* d'un
 > Feature Service comme source de dataset arrive dès SP-14.
 
+> **Extension 2026-07-24 (SP-12f)** : le connecteur ③ (CSW/ISO 19139) livre
+> aussi son protocole successeur **OGC API - Records** (JSON/REST), sous le
+> même incrément — deux connecteurs distincts au registre (`csw` et
+> `ogc-records`), tous deux référencement pur. Ne redéfinit pas l'ordre ni le
+> périmètre des cinq connecteurs, documente ce que ③ couvre concrètement (cf.
+> `docs/superpowers/specs/2026-07-24-sp12f-connecteurs-csw-ogc-records-design.md`
+> §9).
+
 ### A23 — Mode de moissonnage (SP-12)
 
 | Option | Avantages | Inconvénients |
@@ -1233,7 +1243,7 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 | A19 | Surface analytique | **API structurée pour les widgets + SQL read-only réservé au rôle analyste** | SP-11 |
 | A20 | API STAC | **Routes natives dans le cœur** (conformité progressive, stac-api-validator en CI) | SP-12 |
 | A21 | DCAT | **Export DCAT-AP moissonnable** (JSON-LD, validé data.gouv.fr) | SP-12 |
-| A22 | Connecteurs moissonnage | **Les cinq** (amendé 2026-07-09) — ordre : STAC → **ArcGIS FS** → GetCapabilities → CSW/ISO → CKAN | SP-12 (réf. comme source de dataset dès SP-14) |
+| A22 | Connecteurs moissonnage | **Les cinq** (amendé 2026-07-09) — ordre : STAC → **ArcGIS FS** → GetCapabilities → CSW/ISO **+ OGC API - Records** (SP-12f, 2026-07-24) → CKAN | SP-12 (réf. comme source de dataset dès SP-14) |
 | A23 | Mode moissonnage | **Référencement pur + copie opt-in par source** | SP-12 |
 | A24 | Moteur 3D | **deck.gl `Tile3DLayer` + terrain raster-dem MapLibre** | SP-13 |
 | A25 | Impression | **Rendu navigateur headless (Playwright) en worker** ⚠ écart assumé avec la vision (QGIS Server) — bascule seulement sur demande réelle de print pro | SP-13 |
