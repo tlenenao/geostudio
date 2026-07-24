@@ -567,3 +567,141 @@ non-régression — durcissement partagé futur à envisager).
 ## Poussé origin/dev (d8c11e0..3e99ac4). PR #46 dev→main ouverte
 ## (https://github.com/tlenenao/geostudio/pull/46).
 
+---
+
+# SP-12g — Connecteur CKAN / data.gouv.fr (cinquième et dernier, A22)
+Plan: docs/superpowers/plans/2026-07-24-sp12g-connecteur-ckan.md
+Branch: dev (checkout principal, pas de worktree — convention établie depuis
+SP-6a ; confirmée par le suivi SP-12b→f dans ce même fichier).
+Start HEAD: d2dd8dd. Baseline vérifiée : core 743 passed/100 skipped, shell
+588/588 Vitest.
+
+## Pré-vol
+Scan des 5 tâches : pas de contradiction entre tâches ni avec les contraintes
+globales. Interfaces vérifiées octet-pour-octet contre l'état réel du dépôt
+(aucune dérive depuis la rédaction du plan) : `base.py` HarvestedRecord
+lignes 9-18 identiques à l'attendu (raster_tiles_url déjà présent, dernier
+champ) ; `service.py::_upsert_copy` ligne 183-187 avec le littéral
+`filename="harvest.geojson"` codé en dur, identique ; `schemas.py` ligne 8
+Literal à 7 valeurs (stac/arcgis/wms/wfs/wmts/csw/ogc-records) ; registre
+`connectors/__init__.py` 7 connecteurs enregistrés ; shell `types.ts:264` et
+`CreateHarvestSourceDialog.tsx:16` COPY_TYPES=["stac","arcgis","wfs"],
+identiques au plan. Poursuite sans confirmation utilisateur (scan de
+contradictions clean).
+
+## Tasks
+Base Task 1: d2dd8dd
+- Task 1: complete (commit 3550ecd, review clean — ✅ spec + quality, 0
+  Critical/Important). `HarvestedRecord.copy_filename: str | None = None`
+  ajouté en dernier champ (base.py) + test_harvest_base.py (2 tests). Zéro
+  connecteur existant touché. 139 tests harvest passed/13 skipped, aucune
+  régression.
+
+Base Task 2: 3550ecd
+- Task 2: complete (commit 505ead8, review clean — ✅ spec + quality, 0
+  Critical/Important). `_upsert_copy` (service.py:184) passe
+  `rec.copy_filename or "harvest.geojson"` à `run_import` — littéral de repli
+  inchangé pour les 7 connecteurs existants. 2 tests ajoutés (chemin
+  copy_filename défini + régression None), assertion directe sur
+  `run_import.call_args.kwargs["filename"]`, pas de mock-testant-un-mock.
+  Déviation mineure divulguée : `create_record` mocké en plus (FK réelle
+  items/collections sous SQLite `PRAGMA foreign_keys=ON`), justifiée et saine.
+  11 tests service passed/3 skipped, aucune régression.
+
+Base Task 3: 505ead8
+- Task 3: complete (commit f0d9474, review clean — ✅ spec + quality, 0
+  Critical/Important). `CkanConnector` (ckan.py) : package_search paginé
+  (start/rows fusionnés sans doublon), format de copie GeoJSON>GPKG>SHP zippé
+  (CSV référencement pur), bbox spatial extra avec repli monde, bornes
+  500/50/100/10s, egress gardé, ne lève jamais. Enregistré dans _REGISTRY
+  (8 connecteurs) + Literal schemas.py + tests routes. openapi.json régénéré
+  (diff minimal, enum +"ckan"). 26 tests connecteur (httpx.MockTransport réel),
+  suite harvest 169 passed/13 skipped, suite core complète 775 passed/100
+  skipped, aucune régression. Minors (roll-up revue finale) : docstring
+  ckan.py:2-4 affirme à tort être "seul connecteur non-STAC/ArcGIS" à
+  supports_copy=True — WfsConnector l'a aussi (wfs.py:23) ; erreur héritée
+  verbatim du texte du plan, cosmétique, transcrite fidèlement plutôt que
+  corrigée silencieusement. + 2 nitpicks tests mineurs (assertion overwrite
+  moins stricte qu'idéal ; micro-DRY .upper().strip() dupliqué).
+
+Base Task 4: f0d9474
+- Task 4: complete (commit c8ef494, review clean — ✅ spec + quality, 0
+  Critical/Important). core-schema.d.ts régénéré + HarvestSourceType += ckan
+  + option dialogue + COPY_TYPES=["stac","arcgis","wfs","ckan"] (contrairement
+  à CSW/OGC Records restés référencement pur). 2 tests dialogue (POST body
+  copie + option "Copie" non désactivée), 590/590 suite shell, build clean.
+
+Base Task 5: c8ef494
+- Task 5: complete (commit ede9da4, review clean — ✅ spec + quality, 0
+  Critical/Important). harvest-ckan.spec.ts (référence + copie, preuves
+  causales genuines : POST body, runCount, waitForRequest sur q=, ouverture
+  carte + bouton "Retirer" pour la copie — 1er spec E2E à exercer mode=copy).
+  CLAUDE.md (Fait a→g, À venir vidé de SP-12) + feuille de route (5
+  emplacements : §Connecteurs, note A22, table arbitrages, table risques,
+  M9) mis à jour cohéremment, A22 marqué complet. 2/2 spec seul, 50/50 suite
+  E2E complète, aucune régression.
+
+## Roll-up Minors (pour la revue finale de branche)
+- Task 3 : docstring ckan.py:2-4 affirme à tort être le "seul connecteur
+  non-STAC/ArcGIS" à supports_copy=True — WfsConnector l'a aussi (wfs.py:23).
+  Erreur héritée verbatim du texte du plan, cosmétique (comment seulement,
+  la valeur du class attribute est correcte et indépendante de cette
+  affirmation), transcrite fidèlement plutôt que corrigée silencieusement.
+- Task 3 : test_admin_url_start_and_rows_are_overridden_not_duplicated
+  n'assert que l'absence de doublon, pas que start/rows admin (999/5) sont
+  bien écrasés par les valeurs connecteur (0/100) — implémentation correcte
+  vérifiée par lecture, juste ce test précis ne le couvre pas isolément.
+  Micro-DRY : .upper().strip() calculé deux fois par ressource candidate.
+- Task 5 : les mocks /items* renvoient l'ensemble complet indépendamment du
+  paramètre q — la preuve causale repose sur waitForRequest, pas sur un
+  filtrage réel côté mock (convention pré-existante dans toute la suite E2E,
+  pas spécifique à cette tâche).
+
+## Vérification finale
+- Core : suite complète 775 passed/100 skipped (à Task 3, HEAD f0d9474 ;
+  aucun fichier core touché depuis par Tasks 4-5, sauf docstring en revue
+  finale ci-dessous).
+- Shell : 590/590 Vitest + build clean (à Task 4, HEAD c8ef494 ; aucun
+  fichier shell src touché depuis par Task 5).
+- E2E : 50/50 (à Task 5, HEAD ede9da4 = HEAD final avant revue finale).
+
+## Revue finale de branche (opus, d2dd8dd..ede9da4) — 1 Important, corrigé
+0 Critical. 1 Important : docstring ckan.py:2-4 ET feuille de route ligne
+~598 affirmaient tous deux à tort que CKAN est le "seul connecteur
+non-STAC/ArcGIS" à supports_copy=True — WfsConnector l'a aussi. Le
+task-level review n'avait vu que le docstring (coté Minor, cosmétique) ;
+la revue de branche entière a élevé le même constat à Important car
+l'erreur était aussi propagée dans la feuille de route, document
+d'autorité #1 (CLAUDE.md). Pipeline copy_filename tracé bout-en-bout et
+tient : CkanConnector._pick_copy_resource → HarvestedRecord.copy_filename →
+service._upsert_copy (rec.copy_filename or "harvest.geojson") →
+run_import(filename=...) → importer._pick_format (dispatch .gpkg/.zip/
+.geojson cohérent). Ne-lève-jamais vérifié end-to-end (fetch() retourne une
+list matérialisée, pas un générateur paresseux — évite un piège de fermeture
+de client prématurée). Bornes = arrêts durs qui composent (page cap en tête
+de boucle, dataset cap dans ET après la boucle interne, slice final).
+Garde egress honorée sur tous les chemins. _check_copy_support (non touché)
+gate ckan correctement, agnostique du type. Zéro migration, zéro régression
+7 connecteurs existants, openapi.json minimal, CLAUDE.md propre.
+
+Fix appliqué (commit e8efc04, dispatché en un seul lot avec la finding
+complète) : docstring ckan.py + feuille de route corrigés (retrait de la
+fausse exclusivité, formulation factuelle "comme STAC/ArcGIS/WFS" /
+"formats GeoJSON/GPKG/SHP"). Tests connecteur 26/26 re-vérifiés par le
+fixeur. Re-revue (opus) : fix confirmé aux deux emplacements, wording
+vérifié factuellement exact (grep : supports_copy=True sur exactement 4
+connecteurs stac/arcgis/wfs/ckan), aucun effet de bord (diff confiné à
+2 fichiers, docstring/prose uniquement), reste de la plage inchangé.
+
+Minors non bloquants (laissés tels quels, non ré-ouverts) : micro-DRY
+.upper().strip() dupliqué (ckan.py:280,287) ; test overwrite start/rows
+moins strict qu'idéal ; aucun test d'intégration réel copy_filename→
+run_import réel pour .gpkg/.zip (mocké dans test_harvest_service.py,
+mais importer SP-6 déjà testé séparément) ; mocks E2E /items* ignorant le
+paramètre q (convention pré-existante suite E2E entière).
+
+## SP-12g COMPLET — 5 tâches + 1 fix de revue finale, tout clean.
+## Ready to merge: YES. HEAD=e8efc04. A22 COMPLET (les cinq connecteurs).
+## Non poussé — dev local en avance sur origin/dev, PR à ouvrir en suivant
+## superpowers:finishing-a-development-branch.
+
