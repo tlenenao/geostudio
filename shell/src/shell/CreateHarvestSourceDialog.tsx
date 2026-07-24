@@ -13,7 +13,7 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
   const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
-  const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs"];
+  const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan"];
   const copyAllowed = COPY_TYPES.includes(type);
 
   function close() {
@@ -47,7 +47,7 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             onChange={(e) => {
               const next = e.target.value as HarvestSourceType;
               setType(next);
-              if (!["stac", "arcgis", "wfs"].includes(next)) setMode("reference");
+              if (!COPY_TYPES.includes(next)) setMode("reference");
             }}
           >
             <option value="stac">STAC</option>
@@ -55,6 +55,9 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             <option value="wms">WMS</option>
             <option value="wfs">WFS</option>
             <option value="wmts">WMTS</option>
+            <option value="csw">CSW</option>
+            <option value="ogc-records">OGC API - Records</option>
+            <option value="ckan">CKAN</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">

@@ -1,207 +1,156 @@
-# Task 3 Report: Repository `harvest_sources`/`harvest_records` (SP-12c)
+# Task 3 report — Connecteur CKAN (`CkanConnector`), registre, schémas, openapi.json (SP-12g)
 
-## Implementation
+## What was implemented
 
-Created `core/app/harvest/repository.py` implementing CRUD for `HarvestSource`/
-`HarvestRecord` (models landed in Task 1) exactly per the brief's verbatim code:
-
-- `create_source`/`get_source`/`list_sources`/`update_source`/`delete_source`
-- `mark_running` (sets `last_status="running"` for a given tenant/source, no-op
-  if source not found)
-- `get_record`/`create_record`/`update_record`
-- `mark_missing_as_stale(session, *, tenant_id, source_id, seen_external_ids)` —
-  flips `is_stale=True` on records of that source whose `external_id` is not in
-  the seen set (idempotent: skips records already stale)
-- `list_due_sources(session)` — global scan (no tenant filter, matches the
-  brief's interface `list_due_sources(session) -> list[HarvestSource]`) of
-  enabled sources with a non-null `interval_minutes`, due if `last_run_at is
-  None` or `last_run_at + interval_minutes <= now`
-
-Created `core/tests/test_harvest_repository.py` verbatim from the brief: 7
-always-run tests against SQLite in-memory (`app.db.make_engine("sqlite+pysqlite
-:///:memory:")` + `init_db`), plus 1 `@pytest.mark.postgis` test using the
-repo's existing `pg_engine` fixture (from `tests/conftest.py`), which asserts
-the DB-level unique constraint `uq_harvest_records_tenant_source_external`
-(declared on `HarvestRecord` in Task 1) raises `IntegrityError` on a duplicate
-`(tenant_id, source_id, external_id)` insert — real-Postgres-only per the
-brief, marked `postgis` and skipped by default.
+- `core/app/harvest/connectors/ckan.py` (new): `CkanConnector`, `type = "ckan"`,
+  `supports_copy = True`. Calls CKAN's `package_search` JSON REST API only
+  (never `package_show`, avoiding N+1), paginated via `start`/`rows` (page
+  size 100), merges admin-supplied query params from the source URL with
+  pagination params — overwriting any admin-supplied `start`/`rows` rather
+  than duplicating them. Bounded by `_MAX_CKAN_DATASETS = 500` and
+  `_MAX_CKAN_PAGES = 50`. Extracts bbox from a `spatial` extra (GeoJSON
+  envelope walk), defaulting to world bbox on absence/malformed
+  JSON/non-Polygon shapes. Picks the best copyable resource
+  (GeoJSON > GPKG/GEOPACKAGE > SHP/SHAPEFILE, CSV excluded) and sets
+  `items_url` + `copy_filename` accordingly (`harvest.geojson` /
+  `harvest.gpkg` / `harvest.zip`). Never raises: HTTP/JSON/malformed-package
+  errors are logged and degrade gracefully (empty page / skip package /
+  keep partial results across page failures), same philosophy as
+  `StacConnector`.
+- `core/tests/test_harvest_ckan_connector.py` (new): 26 tests, transcribed
+  verbatim from the brief, using `httpx.MockTransport` for real HTTP-level
+  behavior (no over-mocking) — single page extraction, title/external_url
+  fallbacks, skip on missing id, pagination param merge + start advance,
+  admin start/rows override (not duplicated), pagination stop on count
+  exhausted / empty page, dataset/page caps, bbox extraction (valid/absent/
+  malformed), copy-resource format preference + CSV exclusion + missing url,
+  tolerance to malformed tags/extras/resources, non-dict package skip,
+  missing result / invalid JSON / HTTP error → empty, partial results kept
+  on next-page failure, `fetch_copy_geojson` behavior, and registry lookup.
+- `core/app/harvest/connectors/__init__.py`: added `CkanConnector` import and
+  `"ckan": CkanConnector()` to `_REGISTRY` (8th connector).
+- `core/app/harvest/schemas.py`: `HarvestSourceCreate.type` Literal extended
+  with `"ckan"`.
+- `core/tests/test_harvest_routes.py`: added
+  `test_create_ckan_source_is_accepted` and `test_copy_mode_accepted_for_ckan`.
+- `core/openapi.json`: regenerated.
 
 ## TDD evidence
 
-### RED (Step 2)
-
+**Step 2 — RED** (`cd core && uv run pytest tests/test_harvest_ckan_connector.py -v`):
 ```
-$ cd core && uv run pytest tests/test_harvest_repository.py -v
-...
-ImportError: cannot import name 'repository' from 'app.harvest'
-(/home/lenen/projets/geostudio/core/app/harvest/__init__.py)
-=========================== short test summary info ============================
-ERROR tests/test_harvest_repository.py
-!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-=============================== 1 error in 0.10s ===============================
+ModuleNotFoundError: No module named 'app.harvest.connectors.ckan'
+Interrupted: 1 error during collection
+```
+Exactly as predicted by the brief.
+
+**Step 4 — intermediate state after creating `ckan.py`, before registry edit**
+(`cd core && uv run pytest tests/test_harvest_ckan_connector.py -v`):
+```
+25 passed, 1 failed in 0.17s
+FAILED tests/test_harvest_ckan_connector.py::test_get_connector_returns_ckan
+  ValueError: unknown harvest connector type: 'ckan'
+```
+Exactly the predicted intermediate signal — confirms the connector class
+itself is correct in isolation, and the only gap is registration.
+
+**Step 8 — GREEN** (`cd core && uv run pytest tests/test_harvest_ckan_connector.py tests/test_harvest_routes.py -v`):
+```
+51 passed in 4.11s
+```
+All 26 connector tests + all 25 route tests (23 pre-existing + 2 new) pass.
+
+## Non-regression
+
+**Full harvest suite** (`cd core && uv run pytest tests/ -k harvest -v`):
+```
+169 passed, 13 skipped, 693 deselected in 7.58s
+```
+(13 skips are pre-existing postgis-marked tests requiring docker, unrelated
+to this change.)
+
+**Full core suite** (`cd core && uv run pytest tests/`):
+```
+775 passed, 100 skipped in 41.72s
+```
+No regressions anywhere in the core test suite.
+
+## openapi.json regeneration
+
+Command: `cd core && PYTHONPATH=. uv run python scripts/export_openapi.py openapi.json`
+(note: needed `PYTHONPATH=.` explicitly since pytest picks up `pythonpath = ["."]`
+from `pyproject.toml` automatically but running the script directly does not;
+this is an environment quirk, not a brief error — the brief's command as
+written failed with `ModuleNotFoundError: No module named 'app'`).
+
+Diff (`git diff --stat core/openapi.json`): 1 file changed, 2 insertions(+), 1 deletion(-).
+
+```diff
+               "wfs",
+               "wmts",
+               "csw",
+-              "ogc-records"
++              "ogc-records",
++              "ckan"
+             ],
 ```
 
-(`ImportError` rather than literally `ModuleNotFoundError` because the parent
-package `app.harvest` already exists from Task 1/2 — only the submodule
-`repository` was missing. Same root cause the brief anticipated: the file
-didn't exist yet.)
-
-### GREEN (Step 4)
-
-```
-$ cd core && uv run pytest tests/test_harvest_repository.py -v
-...
-tests/test_harvest_repository.py::test_create_get_list_source PASSED     [ 12%]
-tests/test_harvest_repository.py::test_get_source_cross_tenant_returns_none PASSED [ 25%]
-tests/test_harvest_repository.py::test_update_source_patches_fields PASSED [ 37%]
-tests/test_harvest_repository.py::test_delete_source_cascades_to_records PASSED [ 50%]
-tests/test_harvest_repository.py::test_mark_running_sets_status PASSED   [ 62%]
-tests/test_harvest_repository.py::test_mark_missing_as_stale_flags_unseen_records_only PASSED [ 75%]
-tests/test_harvest_repository.py::test_list_due_sources_includes_never_run_and_overdue_enabled_sources PASSED [ 87%]
-tests/test_harvest_repository.py::test_unique_constraint_rejects_duplicate_external_id_for_same_source SKIPPED [100%]
-
-========================= 7 passed, 1 skipped in 0.16s =========================
-```
-
-Matches the brief's expected result exactly: 7 passed, 1 skipped (no
-`CORE_TEST_DATABASE_URL` in this environment — Step 5's real-Postgres
-validation was not run, consistent with the task instructions: "do not try to
-make it run unless a disposable Postgres is available").
-
-### Regression check (full core suite)
-
-```
-$ cd core && uv run pytest -q
-627 passed, 88 skipped in 36.11s
-```
-
-No regressions.
-
-### Import-linter (module boundaries)
-
-```
-$ cd core && uv run lint-imports
-Analyzed 107 files, 256 dependencies.
-layered architecture KEPT
-Contracts: 1 kept, 0 broken.
-```
+Only `"ckan"` added to the `HarvestSourceCreate.type` enum — nothing else changed.
 
 ## Files changed
 
-- `core/app/harvest/repository.py` (new) — first line `# SPDX-License-Identifier: Apache-2.0`
-- `core/tests/test_harvest_repository.py` (new)
+- `core/app/harvest/connectors/ckan.py` (new)
+- `core/tests/test_harvest_ckan_connector.py` (new)
+- `core/app/harvest/connectors/__init__.py` (modified)
+- `core/app/harvest/schemas.py` (modified)
+- `core/tests/test_harvest_routes.py` (modified)
+- `core/openapi.json` (regenerated)
 
-## Commit
-
-```
-534c3b6 feat(core): CRUD harvest_sources/harvest_records + due-sources (SP-12c)
- 2 files changed, 307 insertions(+)
-```
-
-Only these two files were staged/committed (verified via `git status` before
-committing) — the working tree has numerous unrelated pre-existing
-uncommitted changes from other sessions/tasks, left untouched.
+Commit: created on branch `dev`, message
+`feat(core): connecteur de moissonnage CKAN/data.gouv.fr, copie opt-in (SP-12g)`
+(6 files, +545/-2).
 
 ## Self-review
 
-- Followed the brief's code verbatim (interfaces, test bodies, docstring-level
-  behavior) — no deviation needed.
-- Confirmed the module's only dependency is `app.harvest.models`
-  (`HarvestRecord`, `HarvestSource`) — `lint-imports` confirms no contract
-  breakage (`app.harvest` layering unaffected).
-- All queries in the repository filter on `tenant_id` (tenant-scoped by
-  construction), consistent with the project's tenant-isolation discipline
-  elsewhere, even though RLS policies for these tables are out of scope for
-  this task (owned by Tasks 1/2's schema/migration).
-- Verified the `mark_missing_as_stale` idempotence guard
-  (`not record.is_stale`) doesn't change test-observable behavior vs. an
-  unconditional set — it's a no-op optimization, matches the brief's code
-  exactly.
+- **Completeness**: connector file, test file, registry, schema, route
+  tests, openapi regen — all present, matching the brief's exact content.
+- **Quality**: style matches neighboring connectors (`stac.py` in
+  particular — lazy `build_guarded_client` import, `owns_client` pattern,
+  `fetch_copy_geojson` signature, tolerant `_package_to_record`-style
+  helper catching `(AttributeError, TypeError, KeyError, ValueError)`,
+  logging on every degradation path).
+- **Discipline**: confirmed via `grep -n "package_show"` that no
+  `package_show` call exists anywhere in `ckan.py` (search-only, no N+1).
+  No new admin-facing filter fields were added — the admin's query params
+  simply pass through from the source URL, as specified. Nothing built
+  beyond the brief's scope. No other connector files touched (confirmed
+  via `git status --short` before commit — only the 6 intended files
+  staged).
+- **Testing**: verified tests use `httpx.MockTransport` for real
+  request/response behavior (URL/query-param assertions on the actual
+  outgoing request), not mocks of internal methods. TDD evidence captured
+  at each meaningful step (RED at step 2, intermediate 25/26 at step 4,
+  full green at step 8). Test output is pristine (no warnings, no
+  unexpected skips).
 
-## Concerns
+## Issues or concerns
 
-- None. Only the 1 `@pytest.mark.postgis` test is unverified against a real
-  Postgres in this session (no `CORE_TEST_DATABASE_URL`, no disposable
-  Postgres spun up) — expected and explicitly permitted by the task
-  instructions. The unique-constraint behavior it covers is a straightforward
-  DB-level constraint already declared in Task 1/2's migration; nothing here
-  suggests risk.
+- Minor doc/comment wording nit (not a functional issue, not fixed per
+  instructions to transcribe faithfully and flag rather than silently
+  change): the module docstring in `ckan.py` says "Seul connecteur
+  non-STAC/ArcGIS avec supports_copy=True", but `WfsConnector` also has
+  `supports_copy = True` (verified via
+  `grep -n "supports_copy" app/harvest/connectors/*.py`). This is exactly
+  the brief's transcribed text, so it was kept as-is; flagging for
+  awareness only, not blocking.
+- The brief's Step 10 command (`uv run python scripts/export_openapi.py
+  openapi.json`) needed `PYTHONPATH=.` prepended to resolve
+  `ModuleNotFoundError: No module named 'app'` — an environment detail
+  (pytest's `pythonpath` config doesn't apply to a bare script invocation),
+  not a code issue. Noted for future task briefs.
+- Note: this file previously contained a stale report from a different
+  task (SP-12f "Task 3"); it has been overwritten in full with this task's
+  content.
 
-## Review fix (post-commit, follow-up to 534c3b6)
-
-**Finding (Critical, reproduced empirically)**: `list_due_sources` crashed
-with `TypeError: can't compare offset-naive and offset-aware datetimes` on
-its first real invocation against any source that had already run once.
-
-**Root cause**: `last_run_at` is a naive `DateTime()` column. The original
-test only ever read `last_run_at` off the *same in-memory object* it had
-just assigned in the same session — SQLAlchemy's identity map returns that
-same tz-aware Python object without re-deserializing from the DB. A real
-scheduler runs `list_due_sources` in a fresh session/query against sources
-that were updated by a previous (different) job invocation, so
-`source.last_run_at` comes back tz-**naive** from the DB while `_now()`
-(kept tz-aware, per codebase convention) stays tz-aware — comparing the two
-in `threshold <= now` raised the `TypeError`.
-
-**Fix** (`core/app/harvest/repository.py`, `list_due_sources` only — no
-column/migration change): normalize `last_run_at` to aware-UTC
-(`.replace(tzinfo=timezone.utc)` when `.tzinfo is None`) before computing
-`threshold` and comparing to `now`. Comment explains why. No signature or
-other function touched.
-
-**Regression test** (`core/tests/test_harvest_repository.py`,
-`test_list_due_sources_includes_never_run_and_overdue_enabled_sources`):
-changed the trailing `session.flush()` to `session.commit()` and added
-`session.expire_all()` immediately before calling `repo.list_due_sources`,
-forcing `last_run_at` to be re-deserialized (naive) from the DB instead of
-returning the same in-memory aware object — this is exactly the cold-fetch
-path a real scheduler (fresh session per job) takes. Existing assertions
-(`due_ids == {never_run.id, overdue.id}`, `fresh.id not in due_ids`) kept
-unchanged.
-
-Confirmed the test fails against pre-fix code with the exact reported
-error (verified by `git stash`-ing only the repository.py fix and
-re-running):
-
-```
-$ uv run pytest tests/test_harvest_repository.py::test_list_due_sources_includes_never_run_and_overdue_enabled_sources -v
-...
-    threshold = source.last_run_at + timedelta(minutes=source.interval_minutes)
->   if threshold <= now:
-E   TypeError: can't compare offset-naive and offset-aware datetimes
-=========================== short test summary info ============================
-FAILED tests/test_harvest_repository.py::test_list_due_sources_includes_never_run_and_overdue_enabled_sources
-============================== 1 failed in 0.12s ===============================
-```
-
-Post-fix:
-
-```
-$ cd core && uv run pytest tests/test_harvest_repository.py -v
-...
-tests/test_harvest_repository.py::test_create_get_list_source PASSED     [ 12%]
-tests/test_harvest_repository.py::test_get_source_cross_tenant_returns_none PASSED [ 25%]
-tests/test_harvest_repository.py::test_update_source_patches_fields PASSED [ 37%]
-tests/test_harvest_repository.py::test_delete_source_cascades_to_records PASSED [ 50%]
-tests/test_harvest_repository.py::test_mark_running_sets_status PASSED   [ 62%]
-tests/test_harvest_repository.py::test_mark_missing_as_stale_flags_unseen_records_only PASSED [ 75%]
-tests/test_harvest_repository.py::test_list_due_sources_includes_never_run_and_overdue_enabled_sources PASSED [ 87%]
-tests/test_harvest_repository.py::test_unique_constraint_rejects_duplicate_external_id_for_same_source SKIPPED [100%]
-
-========================= 7 passed, 1 skipped in 0.16s =========================
-```
-
-Same result as before the fix (7 passed, 1 skipped) — the postgis test
-still skips without `CORE_TEST_DATABASE_URL`, as expected; no regression
-introduced, the previously-latent crash is now exercised and fixed.
-
-### Files changed
-
-- `core/app/harvest/repository.py` — `list_due_sources` tz-normalization
-- `core/tests/test_harvest_repository.py` — cold-fetch regression coverage
-
-### Commit
-
-```
-<filled in after commit — see below>
-```
+No other concerns. All 6 target files match the brief's exact specified
+content; no extra files created; no other connectors touched.

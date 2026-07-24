@@ -105,3 +105,98 @@ test("garde le mode copie disponible pour WFS", async () => {
   const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
   expect(copyOption.disabled).toBe(false);
 });
+
+test("envoie le type CSW et force le mode référence (copie désactivée)", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "csw",
+          url: "https://geonetwork.example.com/csw",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+
+  render(<Harness onClose={() => {}} />);
+  await userEvent.type(screen.getByLabelText("URL"), "https://geonetwork.example.com/csw");
+  // Passer d'abord en copie (autorisé pour STAC), puis basculer en CSW :
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "csw");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "csw",
+      url: "https://geonetwork.example.com/csw",
+      mode: "reference",
+      enabled: true,
+    }),
+  );
+});
+
+test("garde le mode copie désactivé pour OGC API - Records", async () => {
+  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false })));
+  render(<Harness onClose={() => {}} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "ogc-records");
+  const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
+  expect(copyOption.disabled).toBe(true);
+});
+
+test("envoie le type CKAN en mode copie", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "ckan",
+          url: "https://demo.data.gouv.fr",
+          mode: "copy",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+
+  render(<Harness onClose={() => {}} />);
+  await userEvent.type(screen.getByLabelText("URL"), "https://demo.data.gouv.fr");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "ckan");
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "ckan",
+      url: "https://demo.data.gouv.fr",
+      mode: "copy",
+      enabled: true,
+    }),
+  );
+});
+
+test("garde le mode copie disponible pour CKAN", async () => {
+  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false })));
+  render(<Harness onClose={() => {}} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "ckan");
+  const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
+  expect(copyOption.disabled).toBe(false);
+});
