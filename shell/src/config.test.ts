@@ -28,3 +28,29 @@ test("mock mode does not require oidc vars", () => {
   expect(cfg.authMode).toBe("mock");
   expect(cfg.oidcAuthority).toBe("");
 });
+
+test("runtime env overrides build-time env when present and substituted", () => {
+  const cfg = loadConfig(base, {
+    VITE_CORE_URL: "https://prod.example",
+    VITE_OIDC_AUTHORITY: "https://prod.example/auth/realms/geostudio",
+  });
+  expect(cfg.coreUrl).toBe("https://prod.example");
+  expect(cfg.oidcAuthority).toBe("https://prod.example/auth/realms/geostudio");
+  // Non fourni par le runtime env : repli sur la valeur build-time.
+  expect(cfg.oidcClientId).toBe("shell");
+});
+
+test("runtime env with un-substituted envsubst placeholder falls back to build-time", () => {
+  const cfg = loadConfig(base, { VITE_CORE_URL: "${VITE_CORE_URL}" });
+  expect(cfg.coreUrl).toBe("https://core.test");
+});
+
+test("runtime env with empty string (envsubst on an unset whitelisted var) falls back to build-time", () => {
+  const cfg = loadConfig(base, { VITE_CORE_URL: "" });
+  expect(cfg.coreUrl).toBe("https://core.test");
+});
+
+test("absent runtime env behaves exactly like before (undefined second arg)", () => {
+  const cfg = loadConfig(base);
+  expect(cfg.coreUrl).toBe("https://core.test");
+});

@@ -5,18 +5,14 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml ./
-# Kept in sync by hand with pyproject.toml's [project.dependencies] — alembic/pyjwt/boto3/
-# python-multipart were added there across SP-1a/b/c but had drifted out of this list,
-# crash-looping the container on `import jwt` etc. the moment CORE_AUTH_MODE=oidc is used.
-# mcp was added in SP-2a for the same reason — kept it in sync here too.
-RUN uv pip install --system --no-cache \
-    "fastapi>=0.111" "uvicorn[standard]>=0.30" "sqlalchemy>=2.0" \
-    "pydantic>=2.7" "httpx>=0.27" "psycopg[binary]>=3.1" "psycopg2-binary>=2.9" \
-    "alembic>=1.13" "pyjwt[crypto]>=2.8" "boto3>=1.34" "python-multipart>=0.0.9" \
-    "mcp>=1.12" "shapely>=2.0" "procrastinate>=2.0" "pyogrio>=0.9" "pyproj>=3.6" \
-    "geopandas>=0.14" "pyarrow>=15.0" "pgvector>=0.3" "duckdb>=1.0" "opentelemetry-sdk>=1.27" "opentelemetry-exporter-otlp-proto-http>=1.27" \
-    "opentelemetry-instrumentation-fastapi>=0.48b0" "opentelemetry-instrumentation-sqlalchemy>=0.48b0" \
-    "opentelemetry-instrumentation-httpx>=0.48b0" "opentelemetry-instrumentation-botocore>=0.48b0"
+# Installe directement depuis [project.dependencies] de pyproject.toml (pas
+# de [build-system] dans ce fichier, donc `uv pip install -r pyproject.toml`
+# ne fait qu'installer les dépendances listées, sans tenter de construire/
+# installer le paquet geostudio-core lui-même). Remplace une liste dupliquée
+# à la main qui avait dérivé à plusieurs reprises (alembic/pyjwt/boto3/
+# python-multipart/mcp puis defusedxml, chacun crash-loopant le conteneur au
+# premier import manquant) — une seule source de vérité désormais.
+RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Pré-installe les extensions DuckDB httpfs/spatial (SP-11b, module
 # app/analytics/duckdb_conn.py) sur le disque de l'image, au build — sans
