@@ -47,7 +47,7 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             onChange={(e) => {
               const next = e.target.value as HarvestSourceType;
               setType(next);
-              if (!["stac", "arcgis", "wfs"].includes(next)) setMode("reference");
+              if (!COPY_TYPES.includes(next)) setMode("reference");
             }}
           >
             <option value="stac">STAC</option>
@@ -55,6 +55,8 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
             <option value="wms">WMS</option>
             <option value="wfs">WFS</option>
             <option value="wmts">WMTS</option>
+            <option value="csw">CSW</option>
+            <option value="ogc-records">OGC API - Records</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
