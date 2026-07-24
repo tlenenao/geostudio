@@ -57,6 +57,48 @@ ensure_docker() {
 
 ensure_docker
 
+ensure_jq() {
+  if command -v jq >/dev/null 2>&1; then
+    echo "✓ jq détecté ($(jq --version))."
+    return 0
+  fi
+
+  echo "✗ jq (parseur JSON) est requis et n'a pas été détecté."
+  case "$(uname -s)" in
+    Linux)
+      if confirm "Installer jq via le gestionnaire de paquets du système ?"; then
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo apt-get install -y jq
+        elif command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y jq
+        elif command -v pacman >/dev/null 2>&1; then
+          sudo pacman -S --noconfirm jq
+        else
+          echo "Gestionnaire de paquets non reconnu automatiquement : installez jq manuellement"
+          echo "(https://jqlang.org/download/), puis relancez ce script."
+          exit 1
+        fi
+        echo "jq installé."
+        return 0
+      fi
+      echo "Installation annulée — relancez ce script une fois jq installé manuellement."
+      exit 1
+      ;;
+    Darwin)
+      echo "macOS : installez jq manuellement : brew install jq (ou https://jqlang.org/download/)."
+      echo "Relancez ce script une fois jq installé."
+      exit 1
+      ;;
+    *)
+      echo "OS non reconnu automatiquement : installez jq manuellement"
+      echo "(https://jqlang.org/download/), puis relancez ce script."
+      exit 1
+      ;;
+  esac
+}
+
+ensure_jq
+
 profile_label() {
   case "$1" in
     observability) echo "Observabilité (Grafana/Loki/Tempo/Prometheus)" ;;
@@ -227,7 +269,7 @@ prompt_admin() {
   # Idempotent : si l'utilisateur existe déjà (relance de l'installeur),
   # récupérer son id plutôt que d'échouer sur un doublon.
   local existing_id
-  existing_id="$($COMPOSE exec -T keycloak "$kc" get users -r geostudio -q "email=${ADMIN_EMAIL}" 2>/dev/null \
+  existing_id="$($COMPOSE exec -T keycloak "$kc" get users -r geostudio -q "email=${ADMIN_EMAIL}" -q "exact=true" 2>/dev/null \
     | jq -r '.[0].id // empty')"
 
   if [ -n "$existing_id" ]; then
@@ -238,7 +280,7 @@ prompt_admin() {
       -s email="${ADMIN_EMAIL}" -s username="${ADMIN_EMAIL}" -s enabled=true -s emailVerified=true \
       -s "credentials=[{\"type\":\"password\",\"value\":\"${admin_temp_password}\",\"temporary\":true}]" \
       >/dev/null
-    ADMIN_SUB="$($COMPOSE exec -T keycloak "$kc" get users -r geostudio -q "email=${ADMIN_EMAIL}" 2>/dev/null \
+    ADMIN_SUB="$($COMPOSE exec -T keycloak "$kc" get users -r geostudio -q "email=${ADMIN_EMAIL}" -q "exact=true" 2>/dev/null \
       | jq -r '.[0].id')"
     echo "✓ Compte admin créé : ${ADMIN_EMAIL} / mot de passe temporaire : ${admin_temp_password}"
     echo "  (à changer à la première connexion — non stocké par ce script au-delà de cet affichage)"
