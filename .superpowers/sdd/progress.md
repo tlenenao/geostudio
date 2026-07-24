@@ -233,3 +233,57 @@ pré-existant, pas introduit par SP-Deploy-a.
 ## SP-Deploy-a COMPLET — 6 tâches + 3 fixes de revue de tâche + 1 fix de
 ## revue finale, tout clean. Ready to merge: YES (revue finale opus).
 ## HEAD=1967a42. Non poussé — dev local en avance sur origin/dev.
+
+## SP-Deploy-b — en cours (subagent-driven-development)
+
+Task 1 : complete (commits 5ffcd25..9981170, review clean après 1 fix).
+Service `backup` (dump Postgres + mirror MinIO + export Keycloak, chiffré
+age, rotation 7+4). 3 bugs trouvés en exécutant réellement le code du plan
+(pas seulement lu) : retention.py (ligne de retour incorrecte), Dockerfile
+(paquet Alpine `mc` = Midnight Commander, pas le client MinIO — remplacé
+par le binaire officiel), commande de vérification Step 11 (entrypoint
+n'exec pas "$@"). 1 finding Important de revue (plan-mandated) : `backup.sh`
+ne nettoyait pas `WORKDIR` en clair sur échec, `entrypoint.sh` retentait
+toutes les 60s → fuite répétée de secrets en clair sur toute
+mauvaise config persistante (ex. BACKUP_AGE_RECIPIENT vide, défaut de
+.env.example). Corrigé (commit 9981170) par un `trap ... EXIT` couvrant
+tous les points d'échec (pg_dump/mc mirror/export Keycloak), sans toucher
+ARCHIVES_DIR ; vérifié par échec forcé réel (docker diff/cp sur conteneur
+arrêté). Revue finale : Approved, 0 Critical/Important/Minor restants.
+
+Task 2 : complete (commits 9981170..0b4733a, review clean après 1 fix).
+Runbook `docs/runbooks/2026-07-24-restauration-sauvegardes.md`, cycle
+écriture→backup→destruction (`down -v`)→restauration→relecture exécuté
+réellement (projet Compose isolé `spdeploytest`, volumes neufs, volume
+`geostudio_pg-data` préexistant jamais touché) : item de test survit,
+`psql` direct puis `GET /items/<id>` identiques avant/après (même id,
+titre, date à la microseconde). 3 bugs trouvés en exécutant le runbook
+(pas seulement lu) : boucle `mc mirror` sans garde sur glob vide (échec
+réel, pas un no-op silencieux — corrigé), note `pg_restore` incorrecte sur
+volume vierge (succès silencieux, pas d'avertissements — corrigée), motif
+`--entrypoint` appliqué partout. 2 findings Important de revue
+(plan-mandated) : documentation incomplète de l'interdiction dépôt/
+image/volume pour la clé privée age (contrainte du plan), et clôture du
+runbook surclamant la couverture du critère §7-5 (reconnexion utilisateur
+réelle non testée — CORE_AUTH_MODE=mock substitué pour isoler le test de
+données). Corrigés (commit 0b4733a). Revue finale : Approved, 0 Critical/
+Important restants.
+
+## SP-Deploy-b COMPLET — 2 tâches, 2 fixes de revue de tâche, tout clean.
+## HEAD=0b4733a. Reste : revue finale de branche.
+
+## Revue finale de branche (opus, 5ffcd25..0b4733a) — 0 Critical, 0 Important
+0 Critical, 0 Important. Architecture confirmée saine (service compose
+dédié, aucun couplage core/, chiffrement-avant-persistance réellement
+respecté pas seulement affirmé). Les 3 bugs auto-trouvés (Task 1) et les 3
+bugs auto-trouvés (Task 2) re-vérifiés indépendamment par le reviewer final
+(retention.py rejoué avec les tests réels, cohérence layout d'archive
+backup↔restore confirmée bout en bout, trap EXIT confirmé sans race avec
+ARCHIVES_DIR, préfixe /auth Keycloak confirmé correct car le service
+backup n'existe que dans l'overlay prod). Seul finding : clé privée age de
+test committée en clair dans le rapport de tâche (Minor/courtoisie) —
+corrigée (commit fac2606). Ready to merge: YES (revue finale opus).
+
+## SP-Deploy-b COMPLET — 2 tâches, 2 fixes de revue de tâche, 1 fix de
+## revue finale (redaction), tout clean. Ready to merge: YES.
+## HEAD=fac2606. Non poussé — dev local en avance sur origin/dev.
