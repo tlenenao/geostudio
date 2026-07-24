@@ -1,396 +1,106 @@
-### Task 1 : service `backup` (dump + mirror + export + chiffrement + rotation)
+### Task 1 : squelette + détection/installation des prérequis Docker
 
 **Files:**
-- Create: `deploy/backup/Dockerfile`
-- Create: `deploy/backup/entrypoint.sh`
-- Create: `deploy/backup/backup.sh`
-- Create: `deploy/backup/retention.py`
-- Create: `deploy/backup/test_retention.py`
-- Modify: `docker-compose.prod.yml` (ajout service `backup`, extension du bloc `volumes:` top-level créé en SP-Deploy-a Task 5)
-- Modify: `.env.example` (variables `BACKUP_*`)
+- Create: `scripts/install.sh`
 
 **Interfaces:**
-- Consumes: `PG_PASSWORD`/`MINIO_USER`/`MINIO_PASSWORD`/`KC_PASSWORD` (déjà dans `.env.example`, inchangés) ; réseau `gis-net` (déjà défini par `docker-compose.yml`).
-- Produces: archives `/backup/archives/<horodatage>.tar.gz.age` sur le volume nommé `backup-archives` ; consommé par le runbook de restauration (Task 2).
+- Consumes: `scripts/bootstrap-env.sh` (existant, inchangé) ; `docker-compose.prod.yml` (SP-Deploy-a/b, existant).
+- Produces: fonctions bash `confirm()`, `ensure_docker()` — réutilisées par toutes les tâches suivantes du même fichier.
 
-**Contexte vérifié en lisant le code :**
-- `deploy/postgis/Dockerfile` : `FROM postgis/postgis:16-3.4` — Postgres 16, donc `postgresql16-client` (paquet Alpine) pour un `pg_dump`/`pg_restore` de version compatible.
-- `docker-compose.yml` service `keycloak` : `KC_DB_URL: jdbc:postgresql://postgis:5432/gis` — Keycloak persiste **dans la même base `gis`** que le reste du cœur. Conséquence importante, à documenter dans le runbook (Task 2) : un `pg_dump`/`pg_restore` complet de `gis` restaure **déjà** l'intégralité des données Keycloak (realms, utilisateurs, clients) — l'export JSON via l'API Admin ci-dessous est un **filet de sécurité redondant, portable et lisible**, pas le mécanisme de restauration principal.
-- `core/app/items/storage.py`, `core/app/ingestion/storage.py`, `core/app/cdc/storage.py` créent leurs buckets MinIO paresseusement (`create_bucket`, idempotent) au premier usage — mais ce sont des objets **MinIO**, jamais capturés par un dump Postgres : le service `backup` doit lister/mirorer les buckets existants tels quels, et la restauration (Task 2) devra les recréer explicitement (`mc mb`) avant de les repeupler, sans dépendre du démarrage du cœur pour ça.
-- `.env.example` définit déjà `S3_THUMBNAILS_BUCKET`, `S3_UPLOADS_BUCKET`, `S3_CDC_BUCKET` — 3 buckets, noms lus depuis l'environnement (repris tels quels par `backup.sh`, jamais codés en dur).
-- `docker-compose.yml` service `keycloak` : `KEYCLOAK_ADMIN: admin`, `KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}` — identifiants admin déjà disponibles, réutilisés pour l'authentification à l'API Admin REST (`grant_type=password`, `client_id=admin-cli`, réalm `master`).
-- Le sous-plan SP-Deploy-a (Task 3) fixe `KC_HTTP_RELATIVE_PATH: /auth` en prod — toutes les URLs Keycloak internes de ce service utilisent donc le préfixe `/auth` (`http://keycloak:8080/auth/realms/...`), cohérent avec le reste de la stack prod.
+**Contexte vérifié :** `docker compose version` (sous-commande, pas `docker-compose` legacy) est la façon correcte de tester la présence du plugin Compose v2 — vérifié sur cet environnement (`Docker Compose version v5.1.3`). `get.docker.com` est le script d'installation officiel documenté par Docker, auto-détecte apt/dnf/pacman/zypper en interne.
 
-- [ ] **Step 1: Écrire le test de rétention (rouge)**
+- [ ] **Step 1: Squelette + helpers**
 
-Créer `deploy/backup/test_retention.py` :
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta
-
-from retention import select_files_to_delete
-
-
-def _name(dt: datetime) -> str:
-    return dt.strftime("%Y%m%d-%H%M%S") + ".tar.gz.age"
-
-
-def test_daily_window_of_7_is_never_deleted():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    names = [_name(now - timedelta(days=i)) for i in range(7)]
-    assert select_files_to_delete(names, now) == []
-
-
-def test_keeps_4_most_recent_distinct_older_weeks_deletes_rest():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    # 14, 21, ..., 63 jours en arrière — 8 semaines ISO distinctes, toutes
-    # hors de la fenêtre quotidienne de 7 jours.
-    names = [_name(now - timedelta(weeks=w)) for w in range(2, 10)]
-    deleted = select_files_to_delete(names, now)
-    kept = [n for n in names if n not in deleted]
-    assert set(kept) == set(names[:4])
-    assert set(deleted) == set(names[4:])
-
-
-def test_ignores_filenames_not_matching_the_naming_pattern():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    assert select_files_to_delete(["notes.txt", "backup.tar.gz"], now) == []
-```
-
-- [ ] **Step 2: Vérifier que le test échoue**
+Créer `scripts/install.sh` :
 
 ```bash
-cd deploy/backup && uv run --with pytest pytest test_retention.py -v 2>&1 | tail -10
-```
-
-Expected: `ModuleNotFoundError: No module named 'retention'`.
-
-- [ ] **Step 3: Écrire `retention.py`**
-
-Créer `deploy/backup/retention.py` :
-
-```python
+#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-"""Sélectionne les archives de sauvegarde à supprimer selon la politique de
-rétention (spec SP-Deploy §4.1) : 7 quotidiennes + 4 hebdomadaires. Fonction
-pure sur des noms de fichiers (aucun accès disque/réseau) — appelée depuis
-`backup.sh` à la fois pour la rotation locale (`/backup/archives`) et
-hors-site (sortie de `mc ls`), sur la même politique."""
-from __future__ import annotations
-
-import re
-from datetime import datetime, timedelta
-
-_NAME_RE = re.compile(r"^(\d{8})-(\d{6})\.tar\.gz\.age$")
-
-
-def _parse(filename: str) -> datetime | None:
-    match = _NAME_RE.match(filename)
-    if not match:
-        return None
-    return datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
-
-
-def select_files_to_delete(
-    filenames: list[str],
-    now: datetime,
-    daily_count: int = 7,
-    weekly_count: int = 4,
-) -> list[str]:
-    dated = [(f, _parse(f)) for f in filenames]
-    dated = [(f, d) for f, d in dated if d is not None]
-    dated.sort(key=lambda pair: pair[1], reverse=True)
-
-    daily_cutoff = now - timedelta(days=daily_count)
-    keep: set[str] = set()
-    older: list[tuple[str, datetime]] = []
-    for filename, d in dated:
-        if d >= daily_cutoff:
-            keep.add(filename)
-        else:
-            older.append((filename, d))
-
-    # Une sauvegarde par semaine ISO distincte parmi les plus anciennes, les
-    # `weekly_count` semaines les plus récentes (older est trié décroissant
-    # -> la première rencontrée pour chaque semaine est la plus récente).
-    seen_weeks: dict[tuple[int, int], str] = {}
-    for filename, d in older:
-        week_key = d.isocalendar()[:2]
-        if week_key not in seen_weeks and len(seen_weeks) < weekly_count:
-            seen_weeks[week_key] = filename
-    keep.update(seen_weeks.values())
-
-    return [f for f in filenames if f not in keep]
-
-
-def _main() -> None:
-    """CLI utilisée par `backup.sh` (Step 6) : `python3 retention.py "$(ls
-    ...)"` — une liste de noms de fichiers séparés par des espaces/retours
-    à la ligne en argument unique, une suppression suggérée par ligne de
-    sortie."""
-    import sys
-
-    filenames = sys.argv[1].split() if len(sys.argv) > 1 and sys.argv[1] else []
-    for name in select_files_to_delete(filenames, datetime.utcnow()):
-        print(name)
-
-
-if __name__ == "__main__":
-    _main()
-```
-
-- [ ] **Step 4: Lancer les tests (vert)**
-
-```bash
-cd deploy/backup && uv run --with pytest pytest test_retention.py -v
-```
-
-Expected: `3 passed`.
-
-- [ ] **Step 5: Dockerfile du service backup**
-
-Créer `deploy/backup/Dockerfile` :
-
-```dockerfile
-# SPDX-License-Identifier: Apache-2.0
-FROM alpine:3.20
-
-RUN apk add --no-cache postgresql16-client mc age curl jq bash tzdata python3
-
-COPY backup.sh /usr/local/bin/backup.sh
-COPY retention.py /usr/local/bin/retention.py
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-```
-
-- [ ] **Step 6: Script d'orchestration `backup.sh`**
-
-Créer `deploy/backup/backup.sh` :
-
-```bash
-#!/bin/bash
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-DATE="$(date -u +%Y%m%d-%H%M%S)"
-WORKDIR="/backup/work/${DATE}"
-ARCHIVES_DIR="/backup/archives"
-mkdir -p "$WORKDIR" "$ARCHIVES_DIR"
+COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
-echo "[backup] ${DATE} — début"
-
-# ── 1. Postgres (dump logique, format custom — compressé, portable) ──
-PGPASSWORD="$PG_PASSWORD" pg_dump -h postgis -p 5432 -U gis -d gis \
-  --format=custom --file="${WORKDIR}/postgres.dump"
-echo "[backup] postgres.dump: $(du -h "${WORKDIR}/postgres.dump" | cut -f1)"
-
-# ── 2. MinIO (miroir des 3 buckets applicatifs) ──
-mc alias set local http://minio:9000 "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
-mkdir -p "${WORKDIR}/minio"
-for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
-              "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
-              "${S3_CDC_BUCKET:-geostudio-cdc}"; do
-  if mc ls "local/${bucket}" >/dev/null 2>&1; then
-    mc mirror --overwrite --quiet "local/${bucket}" "${WORKDIR}/minio/${bucket}"
-  else
-    echo "[backup] bucket ${bucket} absent — rien à mirorer (jamais utilisé)"
+# Confirmation interactive — jamais d'action destructive/installante sans
+# accord explicite (spec SP-Deploy §5.1). INSTALL_YES=1 permet un mode
+# non-interactif pour les Steps de vérification de ce plan (jamais utilisé
+# pour un vrai déploiement humain).
+confirm() {
+  if [ "${INSTALL_YES:-0}" = "1" ]; then
+    echo "$1 [y/N] → y (INSTALL_YES=1)"
+    return 0
   fi
-done
+  read -r -p "$1 [y/N] " reply
+  case "$reply" in
+    [yY]|[yY][eE][sS]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-# ── 3. Keycloak (export du realm — filet de sécurité redondant, cf. §4.1
-#    du plan : Keycloak persiste déjà dans `gis`, donc déjà couvert par le
-#    pg_dump ci-dessus ; ce JSON est un secours portable/lisible en plus) ──
-KC_TOKEN="$(curl -sf -X POST \
-  "http://keycloak:8080/auth/realms/master/protocol/openid-connect/token" \
-  -d "client_id=admin-cli" -d "username=${KEYCLOAK_ADMIN}" \
-  -d "password=${KEYCLOAK_ADMIN_PASSWORD}" -d "grant_type=password" \
-  | jq -r .access_token)"
-if [ -z "$KC_TOKEN" ] || [ "$KC_TOKEN" = "null" ]; then
-  echo "[backup] ERREUR: impossible d'obtenir un token admin Keycloak" >&2
-  exit 1
-fi
-curl -sf -X POST \
-  "http://keycloak:8080/auth/admin/realms/geostudio/partial-export?exportClients=true&exportGroupsAndRoles=true" \
-  -H "Authorization: Bearer ${KC_TOKEN}" -H "Content-Type: application/json" -d '{}' \
-  -o "${WORKDIR}/keycloak-realm.json"
-if ! jq -e '.realm == "geostudio"' "${WORKDIR}/keycloak-realm.json" >/dev/null 2>&1; then
-  echo "[backup] ERREUR: export du realm Keycloak invalide/vide" >&2
-  exit 1
-fi
+echo "═══ GeoStudio — installeur guidé ═══"
+```
 
-# ── 4. Empaqueter + chiffrer (jamais de clair au-delà de cette étape) ──
-tar -czf "/tmp/${DATE}.tar.gz" -C /backup/work "${DATE}"
-if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
-  age -r "$BACKUP_AGE_RECIPIENT" -o "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "/tmp/${DATE}.tar.gz"
-else
-  echo "[backup] ERREUR: BACKUP_AGE_RECIPIENT non défini — refus de stocker un backup en clair" >&2
-  rm -rf "/tmp/${DATE}.tar.gz" "$WORKDIR"
-  exit 1
-fi
-rm -f "/tmp/${DATE}.tar.gz"
-rm -rf "$WORKDIR"
-echo "[backup] archive chiffrée: ${ARCHIVES_DIR}/${DATE}.tar.gz.age"
+- [ ] **Step 2: Détection/installation de Docker**
 
-# ── 5. Envoi hors-site (optionnel — avertissement clair si absent) ──
-if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-  mc alias set offsite "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_ACCESS_KEY" "$BACKUP_S3_SECRET_KEY" >/dev/null
-  mc cp --quiet "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "offsite/${BACKUP_S3_BUCKET}/"
-  echo "[backup] envoyé vers offsite/${BACKUP_S3_BUCKET}/${DATE}.tar.gz.age"
-else
-  echo "[backup] AVERTISSEMENT: aucune cible hors-site configurée (BACKUP_S3_ENDPOINT vide)." >&2
-  echo "[backup] Les sauvegardes restent UNIQUEMENT sur cette machine — ne protège ni de" >&2
-  echo "[backup] l'incendie, ni du vol, ni de la panne disque. Configurer BACKUP_S3_* dès que possible." >&2
-fi
+Ajouter à `scripts/install.sh` :
 
-# ── 6. Rotation (7 quotidiennes + 4 hebdomadaires, locale ET hors-site) ──
-LOCAL_FILES="$(cd "$ARCHIVES_DIR" && ls -1 *.tar.gz.age 2>/dev/null || true)"
-TO_DELETE="$(python3 /usr/local/bin/retention.py "$LOCAL_FILES")"
-for f in $TO_DELETE; do
-  rm -f "${ARCHIVES_DIR}/${f}"
-  echo "[backup] rotation: supprimé localement ${f}"
-  if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-    mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true
+```bash
+ensure_docker() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    echo "✓ Docker + Docker Compose détectés ($(docker compose version --short))."
+    return 0
   fi
-done
 
-echo "[backup] ${DATE} — terminé"
+  echo "✗ Docker (avec le plugin Compose v2) est requis et n'a pas été détecté."
+  case "$(uname -s)" in
+    Linux)
+      if confirm "Installer Docker maintenant via le script officiel get.docker.com ?"; then
+        curl -fsSL https://get.docker.com | sh
+        sudo usermod -aG docker "$USER"
+        echo "Docker installé. Déconnectez-vous/reconnectez-vous (ou lancez 'newgrp docker')"
+        echo "pour que l'appartenance au groupe docker prenne effet, puis relancez ce script."
+        exit 0
+      fi
+      echo "Installation annulée — relancez ce script une fois Docker installé manuellement."
+      exit 1
+      ;;
+    Darwin)
+      echo "macOS : installez Docker Desktop manuellement : https://www.docker.com/products/docker-desktop/"
+      echo "Relancez ce script une fois Docker Desktop démarré."
+      exit 1
+      ;;
+    *)
+      echo "OS non reconnu automatiquement : installez Docker manuellement"
+      echo "(https://docs.docker.com/get-docker/), puis relancez ce script."
+      exit 1
+      ;;
+  esac
+}
+
+ensure_docker
 ```
 
-- [ ] **Step 7: Boucle de planification `entrypoint.sh`**
+- [ ] **Step 3: Vérifier réellement (cas nominal — Docker déjà présent)**
 
-Créer `deploy/backup/entrypoint.sh` :
+Dans un clone jetable, jamais dans le dépôt de travail :
 
 ```bash
-#!/bin/bash
-set -euo pipefail
-
-HOUR="$(printf '%02d' "${BACKUP_HOUR:-3}")"
-echo "[backup] planifié quotidiennement à ${HOUR}:00 UTC"
-
-LAST_RUN_DATE=""
-while true; do
-  now_date="$(date -u +%Y-%m-%d)"
-  now_hour="$(date -u +%H)"
-  if [ "$now_hour" = "$HOUR" ] && [ "$now_date" != "$LAST_RUN_DATE" ]; then
-    if /usr/local/bin/backup.sh; then
-      LAST_RUN_DATE="$now_date"
-    else
-      echo "[backup] échec — nouvelle tentative au prochain cycle (60s)" >&2
-    fi
-  fi
-  sleep 60
-done
+rm -rf /tmp/geostudio-install-test && git clone . /tmp/geostudio-install-test
+chmod +x /tmp/geostudio-install-test/scripts/install.sh
+cd /tmp/geostudio-install-test && ./scripts/install.sh
 ```
+
+Expected : `✓ Docker + Docker Compose détectés (...)` (l'environnement d'exécution de ce plan a déjà Docker), puis le script se termine normalement (rien après `ensure_docker` pour l'instant — Task 2 continue).
 
 ```bash
-chmod +x deploy/backup/backup.sh deploy/backup/entrypoint.sh
+cd /home/lenen/projets/geostudio && rm -rf /tmp/geostudio-install-test
 ```
 
-- [ ] **Step 8: Variables `.env.example`**
-
-Ajouter à la section « Déploiement prod » de `.env.example` (créée en SP-Deploy-a) :
+- [ ] **Step 4: Commit**
 
 ```bash
-# ─── Sauvegarde (SP-Deploy-b, service `backup`) ──────────
-# Heure UTC (0-23) du backup quotidien.
-BACKUP_HOUR=3
-# Clé PUBLIQUE age (générée via `age-keygen`) — la clé privée ne doit
-# JAMAIS être stockée sur cette machine ni dans ce dépôt (cf. runbook de
-# restauration, docs/runbooks/2026-07-24-restauration-sauvegardes.md).
-BACKUP_AGE_RECIPIENT=
-# Cible hors-site S3-compatible (Cloudflare R2 gratuit ≤10 Go, Backblaze
-# B2, Scaleway...). Laisser vide = sauvegarde locale seule (avertissement
-# émis à chaque exécution).
-BACKUP_S3_ENDPOINT=
-BACKUP_S3_ACCESS_KEY=
-BACKUP_S3_SECRET_KEY=
-BACKUP_S3_BUCKET=geostudio-backups
-```
-
-- [ ] **Step 9: Brancher le service dans `docker-compose.prod.yml`**
-
-Modifier le bloc `volumes:` en tête de `docker-compose.prod.yml` (créé en SP-Deploy-a Task 5, contient déjà `tailscale-state:`) — ajouter `backup-archives:` :
-
-```yaml
-volumes:
-  tailscale-state:
-  backup-archives:
-```
-
-Ajouter le service (nouveau bloc, à la suite des services existants) :
-
-```yaml
-  backup:
-    build: ./deploy/backup
-    restart: unless-stopped
-    environment:
-      PG_PASSWORD: ${PG_PASSWORD}
-      MINIO_USER: ${MINIO_USER}
-      MINIO_PASSWORD: ${MINIO_PASSWORD}
-      S3_THUMBNAILS_BUCKET: geostudio-thumbnails
-      S3_UPLOADS_BUCKET: geostudio-uploads
-      S3_CDC_BUCKET: geostudio-cdc
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
-      BACKUP_HOUR: ${BACKUP_HOUR:-3}
-      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
-      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
-      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
-      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
-      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-geostudio-backups}
-    volumes:
-      - backup-archives:/backup/archives
-    networks: [gis-net]
-    depends_on:
-      postgis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-```
-
-- [ ] **Step 10: Valider la syntaxe**
-
-```bash
-./scripts/bootstrap-env.sh
-{ echo "GEOSTUDIO_PUBLIC_HOST=test.ts.net"; echo "GEOSTUDIO_VERSION=latest"; echo "TS_AUTHKEY="; \
-  echo "BACKUP_AGE_RECIPIENT=age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"; } >> .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml config >/dev/null && echo "compose prod OK"
-rm -f .env
-```
-
-- [ ] **Step 11: Vérifier réellement une exécution de backup**
-
-```bash
-age-keygen -o /tmp/sp-deploy-test-key.txt 2>/tmp/sp-deploy-test-key.pub
-RECIPIENT="$(grep 'Public key' /tmp/sp-deploy-test-key.pub | awk '{print $NF}')"
-./scripts/bootstrap-env.sh
-{ echo "GEOSTUDIO_PUBLIC_HOST=test.ts.net"; echo "GEOSTUDIO_VERSION=latest"; echo "TS_AUTHKEY="; \
-  echo "BACKUP_AGE_RECIPIENT=${RECIPIENT}"; } >> .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgis pgbouncer minio keycloak
-sleep 15
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backup /usr/local/bin/backup.sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --entrypoint sh backup \
-  -c "ls -la /backup/archives/"
-```
-
-Expected : un fichier `<horodatage>.tar.gz.age` non vide dans `/backup/archives/` ; logs affichant `postgres.dump: ...`, l'avertissement hors-site (aucun `BACKUP_S3_ENDPOINT` défini dans ce test), pas de trace `ERREUR`.
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down
-rm -f .env /tmp/sp-deploy-test-key.txt /tmp/sp-deploy-test-key.pub
-```
-
-(Conserver la clé privée `age` de **test** n'a aucun intérêt — elle est jetée ici. La Task 2 documente où stocker une vraie clé de production.)
-
-- [ ] **Step 12: Commit**
-
-```bash
-git add deploy/backup docker-compose.prod.yml .env.example
-git commit -m "feat(deploy): service backup — pg_dump + mirror MinIO + export Keycloak, chiffré, rotation 7+4"
+git add scripts/install.sh
+git commit -m "feat(deploy): installeur guidé — squelette + détection Docker"
 ```
 
 ---
