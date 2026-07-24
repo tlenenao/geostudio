@@ -173,3 +173,11 @@ def test_fetch_copy_geojson_is_none():
         external_url="x", items_url=None,
     )
     assert OgcRecordsConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
+
+
+def test_get_connector_returns_ogc_records():
+    from app.harvest.connectors import get_connector
+
+    c = get_connector("ogc-records")
+    assert c.type == "ogc-records"
+    assert c.supports_copy is False

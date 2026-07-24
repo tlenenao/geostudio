@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from app.harvest.connectors.arcgis import ArcgisConnector
 from app.harvest.connectors.base import HarvestConnector
+from app.harvest.connectors.csw import CswConnector
+from app.harvest.connectors.ogc_records import OgcRecordsConnector
 from app.harvest.connectors.stac import StacConnector
 from app.harvest.connectors.wfs import WfsConnector
 from app.harvest.connectors.wms import WmsConnector
@@ -12,6 +14,8 @@ _REGISTRY: dict[str, HarvestConnector] = {
     "wms": WmsConnector(),
     "wfs": WfsConnector(),
     "wmts": WmtsConnector(),
+    "csw": CswConnector(),
+    "ogc-records": OgcRecordsConnector(),
 }
 
 
