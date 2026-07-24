@@ -1,0 +1,5 @@
+geostudio_repo_url: "https://github.com/tlenenao/geostudio.git"
+geostudio_repo_dest: "/home/geostudio/geostudio"
+geostudio_public_host: ""
+geostudio_profiles: ""
+geostudio_seed_demo: false
