@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Connecteur CKAN / data.gouv.fr (SP-12g) — cinquième et dernier connecteur
 d'A22. package_search JSON REST paginé, pas de package_show en N+1 (§3.1 de
-la spec). Seul connecteur non-STAC/ArcGIS avec supports_copy=True : une
-resource géo reconnue (GeoJSON/GPKG/SHP zippé) est copiable, CSV exclu (pas
-de mapping lat/lon pour la copie moissonnée). HTTP uniquement, zéro I/O DB,
-parsing tolérant et borné (même philosophie que StacConnector)."""
+la spec). supports_copy=True (comme STAC/ArcGIS/WFS) : une resource géo
+reconnue (GeoJSON/GPKG/SHP zippé) est copiable, CSV exclu (pas de mapping
+lat/lon pour la copie moissonnée). HTTP uniquement, zéro I/O DB, parsing
+tolérant et borné (même philosophie que StacConnector)."""
 import json
 import logging
 from collections.abc import Iterable
