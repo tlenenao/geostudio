@@ -61,6 +61,16 @@ services:
       - traefik.http.routers.keycloak.entrypoints=web
       - traefik.http.routers.keycloak.priority=20
       - traefik.http.services.keycloak.loadbalancer.server.port=8080
+    # KC_HTTP_RELATIVE_PATH=/auth déplace tout le service HTTP de Keycloak
+    # (y compris /health/ready) sous /auth ; le healthcheck de base
+    # (docker-compose.yml) sonde la racine et rapporte donc "unhealthy" en
+    # permanence malgré un Keycloak fonctionnel (défaut trouvé en Task 6).
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   core:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
