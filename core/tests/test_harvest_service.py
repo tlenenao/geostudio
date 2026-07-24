@@ -9,6 +9,7 @@ from app.harvest import repository as harvest_repo
 from app.harvest import service
 from app.harvest.connectors.base import HarvestedRecord
 from app.harvest.models import HarvestRecord
+from app.ingestion.importer import ImportResult
 from app.items import repository as items_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -30,6 +31,12 @@ RASTER_REC = HarvestedRecord(
     external_url="https://ows.example.com/wms?request=GetCapabilities",
     items_url=None,
     raster_tiles_url="https://ows.example.com/wms?service=WMS&request=GetMap&layers=topp:states&bbox={bbox-epsg-3857}",
+)
+METADATA_ONLY_REC = HarvestedRecord(
+    external_id="csw#iso-1", title="Batiments", abstract="", keywords=[],
+    bbox=[-180.0, -90.0, 180.0, 90.0],
+    external_url="https://geonetwork.example.com/csw?request=GetRecordById&id=iso-1",
+    items_url=None,
 )
 
 
@@ -100,6 +107,20 @@ def test_reference_persists_tiles_url_and_layer_kind(session, tenant_and_user, m
     assert rec.tiles_url == RASTER_REC.raster_tiles_url
     assert rec.layer_kind == "raster"
     assert rec.external_url == RASTER_REC.external_url
+
+
+def test_reference_metadata_only_record_has_null_tiles_and_layer_kind(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([METADATA_ONLY_REC]))
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="csw",
+        url="https://geonetwork.example.com/csw", mode="reference", enabled=True, interval_minutes=None,
+    )
+    service.harvest_source(session, source)
+    assert source.last_status == "ok"
+    rec = harvest_repo.get_record(session, tenant_id=tenant.id, source_id=source.id, external_id="csw#iso-1")
+    assert rec.tiles_url is None
+    assert rec.layer_kind is None
 
 
 def test_reference_mode_reharvest_updates_without_duplicating(session, tenant_and_user, monkeypatch):
@@ -343,3 +364,45 @@ def test_loop_real_integrity_error_is_rolled_back_before_error_status(pg_session
     assert reloaded is not None
     assert reloaded.last_status == "error"
     assert reloaded.last_status != "running"
+
+
+def test_upsert_copy_passes_copy_filename_to_run_import(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    fake_run_import = Mock(return_value=ImportResult(collection_id="c1", item_id="i1"))
+    monkeypatch.setattr(service, "run_import", fake_run_import)
+    monkeypatch.setattr(harvest_repo, "create_record", Mock())
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="ckan",
+        url="https://data.example.com", mode="copy", enabled=True, interval_minutes=None,
+    )
+    session.commit()
+    rec = HarvestedRecord(
+        external_id="pkg-1", title="Sentiers", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_url="https://data.example.com/dataset/pkg-1",
+        items_url="https://data.example.com/dataset/pkg-1/resource/x.gpkg",
+        copy_filename="harvest.gpkg",
+    )
+    connector = _fake_connector([rec], copy_bytes=b"gpkg-bytes")
+    service._upsert_copy(
+        session, source, rec, existing=None, digest="d1", connector=connector, http_get=lambda u: None,
+    )
+    assert fake_run_import.call_args.kwargs["filename"] == "harvest.gpkg"
+
+
+def test_upsert_copy_defaults_filename_when_copy_filename_is_none(session, tenant_and_user, monkeypatch):
+    # Régression : STAC/ArcGIS ne renseignent jamais copy_filename (défaut
+    # None) — le littéral "harvest.geojson" doit rester inchangé pour eux.
+    tenant, user = tenant_and_user
+    fake_run_import = Mock(return_value=ImportResult(collection_id="c2", item_id="i2"))
+    monkeypatch.setattr(service, "run_import", fake_run_import)
+    monkeypatch.setattr(harvest_repo, "create_record", Mock())
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="stac",
+        url="https://a", mode="copy", enabled=True, interval_minutes=None,
+    )
+    session.commit()
+    connector = _fake_connector([RECORD_A], copy_bytes=b"geojson-bytes")
+    service._upsert_copy(
+        session, source, RECORD_A, existing=None, digest="d2", connector=connector, http_get=lambda u: None,
+    )
+    assert fake_run_import.call_args.kwargs["filename"] == "harvest.geojson"

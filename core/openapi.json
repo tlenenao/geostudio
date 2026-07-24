@@ -813,7 +813,10 @@
               "arcgis",
               "wms",
               "wfs",
-              "wmts"
+              "wmts",
+              "csw",
+              "ogc-records",
+              "ckan"
             ],
             "title": "Type",
             "type": "string"

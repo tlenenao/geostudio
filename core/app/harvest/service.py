@@ -182,7 +182,7 @@ def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, c
         return
     result = run_import(
         session, tenant_id=source.tenant_id, created_by=source.owner_id,
-        filename="harvest.geojson", content=content, collection_title=rec.title,
+        filename=rec.copy_filename or "harvest.geojson", content=content, collection_title=rec.title,
         lat_field=None, lon_field=None,
     )
     write_audit(
