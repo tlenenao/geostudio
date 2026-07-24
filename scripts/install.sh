@@ -291,3 +291,61 @@ prompt_admin() {
 
 prompt_admin
 
+launch_stack() {
+  echo ""
+  echo "Démarrage complet de la stack..."
+  local profile_args=()
+  for p in "${SELECTED_PROFILES[@]}"; do
+    profile_args+=(--profile "$p")
+  done
+  $COMPOSE "${profile_args[@]}" up -d
+
+  echo "Attente de la disponibilité du cœur..."
+  # Ni curl ni wget ne sont présents dans l'image core (python:3.12-slim +
+  # uvicorn — vérifié empiriquement, même écueil que kcadm.sh/Keycloak dans
+  # prompt_admin) : on interroge /me avec l'interpréteur Python déjà présent
+  # dans le conteneur, qui sert aussi bien à faire la requête qu'à distinguer
+  # "erreur HTTP" (code renvoyé) de "pas de connexion encore" (000).
+  local code="000"
+  for _ in $(seq 1 30); do
+    code="$($COMPOSE exec -T core python3 -c '
+import urllib.request, urllib.error
+try:
+    urllib.request.urlopen("http://localhost:8200/me", timeout=2)
+    print(200)
+except urllib.error.HTTPError as e:
+    print(e.code)
+except Exception:
+    print("000")
+' 2>/dev/null || echo 000)"
+    [ "$code" = "401" ] && break
+    sleep 2
+  done
+  if [ "$code" != "401" ]; then
+    echo "✗ Le cœur ne répond pas comme attendu (code ${code}) — vérifiez 'docker compose logs core'." >&2
+    exit 1
+  fi
+  echo "✓ Cœur opérationnel."
+
+  if [ "$SEED_DEMO" = "true" ]; then
+    $COMPOSE exec -T core python -m scripts.seed_demo || true
+  fi
+}
+
+print_summary() {
+  echo ""
+  echo "═══ GeoStudio est en ligne ═══"
+  echo "URL publique : https://${PUBLIC_HOST}/"
+  echo "Admin        : ${ADMIN_EMAIL:-<déjà existant>}"
+  echo ""
+  echo "Prochaines étapes :"
+  echo "  - Se connecter avec le compte admin (mot de passe temporaire affiché ci-dessus, à changer)."
+  echo "  - Si une cible de sauvegarde a été configurée : générer une paire de clés"
+  echo "    age (age-keygen) et renseigner BACKUP_AGE_RECIPIENT dans .env, puis"
+  echo "    redémarrer le service backup ('docker compose ... restart backup')."
+  echo "  - Conserver .env et la clé privée age en lieu sûr, hors de cette machine."
+}
+
+launch_stack
+print_summary
+
