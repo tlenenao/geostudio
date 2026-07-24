@@ -815,7 +815,8 @@
               "wfs",
               "wmts",
               "csw",
-              "ogc-records"
+              "ogc-records",
+              "ckan"
             ],
             "title": "Type",
             "type": "string"
