@@ -14,23 +14,23 @@ services:
 
   minio:
     restart: unless-stopped
-    ports: []
+    ports: !reset []
 
   martin:
     restart: unless-stopped
-    ports: []
+    ports: !reset []
 
   titiler:
     restart: unless-stopped
-    ports: []
+    ports: !reset []
 
   keycloak:
     restart: unless-stopped
-    ports: []
+    ports: !reset []
 
   core:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
-    ports: []
+    ports: !reset []
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —
@@ -44,13 +44,13 @@ services:
 
   shell:
     image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
-    ports: []
+    ports: !reset []
 
   traefik:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
-    ports: []
-    volumes:
+    ports: !reset []
+    volumes: !override
       - /var/run/docker.sock:/var/run/docker.sock:ro
