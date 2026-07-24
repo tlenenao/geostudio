@@ -588,13 +588,15 @@ où ils sont ».
   pur par défaut, copie opt-in** par source (A23) qui route vers le pipeline
   d'ingestion SP-6. Items moissonnés typés « référence externe » (source, lien,
   fraîcheur, re-moissonnage).
-- **Connecteurs** (A22 — les cinq retenus, amendé 2026-07-09), *chacun
-  livrable séparément* : ① catalogues STAC externes ; ArcGIS Feature Services
-  (référencement + copie, inséré en 2ᵉ position) ; ② WMS/WFS/WMTS
-  GetCapabilities (référencer un GeoServer existant en secondes) ; ③ CSW/ISO
-  19139 (GeoNetwork/geOrchestra — parser tolérant, champs minimaux) **et son
-  protocole successeur OGC API - Records** (extension documentée SP-12f,
-  2026-07-24) ; ④ CKAN/data.gouv.fr.
+- **Connecteurs** (A22 — les cinq retenus, amendé 2026-07-09 ; **complet**
+  2026-07-24), *chacun livrable séparément* : ① catalogues STAC externes ;
+  ArcGIS Feature Services (référencement + copie, inséré en 2ᵉ position) ;
+  ② WMS/WFS/WMTS GetCapabilities (référencer un GeoServer existant en
+  secondes) ; ③ CSW/ISO 19139 (GeoNetwork/geOrchestra — parser tolérant,
+  champs minimaux) **et son protocole successeur OGC API - Records**
+  (extension documentée SP-12f, 2026-07-24) ; ④ **CKAN/data.gouv.fr**
+  (`package_search` paginé, **copie opt-in** — seul connecteur non-STAC/ArcGIS
+  à supporter la copie, SP-12g, 2026-07-24).
 - UI : administration des sources, badge « externe » sur les items, ajout d'une
   couche moissonnée (WMS/WFS) à une carte sans copie.
 
@@ -1059,6 +1061,16 @@ pénible), CKAN en dernier (métadonnées géo pauvres).
 > `docs/superpowers/specs/2026-07-24-sp12f-connecteurs-csw-ogc-records-design.md`
 > §9).
 
+> **Extension 2026-07-24 (SP-12g)** : le connecteur ④ (CKAN/data.gouv.fr)
+> livre `supports_copy = True` — décision de cadrage qui casse l'hypothèse
+> implicite du pipeline de copie partagé (`service.py::_upsert_copy` fixé sur
+> `"harvest.geojson"`) : `HarvestedRecord` gagne un champ optionnel
+> `copy_filename` (défaut `None`, zéro impact sur STAC/ArcGIS). **A22 complet
+> après SP-12g** — les cinq connecteurs retenus sont tous livrés ; tout
+> connecteur additionnel futur serait un nouvel arbitrage, pas une suite
+> implicite (cf.
+> `docs/superpowers/specs/2026-07-24-sp12g-connecteur-ckan-design.md` §9).
+
 ### A23 — Mode de moissonnage (SP-12)
 
 | Option | Avantages | Inconvénients |
@@ -1243,7 +1255,7 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 | A19 | Surface analytique | **API structurée pour les widgets + SQL read-only réservé au rôle analyste** | SP-11 |
 | A20 | API STAC | **Routes natives dans le cœur** (conformité progressive, stac-api-validator en CI) | SP-12 |
 | A21 | DCAT | **Export DCAT-AP moissonnable** (JSON-LD, validé data.gouv.fr) | SP-12 |
-| A22 | Connecteurs moissonnage | **Les cinq** (amendé 2026-07-09) — ordre : STAC → **ArcGIS FS** → GetCapabilities → CSW/ISO **+ OGC API - Records** (SP-12f, 2026-07-24) → CKAN | SP-12 (réf. comme source de dataset dès SP-14) |
+| A22 | Connecteurs moissonnage | **Les cinq, complet** (amendé 2026-07-09) — ordre : STAC → **ArcGIS FS** → GetCapabilities → CSW/ISO **+ OGC API - Records** (SP-12f) → **CKAN** (copie opt-in, SP-12g, 2026-07-24) | SP-12 (réf. comme source de dataset dès SP-14) |
 | A23 | Mode moissonnage | **Référencement pur + copie opt-in par source** | SP-12 |
 | A24 | Moteur 3D | **deck.gl `Tile3DLayer` + terrain raster-dem MapLibre** | SP-13 |
 | A25 | Impression | **Rendu navigateur headless (Playwright) en worker** ⚠ écart assumé avec la vision (QGIS Server) — bascule seulement sur demande réelle de print pro | SP-13 |
@@ -1323,7 +1335,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | Solo : bus factor et créneaux hachés | Vélocité irrégulière | Des SP courts, des sous-phases ≤ 25 h, la doc de specs/plans comme mémoire externe |
 | Dérive doc/code (3 générations de docs déjà) | Confusion contributeurs | SP-9 archive G1/G2 ; règle : un document de référence par sujet, les autres pointent dessus |
 | Le CDC déraille (slot qui gonfle le WAL, worker arrêté, schéma modifié) | Disque plein côté PostGIS, lakehouse périmé | Spike d'ouverture SP-11, alerte sur le lag et la taille du slot (SP-10), procédure de re-backfill documentée, `ALTER` = re-backfill assumé en v1 |
-| Étalement des connecteurs de moissonnage (4 retenus) | SP-12 sans fin | Un connecteur = un incrément livrable ; ordre A22 figé ; on peut s'arrêter entre deux |
+| Étalement des connecteurs de moissonnage (5 retenus, tous livrés) | SP-12 clos côté connecteurs | Un connecteur = un incrément livrable ; ordre A22 figé ; tous livrés au 2026-07-24 |
 | Le canvas de graphe ETL dérape (SP-17) | Chantier qui gonfle | MVP borné (topologie linéaire+join, canvas hand-rolled), Phase 1 livrée sans UI (auteur MCP/JSON) avant le canvas ; React Flow (MIT) seulement si nécessaire |
 | Posture GPL du sidecar `qgis_process` (SP-17) | Blocage distribution | Étage 2 opt-in (profil compose `etl`), sidecar = sous-processus (agrégation) ; cœur Apache-2.0 intact ; posture confirmée avant release |
 | Deux moteurs de transformation (SP-17 vs SP-14) | Viole règle #3 | A39 : SP-14 consomme le moteur de SP-17, ne le duplique pas |
@@ -1342,7 +1354,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M6 v0.1 publique** (SP-9) | Licence, CI, images, install docs, démo publique | Une installation tierce réussie sans assistance ; premières issues externes |
 | **M7 exploitable** (SP-10) | Profil observability, dashboards alimentés, 4 SLO avec alertes | Une requête lente diagnostiquée en < 10 min via les traces |
 | **M8 data platform** (SP-11) | CDC PostGIS→GeoParquet en continu, API analytique DuckDB | Écriture chaude visible au froid < 5 min ; 1 M de lignes agrégées < 2 s |
-| **M9 catalogue ouvert** (SP-12) | STAC conforme, export DCAT-AP, 4 connecteurs de moissonnage | QGIS navigue le catalogue ; data.gouv.fr moissonne ; un GeoServer externe référencé en < 1 min |
+| **M9 catalogue ouvert** (SP-12) | STAC conforme, export DCAT-AP, 5 connecteurs de moissonnage | QGIS navigue le catalogue ; data.gouv.fr moissonne ; un GeoServer externe référencé en < 1 min |
 | **M10 3D & print** (SP-13) | Couches 3D Tiles + terrain ; export PNG/PDF mis en page | Tileset public navigable > 30 fps ; PDF A3 avec légende/échelle fidèles |
 | **M11 BI géospatiale** (SP-14) | Datasets partagés, requête visuelle, contexte global, cross-filter, SQL Lab | Une question spatiale (« incidents à < 500 m d'une école, par commune, ce trimestre ») résolue sans code ni SQL par un non-technicien |
 | **M12 La plateforme prévient** (SP-15) | Alertes, rapports planifiés diffusés, exports secs | Rapport PDF hebdo reçu par email ; alerte de seuil déclenchée et journalisée < 5 min ; export XLSX permissionné |
