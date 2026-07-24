@@ -16,6 +16,7 @@ class HarvestedRecord:
     external_url: str
     items_url: str | None
     raster_tiles_url: str | None = None
+    copy_filename: str | None = None
 
 
 class HarvestConnector(Protocol):
