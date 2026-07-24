@@ -32,7 +32,7 @@ ensure_docker() {
   echo "✗ Docker (avec le plugin Compose v2) est requis et n'a pas été détecté."
   case "$(uname -s)" in
     Linux)
-      if confirm "Installer Docker maintenant via le script officiel get.docker.com ?"; then
+      if confirm "Installer Docker via le script officiel et ajouter l'utilisateur au groupe docker ?"; then
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER"
         echo "Docker installé. Déconnectez-vous/reconnectez-vous (ou lancez 'newgrp docker')"
