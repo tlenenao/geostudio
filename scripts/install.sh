@@ -125,13 +125,27 @@ prompt_profiles() {
 
   echo ""
   echo "── Profils disponibles ──"
-  while IFS= read -r profile; do
-    [ -z "$profile" ] && continue
-    label="$(profile_label "$profile")"
-    if confirm "Activer : ${label} ?"; then
-      SELECTED_PROFILES+=("$profile")
-    fi
-  done <<< "$available"
+  if [ -n "${INSTALL_PROFILES+x}" ]; then
+    echo "INSTALL_PROFILES=\"${INSTALL_PROFILES}\" — sélection non-interactive."
+    while IFS= read -r profile; do
+      [ -z "$profile" ] && continue
+      label="$(profile_label "$profile")"
+      if [[ ",${INSTALL_PROFILES}," == *",${profile},"* ]]; then
+        echo "  ✓ ${label}"
+        SELECTED_PROFILES+=("$profile")
+      else
+        echo "  ✗ ${label}"
+      fi
+    done <<< "$available"
+  else
+    while IFS= read -r profile; do
+      [ -z "$profile" ] && continue
+      label="$(profile_label "$profile")"
+      if confirm "Activer : ${label} ?"; then
+        SELECTED_PROFILES+=("$profile")
+      fi
+    done <<< "$available"
+  fi
 
   # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
   # dépôt — ne ment pas à l'utilisateur (spec §5.2).
@@ -140,7 +154,12 @@ prompt_profiles() {
   fi
 
   echo ""
-  if confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
+  if [ -n "${INSTALL_SEED_DEMO+x}" ]; then
+    if [ "$INSTALL_SEED_DEMO" = "1" ]; then
+      SEED_DEMO=true
+    fi
+    echo "INSTALL_SEED_DEMO=${INSTALL_SEED_DEMO} — démo $([ "$SEED_DEMO" = true ] && echo activée || echo désactivée)."
+  elif confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
     SEED_DEMO=true
   fi
 }
@@ -167,7 +186,16 @@ ensure_env_file
 
 prompt_public_host() {
   echo ""
-  read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
+  if [ -n "${GEOSTUDIO_PUBLIC_HOST+x}" ]; then
+    PUBLIC_HOST_INPUT="$GEOSTUDIO_PUBLIC_HOST"
+    if [ -n "$PUBLIC_HOST_INPUT" ]; then
+      echo "Nom d'hôte public : ${PUBLIC_HOST_INPUT} (GEOSTUDIO_PUBLIC_HOST)"
+    else
+      echo "GEOSTUDIO_PUBLIC_HOST défini vide — découverte automatique via Tailscale Funnel."
+    fi
+  else
+    read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
+  fi
   # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
   # cette tâche) : ne pas redemander — sinon, question interactive.
   if [ -z "${TS_AUTHKEY:-}" ]; then
@@ -217,16 +245,29 @@ activate_funnel() {
 
 prompt_backup_target() {
   echo ""
-  read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
+  local s3_endpoint s3_access s3_secret s3_bucket
+  if [ -n "${BACKUP_S3_ENDPOINT+x}" ]; then
+    echo "BACKUP_S3_ENDPOINT défini — cible de sauvegarde non-interactive."
+    s3_endpoint="$BACKUP_S3_ENDPOINT"
+    s3_access="${BACKUP_S3_ACCESS_KEY:-}"
+    s3_secret="${BACKUP_S3_SECRET_KEY:-}"
+    s3_bucket="${BACKUP_S3_BUCKET:-geostudio-backups}"
+  else
+    read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
+    if [ -n "$s3_endpoint" ]; then
+      read -r -p "  Access key : " s3_access
+      read -r -s -p "  Secret key : " s3_secret
+      echo
+      read -r -p "  Bucket [geostudio-backups] : " s3_bucket
+      s3_bucket="${s3_bucket:-geostudio-backups}"
+    fi
+  fi
+
   if [ -n "$s3_endpoint" ]; then
-    read -r -p "  Access key : " s3_access
-    read -r -s -p "  Secret key : " s3_secret
-    echo
-    read -r -p "  Bucket [geostudio-backups] : " s3_bucket
     set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
     set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
     set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "${s3_bucket:-geostudio-backups}"
+    set_env_var BACKUP_S3_BUCKET "$s3_bucket"
     echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
     echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
   else
@@ -239,7 +280,12 @@ prompt_backup_target
 
 prompt_admin() {
   echo ""
-  read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
+  if [ -n "${INSTALL_ADMIN_EMAIL:-}" ]; then
+    ADMIN_EMAIL="$INSTALL_ADMIN_EMAIL"
+    echo "Email administrateur : ${ADMIN_EMAIL} (INSTALL_ADMIN_EMAIL)"
+  else
+    read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
+  fi
 
   echo "Démarrage de Keycloak/cœur pour créer le compte admin..."
   $COMPOSE up -d postgis pgbouncer minio keycloak
