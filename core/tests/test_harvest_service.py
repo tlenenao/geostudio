@@ -31,6 +31,12 @@ RASTER_REC = HarvestedRecord(
     items_url=None,
     raster_tiles_url="https://ows.example.com/wms?service=WMS&request=GetMap&layers=topp:states&bbox={bbox-epsg-3857}",
 )
+METADATA_ONLY_REC = HarvestedRecord(
+    external_id="csw#iso-1", title="Batiments", abstract="", keywords=[],
+    bbox=[-180.0, -90.0, 180.0, 90.0],
+    external_url="https://geonetwork.example.com/csw?request=GetRecordById&id=iso-1",
+    items_url=None,
+)
 
 
 @pytest.fixture()
@@ -100,6 +106,20 @@ def test_reference_persists_tiles_url_and_layer_kind(session, tenant_and_user, m
     assert rec.tiles_url == RASTER_REC.raster_tiles_url
     assert rec.layer_kind == "raster"
     assert rec.external_url == RASTER_REC.external_url
+
+
+def test_reference_metadata_only_record_has_null_tiles_and_layer_kind(session, tenant_and_user, monkeypatch):
+    tenant, user = tenant_and_user
+    monkeypatch.setattr(service, "get_connector", lambda t: _fake_connector([METADATA_ONLY_REC]))
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="csw",
+        url="https://geonetwork.example.com/csw", mode="reference", enabled=True, interval_minutes=None,
+    )
+    service.harvest_source(session, source)
+    assert source.last_status == "ok"
+    rec = harvest_repo.get_record(session, tenant_id=tenant.id, source_id=source.id, external_id="csw#iso-1")
+    assert rec.tiles_url is None
+    assert rec.layer_kind is None
 
 
 def test_reference_mode_reharvest_updates_without_duplicating(session, tenant_and_user, monkeypatch):

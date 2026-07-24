@@ -283,3 +283,11 @@ def test_fetch_copy_geojson_is_none():
         external_url="x", items_url=None,
     )
     assert CswConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
+
+
+def test_get_connector_returns_csw():
+    from app.harvest.connectors import get_connector
+
+    c = get_connector("csw")
+    assert c.type == "csw"
+    assert c.supports_copy is False

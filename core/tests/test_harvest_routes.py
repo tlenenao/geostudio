@@ -97,9 +97,30 @@ def test_create_unknown_type_is_rejected(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post("/harvest/sources", json={
-        "type": "csw", "url": "https://x", "mode": "reference",
+        "type": "geonode-legacy", "url": "https://x", "mode": "reference",
     })
     assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("type_", ["csw", "ogc-records"])
+def test_create_metadata_source_is_accepted(env, type_):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": type_, "url": "https://catalog.example.com/x", "mode": "reference",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["type"] == type_
+
+
+@pytest.mark.parametrize("type_", ["csw", "ogc-records"])
+def test_copy_mode_rejected_for_metadata_connectors(env, type_):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    resp = client.post("/harvest/sources", json={
+        "type": type_, "url": "https://catalog.example.com/x", "mode": "copy",
+    })
+    assert resp.status_code == 400
 
 
 @pytest.mark.parametrize("type_", ["wms", "wfs", "wmts"])
