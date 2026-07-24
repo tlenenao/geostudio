@@ -123,7 +123,7 @@ Item confirmé pré-backup : `id=54fec78cfd464fc2b25c838997af52cf`,
 $ docker compose ... run --rm --no-deps --entrypoint age-keygen backup
 Public key: age17n65zwd5drve2uahu22lcsd9s83x820mrhmdzyd9mku7rtm0wptsvgndy6
 # created: 2026-07-24T17:47:10Z
-AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5
+AGE-SECRET-KEY-1…(clé privée de test, redacted — jetée en fin de session, ne protège rien de réel)
 (clé privée écrite dans un fichier scratch, BACKUP_AGE_RECIPIENT=age17n65... ajouté au .env de test)
 
 $ docker compose ... run --rm --entrypoint /usr/local/bin/backup.sh backup
