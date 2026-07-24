@@ -56,3 +56,39 @@ ensure_docker() {
 }
 
 ensure_docker
+
+declare -A KNOWN_PROFILE_LABELS=(
+  [observability]="Observabilité (Grafana/Loki/Tempo/Prometheus)"
+  [etl]="ETL no-code (SP-17)"
+)
+
+SELECTED_PROFILES=()
+SEED_DEMO=false
+
+prompt_profiles() {
+  local available
+  available="$($COMPOSE config --profiles 2>/dev/null || true)"
+
+  echo ""
+  echo "── Profils disponibles ──"
+  while IFS= read -r profile; do
+    [ -z "$profile" ] && continue
+    label="${KNOWN_PROFILE_LABELS[$profile]:-$profile}"
+    if confirm "Activer : ${label} ?"; then
+      SELECTED_PROFILES+=("$profile")
+    fi
+  done <<< "$available"
+
+  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
+  if ! grep -qx "etl" <<< "$available"; then
+    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
+  fi
+
+  echo ""
+  if confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
+    SEED_DEMO=true
+  fi
+}
+
+prompt_profiles
