@@ -45,6 +45,11 @@ test("runtime env with un-substituted envsubst placeholder falls back to build-t
   expect(cfg.coreUrl).toBe("https://core.test");
 });
 
+test("runtime env with empty string (envsubst on an unset whitelisted var) falls back to build-time", () => {
+  const cfg = loadConfig(base, { VITE_CORE_URL: "" });
+  expect(cfg.coreUrl).toBe("https://core.test");
+});
+
 test("absent runtime env behaves exactly like before (undefined second arg)", () => {
   const cfg = loadConfig(base);
   expect(cfg.coreUrl).toBe("https://core.test");
