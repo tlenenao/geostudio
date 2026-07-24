@@ -1172,7 +1172,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records";
+            type: "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
             /** Url */
             url: string;
         };
