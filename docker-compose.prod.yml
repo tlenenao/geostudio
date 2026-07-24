@@ -1,0 +1,56 @@
+# Surcouche prod (SP-Deploy) — appliquée par-dessus docker-compose.yml :
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Différences avec le compose de dev : images depuis GHCR (au lieu de
+# `build:`), tunnel sortant (aucun port hôte publié), Traefik sans ACME (le
+# TLS est terminé au bord du tunnel — cf. service `tunnel`, Task 5), nom
+# d'hôte public unique `GEOSTUDIO_PUBLIC_HOST` (cf. Task 3).
+services:
+
+  postgis:
+    restart: unless-stopped
+
+  pgbouncer:
+    restart: unless-stopped
+
+  minio:
+    restart: unless-stopped
+    ports: []
+
+  martin:
+    restart: unless-stopped
+    ports: []
+
+  titiler:
+    restart: unless-stopped
+    ports: []
+
+  keycloak:
+    restart: unless-stopped
+    ports: []
+
+  core:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    ports: []
+
+  # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
+  # `build: ./core` pour les trois, processus séparés par `command:`) —
+  # release.yml ne construit que core/shell/postgis (matrice
+  # build-and-push), donc ces deux services réutilisent geostudio-core.
+  worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  cdc-worker:
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+
+  shell:
+    image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
+    ports: []
+
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports: []
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
