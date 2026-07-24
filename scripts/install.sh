@@ -57,23 +57,27 @@ ensure_docker() {
 
 ensure_docker
 
-declare -A KNOWN_PROFILE_LABELS=(
-  [observability]="Observabilité (Grafana/Loki/Tempo/Prometheus)"
-  [etl]="ETL no-code (SP-17)"
-)
+profile_label() {
+  case "$1" in
+    observability) echo "Observabilité (Grafana/Loki/Tempo/Prometheus)" ;;
+    etl) echo "ETL no-code (SP-17)" ;;
+    *) echo "$1" ;;
+  esac
+}
 
 SELECTED_PROFILES=()
 SEED_DEMO=false
 
 prompt_profiles() {
   local available
+  local label
   available="$($COMPOSE config --profiles 2>/dev/null || true)"
 
   echo ""
   echo "── Profils disponibles ──"
   while IFS= read -r profile; do
     [ -z "$profile" ] && continue
-    label="${KNOWN_PROFILE_LABELS[$profile]:-$profile}"
+    label="$(profile_label "$profile")"
     if confirm "Activer : ${label} ?"; then
       SELECTED_PROFILES+=("$profile")
     fi
