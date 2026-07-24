@@ -407,3 +407,105 @@ vérifié en conditions réelles) ; incohérence cosmétique `python3` vs `pytho
 ## SP-Deploy-c COMPLET — 4 tâches, 4 fixes de revue de tâche, 1 fix de
 ## contrôleur (incident scratch-file), 1 fix de revue finale, tout clean.
 ## HEAD=85b107f. Ready to merge: YES (revue finale opus). Non poussé.
+
+## SP-Deploy-e — en cours (subagent-driven-development)
+
+Plan: docs/superpowers/plans/2026-07-25-sp-deploy-e-provisioning-proxmox.md
+Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
+Base globale: dev@4e3cc8a (spec SP-Deploy-e committée ; fichier de plan lui-même encore non tracké à ce stade, comme pour SP-Deploy-c).
+
+## Pré-vol
+
+Scan des 5 tâches : pas de contradiction entre tâches ni avec les contraintes
+globales. Contexte vérifié contre l'état réel du dépôt : `scripts/install.sh`
+(360 lignes) contient bien les 4 fonctions ciblées avec un contenu "avant"
+correspondant au texte du plan (`prompt_profiles` ligne 113, `prompt_public_host`
+ligne 168, `prompt_backup_target` ligne 218, `prompt_admin` ligne 240) — léger
+décalage de quelques lignes vs les numéros exacts du plan mais contenu
+identique. Poursuite sans confirmation utilisateur (scan de contradictions clean).
+
+Base Task 1: 4e3cc8a
+Task 1: complete (commit 1e552bb, review clean au premier passage — ✅
+spec + quality, 0 Critical/Important). Transcription exacte des 4 blocs
+de code du brief (prompt_profiles/prompt_public_host/prompt_backup_target/
+prompt_admin), branches else non-régressives confirmées identiques
+(reviewer a re-exécuté shellcheck indépendamment, 0 warning). Distinction
++x (3 fonctions) vs -n (prompt_admin, seul champ obligatoire) correcte.
+Minors (roll-up, hérités du brief tel quel, pas des déviations de
+l'implémenteur) : INSTALL_SEED_DEMO n'accepte que la valeur littérale "1" ;
+INSTALL_PROFILES sans trim des espaces autour des virgules — à garder en
+tête pour la Task 3 (consommateur du contrat).
+
+Base Task 2: 1e552bb
+Task 2: complete (commit ee5a7ea, review clean au premier passage — ✅
+spec + quality, 0 Critical/Important). Module OpenTofu (6 fichiers)
+transcription exacte vérifiée ligne à ligne par le reviewer, validé
+réellement via conteneur OpenTofu officiel (`bpg/proxmox` v0.111.1 résolu,
+`validate` succès, `fmt -check` propre), artefacts locaux nettoyés avant
+commit (aucun `.terraform/`/lock file committé). `ssh_username` défaut
+`geostudio` cohérent avec `ansible_user` attendu en Task 3. Minors
+(roll-up, hérités du brief tel quel) : contrainte `~> 0.66` autorise en
+réalité tout 0.x jusqu'à 1.0.0 (large) ; `.terraform.lock.hcl` non listé
+dans le `.gitignore` du module (absence volontaire documentée par le
+plan).
+
+Base Task 3: ee5a7ea
+Task 3: complete (commit 41e501f, review clean au premier passage — ✅
+spec + quality, 0 finding). Playbook Ansible (4 fichiers) transcription
+exacte vérifiée, 10 variables d'environnement du contrat comptées
+programmatiquement et croisées avec scripts/install.sh (Task 1) — aucun
+typo/omission/ajout. Ancre YAML `&geostudio_install_env`/alias
+`*geostudio_install_env` évite bien la duplication du bloc environment
+entre les 2 passes. `meta: reset_connection` correctement placé entre les
+2 tâches `command:`. `inventory.ini`/`vault.yml` matérialisés pour la
+validation confirmés absents du commit (`git ls-files` vérifié par le
+reviewer). Validé réellement via conteneur ansible-dev-tools officiel
+(syntax-check + lint, 0 warning).
+
+Base Task 4: 41e501f
+Task 4: complete (commit 13a6ba8, review clean au premier passage — ✅
+spec + quality, 0 finding). README.md (110 lignes) transcription exacte
+vérifiée, les 5 fichiers référencés (Tasks 2/3) confirmés existants sur
+disque par le reviewer.
+
+Base Task 5: 13a6ba8
+Task 5: complete (commit 3e07288, review clean au premier passage — ✅
+spec + quality, 0 finding). `.gitignore` racine étendu (2 lignes exactes,
+aucun doublon), `git status --short deploy/proxmox/` vide (re-vérifié
+indépendamment par le reviewer). Cross-check des 3 points de cohérence
+inter-tâches spot-checké indépendamment par le reviewer (ssh_username↔
+ansible_user, repo_dest↔home dir sans become, 10 env vars↔contrat Task 1
+— confirmé via grep sur scripts/install.sh que les 10 vars sont bien
+consommées, pas seulement nommées). Suite de non-régression réelle : shell
+build vert, core 775 passed/102 skipped + lint-imports contract kept.
+
+## SP-Deploy-e COMPLET — 5 tâches, 0 fix de revue de tâche (les 5 clean
+## au premier passage), tout clean. HEAD=3e07288. Reste : revue finale de
+## branche.
+
+## Revue finale de branche (opus, 4e3cc8a..3e07288) — 0 Critical, 0 Important
+Chaîne des 3 couches vérifiée cohérente de bout en bout par le reviewer :
+outputs Terraform (vm_ip/vm_ssh_username) → inventory.ini.example
+(ansible_host/ansible_user) → contrat d'env-vars Task 1 consommé par
+playbook.yml, sans dérive (10 noms, aucun 11e introduit, tous réellement
+consommés dans scripts/install.sh — grep vérifié ligne par ligne).
+Mécanisme deux-passes/reset_connection confirmé sain quand les deux
+fichiers sont lus ensemble (ensure_docker exit 0 après install Docker,
+reset_connection ouvre une session SSH neuve, 2e passe trouve Docker
+présent et termine le déploiement). Discipline secrets confirmée sur tout
+le diff (aucun secret/IP/hostname réel, seuls des placeholders). Séparation
+group_vars/all.yml + vault.yml confirmée nécessaire (vault.yml ne charge
+pas automatiquement, groupe "vault" inexistant — vars_files explicite
+indispensable). CLAUDE.md et feuille de route confirmés absents du diff
+(propriété de SP-Deploy-d, non dupliqués ici).
+
+3 Minors laissés tels quels (non bloquants, cosmétiques) : README ne
+documente pas l'absence de trim d'espaces dans INSTALL_PROFILES (risque
+faible, un seul profil illustré en exemple) ; minor Task 1 INSTALL_SEED_DEMO
+"1" strict confirmé moot au niveau intégration (seul producteur, le
+playbook, émet toujours "1"/"0" canonique) ; clone HTTPS anonyme suppose
+le dépôt public au moment du déploiement (intentionnel, Apache-2.0).
+
+## SP-Deploy-e COMPLET — 5 tâches, 0 fix de revue de tâche, 0 fix de
+## revue finale, tout clean. Ready to merge: YES (revue finale opus).
+## HEAD=3e07288. Non poussé — dev local en avance sur origin/dev.

@@ -1,196 +1,152 @@
-### Task 3 : bootstrap Q&A — hôte public, `.env`, premier admin Keycloak
+### Task 3 : playbook Ansible — configuration + lancement
 
 **Files:**
-- Modify: `scripts/install.sh`
+- Create: `deploy/proxmox/ansible/inventory.ini.example`
+- Create: `deploy/proxmox/ansible/group_vars/all.yml`
+- Create: `deploy/proxmox/ansible/group_vars/vault.yml.example`
+- Create: `deploy/proxmox/ansible/playbook.yml`
 
 **Interfaces:**
-- Consumes: `scripts/bootstrap-env.sh` (existant) ; service `tunnel` (SP-Deploy-a Task 5) ; API Admin REST Keycloak (même mécanisme d'authentification que `deploy/backup/backup.sh`, SP-Deploy-b).
-- Produces: `.env` complété (`GEOSTUDIO_PUBLIC_HOST`, `TS_AUTHKEY`, `CORE_ADMIN_SUBS`, `BACKUP_*` si renseignés) — consommé par la Task 4 (lancement final).
+- Consumes: le contrat de variables d'environnement défini en Task 1 (`INSTALL_YES`, `GEOSTUDIO_PUBLIC_HOST`, `TS_AUTHKEY`, `INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `INSTALL_ADMIN_EMAIL`, `BACKUP_S3_*`) ; l'IP/utilisateur produits par Task 2 (`vm_ip`/`vm_ssh_username`, reportés à la main dans `inventory.ini`).
+- Produces: rien consommé par un autre fichier de ce plan — nœud terminal de la chaîne.
 
-**Contexte vérifié en lisant le code :**
-- `core/scripts/seed_demo.py:36-38` : `CORE_ADMIN_SUBS` (liste de `sub` OIDC séparés par des virgules) — aucun utilisateur n'est admin tant qu'un `sub` n'y figure pas. En mode `oidc` réel (pas `mock`), il n'existe pas de `mockuser` auto-promu (`core/app/auth/dependency.py`) : sans cette étape, personne ne peut jamais devenir admin après un premier déploiement propre.
-- Pour Keycloak, l'identifiant interne (`id`) d'un utilisateur créé via l'API Admin **est** la valeur du claim `sub` des tokens émis pour ce compte — créer l'utilisateur via l'API et lire son `id` donne directement la valeur à écrire dans `CORE_ADMIN_SUBS`, sans attendre une première connexion.
-- `docker-compose.yml` service `keycloak` : `KEYCLOAK_ADMIN: admin` / `KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}` — identifiants déjà disponibles pour l'authentification admin-cli (même flux que `deploy/backup/backup.sh`, SP-Deploy-b Task 1).
-- `tailscale status --json` expose le nom MagicDNS du nœud sous `.Self.DNSName` (avec un point final) — à confirmer empiriquement à l'exécution (Step 4 de cette tâche), avant de committer si le champ diffère de ce qui est documenté ici.
+- [ ] **Step 1: `inventory.ini.example`**
 
-- [ ] **Step 1: Génération du `.env` (réutilise `bootstrap-env.sh`)**
-
-Ajouter à `scripts/install.sh` :
-
-```bash
-ensure_env_file() {
-  if [ ! -f .env ]; then
-    ./scripts/bootstrap-env.sh
-  else
-    echo "✓ .env existe déjà — secrets conservés (idempotent)."
-  fi
-}
-
-set_env_var() {
-  # $1 = nom, $2 = valeur — jamais d'écrasement d'une AUTRE variable que
-  # celle ciblée (même précaution que bootstrap-env.sh : sed -i.bak, ligne
-  # exacte "^NAME=", suffixe .bak supprimé immédiatement après).
-  sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
-  rm -f .env.bak
-}
-
-ensure_env_file
+```ini
+[geostudio]
+geostudio-vm ansible_host=192.168.1.50 ansible_user=geostudio ansible_ssh_private_key_file=~/.ssh/geostudio_proxmox
 ```
 
-- [ ] **Step 2: Question hôte public + clé Tailscale**
+- [ ] **Step 2: `group_vars/all.yml`** (non-secret, committé tel quel)
 
-```bash
-prompt_public_host() {
-  echo ""
-  read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
-  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
-  # cette tâche) : ne pas redemander — sinon, question interactive.
-  if [ -z "${TS_AUTHKEY:-}" ]; then
-    read -r -p "Clé Tailscale (TS_AUTHKEY — https://login.tailscale.com/admin/settings/keys) : " TS_AUTHKEY
-  fi
-  set_env_var TS_AUTHKEY "$TS_AUTHKEY"
-
-  if [ -n "$PUBLIC_HOST_INPUT" ]; then
-    PUBLIC_HOST="$PUBLIC_HOST_INPUT"
-    return 0
-  fi
-
-  echo "Démarrage du tunnel pour découvrir automatiquement un nom *.ts.net..."
-  $COMPOSE up -d traefik tunnel
-  local dns_name=""
-  for _ in $(seq 1 30); do
-    dns_name="$($COMPOSE exec -T tunnel tailscale status --json 2>/dev/null \
-      | jq -r '.Self.DNSName // empty' | sed 's/\.$//')"
-    [ -n "$dns_name" ] && break
-    sleep 2
-  done
-  if [ -z "$dns_name" ]; then
-    echo "✗ Impossible de découvrir automatiquement un nom *.ts.net (délai dépassé)." >&2
-    echo "  Vérifiez TS_AUTHKEY, ou fournissez un nom d'hôte manuellement et relancez." >&2
-    exit 1
-  fi
-  PUBLIC_HOST="$dns_name"
-  echo "✓ Hôte découvert : ${PUBLIC_HOST}"
-}
-
-prompt_public_host
-set_env_var GEOSTUDIO_PUBLIC_HOST "$PUBLIC_HOST"
+```yaml
+geostudio_repo_url: "https://github.com/tlenenao/geostudio.git"
+geostudio_repo_dest: "/home/geostudio/geostudio"
+geostudio_public_host: ""
+geostudio_profiles: ""
+geostudio_seed_demo: false
 ```
 
-- [ ] **Step 3: Activation du Funnel + question cible de sauvegarde**
+- [ ] **Step 3: `group_vars/vault.yml.example`** (template — le vrai `vault.yml` est chiffré par `ansible-vault` et gitignored, cf. Task 5)
 
-```bash
-activate_funnel() {
-  echo "Activation de Tailscale Funnel (accès public sans port ouvert)..."
-  $COMPOSE exec -T tunnel tailscale funnel --bg 80
-}
-
-prompt_backup_target() {
-  echo ""
-  read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
-  if [ -n "$s3_endpoint" ]; then
-    read -r -p "  Access key : " s3_access
-    read -r -p "  Secret key : " s3_secret
-    read -r -p "  Bucket [geostudio-backups] : " s3_bucket
-    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
-    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
-    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "${s3_bucket:-geostudio-backups}"
-    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
-    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
-  else
-    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
-  fi
-}
-
-activate_funnel
-prompt_backup_target
+```yaml
+vault_ts_authkey: "tskey-auth-CHANGEME"
+vault_geostudio_admin_email: "admin@example.com"
+vault_backup_s3_endpoint: ""
+vault_backup_s3_access_key: ""
+vault_backup_s3_secret_key: ""
+vault_backup_s3_bucket: "geostudio-backups"
 ```
 
-- [ ] **Step 4: Création du premier administrateur Keycloak**
+- [ ] **Step 4: `playbook.yml`**
 
-```bash
-prompt_admin() {
-  echo ""
-  read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
+```yaml
+---
+- name: Provisionner GeoStudio sur la VM Proxmox
+  hosts: geostudio
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/vault.yml
 
-  echo "Démarrage de Keycloak/cœur pour créer le compte admin..."
-  $COMPOSE up -d postgis pgbouncer minio keycloak
-  echo "Attente de Keycloak..."
-  for _ in $(seq 1 30); do
-    $COMPOSE exec -T keycloak curl -sf http://localhost:8080/auth/health/ready >/dev/null 2>&1 && break
-    sleep 2
-  done
+  tasks:
+    - name: Attendre que SSH soit disponible (premier boot cloud-init)
+      ansible.builtin.wait_for_connection:
+        timeout: 300
 
-  local kc_token
-  kc_token="$($COMPOSE exec -T keycloak curl -sf -X POST \
-    http://localhost:8080/auth/realms/master/protocol/openid-connect/token \
-    -d client_id=admin-cli -d username=admin -d "password=${KC_PASSWORD}" \
-    -d grant_type=password | jq -r .access_token)"
-  if [ -z "$kc_token" ] || [ "$kc_token" = "null" ]; then
-    echo "✗ Échec d'authentification à l'API Admin Keycloak." >&2
-    exit 1
-  fi
+    - name: Mettre à jour le cache apt
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
 
-  local admin_temp_password
-  admin_temp_password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
+    - name: Installer les prérequis système (git, curl)
+      become: true
+      ansible.builtin.apt:
+        name:
+          - git
+          - curl
+        state: present
 
-  # Idempotent : si l'utilisateur existe déjà (relance de l'installeur),
-  # récupérer son id plutôt que d'échouer sur un doublon.
-  local existing_id
-  existing_id="$($COMPOSE exec -T keycloak curl -sf \
-    "http://localhost:8080/auth/admin/realms/geostudio/users?email=${ADMIN_EMAIL}&exact=true" \
-    -H "Authorization: Bearer ${kc_token}" | jq -r '.[0].id // empty')"
+    - name: Cloner ou mettre à jour le dépôt GeoStudio
+      ansible.builtin.git:
+        repo: "{{ geostudio_repo_url }}"
+        dest: "{{ geostudio_repo_dest }}"
+        version: main
+        force: false
 
-  if [ -n "$existing_id" ]; then
-    echo "✓ Compte admin déjà existant (${ADMIN_EMAIL}) — id réutilisé."
-    ADMIN_SUB="$existing_id"
-  else
-    $COMPOSE exec -T keycloak curl -sf -X POST \
-      http://localhost:8080/auth/admin/realms/geostudio/users \
-      -H "Authorization: Bearer ${kc_token}" -H "Content-Type: application/json" \
-      -d "{\"email\":\"${ADMIN_EMAIL}\",\"username\":\"${ADMIN_EMAIL}\",\"enabled\":true,\"emailVerified\":true,\"credentials\":[{\"type\":\"password\",\"value\":\"${admin_temp_password}\",\"temporary\":true}]}"
-    ADMIN_SUB="$($COMPOSE exec -T keycloak curl -sf \
-      "http://localhost:8080/auth/admin/realms/geostudio/users?email=${ADMIN_EMAIL}&exact=true" \
-      -H "Authorization: Bearer ${kc_token}" | jq -r '.[0].id')"
-    echo "✓ Compte admin créé : ${ADMIN_EMAIL} / mot de passe temporaire : ${admin_temp_password}"
-    echo "  (à changer à la première connexion — non stocké par ce script au-delà de cet affichage)"
-  fi
+    - name: Lancer l'installeur GeoStudio (1ère passe — installe Docker si absent, peut s'arrêter là)
+      ansible.builtin.command:
+        cmd: ./scripts/install.sh
+        chdir: "{{ geostudio_repo_dest }}"
+      environment: &geostudio_install_env
+        INSTALL_YES: "1"
+        GEOSTUDIO_PUBLIC_HOST: "{{ geostudio_public_host }}"
+        TS_AUTHKEY: "{{ vault_ts_authkey }}"
+        INSTALL_PROFILES: "{{ geostudio_profiles }}"
+        INSTALL_SEED_DEMO: "{{ '1' if geostudio_seed_demo else '0' }}"
+        INSTALL_ADMIN_EMAIL: "{{ vault_geostudio_admin_email }}"
+        BACKUP_S3_ENDPOINT: "{{ vault_backup_s3_endpoint }}"
+        BACKUP_S3_ACCESS_KEY: "{{ vault_backup_s3_access_key }}"
+        BACKUP_S3_SECRET_KEY: "{{ vault_backup_s3_secret_key }}"
+        BACKUP_S3_BUCKET: "{{ vault_backup_s3_bucket }}"
+      register: install_pass1
+      changed_when: true
 
-  set_env_var CORE_ADMIN_SUBS "$ADMIN_SUB"
-}
+    # Si ensure_docker (scripts/install.sh) vient d'installer Docker, le
+    # script s'arrête volontairement après (exit 0) : l'appartenance au
+    # groupe docker du nouvel utilisateur ne prend effet qu'à la prochaine
+    # session. reset_connection force Ansible à rouvrir une session SSH
+    # neuve avant la 2e passe plutôt que de réutiliser la connexion
+    # persistante existante, qui ignorerait ce changement.
+    - name: Réinitialiser la connexion SSH (prise en compte du groupe docker)
+      ansible.builtin.meta: reset_connection
 
-prompt_admin
+    - name: Lancer l'installeur GeoStudio (2e passe — idempotente, termine le déploiement)
+      ansible.builtin.command:
+        cmd: ./scripts/install.sh
+        chdir: "{{ geostudio_repo_dest }}"
+      environment: *geostudio_install_env
+      register: install_pass2
+      changed_when: true
+
+    - name: Afficher le résumé de l'installeur
+      ansible.builtin.debug:
+        var: install_pass2.stdout_lines
 ```
 
-- [ ] **Step 5: Vérifier réellement (nécessite un vrai compte Tailscale)**
-
-Avec un vrai `TS_AUTHKEY` de test disponible, exporté dans l'environnement (évite la question interactive, cf. Step 2) :
+- [ ] **Step 5: Matérialiser temporairement les fichiers `.example` pour la vérification**
 
 ```bash
-rm -rf /tmp/geostudio-install-test && git clone . /tmp/geostudio-install-test
-cd /tmp/geostudio-install-test
-export TS_AUTHKEY=tskey-auth-xxxx
-INSTALL_YES=1 ./scripts/install.sh <<'EOF'
-
-s3-endpoint-vide-ici-laisser-vide
-test@example.com
-
-EOF
+cp deploy/proxmox/ansible/inventory.ini.example deploy/proxmox/ansible/inventory.ini
+cp deploy/proxmox/ansible/group_vars/vault.yml.example deploy/proxmox/ansible/group_vars/vault.yml
 ```
 
-(La première ligne vide répond à « nom d'hôte public » — vide, donc découverte automatique via le tunnel ; la ligne « laisser vide » simule une réponse vide à la question de cible de sauvegarde en pressant Entrée — remplacer par une vraie valeur vide `EOF`-compatible si le heredoc pose souci en pratique, ajusté empiriquement à l'exécution.) Expected : `.env` contient `GEOSTUDIO_PUBLIC_HOST` renseigné avec un vrai nom `*.ts.net`, `CORE_ADMIN_SUBS` renseigné avec un UUID Keycloak.
+- [ ] **Step 6: Vérifier la syntaxe et lint (conteneur officiel, aucune installation système)**
+
+Run:
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
+  ghcr.io/ansible/community-ansible-dev-tools:latest \
+  ansible-playbook -i inventory.ini --syntax-check playbook.yml
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
+  ghcr.io/ansible/community-ansible-dev-tools:latest \
+  ansible-lint playbook.yml
+```
+Expected : `--syntax-check` répond `playbook: playbook.yml` sans erreur (code `0`) ; `ansible-lint` ne remonte aucune erreur bloquante (des avertissements de style sont acceptables, à corriger seulement s'ils sont triviaux).
+
+- [ ] **Step 7: Nettoyer les fichiers matérialisés (ne pas les laisser trackés — ils contiennent des valeurs d'exemple, pas les vraies)**
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
-cd /home/lenen/projets/geostudio && rm -rf /tmp/geostudio-install-test
+rm deploy/proxmox/ansible/inventory.ini deploy/proxmox/ansible/group_vars/vault.yml
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/install.sh
-git commit -m "feat(deploy): installeur — découverte d'hôte, tunnel, premier admin Keycloak"
+git add deploy/proxmox/ansible/
+git commit -m "feat(deploy): playbook Ansible — configuration + lancement non-interactif (SP-Deploy-e)"
 ```
 
 ---
