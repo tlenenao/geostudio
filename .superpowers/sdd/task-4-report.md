@@ -1,318 +1,273 @@
-# Task 4 — rapport d'exécution
-
-## Résumé
-
-Implémenté la configuration runtime du shell (`env-config.js`) permettant de
-basculer d'hôte public sans reconstruire l'image Docker, en suivant le brief
-verbatim (12 étapes, TDD).
+# Task 4 — lancement final, attente de santé, idempotence (critère §7-6)
 
 ## Ce qui a été implémenté
 
-1. `shell/src/config.ts` réécrit : `loadConfig(env, runtimeEnv?)` — nouveau
-   second paramètre optionnel, `mergeRuntimeEnv()` fusionne les valeurs
-   runtime par-dessus les valeurs build-time, en ignorant tout placeholder
-   `${VAR}` non substitué par `envsubst` (cas dev / variable absente au
-   démarrage du conteneur). Signature rétrocompatible.
-2. `shell/src/App.tsx:12` lit `window.__GEOSTUDIO_ENV__` et le passe en second
-   argument à `loadConfig`.
-3. `shell/env-config.template.js` : template JS avec les 6 placeholders
-   `${VITE_*}` à substituer, assigné à `window.__GEOSTUDIO_ENV__`.
-4. `shell/docker-entrypoint.d/40-render-runtime-config.sh` (exécutable) :
-   utilise `envsubst` avec une liste explicite des 6 variables (pour ne
-   jamais toucher un `${...}` accidentel ailleurs dans le template), lu au
-   démarrage du conteneur nginx via le mécanisme officiel
-   `/docker-entrypoint.d/*.sh` de l'image `nginx:1.27-alpine`.
-5. `shell/index.html` charge `<script src="/env-config.js">` avant le bundle
-   module — script non-module, ignoré silencieusement en dev où le fichier
-   n'existe pas.
-6. `shell/Dockerfile` copie le template et le script d'entrée dans l'image
-   finale nginx (`COPY`, préserve le bit exécutable posé en Step 7).
+Ajout de deux fonctions à la fin de `scripts/install.sh` (après `prompt_admin`,
+appelées immédiatement) :
 
-## Tests
+- `launch_stack()` : `$COMPOSE up -d` avec les profils sélectionnés (Task 2),
+  puis attente jusqu'à 60 s (30 × 2 s) que `core` réponde `401` sur `/me`
+  (endpoint authentifié — 401 = "vivant et applique bien l'auth", pas 200),
+  puis seed optionnel (`SEED_DEMO=true` → `python -m scripts.seed_demo`,
+  erreurs tolérées via `|| true`).
+- `print_summary()` : message final (URL publique, admin, rappels backup/age),
+  mot pour mot conforme au brief.
 
-### TDD Evidence — RED
+**Écart volontaire par rapport au brief, découvert à l'exécution réelle** :
+le brief spécifiait `docker compose exec -T core curl -s -o /dev/null -w
+'%{http_code}' http://localhost:8200/me`. En testant pour de vrai (voir plus
+bas), j'ai constaté que **ni `curl` ni `wget` ne sont présents dans l'image
+`core`** (`python:3.12-slim` + `uvicorn`, aucun outil HTTP CLI installé) — la
+commande échoue systématiquement avec `exec: "curl": executable file not
+found`, ce qui aurait fait échouer la vérification de santé à **chaque**
+déploiement réel, pas seulement dans cet environnement de test. J'ai remplacé
+l'appel `curl` par un script Python inline (`python3 -c '...'` avec
+`urllib.request`), l'interpréteur Python étant garanti présent puisque c'est
+lui qui fait tourner `uvicorn`. Comportement fonctionnellement identique
+(distingue "erreur HTTP avec code" de "pas encore de connexion" → `000`),
+testé et vérifié en conditions réelles (voir ci-dessous). C'est le même type
+d'écueil que celui déjà rencontré et documenté par Task 3 pour `kcadm.sh`/
+Keycloak (absence de curl/wget dans cette image aussi).
 
-```
-cd shell && npm test -- config.test.ts 2>&1 | tail -40
-```
+Ajout aussi de `local code="000"` (absent du snippet du brief) — cohérent
+avec le style déjà établi dans le fichier (`local existing_id`, `local
+admin_temp_password`, `local dns_name=""`, `local authenticated=false` dans
+les fonctions précédentes), évite une fuite de variable globale.
 
-```
- RUN  v3.2.6 /home/lenen/projets/geostudio/shell
+Aucun autre ajout — dernière tâche du plan, rien au-delà du périmètre du
+brief.
 
- ❯ src/config.test.ts (6 tests | 1 failed) 13ms
-   ✓ loads a full oidc config 2ms
-   ✓ throws listing all missing required vars in oidc mode 1ms
-   ✓ mock mode does not require oidc vars 0ms
-   × runtime env overrides build-time env when present and substituted 5ms
-     → expected 'https://core.test' to be 'https://prod.example' // Object.is equality
-   ✓ runtime env with un-substituted envsubst placeholder falls back to build-time 0ms
-   ✓ absent runtime env behaves exactly like before (undefined second arg) 0ms
+## Stratégie de vérification et sorties réelles
 
- Test Files  1 failed (1)
-      Tests  1 failed | 5 passed (6)
-```
+Tailscale/`TS_AUTHKEY` n'existe pas dans cet environnement : `activate_funnel()`
+(Task 3, déjà committé, non modifié) échouerait et ferait avorter tout le
+script avant d'atteindre `launch_stack`/`print_summary` dans un run
+top-à-bas littéral. J'ai donc extrait uniquement les deux fonctions de ce
+Task via `awk` depuis le vrai `scripts/install.sh` (copié dans le clone
+jetable, pas de duplication manuelle de la logique testée), sourcées dans un
+harness (`harness.sh`) dans un clone jetable (`/tmp/geostudio-install-test`,
+jamais le dépôt réel), avec `COMPOSE`, `SELECTED_PROFILES=()`, `SEED_DEMO`,
+`PUBLIC_HOST=test.example.com`, `ADMIN_EMAIL=test@example.com` positionnées à
+la main. `.env` généré pour de vrai via `./scripts/bootstrap-env.sh`.
 
-Conforme à la prédiction du brief : seul le premier nouveau test échoue (sur
-l'assertion, pas d'erreur de compilation), car le second argument était
-jusque-là simplement ignoré par `loadConfig`.
+### Découverte en cours de route : image GHCR `core` obsolète
 
-### TDD Evidence — GREEN
+`docker-compose.prod.yml` (utilisé par `$COMPOSE`) pointe vers des images
+publiées `ghcr.io/tlenenao/geostudio-core:latest` etc. Ces images se sont
+révélées **publiquement accessibles et téléchargeables** (réseau sortant
+fonctionnel dans cet environnement), mais l'image `core` publiée s'est avérée
+**périmée/cassée** : `alembic.ini`, le dossier `alembic/` et `scripts/` sont
+absents de l'image alors que le `Dockerfile` actuel du dépôt les copie bien
+(`COPY alembic.ini ./alembic.ini`, etc.) — dérive entre l'image publiée et le
+code source actuel, probablement liée au point déjà noté dans CLAUDE.md
+("Tags d'images Docker … à repinner si dérive"). Ceci est **hors périmètre de
+cette tâche** (pipeline de publication d'image, pas `install.sh`). Pour
+pouvoir vérifier `launch_stack`/`print_summary` malgré ce défaut préexistant
+et sans rapport avec mon code, j'ai reconstruit l'image `core` localement
+(`docker build -t ghcr.io/tlenenao/geostudio-core:latest ./core` dans le
+clone jetable) — Docker Compose utilise alors le tag local en cache au lieu
+de re-tirer l'image GHCR cassée. Ceci n'affecte en rien la commande réelle du
+script (`$COMPOSE … up -d` reste inchangée) ; seul le contenu de l'image
+locale utilisée pour la vérification diffère de l'image GHCR publiée.
 
-```
-cd shell && npm test -- config.test.ts
-```
-
-```
- ✓ src/config.test.ts (6 tests) 10ms
-
- Test Files  1 passed (1)
-      Tests  6 passed (6)
-```
-
-### Suite complète
-
-```
-cd shell && npm test
-```
-→ 87 fichiers, 593 tests, tous verts (20.5s).
-
-```
-cd shell && npm run build
-```
-→ `tsc --noEmit && vite build` réussit. Avertissement attendu (non bloquant) :
-`<script src="/env-config.js"> in "/index.html" can't be bundled without
-type="module" attribute` — comportement voulu (script non-module chargé avant
-le bundle). Avertissements pré-existants de taille de chunk (>500kB),
-inchangés par rapport à avant cette tâche.
-
-`dist/index.html` généré confirme le script non-module préservé tel quel
-(Vite le déplace après le bundle dans le HTML, mais comme les scripts
-`type="module"` sont implicitement `defer`, ils s'exécutent après le script
-synchrone `env-config.js` quel que soit l'ordre dans le HTML — sémantique web
-standard, donc `window.__GEOSTUDIO_ENV__` est garanti défini avant l'éval du
-bundle). `dist/` supprimé après vérification (gitignored, non commité).
-
-## Vérification Docker (Step 10)
+### Passe 1 — premier lancement complet (`SEED_DEMO=false`)
 
 ```
-docker build -t geostudio-shell-test ./shell
+$ time bash harness.sh
+… (création réseau/volumes/conteneurs : postgis, pgbouncer, minio, martin,
+   titiler, keycloak, core, worker, cdc-worker, shell, traefik, tunnel,
+   backup — 13 services, aucun profil sélectionné) …
+Attente de la disponibilité du cœur...
+✓ Cœur opérationnel.
+
+═══ GeoStudio est en ligne ═══
+URL publique : https://test.example.com/
+Admin        : test@example.com
+
+Prochaines étapes :
+  - Se connecter avec le compte admin (mot de passe temporaire affiché ci-dessus, à changer).
+  - Si une cible de sauvegarde a été configurée : générer une paire de clés
+    age (age-keygen) et renseigner BACKUP_AGE_RECIPIENT dans .env, puis
+    redémarrer le service backup ('docker compose ... restart backup').
+  - Conserver .env et la clé privée age en lieu sûr, hors de cette machine.
+
+real    0m1.681s
 ```
-→ build réussi (image nginx:1.27-alpine + les deux `COPY` ajoutés).
+(Cette passe a été rejouée après la correction curl→python3 ; une première
+tentative avec `curl` avait bien échoué comme attendu, avec le message
+d'erreur voulu après épuisement des 30 itérations : `✗ Le cœur ne répond pas
+comme attendu (code OCI runtime exec failed: … "curl": executable file not
+found …) — vérifiez 'docker compose logs core'.` — confirmant que la boucle
+d'attente et le message d'échec fonctionnent bien en cas d'échec réel.)
 
-Vérification directe du script (sans lancer nginx) :
+`docker compose ps` : 12 conteneurs `Up`/`Healthy` (postgis, pgbouncer,
+minio, martin, titiler, keycloak, core, worker, cdc-worker, shell, traefik,
+backup, plus `tunnel` — celui-ci démarre mais son daemon Tailscale échouera à
+s'authentifier avec la fausse clé de test, sans bloquer `docker compose up
+-d` ni la suite : comportement indépendant de `launch_stack`, propre à
+Tailscale).
+
+### Passe 2 — relance immédiate (idempotence, `SEED_DEMO=false`)
 
 ```
-docker run --rm -e VITE_CORE_URL=https://demo.example/api \
-  -e VITE_MARTIN_URL=https://demo.example/tiles \
-  -e VITE_OIDC_AUTHORITY=https://demo.example/auth/realms/geostudio \
-  -e VITE_OIDC_CLIENT_ID=geostudio-shell \
-  -e VITE_OIDC_REDIRECT_URI=https://demo.example/ \
-  -e VITE_AUTH_MODE=oidc \
-  --entrypoint sh geostudio-shell-test \
-  -c "/docker-entrypoint.d/40-render-runtime-config.sh && cat /usr/share/nginx/html/env-config.js"
+$ docker compose … ps --format "table {{.Name}}\t{{.Status}}" > ps-before.txt
+$ time bash harness.sh
+…
+Attente de la disponibilité du cœur...
+✓ Cœur opérationnel.
+[print_summary identique]
+real    0m1.667s
+$ docker compose … ps --format "table {{.Name}}\t{{.Status}}" > ps-after.txt
+$ diff ps-before.txt ps-after.txt
+3c3
+< geostudio-install-test-cdc-worker-1   Up 13 seconds
+---
+> geostudio-install-test-cdc-worker-1   Up 15 seconds
+13,14c13,14
+< geostudio-install-test-tunnel-1       Up 9 seconds
+< geostudio-install-test-worker-1       Up 5 seconds
+---
+> geostudio-install-test-tunnel-1       Up 11 seconds
+> geostudio-install-test-worker-1       Up 7 seconds
 ```
+Seule différence : l'âge affiché (2 secondes se sont écoulées). Aucun
+conteneur recréé, aucun message "Recreate"/"Created" dans la sortie de la
+passe 2 (uniquement "Running"/"Healthy"/"Waiting") — `docker compose up -d`
+confirmé idempotent sur une stack déjà démarrée, et la boucle d'attente a
+trouvé `/me` répondant `401` dès la première itération (passe en ~1,7 s au
+lieu d'attendre jusqu'à 60 s).
 
-Sortie observée (identique à l'attendu du brief) :
+### Passe 3 — `SEED_DEMO=true`, premier seed
 
-```js
-window.__GEOSTUDIO_ENV__ = {
-  VITE_CORE_URL: "https://demo.example/api",
-  VITE_MARTIN_URL: "https://demo.example/tiles",
-  VITE_OIDC_AUTHORITY: "https://demo.example/auth/realms/geostudio",
-  VITE_OIDC_CLIENT_ID: "geostudio-shell",
-  VITE_OIDC_REDIRECT_URI: "https://demo.example/",
-  VITE_AUTH_MODE: "oidc",
-};
+Après avoir positionné `CORE_ADMIN_SUBS` dans `.env` (simulateur du résultat
+de `prompt_admin`, Task 3, non ré-exécuté ici) et recréé le conteneur `core`
+pour qu'il le lise :
+
 ```
+$ time bash harness.sh
+…
+Attente de la disponibilité du cœur...
+✓ Cœur opérationnel.
+{"level": "ERROR", … "échec de l'enqueue du job d'embedding … procrastinate.exceptions.AppNotOpen …"}  (×2, incidents + points_interet)
+collections créées : ['incidents', 'points_interet']
 
-Vérification supplémentaire (au-delà du brief) : lancement réel du conteneur
-avec `docker run -d` (nginx démarré normalement, entrypoint automatique) avec
-un second jeu de valeurs (`demo2.example`, `geostudio-shell2`) — confirme que
-le mécanisme `/docker-entrypoint.d/*.sh` officiel de l'image de base déclenche
-bien le script automatiquement au démarrage réel du conteneur, pas seulement
-en invocation manuelle. Sortie correcte obtenue, conteneur arrêté proprement.
+═══ GeoStudio est en ligne ═══
+…
+real    0m2.699s
+```
+Les deux collections de démo (`incidents`, `points_interet` — tables déjà
+présentes dans l'image `postgis` de démo) ont bien été créées. Les erreurs
+d'enqueue d'embedding (`procrastinate.exceptions.AppNotOpen`) sont **non
+bloquantes** (le message applicatif l'indique explicitement : "l'écriture
+n'est pas affectée") et préexistantes à cette tâche (comportement de
+`app/collections/repository.py`), hors périmètre.
 
-Image de test supprimée : `docker rmi geostudio-shell-test`.
+### Passe 4 — `SEED_DEMO=true`, second appel (idempotence du seed)
+
+```
+$ time bash harness.sh
+…
+Attente de la disponibilité du cœur...
+✓ Cœur opérationnel.
+collections créées : aucune (déjà en place)
+
+═══ GeoStudio est en ligne ═══
+…
+real    0m2.387s
+```
+Confirmé : `seed_demo.py` est bien idempotent comme documenté dans son
+docstring (`get_collection` vérifié avant toute création) — second appel sans
+erreur, sans doublon.
+
+### Nettoyage
+
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v`
+exécuté après la série de passes ; image `core` locale reconstruite
+supprimée (`docker image rm`) ; clone jetable `/tmp/geostudio-install-test`
+supprimé (`rm -rf`).
+
+## Ce qui a pu / n'a pas pu être vérifié de bout en bout
+
+**Vérifié réellement, en conditions Docker/Postgres/Keycloak/core réelles :**
+- `launch_stack()` : `up -d` avec profils, boucle d'attente de santé (trouve
+  `401` immédiatement sur stack déjà chaude ; testerait bien le polling sur
+  60 s si le cœur n'était pas encore prêt — observé lors du premier essai
+  raté avec `curl`, où la boucle épuisait ses 30 itérations avant d'échouer
+  proprement avec le message d'erreur attendu).
+- `print_summary()` : sortie exacte conforme au brief.
+- Idempotence de `docker compose up -d` sur une stack déjà démarrée (aucune
+  recréation de conteneur, `docker compose ps` inchangé à l'âge près).
+- Idempotence de `python -m scripts.seed_demo` (second appel : "aucune (déjà
+  en place)", aucune erreur, aucun doublon).
+- Non-régression globale core (pytest, lint-imports) et shell (vitest, build)
+  — dépôt réel, pas le clone jetable.
+
+**Non vérifiable dans cet environnement, et pourquoi (même classe d'écueil
+que Task 3, déjà précédenté en Task 6 de SP-Deploy-a) :**
+- Le run **littéral** de bout en bout du Step 2 du brief
+  (`INSTALL_YES=1 TS_AUTHKEY=<clé> ./scripts/install.sh` deux fois de suite,
+  tel quel) : `activate_funnel()` (code Task 3, non modifié) échoue sans
+  compte Tailscale réel, ce qui abandonne le script avant `launch_stack`.
+  Contourné par l'extraction ciblée décrite plus haut, qui exerce le code
+  réel de ce Task contre une vraie stack Docker.
+- L'activation effective du Funnel Tailscale elle-même (hors périmètre de ce
+  Task — code déjà revu en Task 3).
+- Le comportement de l'image `core` **publiée sur GHCR** telle quelle (elle
+  s'est avérée cassée/périmée, problème de pipeline de publication distinct
+  d'`install.sh` — signalé mais non corrigé, hors périmètre de cette tâche).
 
 ## Fichiers modifiés
 
-- `/home/lenen/projets/geostudio/shell/src/config.ts` (réécrit)
-- `/home/lenen/projets/geostudio/shell/src/config.test.ts` (3 tests ajoutés)
-- `/home/lenen/projets/geostudio/shell/src/App.tsx` (ligne 12 étendue)
-- `/home/lenen/projets/geostudio/shell/env-config.template.js` (créé)
-- `/home/lenen/projets/geostudio/shell/docker-entrypoint.d/40-render-runtime-config.sh` (créé, exécutable)
-- `/home/lenen/projets/geostudio/shell/index.html` (script ajouté)
-- `/home/lenen/projets/geostudio/shell/Dockerfile` (2 `COPY` ajoutés)
+- `/home/lenen/projets/geostudio/scripts/install.sh` — ajout de
+  `launch_stack()` et `print_summary()` (+ appels), avec la substitution
+  curl→python3 documentée ci-dessus.
 
-Commit : `1b3874d` — "feat(shell): configuration runtime (env-config.js) —
-bascule d'hôte sans reconstruction d'image", exactement les 7 fichiers listés
-dans le brief (les fichiers `.superpowers/sdd/*` et `docs/superpowers/plans/*`
-présents dans l'arbre de travail à ce moment-là n'ont pas été touchés — hors
-périmètre de cette tâche).
+## Revue personnelle (self-review)
 
-## Auto-revue
+- **Complétude** : les deux fonctions du brief sont présentes, `print_summary`
+  mot pour mot ; `launch_stack` fonctionnellement équivalente au brief (seul
+  le mécanisme de sonde HTTP diffère, pour une raison de correction vérifiée
+  empiriquement, documentée en commentaire dans le script).
+- **Qualité** : `local code="000"` ajouté par cohérence avec le style établi
+  du fichier (variables d'état de boucle déclarées `local` ailleurs dans le
+  même fichier : `local existing_id`, `local admin_temp_password`, `local
+  dns_name=""`, `local authenticated=false`). `for p in …` non localisé,
+  comme le reste du fichier (`for _ in $(seq …)`, `while IFS= read -r
+  profile` ne déclarent pas non plus leur variable de boucle en `local`) —
+  cohérent, pas d'incohérence introduite.
+- **Discipline** : aucun ajout au-delà du périmètre du brief ; dernière tâche
+  du plan, rien laissé en suspens intentionnellement au-delà de la
+  substitution curl→python3 (nécessaire : sans elle, le health-check ne
+  fonctionnerait jamais en pratique, dans aucun environnement).
+- **Incident de staging lors du commit (corrigé)** : `.superpowers/sdd/
+  task-2-report.md` était déjà indexé (staged) par un travail antérieur sans
+  rapport avec ce Task, avant que je ne lance `git add scripts/install.sh &&
+  git commit`. Le commit a englobé ce fichier par erreur (index déjà
+  pollué au démarrage de ma session). Corrigé immédiatement après coup en
+  restaurant le contenu pré-commit de ce fichier dans l'arbre de travail
+  (`git show df7ad40:… > task-2-report.md`), qui redevient une modification
+  non indexée identique à l'état d'avant ce Task — je ne l'ai pas commitée
+  (pas mon fichier, hors périmètre). Le commit `1b3d7b2` en conserve la trace
+  dans son diff historique (2 fichiers listés), mais son effet net réel sur
+  l'état actuel du dépôt ne porte que le changement voulu sur
+  `scripts/install.sh` (`git diff scripts/install.sh` contre HEAD est vide,
+  le fichier committé correspond exactement à l'implémentation décrite ici).
 
-- **Complétude** : les 12 étapes du brief exécutées dans l'ordre, les 7
-  fichiers du brief créés/modifiés exactement comme spécifié — aucun fichier
-  additionnel touché (pas de `docker-compose.prod.yml`, pas de `core/`).
-- **Qualité / rétrocompatibilité** : `loadConfig(env, runtimeEnv?)` — second
-  paramètre optionnel, tous les anciens appels (`loadConfig(base)`, les 3
-  tests pré-existants) continuent de fonctionner sans modification. `App.tsx`
-  est le seul appelant hors tests (`grep -rn "loadConfig(" shell/src`
-  reconfirmé après modification — toujours un seul appelant runtime) et lit
-  `window.__GEOSTUDIO_ENV__` de façon défensive (`as unknown as {...}`,
-  `undefined` en dev/Vitest/Playwright où `/env-config.js` n'existe pas).
-- **Discipline** : aucun scope creep — pas touché à
-  `docker-compose.prod.yml` (déjà câblé par Task 3), pas de fichier core/.
-- **Couverture de test du cas non-évident** : le test "runtime env with
-  un-substituted envsubst placeholder falls back to build-time" exerce
-  précisément la garde `!value.startsWith("${")` dans `mergeRuntimeEnv` — sans
-  cette garde, `VITE_CORE_URL: "${VITE_CORE_URL}"` écraserait la valeur
-  build-time avec le literal `"${VITE_CORE_URL}"` au lieu de conserver
-  `"https://core.test"`. La suite couvre les branches restantes : présence
-  (override effectif), absence (comportement identique à avant), et override
-  partiel (repli sur build-time pour les clés non fournies par `runtimeEnv`,
-  ex. `oidcClientId`).
-
-## Problèmes / préoccupations
-
-Aucun. Tout s'est déroulé comme prévu par le brief, y compris l'échec rouge
-attendu (assertion, pas erreur de compilation) et le rendu Docker exact.
-
-Note : un ancien rapport `task-4-report.md` non lié (SP-12g, connecteur CKAN)
-occupait ce chemin de fichier avant cette tâche — écrasé par ce rapport, comme
-attendu pour ce chemin de sortie.
-
----
-
-## Correctif post-revue — garde `mergeRuntimeEnv` sur chaîne vide
-
-### Constat de la revue (finding « Important »)
-
-`mergeRuntimeEnv` (`shell/src/config.ts:11-27`) ne rejetait que
-`value === undefined` et le literal `"${VAR}"` non substitué. Le commentaire
-affirmait qu'`envsubst` « laisse `${VAR}` tel quel quand VAR n'était pas
-définie au démarrage du conteneur » — c'est faux : `envsubst`, appelé avec une
-liste explicite de variables (comme le fait
-`shell/docker-entrypoint.d/40-render-runtime-config.sh`), substitue une
-variable de la whitelist non définie par une **chaîne vide**, jamais par le
-texte littéral `${VAR}`. Le literal ne peut survivre que si la clé n'a jamais
-été passée à `envsubst` (ex. un futur placeholder ajouté au template mais
-oublié dans la whitelist du script d'entrée).
-
-Conséquence réelle : si une des 6 variables `VITE_*` runtime venait à manquer
-dans l'environnement d'un conteneur (overlay compose futur, `docker run`
-manuel, faute de frappe d'un opérateur — pas le cas aujourd'hui, le service
-`shell` de `docker-compose.prod.yml` fixe toujours les 6), `envsubst` produit
-`""` pour cette clé. L'ancienne garde (`value !== undefined &&
-!value.startsWith("${")`) traitait `""` comme une vraie override et écrasait
-la valeur de build — pour les champs requis (`VITE_CORE_URL`,
-`VITE_OIDC_*`), ceci fait échouer `loadConfig` au démarrage
-(`Missing required env vars: ...`), exactement dans le scénario (config
-runtime partielle/absente) où ce mécanisme devait au contraire être résilient.
-
-### Correctif appliqué
-
-`shell/src/config.ts:23` — garde étendue pour rejeter aussi la chaîne vide :
-
-```ts
-if (value !== undefined && value !== "" && !value.startsWith("${")) {
-```
-
-Commentaire (`config.ts:18-22`) réécrit pour décrire correctement les deux cas
-gardés : (a) clé présente mais vide — la variable était dans la whitelist
-`envsubst` mais non définie dans l'environnement du conteneur, rendue `""` ;
-(b) le literal `${VAR}` qui survit uniquement si la clé n'a jamais été passée
-à `envsubst` du tout (cas non observé aujourd'hui, robustesse pour l'avenir).
-
-### Preuve TDD — RED
-
-Nouveau test ajouté à `shell/src/config.test.ts` (sibling du test placeholder
-existant) :
-
-```ts
-test("runtime env with empty string (envsubst on an unset whitelisted var) falls back to build-time", () => {
-  const cfg = loadConfig(base, { VITE_CORE_URL: "" });
-  expect(cfg.coreUrl).toBe("https://core.test");
-});
-```
-
-Vérifié en isolant temporairement l'ancienne garde (`git stash` sur
-`config.ts` seul, test conservé) :
+## Suite globale de non-régression (Step 3)
 
 ```
-cd shell && npm test -- config.test.ts
-```
+$ cd core && uv run pytest
+====================== 775 passed, 102 skipped in 46.17s =======================
 
-```
- ❯ src/config.test.ts (7 tests | 1 failed) 10ms
-   ✓ loads a full oidc config 2ms
-   ✓ throws listing all missing required vars in oidc mode 1ms
-   ✓ mock mode does not require oidc vars 0ms
-   ✓ runtime env overrides build-time env when present and substituted 0ms
-   ✓ runtime env with un-substituted envsubst placeholder falls back to build-time 0ms
-   × runtime env with empty string (envsubst on an unset whitelisted var) falls back to build-time 2ms
-     → Missing required env vars: VITE_CORE_URL
-   ✓ absent runtime env behaves exactly like before (undefined second arg) 0ms
+$ uv run lint-imports
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
 
- Test Files  1 failed (1)
-      Tests  1 failed | 6 passed (7)
-```
-
-Confirme exactement le bug décrit par la revue : `""` traité comme override
-valide → `coreUrl` devient `""` → validation `required` échoue.
-
-`git stash pop` pour restaurer le correctif, puis re-vérification manuelle du
-contenu de `config.ts`.
-
-### Preuve TDD — GREEN
-
-```
-cd shell && npm test -- config.test.ts
-```
-
-```
- ✓ src/config.test.ts (7 tests) 9ms
-
- Test Files  1 passed (1)
-      Tests  7 passed (7)
-```
-
-### Suite complète (non-régression)
-
-```
-cd shell && npm test
-```
-
-```
+$ cd ../shell && npm test
  Test Files  87 passed (87)
       Tests  594 passed (594)
-   Duration  20.18s
+
+$ npm run build
+✓ built in 11.42s
 ```
-
-(Le stderr affiché par `exprBindings.test.ts` — `CelParseError` logué par
-`evaluateExpression` — fait partie du comportement attendu de ce test déjà
-existant, sans lien avec ce correctif ; le test est vert.)
-
-```
-cd shell && npm run build
-```
-
-```
-tsc --noEmit && vite build
-✓ 2697 modules transformed.
-✓ built in 11.33s
-```
-
-Avertissements identiques à ceux déjà documentés dans ce rapport (script
-`env-config.js` non-module, chunks >500kB) — pré-existants, non liés à ce
-correctif.
-
-### Fichiers modifiés (ce correctif)
-
-- `/home/lenen/projets/geostudio/shell/src/config.ts` (garde + commentaire)
-- `/home/lenen/projets/geostudio/shell/src/config.test.ts` (1 test ajouté)
-
-Commit : `bf56c11` — « fix(shell): mergeRuntimeEnv — une valeur runtime vide
-(envsubst non substitué) ne doit pas écraser le build (revue Task 4) »,
-nouveau commit distinct de `1b3874d` (pas d'amend).
+Tout vert — cette tâche ne touche aucun code applicatif.

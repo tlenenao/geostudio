@@ -287,3 +287,123 @@ corrigée (commit fac2606). Ready to merge: YES (revue finale opus).
 ## SP-Deploy-b COMPLET — 2 tâches, 2 fixes de revue de tâche, 1 fix de
 ## revue finale (redaction), tout clean. Ready to merge: YES.
 ## HEAD=fac2606. Non poussé — dev local en avance sur origin/dev.
+
+## SP-Deploy-c — en cours (subagent-driven-development)
+
+Base Task 1: 19e3443
+Task 1: complete (commits 42f8900..2d18792, review clean après 1 fix). Squelette
+`scripts/install.sh` (`confirm()`/`ensure_docker()`), vérifié réellement en clone
+jetable (Docker déjà présent → chemin nominal). 2 findings Important de revue :
+bit exécutable manquant (100644 au lieu de 100755, contrairement aux scripts
+frères) et message de confirmation ne mentionnant pas explicitement `usermod -aG
+docker` (une seule confirmation couvrant install + modification de groupe système,
+texte ne divulguant que l'install). Corrigés (commit 2d18792) : bit +x restauré,
+message étendu pour divulguer les deux actions. Non-issue écarté sans fix : SPDX
+en ligne 2 (après le shebang, physiquement obligatoire en ligne 1) — pas un
+défaut, juste une lecture littérale trop stricte de la contrainte. Revue finale
+de tâche : Approved, 0 Critical/Important restants.
+
+Base Task 2: 2d18792
+Task 2: complete (commits 9d64a96..357e6bd, review clean après 1 fix). Menu de
+profils découvert via `docker compose config --profiles` (jamais codé en dur),
+`etl` affiché « à venir » tant qu'absent du dépôt (ne ment pas à l'utilisateur),
+`SEED_DEMO` produit pour la Task 4. 1 finding Important plan-mandated : `declare -A`
+(tableau associatif, bash ≥4) casse macOS (bash 3.2 par défaut sur `/usr/bin/bash`)
+alors que le spec §5.1 promet explicitement le support macOS (« détecte et guide,
+puis reprend une fois installé »). Utilisateur consulté : a choisi de corriger
+maintenant. Corrigé (commit 357e6bd) : lookup portable via fonction `profile_label()`
+(case bash 3.2-safe), comportement (labels + repli sur le nom brut) préservé à
+l'identique, revérifié en clone jetable. Revue finale de tâche : Approved, 0
+Critical/Important restants.
+
+Base Task 3: 357e6bd
+Task 3: complete (commits 04cab99..df7ad40, review clean après 1 fix — tâche la
+plus complexe des 4, 176k+70k tokens subagent). `ensure_env_file`/`set_env_var`,
+`prompt_public_host` (manuel ou découverte Tailscale), `activate_funnel`,
+`prompt_backup_target`, `prompt_admin` (API Admin Keycloak, idempotent). 1 bug
+pré-identifié par le contrôleur avant dispatch (démarrage du tunnel sauté sur la
+branche hôte manuel alors que `activate_funnel` en a besoin dans tous les cas —
+corrigé : `up -d traefik tunnel` sorti de la branche conditionnelle). 3 bugs
+auto-trouvés en exécutant réellement (pas seulement lus) : `quay.io/keycloak/
+keycloak` n'a ni `curl` ni `wget` (remplacé par `kcadm.sh`, l'outil d'admin
+fourni par l'image elle-même — `ports: !reset []` sur `keycloak` en overlay prod
+confirme qu'exec-dans-le-conteneur est la seule voie viable, host curl
+inatteignable) ; `$KC_PASSWORD` non lié sous `set -u` (le script ne `source`
+jamais `.env`, lu via `grep`/`cut` à la place) ; `CORE_ADMIN_SUBS` absent de
+`.env.example` ET du bloc `environment:` de `docker-compose.yml` (service
+`core`) — sans ces deux ajouts, tout le Step 4 aurait été un théâtre silencieux
+(aucun admin réellement promu). Dépassement du périmètre fichier déclaré du
+brief (« Modify: scripts/install.sh » seul) pour ces 2 fichiers partagés — jugé
+nécessaire et confirmé par le contrôleur après vérification indépendante
+(`CORE_ANALYST_SUBS`, variable sœur, a le même trou mais laissé tel quel, hors
+périmètre — aucune tâche de ce plan ne promeut d'analyste). 1 finding Critical
+de revue : `kcadm.sh get users -q email=X` sans `-q exact=true` fait une
+correspondance par sous-chaîne, pas exacte — avec des emails qui se chevauchent
+(`admin@example.com`/`aaaadmin@example.com`), `.[0].id` pouvait résoudre vers le
+mauvais compte, écrivant un UUID Keycloak erroné dans `CORE_ADMIN_SUBS` (promotion
+admin silencieusement incorrecte). Corrigé (commit df7ad40) : `-q "exact=true"`
+ajouté aux deux appels `get users`. 1 finding Important : `jq` est une dépendance
+hôte réelle jamais détectée nulle part dans le plan (Task 1 ne vérifie que
+Docker) — `set -euo pipefail` + `jq` absent fait planter le script sans message
+utile. Corrigé (même commit) : `ensure_jq()` ajoutée, même patron de consentement
+que `ensure_docker()` (apt/dnf/pacman sur Linux, guide manuel sur macOS, jamais
+silencieux). `prompt_admin` revérifié end-to-end (vrai Keycloak Docker, deux
+passages, idempotence confirmée) après chaque fix. Revue finale de tâche :
+Approved, 0 Critical/Important restants.
+
+Base Task 4: df7ad40
+Task 4: complete (commit 1b3d7b2 + fix afce89e, review clean au premier passage
+— ✅ spec + quality, 0 finding). `launch_stack()` (lancement complet avec
+profils sélectionnés, attente `/me` → 401, seed démo optionnel) + `print_summary()`
+(dernière tâche du plan, rien au-delà). 1 bug auto-trouvé en vérifiant réellement :
+l'image `core` (`python:3.12-slim`) n'a ni `curl` ni `wget` — la sonde de santé du
+brief aurait toujours échoué. Remplacée par une sonde `python3`/`urllib.request`
+(même écueil que `kcadm.sh`/Keycloak en Task 3), vérifiée par le reviewer :
+distingue correctement 401 (succès, via `HTTPError.code`) de connexion refusée
+(`000`, via l'except générique), ordre des clauses `except` confirmé correct.
+Idempotence (critère §7-6) vérifiée via harnais de fonctions extraites (même
+classe de contournement que Task 3 pour l'absence de compte Tailscale réel dans
+cet environnement) : 2 passages, `docker compose ps` inchangé, seed démo rejoué
+sans erreur ("aucune (déjà en place)"). Suite de non-régression globale : core
+775 passed/102 skipped + lint-imports clean, shell 594/594 + build clean.
+1 incident de session corrigé par le contrôleur (commit afce89e, hors périmètre
+tâche) : un `git add` trop large dans le commit 1b3d7b2 avait accidentellement
+écrasé `.superpowers/sdd/task-2-report.md` (fichier scratch réutilisé par
+chaque sous-plan, contenu légitime de SP-Deploy-b committé en fac2606) avec le
+rapport Task 2 de SP-Deploy-c — restauré au contenu exact de fac2606 (le
+rapport SP-Deploy-c ira dans le commit de ledger final, comme pour SP-Deploy-a/b).
+
+## SP-Deploy-c COMPLET — 4 tâches, 3 fixes de revue de tâche, 1 fix de
+## contrôleur (incident scratch-file), tout clean. HEAD=afce89e.
+## Reste : revue finale de branche.
+
+## Revue finale de branche (opus, 19e3443..afce89e)
+
+0 Critical/Important non traité. Cohérence bout-en-bout confirmée : flux de
+contrôle complet tracé (ensure_docker → ensure_jq → prompt_profiles →
+ensure_env_file → prompt_public_host → activate_funnel → prompt_backup_target
+→ prompt_admin → launch_stack → print_summary), aucune variable inter-tâches
+lue avant d'être écrite, idempotence tenue de bout en bout. 1 finding Critical
+propre à la revue finale (invisible aux 4 revues de tâche prises séparément,
+toutes exécutées sous bash 5.x) : `launch_stack` fait `"${SELECTED_PROFILES[@]}"`
+sous `set -u` — bash < 4.4 (macOS stock, bash 3.2.57) lève « unbound variable »
+sur un tableau vide, cas courant (aucun profil optionnel choisi), après que
+Docker/`.env`/tunnel/admin Keycloak aient déjà tourné. Réintroduisait exactement
+la classe de bug corrigée en Task 2 (`declare -A`). 1 finding Important : erreur
+`docker compose config --profiles` avalée silencieusement (menu vide sans
+avertissement). 1 Minor traité avec : clé secrète S3 échoée en clair au terminal
+(contrairement au mot de passe admin, affiché une seule fois par design).
+Corrigés (commit 85b107f) : garde `${arr[@]+"${arr[@]}"}` sur les deux
+expansions de tableau (vérifié sous `set -u`, vide et 1 élément) ; stderr de
+`docker compose config` capturé séparément (pas `2>&1` — les avertissements
+`.env` non défini de ce dépôt auraient corrompu la liste de profils, déviation
+délibérée et documentée du fix suggéré) et affiché en cas d'échec réel,
+succès revérifié inchangé ; `read -r -s` + `echo` pour la clé secrète S3.
+3 Minors laissés tels quels (non bloquants, documentés) : fragilité sed
+`set_env_var` sur `|`/`&` (idiome partagé pré-existant de `bootstrap-env.sh`,
+pas nouveau) ; `ADMIN_SUB` sans `// empty` après `create users` (risque faible,
+vérifié en conditions réelles) ; incohérence cosmétique `python3` vs `python`.
+
+## SP-Deploy-c COMPLET — 4 tâches, 4 fixes de revue de tâche, 1 fix de
+## contrôleur (incident scratch-file), 1 fix de revue finale, tout clean.
+## HEAD=85b107f. Ready to merge: YES (revue finale opus). Non poussé.
