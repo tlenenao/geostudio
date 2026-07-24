@@ -15,11 +15,12 @@ function mergeRuntimeEnv(
   if (!runtimeEnv) return env;
   const merged = { ...env };
   for (const [key, value] of Object.entries(runtimeEnv)) {
-    // envsubst laisse "${VAR}" tel quel quand VAR n'était pas définie au
-    // démarrage du conteneur (ou en dev, où /env-config.js n'existe pas et
-    // ce paramètre vaut undefined de toute façon) — ne jamais laisser un
-    // placeholder non substitué écraser une vraie valeur de build.
-    if (value !== undefined && !value.startsWith("${")) {
+    // envsubst rend une variable de la whitelist non définie au démarrage du
+    // conteneur par une chaîne vide (pas par le texte "${VAR}" — ça,
+    // seule une clé jamais passée à envsubst peut le laisser tel quel).
+    // Dans les deux cas, ne jamais laisser cette non-valeur écraser une
+    // vraie valeur de build.
+    if (value !== undefined && value !== "" && !value.startsWith("${")) {
       merged[key] = value;
     }
   }
