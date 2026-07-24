@@ -113,7 +113,15 @@ SEED_DEMO=false
 prompt_profiles() {
   local available
   local label
-  available="$($COMPOSE config --profiles 2>/dev/null || true)"
+  local compose_err
+  compose_err="$(mktemp)"
+  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
+    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
+    cat "$compose_err" >&2
+    rm -f "$compose_err"
+    exit 1
+  fi
+  rm -f "$compose_err"
 
   echo ""
   echo "── Profils disponibles ──"
@@ -212,7 +220,8 @@ prompt_backup_target() {
   read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
   if [ -n "$s3_endpoint" ]; then
     read -r -p "  Access key : " s3_access
-    read -r -p "  Secret key : " s3_secret
+    read -r -s -p "  Secret key : " s3_secret
+    echo
     read -r -p "  Bucket [geostudio-backups] : " s3_bucket
     set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
     set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
@@ -295,10 +304,10 @@ launch_stack() {
   echo ""
   echo "Démarrage complet de la stack..."
   local profile_args=()
-  for p in "${SELECTED_PROFILES[@]}"; do
+  for p in "${SELECTED_PROFILES[@]+"${SELECTED_PROFILES[@]}"}"; do
     profile_args+=(--profile "$p")
   done
-  $COMPOSE "${profile_args[@]}" up -d
+  $COMPOSE ${profile_args[@]+"${profile_args[@]}"} up -d
 
   echo "Attente de la disponibilité du cœur..."
   # Ni curl ni wget ne sont présents dans l'image core (python:3.12-slim +
