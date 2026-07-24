@@ -563,6 +563,7 @@ périmé avant même SP-12f) ; CLAUDE.md:58 ne nomme pas ogc-records expliciteme
 dans ogc_records.py (pattern hérité identique de stac.py, déjà approuvé,
 non-régression — durcissement partagé futur à envisager).
 
-## SP-12f COMPLET — 5 tâches + revue finale, toutes clean. HEAD=0bd620d.
-Reste : finishing (merge/PR).
+## SP-12f COMPLET — 5 tâches + revue finale, toutes clean. HEAD=3e99ac4.
+## Poussé origin/dev (d8c11e0..3e99ac4). PR #46 dev→main ouverte
+## (https://github.com/tlenenao/geostudio/pull/46).
 
