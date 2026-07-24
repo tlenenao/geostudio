@@ -9,7 +9,12 @@ import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { AppRoutes } from "./shell/routes";
 
-const config = loadConfig(import.meta.env as unknown as Record<string, string | undefined>);
+const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
+  .__GEOSTUDIO_ENV__;
+const config = loadConfig(
+  import.meta.env as unknown as Record<string, string | undefined>,
+  runtimeEnv,
+);
 const queryClient = new QueryClient();
 
 function AppShell() {
