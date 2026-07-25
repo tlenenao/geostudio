@@ -37,7 +37,7 @@ test("un Filtre pilote par expression la visibilité d'un widget et une colonne 
   await page.getByLabel("Widget émetteur").selectOption({ label: "Filtre" });
   await page.getByLabel("Événement").selectOption("changed");
   await page.getByLabel("Widget cible").selectOption({ label: "Variable : seuil" });
-  await page.getByLabel("Action").selectOption("set");
+  await page.getByLabel("Action", { exact: true }).selectOption("set");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();

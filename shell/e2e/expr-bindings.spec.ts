@@ -66,7 +66,7 @@ test("un binding { \$expr } sur une prop non-Texte lit un champ imbriqué d'une 
   await page.getByLabel("Widget émetteur").selectOption({ label: "Table" });
   await page.getByLabel("Événement").selectOption("itemSelected");
   await page.getByLabel("Widget cible").selectOption({ label: "Variable : selected" });
-  await page.getByLabel("Action").selectOption("set");
+  await page.getByLabel("Action", { exact: true }).selectOption("set");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();

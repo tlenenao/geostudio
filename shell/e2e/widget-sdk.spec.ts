@@ -27,7 +27,7 @@ test("an sdk-only example widget appears in the palette and wires through Action
   await page.getByLabel("Widget émetteur").selectOption({ index: 1 }); // counter 1
   await page.getByLabel("Événement").selectOption("changed");
   await page.getByLabel("Widget cible").selectOption({ index: 2 }); // counter 2
-  await page.getByLabel("Action").selectOption("reset");
+  await page.getByLabel("Action", { exact: true }).selectOption("reset");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
