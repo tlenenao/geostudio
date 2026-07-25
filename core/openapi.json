@@ -186,6 +186,21 @@
               }
             ]
           },
+          "interactions": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interactions"
+          },
           "itemId": {
             "anyOf": [
               {
@@ -526,10 +541,26 @@
             "title": "Columns",
             "type": "object"
           },
+          "reactsToExtent": {
+            "default": false,
+            "title": "Reactstoextent",
+            "type": "boolean"
+          },
           "source": {
             "const": "collection",
             "title": "Source",
             "type": "string"
+          },
+          "timeField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timefield"
           }
         },
         "required": [

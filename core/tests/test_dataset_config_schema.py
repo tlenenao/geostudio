@@ -30,3 +30,18 @@ def test_dataset_config_colonnes_optionnelles():
     config = BuilderConfig.model_validate(body)
     assert config.dataset.columns["nom"].label == "Nom"
     assert config.dataset.columns["nom"].format == "text"
+
+
+def test_dataset_config_time_field_and_reacts_to_extent_optional():
+    body = _dataset_body()
+    body["dataset"]["timeField"] = "date_releve"
+    body["dataset"]["reactsToExtent"] = True
+    config = BuilderConfig.model_validate(body)
+    assert config.dataset.timeField == "date_releve"
+    assert config.dataset.reactsToExtent is True
+
+
+def test_dataset_config_time_field_and_reacts_to_extent_default():
+    config = BuilderConfig.model_validate(_dataset_body())
+    assert config.dataset.timeField is None
+    assert config.dataset.reactsToExtent is False

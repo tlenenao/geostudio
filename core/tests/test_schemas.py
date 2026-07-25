@@ -284,3 +284,24 @@ def test_page_on_enter_defaults_empty():
     payload["pages"] = [{"id": "p1", "name": "Chapitre 1", "layout": payload["layout"]}]
     config = BuilderConfig.model_validate(payload)
     assert config.pages[0].onEnter == []
+
+
+def test_interactions_round_trips():
+    payload = _valid_payload("app")
+    payload["interactions"] = "auto"
+    config = BuilderConfig.model_validate(payload)
+    assert config.interactions == "auto"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["interactions"] == "auto"
+
+
+def test_interactions_defaults_to_none():
+    config = BuilderConfig.model_validate(_valid_payload("app"))
+    assert config.interactions is None
+
+
+def test_interactions_rejects_unknown_value():
+    payload = _valid_payload("app")
+    payload["interactions"] = "sometimes"
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(payload)
