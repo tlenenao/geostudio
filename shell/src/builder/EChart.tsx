@@ -37,15 +37,20 @@ function seriesList(option: EChartsOption): { type?: string }[] {
 // Thin React wrapper: owns the ECharts instance, keeps it sized to its box, and
 // disposes on unmount. This is the only module that pulls in echarts, so the
 // Chart widget lazy-loads it (and unit tests mock it).
-export function EChart({ option, className }: { option: EChartsOption; className?: string }) {
+export function EChart({ option, className, onClick }: {
+  option: EChartsOption; className?: string; onClick?: (params: { name?: string; value?: unknown }) => void;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
+  const onClickRef = useRef(onClick);
+  useEffect(() => { onClickRef.current = onClick; }, [onClick]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const chart = echarts.init(el);
     chartRef.current = chart;
+    chart.on("click", (params) => onClickRef.current?.(params as { name?: string; value?: unknown }));
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
     return () => {
