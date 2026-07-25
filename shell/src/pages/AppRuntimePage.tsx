@@ -27,12 +27,19 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const initialAnalyticsContext = useMemo(() => decodeAnalyticsContext(searchParams.get("ctx")), []);
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Toujours écrire via le setSearchParams du dernier rendu : ce setter est lié
+  // à la localisation courante, donc il préserve le pathname (ex. le segment
+  // :pageId d'une story). Le débounce peut se déclencher après une navigation
+  // de page ; sans ce ref, la fermeture capturée au montage réécrirait l'URL
+  // relative à l'ancien pathname (avec replace) et ferait « reculer » la page.
+  const setSearchParamsRef = useRef(setSearchParams);
+  useEffect(() => { setSearchParamsRef.current = setSearchParams; });
   useEffect(() => () => { if (writeTimer.current) clearTimeout(writeTimer.current); }, []);
 
   function handleAnalyticsContextChange(state: AnalyticsContextState) {
     if (writeTimer.current) clearTimeout(writeTimer.current);
     writeTimer.current = setTimeout(() => {
-      setSearchParams((prev) => {
+      setSearchParamsRef.current((prev) => {
         const next = new URLSearchParams(prev);
         next.set("ctx", encodeAnalyticsContext(state));
         return next;
