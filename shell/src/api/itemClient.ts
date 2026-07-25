@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -133,6 +133,21 @@ export function createItemClient(opts: {
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
+  }
+
+  const datasetCache = new Map<string, { collectionId: string; columns: Record<string, DatasetColumnMeta> }>();
+
+  async function resolveDataset(pk: string): Promise<{ collectionId: string; columns: Record<string, DatasetColumnMeta> }> {
+    const cached = datasetCache.get(pk);
+    if (cached) return cached;
+    const data = await request<{
+      config?: { dataset?: { collectionId: string; columns?: Record<string, DatasetColumnMeta> } | null };
+    }>("GET", `/configs/by-item/${pk}`);
+    const dataset = data.config?.dataset;
+    if (!dataset) throw new Error("resolveDataset: config has no dataset payload");
+    const resolved = { collectionId: dataset.collectionId, columns: dataset.columns ?? {} };
+    datasetCache.set(pk, resolved);
+    return resolved;
   }
 
   async function fetchMartinSources(q?: string): Promise<LayerSource[]> {
@@ -464,6 +479,31 @@ export function createItemClient(opts: {
       await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map: config });
     },
 
+    async createDatasetItem(input: { title: string; owner: string; collectionId: string }): Promise<Item> {
+      const dataset: DatasetConfig = { source: "collection", collectionId: input.collectionId, columns: {} };
+      const config = { version: 1, kind: "dataset", dataset };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createDatasetItem: core returned no itemId");
+      datasetCache.set(String(data.itemId), { collectionId: input.collectionId, columns: {} });
+      return {
+        pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getDatasetConfig(pk: string): Promise<DatasetConfig> {
+      const resolved = await resolveDataset(pk);
+      return { source: "collection", collectionId: resolved.collectionId, columns: resolved.columns };
+    },
+
+    async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
+      datasetCache.set(pk, { collectionId: config.collectionId, columns: config.columns });
+    },
+
     async getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig> {
       const qs = mode ? `?mode=${mode}` : "";
       const data = await request<{
@@ -534,25 +574,32 @@ export function createItemClient(opts: {
     },
 
     featuresUrl(source: DataSource): string {
+      if (source.datasetId) {
+        const cached = datasetCache.get(source.datasetId);
+        return buildFeaturesUrl(coreUrl, { ...source, layer: cached?.collectionId ?? source.layer });
+      }
       return buildFeaturesUrl(coreUrl, source);
     },
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
-      if (source.type === "static") {
-        return (source.query.records as DataRecord[] | undefined) ?? [];
+      const resolved = source.datasetId
+        ? { ...source, layer: (await resolveDataset(source.datasetId)).collectionId }
+        : source;
+      if (resolved.type === "static") {
+        return (resolved.query.records as DataRecord[] | undefined) ?? [];
       }
-      if (source.type === "statistics") {
-        const body = buildAggregateBody(source.query);
+      if (resolved.type === "statistics") {
+        const body = buildAggregateBody(resolved.query);
         const data = await request<{ categoryKey: string; rows: Record<string, unknown>[] }>(
-          "POST", `/collections/${source.layer}/aggregate`, body,
+          "POST", `/collections/${resolved.layer}/aggregate`, body,
         );
         return data.rows.map((row) => ({ id: String(row[data.categoryKey] ?? ""), properties: row }));
       }
       const token = getToken();
-      const res = await fetch(buildFeaturesUrl(coreUrl, source), {
+      const res = await fetch(buildFeaturesUrl(coreUrl, resolved), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} features ${source.layer}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status} features ${resolved.layer}`);
       const data = (await res.json()) as {
         features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
       };
