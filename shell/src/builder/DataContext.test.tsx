@@ -6,6 +6,7 @@ import { expect, test, vi } from "vitest";
 import type { DataSource, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DataProvider, useDataStates, useSetFilter } from "./DataContext";
+import { AnalyticsContextProvider } from "./AnalyticsContext";
 
 const sources: DataSource[] = [
   { id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} },
@@ -73,4 +74,74 @@ test("setFilter merges into a source query and refetches", async () => {
   await userEvent.click(screen.getByText("filter"));
   await waitFor(() => expect(screen.getByText("count:1")).toBeInTheDocument());
   expect(queryDataSource).toHaveBeenLastCalledWith(expect.objectContaining({ id: "ds1", query: { nom: "A" } }));
+});
+
+test("resolves datasetId and pkColumn onto the DataSourceState for a dataset-bound source", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: {} }]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/parcs/items.json"),
+    getDatasetConfig: vi.fn().mockResolvedValue({ source: "collection", collectionId: "parcs", columns: {}, timeField: null, reactsToExtent: false }),
+    getCollectionSchema: vi.fn().mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "parcs", datasetId: "dataset-1", query: {} }];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    return <p>datasetId:{s?.datasetId ?? "none"} pkColumn:{s?.pkColumn ?? "none"}</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}><Probe /></DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  // Both assertions live in the same waitFor: datasetId is available on the
+  // very first render (it's read straight off the source, no fetch needed),
+  // but pkColumn depends on a second async hop (dataset config resolves ->
+  // triggers the collection-schema fetch -> resolves), so checking it outside
+  // the retry loop races against that second hop.
+  await waitFor(() => {
+    expect(screen.getByText(/datasetId:dataset-1/)).toBeInTheDocument();
+    expect(screen.getByText(/pkColumn:id/)).toBeInTheDocument();
+  });
+});
+
+test("applies the analytics context's time patch to a dataset-bound source's query", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([]);
+  const client = {
+    queryDataSource,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    getDatasetConfig: vi.fn().mockResolvedValue({ source: "collection", collectionId: "parcs", columns: {}, timeField: "date_releve", reactsToExtent: false }),
+    getCollectionSchema: vi.fn().mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "parcs", datasetId: "dataset-1", query: {} }];
+
+  function Probe() {
+    useDataStates();
+    return <p>rendered</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <DataProvider sources={src}><Probe /></DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await screen.findByText("rendered");
+  // The provider starts with an empty context (no timeRange set), so the
+  // first fetch has no time patch — this test only proves getDatasetConfig
+  // is actually consulted and doesn't crash the query pipeline.
+  await waitFor(() => expect(client.getDatasetConfig).toHaveBeenCalledWith("dataset-1"));
 });

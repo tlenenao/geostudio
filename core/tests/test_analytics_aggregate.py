@@ -182,3 +182,44 @@ def test_bbox_without_geometry_column_raises():
             collection_id="c", table_info=info_no_geom, request=request,
         )
     assert exc_info.value.field == "bbox"
+
+
+def test_gte_lte_filters_narrow_rows(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2026", 20, lsn=1),
+        _row(3, "Sud", "2025", 5, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop",
+                                    filters={"annee__gte": "2026"})
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+    assert rows == [{"region": "Nord", "value": 20}]
+
+
+def test_in_filter_matches_any_listed_value(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Sud", "2025", 5, lsn=1),
+        _row(3, "Est", "2025", 3, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop",
+                                    filters={"region__in": "Nord,Sud"})
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+    assert sorted(rows, key=lambda r: r["region"]) == [
+        {"region": "Nord", "value": 10}, {"region": "Sud", "value": 5},
+    ]
+
+
+def test_suffixed_filter_on_unknown_field_raises_with_stripped_name(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", filters={"inconnu__gte": "1"})
+    with pytest.raises(UnknownAggregateField) as exc_info:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert "inconnu" in str(exc_info.value)

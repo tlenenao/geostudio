@@ -112,7 +112,15 @@ test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
   mapInstances[0].fire("moveend");
-  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5 });
+  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [0, 0, 0, 0] });
+});
+
+test("onViewChange includes the current bbox from the map bounds", () => {
+  const onViewChange = vi.fn();
+  render(<MapView config={config} onViewChange={onViewChange} />);
+  mapInstances[0].bounds = [[1, 2], [3, 4]];
+  mapInstances[0].fire("moveend");
+  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [1, 2, 3, 4] });
 });
 
 test("renders a legend of visible layers", () => {

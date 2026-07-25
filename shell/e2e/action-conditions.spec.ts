@@ -30,7 +30,7 @@ test("une condition sur une action ne déclenche celle-ci que si l'expression s'
   await page.getByLabel("Widget émetteur").selectOption({ label: "Filtre" });
   await page.getByLabel("Événement").selectOption("changed");
   await page.getByLabel("Widget cible").selectOption({ label: "Variable : status" });
-  await page.getByLabel("Action").selectOption("set");
+  await page.getByLabel("Action", { exact: true }).selectOption("set");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
   await page.getByLabel(/Condition de l'action/).fill('record.status == "Nord"');
 

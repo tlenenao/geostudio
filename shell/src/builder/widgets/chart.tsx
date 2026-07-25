@@ -2,6 +2,7 @@
 import { lazy, Suspense } from "react";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
+import { useSetCrossFilter } from "../AnalyticsContext";
 import { buildOption, type ChartProps } from "./chartOption";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
@@ -29,6 +30,7 @@ export function registerChartWidget(): void {
       title: "", advancedOption: "",
     },
     defaultSize: { w: 6, h: 4 },
+    events: ["categorySelected"],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       return (
@@ -94,14 +96,22 @@ export function registerChartWidget(): void {
       );
     },
     Component: ({ props, ctx }) => {
+      const setCrossFilter = useSetCrossFilter();
       const data = ctx.data;
       if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);
+      const categoryField = String(props.categoryField ?? "");
+      function handleClick(params: { name?: string }) {
+        if (!categoryField) return;
+        const value = params.name != null ? String(params.name) : "";
+        ctx.bus?.emit(ctx.widgetId ?? "", "categorySelected", { [categoryField]: value });
+        if (data?.datasetId) setCrossFilter(data.datasetId, categoryField, value, String(props.dataSourceId ?? ""));
+      }
       return (
         <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
-          <EChart option={option} />
+          <EChart option={option} onClick={handleClick} />
         </Suspense>
       );
     },

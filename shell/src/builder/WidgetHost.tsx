@@ -5,6 +5,7 @@ import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
 import { useVariables } from "./VariablesContext";
+import { useAnalyticsContext } from "./AnalyticsContext";
 import { useAuth } from "../auth/useAuth";
 import { evaluateExpression } from "./expr";
 import { resolveExprBindings } from "./exprBindings";
@@ -40,6 +41,7 @@ export function WidgetHost({
   const bus = useActionBus();
   const variables = useVariables();
   const { username } = useAuth();
+  const analyticsCtx = useAnalyticsContext();
   const user = { name: username ?? "" };
   const dsId = item.props.dataSourceId as string | undefined;
   const data = dsId ? states[dsId] : undefined;
@@ -48,10 +50,10 @@ export function WidgetHost({
     return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Widget inconnu : {item.widget}</div>;
   }
   const visible = mode === "edit" || !item.visibleWhen
-    || Boolean(evaluateExpression(item.visibleWhen, { vars: variables, record: data?.records[0]?.properties, user }));
+    || Boolean(evaluateExpression(item.visibleWhen, { vars: variables, record: data?.records[0]?.properties, user, ctx: analyticsCtx }));
   if (!visible) return null;
   const Widget = def.Component;
-  const exprCtx = { vars: variables, record: data?.records[0]?.properties, user };
+  const exprCtx = { vars: variables, record: data?.records[0]?.properties, user, ctx: analyticsCtx };
   const resolvedProps = resolveExprBindings(item.props, exprCtx) as Record<string, unknown>;
   return (
     <WidgetErrorBoundary>

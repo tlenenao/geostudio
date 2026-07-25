@@ -89,6 +89,27 @@ export function DatasetEditPage({ pk }: { pk: string }) {
             </tbody>
           </table>
         )}
+        <label className="mt-2 flex flex-col gap-1 text-xs">
+          Colonne temporelle
+          <select
+            aria-label="Colonne temporelle"
+            className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
+            value={draft.timeField ?? ""}
+            onChange={(e) => setDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))}
+          >
+            <option value="">— aucune —</option>
+            {merged.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            aria-label="Réagir au déplacement de la carte"
+            checked={Boolean(draft.reactsToExtent)}
+            onChange={(e) => setDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))}
+          />
+          Réagir au déplacement de la carte
+        </label>
       </div>
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
         Enregistrer les colonnes

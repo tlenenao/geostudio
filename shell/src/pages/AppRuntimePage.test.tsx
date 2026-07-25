@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
 import { expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
 import type { AuthState } from "../auth/useAuth";
+import { EXTENT_DEBOUNCE_MS, useAnalyticsContext } from "../builder/AnalyticsContext";
+import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
+import { getWidget, registerWidget } from "../builder/registry";
 
 const authState: AuthState = {
   isLoading: false, isAuthenticated: true, username: "tanguy",
@@ -31,21 +34,41 @@ const config: AppConfig = {
 
 function LocationDisplay() {
   const location = useLocation();
-  return <p data-testid="loc">{location.pathname}</p>;
+  const navigationType = useNavigationType();
+  return (
+    <div>
+      <p data-testid="loc">{location.pathname}</p>
+      <p data-testid="search">{location.search}</p>
+      <p data-testid="navtype">{navigationType}</p>
+    </div>
+  );
 }
 
-function renderRuntime(client: Partial<ItemClient>) {
+function renderRuntime(client: Partial<ItemClient>, initialEntries: string[] = ["/apps/9/page-1"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <MemoryRouter initialEntries={["/apps/9/page-1"]}>
+        <MemoryRouter initialEntries={initialEntries}>
           <AppRuntimePage pk="9" pageId="page-1" />
           <LocationDisplay />
         </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+}
+
+// __ctx_probe__ is registered once at module scope (registerWidget just warns
+// on re-registration, but this avoids the noise across the two ctx tests below).
+if (!getWidget("__ctx_probe__")) {
+  registerWidget({
+    type: "__ctx_probe__", label: "probe", defaultProps: {}, defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => null,
+    Component: () => {
+      const ctx = useAnalyticsContext();
+      return <p>probe-timeRange:{ctx.timeRange ? `${ctx.timeRange.from}..${ctx.timeRange.to}` : "none"}</p>;
+    },
+  });
 }
 
 const okItem: Item = {
@@ -69,4 +92,153 @@ test("shows an access-denied message and never fetches the config when getItem f
 test("proceeds to fetch and render the config once getItem succeeds", async () => {
   renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(config) });
   expect(await screen.findByRole("button", { name: "Accueil" })).toBeInTheDocument();
+});
+
+const probeConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "p1", widget: "__ctx_probe__", x: 0, y: 0, w: 4, h: 2, props: {} },
+    ] } },
+  ],
+};
+
+test("hydrates the initial analytics context from the ctx URL param", async () => {
+  const encoded = encodeAnalyticsContext({ timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {} });
+  renderRuntime(
+    { getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(probeConfig) },
+    [`/apps/9/page-1?ctx=${encoded}`],
+  );
+  expect(await screen.findByText("probe-timeRange:2026-01-01..2026-02-01")).toBeInTheDocument();
+});
+
+const dateFilterConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "d1", widget: "dateRangeFilter", x: 0, y: 0, w: 4, h: 1, props: { label: "Période" } },
+    ] } },
+  ],
+};
+
+const manualDateFilterConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  // interactions absent (comportement des apps existantes / "manual" explicite)
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "d1", widget: "dateRangeFilter", x: 0, y: 0, w: 4, h: 1, props: { label: "Période" } },
+    ] } },
+  ],
+};
+
+test("never adds a ctx URL param when interactions is absent (manual mode) — additivité", async () => {
+  // Fake timers are enabled BEFORE render (with shouldAdvanceTime so
+  // findByLabelText's internal polling still progresses in real time): this
+  // is what makes the test a genuine regression guard. AnalyticsContextProvider
+  // emits its mount-time onStateChange (the empty context) as soon as the
+  // widget mounts — if that emission were still able to schedule a debounced
+  // write (i.e. if the guard in handleAnalyticsContextChange were removed),
+  // the resulting setTimeout would be captured by the fake clock here and
+  // fire when we advance it below. Enabling fake timers only after mount (as
+  // a naive version of this test would) lets that mount-time setTimeout slip
+  // through as a REAL timer that never fires within the test, making the
+  // "no ctx" assertion pass regardless of whether the guard exists.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
+    const fromInput = await screen.findByLabelText("Date de début");
+    const toInput = await screen.findByLabelText("Date de fin");
+    expect(screen.getByTestId("search")).toHaveTextContent("");
+
+    fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
+    fireEvent.change(toInput, { target: { value: "2026-02-01" } });
+    act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
+
+    // Even past the debounce window (and past the empty-state effect fired at
+    // mount by AnalyticsContextProvider), no ?ctx= must appear: a manual-mode
+    // app must stay byte-identical to today's URL behaviour.
+    const search = screen.getByTestId("search").textContent ?? "";
+    expect(new URLSearchParams(search).has("ctx")).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+const navAutoConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "n1", widget: "nav", x: 0, y: 0, w: 4, h: 1, props: {} },
+      { id: "d1", widget: "dateRangeFilter", x: 0, y: 1, w: 4, h: 1, props: { label: "Période" } },
+    ] } },
+    { id: "page-2", name: "Détails", layout: emptyLayout },
+  ],
+};
+
+test("resolves the debounced ctx write against the pathname active when the timer fires, not the one active when it was scheduled (Task 18 stale-closure fix)", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(navAutoConfig) });
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
+    fireEvent.change(toInput, { target: { value: "2026-02-01" } });
+    // Not written yet — still debouncing.
+    expect(screen.getByTestId("search")).toHaveTextContent("");
+
+    // Navigate to a different page WHILE the write is still debouncing (as a
+    // story chapter change would).
+    fireEvent.click(screen.getByRole("button", { name: "Détails" }));
+    expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/page-2");
+
+    act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
+
+    // The write must resolve against the NEW pathname — not yank the user
+    // back to the pathname active when the debounce was scheduled (the
+    // stale-closure bug fixed in Task 18).
+    expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/page-2");
+    const search = screen.getByTestId("search").textContent ?? "";
+    expect(new URLSearchParams(search).get("ctx")).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("writes the analytics context back to the ctx URL param, debounced, with replace semantics", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) });
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+  expect(screen.getByTestId("search")).toHaveTextContent("");
+
+  // fireEvent (not userEvent) here: userEvent's internal async wait model hangs
+  // indefinitely under Vitest fake timers in this environment (see
+  // AnalyticsContext.test.tsx) — fireEvent + act() is the RTL-sanctioned way to
+  // combine input changes with fake-timer advances.
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
+    fireEvent.change(toInput, { target: { value: "2026-02-01" } });
+    // Not written yet — still debouncing.
+    expect(screen.getByTestId("search")).toHaveTextContent("");
+    act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
+
+    const search = screen.getByTestId("search").textContent ?? "";
+    const ctx = new URLSearchParams(search).get("ctx");
+    expect(ctx).toBeTruthy();
+    expect(decodeAnalyticsContext(ctx)).toEqual({
+      timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+    });
+    // replace semantics: the location changed, but no new history entry was pushed.
+    expect(screen.getByTestId("navtype")).toHaveTextContent("REPLACE");
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -96,6 +96,8 @@ class DatasetPayload(BaseModel):
     source: Literal["collection"]  # seul type supporté en SP-14a
     collectionId: str
     columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
+    timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
+    reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
 
 
 class BuilderConfig(BaseModel):
@@ -110,6 +112,7 @@ class BuilderConfig(BaseModel):
     messages: list[Message] = Field(default_factory=list)
     pages: list[Page] = Field(default_factory=list)
     navigationMode: Literal["tabs", "story"] = "tabs"
+    interactions: Literal["auto", "manual"] | None = None
     variables: list[Variable] = Field(default_factory=list)
     map: MapConfig | None = None
     dataset: DatasetPayload | None = None

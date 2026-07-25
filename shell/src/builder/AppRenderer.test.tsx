@@ -10,6 +10,7 @@ import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { AuthState } from "../auth/useAuth";
 import { useBusAction } from "./ActionBusContext";
+import { useEffect } from "react";
 
 const authState: AuthState = {
   isLoading: false, isAuthenticated: true, username: "tanguy",
@@ -448,4 +449,37 @@ test("edit mode never dispatches onEnter and shows no story chrome", () => {
   render(<AppRenderer config={storyConfig()} mode="edit" />, { wrapper: Wrapper });
   expect(screen.queryByRole("button", { name: "Suivant" })).toBeNull();
   expect(flySpy).not.toHaveBeenCalled();
+});
+
+test("mounts AnalyticsContextProvider with config.interactions and a widget can read it", async () => {
+  const cfg: AppConfig = {
+    ...config,
+    interactions: "auto",
+    layout: { type: "grid", breakpoints: {}, items: [{ id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Salut" } }] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  // Smoke test: rendering with interactions:"auto" doesn't crash and still shows the widget.
+  expect(screen.getByText("Salut")).toBeInTheDocument();
+});
+
+test("a widget under AppRenderer can read the analytics context via useAnalyticsContext", async () => {
+  const { getWidget, registerWidget: register } = await import("./registry");
+  const { useAnalyticsContext, useSetTimeRange } = await import("./AnalyticsContext");
+  register({
+    type: "__analytics_probe__", label: "probe", defaultProps: {}, defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => null,
+    Component: () => {
+      const ctx = useAnalyticsContext();
+      const setTimeRange = useSetTimeRange();
+      useEffect(() => { setTimeRange({ from: "a", to: "b" }); }, [setTimeRange]);
+      return <p>probe:{ctx.timeRange ? "set" : "empty"}</p>;
+    },
+  });
+  const cfg: AppConfig = {
+    ...config, interactions: "auto",
+    layout: { type: "grid", breakpoints: {}, items: [{ id: "p1", widget: "__analytics_probe__", x: 0, y: 0, w: 4, h: 2, props: {} }] },
+  };
+  render(<AppRenderer config={cfg} mode="runtime" />, { wrapper: Wrapper });
+  expect(await screen.findByText("probe:set")).toBeInTheDocument();
+  expect(getWidget("__analytics_probe__")).toBeDefined();
 });

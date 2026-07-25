@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { evaluate, parse } from "cel-js";
+import type { AnalyticsContextState } from "./AnalyticsContext";
 
 export type ExprContext = {
   vars: Record<string, unknown>;
   record?: Record<string, unknown>;
   user: { name: string };
+  ctx?: AnalyticsContextState;
 };
 
 export function evaluateExpression(expr: string, ctx: ExprContext): unknown {

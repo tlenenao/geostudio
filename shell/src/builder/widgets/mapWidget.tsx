@@ -3,6 +3,7 @@ import { lazy, Suspense, useRef } from "react";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
+import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import type { MapConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 
@@ -35,6 +36,8 @@ export function registerMapWidget(): void {
     ),
     Component: ({ props, ctx }) => {
       const handle = useRef<MapViewHandle>(null);
+      const setExtent = useSetExtent();
+      const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "flyTo", (payload) => {
         const center = centerFromPayload(payload);
         if (center) handle.current?.flyTo({ center, zoom: 12 });
@@ -56,8 +59,16 @@ export function registerMapWidget(): void {
           <MapView
             ref={handle}
             config={config}
-            onViewChange={(v) => ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v)}
-            onFeatureClick={(record) => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record)}
+            onViewChange={(v) => {
+              ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
+              setExtent(v.bbox);
+            }}
+            onFeatureClick={(record) => {
+              ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record);
+              const datasetId = ctx.data?.datasetId;
+              const pkColumn = ctx.data?.pkColumn;
+              if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""));
+            }}
           />
         </Suspense>
       );

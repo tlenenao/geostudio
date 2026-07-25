@@ -172,6 +172,37 @@ def test_delete_scoped(info, pg_session_factory):
         assert session.execute(text("SELECT count(*) FROM t_feat")).scalar() == 2
 
 
+def test_gte_lte_filters_narrow_by_range(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, filters={"nb__gte": "2"})
+        assert [f["id"] for f in page.features] == [2]
+        page = select_features(session, info, limit=10, offset=0, filters={"nb__lte": "1"})
+        assert [f["id"] for f in page.features] == [1]
+        page = select_features(session, info, limit=10, offset=0,
+                               filters={"nb__gte": "1", "nb__lte": "1"})
+        assert [f["id"] for f in page.features] == [1]
+
+
+def test_in_filter_matches_any_listed_value(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, filters={"titre__in": "a,b"})
+        assert sorted(f["id"] for f in page.features) == [1, 2]
+        page = select_features(session, info, limit=10, offset=0, filters={"titre__in": "a"})
+        assert [f["id"] for f in page.features] == [1]
+
+
+def test_suffixed_filter_on_unknown_column_still_raises_filter_error(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info, limit=10, offset=0, filters={"inconnu__gte": "1"})
+
+
+def test_gte_on_unparseable_value_raises_filter_error(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info, limit=10, offset=0, filters={"nb__gte": "pas-un-nombre"})
+
+
 def test_replace_preserves_unsupported_readonly_columns(pg_engine, pg_session_factory):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_feat_ro"))

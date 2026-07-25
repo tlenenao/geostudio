@@ -13,6 +13,7 @@ export class MockMap {
   removed = false;
   throwOnAddLayer = new Set<string>();
   flyToArgs: unknown[] = [];
+  bounds: [[number, number], [number, number]] = [[0, 0], [0, 0]];
 
   constructor(opts: MockMap["opts"]) {
     this.opts = opts;
@@ -70,6 +71,9 @@ export class MockMap {
   }
   getZoom() {
     return this.opts.zoom;
+  }
+  getBounds() {
+    return { toArray: () => this.bounds };
   }
   loaded() {
     return true;
