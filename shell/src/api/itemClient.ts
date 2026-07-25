@@ -135,17 +135,29 @@ export function createItemClient(opts: {
     return (await res.json()) as T;
   }
 
-  const datasetCache = new Map<string, { collectionId: string; columns: Record<string, DatasetColumnMeta> }>();
+  type ResolvedDataset = {
+    collectionId: string; columns: Record<string, DatasetColumnMeta>;
+    timeField: string | null; reactsToExtent: boolean;
+  };
+  const datasetCache = new Map<string, ResolvedDataset>();
 
-  async function resolveDataset(pk: string): Promise<{ collectionId: string; columns: Record<string, DatasetColumnMeta> }> {
+  async function resolveDataset(pk: string): Promise<ResolvedDataset> {
     const cached = datasetCache.get(pk);
     if (cached) return cached;
     const data = await request<{
-      config?: { dataset?: { collectionId: string; columns?: Record<string, DatasetColumnMeta> } | null };
+      config?: {
+        dataset?: {
+          collectionId: string; columns?: Record<string, DatasetColumnMeta>;
+          timeField?: string | null; reactsToExtent?: boolean;
+        } | null;
+      };
     }>("GET", `/configs/by-item/${pk}`);
     const dataset = data.config?.dataset;
     if (!dataset) throw new Error("resolveDataset: config has no dataset payload");
-    const resolved = { collectionId: dataset.collectionId, columns: dataset.columns ?? {} };
+    const resolved: ResolvedDataset = {
+      collectionId: dataset.collectionId, columns: dataset.columns ?? {},
+      timeField: dataset.timeField ?? null, reactsToExtent: dataset.reactsToExtent ?? false,
+    };
     datasetCache.set(pk, resolved);
     return resolved;
   }
@@ -267,6 +279,7 @@ export function createItemClient(opts: {
         messages: template?.messages ?? [],
         pages: template?.pages ?? [],
         navigationMode: template?.navigationMode ?? "tabs",
+        interactions: "auto",
       };
       const payload: Record<string, unknown> = { title: input.title, config };
       if (input.slug) payload.slug = input.slug;
@@ -486,7 +499,9 @@ export function createItemClient(opts: {
         "POST", `/configs`, { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createDatasetItem: core returned no itemId");
-      datasetCache.set(String(data.itemId), { collectionId: input.collectionId, columns: {} });
+      datasetCache.set(String(data.itemId), {
+        collectionId: input.collectionId, columns: {}, timeField: null, reactsToExtent: false,
+      });
       return {
         pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
         owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
@@ -496,12 +511,18 @@ export function createItemClient(opts: {
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
       const resolved = await resolveDataset(pk);
-      return { source: "collection", collectionId: resolved.collectionId, columns: resolved.columns };
+      return {
+        source: "collection", collectionId: resolved.collectionId, columns: resolved.columns,
+        timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+      };
     },
 
     async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
       await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
-      datasetCache.set(pk, { collectionId: config.collectionId, columns: config.columns });
+      datasetCache.set(pk, {
+        collectionId: config.collectionId, columns: config.columns,
+        timeField: config.timeField ?? null, reactsToExtent: config.reactsToExtent ?? false,
+      });
     },
 
     async getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig> {
@@ -516,6 +537,7 @@ export function createItemClient(opts: {
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
           navigationMode?: "tabs" | "story";
+          interactions?: "auto" | "manual";
         };
       }>("GET", `/configs/by-item/${pk}${qs}`);
       const c = data.config;
@@ -529,6 +551,7 @@ export function createItemClient(opts: {
         variables: c.variables,
         layout: c.layout,
         navigationMode: c.navigationMode,
+        interactions: c.interactions,
       };
     },
 
@@ -543,6 +566,7 @@ export function createItemClient(opts: {
           variables?: Variable[];
           layout?: AppConfig["layout"] | null;
           navigationMode?: "tabs" | "story";
+          interactions?: "auto" | "manual";
         };
       }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);
       const c = data.config;
@@ -556,6 +580,7 @@ export function createItemClient(opts: {
         variables: c.variables,
         layout: c.layout,
         navigationMode: c.navigationMode,
+        interactions: c.interactions,
       };
     },
 
@@ -570,6 +595,7 @@ export function createItemClient(opts: {
         variables: config.variables,
         layout: config.layout,
         navigationMode: config.navigationMode,
+        interactions: config.interactions,
       });
     },
 

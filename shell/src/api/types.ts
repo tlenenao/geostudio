@@ -220,6 +220,8 @@ export type DatasetConfig = {
   source: "collection";
   collectionId: string;
   columns: Record<string, DatasetColumnMeta>;
+  timeField?: string | null;
+  reactsToExtent?: boolean;
 };
 
 // Écho documenté de WcWidgetManifest (shell/src/builder/wc/manifest.ts) — même
@@ -360,4 +362,5 @@ export type AppConfig = {
   pages?: Page[];
   variables?: Variable[];
   navigationMode?: "tabs" | "story";
+  interactions?: "auto" | "manual"; // absent = "manual"
 };

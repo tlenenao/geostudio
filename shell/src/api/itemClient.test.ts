@@ -85,6 +85,18 @@ test("createConfigItem does not send owner in the request body", async () => {
   expect(item.pk).toBe("99");
 });
 
+test("createConfigItem defaults interactions to auto for a new app", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ id: "cfg-1", kind: "app", itemId: "1" }, { status: 201 });
+    }),
+  );
+  await makeClient().createConfigItem({ kind: "app", title: "Test", owner: "alice" });
+  expect((posted!.config as Record<string, unknown>).interactions).toBe("auto");
+});
+
 test("updateItem sends the patch camelCase, unchanged", async () => {
   let body: unknown;
   server.use(
@@ -345,7 +357,10 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
     ),
   );
   const cfg = await makeClient().getDatasetConfig("ds-2");
-  expect(cfg).toEqual({ source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } } });
+  expect(cfg).toEqual({
+    source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
+    timeField: null, reactsToExtent: false,
+  });
 });
 
 test("getDatasetConfig throws when the config has no dataset payload", async () => {
@@ -369,6 +384,29 @@ test("saveDatasetConfig PUTs the dataset config by item", async () => {
   expect(method).toBe("PUT");
   expect(body.kind).toBe("dataset");
   expect(body.dataset.collectionId).toBe("parcs");
+});
+
+test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        config: { dataset: { source: "collection", collectionId: "parcs", columns: {}, timeField: "date_releve", reactsToExtent: true } },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.timeField).toBe("date_releve");
+  expect(config.reactsToExtent).toBe(true);
+
+  let putBody: Record<string, unknown> | null = null;
+  server.use(
+    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+      putBody = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveDatasetConfig("ds-1", { ...config, reactsToExtent: false });
+  expect((putBody!.dataset as Record<string, unknown>).reactsToExtent).toBe(false);
 });
 
 test("featuresUrl resolves datasetId to the dataset's collectionId once cached", async () => {
@@ -465,6 +503,26 @@ test("saveAppConfig PUTs the app config by item", async () => {
   });
   expect(body.kind).toBe("app");
   expect(body.layout.type).toBe("grid");
+});
+
+test("getAppConfig/saveAppConfig round-trip interactions", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/9", () =>
+      HttpResponse.json({ config: { kind: "app", layout: { type: "grid", breakpoints: {}, items: [] }, interactions: "auto" } }),
+    ),
+  );
+  const config = await makeClient().getAppConfig("9");
+  expect(config.interactions).toBe("auto");
+
+  let putBody: Record<string, unknown> | null = null;
+  server.use(
+    http.put("https://core.test/configs/by-item/9", async ({ request }) => {
+      putBody = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveAppConfig("9", { ...config, interactions: "manual" });
+  expect(putBody!.interactions).toBe("manual");
 });
 
 test("featuresUrl builds the core items url", () => {
