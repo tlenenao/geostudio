@@ -64,6 +64,28 @@ def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant
         raise HTTPException(status_code=400, detail=str(err)) from err
 
 
+def _validate_dataset_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
+    if config.kind != "dataset":
+        return
+    from app.collections import repository as collections_repo
+
+    payload = config.dataset
+    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
+    collection = collections_repo.get_collection(
+        session, tenant_id=user.tenant_id, collection_id=payload.collectionId,
+    )
+    if collection is None:
+        raise HTTPException(status_code=422, detail="collection not found")
+    readable = can(
+        session, user_id=user.id, action="read",
+        item=collections_repo.get_access_facts(collection), kind="collection",
+        actor_is_admin=user.is_admin,
+    )
+    if not readable:
+        # Same message as the not-found branch: don't leak collection existence.
+        raise HTTPException(status_code=422, detail="collection not found")
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
@@ -71,6 +93,7 @@ def create_config(
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
+    _validate_dataset_payload(session, request.config, user=user)
     try:
         item = items_repo.create_item(
             session, tenant_id=user.tenant_id, owner_id=user.id,
@@ -120,6 +143,7 @@ def update_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
+    _validate_dataset_payload(session, config, user=user)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
@@ -218,6 +242,7 @@ def update_config_by_item(
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
+    _validate_dataset_payload(session, config, user=user)
     result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
