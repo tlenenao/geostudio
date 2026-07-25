@@ -6,14 +6,18 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { ActionBus } from "../ActionBus";
+import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
 
 vi.mock("../EChart", () => ({
-  EChart: ({ option }: { option: { series?: unknown } }) => {
+  EChart: ({ option, onClick }: { option: { series?: unknown }; onClick?: (params: { name?: string }) => void }) => {
     const s = option.series;
     const n = Array.isArray(s) ? s.length : s ? 1 : 0;
-    return <div data-testid="echart" data-series={n} />;
+    return (
+      <div data-testid="echart" data-series={n} onClick={() => onClick?.({ name: "Nord" })} />
+    );
   },
 }));
 
@@ -64,4 +68,53 @@ test("loading and empty states use the theme muted token", () => {
   expect(screen.getByText(/chargement/i)).toHaveClass("text-[var(--gs-color-muted)]");
   rerender(<Chart props={{}} ctx={{ mode: "runtime", data: state() } as WidgetContext} />);
   expect(screen.getByText(/aucune donnée/i)).toHaveClass("text-[var(--gs-color-muted)]");
+});
+
+test("declares the categorySelected event", () => {
+  expect(getWidget("chart")!.events).toEqual(["categorySelected"]);
+});
+
+test("clicking a category always emits categorySelected on the bus", async () => {
+  const bus = new ActionBus();
+  const handler = vi.fn();
+  bus.register("sink", "log", handler);
+  bus.configure([{ id: "m", from: "chart1", event: "categorySelected", to: "sink", action: "log" }]);
+  const Chart = getWidget("chart")!.Component;
+  render(<Chart props={{ categoryField: "region", chartType: "bar" }} ctx={{ mode: "runtime", data: wide, bus, widgetId: "chart1" } as WidgetContext} />);
+  await userEvent.click(await screen.findByTestId("echart"));
+  expect(handler).toHaveBeenCalledWith({ region: "Nord" });
+});
+
+test("sets the cross-filter when interactions is auto and the source is dataset-bound", async () => {
+  function Probe() {
+    const ctx = useAnalyticsContext();
+    const entry = ctx.crossFilter["dataset-1"];
+    return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+  }
+  const Chart = getWidget("chart")!.Component;
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Chart props={{ categoryField: "region", chartType: "bar", dataSourceId: "src-1" }}
+        ctx={{ mode: "runtime", data: { ...wide, datasetId: "dataset-1" } } as WidgetContext} />
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(await screen.findByTestId("echart"));
+  expect(await screen.findByText("cf:region=Nord")).toBeInTheDocument();
+});
+
+test("does not set a cross-filter when the source has no datasetId (manual wiring only)", async () => {
+  function Probe() {
+    const ctx = useAnalyticsContext();
+    return <p>cf-count:{Object.keys(ctx.crossFilter).length}</p>;
+  }
+  const Chart = getWidget("chart")!.Component;
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Chart props={{ categoryField: "region", chartType: "bar" }} ctx={{ mode: "runtime", data: wide } as WidgetContext} />
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(await screen.findByTestId("echart"));
+  expect(await screen.findByText("cf-count:0")).toBeInTheDocument();
 });
