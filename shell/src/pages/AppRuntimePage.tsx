@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppConfig, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";
+import { EXTENT_DEBOUNCE_MS, type AnalyticsContextState } from "../builder/AnalyticsContext";
+import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
 import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveExtensions } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 
@@ -17,6 +19,26 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const itemQuery = useItem(pk);
   const query = useAppConfig(pk, { enabled: itemQuery.isSuccess, mode: "runtime" });
   const navigate = useNavigate();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Read once at mount ("au montage" per spec) — this component itself
+  // writes ?ctx= back, so re-reading on every searchParams change would
+  // create a feedback loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialAnalyticsContext = useMemo(() => decodeAnalyticsContext(searchParams.get("ctx")), []);
+  const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (writeTimer.current) clearTimeout(writeTimer.current); }, []);
+
+  function handleAnalyticsContextChange(state: AnalyticsContextState) {
+    if (writeTimer.current) clearTimeout(writeTimer.current);
+    writeTimer.current = setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("ctx", encodeAnalyticsContext(state));
+        return next;
+      }, { replace: true });
+    }, EXTENT_DEBOUNCE_MS);
+  }
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -43,6 +65,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         mode="runtime"
         pageId={pageId}
         onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
+        initialAnalyticsContext={initialAnalyticsContext}
+        onAnalyticsContextChange={handleAnalyticsContextChange}
       />
     </div>
   );
