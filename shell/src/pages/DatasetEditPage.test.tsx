@@ -54,11 +54,45 @@ test("loads the dataset, shows merged columns, and saves an edited label", async
     updateItem: vi.fn().mockResolvedValue(item),
   });
 
-  await screen.findByText("nom");
+  await screen.findByLabelText("Libellé de nom");
   await userEvent.type(screen.getByLabelText("Libellé de nom"), "Nom du parc");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
 
   await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
   const [, savedConfig] = saveDatasetConfig.mock.calls[0];
   expect(savedConfig.columns.nom.label).toBe("Nom du parc");
+});
+
+test("edits the time field and reacts-to-extent flag, and saves them with the columns", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+    updateItem: vi.fn().mockResolvedValue(item),
+  });
+
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.selectOptions(screen.getByLabelText("Colonne temporelle"), "nom");
+  await userEvent.click(screen.getByLabelText("Réagir au déplacement de la carte"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
+  const [, savedConfig] = saveDatasetConfig.mock.calls[0];
+  expect(savedConfig.timeField).toBe("nom");
+  expect(savedConfig.reactsToExtent).toBe(true);
+});
+
+test("time field defaults to the empty option (no temporal context)", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn(),
+  });
+  await screen.findByLabelText("Libellé de nom");
+  expect(screen.getByLabelText("Colonne temporelle")).toHaveValue("");
+  expect(screen.getByLabelText("Réagir au déplacement de la carte")).not.toBeChecked();
 });
