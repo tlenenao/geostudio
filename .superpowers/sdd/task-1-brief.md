@@ -1,396 +1,258 @@
-### Task 1 : service `backup` (dump + mirror + export + chiffrement + rotation)
+### Task 1 : `scripts/install.sh` — mode non-interactif par variables d'environnement
 
 **Files:**
-- Create: `deploy/backup/Dockerfile`
-- Create: `deploy/backup/entrypoint.sh`
-- Create: `deploy/backup/backup.sh`
-- Create: `deploy/backup/retention.py`
-- Create: `deploy/backup/test_retention.py`
-- Modify: `docker-compose.prod.yml` (ajout service `backup`, extension du bloc `volumes:` top-level créé en SP-Deploy-a Task 5)
-- Modify: `.env.example` (variables `BACKUP_*`)
+- Modify: `scripts/install.sh:113-146` (fonction `prompt_profiles`)
+- Modify: `scripts/install.sh:168-208` (fonction `prompt_public_host`)
+- Modify: `scripts/install.sh:218-235` (fonction `prompt_backup_target`)
+- Modify: `scripts/install.sh:240-242` (début de la fonction `prompt_admin`)
 
 **Interfaces:**
-- Consumes: `PG_PASSWORD`/`MINIO_USER`/`MINIO_PASSWORD`/`KC_PASSWORD` (déjà dans `.env.example`, inchangés) ; réseau `gis-net` (déjà défini par `docker-compose.yml`).
-- Produces: archives `/backup/archives/<horodatage>.tar.gz.age` sur le volume nommé `backup-archives` ; consommé par le runbook de restauration (Task 2).
+- Consumes: rien de nouveau — mêmes fonctions/variables globales existantes (`SELECTED_PROFILES`, `SEED_DEMO`, `PUBLIC_HOST`, `ADMIN_EMAIL`, `set_env_var`, `confirm`).
+- Produces: le contrat de variables d'environnement listé dans Global Constraints, consommé par le playbook Ansible de Task 3.
 
-**Contexte vérifié en lisant le code :**
-- `deploy/postgis/Dockerfile` : `FROM postgis/postgis:16-3.4` — Postgres 16, donc `postgresql16-client` (paquet Alpine) pour un `pg_dump`/`pg_restore` de version compatible.
-- `docker-compose.yml` service `keycloak` : `KC_DB_URL: jdbc:postgresql://postgis:5432/gis` — Keycloak persiste **dans la même base `gis`** que le reste du cœur. Conséquence importante, à documenter dans le runbook (Task 2) : un `pg_dump`/`pg_restore` complet de `gis` restaure **déjà** l'intégralité des données Keycloak (realms, utilisateurs, clients) — l'export JSON via l'API Admin ci-dessous est un **filet de sécurité redondant, portable et lisible**, pas le mécanisme de restauration principal.
-- `core/app/items/storage.py`, `core/app/ingestion/storage.py`, `core/app/cdc/storage.py` créent leurs buckets MinIO paresseusement (`create_bucket`, idempotent) au premier usage — mais ce sont des objets **MinIO**, jamais capturés par un dump Postgres : le service `backup` doit lister/mirorer les buckets existants tels quels, et la restauration (Task 2) devra les recréer explicitement (`mc mb`) avant de les repeupler, sans dépendre du démarrage du cœur pour ça.
-- `.env.example` définit déjà `S3_THUMBNAILS_BUCKET`, `S3_UPLOADS_BUCKET`, `S3_CDC_BUCKET` — 3 buckets, noms lus depuis l'environnement (repris tels quels par `backup.sh`, jamais codés en dur).
-- `docker-compose.yml` service `keycloak` : `KEYCLOAK_ADMIN: admin`, `KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}` — identifiants admin déjà disponibles, réutilisés pour l'authentification à l'API Admin REST (`grant_type=password`, `client_id=admin-cli`, réalm `master`).
-- Le sous-plan SP-Deploy-a (Task 3) fixe `KC_HTTP_RELATIVE_PATH: /auth` en prod — toutes les URLs Keycloak internes de ce service utilisent donc le préfixe `/auth` (`http://keycloak:8080/auth/realms/...`), cohérent avec le reste de la stack prod.
+**Règle appliquée aux quatre fonctions** : si la variable d'environnement dédiée est **définie** (même vide, testée avec `${VAR+x}` — teste la présence, pas le contenu, pour distinguer « non fournie » de « fournie vide = choix explicite »), sauter le `read` correspondant et utiliser sa valeur ; sinon, comportement interactif inchangé.
 
-- [ ] **Step 1: Écrire le test de rétention (rouge)**
+- [ ] **Step 1: Modifier `prompt_profiles` — profils et seed démo non-interactifs**
 
-Créer `deploy/backup/test_retention.py` :
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta
-
-from retention import select_files_to_delete
-
-
-def _name(dt: datetime) -> str:
-    return dt.strftime("%Y%m%d-%H%M%S") + ".tar.gz.age"
-
-
-def test_daily_window_of_7_is_never_deleted():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    names = [_name(now - timedelta(days=i)) for i in range(7)]
-    assert select_files_to_delete(names, now) == []
-
-
-def test_keeps_4_most_recent_distinct_older_weeks_deletes_rest():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    # 14, 21, ..., 63 jours en arrière — 8 semaines ISO distinctes, toutes
-    # hors de la fenêtre quotidienne de 7 jours.
-    names = [_name(now - timedelta(weeks=w)) for w in range(2, 10)]
-    deleted = select_files_to_delete(names, now)
-    kept = [n for n in names if n not in deleted]
-    assert set(kept) == set(names[:4])
-    assert set(deleted) == set(names[4:])
-
-
-def test_ignores_filenames_not_matching_the_naming_pattern():
-    now = datetime(2026, 7, 24, 3, 0, 0)
-    assert select_files_to_delete(["notes.txt", "backup.tar.gz"], now) == []
-```
-
-- [ ] **Step 2: Vérifier que le test échoue**
+Remplacer (lignes 113-146) :
 
 ```bash
-cd deploy/backup && uv run --with pytest pytest test_retention.py -v 2>&1 | tail -10
+prompt_profiles() {
+  local available
+  local label
+  local compose_err
+  compose_err="$(mktemp)"
+  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
+    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
+    cat "$compose_err" >&2
+    rm -f "$compose_err"
+    exit 1
+  fi
+  rm -f "$compose_err"
+
+  echo ""
+  echo "── Profils disponibles ──"
+  while IFS= read -r profile; do
+    [ -z "$profile" ] && continue
+    label="$(profile_label "$profile")"
+    if confirm "Activer : ${label} ?"; then
+      SELECTED_PROFILES+=("$profile")
+    fi
+  done <<< "$available"
+
+  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
+  if ! grep -qx "etl" <<< "$available"; then
+    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
+  fi
+
+  echo ""
+  if confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
+    SEED_DEMO=true
+  fi
+}
 ```
 
-Expected: `ModuleNotFoundError: No module named 'retention'`.
-
-- [ ] **Step 3: Écrire `retention.py`**
-
-Créer `deploy/backup/retention.py` :
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Sélectionne les archives de sauvegarde à supprimer selon la politique de
-rétention (spec SP-Deploy §4.1) : 7 quotidiennes + 4 hebdomadaires. Fonction
-pure sur des noms de fichiers (aucun accès disque/réseau) — appelée depuis
-`backup.sh` à la fois pour la rotation locale (`/backup/archives`) et
-hors-site (sortie de `mc ls`), sur la même politique."""
-from __future__ import annotations
-
-import re
-from datetime import datetime, timedelta
-
-_NAME_RE = re.compile(r"^(\d{8})-(\d{6})\.tar\.gz\.age$")
-
-
-def _parse(filename: str) -> datetime | None:
-    match = _NAME_RE.match(filename)
-    if not match:
-        return None
-    return datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
-
-
-def select_files_to_delete(
-    filenames: list[str],
-    now: datetime,
-    daily_count: int = 7,
-    weekly_count: int = 4,
-) -> list[str]:
-    dated = [(f, _parse(f)) for f in filenames]
-    dated = [(f, d) for f, d in dated if d is not None]
-    dated.sort(key=lambda pair: pair[1], reverse=True)
-
-    daily_cutoff = now - timedelta(days=daily_count)
-    keep: set[str] = set()
-    older: list[tuple[str, datetime]] = []
-    for filename, d in dated:
-        if d >= daily_cutoff:
-            keep.add(filename)
-        else:
-            older.append((filename, d))
-
-    # Une sauvegarde par semaine ISO distincte parmi les plus anciennes, les
-    # `weekly_count` semaines les plus récentes (older est trié décroissant
-    # -> la première rencontrée pour chaque semaine est la plus récente).
-    seen_weeks: dict[tuple[int, int], str] = {}
-    for filename, d in older:
-        week_key = d.isocalendar()[:2]
-        if week_key not in seen_weeks and len(seen_weeks) < weekly_count:
-            seen_weeks[week_key] = filename
-    keep.update(seen_weeks.values())
-
-    return [f for f in filenames if f not in keep]
-
-
-def _main() -> None:
-    """CLI utilisée par `backup.sh` (Step 6) : `python3 retention.py "$(ls
-    ...)"` — une liste de noms de fichiers séparés par des espaces/retours
-    à la ligne en argument unique, une suppression suggérée par ligne de
-    sortie."""
-    import sys
-
-    filenames = sys.argv[1].split() if len(sys.argv) > 1 and sys.argv[1] else []
-    for name in select_files_to_delete(filenames, datetime.utcnow()):
-        print(name)
-
-
-if __name__ == "__main__":
-    _main()
-```
-
-- [ ] **Step 4: Lancer les tests (vert)**
+par :
 
 ```bash
-cd deploy/backup && uv run --with pytest pytest test_retention.py -v
-```
+prompt_profiles() {
+  local available
+  local label
+  local compose_err
+  compose_err="$(mktemp)"
+  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
+    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
+    cat "$compose_err" >&2
+    rm -f "$compose_err"
+    exit 1
+  fi
+  rm -f "$compose_err"
 
-Expected: `3 passed`.
-
-- [ ] **Step 5: Dockerfile du service backup**
-
-Créer `deploy/backup/Dockerfile` :
-
-```dockerfile
-# SPDX-License-Identifier: Apache-2.0
-FROM alpine:3.20
-
-RUN apk add --no-cache postgresql16-client mc age curl jq bash tzdata python3
-
-COPY backup.sh /usr/local/bin/backup.sh
-COPY retention.py /usr/local/bin/retention.py
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-```
-
-- [ ] **Step 6: Script d'orchestration `backup.sh`**
-
-Créer `deploy/backup/backup.sh` :
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-DATE="$(date -u +%Y%m%d-%H%M%S)"
-WORKDIR="/backup/work/${DATE}"
-ARCHIVES_DIR="/backup/archives"
-mkdir -p "$WORKDIR" "$ARCHIVES_DIR"
-
-echo "[backup] ${DATE} — début"
-
-# ── 1. Postgres (dump logique, format custom — compressé, portable) ──
-PGPASSWORD="$PG_PASSWORD" pg_dump -h postgis -p 5432 -U gis -d gis \
-  --format=custom --file="${WORKDIR}/postgres.dump"
-echo "[backup] postgres.dump: $(du -h "${WORKDIR}/postgres.dump" | cut -f1)"
-
-# ── 2. MinIO (miroir des 3 buckets applicatifs) ──
-mc alias set local http://minio:9000 "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
-mkdir -p "${WORKDIR}/minio"
-for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
-              "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
-              "${S3_CDC_BUCKET:-geostudio-cdc}"; do
-  if mc ls "local/${bucket}" >/dev/null 2>&1; then
-    mc mirror --overwrite --quiet "local/${bucket}" "${WORKDIR}/minio/${bucket}"
+  echo ""
+  echo "── Profils disponibles ──"
+  if [ -n "${INSTALL_PROFILES+x}" ]; then
+    echo "INSTALL_PROFILES=\"${INSTALL_PROFILES}\" — sélection non-interactive."
+    while IFS= read -r profile; do
+      [ -z "$profile" ] && continue
+      label="$(profile_label "$profile")"
+      if [[ ",${INSTALL_PROFILES}," == *",${profile},"* ]]; then
+        echo "  ✓ ${label}"
+        SELECTED_PROFILES+=("$profile")
+      else
+        echo "  ✗ ${label}"
+      fi
+    done <<< "$available"
   else
-    echo "[backup] bucket ${bucket} absent — rien à mirorer (jamais utilisé)"
+    while IFS= read -r profile; do
+      [ -z "$profile" ] && continue
+      label="$(profile_label "$profile")"
+      if confirm "Activer : ${label} ?"; then
+        SELECTED_PROFILES+=("$profile")
+      fi
+    done <<< "$available"
   fi
-done
 
-# ── 3. Keycloak (export du realm — filet de sécurité redondant, cf. §4.1
-#    du plan : Keycloak persiste déjà dans `gis`, donc déjà couvert par le
-#    pg_dump ci-dessus ; ce JSON est un secours portable/lisible en plus) ──
-KC_TOKEN="$(curl -sf -X POST \
-  "http://keycloak:8080/auth/realms/master/protocol/openid-connect/token" \
-  -d "client_id=admin-cli" -d "username=${KEYCLOAK_ADMIN}" \
-  -d "password=${KEYCLOAK_ADMIN_PASSWORD}" -d "grant_type=password" \
-  | jq -r .access_token)"
-if [ -z "$KC_TOKEN" ] || [ "$KC_TOKEN" = "null" ]; then
-  echo "[backup] ERREUR: impossible d'obtenir un token admin Keycloak" >&2
-  exit 1
-fi
-curl -sf -X POST \
-  "http://keycloak:8080/auth/admin/realms/geostudio/partial-export?exportClients=true&exportGroupsAndRoles=true" \
-  -H "Authorization: Bearer ${KC_TOKEN}" -H "Content-Type: application/json" -d '{}' \
-  -o "${WORKDIR}/keycloak-realm.json"
-if ! jq -e '.realm == "geostudio"' "${WORKDIR}/keycloak-realm.json" >/dev/null 2>&1; then
-  echo "[backup] ERREUR: export du realm Keycloak invalide/vide" >&2
-  exit 1
-fi
-
-# ── 4. Empaqueter + chiffrer (jamais de clair au-delà de cette étape) ──
-tar -czf "/tmp/${DATE}.tar.gz" -C /backup/work "${DATE}"
-if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
-  age -r "$BACKUP_AGE_RECIPIENT" -o "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "/tmp/${DATE}.tar.gz"
-else
-  echo "[backup] ERREUR: BACKUP_AGE_RECIPIENT non défini — refus de stocker un backup en clair" >&2
-  rm -rf "/tmp/${DATE}.tar.gz" "$WORKDIR"
-  exit 1
-fi
-rm -f "/tmp/${DATE}.tar.gz"
-rm -rf "$WORKDIR"
-echo "[backup] archive chiffrée: ${ARCHIVES_DIR}/${DATE}.tar.gz.age"
-
-# ── 5. Envoi hors-site (optionnel — avertissement clair si absent) ──
-if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-  mc alias set offsite "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_ACCESS_KEY" "$BACKUP_S3_SECRET_KEY" >/dev/null
-  mc cp --quiet "${ARCHIVES_DIR}/${DATE}.tar.gz.age" "offsite/${BACKUP_S3_BUCKET}/"
-  echo "[backup] envoyé vers offsite/${BACKUP_S3_BUCKET}/${DATE}.tar.gz.age"
-else
-  echo "[backup] AVERTISSEMENT: aucune cible hors-site configurée (BACKUP_S3_ENDPOINT vide)." >&2
-  echo "[backup] Les sauvegardes restent UNIQUEMENT sur cette machine — ne protège ni de" >&2
-  echo "[backup] l'incendie, ni du vol, ni de la panne disque. Configurer BACKUP_S3_* dès que possible." >&2
-fi
-
-# ── 6. Rotation (7 quotidiennes + 4 hebdomadaires, locale ET hors-site) ──
-LOCAL_FILES="$(cd "$ARCHIVES_DIR" && ls -1 *.tar.gz.age 2>/dev/null || true)"
-TO_DELETE="$(python3 /usr/local/bin/retention.py "$LOCAL_FILES")"
-for f in $TO_DELETE; do
-  rm -f "${ARCHIVES_DIR}/${f}"
-  echo "[backup] rotation: supprimé localement ${f}"
-  if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
-    mc rm --quiet "offsite/${BACKUP_S3_BUCKET}/${f}" 2>/dev/null || true
+  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
+  if ! grep -qx "etl" <<< "$available"; then
+    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
   fi
-done
 
-echo "[backup] ${DATE} — terminé"
+  echo ""
+  if [ -n "${INSTALL_SEED_DEMO+x}" ]; then
+    if [ "$INSTALL_SEED_DEMO" = "1" ]; then
+      SEED_DEMO=true
+    fi
+    echo "INSTALL_SEED_DEMO=${INSTALL_SEED_DEMO} — démo $([ "$SEED_DEMO" = true ] && echo activée || echo désactivée)."
+  elif confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
+    SEED_DEMO=true
+  fi
+}
 ```
 
-- [ ] **Step 7: Boucle de planification `entrypoint.sh`**
+- [ ] **Step 2: Modifier `prompt_public_host` — hôte public non-interactif**
 
-Créer `deploy/backup/entrypoint.sh` :
+Remplacer les 3 premières lignes du corps (lignes 168-171) :
 
 ```bash
-#!/bin/bash
-set -euo pipefail
+prompt_public_host() {
+  echo ""
+  read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
+  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
+  # cette tâche) : ne pas redemander — sinon, question interactive.
+```
 
-HOUR="$(printf '%02d' "${BACKUP_HOUR:-3}")"
-echo "[backup] planifié quotidiennement à ${HOUR}:00 UTC"
+par :
 
-LAST_RUN_DATE=""
-while true; do
-  now_date="$(date -u +%Y-%m-%d)"
-  now_hour="$(date -u +%H)"
-  if [ "$now_hour" = "$HOUR" ] && [ "$now_date" != "$LAST_RUN_DATE" ]; then
-    if /usr/local/bin/backup.sh; then
-      LAST_RUN_DATE="$now_date"
+```bash
+prompt_public_host() {
+  echo ""
+  if [ -n "${GEOSTUDIO_PUBLIC_HOST+x}" ]; then
+    PUBLIC_HOST_INPUT="$GEOSTUDIO_PUBLIC_HOST"
+    if [ -n "$PUBLIC_HOST_INPUT" ]; then
+      echo "Nom d'hôte public : ${PUBLIC_HOST_INPUT} (GEOSTUDIO_PUBLIC_HOST)"
     else
-      echo "[backup] échec — nouvelle tentative au prochain cycle (60s)" >&2
+      echo "GEOSTUDIO_PUBLIC_HOST défini vide — découverte automatique via Tailscale Funnel."
+    fi
+  else
+    read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
+  fi
+  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
+  # cette tâche) : ne pas redemander — sinon, question interactive.
+```
+
+Le reste de la fonction (lignes 172-208 : lecture de `TS_AUTHKEY` si absent, démarrage du tunnel, retour anticipé si `PUBLIC_HOST_INPUT` non vide, boucle de découverte auto) **ne change pas** — il consomme déjà `PUBLIC_HOST_INPUT`, peu importe sa provenance.
+
+- [ ] **Step 3: Modifier `prompt_backup_target` — cible de sauvegarde non-interactive**
+
+Remplacer (lignes 218-235) :
+
+```bash
+prompt_backup_target() {
+  echo ""
+  read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
+  if [ -n "$s3_endpoint" ]; then
+    read -r -p "  Access key : " s3_access
+    read -r -s -p "  Secret key : " s3_secret
+    echo
+    read -r -p "  Bucket [geostudio-backups] : " s3_bucket
+    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
+    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
+    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
+    set_env_var BACKUP_S3_BUCKET "${s3_bucket:-geostudio-backups}"
+    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
+    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
+  else
+    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
+  fi
+}
+```
+
+par :
+
+```bash
+prompt_backup_target() {
+  echo ""
+  local s3_endpoint s3_access s3_secret s3_bucket
+  if [ -n "${BACKUP_S3_ENDPOINT+x}" ]; then
+    echo "BACKUP_S3_ENDPOINT défini — cible de sauvegarde non-interactive."
+    s3_endpoint="$BACKUP_S3_ENDPOINT"
+    s3_access="${BACKUP_S3_ACCESS_KEY:-}"
+    s3_secret="${BACKUP_S3_SECRET_KEY:-}"
+    s3_bucket="${BACKUP_S3_BUCKET:-geostudio-backups}"
+  else
+    read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
+    if [ -n "$s3_endpoint" ]; then
+      read -r -p "  Access key : " s3_access
+      read -r -s -p "  Secret key : " s3_secret
+      echo
+      read -r -p "  Bucket [geostudio-backups] : " s3_bucket
+      s3_bucket="${s3_bucket:-geostudio-backups}"
     fi
   fi
-  sleep 60
-done
+
+  if [ -n "$s3_endpoint" ]; then
+    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
+    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
+    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
+    set_env_var BACKUP_S3_BUCKET "$s3_bucket"
+    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
+    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
+  else
+    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
+  fi
+}
 ```
+
+- [ ] **Step 4: Modifier `prompt_admin` — email admin non-interactif**
+
+Remplacer les 2 premières lignes du corps (lignes 240-242) :
 
 ```bash
-chmod +x deploy/backup/backup.sh deploy/backup/entrypoint.sh
+prompt_admin() {
+  echo ""
+  read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
 ```
 
-- [ ] **Step 8: Variables `.env.example`**
-
-Ajouter à la section « Déploiement prod » de `.env.example` (créée en SP-Deploy-a) :
+par :
 
 ```bash
-# ─── Sauvegarde (SP-Deploy-b, service `backup`) ──────────
-# Heure UTC (0-23) du backup quotidien.
-BACKUP_HOUR=3
-# Clé PUBLIQUE age (générée via `age-keygen`) — la clé privée ne doit
-# JAMAIS être stockée sur cette machine ni dans ce dépôt (cf. runbook de
-# restauration, docs/runbooks/2026-07-24-restauration-sauvegardes.md).
-BACKUP_AGE_RECIPIENT=
-# Cible hors-site S3-compatible (Cloudflare R2 gratuit ≤10 Go, Backblaze
-# B2, Scaleway...). Laisser vide = sauvegarde locale seule (avertissement
-# émis à chaque exécution).
-BACKUP_S3_ENDPOINT=
-BACKUP_S3_ACCESS_KEY=
-BACKUP_S3_SECRET_KEY=
-BACKUP_S3_BUCKET=geostudio-backups
+prompt_admin() {
+  echo ""
+  if [ -n "${INSTALL_ADMIN_EMAIL:-}" ]; then
+    ADMIN_EMAIL="$INSTALL_ADMIN_EMAIL"
+    echo "Email administrateur : ${ADMIN_EMAIL} (INSTALL_ADMIN_EMAIL)"
+  else
+    read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
+  fi
 ```
 
-- [ ] **Step 9: Brancher le service dans `docker-compose.prod.yml`**
+Note : ce test utilise `-n` (valeur non vide requise), pas `+x` — contrairement aux trois autres prompts, un email admin ne peut pas être « explicitement vide » : c'est le seul champ obligatoire du flux. `ADMIN_EMAIL` reste une variable globale (pas de `local`), exactement comme dans le script actuel — `print_summary` la lit après coup.
 
-Modifier le bloc `volumes:` en tête de `docker-compose.prod.yml` (créé en SP-Deploy-a Task 5, contient déjà `tailscale-state:`) — ajouter `backup-archives:` :
+- [ ] **Step 5: Vérifier la syntaxe (bash)**
 
-```yaml
-volumes:
-  tailscale-state:
-  backup-archives:
+Run: `bash -n scripts/install.sh`
+Expected: aucune sortie, code de sortie `0`.
+
+- [ ] **Step 6: Lint shellcheck (conteneur jetable, aucune installation système)**
+
+Run:
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
+  koalaman/shellcheck:stable scripts/install.sh
 ```
+Expected: pas de nouvelle alerte introduite par rapport à l'état avant modification (si des avertissements préexistants apparaissent déjà sur des lignes non touchées par ce Step, les laisser — hors périmètre).
 
-Ajouter le service (nouveau bloc, à la suite des services existants) :
+- [ ] **Step 7: Relecture de non-régression du chemin interactif**
 
-```yaml
-  backup:
-    build: ./deploy/backup
-    restart: unless-stopped
-    environment:
-      PG_PASSWORD: ${PG_PASSWORD}
-      MINIO_USER: ${MINIO_USER}
-      MINIO_PASSWORD: ${MINIO_PASSWORD}
-      S3_THUMBNAILS_BUCKET: geostudio-thumbnails
-      S3_UPLOADS_BUCKET: geostudio-uploads
-      S3_CDC_BUCKET: geostudio-cdc
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
-      BACKUP_HOUR: ${BACKUP_HOUR:-3}
-      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
-      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
-      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
-      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
-      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-geostudio-backups}
-    volumes:
-      - backup-archives:/backup/archives
-    networks: [gis-net]
-    depends_on:
-      postgis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-```
+Relire les 4 fonctions modifiées et confirmer, pour chacune, que la branche `else` reproduit **exactement** le comportement d'avant (mêmes messages, mêmes `read`, aucune ligne supprimée) — condition explicite de Global Constraints. Aucune commande, vérification par lecture.
 
-- [ ] **Step 10: Valider la syntaxe**
+- [ ] **Step 8: Commit**
 
 ```bash
-./scripts/bootstrap-env.sh
-{ echo "GEOSTUDIO_PUBLIC_HOST=test.ts.net"; echo "GEOSTUDIO_VERSION=latest"; echo "TS_AUTHKEY="; \
-  echo "BACKUP_AGE_RECIPIENT=age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"; } >> .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml config >/dev/null && echo "compose prod OK"
-rm -f .env
-```
-
-- [ ] **Step 11: Vérifier réellement une exécution de backup**
-
-```bash
-age-keygen -o /tmp/sp-deploy-test-key.txt 2>/tmp/sp-deploy-test-key.pub
-RECIPIENT="$(grep 'Public key' /tmp/sp-deploy-test-key.pub | awk '{print $NF}')"
-./scripts/bootstrap-env.sh
-{ echo "GEOSTUDIO_PUBLIC_HOST=test.ts.net"; echo "GEOSTUDIO_VERSION=latest"; echo "TS_AUTHKEY="; \
-  echo "BACKUP_AGE_RECIPIENT=${RECIPIENT}"; } >> .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgis pgbouncer minio keycloak
-sleep 15
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backup /usr/local/bin/backup.sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --entrypoint sh backup \
-  -c "ls -la /backup/archives/"
-```
-
-Expected : un fichier `<horodatage>.tar.gz.age` non vide dans `/backup/archives/` ; logs affichant `postgres.dump: ...`, l'avertissement hors-site (aucun `BACKUP_S3_ENDPOINT` défini dans ce test), pas de trace `ERREUR`.
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down
-rm -f .env /tmp/sp-deploy-test-key.txt /tmp/sp-deploy-test-key.pub
-```
-
-(Conserver la clé privée `age` de **test** n'a aucun intérêt — elle est jetée ici. La Task 2 documente où stocker une vraie clé de production.)
-
-- [ ] **Step 12: Commit**
-
-```bash
-git add deploy/backup docker-compose.prod.yml .env.example
-git commit -m "feat(deploy): service backup — pg_dump + mirror MinIO + export Keycloak, chiffré, rotation 7+4"
+git add scripts/install.sh
+git commit -m "feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)"
 ```
 
 ---

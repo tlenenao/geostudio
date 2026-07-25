@@ -1,0 +1,7 @@
+pm_api_url         = "https://192.168.1.10:8006/api2/json"
+pm_api_token_id     = "root@pam!geostudio"
+pm_api_token_secret = "CHANGEME"
+target_node         = "pve"
+ip_address          = "192.168.1.50/24"
+gateway             = "192.168.1.1"
+ssh_public_key      = "ssh-ed25519 AAAA... geostudio-deploy"
