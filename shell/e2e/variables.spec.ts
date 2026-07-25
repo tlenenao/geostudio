@@ -25,7 +25,7 @@ test("a Filtre wired to a variable updates a Texte widget reading it, in the run
   await page.getByLabel("Widget émetteur").selectOption({ label: "Filtre" });
   await page.getByLabel("Événement").selectOption("changed");
   await page.getByLabel("Widget cible").selectOption({ label: "Variable : message" });
-  await page.getByLabel("Action").selectOption("set");
+  await page.getByLabel("Action", { exact: true }).selectOption("set");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();

@@ -28,7 +28,7 @@ test("Filtre widget filters a bound List through the action bus", async ({ page 
   await page.getByLabel("Widget émetteur").selectOption({ label: "Filtre" });
   await page.getByLabel("Événement").selectOption("changed");
   await page.getByLabel("Widget cible").selectOption({ label: "Liste" });
-  await page.getByLabel("Action").selectOption("setFilter");
+  await page.getByLabel("Action", { exact: true }).selectOption("setFilter");
   await page.getByRole("button", { name: "Ajouter une action" }).click();
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
