@@ -688,6 +688,22 @@ test("queryDataSource produces one wide column per measure", async () => {
   ]);
 });
 
+test("queryDataSource sends a bbox query key as body.bbox, not as a filter", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "region", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "region", agg: "count", bbox: "1,2,3,4" },
+  });
+  expect(posted!.bbox).toEqual([1, 2, 3, 4]);
+  expect(posted!.filters).toBeUndefined();
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s", type: "statistics", service: "core", layer: "villes",
