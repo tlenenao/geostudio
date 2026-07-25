@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, test } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
+import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { WidgetContext } from "../registry";
-import type { DataSourceState } from "../../api/types";
+import type { DataSourceState, ItemClient } from "../../api/types";
 
 beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
 const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({ loading: false, error: false, records: [], ...over });
@@ -31,7 +33,14 @@ test("text leaves unknown tokens empty and offers a source binding", () => {
   expect(screen.getByText("ab")).toBeInTheDocument();
 
   const Panel = getWidget("text")!.PropsPanel;
-  render(<Panel props={{ text: "" }} dataSources={[]} onChange={() => {}} />);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ text: "" }} dataSources={[]} onChange={() => {}} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
   expect(screen.getByLabelText("Source de données")).toBeInTheDocument();
 });
 
