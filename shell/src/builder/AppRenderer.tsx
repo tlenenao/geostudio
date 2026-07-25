@@ -9,7 +9,7 @@ import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
 import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
-import { AnalyticsContextProvider, type AnalyticsContextState } from "./AnalyticsContext";
+import { AnalyticsContextProvider, useAnalyticsContext, type AnalyticsContextState } from "./AnalyticsContext";
 import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
@@ -61,9 +61,10 @@ function VariableBusBridge({ variable, bus }: { variable: Variable; bus: ActionB
 function ActionConditionBridge({ bus }: { bus: ActionBus }) {
   const variables = useVariables();
   const { username } = useAuth();
+  const analyticsCtx = useAnalyticsContext();
   useEffect(() => {
-    bus.setContext({ vars: variables, user: { name: username ?? "" } });
-  }, [bus, variables, username]);
+    bus.setContext({ vars: variables, user: { name: username ?? "" }, ctx: analyticsCtx });
+  }, [bus, variables, username, analyticsCtx]);
   return null;
 }
 

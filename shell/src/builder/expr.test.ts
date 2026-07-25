@@ -38,3 +38,16 @@ test("validateExpression returns an error message for an invalid expression", ()
   expect(err).not.toBeNull();
   expect(typeof err).toBe("string");
 });
+
+test("evaluateExpression can read the ctx.* analytics binding", () => {
+  const result = evaluateExpression("ctx.timeRange.from", {
+    vars: {}, user: { name: "" },
+    ctx: { timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {} },
+  });
+  expect(result).toBe("2026-01-01");
+});
+
+test("evaluateExpression tolerates a missing ctx binding (no provider mounted)", () => {
+  const result = evaluateExpression("vars.x", { vars: { x: 1 }, user: { name: "" } });
+  expect(result).toBe(1);
+});
