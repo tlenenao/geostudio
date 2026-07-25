@@ -26,7 +26,7 @@ export function ItemDetailPage({ pk, onDeleted, onOpenEditor }: { pk: string; on
       <h2 className="text-xl font-semibold">{item.title}</h2>
       <p className="text-sm text-slate-500">Propriétaire : {item.owner}</p>
       <p className="text-sm">{item.abstract}</p>
-      {["map", "app", "dashboard"].includes(item.resourceType) ? (
+      {["map", "app", "dashboard", "dataset"].includes(item.resourceType) ? (
         <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>Ouvrir dans l'éditeur</Button>
       ) : (
         <Button className="w-fit" disabled title="Éditeur indisponible pour ce type">
