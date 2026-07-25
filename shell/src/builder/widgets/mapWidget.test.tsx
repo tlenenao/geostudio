@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -8,6 +8,7 @@ import type { DataSourceState } from "../../api/types";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
+import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
@@ -17,14 +18,14 @@ vi.mock("../../map/MapView", () => ({
     (
       { config, onViewChange, onFeatureClick }: {
         config: { layers: { url?: string }[] };
-        onViewChange?: (v: { center: [number, number]; zoom: number }) => void;
+        onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number] }) => void;
         onFeatureClick?: (record: { id: string | number; properties: Record<string, unknown>; geometry?: unknown }) => void;
       },
       ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
     ) => {
       useImperativeHandle(ref, () => ({ flyTo: flyToSpy, highlight: highlightSpy }));
       return (
-        <div data-testid="mapview" onClick={() => onViewChange?.({ center: [1, 2], zoom: 9 })}>
+        <div data-testid="mapview" onClick={() => onViewChange?.({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] })}>
           layers:{config.layers.length} url:{config.layers[0]?.url ?? ""}
           <button
             type="button"
@@ -71,7 +72,7 @@ test("map emits extentChanged when the view moves", async () => {
   const Map = getWidget("map")!.Component;
   render(<Map props={{}} ctx={{ mode: "runtime", bus, widgetId: "map1" } as WidgetContext} />);
   await userEvent.click(await screen.findByTestId("mapview"));
-  expect(handler).toHaveBeenCalledWith({ center: [1, 2], zoom: 9 });
+  expect(handler).toHaveBeenCalledWith({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] });
 });
 
 test("map flyTo action flies to a selected record's point", async () => {
@@ -93,4 +94,49 @@ test("map emits itemSelected when a feature is clicked", async () => {
   render(<Map props={{}} ctx={{ mode: "runtime", bus, widgetId: "map1" } as WidgetContext} />);
   await userEvent.click(await screen.findByTestId("feature"));
   expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [5, 6] } });
+});
+
+test("map sets the extent (debounced by the provider) when the view moves and interactions is auto", async () => {
+  function ExtentProbe() {
+    const ctx = useAnalyticsContext();
+    return <p>extent:{ctx.extent ? ctx.extent.join(",") : "none"}</p>;
+  }
+  const Map = getWidget("map")!.Component;
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Map props={{}} ctx={{ mode: "runtime" } as WidgetContext} />
+      <ExtentProbe />
+    </AnalyticsContextProvider>,
+  );
+  // Resolve the lazy-loaded MapView's Suspense under real timers first, then
+  // switch to fake timers for the debounce. userEvent + fake timers hangs in
+  // this environment (see AnalyticsContext.test.tsx); fireEvent + act() is the
+  // RTL-sanctioned way to combine a click with fake timers here.
+  const view = await screen.findByTestId("mapview");
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(view);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(screen.getByText("extent:10,20,30,40")).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("map sets a cross-filter by pkColumn on feature click when dataset-bound", async () => {
+  function CrossFilterProbe() {
+    const ctx = useAnalyticsContext();
+    const entry = ctx.crossFilter["dataset-1"];
+    return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+  }
+  const Map = getWidget("map")!.Component;
+  const data = { loading: false, error: false, records: [], datasetId: "dataset-1", pkColumn: "id" };
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Map props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
+      <CrossFilterProbe />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(await screen.findByTestId("feature"));
+  expect(await screen.findByText("cf:id=1")).toBeInTheDocument();
 });
