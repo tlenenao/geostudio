@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
-import { useAppConfig, useSaveApp, useUploadThumbnail } from "../api/hooks";
+import { useAppConfig, useCreateDataset, useSaveApp, useUploadThumbnail } from "../api/hooks";
 import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -22,6 +22,7 @@ import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid"
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { Button } from "../ui/button";
+import { useAuth } from "../auth/useAuth";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -31,6 +32,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const thumbnail = useUploadThumbnail(pk);
+  const { username } = useAuth();
+  const createDataset = useCreateDataset();
+  const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -121,6 +125,23 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setSources = (dataSources: typeof draft.dataSources) =>
     setDraft((d) => (d ? { ...d, dataSources } : d));
 
+  async function promoteSource(id: string) {
+    if (!draft) return;
+    const source = draft.dataSources.find((s) => s.id === id);
+    if (!source || !source.layer) return;
+    setPromotingId(id);
+    try {
+      const item = await createDataset.mutateAsync({
+        title: source.layer, owner: username ?? "", collectionId: source.layer,
+      });
+      setSources(draft.dataSources.map((s) => (s.id === id ? { ...s, datasetId: item.pk } : s)));
+    } catch {
+      /* surfaced via createDataset.isError */
+    } finally {
+      setPromotingId(null);
+    }
+  }
+
   const setMessages = (messages: typeof draft.messages) =>
     setDraft((d) => (d ? { ...d, messages } : d));
 
@@ -182,7 +203,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
             <PageManager pages={pages} activePageId={activePage} onChange={setPages} onSelectPage={setActivePageId} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
-            <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
+            <DataSourcePanel sources={draft.dataSources} onChange={setSources} onPromote={promoteSource} promotingId={promotingId} />
+            {createDataset.isError && <p role="alert" className="text-xs text-red-600">Échec de la promotion.</p>}
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
             <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
             <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
