@@ -8,6 +8,7 @@ import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import { DataProvider, useDataStates } from "../DataContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import type { ReactElement } from "react";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
@@ -203,6 +204,38 @@ test("table PropsPanel adds a calculated column without disturbing existing plai
   renderWithItemClient(<Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une colonne calculée" }));
   expect(onChange).toHaveBeenCalledWith({ columns: ["nom", { label: "Nouvelle colonne", expr: "" }] });
+});
+
+function CrossFilterProbe({ datasetId }: { datasetId: string }) {
+  const ctx = useAnalyticsContext();
+  const entry = ctx.crossFilter[datasetId];
+  return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+}
+
+test("table row click sets the cross-filter by pkColumn when dataset-bound and interactions is auto", async () => {
+  const Table = getWidget("table")!.Component;
+  const data = { loading: false, error: false, records: [{ id: 1, properties: { nom: "Parc A" } }], datasetId: "dataset-1", pkColumn: "id" };
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Table props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
+      <CrossFilterProbe datasetId="dataset-1" />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(screen.getByText("Parc A").closest("tr")!);
+  expect(await screen.findByText("cf:id=1")).toBeInTheDocument();
+});
+
+test("list item click does not set a cross-filter when the source isn't dataset-bound", async () => {
+  const List = getWidget("list")!.Component;
+  const data = { loading: false, error: false, records: [{ id: 1, properties: { nom: "Parc A" } }] };
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <List props={{ dataSourceId: "src-1", titleField: "nom" }} ctx={{ mode: "runtime", data } as WidgetContext} />
+      <CrossFilterProbe datasetId="dataset-1" />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(screen.getByText("Parc A"));
+  expect(await screen.findByText("cf:none")).toBeInTheDocument();
 });
 
 test("table PropsPanel edits a calculated column's label and expression", async () => {
