@@ -4,6 +4,7 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
 import { useSetFilter } from "../DataContext";
+import { useSetCrossFilter } from "../AnalyticsContext";
 import { evaluateExpression } from "../expr";
 import type { DataRecord } from "../../api/types";
 
@@ -38,6 +39,7 @@ export function registerDataWidgets(): void {
     ),
     Component: ({ props, ctx }) => {
       const setFilter = useSetFilter();
+      const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "setFilter", (payload) => {
         const dsId = String(props.dataSourceId ?? "");
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
@@ -47,13 +49,21 @@ export function registerDataWidgets(): void {
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const field = String(props.titleField || firstField(data.records) || "");
+
+      function selectRecord(r: DataRecord) {
+        ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
+        const datasetId = ctx.data?.datasetId;
+        const pkColumn = ctx.data?.pkColumn;
+        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""));
+      }
+
       return (
         <ul className="flex flex-col gap-0.5 text-sm">
           {data.records.map((r) => (
             <li
               key={String(r.id)}
               className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-              onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
+              onClick={() => selectRecord(r)}
             >
               {String(r.properties[field] ?? r.id)}
             </li>
@@ -122,6 +132,7 @@ export function registerDataWidgets(): void {
     },
     Component: ({ props, ctx }) => {
       const setFilter = useSetFilter();
+      const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "setFilter", (payload) => {
         const dsId = String(props.dataSourceId ?? "");
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
@@ -169,6 +180,13 @@ export function registerDataWidgets(): void {
         setPage(0);
       }
 
+      function selectRecord(r: DataRecord) {
+        ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
+        const datasetId = ctx.data?.datasetId;
+        const pkColumn = ctx.data?.pkColumn;
+        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""));
+      }
+
       return (
         <div className="flex h-full flex-col text-xs">
           <table className="w-full text-left text-[var(--gs-color-text)]">
@@ -195,7 +213,7 @@ export function registerDataWidgets(): void {
                 <tr
                   key={String(r.id)}
                   className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
-                  onClick={() => ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r)}
+                  onClick={() => selectRecord(r)}
                 >
                   {columns.map((c) => <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">{cellValue(c, r)}</td>)}
                 </tr>
