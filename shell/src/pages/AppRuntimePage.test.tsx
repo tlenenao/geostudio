@@ -137,13 +137,24 @@ const manualDateFilterConfig: AppConfig = {
 };
 
 test("never adds a ctx URL param when interactions is absent (manual mode) — additivité", async () => {
-  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
-  const fromInput = await screen.findByLabelText("Date de début");
-  const toInput = await screen.findByLabelText("Date de fin");
-  expect(screen.getByTestId("search")).toHaveTextContent("");
-
-  vi.useFakeTimers();
+  // Fake timers are enabled BEFORE render (with shouldAdvanceTime so
+  // findByLabelText's internal polling still progresses in real time): this
+  // is what makes the test a genuine regression guard. AnalyticsContextProvider
+  // emits its mount-time onStateChange (the empty context) as soon as the
+  // widget mounts — if that emission were still able to schedule a debounced
+  // write (i.e. if the guard in handleAnalyticsContextChange were removed),
+  // the resulting setTimeout would be captured by the fake clock here and
+  // fire when we advance it below. Enabling fake timers only after mount (as
+  // a naive version of this test would) lets that mount-time setTimeout slip
+  // through as a REAL timer that never fires within the test, making the
+  // "no ctx" assertion pass regardless of whether the guard exists.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
+    renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
+    const fromInput = await screen.findByLabelText("Date de début");
+    const toInput = await screen.findByLabelText("Date de fin");
+    expect(screen.getByTestId("search")).toHaveTextContent("");
+
     fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
     fireEvent.change(toInput, { target: { value: "2026-02-01" } });
     act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
