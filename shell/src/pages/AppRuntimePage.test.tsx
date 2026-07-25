@@ -125,6 +125,82 @@ const dateFilterConfig: AppConfig = {
   ],
 };
 
+const manualDateFilterConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  // interactions absent (comportement des apps existantes / "manual" explicite)
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "d1", widget: "dateRangeFilter", x: 0, y: 0, w: 4, h: 1, props: { label: "Période" } },
+    ] } },
+  ],
+};
+
+test("never adds a ctx URL param when interactions is absent (manual mode) — additivité", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+  expect(screen.getByTestId("search")).toHaveTextContent("");
+
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
+    fireEvent.change(toInput, { target: { value: "2026-02-01" } });
+    act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
+
+    // Even past the debounce window (and past the empty-state effect fired at
+    // mount by AnalyticsContextProvider), no ?ctx= must appear: a manual-mode
+    // app must stay byte-identical to today's URL behaviour.
+    const search = screen.getByTestId("search").textContent ?? "";
+    expect(new URLSearchParams(search).has("ctx")).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+const navAutoConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [
+    { id: "page-1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [
+      { id: "n1", widget: "nav", x: 0, y: 0, w: 4, h: 1, props: {} },
+      { id: "d1", widget: "dateRangeFilter", x: 0, y: 1, w: 4, h: 1, props: { label: "Période" } },
+    ] } },
+    { id: "page-2", name: "Détails", layout: emptyLayout },
+  ],
+};
+
+test("resolves the debounced ctx write against the pathname active when the timer fires, not the one active when it was scheduled (Task 18 stale-closure fix)", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(navAutoConfig) });
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(fromInput, { target: { value: "2026-01-01" } });
+    fireEvent.change(toInput, { target: { value: "2026-02-01" } });
+    // Not written yet — still debouncing.
+    expect(screen.getByTestId("search")).toHaveTextContent("");
+
+    // Navigate to a different page WHILE the write is still debouncing (as a
+    // story chapter change would).
+    fireEvent.click(screen.getByRole("button", { name: "Détails" }));
+    expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/page-2");
+
+    act(() => { vi.advanceTimersByTime(EXTENT_DEBOUNCE_MS); });
+
+    // The write must resolve against the NEW pathname — not yank the user
+    // back to the pathname active when the debounce was scheduled (the
+    // stale-closure bug fixed in Task 18).
+    expect(screen.getByTestId("loc")).toHaveTextContent("/apps/9/page-2");
+    const search = screen.getByTestId("search").textContent ?? "";
+    expect(new URLSearchParams(search).get("ctx")).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("writes the analytics context back to the ctx URL param, debounced, with replace semantics", async () => {
   renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) });
   const fromInput = await screen.findByLabelText("Date de début");

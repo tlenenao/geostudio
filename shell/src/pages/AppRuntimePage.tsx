@@ -37,6 +37,13 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   useEffect(() => () => { if (writeTimer.current) clearTimeout(writeTimer.current); }, []);
 
   function handleAnalyticsContextChange(state: AnalyticsContextState) {
+    // Additivité (contrainte globale #1) : une app sans interactions="auto"
+    // (absent ou "manual") ne doit jamais gagner de ?ctx= dans l'URL — même le
+    // contexte vide émis au montage par AnalyticsContextProvider. On ignore
+    // silencieusement tout changement tant que le mode auto n'est pas actif ;
+    // ne pas planifier le debounce du tout (pas seulement l'écriture finale),
+    // pour ne laisser aucune trace d'un timer en attente.
+    if (query.data?.interactions !== "auto") return;
     if (writeTimer.current) clearTimeout(writeTimer.current);
     writeTimer.current = setTimeout(() => {
       setSearchParamsRef.current((prev) => {
