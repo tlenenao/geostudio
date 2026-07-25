@@ -9,6 +9,7 @@ import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
 import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
+import { AnalyticsContextProvider, type AnalyticsContextState } from "./AnalyticsContext";
 import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
@@ -75,6 +76,8 @@ export function AppRenderer({
   breakpoint,
   pageId,
   onNavigate,
+  initialAnalyticsContext,
+  onAnalyticsContextChange,
 }: {
   config: AppConfig;
   mode: RenderMode;
@@ -84,6 +87,8 @@ export function AppRenderer({
   breakpoint?: Breakpoint;
   pageId?: string;
   onNavigate?: (pageId: string) => void;
+  initialAnalyticsContext?: AnalyticsContextState;
+  onAnalyticsContextChange?: (state: AnalyticsContextState) => void;
 }) {
   const editable = mode === "edit";
   const bus = useMemo(() => new ActionBus(), []);
@@ -165,21 +170,27 @@ export function AppRenderer({
       <div className="min-h-0 flex-1">
         <ActionBusProvider bus={bus}>
           <VariablesProvider variables={config.variables ?? []}>
-            <ActionConditionBridge bus={bus} />
-            {(config.variables ?? []).map((v) => (
-              <VariableBusBridge key={v.id} variable={v} bus={bus} />
-            ))}
-            <DataProvider sources={config.dataSources}>
-              <GridCanvas
-                items={activeLayout.items}
-                breakpoint={bp}
-                editable={editable}
-                selectedId={selectedId}
-                onSelect={(id) => onSelect?.(id)}
-                onMoveItem={handleMove}
-                renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
-              />
-            </DataProvider>
+            <AnalyticsContextProvider
+              interactions={config.interactions}
+              initialState={initialAnalyticsContext}
+              onStateChange={onAnalyticsContextChange}
+            >
+              <ActionConditionBridge bus={bus} />
+              {(config.variables ?? []).map((v) => (
+                <VariableBusBridge key={v.id} variable={v} bus={bus} />
+              ))}
+              <DataProvider sources={config.dataSources}>
+                <GridCanvas
+                  items={activeLayout.items}
+                  breakpoint={bp}
+                  editable={editable}
+                  selectedId={selectedId}
+                  onSelect={(id) => onSelect?.(id)}
+                  onMoveItem={handleMove}
+                  renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
+                />
+              </DataProvider>
+            </AnalyticsContextProvider>
           </VariablesProvider>
         </ActionBusProvider>
       </div>
