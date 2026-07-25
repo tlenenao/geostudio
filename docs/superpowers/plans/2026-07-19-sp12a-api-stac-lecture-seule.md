@@ -23,7 +23,7 @@
   - `http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson`
 - **`license: "other"`** en dur sur chaque STAC Collection (§2.4, les collections n'ont pas de champ licence).
 - **`datetime` synthétique** : tout STAC Item porte le `updated_at` de sa collection en RFC3339 (§2.2). `datetime` est une clé réservée dans `properties` (écrase un attribut homonyme).
-- **404 non-fuyant** : une collection non lisible (anonyme/cross-tenant/non-publiée) renvoie 404, jamais 403 (convention SP-16). Anonyme → tenant `default` + publié/public seulement.
+- **404 non-fuyant** : une collection non lisible (anonyme/cross-tenant/non-publiée) renvoie 404, jamais 403 (convention SP-13). Anonyme → tenant `default` + publié/public seulement.
 - **Préfixe `/stac`** : pas de collision avec les routes OGC Features racine (`GET /`, `GET /collections/...`).
 - **Frontière de modules** : `app.stac` importe `app.collections`, `app.features`, `app.auth`, `app.tenants`, `app.db` ; jamais l'inverse. Contrat import-linter (Task 5).
 - Chaque fichier source porte l'en-tête `# SPDX-License-Identifier: Apache-2.0` en première ligne (convention SP-9).

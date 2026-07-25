@@ -168,7 +168,7 @@ multi-systèmes (cohérent §9).
 
 ### 3.1 Le document `Pipeline` (déclaratif, schématisé — règle #2)
 
-Nouveau type d'item de plateforme (comme `site`, SP-16a), catalogué, partageable via
+Nouveau type d'item de plateforme (comme `site`, SP-13a), catalogué, partageable via
 `can()`, versionné, audité. Graphe nœuds + arêtes, dans le style `LayoutItem`/`Message` :
 
 ```jsonc
@@ -359,7 +359,7 @@ restent vertes.
 2. **Subsumer SP-14/A28** : le « pipeline de transformations déclaratif » des datasets
    **devient** le document `Pipeline` de ce chantier (`writer.dataset`). Éviter deux
    specs concurrentes. Nouvel arbitrage à numéroter (p. ex. **A39**) + nouveau chantier
-   (**SP-17 « ETL no-code »** ou extension explicite de SP-14).
+   (**SP-15 « ETL no-code »** ou extension explicite de SP-14).
 3. **Acter la posture GPL-sidecar** comme arbitrage (étage 2 optionnel, agrégation par
    sous-processus, cœur Apache-2.0 intact).
 4. **Confirmer les règles #2/#3** : le `Pipeline` est un document déclaratif (règle #2
@@ -385,7 +385,7 @@ opérable par agent, sous `can()`/audit/tenant).
 ### Prochaines étapes concrètes
 
 1. **Acter les arbitrages §6.2** dans `docs/vision/2026-07-04-feuille-de-route-…` (§8/§9
-   + numéro A39 + SP-17) — avant tout code.
+   + numéro A39 + SP-15) — avant tout code.
 2. **Spike gate D2** : un conteneur `qgis/qgis` headless, `qgis_process run
    native:buffer` sur un GeoPackage réel, I/O par volume scratch, mesure cold start &
    empreinte. Décide de la faisabilité de l'étage 2.

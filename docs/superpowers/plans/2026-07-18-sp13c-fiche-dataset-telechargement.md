@@ -1,8 +1,8 @@
-# SP-16c — fiche dataset + téléchargement + template galerie : plan
+# SP-13c — fiche dataset + téléchargement + template galerie : plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a `DatasetCard` widget + public `/public/datasets/:collectionId` page so an anonymous visitor can view a public collection's metadata/preview and download it (GeoJSON always, CSV under 10 000 rows), plus a "Portail de données" gallery template that pre-wires Hero+Gallery+DatasetCard. This closes SP-16 (jalon M13).
+**Goal:** Ship a `DatasetCard` widget + public `/public/datasets/:collectionId` page so an anonymous visitor can view a public collection's metadata/preview and download it (GeoJSON always, CSV under 10 000 rows), plus a "Portail de données" gallery template that pre-wires Hero+Gallery+DatasetCard. This closes SP-13 (jalon M13).
 
 **Architecture:** Shell-only (no core changes — every endpoint used is already anonymous-readable for public collections, verified against `core/app/collections/routes.py` and `core/app/features/routes.py`). One new `ItemClient` method (`getCollection`), one framework-agnostic download util (`src/lib/datasetDownload.ts`), one shared download-buttons component reused by both the widget and the page, and the page's live preview is a `previewConfig` synthesized in memory and rendered by the existing single `AppRenderer(config, "runtime")` — no new rendering engine.
 
@@ -13,7 +13,7 @@
 - **No core (Python) changes at all.** Every read used (`GET /collections/{id}`, `GET /collections/{id}/schema`, `GET /collections/{id}/items`) is already anonymous-readable for a public collection via `get_current_user_optional` + `get_readable_collection` (404 before 403, non-leaking). Verified in `core/app/collections/routes.py:133-151,238-264,267-280` and `core/app/features/routes.py:124-151`.
 - **`ItemClient` is the sas** (CLAUDE.md rule #1): no widget/page may call `fetch`/`coreUrl` directly. All network access goes through `ItemClient` methods (`getCollection`, `getCollectionSchema`, `queryDataSource`, `featuresUrl` — all pre-existing except `getCollection`).
 - **OGC API Features server cap: `limit` is clamped to `MAX_LIMIT=1000`** (`core/app/features/routes.py:41,135`). This means: (a) the "always available" direct GeoJSON download link only returns the first 1000 features for collections larger than that — an accepted v1 limitation, not a bug, documented inline and in this plan's risk notes; (b) CSV export must paginate in pages of ≤1000 via `offset`/`limit`, never assume a single request returns everything.
-- **CSV cap: 10 000 rows** (`CSV_ROW_CAP`). Above it, the CSV button is disabled with the exact message: `Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).` GeoJSON stays available regardless.
+- **CSV cap: 10 000 rows** (`CSV_ROW_CAP`). Above it, the CSV button is disabled with the exact message: `Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-16).` GeoJSON stays available regardless.
 - **CSV columns:** `[schema.pk, ...schema.fields.map(f => f.name), "geometry"]` — `schema.fields` already excludes pk/tenant_id/geometry columns (`core/app/collections/schema_json.py:8-11`), so no manual exclusion needed. Row values: pk from `record.id`, geometry as `JSON.stringify(record.geometry)`, everything else from `record.properties`.
 - **CSV escaping:** RFC4180-style — a cell containing `"`, `,`, `\r` or `\n` is wrapped in double quotes with internal quotes doubled. Rows joined with `\r\n`.
 - **Cross-origin `download` attribute — E2E-only wrinkle, not a production concern.** In this repo's E2E harness, the shell runs at `http://localhost:4173` while `VITE_CORE_URL=https://core.test` (`.env.e2e`) is a *different* origin, purely intercepted via Playwright's `page.route()`. Per the HTML spec, an `<a download href="...">` only forces a download for a same-origin URL, or a cross-origin one whose response carries `Content-Disposition: attachment` — otherwise the browser just navigates. In real deployments this never bites: `core` and `shell` share one `Host(${DOMAIN})` behind Traefik, `core` only distinguished by a `PathPrefix(/api)` (SP-9 "sécurité minimale"), i.e. same origin. Task 7 adds a `Content-Disposition` header to the mocked features response so the E2E download assertion is real (not a false pass from a same-origin coincidence), without touching the JSON body other pre-existing specs (`actions.spec.ts`, `data-widget.spec.ts`) already rely on.
@@ -179,7 +179,7 @@ export function csvAvailable(featureCount: number | null): boolean {
 // OGC API Features caps `limit` server-side at 1000 (core/app/features/routes.py
 // MAX_LIMIT, verified while writing this plan) — a direct browser download of a
 // collection with more features than that only returns the first page. Accepted
-// v1 limitation: full exports beyond 1000 features wait on SP-15's server-side
+// v1 limitation: full exports beyond 1000 features wait on SP-16's server-side
 // export. GeoJSON stays "always available" (unlike CSV, never disabled).
 export function geojsonDownloadUrl(client: Pick<ItemClient, "featuresUrl">, collectionId: string): string {
   const source: DataSource = {
@@ -429,7 +429,7 @@ test("disables the CSV button above the 10000-row cap and shows the explanatory 
   renderButtons(10001);
   const button = await screen.findByRole("button", { name: "Télécharger CSV" });
   expect(button).toBeDisabled();
-  expect(screen.getByText(/trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-15\)/)).toBeInTheDocument();
+  expect(screen.getByText(/trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-16\)/)).toBeInTheDocument();
 });
 
 test("clicking the CSV button fetches records via the client and triggers a download", async () => {
@@ -456,7 +456,7 @@ import { csvAvailable, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDow
 
 // Plain slate styling (not --gs-* theme vars): this component is reused both
 // inside a themed AppRenderer (DatasetCard widget) and outside any theme root
-// (DatasetPage's chrome) — see SP-16c plan Task 5 notes.
+// (DatasetPage's chrome) — see SP-13c plan Task 5 notes.
 export function DatasetDownloadButtons({
   collectionId,
   featureCount,
@@ -493,7 +493,7 @@ export function DatasetDownloadButtons({
       </button>
       {!available && (
         <p className="w-full text-[10px] text-slate-500">
-          Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).
+          Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-16).
         </p>
       )}
     </div>
@@ -1097,7 +1097,7 @@ Change the final `route.fulfill` call to add a `Content-Disposition` header (har
 Then, right after that block:
 
 ```typescript
-  // Collection detail + schema for "parcs" (SP-16c) — a genuinely public
+  // Collection detail + schema for "parcs" (SP-13c) — a genuinely public
   // collection (unlike "incidents", kept private above for the incident-form
   // scenario), reusing the existing "**/collections/parcs/items*" fixture.
   await page.route("**/collections/parcs", async (route) => {
@@ -1229,4 +1229,4 @@ git commit -m "test(e2e): sites-portal-dataset — DatasetCard/DatasetPage end t
 - [ ] `cd shell && npm run e2e` — all specs green (41 pre-existing + `sites-portal-dataset.spec.ts`).
 - [ ] `cd core && uv run pytest` — unchanged (no core files touched), confirms no accidental core edit.
 - [ ] Manually re-read the security note (spec §6): confirm `DatasetCard`/`DatasetPage` never call anything except `getCollection`/`getCollectionSchema`/`queryDataSource`/`featuresUrl` — all of which route through the anonymous-safe `get_readable_collection` 404-before-403 path, with no new core surface introduced.
-- [ ] Update `CLAUDE.md` §État with an SP-16c entry once the branch is merged (closes SP-16, jalon M13).
+- [ ] Update `CLAUDE.md` §État with an SP-13c entry once the branch is merged (closes SP-13, jalon M13).

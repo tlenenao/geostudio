@@ -84,7 +84,7 @@ exactement le patron `extensions`. Anonyme/non-admin → 403.
 
 Le roadmap tranche : « items moissonnés typés *référence externe* ». On réutilise le
 modèle `Item` existant (aucune migration de colonne : `resource_type` est un `String`
-libre, exactement comme `"site"` posé par SP-16a sans migration). Un jeu de données
+libre, exactement comme `"site"` posé par SP-13a sans migration). Un jeu de données
 STAC distant → un `Item` :
 
 - `resource_type = "external"`, `title` ← STAC `title`/`id`, `abstract` ← STAC
@@ -118,7 +118,7 @@ déjà vue :
 
 **Contrainte d'unicité `(tenant_id, source_id, external_id)`** (index unique, non
 couvrable par SQLite → vérifié contre Postgres réel, même discipline que
-l'`uq_items_tenant_slug` de SP-16a). C'est elle qui rend le re-moissonnage un
+l'`uq_items_tenant_slug` de SP-13a). C'est elle qui rend le re-moissonnage un
 **upsert** : `SELECT ... WHERE source_id=? AND external_id=?` → trouvé ⇒ mise à jour
 de l'item/collection existant + `harvested_at` ; absent ⇒ création. Aucun doublon
 possible même sur exécutions concurrentes (l'index tient l'intégrité, TOCTOU →
@@ -318,7 +318,7 @@ catalogue existantes (`GET /items`, `GET /collections`) sans route neuve.
   `mode="copy"` sur connecteur `supports_copy=False`.
 - **Intégration (marqueur `postgis`).** Contrainte unique `(tenant_id, source_id,
   external_id)` vérifiée contre **Postgres réel** (2ᵉ insert même clé rejeté — non
-  couvrable SQLite, discipline SP-16a). Moissonnage `reference` bout-en-bout : source
+  couvrable SQLite, discipline SP-13a). Moissonnage `reference` bout-en-bout : source
   seedée → items externes créés → re-moissonnage met à jour sans dupliquer. Moisson-
   nage `copy` : route `run_import` → collection PostGIS locale + item carte créés
   (réutilise l'infra de test ingestion SP-6). Mutation en **read-only mode** court-

@@ -3,7 +3,7 @@
 > Quick win indépendant (arbitrages **A36/A37**, tranchés le 2026-07-14 —
 > [gap analysis dataviz/analytics](../../vision/geostudio-dataviz-analytics-gap-analysis.md)
 > §7.5/§9.2, validés par Tanguy). Livrable dès maintenant, en parallèle de
-> SP-9 : ne dépend d'aucun autre chantier (ni SP-11, ni SP-14, ni SP-16).
+> SP-9 : ne dépend d'aucun autre chantier (ni SP-11, ni SP-14, ni SP-13).
 
 ## 1. Contexte et objectif
 

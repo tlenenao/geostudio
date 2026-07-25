@@ -22,7 +22,7 @@
 - **`dcat:keyword`/`dcat:theme` omis** — `Collection` n'a pas ces données ; jamais de valeur inventée.
 - **`Content-Type: application/ld+json`** explicite sur les deux routes (`JSONResponse(..., media_type=...)`), jamais le défaut FastAPI `application/json`.
 - **Pas de pagination** : `GET /dcat/catalog` embarque tous les datasets visibles en une réponse (YAGNI, A21).
-- **404 non-fuyant** sur `GET /dcat/datasets/{id}` : non lisible/inexistant/cross-tenant → 404, jamais 403 (même convention que STAC/SP-16).
+- **404 non-fuyant** sur `GET /dcat/datasets/{id}` : non lisible/inexistant/cross-tenant → 404, jamais 403 (même convention que STAC/SP-13).
 - **Frontière de modules** : `app.dcat` inséré entre `app.ingestion` et `app.stac` dans le contrat `layered architecture` (permet à `app.dcat` d'importer `app.stac.extent` sans inverser la dépendance). `app.dcat` peut aussi importer `app.collections`, `app.tenants`, `app.auth`, `app.features`, `app.db` ; jamais l'inverse.
 - Chaque fichier source porte l'en-tête `# SPDX-License-Identifier: Apache-2.0` en première ligne (convention SP-9).
 - Commandes : `cd core && uv run pytest ...` ; lint frontières : `cd core && uv run lint-imports`.
