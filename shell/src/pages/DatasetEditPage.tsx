@@ -31,7 +31,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   if (itemQuery.isError || configQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-red-600">
-        Dataset introuvable.
+        Dataset partagé introuvable.
       </p>
     );
 
