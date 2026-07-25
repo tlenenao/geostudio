@@ -28,6 +28,15 @@ def client():
             title="Parcs", pk_column="id", is_public=True, editable=True,
         )
         setup_session.add(collection)
+        bob = get_or_create_user(
+            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
+            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
+        )
+        private_collection = Collection(
+            id="prives", tenant_id=tenant.id, owner_id=bob.id, table_name="prives",
+            title="Privées", pk_column="id", is_public=False, editable=True,
+        )
+        setup_session.add(private_collection)
         setup_session.commit()
 
     app = create_app()
@@ -78,3 +87,12 @@ def test_update_dataset_collection_inexistante_rejete(client):
     }
     res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
     assert res.status_code == 422
+
+
+def test_create_dataset_collection_non_lisible_rejete_avec_meme_message(client):
+    # "prives" existe (owner = bob) mais alice (l'appelante) n'y a aucun accès :
+    # ni owner, ni publique, ni rôle de groupe. Le message doit être identique
+    # à celui de la collection inexistante, pour ne pas révéler son existence.
+    res = client.post("/configs", json=_dataset_body("prives"))
+    assert res.status_code == 422
+    assert res.json()["detail"] == "collection not found"
