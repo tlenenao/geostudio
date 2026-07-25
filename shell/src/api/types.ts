@@ -322,6 +322,8 @@ export type DataSourceState = {
   records: DataRecord[];
   layer?: string;
   url?: string;
+  datasetId?: string;
+  pkColumn?: string;
 };
 
 export type ActionMessage = {
