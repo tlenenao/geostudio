@@ -222,3 +222,63 @@ test("submits a Site with its slug in the POST body", async () => {
   expect(body.config.kind).toBe("site");
   expect(await screen.findByText("app-builder-site-9")).toBeInTheDocument();
 });
+
+test("creating a dataset posts collectionId and navigates to the dataset editor", async () => {
+  let body: any;
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "parcs",
+            title: "Parcs",
+            description: "",
+            tableName: "parcs",
+            isPublic: true,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "alice",
+          },
+        ],
+      }),
+    ),
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-ds", kind: "dataset", itemId: "ds-9" }, { status: 201 });
+    }),
+  );
+  function DatasetProbe() {
+    const { pk } = useParams();
+    return <div>dataset-{pk}</div>;
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({
+    coreUrl: "https://core.test",
+    getToken: () => "t",
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+          <Routes>
+            <Route path="/apps/:pk/edit" element={<AppBuilderProbe />} />
+            <Route path="/datasets/:pk/edit" element={<DatasetProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "dataset");
+  await userEvent.selectOptions(await screen.findByLabelText("Collection source"), "parcs");
+  await userEvent.type(screen.getByLabelText("Titre"), "Parcs partagés");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+  await waitFor(() => expect(body?.config?.dataset?.collectionId).toBe("parcs"));
+  expect(await screen.findByText("dataset-ds-9")).toBeInTheDocument();
+});
