@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "external";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -133,6 +133,9 @@ export interface ItemClient {
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
+  createDatasetItem(input: { title: string; owner: string; collectionId: string }): Promise<Item>;
+  getDatasetConfig(pk: string): Promise<DatasetConfig>;
+  saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
@@ -202,8 +205,21 @@ export type DataSource = {
   id: string;
   type: "features" | "static" | "statistics";
   service: string;
-  layer: string;
+  layer: string; // résolu automatiquement si datasetId est présent
+  datasetId?: string;
   query: Record<string, unknown>;
+};
+
+export type DatasetColumnMeta = {
+  label?: string;
+  description?: string;
+  format?: string;
+};
+
+export type DatasetConfig = {
+  source: "collection";
+  collectionId: string;
+  columns: Record<string, DatasetColumnMeta>;
 };
 
 // Écho documenté de WcWidgetManifest (shell/src/builder/wc/manifest.ts) — même
