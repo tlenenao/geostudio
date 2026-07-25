@@ -957,13 +957,14 @@ export interface components {
         BuilderConfig: {
             /** Datasources */
             dataSources?: components["schemas"]["DataSource"][];
+            dataset?: components["schemas"]["DatasetPayload"] | null;
             /** Itemid */
             itemId?: string | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -1055,6 +1056,29 @@ export interface components {
             service: string;
             /** Type */
             type: string;
+        };
+        /** DatasetColumnMeta */
+        DatasetColumnMeta: {
+            /** Description */
+            description?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Label */
+            label?: string | null;
+        };
+        /** DatasetPayload */
+        DatasetPayload: {
+            /** Collectionid */
+            collectionId: string;
+            /** Columns */
+            columns?: {
+                [key: string]: components["schemas"]["DatasetColumnMeta"];
+            };
+            /**
+             * Source
+             * @constant
+             */
+            source: "collection";
         };
         /** ExtensionCreate */
         ExtensionCreate: {

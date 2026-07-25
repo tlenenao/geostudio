@@ -176,6 +176,16 @@
             "title": "Datasources",
             "type": "array"
           },
+          "dataset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatasetPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "itemId": {
             "anyOf": [
               {
@@ -192,7 +202,8 @@
               "app",
               "dashboard",
               "map",
-              "site"
+              "site",
+              "dataset"
             ],
             "title": "Kind",
             "type": "string"
@@ -461,6 +472,71 @@
           "layer"
         ],
         "title": "DataSource",
+        "type": "object"
+      },
+      "DatasetColumnMeta": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "DatasetColumnMeta",
+        "type": "object"
+      },
+      "DatasetPayload": {
+        "properties": {
+          "collectionId": {
+            "title": "Collectionid",
+            "type": "string"
+          },
+          "columns": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DatasetColumnMeta"
+            },
+            "title": "Columns",
+            "type": "object"
+          },
+          "source": {
+            "const": "collection",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "collectionId"
+        ],
+        "title": "DatasetPayload",
         "type": "object"
       },
       "ExtensionCreate": {
