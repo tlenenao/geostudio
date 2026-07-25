@@ -958,6 +958,8 @@ export interface components {
             /** Datasources */
             dataSources?: components["schemas"]["DataSource"][];
             dataset?: components["schemas"]["DatasetPayload"] | null;
+            /** Interactions */
+            interactions?: ("auto" | "manual") | null;
             /** Itemid */
             itemId?: string | null;
             /**
@@ -1075,10 +1077,17 @@ export interface components {
                 [key: string]: components["schemas"]["DatasetColumnMeta"];
             };
             /**
+             * Reactstoextent
+             * @default false
+             */
+            reactsToExtent: boolean;
+            /**
              * Source
              * @constant
              */
             source: "collection";
+            /** Timefield */
+            timeField?: string | null;
         };
         /** ExtensionCreate */
         ExtensionCreate: {
