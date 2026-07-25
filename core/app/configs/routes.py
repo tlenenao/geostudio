@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as repo
+from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
@@ -62,28 +63,6 @@ def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant
         validate_extension_permissions(session, config, tenant_id=tenant_id)
     except ExtensionPermissionError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-
-
-def _validate_dataset_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
-    if config.kind != "dataset":
-        return
-    from app.collections import repository as collections_repo
-
-    payload = config.dataset
-    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
-    collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=payload.collectionId,
-    )
-    if collection is None:
-        raise HTTPException(status_code=422, detail="collection not found")
-    readable = can(
-        session, user_id=user.id, action="read",
-        item=collections_repo.get_access_facts(collection), kind="collection",
-        actor_is_admin=user.is_admin,
-    )
-    if not readable:
-        # Same message as the not-found branch: don't leak collection existence.
-        raise HTTPException(status_code=422, detail="collection not found")
 
 
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
