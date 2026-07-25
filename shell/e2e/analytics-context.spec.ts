@@ -426,10 +426,13 @@ test("an existing app without interactions never auto-filters on click", async (
   await manualReq;
   await expect(page.getByRole("cell", { name: "Sud" })).toBeHidden();
 
-  // …mais AUCUN cross-filter automatique n'a été enregistré dans le contexte
-  // analytique (interactions "manual") : le ?ctx= reste vide de crossFilter.
-  await expect.poll(() => new URL(page.url()).searchParams.has("ctx")).toBe(true);
-  expect(decodeCtx(page.url()).crossFilter).toEqual({});
+  // …mais AUCUN contexte analytique n'a été écrit dans l'URL (interactions
+  // "manual") : additivité (contrainte globale #1) — pas de ?ctx= du tout,
+  // même vide, pour une app qui ne passe jamais en mode auto. On laisse passer
+  // le délai du debounce (EXTENT_DEBOUNCE_MS = 500ms) pour s'assurer qu'aucune
+  // écriture différée ne survient.
+  await page.waitForTimeout(700);
+  expect(new URL(page.url()).searchParams.has("ctx")).toBe(false);
 });
 
 // Montage commun scénarios 3 & 4 : dataset timeField "date" réglé via
