@@ -118,6 +118,8 @@ export async function mockCore(page: Page) {
         status: 201,
         json: { id: "cfg-1", kind: "map", itemId: "77" },
       });
+    } else if (body?.config?.kind === "dataset") {
+      await route.fulfill({ status: 201, json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" } });
     } else {
       // App/dashboard creation path — persist the posted config so a later
       // GET (e.g. opening the editor right after creation) reflects it,
