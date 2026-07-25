@@ -1,117 +1,131 @@
-# Task 2 : module OpenTofu — VM Proxmox — Rapport
+# Task 2 : validation de `collectionId` à la sauvegarde d'un dataset — Rapport
+
+> Note : ce fichier contenait auparavant le rapport d'une autre tâche
+> (« Task 2 — module OpenTofu Proxmox », SP-Deploy-e), sans rapport avec
+> SP-14a. Écrasé intégralement ci-dessous par le rapport de la tâche courante,
+> conformément à l'instruction de la brief.
 
 ## Ce qui a été implémenté
 
-Création du module OpenTofu autonome `deploy/proxmox/terraform/` (couche infra
-pure, aucune dépendance au reste du dépôt) qui clone un template cloud-init
-Proxmox pour produire une VM GeoStudio joignable en SSH. Les 6 fichiers ont été
-transcrits **verbatim** depuis le brief (`.superpowers/sdd/task-2-brief.md`,
-Steps 1-6) :
+TDD strict, suivant le brief `.superpowers/sdd/task-2-brief.md` verbatim :
 
-- `versions.tf` — contrainte OpenTofu `>= 1.6.0` + provider `bpg/proxmox ~> 0.66`.
-- `variables.tf` — 16 variables (connexion API Proxmox, dimensionnement VM,
-  réseau statique, utilisateur/clé SSH cloud-init).
-- `main.tf` — provider `proxmox` + ressource `proxmox_virtual_environment_vm.geostudio`
-  (clone complet du template, cpu/mémoire/disque, réseau, initialization
-  cloud-init avec IP statique + user_account, agent QEMU activé).
-- `outputs.tf` — `vm_ip` (IP sans préfixe CIDR, via `split("/", var.ip_address)[0]`)
-  et `vm_ssh_username`, destinés à être reportés à la main dans l'inventaire
-  Ansible de la Task 3.
-- `terraform.tfvars.example` — exemple de valeurs à copier/adapter par le
-  mainteneur.
-- `.gitignore` — exclut `.terraform/`, l'état local et `terraform.tfvars` réel
-  (secret token Proxmox).
+1. Créé `core/tests/test_create_dataset.py` (contenu transcrit tel quel depuis
+   le brief) : 3 tests — création réussie d'un dataset pointant vers une
+   collection existante et lisible, rejet 422 à la création (`POST /configs`)
+   avec un `collectionId` inexistant, rejet 422 à la mise à jour
+   (`PUT /configs/by-item/{item_id}`) avec un `collectionId` inexistant.
+2. Lancé les tests avant implémentation : confirmé l'échec attendu — les deux
+   tests de rejet obtenaient `201`/`200` au lieu de `422` ; le test du chemin
+   heureux passait déjà (rien ne le bloquait), exactement comme prédit par le
+   brief.
+3. Ajouté `_validate_dataset_payload(session, config, *, user) -> None` dans
+   `core/app/configs/routes.py`, juste après `_validate_extension_scope`.
+   No-op si `config.kind != "dataset"`. Pour un dataset : résout la collection
+   via `app.collections.repository.get_collection(session,
+   tenant_id=user.tenant_id, collection_id=payload.collectionId)` ; si `None`,
+   lève `HTTPException(422, detail="collection not found")`. Sinon vérifie la
+   lisibilité via `app.sharing.authorization.can(session, user_id=user.id,
+   action="read", item=get_access_facts(collection), kind="collection",
+   actor_is_admin=user.is_admin)` ; si non lisible, lève **exactement le même**
+   appel `HTTPException(422, detail="collection not found")` — vérifié par
+   construction (les deux branches lèvent l'appel identique dans le code
+   source, pas seulement testé sur les deux cas actuellement couverts), afin
+   qu'un utilisateur non autorisé ne puisse pas distinguer « collection
+   inexistante » de « collection existante mais non partagée avec lui ».
+4. Câblé l'appel dans les trois chemins de sauvegarde, juste après chaque
+   appel existant à `_validate_extension_scope(...)` :
+   - `create_config` (`POST /configs`)
+   - `update_config` (`PUT /configs/{config_id}`)
+   - `update_config_by_item` (`PUT /configs/by-item/{item_id}`)
 
-Aucun fichier ajouté au-delà des 6 spécifiés ; aucune redesign, transcription
-fidèle du HCL fourni.
+Aucun autre fichier modifié.
 
-## Ce qui a été testé et résultats
+## Résultats des tests
 
-Validation exclusivement via le conteneur officiel `ghcr.io/opentofu/opentofu:1.12`
-(aucune installation d'OpenTofu sur l'hôte), Docker confirmé disponible
-(`Docker version 29.4.3`).
-
-### 1. `tofu init -backend=false`
-
-```
-Initializing provider plugins...
-- Finding bpg/proxmox versions matching "~> 0.66"...
-- Installing bpg/proxmox v0.111.1...
-- Installed bpg/proxmox v0.111.1 (signed, key ID F0582AD6AE97C188)
-...
-OpenTofu has been successfully initialized!
-```
-
-Note : la contrainte `~> 0.66` (deux composants) équivaut à
-`>= 0.66.0, < 1.0.0` (le "~>" ne verrouille que le major quand seuls deux
-segments sont donnés) — c'est pourquoi la version `0.111.1` a été installée
-sans violer la contrainte du brief. Comportement attendu de la sémantique
-OpenTofu/Terraform, pas une anomalie de transcription.
-
-### 2. `tofu validate`
+Commande ciblée (celle du brief) :
 
 ```
-Success! The configuration is valid.
+cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
 ```
 
-### 3. `tofu fmt -check`
+Résultat : **15 passed** — les 3 nouveaux tests, plus les tests préexistants
+de schéma dataset, de sites et de permissions d'extension (garde de
+non-régression), tous verts.
 
-Sortie vide, code de sortie `0` — aucun fichier mal formaté, y compris
-`terraform.tfvars.example` dont l'alignement des `=` est irrégulier dans le
-brief (ligne `pm_api_url` moins indentée que les suivantes) : `tofu fmt` ne
-re-formate que les fichiers `.tf`/`.tfvars`, pas les fichiers `.tfvars.example`
-(extension non reconnue), donc rien à signaler ici — pas un bug du brief à
-corriger, comportement normal de l'outil.
+Suite complète du cœur en contrôle supplémentaire :
 
-Toutes les commandes ont été exécutées réellement contre l'image Docker
-officielle (image téléchargée au premier run, `Status: Downloaded newer image
-for ghcr.io/opentofu/opentofu:1.12`), aucune validation n'a été simulée ou
-sautée.
+```
+cd core && uv run pytest -q
+```
 
-## Nettoyage
+Résultat : **781 passed, 102 skipped** (les skips sont les tests marqués
+`postgis` nécessitant docker — conforme à la base connue documentée dans
+CLAUDE.md).
 
-`deploy/proxmox/terraform/.terraform/` et `.terraform.lock.hcl` supprimés
-après validation (Step 8) — confirmé par `find` : seuls les 6 fichiers du
-brief restent sur disque.
+## Écarts par rapport au brief
 
-## Fichiers modifiés
+Aucun. L'implémentation reprend le code du Step 3 du brief au caractère près
+(même corps de fonction, mêmes points d'appel, même message d'erreur sur les
+deux branches).
 
-- `deploy/proxmox/terraform/versions.tf` (créé)
-- `deploy/proxmox/terraform/variables.tf` (créé)
-- `deploy/proxmox/terraform/main.tf` (créé)
-- `deploy/proxmox/terraform/outputs.tf` (créé)
-- `deploy/proxmox/terraform/terraform.tfvars.example` (créé)
-- `deploy/proxmox/terraform/.gitignore` (créé)
+## Commit
 
-Commit `ee5a7ea` : `feat(deploy): module OpenTofu — provisioning VM Proxmox (SP-Deploy-e)`
-— 6 fichiers, 179 insertions, aucun fichier hors périmètre inclus (vérifié via
-`git show --stat HEAD`).
+- `c562404` — `feat(core): validate dataset collectionId on save (SP-14a)`
+  (`core/app/configs/routes.py`, `core/tests/test_create_dataset.py`)
 
-## Auto-revue
-
-- Les 6 fichiers correspondent au brief au caractère près (comparaison visuelle
-  ligne à ligne effectuée pendant la transcription).
-- Aucun `.terraform`/`.terraform.lock.hcl` n'a été mis en scène ni commité
-  (vérifié par `find` avant `git add` et par `git show --stat` après commit).
-- La validation a bien tourné contre le vrai binaire OpenTofu dans le conteneur
-  officiel (image téléchargée à la volée, pas de cache préexistant, sorties
-  complètes ci-dessus).
-- `git status` après commit montre des fichiers modifiés/non suivis
-  préexistants (`.superpowers/sdd/progress.md`, `task-1-*`, plans docs) qui
-  n'appartiennent pas au périmètre de cette tâche — non touchés, non inclus
-  dans le commit.
-- Ce fichier de rapport contenait auparavant le contenu d'une autre tâche
-  (« Task 2 SP-Deploy-b : runbook de restauration ») — probablement un
-  artefact d'une exécution précédente non nettoyé. Remplacé intégralement par
-  le rapport de la tâche courante.
+Seuls ces deux fichiers ont été stagés et commités. Les autres fichiers
+modifiés/non suivis présents dans l'arbre de travail
+(`.superpowers/sdd/progress.md`, `task-1-brief.md`, `task-1-report.md`,
+`task-2-brief.md`, `docs/superpowers/plans/2026-07-25-sp14a-datasets-partages.md`)
+appartiennent au processus d'orchestration ou à d'autres tâches et n'ont pas
+été touchés.
 
 ## Problèmes ou préoccupations
 
-Aucun concernant l'implémentation elle-même. Les trois validations (`init`,
-`validate`, `fmt -check`) sont passées du premier coup, sans erreur ni
-reformatage nécessaire.
+Aucun dans le périmètre de cette tâche. Un avertissement préexistant et sans
+rapport apparaît dans la sortie des tests : une erreur
+`procrastinate.exceptions.AppNotOpen` est loggée (pas levée) quand
+`items_repo.create_item` tente de mettre en file d'attente un job d'embedding
+pendant les tests ; elle est interceptée en interne par
+`app.items.repository._enqueue_embedding` et n'affecte ni le résultat des
+tests ni le périmètre de cette tâche — laissée telle quelle.
 
-À signaler : le fichier `task-2-report.md` existait déjà avant cette tâche
-avec un contenu sans rapport (autre SP). Écrasé comme demandé par les
-instructions de la tâche ; à vérifier côté orchestrateur que ce n'était pas
-une perte d'information involontaire.
+## Fix : couverture du chemin "collection non lisible"
+
+Finding de la review : les tests existants ne couvraient que la branche
+« collection inexistante » de `_validate_dataset_payload`
+(`core/app/configs/routes.py:67-83`), pas la branche « collection existante
+mais illisible par l'appelant » — pourtant la branche la plus sensible côté
+sécurité, celle conçue spécifiquement pour ne pas révéler l'existence d'une
+collection privée à un utilisateur non autorisé. Aucun changement dans
+`routes.py` : l'implémentation était déjà correcte, il manquait juste le test.
+
+Changements dans `core/tests/test_create_dataset.py` :
+
+1. Fixture `client` étendue : création d'un second utilisateur `bob`
+   (`oidc_sub="sub-2"`) et d'une seconde collection `id="prives"`
+   (`is_public=False`, `owner_id=bob.id`) — sans aucun partage/rôle de groupe
+   accordé à `alice`, l'utilisatrice de test habituelle (qui n'est pas admin
+   par défaut, `bootstrap_admin` valant `False` dans `get_or_create_user`).
+2. Nouveau test `test_create_dataset_collection_non_lisible_rejete_avec_meme_message` :
+   POST `/configs` avec `collectionId="prives"` en tant qu'alice ; vérifie
+   `status_code == 422` **et** `response.json()["detail"] == "collection not found"`
+   — le même message exact que pour une collection inexistante, prouvant que
+   les deux échecs sont indiscernables pour l'appelant.
+
+### Résultats des tests
+
+```
+cd core && uv run pytest tests/test_create_dataset.py -v
+```
+→ **4 passed** (les 3 tests préexistants + le nouveau).
+
+```
+cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
+```
+→ **16 passed** (régression complète du périmètre de la tâche, tous verts).
+
+### Commit
+
+- `test(core): cover unreadable-collection branch for dataset validation (SP-14a)`
+  (`core/tests/test_create_dataset.py` uniquement).

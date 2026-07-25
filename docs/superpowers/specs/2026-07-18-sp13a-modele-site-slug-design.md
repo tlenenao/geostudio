@@ -1,12 +1,12 @@
-# SP-16a — modèle `site`/slug + route publique + résolution shell : design
+# SP-13a — modèle `site`/slug + route publique + résolution shell : design
 
-> Première sous-phase de **SP-16 « Portails & Sites »** (design macro :
-> [`2026-07-14-sp16-portails-sites-design.md`](2026-07-14-sp16-portails-sites-design.md),
+> Première sous-phase de **SP-13 « Portails & Sites »** (design macro :
+> [`2026-07-14-sp13-portails-sites-design.md`](2026-07-14-sp13-portails-sites-design.md),
 > arbitrages A31/A33/A34/A35/A38 tranchés le 2026-07-14). Découpage a/b/c fixé
 > par le §9 du design macro : **a** = modèle `site`/slug + route publique +
 > résolution shell (ce document) ; **b** = widgets de contenu (Hero/
 > RichSection/Gallery) ; **c** = fiche dataset + téléchargement + template
-> galerie. SP-16 s'exécute après SP-11 (clos), avant SP-12/SP-13 (A34).
+> galerie. SP-13 s'exécute après SP-11 (clos), avant SP-12/SP-17 (A34).
 
 ## 1. Objectif
 
@@ -22,7 +22,7 @@ design macro §8).
 
 ## 2. Décisions actées pour cette sous-phase
 
-Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter) :
+Rappel des arbitrages hérités du design macro SP-13 (§2, à ne pas rediscuter) :
 
 | # | Décision |
 |---|---|
@@ -30,7 +30,7 @@ Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter
 | A33 | Domaine personnalisé **différé** : v1 accessible via `/sites/{slug}`, pas de résolution par host. |
 | A38 | Fonctions communautaires (commentaires/follow/discussions) **hors périmètre**. |
 
-Décisions propres à SP-16a, tranchées au brainstorm du 2026-07-18 :
+Décisions propres à SP-13a, tranchées au brainstorm du 2026-07-18 :
 
 - **Résolution du tenant sur la route publique = tenant par défaut (`"default"`)
   uniquement.** Conséquence directe de A33 (pas de résolution par host en v1) ;
@@ -43,7 +43,7 @@ Décisions propres à SP-16a, tranchées au brainstorm du 2026-07-18 :
   entre dès 16a — pas de « création seule ».
 - **Aucun widget de contenu.** Le site publié est un `AppRenderer` en mode
   `runtime` possiblement vide ; Hero/RichSection/Gallery/DatasetCard sont
-  explicitement repoussés en SP-16b/c.
+  explicitement repoussés en SP-13b/c.
 
 ## 3. Périmètre
 
@@ -58,9 +58,9 @@ Décisions propres à SP-16a, tranchées au brainstorm du 2026-07-18 :
   `/sites/:slug` → `SitePublicPage` → `AppRenderer` runtime, type « Site »
   dans `NewItemButton` avec champ slug.
 
-**Hors périmètre (SP-16b/c ou différé) :**
-- Widgets `Hero`/`RichSection`/`Gallery`/`DatasetCard` (SP-16b/c).
-- Téléchargement de dataset, template galerie « Portail de données » (SP-16c).
+**Hors périmètre (SP-13b/c ou différé) :**
+- Widgets `Hero`/`RichSection`/`Gallery`/`DatasetCard` (SP-13b/c).
+- Téléchargement de dataset, template galerie « Portail de données » (SP-13c).
 - Domaine personnalisé (A33), résolution par host, `?tenant=` (multi-tenant
   public).
 - Métriques d'usage, fonctions communautaires (A38).

@@ -1,10 +1,10 @@
-# SP-16b — widgets de contenu (Hero/RichSection/Gallery) Implementation Plan
+# SP-13b — widgets de contenu (Hero/RichSection/Gallery) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add three content widgets (`Hero`, `RichSection`, `Gallery`) to the existing widget registry, plus the minimal core+shell plumbing (`GET /public/items`, `ItemRead.keywords`, `PublicItemPage`) needed for `Gallery` to list and link to published items for an anonymous visitor.
 
-**Architecture:** Extension of the existing `items` core module (one new repository function + one new anonymous route, no new module, no migration — `Item.keywords` already exists on the model). Shell side: three new `registerWidget()` entries following the exact conventions already used by `chart.tsx`/`form.tsx`/`button` (in `index.tsx`), one new page (`PublicItemPage`, a simplification of the existing `SitePublicPage`), one new `ItemClient` method, and one new E2E spec extending the SP-16a fixture flow.
+**Architecture:** Extension of the existing `items` core module (one new repository function + one new anonymous route, no new module, no migration — `Item.keywords` already exists on the model). Shell side: three new `registerWidget()` entries following the exact conventions already used by `chart.tsx`/`form.tsx`/`button` (in `index.tsx`), one new page (`PublicItemPage`, a simplification of the existing `SitePublicPage`), one new `ItemClient` method, and one new E2E spec extending the SP-13a fixture flow.
 
 **Tech Stack:** FastAPI + SQLAlchemy (core), React + TypeScript + `@tanstack/react-query` (shell), `marked` + `dompurify` (new shell deps, Markdown→sanitized HTML), Vitest + Playwright (tests).
 
@@ -13,9 +13,9 @@
 - **A31** (inherited): the portal config is a sub-template of `AppConfig`, rendered by the single `AppRenderer` runtime — no second engine.
 - **A33** (inherited): no custom domain / host-based resolution. Public routes only ever serve the `default` tenant.
 - **A38** (inherited): no community features (comments/follow/discussions) — out of scope.
-- **Scope = Hero + RichSection + Gallery only.** `DatasetCard`/`DatasetPage`, multi-format download, and the "Portail de données" gallery template are SP-16c — do not build them here.
+- **Scope = Hero + RichSection + Gallery only.** `DatasetCard`/`DatasetPage`, multi-format download, and the "Portail de données" gallery template are SP-13c — do not build them here.
 - **RichSection renders Markdown via `marked` + `DOMPurify`.** Sanitization is mandatory and non-bypassable — always go through the single `sanitizeMarkdown()` helper, never call `marked.parse` directly elsewhere.
-- **Gallery thumbnails link to the existing anonymous route `GET /public/configs/by-item/{pk}`** (already implemented, used by SP-16a's `SitePublicPage`) — no new config route.
+- **Gallery thumbnails link to the existing anonymous route `GET /public/configs/by-item/{pk}`** (already implemented, used by SP-13a's `SitePublicPage`) — no new config route.
 - **Gallery's filter is fixed by the widget's author** (`type`/`tag`/`limit` props) — no interactive filter controls for the visitor.
 - **No migration needed**: `Item.keywords` (JSON column, default `[]`) already exists on the ORM model (`core/app/items/models.py:25`) and is already written by `update_item`/`PATCH /items/{id}`. The only gap is that `ItemRead` never serializes it.
 - **`GET /public/items` must use a dedicated published-only repository function** (`list_published_items`), never the authenticated `list_items` path — this is the security boundary this plan must prove with a leakage matrix (unpublished item, other-tenant item, own-tenant published item).
@@ -1655,7 +1655,7 @@ git commit -m "feat(shell): add Gallery content widget"
 In `shell/e2e/mocks.ts`, the current `mockCore` function declares its site-portal state near the top (lines 31-40):
 
 ```ts
-  // Site portal (SP-16a) — state for the created-then-published site.
+  // Site portal (SP-13a) — state for the created-then-published site.
   let siteSlug: string | null = null;
   let sitePublished = false;
   const SITE_APP_CONFIG = {
@@ -1670,7 +1670,7 @@ In `shell/e2e/mocks.ts`, the current `mockCore` function declares its site-porta
 Leave this as the fallback default, but the E2E in this task will overwrite the site's config via a real builder save (see Step 3), so the actual served config must reflect what was saved. Add a second published item fixture right after it:
 
 ```ts
-  // Site portal (SP-16a) — state for the created-then-published site.
+  // Site portal (SP-13a) — state for the created-then-published site.
   let siteSlug: string | null = null;
   let sitePublished = false;
   const SITE_APP_CONFIG = {
@@ -1681,7 +1681,7 @@ Leave this as the fallback default, but the E2E in this task will overwrite the 
     messages: [], pages: [],
   } as const;
 
-  // Content widgets (SP-16b) — a second published item, distinct from the
+  // Content widgets (SP-13b) — a second published item, distinct from the
   // site itself, for the Gallery to list and link to.
   const GALLERY_ITEM = {
     pk: "8", resourceType: "app", title: "Carte des risques", abstract: "Resume des risques",
@@ -1696,7 +1696,7 @@ Leave this as the fallback default, but the E2E in this task will overwrite the 
   } as const;
 ```
 
-Then find the existing block at the end of the file (the one starting with the comment `// Site portal (SP-16a) — appended last so...`, currently ~lines 335-381) and:
+Then find the existing block at the end of the file (the one starting with the comment `// Site portal (SP-13a) — appended last so...`, currently ~lines 335-381) and:
 
 (a) replace the static public-config-by-item mock for `site-1` so it reflects whatever was actually saved through the builder (falls back to `SITE_APP_CONFIG` only if nothing was ever saved):
 
@@ -1716,7 +1716,7 @@ Then find the existing block at the end of the file (the one starting with the c
 (b) add, right after that block, the new public items list route and the gallery item's own public config route:
 
 ```ts
-  // Public items list (SP-16b) — Gallery's data source. Always returns the
+  // Public items list (SP-13b) — Gallery's data source. Always returns the
   // one fixed published item; the site itself is not included (the fixture
   // only needs to prove the Gallery→vignette→PublicItemPage path).
   await page.route("https://core.test/public/items*", async (route) => {
@@ -1730,7 +1730,7 @@ Then find the existing block at the end of the file (the one starting with the c
   });
 ```
 
-- [ ] **Step 2: Run the existing SP-16a spec to confirm the `mocks.ts` change doesn't regress it**
+- [ ] **Step 2: Run the existing SP-13a spec to confirm the `mocks.ts` change doesn't regress it**
 
 Run: `cd shell && npx playwright test sites-portal-shell.spec.ts`
 Expected: PASS (2 tests, unchanged) — since the site's builder step in that spec never saves any widget, `savedConfigs.get("site-1")` stays `undefined` there and the mock still falls back to `SITE_APP_CONFIG`.

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
+import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { WidgetContext } from "../registry";
-import type { DataSourceState } from "../../api/types";
+import type { DataSourceState, ItemClient } from "../../api/types";
 
 vi.mock("../EChart", () => ({
   EChart: ({ option }: { option: { series?: unknown } }) => {
@@ -43,7 +45,14 @@ test("shows loading, error and empty states", () => {
 test("PropsPanel edits the chart type and exposes the advanced JSON escape hatch", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("chart")!.PropsPanel;
-  render(<Panel props={{ chartType: "bar" }} dataSources={[]} onChange={onChange} />);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "bar" }} dataSources={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
   expect(screen.getByLabelText("Option ECharts avancée (JSON)")).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText("Type de graphique"), "line");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ chartType: "line" }));

@@ -2,7 +2,7 @@
 
 > **Date : 2026-07-14 · Statut : analyse stratégique, à valider par Tanguy avant toute
 > déclinaison en spec/plan.** Ce document ne modifie **aucun** arbitrage déjà tranché
-> (A1–A30) ni le phasage SP-1→SP-15 de la
+> (A1–A30) ni le phasage SP-1→SP-16 de la
 > [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) : il les reprend,
 > les recoupe avec un périmètre plus large que le seul
 > [brainstorm Analytics Platform](./2026-07-09-brainstorm-geostudio-analytics-platform.md)
@@ -80,7 +80,7 @@ avancé + exploration de données) :
 **Conclusion et recommandation centrale** : ne pas bifurquer. Poursuivre le
 chemin critique déjà arbitré (A27 : SP-9 → SP-10 → SP-11) sans le perturber,
 puis insérer, dans l'ordre proposé en §8 de ce document,
-**SP-14 (Analytics UX) avant SP-12/SP-13**, un nouveau **SP-16 (Portails & Sites)**
+**SP-14 (Analytics UX) avant SP-12/SP-17**, un nouveau **SP-13 (Portails & Sites)**
 et un **copilote IA embarqué** transversal (introduit dès que le MCP le permet,
 sans attendre un SP dédié). Ce document chiffre, priorise et détaille ces
 ajouts ; il ne remplace ni la feuille de route ni le brainstorm Analytics, il
@@ -126,7 +126,7 @@ Shell (React 19, Vite, TS)          Cœur (Python/FastAPI, monolithe modulaire)
   toute prop de widget (SP-5c) — c'est *le* langage des futures métriques,
   filtres et règles d'alerte, pas un nouveau DSL à inventer.
 - procrastinate (jobs Postgres, A5) déjà en production (ingestion) — le socle
-  direct des rapports planifiés et des alertes (SP-15).
+  direct des rapports planifiés et des alertes (SP-16).
 - ECharts déjà intégré avec 10 types de graphiques — sankey/treemap/sunburst/
   funnel/waterfall sont dans la dépendance, pas à intégrer.
 
@@ -152,13 +152,13 @@ Shell (React 19, Vite, TS)          Cœur (Python/FastAPI, monolithe modulaire)
 | **Storytelling** | ❌ | Pages + navigation existent (brique), mais pas de gabarit narratif (scrollytelling carte, séquence d'états analytiques figés) |
 | **Interopérabilité catalogue** | ❌ (SP-12 non lancé) | Pas de STAC, pas de DCAT, pas de moissonnage |
 | **Lakehouse/passage à l'échelle** | ❌ (SP-11 non lancé) | Pas de CDC, pas de DuckDB, pas de GeoParquet |
-| **3D/impression** | ❌ (SP-13 non lancé) | Pas de 3D Tiles, pas de terrain, pas d'export PDF/PNG mis en page |
+| **3D/impression** | ❌ (SP-17 non lancé) | Pas de 3D Tiles, pas de terrain, pas d'export PDF/PNG mis en page |
 | **Observabilité** | ❌ (SP-10 non lancé) | Pas d'OTel, pas de dashboards d'exploitation, pas de SLO |
 | **Temps réel** | ❌ différé (Q10 ouverte) | Pas de flux live, pas de SSE/MQTT |
 
 ### 2.3 Rappel synthétique de ce qui est déjà décidé
 
-La feuille de route couvre déjà, en 15 sous-projets (SP-1→SP-15, ≈880–1510 h,
+La feuille de route couvre déjà, en 15 sous-projets (SP-1→SP-16, ≈880–1510 h,
 soit 20–42 mois solo à 10–25 h/semaine), l'essentiel du chemin vers une
 plateforme analytics complète :
 
@@ -168,9 +168,9 @@ plateforme analytics complète :
 | Exploitation | SP-10 | OTel, dashboards/SLO packagés | non lancé |
 | Data platform | SP-11 | CDC→GeoParquet, DuckDB, API analytique structurée + SQL analyste | non lancé |
 | Catalogue ouvert | SP-12 | STAC natif, export DCAT-AP, moissonnage (STAC/ArcGIS FS/WMS-WFS/CSW/CKAN) | non lancé |
-| 3D & impression | SP-13 | deck.gl 3D Tiles, terrain, export PDF/PNG (Playwright) | non lancé |
+| 3D & impression | SP-17 | deck.gl 3D Tiles, terrain, export PDF/PNG (Playwright) | non lancé |
 | BI géospatiale | SP-14 | Datasets partagés (A28), requête visuelle, contexte global temps×emprise (A29), cross-filter, SQL Lab, widgets analytiques v2 | non lancé, dépend de SP-11 |
-| Decision support | SP-15 | AlertRule, ReportSchedule, exports secs (A30) | non lancé, dépend de SP-13/14 |
+| Decision support | SP-16 | AlertRule, ReportSchedule, exports secs (A30) | non lancé, dépend de SP-17/14 |
 
 **Ce que ce document ajoute à ce socle** : (a) le cadrage benchmark élargi aux
 huit produits explicitement demandés (dont ArcGIS Hub, absent du brainstorm
@@ -233,7 +233,7 @@ apport propre à ce document.
 
 Concept clé transposable : *time-range picker global* → généralisé chez
 GeoStudio en **contexte double temps × emprise** (§4.3) ; *alerting* → objet
-`AlertRule` (SP-15) ; *variables de dashboard* → variables typées + CEL
+`AlertRule` (SP-16) ; *variables de dashboard* → variables typées + CEL
 (acquis SP-5c). À ne pas copier : le modèle « un panel = une requête TSDB » —
 GeoStudio a des entités géo-attributaires, pas des séries d'infra.
 
@@ -296,15 +296,15 @@ vision) : **le portail public de données et d'initiatives**.
 |---|---|---|
 | **Sites** : portail de marque (thème, domaine, navigation, pages de contenu riche — hero, cartes, texte, embeds) construit sans code, distinct du contenu qu'il expose | Une collectivité communique *son* portail, pas une liste brute d'items | Nouveau type d'item **`site`** (ou **`portal`**) : un `AppConfig` dont le gabarit combine pages de contenu éditorial (texte riche, héros, sections) et blocs de **découverte** (galerie d'items publiés, recherche, filtres par tag/type). Même runtime `AppRenderer`, nouveaux widgets de contenu (§7.6) |
 | **Initiatives/Programmes** : regroupement thématique d'items + pages + métriques autour d'un objectif public (« Plan vélo 2026 ») | Structure éditoriale au-dessus du catalogue technique | Un item de type `site` peut référencer une liste de tags/collections comme périmètre — pas un nouveau modèle de données, une vue configurée |
-| **Pages de dataset public** : fiche par jeu de données avec description, aperçu carte/table, téléchargement multi-format (CSV/GeoJSON/Shapefile/API) | L'obligation open-data des collectivités françaises couverte nativement | Se branche directement sur DCAT-AP (SP-12, A21) + exports secs (SP-15, A30) — **aucune nouvelle brique de données**, une page de rendu en plus |
+| **Pages de dataset public** : fiche par jeu de données avec description, aperçu carte/table, téléchargement multi-format (CSV/GeoJSON/Shapefile/API) | L'obligation open-data des collectivités françaises couverte nativement | Se branche directement sur DCAT-AP (SP-12, A21) + exports secs (SP-16, A30) — **aucune nouvelle brique de données**, une page de rendu en plus |
 | **Métriques d'usage** (vues, téléchargements, followers) | Preuve de valeur du portail pour l'élu/le décideur | Extension légère d'`audit_log` déjà append-only (compteurs agrégés, pas de nouveau système) |
 | **Discussions/commentaires, followers, events** | Communauté autour de la donnée | **Hors périmètre v1** — surface d'abus/modération disproportionnée pour la cible (patrimoine territorial, pas réseau social) ; à ne pas copier sans demande réelle explicite |
 | **Domaine personnalisé par site** | Un site = une identité propre (`donnees.mairie.fr`) | Traefik (déjà dans la stack) route par `Host` vers le cœur/shell ; un enregistrement de domaine par item `site`, résolution TLS (Let's Encrypt via Traefik) |
 
 **Verdict** : ArcGIS Hub est le seul des huit produits demandés qui pointe vers
 un **type d'objet de plateforme totalement absent** de la feuille de route
-actuelle (contrairement aux six premiers, largement couverts par SP-11/14/15).
-C'est la raison d'être du **SP-16 (Portails & Sites)** proposé en §8.
+actuelle (contrairement aux six premiers, largement couverts par SP-11/14/16).
+C'est la raison d'être du **SP-13 (Portails & Sites)** proposé en §8.
 
 ### 3.10 Matrice de synthèse comparative
 
@@ -319,13 +319,13 @@ C'est la raison d'être du **SP-16 (Portails & Sites)** proposé en §8.
 | Cross-filter / drill par défaut | ⚠ | ✅ | ✅ | ✅ | ✅ | ⚠ | ✅ | ❌ | ❌ | ✅ (SP-14, A29) |
 | Contexte spatial global (emprise → filtre) | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠ | ✅ | ⚠ | ❌ | ✅ (différenciant, A29) |
 | SQL Lab / accès analyste | ❌ | ✅ | ✅ | ⚠ | ⚠ | ❌ | ❌ | ❌ | ❌ | ✅ (SP-11/14, A19) |
-| Alertes seuils | ✅ | ⚠ | ⚠ | ✅ | ⚠ | ❌ | ❌ | ❌ | ❌ | ✅ (SP-15) |
-| Rapports planifiés (PDF/email) | ⚠ | ⚠ | ✅ | ✅ | ✅ | ❌ | ❌ | ⚠ | ❌ | ✅ (SP-15) |
-| Export Excel/CSV | ⚠ | ✅ | ✅ | ✅ | ✅ | ⚠ | ⚠ | ✅ | ❌ | ✅ (SP-15, A30) |
+| Alertes seuils | ✅ | ⚠ | ⚠ | ✅ | ⚠ | ❌ | ❌ | ❌ | ❌ | ✅ (SP-16) |
+| Rapports planifiés (PDF/email) | ⚠ | ⚠ | ✅ | ✅ | ✅ | ❌ | ❌ | ⚠ | ❌ | ✅ (SP-16) |
+| Export Excel/CSV | ⚠ | ✅ | ✅ | ✅ | ✅ | ⚠ | ⚠ | ✅ | ❌ | ✅ (SP-16, A30) |
 | Formulaires / écriture de données | ❌ | ❌ | ❌ | ⚠ (Power Apps) | ❌ | ✅ | ⚠ | ⚠ | ✅ | ✅ |
 | Builder d'app complet (pages, nav, logique) | ❌ | ❌ | ❌ | ⚠ | ❌ | ✅ | ⚠ | ⚠ | ✅ | ✅ |
 | SDK d'extension ouvert (tiers, sans réécriture) | ⚠ (plugins Go) | ⚠ (Python) | ⚠ | ⚠ | ❌ | ❌ (React figé) | ❌ | ❌ | ✅ (Web Components) | ✅ |
-| Portail public multi-app éditorialisé | ❌ | ❌ | ❌ | ⚠ (Power BI Apps) | ⚠ | ❌ | ❌ | ✅ | ❌ | ✅ (SP-16 proposé) |
+| Portail public multi-app éditorialisé | ❌ | ❌ | ❌ | ⚠ (Power BI Apps) | ⚠ | ❌ | ❌ | ✅ | ❌ | ✅ (SP-13 proposé) |
 | Catalogue standard (STAC/DCAT/OGC) | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠ (propriétaire Esri) | ❌ | ⚠ (propriétaire) | ⚠ (catalogue interne) | ✅ (SP-12) |
 | Storytelling / scrollytelling | ❌ | ❌ | ❌ | ❌ | ⚠ (Story Points, désuet) | ⚠ (via StoryMaps séparé) | ❌ | ⚠ | ❌ | ✅ (§7.5) |
 | IA générative opérable (créer un objet par prompt) | ⚠ (copilotes récents) | ❌ | ⚠ | ⚠ (Copilot) | ⚠ | ❌ | ❌ | ❌ | ✅ (MCP, externe) | ✅ (MCP + copilote embarqué) |
@@ -352,9 +352,9 @@ seulement les indicateurs).
 | **Data analytics** | ❌ 15 % (agrégation client seule) | Moteur DuckDB/GeoParquet, pipeline de transformation serveur, analyse spatiale no-code | SP-11, SP-14 |
 | **Business intelligence** | ❌ 10 % (aucune couche sémantique) | Dataset partagé, métriques nommées, SQL Lab, gouvernance des sources | SP-14 (A28) |
 | **Création de tableaux de bord** | ✅ 70 % (le builder les fait déjà) | Contexte global, cross-filter, KPI riches, bookmarks/situations | SP-14 |
-| **Création de sites web / portails de données** | ❌ 5 % (aucun objet portail) | Nouveau type d'item `site`, gabarits éditoriaux, domaines personnalisés, pages dataset public | **SP-16 (nouveau, proposé)** |
+| **Création de sites web / portails de données** | ❌ 5 % (aucun objet portail) | Nouveau type d'item `site`, gabarits éditoriaux, domaines personnalisés, pages dataset public | **SP-13 (nouveau, proposé)** |
 | **Création d'applications web** | ✅ 75 % (formulaires, CRUD, logique CEL, SDK WC) | Conteneurs (onglets/modale/tiroir), workflows multi-étapes, déclencheurs data/timer | SP-5/SP-14 extension |
-| **Cartographie et géospatial avancé** | ✅ 65 % (multi-couches, MVT, COG) | 3D Tiles/terrain, analyse spatiale packagée, symbologie data-driven unifiée | SP-13, SP-14 |
+| **Cartographie et géospatial avancé** | ✅ 65 % (multi-couches, MVT, COG) | 3D Tiles/terrain, analyse spatiale packagée, symbologie data-driven unifiée | SP-17, SP-14 |
 | **Exploration et analyse de données** | ⚠ 30 % (table triée/paginée, recherche catalogue) | Drill-down, « voir les entités », SQL Lab, X-rays/auto-dashboard | SP-14 |
 
 ### 4.2 Par brique technique
@@ -384,13 +384,13 @@ cohérente avec les tranches d'heures déjà utilisées dans la feuille de route
 | G1 | Pas de moteur d'agrégation serveur | Critique | XL | — | SP-11, chemin déjà arbitré, ne pas retarder |
 | G2 | Pas de dataset/couche sémantique | Critique | L | G1 | SP-14, immédiatement après SP-11 |
 | G3 | Pas de contexte analytique global (temps×emprise×filtres×sélection) | Élevé | M | G2 | SP-14 |
-| G4 | Pas de sorties (export/PDF/alerte) | Élevé | M | SP-13 (Playwright) | SP-15 |
-| G5 | Pas de portail/site public éditorialisé | Élevé (marché) | L | items existants, DCAT (SP-12) partiel | **SP-16 nouveau**, voir §5/§8 |
+| G4 | Pas de sorties (export/PDF/alerte) | Élevé | M | SP-17 (Playwright) | SP-16 |
+| G5 | Pas de portail/site public éditorialisé | Élevé (marché) | L | items existants, DCAT (SP-12) partiel | **SP-13 nouveau**, voir §5/§8 |
 | G6 | Pas de standards catalogue (STAC/DCAT/moissonnage) | Élevé (marché) | L | — | SP-12 |
 | G7 | Pas d'observabilité | Élevé (avant démo publique) | M | — | SP-10, avant tout trafic réel |
 | G8 | Pas de copilote IA embarqué | Élevé (stratégique) | S–M par itération | MCP (acquis) | Transversal, dès que possible, voir §7.10 |
 | G9 | Pas de gabarit storytelling | Moyen | S | pages/bindings (acquis) | Quick win, voir §7.5 |
-| G10 | Pas de 3D/print | Moyen | L | — | SP-13 |
+| G10 | Pas de 3D/print | Moyen | L | — | SP-17 |
 | G11 | Widgets analytiques v2 (KPI riche, pivot, filtres typés) | Moyen | M | G2/G3 | SP-14 |
 | G12 | Analyse spatiale no-code packagée | Moyen | M | G1 | SP-14 |
 | G13 | Workflows low-code multi-étapes (approbations) | Faible-moyen (hors persona v1) | L | actions composées (acquis) | Différé, sur demande réelle |
@@ -470,10 +470,10 @@ sécurité (`can()`), même MCP.
 |---|---|---|---|
 | `datasets` | SP-14 | CRUD datasets partagés, schéma inféré, métriques, refreshPolicy | à construire |
 | `analytics` | SP-11 | Pipeline→plan→DuckDB/PostGIS, SQL read-only analyste, exports | à construire |
-| `alerts` | SP-15 | AlertRule, évaluation jobs, canaux, journal | à construire |
-| `reports` | SP-15 | ReportSchedule, orchestration Playwright, dépôt S3 | à construire |
+| `alerts` | SP-16 | AlertRule, évaluation jobs, canaux, journal | à construire |
+| `reports` | SP-16 | ReportSchedule, orchestration Playwright, dépôt S3 | à construire |
 | `connectors` | SP-6/SP-12/SP-14 | Sources http/arcgis, moissonnage STAC/WMS-WFS/CSW/CKAN | partiel (SP-6 seul acquis) |
-| **`sites`** | **SP-16 (nouveau)** | CRUD sites/portails, résolution de domaine, pages dataset public, compteurs d'usage | **absent — proposé** |
+| **`sites`** | **SP-13 (nouveau)** | CRUD sites/portails, résolution de domaine, pages dataset public, compteurs d'usage | **absent — proposé** |
 | `realtime` | différé | Ingestion MQTT/HTTP, SSE | différé (Q10) |
 | `copilot` | transversal | Endpoint chat qui orchestre les outils MCP existants côté serveur, historique de conversation par item | **absent — proposé, voir §7.10** |
 
@@ -590,12 +590,12 @@ deuxième moteur, c'est le **même runtime rendu par Playwright en worker**
 plus un `PrintLayout` déclaratif (en-tête/pied, sauts de page, table des
 matières). **Adaptation** : nouveau gabarit de config (`PrintLayout`) + worker
 dédié (image séparée du cœur pour ne pas alourdir le déploiement standard,
-cf. risque déjà noté en A25). C'est **SP-13** (mise en page carte) étendu par
-**SP-15** (dashboards paginés).
+cf. risque déjà noté en A25). C'est **SP-17** (mise en page carte) étendu par
+**SP-16** (dashboards paginés).
 
 ### 7.3 Portails de données
 
-**Absent, chantier nouveau** (voir §3.9, §5, **SP-16 proposé**). Le builder
+**Absent, chantier nouveau** (voir §3.9, §5, **SP-13 proposé**). Le builder
 n'a *aucune* notion de « façade multi-item » aujourd'hui — chaque item est
 son propre runtime isolé. **Adaptation nécessaire** :
 - Nouveau type d'item `site`, config `SiteConfig` (sous-type d'`AppConfig` ou
@@ -615,7 +615,7 @@ est l'**interopérabilité standard** (STAC/DCAT, SP-12) et l'**exposition
 publique éditorialisée** (le portail, §7.3). Les deux sont complémentaires :
 STAC/DCAT est le contrat *machine* (QGIS, moissonneurs data.gouv.fr) ; le
 site/portail est la façade *humaine*. Aucune refonte du catalogue interne
-n'est nécessaire — SP-12 et SP-16 sont deux consommateurs du même registre
+n'est nécessaire — SP-12 et SP-13 sont deux consommateurs du même registre
 `items`/`collections`.
 
 ### 7.5 Storytelling
@@ -723,7 +723,7 @@ s'insèrent **après**, avec un réordonnancement argumenté ci-dessous
 | Quick win — Auto-refresh | `refetchInterval` configurable par source, horodatage de fraîcheur | déjà identifié « vague 0 » du brainstorm |
 | Quick win — KPI enrichie | delta/seuils CEL sur `indicator` (sans backend analytique, sur agrégation client existante) | déjà identifié « vague 0 » |
 | Copilote IA — v0 | Panneau de chat dans le builder, orchestration des 10 outils MCP existants, micro-actions sur la config en édition | nouveau, ne dépend de rien d'autre |
-| Cadrage SP-16 | Brainstorm + spec « Portails & Sites » (comme ce document le préconise) | nouveau, spec seulement, pas d'exécution encore |
+| Cadrage SP-13 | Brainstorm + spec « Portails & Sites » (comme ce document le préconise) | nouveau, spec seulement, pas d'exécution encore |
 
 ### 6–12 mois — observabilité, puis le pivot data platform
 
@@ -735,10 +735,10 @@ s'insèrent **après**, avec un réordonnancement argumenté ci-dessous
 
 ### 12–24 mois — BI géospatiale, portails, storytelling, 3D/print
 
-> **⚠ Amendement à A27 proposé (voir A34)** : lancer **SP-14 avant SP-12/SP-13**.
+> **⚠ Amendement à A27 proposé (voir A34)** : lancer **SP-14 avant SP-12/SP-17**.
 > Justification : SP-14 (BI géospatiale) démontre la promesse « Analytics
 > Platform » du produit et s'appuie directement sur SP-11 tout juste livré ;
-> SP-12 (catalogue standard) et SP-13 (3D/print) sont des briques de conformité
+> SP-12 (catalogue standard) et SP-17 (3D/print) sont des briques de conformité
 > et de richesse cartographique **indépendantes** l'une de l'autre et de
 > SP-14, insérables en parallèle ou juste après selon la disponibilité et la
 > demande réelle (Q2 toujours ouverte).
@@ -746,9 +746,9 @@ s'insèrent **après**, avec un réordonnancement argumenté ci-dessous
 | Chantier | Contenu |
 |---|---|
 | SP-14 | Datasets partagés, pipeline de transformation (dont spatial no-code), contexte global temps×emprise, cross-filter, drill, SQL Lab, widgets analytiques v2 — jalon **M11** |
-| **SP-16 (nouveau)** | Item `site`/portail, gabarits éditoriaux + découverte, page dataset public (branchée sur DCAT dès que SP-12 existe, sinon export CSV/GeoJSON simple en v1), domaine personnalisé |
-| SP-12 | STAC natif, export DCAT-AP, moissonnage (STAC→ArcGIS FS→WMS/WFS→CSW→CKAN) — alimente directement SP-16 |
-| SP-13 | 3D Tiles + terrain, impression/export mis en page (Playwright) — prérequis partiel de SP-15 |
+| **SP-13 (nouveau)** | Item `site`/portail, gabarits éditoriaux + découverte, page dataset public (branchée sur DCAT dès que SP-12 existe, sinon export CSV/GeoJSON simple en v1), domaine personnalisé |
+| SP-12 | STAC natif, export DCAT-AP, moissonnage (STAC→ArcGIS FS→WMS/WFS→CSW→CKAN) — alimente directement SP-13 |
+| SP-17 | 3D Tiles + terrain, impression/export mis en page (Playwright) — prérequis partiel de SP-16 |
 | Storytelling v1 | États analytiques figés par chapitre (dépend de SP-14/bookmarks) | 
 | Copilote IA — v1 | Outils `create_dataset`/`run_analytics_query`/`explain_dataset`/`create_dashboard_from_prompt` branchés au panneau de chat |
 
@@ -756,7 +756,7 @@ s'insèrent **après**, avec un réordonnancement argumenté ci-dessous
 
 | Chantier | Contenu |
 |---|---|
-| SP-15 | AlertRule, ReportSchedule, exports secs — jalon **M12**, dépend de SP-13/SP-14 |
+| SP-16 | AlertRule, ReportSchedule, exports secs — jalon **M12**, dépend de SP-17/SP-14 |
 | Connecteur ArcGIS Feature Services | Référencement (dataset SP-14) + copie (moissonnage SP-12) — pont de sortie pour les collectivités équipées Esri (A22 déjà amendé, position 2) |
 | Portail — communauté (évalué, pas engagé) | Discussions/followers **seulement si** une demande réelle émerge (§3.9 : hors périmètre v1 par défaut) |
 | Temps réel cran 1 | SSE/MQTT — **seulement si** Q10 tranche en ce sens |
@@ -774,12 +774,12 @@ Story v0    ██
 SP-10           ████ OTel
 SP-11              ████████ Lakehouse/DuckDB
 SP-14                       ████████████ Analytics UX (M11)
-SP-16                       ████████ Portails & Sites
+SP-13                       ████████ Portails & Sites
 SP-12                                ████████ Catalogue standard
-SP-13                                ████████ 3D & print
+SP-17                                ████████ 3D & print
 Story v1                                    ████
 Copilote v1                                 ████████
-SP-15                                                ████████ Alertes/reporting (M12)
+SP-16                                                ████████ Alertes/reporting (M12)
 ArcGIS FS                                                     ████
 ```
 
@@ -806,15 +806,15 @@ CDC).
 | Auto-refresh par source | 3 | 5 | 1 | 15,0 | quick win |
 | KPI enrichie (delta/seuils, sans backend) | 3 | 5 | 1 | 15,0 | quick win |
 | Storytelling v0 (gabarit galerie) | 3 | 4 | 1 | 12,0 | quick win |
-| Alertes de seuil (SP-15) | 4 | 3 | 3 | 4,0 | 4 |
-| Rapports planifiés PDF (SP-15) | 4 | 3 | 3 | 4,0 | 4 |
-| Exports CSV/XLSX serveur (SP-15, A30) | 4 | 4 | 2 | 8,0 | 3 |
-| Portail/site public (SP-16) | 4 | 3 | 3 | 4,0 | 4 |
+| Alertes de seuil (SP-16) | 4 | 3 | 3 | 4,0 | 4 |
+| Rapports planifiés PDF (SP-16) | 4 | 3 | 3 | 4,0 | 4 |
+| Exports CSV/XLSX serveur (SP-16, A30) | 4 | 4 | 2 | 8,0 | 3 |
+| Portail/site public (SP-13) | 4 | 3 | 3 | 4,0 | 4 |
 | STAC natif + DCAT-AP (SP-12) | 3 | 3 | 3 | 3,0 | 5 |
 | Moissonnage (STAC/ArcGIS FS/WMS-WFS/CSW/CKAN) | 3 | 2 | 4 | 1,5 | 6 |
 | Analyse spatiale no-code (buffer/H3, SP-14) | 4 | 3 | 3 | 4,0 | 4 |
-| 3D Tiles + terrain (SP-13) | 2 | 3 | 3 | 2,0 | 6 |
-| Impression/export mis en page (SP-13) | 3 | 3 | 3 | 3,0 | 5 |
+| 3D Tiles + terrain (SP-17) | 2 | 3 | 3 | 2,0 | 6 |
+| Impression/export mis en page (SP-17) | 3 | 3 | 3 | 3,0 | 5 |
 | Observabilité OTel (SP-10) | 4 | 4 | 2 | 8,0 | **3 (avant trafic public)** |
 | Connecteur ArcGIS Feature Services | 3 | 2 | 3 | 2,0 | 6 |
 | Workflows multi-étapes (BPM) | 2 | 1 | 4 | 0,5 | différé |
@@ -866,12 +866,12 @@ validation présente côté REST).
 **Recommandation : (a)**, domaine personnalisé en v2 du module une fois le
 routage multi-tenant par chemin éprouvé et audité.
 
-#### A34 — Ordre relatif SP-12/SP-13/SP-14/SP-15/SP-16 (⚠ amendement proposé à A27)
+#### A34 — Ordre relatif SP-12/SP-17/SP-14/SP-16/SP-13 (⚠ amendement proposé à A27)
 
 | Option | Avantages | Inconvénients |
 |---|---|---|
-| **(a) SP-14 immédiatement après SP-11, puis SP-16/SP-12/SP-13 en parallèle ou dans un ordre guidé par la demande réelle, SP-15 en dernier** | Démontre la promesse BI dès que le socle analytique existe ; le portail (SP-16) et le catalogue standard (SP-12) sont indépendants entre eux et de SP-14, donc reséquençables sans risque technique | SP-13 (3D/print) retarde d'autant, alors que SP-15 en dépend partiellement — géré en gardant SP-15 dernier |
-| (b) Ordre A27 originel (OTel→Lakehouse→STAC→3D/print→Analytics→Alertes) | Conformité stricte à la décision déjà prise | Retarde la démonstration de la promesse « Analytics Platform » de deux SP complets (SP-12+SP-13) sans raison technique — seulement une raison d'ordre historique |
+| **(a) SP-14 immédiatement après SP-11, puis SP-13/SP-12/SP-17 en parallèle ou dans un ordre guidé par la demande réelle, SP-16 en dernier** | Démontre la promesse BI dès que le socle analytique existe ; le portail (SP-13) et le catalogue standard (SP-12) sont indépendants entre eux et de SP-14, donc reséquençables sans risque technique | SP-17 (3D/print) retarde d'autant, alors que SP-16 en dépend partiellement — géré en gardant SP-16 dernier |
+| (b) Ordre A27 originel (OTel→Lakehouse→STAC→3D/print→Analytics→Alertes) | Conformité stricte à la décision déjà prise | Retarde la démonstration de la promesse « Analytics Platform » de deux SP complets (SP-12+SP-17) sans raison technique — seulement une raison d'ordre historique |
 
 **Recommandation : (a)**, **à valider explicitement par Tanguy** avant le
 lancement du premier des cinq SP concernés (cohérent avec la clause déjà
@@ -879,11 +879,11 @@ posée par Q-A3 : « l'ordre relatif reste à arbitrer avant le lancement du
 premier d'entre eux »). Ce document propose la réponse à Q-A3, il ne la
 tranche pas seul.
 
-#### A35 — Faut-il un SP-16 dédié, ou le portail est-il un sous-lot de SP-9/SP-12 ?
+#### A35 — Faut-il un SP-13 dédié, ou le portail est-il un sous-lot de SP-9/SP-12 ?
 
 | Option | Avantages | Inconvénients |
 |---|---|---|
-| **(a) SP-16 dédié** (comme proposé §8) | Périmètre net, critères d'acceptation propres, évite de diluer SP-9 (déjà en cours) ou SP-12 (déjà chargé de 4-5 connecteurs) | Un SP de plus à la feuille de route (effort estimé L, ~80–130 h par analogie avec SP-4/SP-8) |
+| **(a) SP-13 dédié** (comme proposé §8) | Périmètre net, critères d'acceptation propres, évite de diluer SP-9 (déjà en cours) ou SP-12 (déjà chargé de 4-5 connecteurs) | Un SP de plus à la feuille de route (effort estimé L, ~80–130 h par analogie avec SP-4/SP-8) |
 | (b) Sous-lot de SP-12 (« le catalogue devient aussi un portail ») | Un SP de moins à nommer | SP-12 déjà à risque d'étalement (note du §10 risques de la feuille de route : « 4 connecteurs = risque d'étalement ») — y ajouter un portail entier l'aggrave |
 
 **Recommandation : (a).**
@@ -914,13 +914,13 @@ tranche pas seul.
 3. **Faire trancher Q-A3 maintenant plutôt qu'« au moment venu »** — ce
    document fournit l'analyse (A34) qui manquait pour statuer ; la remettre à
    plus tard coûte de l'incertitude de planification sans bénéfice.
-4. **Ouvrir formellement le chantier Portails & Sites (SP-16)** — c'est
+4. **Ouvrir formellement le chantier Portails & Sites (SP-13)** — c'est
    l'unique brique du périmètre demandé qui n'a **aucun** foyer dans la
    feuille de route actuelle, alors que c'est l'argument commercial le plus
    direct face à ArcGIS Hub/CKAN pour la cible collectivités (persona n° 8).
 5. **Garder le discours produit en deux temps** (déjà décidé en 2026-07-09,
    §9 du brainstorm : « le README v0.1 reste ‘geospatial app builder' ») —
-   étendre ce principe : le README v1 (post-SP-14/16) peut assumer « Analytics
+   étendre ce principe : le README v1 (post-SP-13/14) peut assumer « Analytics
    Platform **et** portail de données », mais seulement une fois les deux
    livrés et démontrables, jamais en promesse anticipée.
 6. **Ne pas reconstruire Superset/ArcGIS Hub en moins bien.** Chaque nouvelle
@@ -942,7 +942,7 @@ tranche pas seul.
    réels dès qu'ils existent, en particulier l'ordre A34 et le périmètre v1
    du portail (A33/A35).
 10. **Continuer le subagent-driven-development avec revue finale de branche**
-    pour les chantiers larges (SP-11, SP-14, SP-16) — c'est la méthode qui a,
+    pour les chantiers larges (SP-11, SP-14, SP-13) — c'est la méthode qui a,
     documenté dans `CLAUDE.md`, trouvé et corrigé les défauts les plus sérieux
     du projet à ce jour (SP-6a, SP-6b, SP-7, SP-8c) ; SP-14 en particulier
     (le plus large de la route selon son propre risque documenté) exige des
@@ -959,8 +959,8 @@ route (§10) et le brainstorm (§9).
 
 | Risque | Gravité | Garde-fou |
 |---|---|---|
-| Le SP-16 (portail) dilue encore la route d'un solo à 10–25 h/sem | ★★★ | Périmètre v1 volontairement étroit (A33 : pas de domaine personnalisé v1, pas de communauté v1) ; critères E2E fermés dès la spec |
-| Le réordonnancement A34 (SP-14 avant SP-12/13) laisse le catalogue standard/3D en jachère plus longtemps que prévu | ★★ | Assumé et documenté ; réversible si Q2 révèle un besoin 3D/catalogue urgent avant BI |
+| Le SP-13 (portail) dilue encore la route d'un solo à 10–25 h/sem | ★★★ | Périmètre v1 volontairement étroit (A33 : pas de domaine personnalisé v1, pas de communauté v1) ; critères E2E fermés dès la spec |
+| Le réordonnancement A34 (SP-14 avant SP-12/17) laisse le catalogue standard/3D en jachère plus longtemps que prévu | ★★ | Assumé et documenté ; réversible si Q2 révèle un besoin 3D/catalogue urgent avant BI |
 | Le copilote IA embarqué déçoit s'il tente de « tout générer » sans fiabilité | ★★ | Périmètre v0 délibérément étroit : micro-actions sur la config en cours d'édition, jamais de génération de dashboard complet à l'aveugle tant que la confiance n'est pas établie |
 | Confusion de tenant par résolution de domaine (portails) | ★★★ (sécurité) | Matrice de test domaine×tenant dédiée avant toute activation, symétrique à la matrice rôle×action de SP-1c ; domaine personnalisé différé en v2 (A33) le temps de la roue durcir |
 | Le portail devient un « réseau social » de la donnée sans modération prévue | ★★ | Discussions/followers explicitement hors périmètre v1 (§3.9) — seulement sur demande réelle et avec un plan de modération explicite |
@@ -976,7 +976,7 @@ route (§10) et le brainstorm (§9).
 
 - `CLAUDE.md` (état d'avancement arrêté au 2026-07-13/14).
 - `docs/vision/2026-07-04-feuille-de-route-geostudio.md` (référence
-  opérationnelle : phasage SP-1→15, arbitrages A1–A30, jalons M1–M12).
+  opérationnelle : phasage SP-1→16, arbitrages A1–A30, jalons M1–M12).
 - `docs/vision/2026-07-09-brainstorm-geostudio-analytics-platform.md`
   (benchmark 11 produits, architecture analytique cible, A28–A30).
 - `docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md` (choix de

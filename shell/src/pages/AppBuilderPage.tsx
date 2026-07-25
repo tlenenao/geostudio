@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
-import { useAppConfig, useSaveApp, useUploadThumbnail } from "../api/hooks";
+import { useAppConfig, useCreateDataset, useSaveApp, useUploadThumbnail } from "../api/hooks";
 import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
+import { DataSourcesEditProvider } from "../builder/DataSourcesEditContext";
 import { PageManager } from "../builder/PageManager";
 import { WidgetPalette } from "../builder/WidgetPalette";
 import { PropsPanel } from "../builder/PropsPanel";
@@ -22,6 +23,7 @@ import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid"
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { Button } from "../ui/button";
+import { useAuth } from "../auth/useAuth";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -31,6 +33,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const thumbnail = useUploadThumbnail(pk);
+  const { username } = useAuth();
+  const createDataset = useCreateDataset();
+  const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -121,6 +126,23 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setSources = (dataSources: typeof draft.dataSources) =>
     setDraft((d) => (d ? { ...d, dataSources } : d));
 
+  async function promoteSource(id: string) {
+    if (!draft) return;
+    const source = draft.dataSources.find((s) => s.id === id);
+    if (!source || !source.layer) return;
+    setPromotingId(id);
+    try {
+      const item = await createDataset.mutateAsync({
+        title: source.layer, owner: username ?? "", collectionId: source.layer,
+      });
+      setSources(draft.dataSources.map((s) => (s.id === id ? { ...s, datasetId: item.pk } : s)));
+    } catch {
+      /* surfaced via createDataset.isError */
+    } finally {
+      setPromotingId(null);
+    }
+  }
+
   const setMessages = (messages: typeof draft.messages) =>
     setDraft((d) => (d ? { ...d, messages } : d));
 
@@ -142,86 +164,89 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const expressionErrors = draft ? getConfigExpressionErrors(draft) : [];
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b p-2">
-        <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
-        <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
-        <div className="ml-2 flex items-center gap-1">
-          {BREAKPOINTS.map((bp) => (
-            <Button
-              key={bp}
-              size="sm"
-              variant={breakpoint === bp ? "default" : "outline"}
-              aria-label={`Éditer en ${bp}`}
-              onClick={() => setBreakpoint(bp)}
-            >
-              {bp}
-            </Button>
-          ))}
+    <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-2 border-b p-2">
+          <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
+          <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+          <div className="ml-2 flex items-center gap-1">
+            {BREAKPOINTS.map((bp) => (
+              <Button
+                key={bp}
+                size="sm"
+                variant={breakpoint === bp ? "default" : "outline"}
+                aria-label={`Éditer en ${bp}`}
+                onClick={() => setBreakpoint(bp)}
+              >
+                {bp}
+              </Button>
+            ))}
+          </div>
+          <div className="flex-1" />
+          <Button size="sm" variant="outline" disabled={thumbnail.isPending} onClick={captureThumbnail}>
+            Capturer une miniature
+          </Button>
+          <Button size="sm" disabled={save.isPending || expressionErrors.length > 0} onClick={() => save.mutate(draft)}>
+            Enregistrer
+          </Button>
+          {expressionErrors.length > 0 && (
+            <span role="alert" aria-label="Erreur de condition d'affichage" className="text-sm text-red-600">
+              {expressionErrors[0]}
+            </span>
+          )}
+          {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
+          {thumbnail.isError && <span role="alert" className="text-sm text-red-600">Échec de la capture.</span>}
         </div>
-        <div className="flex-1" />
-        <Button size="sm" variant="outline" disabled={thumbnail.isPending} onClick={captureThumbnail}>
-          Capturer une miniature
-        </Button>
-        <Button size="sm" disabled={save.isPending || expressionErrors.length > 0} onClick={() => save.mutate(draft)}>
-          Enregistrer
-        </Button>
-        {expressionErrors.length > 0 && (
-          <span role="alert" aria-label="Erreur de condition d'affichage" className="text-sm text-red-600">
-            {expressionErrors[0]}
-          </span>
-        )}
-        {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
-        {thumbnail.isError && <span role="alert" className="text-sm text-red-600">Échec de la capture.</span>}
-      </div>
-      <div className="flex flex-1 overflow-hidden">
-        {mode === "edit" && (
-          <aside className="w-48 overflow-auto border-r p-2">
-            <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
-            <WidgetPalette onAdd={addWidget} />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
-            <PageManager pages={pages} activePageId={activePage} onChange={setPages} onSelectPage={setActivePageId} />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
-            <DataSourcePanel sources={draft.dataSources} onChange={setSources} />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
-            <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
-            <NavigationPanel
-              navigationMode={draft.navigationMode ?? "tabs"}
-              onNavigationModeChange={setNavigationMode}
-              page={pages.find((p) => p.id === activePage) ?? pages[0]}
-              onPageChange={setActivePageOnEnter}
+        <div className="flex flex-1 overflow-hidden">
+          {mode === "edit" && (
+            <aside className="w-48 overflow-auto border-r p-2">
+              <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
+              <WidgetPalette onAdd={addWidget} />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
+              <PageManager pages={pages} activePageId={activePage} onChange={setPages} onSelectPage={setActivePageId} />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
+              <DataSourcePanel sources={draft.dataSources} onChange={setSources} onPromote={promoteSource} promotingId={promotingId} />
+              {createDataset.isError && <p role="alert" className="text-xs text-red-600">Échec de la promotion.</p>}
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
+              <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
+              <NavigationPanel
+                navigationMode={draft.navigationMode ?? "tabs"}
+                onNavigationModeChange={setNavigationMode}
+                page={pages.find((p) => p.id === activePage) ?? pages[0]}
+                onPageChange={setActivePageOnEnter}
+              />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
+              <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
+              <ThemePanel theme={draft.theme} onChange={setTheme} />
+            </aside>
+          )}
+          <main ref={mainRef} className="flex-1 overflow-auto p-2">
+            <AppRenderer
+              config={draft}
+              mode={mode}
+              onChange={setDraft}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              breakpoint={breakpoint}
+              pageId={activePage}
+              onNavigate={setActivePageId}
             />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
-            <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
-            <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
-            <ThemePanel theme={draft.theme} onChange={setTheme} />
-          </aside>
-        )}
-        <main ref={mainRef} className="flex-1 overflow-auto p-2">
-          <AppRenderer
-            config={draft}
-            mode={mode}
-            onChange={setDraft}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            breakpoint={breakpoint}
-            pageId={activePage}
-            onNavigate={setActivePageId}
-          />
-        </main>
-        {mode === "edit" && (
-          <aside className="w-64 overflow-auto border-l p-2">
-            <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
-            <PropsPanel
-              item={selected}
-              dataSources={draft.dataSources}
-              onChange={updateSelectedProps}
-              onVisibleWhenChange={updateSelectedVisibleWhen}
-            />
-          </aside>
-        )}
+          </main>
+          {mode === "edit" && (
+            <aside className="w-64 overflow-auto border-l p-2">
+              <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
+              <PropsPanel
+                item={selected}
+                dataSources={draft.dataSources}
+                onChange={updateSelectedProps}
+                onVisibleWhenChange={updateSelectedVisibleWhen}
+              />
+            </aside>
+          )}
+        </div>
       </div>
-    </div>
+    </DataSourcesEditProvider>
   );
 }

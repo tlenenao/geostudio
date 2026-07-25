@@ -182,7 +182,7 @@ Le script propose d'activer/désactiver des **profils** :
 
 - **Observabilité** (`--profile observability` : Grafana/Loki/Tempo/Prometheus
   + postgres-exporter) — **existe déjà**.
-- **ETL no-code** — **piste future (SP-17, non encore construit)** : l'entrée
+- **ETL no-code** — **piste future (SP-15, non encore construit)** : l'entrée
   figure au menu mais **marquée « à venir » / désactivée** tant que le profil
   n'existe pas dans le repo, plutôt que de mentir à l'utilisateur.
 - **Seed de démo** optionnel (lecture seule) pour un premier tour.
@@ -290,5 +290,5 @@ Chaque critère est **exécuté réellement**, pas asséré :
   managé (étudiés en §6, non construits).
 - Haute disponibilité, réplication multi-nœuds, PITR (pgBackRest / archivage
   WAL) — surdimensionné pour un cercle fermé sur une machine unique.
-- SP-17 (ETL) : seule une entrée « à venir » désactivée dans le menu de
+- SP-15 (ETL) : seule une entrée « à venir » désactivée dans le menu de
   l'installeur, aucun code ETL ici.

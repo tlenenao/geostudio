@@ -1,14 +1,14 @@
-# SP-16b — widgets de contenu (Hero / RichSection / Gallery) : design
+# SP-13b — widgets de contenu (Hero / RichSection / Gallery) : design
 
-> Deuxième sous-phase de **SP-16 « Portails & Sites »** (design macro :
-> [`2026-07-14-sp16-portails-sites-design.md`](2026-07-14-sp16-portails-sites-design.md),
+> Deuxième sous-phase de **SP-13 « Portails & Sites »** (design macro :
+> [`2026-07-14-sp13-portails-sites-design.md`](2026-07-14-sp13-portails-sites-design.md),
 > arbitrages A31/A33/A34/A35/A38 tranchés le 2026-07-14). Découpage a/b/c fixé
 > par le §9 du design macro : **a** = modèle `site`/slug + route publique +
 > résolution shell (livré et clos, cf.
-> [`2026-07-18-sp16a-modele-site-slug-design.md`](2026-07-18-sp16a-modele-site-slug-design.md)) ;
+> [`2026-07-18-sp13a-modele-site-slug-design.md`](2026-07-18-sp13a-modele-site-slug-design.md)) ;
 > **b** = widgets de contenu Hero/RichSection/Gallery (ce document) ; **c** =
-> fiche dataset + téléchargement + template galerie. SP-16 s'exécute après
-> SP-11 (clos), avant SP-12/SP-13 (A34).
+> fiche dataset + téléchargement + template galerie. SP-13 s'exécute après
+> SP-11 (clos), avant SP-12/SP-17 (A34).
 
 ## 1. Objectif
 
@@ -26,7 +26,7 @@ de découverte des items publiés, le tout rendu par le seul runtime
 
 ## 2. Décisions actées pour cette sous-phase
 
-Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter) :
+Rappel des arbitrages hérités du design macro SP-13 (§2, à ne pas rediscuter) :
 
 | # | Décision |
 |---|---|
@@ -34,11 +34,11 @@ Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter
 | A33 | Domaine personnalisé **différé** : v1 accessible via `/sites/{slug}`, pas de résolution par host. Les routes publiques ne servent que le tenant `default`. |
 | A38 | Fonctions communautaires (commentaires/follow/discussions) **hors périmètre**. |
 
-Décisions propres à SP-16b, tranchées au brainstorm du 2026-07-18 :
+Décisions propres à SP-13b, tranchées au brainstorm du 2026-07-18 :
 
 - **Périmètre = Hero + RichSection + Gallery uniquement.** `DatasetCard`/
   `DatasetPage`, le téléchargement multi-format et le template galerie
-  « Portail de données » restent explicitement en SP-16c.
+  « Portail de données » restent explicitement en SP-13c.
 - **RichSection rend du Markdown via `marked` + `DOMPurify`.** CommonMark
   complet, systématiquement assaini avant insertion DOM (le risque XSS est
   assumé et gardé, cf. §6). Deux nouvelles dépendances shell (`marked`,
@@ -66,11 +66,11 @@ Décisions propres à SP-16b, tranchées au brainstorm du 2026-07-18 :
   `GET /public/configs/by-item/{pk}` existant : cible des clics de vignette.
 - `ItemClient.listPublicItems(params)`.
 
-**Hors périmètre (SP-16c ou différé) :**
+**Hors périmètre (SP-13c ou différé) :**
 - `DatasetCard`/`DatasetPage`, aperçu carte/table en lecture seule d'une
-  collection (SP-16c).
-- Téléchargement GeoJSON/CSV (SP-16c).
-- Template galerie « Portail de données » (SP-16c).
+  collection (SP-13c).
+- Téléchargement GeoJSON/CSV (SP-13c).
+- Template galerie « Portail de données » (SP-13c).
 - Filtrage interactif de la galerie côté visiteur (décision §2 : filtre fixé
   par l'auteur).
 - Éditeur Markdown WYSIWYG riche : `RichSection` reste une zone de texte
@@ -241,7 +241,7 @@ Décisions propres à SP-16b, tranchées au brainstorm du 2026-07-18 :
 - **Dérive OpenAPI / types générés** : nouvelle route `GET /public/items` +
   `ItemRead.keywords` imposent de régénérer `core/openapi.json` et
   `shell/src/api/generated/core-schema.d.ts` — le job CI `api-types-drift`
-  échoue sinon (patron récurrent SP-9/SP-10/SP-16a).
+  échoue sinon (patron récurrent SP-9/SP-10/SP-13a).
 - **Nouvelles dépendances shell** (`marked`, `dompurify`, typings associés) :
   vérifier le gate `npm audit` (`shell-deps-audit`, SP-9 sécurité minimale) en
   fin de branche ; les deux paquets sont réputés maintenus, mais l'audit peut

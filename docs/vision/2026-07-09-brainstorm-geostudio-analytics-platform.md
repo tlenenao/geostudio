@@ -3,7 +3,7 @@
 > **Date : 2026-07-09 · Statut : validé** — les cinq questions ouvertes (§10)
 > ont été tranchées par Tanguy le 2026-07-09 et les amendements déclinés le même
 > jour dans la [feuille de route](./2026-07-04-feuille-de-route-geostudio.md) :
-> **SP-14/SP-15, arbitrages A28–A30, amendements A22/A27, jalons M11/M12**. La
+> **SP-14/SP-16, arbitrages A28–A30, amendements A22/A27, jalons M11/M12**. La
 > feuille de route reste LA référence opérationnelle ; ce document en est le
 > matériau de vision (benchmark, architecture cible, personas). Les chantiers
 > passeront chacun par le workflow spec → plan avant toute exécution. Les ⚠ du
@@ -25,7 +25,7 @@
 4. [Architecture fonctionnelle cible](#4-architecture-fonctionnelle-cible)
 5. [Évolution du builder existant](#5-évolution-du-builder)
 6. [Modules fonctionnels proposés](#6-modules-fonctionnels)
-7. [Roadmap : articulation avec SP-1→13](#7-roadmap)
+7. [Roadmap : articulation avec SP-1→17](#7-roadmap)
 8. [Fonctionnalités différenciantes](#8-différenciateurs)
 9. [Risques, garde-fous et critique honnête](#9-risques)
 10. [Nouvelles questions à trancher](#10-questions)
@@ -100,7 +100,7 @@ ainsi, 70 % des fondations d'une plateforme analytique :
 - **SP-3 (collections + introspection de schéma)** : la matière première des
   requêtes visuelles et de la suggestion de visualisations.
 - **SP-6 (jobs procrastinate)** : la planification des rapports et des alertes.
-- **SP-13 (Playwright en worker)** : le rendu PDF/PNG WYSIWYG — le moteur de
+- **SP-17 (Playwright en worker)** : le rendu PDF/PNG WYSIWYG — le moteur de
   reporting.
 - **SP-2/SP-7 (MCP)** : la génération de dashboards par IA, qu'aucun des 11
   concurrents étudiés ne possède nativement.
@@ -242,7 +242,7 @@ sont l'antidote.
 |---|---|---|
 | **Requête sauvegardée = objet partageable** avec planification de rafraîchissement | La plus petite unité analytique utile | Le Dataset a une `refreshPolicy` (à la demande / planifié via procrastinate / continu plus tard) ; résultats matérialisés en cache |
 | **Alertes sur résultat de requête** (seuil → notification) | Decision support minimal viable | Même mécanique que §2.1 alerting — Redash prouve qu'une v1 simple (une condition, un canal email/webhook) suffit largement |
-| **Snapshots de viz embarquables** | Diffusion légère | Rejoint l'embed (SDK WC, SP-8) et l'export image (SP-13) |
+| **Snapshots de viz embarquables** | Diffusion légère | Rejoint l'embed (SDK WC, SP-8) et l'export image (SP-17) |
 
 ### 2.12 Synthèse du benchmark — les 8 concepts à retenir
 
@@ -296,7 +296,7 @@ un seul runtime), différenciés par templates et modes :
 | Outil de supervision | états d'équipements, seuils, historique | Datasets temporels, format conditionnel |
 | Portail métier | pages, navigation, contenus mixtes, droits par groupe | pages, thèmes, partage SP-1c |
 | Application d'analyse spatiale | isochrones, zones tampon, croisements | pipeline spatial DuckDB (§4.3) |
-| Rapport interactif | document paginé exportable PDF, planifiable | PrintLayout SP-13, jobs |
+| Rapport interactif | document paginé exportable PDF, planifiable | PrintLayout SP-17, jobs |
 | Data story | narration scrollée, états analytiques figés, carte animée | pages séquencées, bookmarks d'état |
 | App low-code/no-code métier | formulaires + CRUD + logique CEL | SP-4/SP-5 |
 
@@ -463,7 +463,7 @@ du cran 1 : les alertes évaluées en job (§4.6) fonctionnent dès le cran 0.
 
 Assemblage de briques déjà arbitrées + deux objets nouveaux :
 
-- **Génération PDF** : SP-13 (Playwright worker + `PrintLayout` déclaratif) —
+- **Génération PDF** : SP-17 (Playwright worker + `PrintLayout` déclaratif) —
   étendu des cartes aux dashboards paginés (en-tête/pied, sauts de page par
   section, table des matières). Le rendu WYSIWYG du vrai runtime est un
   avantage décisif sur les moteurs de template.
@@ -630,7 +630,7 @@ chantiers shell :
 | `datasets` | core | CRUD datasets partagés, schéma inféré, métriques, refreshPolicy, matérialisation | items, collections (SP-3), analytics |
 | `analytics` | core | API structurée (pipeline→plan→DuckDB/PostGIS), SQL read-only analyste, exports CSV/xlsx, downsampling | **SP-11/A19** (c'est son extension directe) |
 | `alerts` | core | AlertRule, évaluation en jobs, canaux email/webhook, journal | procrastinate (A5), analytics |
-| `reports` | core | ReportSchedule, orchestration du worker Playwright, dépôt S3, envoi | SP-13, procrastinate |
+| `reports` | core | ReportSchedule, orchestration du worker Playwright, dépôt S3, envoi | SP-17, procrastinate |
 | `connectors` | core | sources http/arcgis (référencement + copie), auth, cache | SP-6 (ingestion), SP-12 (moissonnage) |
 | `realtime` (différé) | core | ingestion MQTT/HTTP, SSE, couches live | Q10, vision §7 palier 0 |
 | Builder analytics UX | shell | datasets UI, requête visuelle, contexte global, cross-filter, bindings CEL, bookmarks | SP-5 (CEL), SP-3 (schémas) |
@@ -672,10 +672,10 @@ puis OTel→Lakehouse→STAC→3D/print). L'analytics s'insère en trois vagues 
   d'incidents à moins de 500 m d'une école, par commune, ce trimestre ? ») sans
   code ni SQL.
 
-### Vague 2 — decision support (SP-15, ~50–80 h)
+### Vague 2 — decision support (SP-16, ~50–80 h)
 
-- **SP-15 — Alertes & reporting** : AlertRule (jobs), ReportSchedule,
-  exports Excel/CSV serveur, PDF de dashboards paginés (extension SP-13),
+- **SP-16 — Alertes & reporting** : AlertRule (jobs), ReportSchedule,
+  exports Excel/CSV serveur, PDF de dashboards paginés (extension SP-17),
   bookmarks/situations partagées, diffusion email/webhook. Jalon **M12
   « la plateforme prévient »** : un rapport hebdo arrive par email ; une alerte
   de seuil se déclenche en < 5 min.
@@ -690,8 +690,8 @@ puis OTel→Lakehouse→STAC→3D/print). L'analytics s'insère en trois vagues 
   (A17/A18), triggers documentés en §9 de la feuille de route.
 
 Positionnement temporel : les vagues 1–2 s'insèrent **après SP-11** dans l'ordre
-A27, avant ou en parallèle de SP-12/SP-13 selon Q2 (SP-13 print est un
-prérequis partiel de SP-15 → suggérer l'ordre SP-11 → SP-14 → SP-13 → SP-15 →
+A27, avant ou en parallèle de SP-12/SP-17 selon Q2 (SP-17 print est un
+prérequis partiel de SP-16 → suggérer l'ordre SP-11 → SP-14 → SP-17 → SP-16 →
 SP-12 si l'analytics devient prioritaire — ⚠ ce réordonnancement amenderait A27
 et sera tranché au moment venu, pas ici).
 
@@ -701,9 +701,9 @@ et sera tranché au moment venu, pas ici).
 |---|---|---|---|
 | 1 | SP-5 : bindings CEL généralisés + variables typées explicitement au périmètre | spec SP-5 (pas d'arbitrage changé) | ✅ acté — périmètre SP-5 étendu dans la feuille de route |
 | 2 | SP-11 : datasets partagés au périmètre (ou SP-14 immédiat) | feuille de route §6 | ✅ acté — rattachés à **SP-14** (SP-11 inchangé) ; arbitrage **A28** |
-| 3 | Nouveaux SP-14 (Analytics UX) et SP-15 (Alertes & reporting), jalons M11/M12 | feuille de route §6/§11 | ✅ actés (sections SP-14/SP-15, jalons M11/M12) |
+| 3 | Nouveaux SP-14 (Analytics UX) et SP-16 (Alertes & reporting), jalons M11/M12 | feuille de route §6/§11 | ✅ actés (sections SP-14/SP-16, jalons M11/M12) |
 | 4 | A22 : ArcGIS Feature Services en 5ᵉ connecteur (sur déclencheur) | feuille de route §8 | ✅ acté **dès maintenant** (Q-A4), inséré en **2ᵉ position** après STAC |
-| 5 | A27 : ordre relatif SP-12/13/14/15 à retrancher après SP-11 | feuille de route §8 | ⏳ volontairement laissé ouvert (Q-A3) — à arbitrer avant le lancement du premier de ces SP |
+| 5 | A27 : ordre relatif SP-12/14/16/17 à retrancher après SP-11 | feuille de route §8 | ⏳ volontairement laissé ouvert (Q-A3) — à arbitrer avant le lancement du premier de ces SP |
 
 ### Coût honnête
 
@@ -782,14 +782,14 @@ Tranchées par Tanguy le **2026-07-09** :
 - **Q-A2 — Emprise dans le contexte global** : **opt-in par dataset** par
   défaut, avec possibilité d'activer le refetch à chaque déplacement de carte
   dans la config — arbitrage **A29**.
-- **Q-A3 — Priorité SP-14/SP-15 vs SP-12/SP-13** : **à arbitrer plus tard**,
+- **Q-A3 — Priorité SP-14/SP-16 vs SP-12/SP-17** : **à arbitrer plus tard**,
   avant le lancement du premier de ces SP (A27 amendé en ce sens) ; dépend de
   Q2 (premiers utilisateurs réels).
 - **Q-A4 — Connecteur ArcGIS Feature Services** : **dès maintenant** — A22
   amendé (5 connecteurs), inséré en **2ᵉ position** : STAC → **ArcGIS FS** →
   GetCapabilities → CSW/ISO → CKAN ; le référencement comme source de dataset
   arrive dès SP-14.
-- **Q-A5 — Excel** : **export sec** (CSV/XLSX) en SP-15, gabarits différés —
+- **Q-A5 — Excel** : **export sec** (CSV/XLSX) en SP-16, gabarits différés —
   arbitrage **A30**.
 
 ---
@@ -798,7 +798,7 @@ Tranchées par Tanguy le **2026-07-09** :
 feuille de route 2026-07-04 (arbitrages A1–A27 respectés), du comparatif §9, de
 la vision long terme, et de l'inventaire du code du builder
 (`shell/src/builder/`). Validé le 2026-07-09 (réponses Q-A1→Q-A5, §10) et
-décliné le même jour dans la feuille de route (SP-14/SP-15, arbitrages A28–A30,
+décliné le même jour dans la feuille de route (SP-14/SP-16, arbitrages A28–A30,
 amendements A22/A27, jalons M11/M12). Les specs SP dédiées viendront au moment
 de lancer chaque chantier — rien de tout ceci n'interfère avec SP-2 (MCP v0),
 le prochain chantier.*

@@ -318,6 +318,95 @@ test("saveMapConfig PUTs the map config by item", async () => {
   expect(body.map.view.zoom).toBe(3);
 });
 
+test("createDatasetItem posts a dataset payload and returns a dataset Item", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-ds1", kind: "dataset", itemId: "ds-1" }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createDatasetItem({ title: "Parcs", owner: "alice", collectionId: "parcs" });
+  expect(body.config.kind).toBe("dataset");
+  expect(body.config.dataset).toEqual({ source: "collection", collectionId: "parcs", columns: {} });
+  expect(item).toMatchObject({ pk: "ds-1", resourceType: "dataset", title: "Parcs", configId: "cfg-ds1" });
+});
+
+test("getDatasetConfig reads the dataset payload from the by-item config", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-2", () =>
+      HttpResponse.json({
+        id: "cfg-ds2", itemId: "ds-2", kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } } },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getDatasetConfig("ds-2");
+  expect(cfg).toEqual({ source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } } });
+});
+
+test("getDatasetConfig throws when the config has no dataset payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-3", () =>
+      HttpResponse.json({ id: "cfg-ds3", itemId: "ds-3", kind: "app", config: { kind: "app" } }),
+    ),
+  );
+  await expect(makeClient().getDatasetConfig("ds-3")).rejects.toThrow();
+});
+
+test("saveDatasetConfig PUTs the dataset config by item", async () => {
+  let method = ""; let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/ds-4", async ({ request }) => {
+      method = request.method; body = await request.json();
+      return HttpResponse.json({ id: "cfg-ds4", itemId: "ds-4", kind: "dataset", dataset: body.dataset });
+    }),
+  );
+  await makeClient().saveDatasetConfig("ds-4", { source: "collection", collectionId: "parcs", columns: {} });
+  expect(method).toBe("PUT");
+  expect(body.kind).toBe("dataset");
+  expect(body.dataset.collectionId).toBe("parcs");
+});
+
+test("featuresUrl resolves datasetId to the dataset's collectionId once cached", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-5", () =>
+      HttpResponse.json({
+        id: "cfg-ds5", itemId: "ds-5", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+      }),
+    ),
+  );
+  const client = makeClient();
+  // Cache-miss: falls back to source.layer (empty) until something warms the cache.
+  expect(client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-5", query: {} }))
+    .toBe("https://core.test/collections//items");
+  await client.getDatasetConfig("ds-5"); // warms the cache
+  expect(client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-5", query: {} }))
+    .toBe("https://core.test/collections/parcs/items");
+});
+
+test("queryDataSource resolves datasetId to the dataset's collectionId before fetching features", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-6", () =>
+      HttpResponse.json({
+        id: "cfg-ds6", itemId: "ds-6", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+      }),
+    ),
+    http.get("https://core.test/collections/parcs/items", () =>
+      HttpResponse.json({ features: [{ id: 1, properties: { nom: "Le Parc" } }] }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-6", query: {},
+  });
+  expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
+});
+
 test("getAppConfig reads the app config (kind/theme/layout)", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/5", () =>

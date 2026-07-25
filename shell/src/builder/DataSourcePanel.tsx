@@ -9,9 +9,13 @@ const selectCls = "h-8 w-full rounded border border-slate-300 text-xs";
 export function DataSourcePanel({
   sources,
   onChange,
+  onPromote,
+  promotingId,
 }: {
   sources: DataSource[];
   onChange: (sources: DataSource[]) => void;
+  onPromote?: (id: string) => void;
+  promotingId?: string | null;
 }) {
   function add() {
     onChange([
@@ -54,6 +58,18 @@ export function DataSourcePanel({
               <input aria-label={`Collection de la source ${s.id}`} placeholder="collection"
                 className={`mt-1 ${inputCls}`}
                 value={s.layer} onChange={(e) => patch(s.id, { layer: e.target.value })} />
+            )}
+            {s.type === "features" && onPromote && (
+              s.datasetId ? (
+                <p className="mt-1 text-xs text-emerald-700">Dataset partagé actif</p>
+              ) : (
+                <button type="button" aria-label={`Promouvoir en dataset partagé ${s.id}`}
+                  className="mt-1 rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100 disabled:opacity-50"
+                  disabled={!s.layer || promotingId === s.id}
+                  onClick={() => onPromote(s.id)}>
+                  {promotingId === s.id ? "Promotion…" : "Promouvoir en dataset partagé"}
+                </button>
+              )
             )}
             {s.type === "statistics" && (
               <div className="mt-1 flex flex-col gap-1">

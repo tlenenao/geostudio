@@ -15,7 +15,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Documents de référence (ordre d'autorité)
 
 1. **`docs/vision/2026-07-04-feuille-de-route-geostudio.md`** — LA référence :
-   phasage SP-1→SP-15, périmètre exact du remplacement de GeoNode (= l'interface
+   phasage SP-1→SP-17, périmètre exact du remplacement de GeoNode (= l'interface
    `ItemClient`), modèle de données du cœur v0, **30 arbitrages tranchés (§8)**,
    jalons M1–M12. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
    on met à jour ce document explicitement.
@@ -24,7 +24,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 3. `docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md` — vision
    long terme.
 4. `docs/vision/2026-07-09-brainstorm-geostudio-analytics-platform.md` — vision
-   analytics/BI/decision support (validée, déclinée en SP-14/SP-15 et A28–A30) :
+   analytics/BI/decision support (validée, déclinée en SP-14/SP-16 et A28–A30) :
    benchmark, architecture Datasets→Widgets, personas.
 5. `docs/superpowers/specs/` + `plans/` — chaque SP a sa spec puis son plan datés.
 6. `docs/archive/` — générations dépassées ; ne pas s'en inspirer sans lire la
@@ -49,8 +49,8 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - MCP : module du cœur, même process, permissions de l'utilisateur, audité.
 - GeoNode/Superset/Redis : **sortis (jalon M1, 2026-07-09)** — retirés du
   compose et du code ; tout code de contenu passe par le cœur.
-- Post-v0.1 (SP-10→15 ; A27 amendé : OTel puis Lakehouse, ordre SP-12→15
-  ensuite à arbitrer avant leur lancement) : observabilité **OTel + profil
+- Post-v0.1 (SP-10/SP-11/SP-12/SP-14/SP-16/SP-17 ; A27 amendé : OTel puis Lakehouse, ordre
+  SP-12/SP-14/SP-16/SP-17 ensuite à arbitrer avant leur lancement) : observabilité **OTel + profil
   `grafana/otel-lgtm`** ; lakehouse **CDC par réplication logique (worker
   maison) → GeoParquet plat** (Iceberg différé), **DuckDB côté serveur** (API
   structurée pour les widgets, SQL read-only réservé aux analystes) ; **STAC
@@ -61,7 +61,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - Analytics (brainstorm 2026-07-09 validé) : **datasets = objets de plateforme**
   (nouveau type d'item, pipeline déclaratif + métriques CEL, A28) — SP-14
   Analytics UX (requête visuelle, contexte global temps×emprise — emprise
-  opt-in par dataset, A29 —, cross-filter, SQL Lab) et SP-15 alertes & rapports
+  opt-in par dataset, A29 —, cross-filter, SQL Lab) et SP-16 alertes & rapports
   planifiés (exports secs CSV/XLSX, A30) ; bindings CEL généralisés + variables
   typées entrent au périmètre SP-5.
 
@@ -145,9 +145,6 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   SQL analyste read-only sandboxé (`POST /analytics/sql`).
 - **Storytelling** — mode narratif `story` sur `PageManager` (chapitres +
   `onEnter`/`map.flyTo`, barre de progression).
-- **SP-16** (a+b+c) — Portails & Sites : modèle site/slug + route publique
-  `/sites/{slug}`, widgets de contenu (Hero/RichSection/Gallery), fiche dataset
-  + téléchargement + template galerie. **Jalon M13**.
 - **SP-12** (a→g) — fédération STAC/DCAT : API STAC native (lecture seule),
   export DCAT-AP (JSON-LD), moteur de moissonnage + connecteur STAC externe,
   connecteur ArcGIS FS + garde d'egress SSRF, connecteurs GetCapabilities
@@ -156,14 +153,17 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   parser XML tolérant partagé avec WMS/WFS/WMTS), connecteur CKAN/data.gouv.fr
   (copie opt-in, `package_search` paginé). **A22 complet (les cinq
   connecteurs)**.
+- **SP-13** (a+b+c) — Portails & Sites : modèle site/slug + route publique
+  `/sites/{slug}`, widgets de contenu (Hero/RichSection/Gallery), fiche dataset
+  + téléchargement + template galerie. **Jalon M13**.
 
 ### À venir
 
-- **SP-13** — reste à cadrer (cf. feuille de route SP-1→SP-15, ordre SP-12→15 à
-  arbitrer avant lancement).
 - **SP-14** — Analytics UX (requête visuelle, contexte global temps×emprise,
   cross-filter, SQL Lab). Jalon M11.
-- **SP-15** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
+- **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
+- **SP-17** — reste à cadrer (cf. feuille de route SP-1→SP-17, ordre
+  SP-12/SP-14/SP-16/SP-17 à arbitrer avant lancement).
 - Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem),
   impression (Playwright en worker).
 
@@ -177,5 +177,5 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   stampée) — réparation non destructive hors périmètre.
 - Questions produit ouvertes : Q2 (premiers utilisateurs réels), Q10 (temps
   réel), Q11 (offline) — cf. comparatif §8. Seule Q2 peut réordonner SP-3/SP-6.
-- Brainstorm Analytics Platform (2026-07-09) validé et décliné en SP-14/SP-15,
+- Brainstorm Analytics Platform (2026-07-09) validé et décliné en SP-14/SP-16,
   arbitrages A28–A30, jalons M11/M12.

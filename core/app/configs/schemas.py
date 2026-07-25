@@ -85,12 +85,25 @@ class MapConfig(BaseModel):
     layers: list[MapLayer] = Field(default_factory=list)
 
 
+class DatasetColumnMeta(BaseModel):
+    label: str | None = None
+    description: str | None = None
+    format: str | None = None  # libre (ex. "currency", "percent", "date"),
+                                 # interprété côté widget consommateur
+
+
+class DatasetPayload(BaseModel):
+    source: Literal["collection"]  # seul type supporté en SP-14a
+    collectionId: str
+    columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -99,6 +112,7 @@ class BuilderConfig(BaseModel):
     navigationMode: Literal["tabs", "story"] = "tabs"
     variables: list[Variable] = Field(default_factory=list)
     map: MapConfig | None = None
+    dataset: DatasetPayload | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
@@ -106,4 +120,6 @@ class BuilderConfig(BaseModel):
             raise ValueError(f"{self.kind} config requires a layout")
         if self.kind == "map" and self.map is None:
             raise ValueError("map config requires a map")
+        if self.kind == "dataset" and self.dataset is None:
+            raise ValueError("dataset config requires a dataset payload")
         return self
