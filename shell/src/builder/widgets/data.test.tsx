@@ -8,6 +8,7 @@ import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import { DataProvider, useDataStates } from "../DataContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import type { ReactElement } from "react";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
 
@@ -186,10 +187,20 @@ test("a calculated column header has no sort button", () => {
   expect(screen.getByText("Calc")).toBeInTheDocument();
 });
 
+function renderWithItemClient(ui: ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = {} as unknown as ItemClient;
+  return render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>{ui}</ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
 test("table PropsPanel adds a calculated column without disturbing existing plain columns", async () => {
   const Table = getWidget("table")!;
   const onChange = vi.fn();
-  render(<Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />);
+  renderWithItemClient(<Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une colonne calculée" }));
   expect(onChange).toHaveBeenCalledWith({ columns: ["nom", { label: "Nouvelle colonne", expr: "" }] });
 });
@@ -198,10 +209,16 @@ test("table PropsPanel edits a calculated column's label and expression", async 
   const Table = getWidget("table")!;
   const onChange = vi.fn();
   const props = { columns: ["nom", { label: "Nouvelle colonne", expr: "" }] };
-  const { rerender } = render(<Table.PropsPanel props={props} onChange={onChange} dataSources={[]} />);
+  const { rerender } = renderWithItemClient(<Table.PropsPanel props={props} onChange={onChange} dataSources={[]} />);
   await userEvent.type(screen.getByLabelText(/Libellé de la colonne calculée/), "!");
   const afterLabel = onChange.mock.calls.at(-1)![0];
-  rerender(<Table.PropsPanel props={afterLabel} onChange={onChange} dataSources={[]} />);
+  rerender(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Table.PropsPanel props={afterLabel} onChange={onChange} dataSources={[]} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
   await userEvent.type(screen.getByLabelText(/Expression de la colonne calculée/), "1");
   const afterExpr = onChange.mock.calls.at(-1)![0];
   expect(afterExpr.columns[0]).toBe("nom"); // colonne texte inchangée
