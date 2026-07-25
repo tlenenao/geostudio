@@ -105,7 +105,7 @@ export const MapView = forwardRef<
   MapViewHandle,
   {
     config: MapConfig;
-    onViewChange?: (v: { center: [number, number]; zoom: number }) => void;
+    onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number] }) => void;
     onFeatureClick?: (record: DataRecord) => void;
   }
 >(function MapView({ config, onViewChange, onFeatureClick }, ref) {
@@ -151,7 +151,8 @@ export const MapView = forwardRef<
       const cb = onViewChangeRef.current;
       if (!cb) return;
       const c = map.getCenter();
-      cb({ center: [c.lng, c.lat], zoom: map.getZoom() });
+      const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
+      cb({ center: [c.lng, c.lat], zoom: map.getZoom(), bbox: bounds });
     });
     return () => {
       map.removeControl(overlay);
