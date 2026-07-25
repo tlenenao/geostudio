@@ -8,6 +8,7 @@ import { AppRuntimePage } from "../pages/AppRuntimePage";
 import { SitePublicPage } from "../pages/SitePublicPage";
 import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
+import { DatasetEditPage } from "../pages/DatasetEditPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
@@ -19,7 +20,7 @@ function CatalogRoute() {
   return (
     <CatalogPage
       onOpenItem={(pk, type) =>
-        navigate(type === "map" ? `/maps/${pk}` : `/apps/${pk}/edit`)
+        navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`)
       }
     />
   );
@@ -32,7 +33,7 @@ function ItemDetailRoute() {
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) => navigate(type === "map" ? `/maps/${pk}` : `/apps/${pk}/edit`)}
+      onOpenEditor={(type) => navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`)}
     />
   );
 }
@@ -45,6 +46,11 @@ function MapEditorRoute() {
 function AppBuilderRoute() {
   const { pk } = useParams();
   return <AppBuilderPage pk={pk!} />;
+}
+
+function DatasetEditRoute() {
+  const { pk } = useParams();
+  return <DatasetEditPage pk={pk!} />;
 }
 
 function AppRuntimeRoute() {
@@ -85,6 +91,7 @@ export function AppRoutes() {
         <Route path="/items/:pk" element={<ItemDetailRoute />} />
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
+        <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
