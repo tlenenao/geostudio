@@ -65,10 +65,10 @@ prompt_profiles() {
     fi
   done <<< "$available"
 
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # ETL (SP-15) : toujours affiché, jamais activable tant qu'absent du
   # dépôt — ne ment pas à l'utilisateur (spec §5.2).
   if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
+    echo "  (ETL no-code (SP-15) — à venir, pas encore disponible dans ce dépôt)"
   fi
 
   echo ""
@@ -118,10 +118,10 @@ prompt_profiles() {
     done <<< "$available"
   fi
 
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # ETL (SP-15) : toujours affiché, jamais activable tant qu'absent du
   # dépôt — ne ment pas à l'utilisateur (spec §5.2).
   if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
+    echo "  (ETL no-code (SP-15) — à venir, pas encore disponible dans ce dépôt)"
   fi
 
   echo ""

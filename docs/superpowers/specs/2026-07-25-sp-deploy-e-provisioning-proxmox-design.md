@@ -187,7 +187,7 @@ Exécutée réellement sur le Proxmox du mainteneur, pas assérée :
   seul nœud, cohérent avec D3 de la spec-mère (machine personnelle).
 - Tout ce qui est déjà hors périmètre de la spec-mère SP-Deploy (§9) :
   inscription publique, YunoHost/Coolify/CasaOS/boutons cloud/managé, code
-  ETL SP-17.
+  ETL SP-15.
 - Modifier le comportement interactif **par défaut** d'`install.sh` — seule
   une extension rétrocompatible (§5), jamais un changement de comportement
   quand aucune variable d'environnement n'est fournie.

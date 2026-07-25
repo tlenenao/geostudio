@@ -139,9 +139,9 @@ objet vide, valide STAC), `links` (self, parent→collection, collection, root).
 ## 6. Permissions & visibilité (non négociable — réutilise l'existant)
 
 - Portée de listing/search = `list_visible_collections(...)` ; collection unique
-  + items = le chemin `get_readable_collection(...)` déjà éprouvé (SP-16b/c).
+  + items = le chemin `get_readable_collection(...)` déjà éprouvé (SP-13b/c).
 - **Anonyme → tenant `default` + publié/public seulement.** Collection non
-  lisible → **404 non-fuyant** (convention SP-16, pas de fuite d'existence).
+  lisible → **404 non-fuyant** (convention SP-13, pas de fuite d'existence).
 - Les lignes de features restent sous `rls_scope` (rôle `gis_rls` + GUC tenant,
   SP-3b) : les requêtes d'items STAC tournent sous la même portée.
 - **Test adversarial dédié** : anonyme ne voit que le public, aucune fuite

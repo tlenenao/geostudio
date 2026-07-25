@@ -1,8 +1,8 @@
-# SP-16 — Portails & Sites : design
+# SP-13 — Portails & Sites : design
 
 > Chantier dédié (arbitrage **A35**, tranché le 2026-07-14 —
 > [gap analysis dataviz/analytics](../../vision/geostudio-dataviz-analytics-gap-analysis.md)
-> §3.9/§7.3/§9.2, validé par Tanguy). S'exécute **après SP-11, avant SP-12/SP-13**
+> §3.9/§7.3/§9.2, validé par Tanguy). S'exécute **après SP-11, avant SP-12/SP-17**
 > (A34) ; son ordre relatif à SP-14 est libre (chantiers mutuellement
 > indépendants). Dépend uniquement de SP-11 au sens large (aucune dépendance
 > technique dure — un portail v1 fonctionne déjà avec les seuls items publiés
@@ -34,7 +34,7 @@ la feuille de route) :
 |---|---|---|
 | A31 | Modèle de config du portail | **Sous-gabarit d'`AppConfig`** — un seul runtime `AppRenderer`, pas de deuxième moteur |
 | A33 | Domaine personnalisé | **Différé** — v1 accessible via `/sites/{slug}`, pas de domaine tiers |
-| A34/A35 | Structure et séquencement | **SP dédié (SP-16)**, exécuté après SP-11, avant SP-12/SP-13 |
+| A34/A35 | Structure et séquencement | **SP dédié (SP-13)**, exécuté après SP-11, avant SP-12/SP-17 |
 | A38 | Fonctions communautaires | **Différées** (commentaires, follow, discussions) — hors périmètre v1 |
 
 ## 3. Périmètre
@@ -70,7 +70,7 @@ la feuille de route) :
     l'aperçu — borne explicite de volumétrie (message clair au-delà d'un
     seuil, pas de blocage silencieux ni de timeout navigateur).
   - **Assumé et documenté** : pas d'export DCAT-AP/STAC (attend SP-12), pas
-    d'export serveur pour gros volumes (attend SP-15) — le portail v1 sert la
+    d'export serveur pour gros volumes (attend SP-16) — le portail v1 sert la
     découverte et le petit volume, pas le catalogue interopérable complet.
 - Gestion : le catalogue existant (création/édition/partage/publication)
   gère un item `site` comme n'importe quel autre item ; seule la création
@@ -83,7 +83,7 @@ la feuille de route) :
 - Métriques d'usage (vues, téléchargements) — extension naturelle
   d'`audit_log` déjà append-only, mais pas dans ce SP.
 - Export DCAT-AP/STAC des fiches dataset (SP-12).
-- Export CSV/XLSX serveur pour gros volumes (SP-15).
+- Export CSV/XLSX serveur pour gros volumes (SP-16).
 - Éditeur de contenu riche façon CMS (blocs avancés, mise en page libre) —
   `RichSection` reste un bloc markdown simple en v1.
 
@@ -200,7 +200,7 @@ la feuille de route) :
 |---|---|---|
 | Confusion de tenant par résolution de slug | ★★★ (sécurité) | Test d'isolation tenant×slug dédié avant toute activation |
 | Dérive vers un CMS complet (`RichSection` qui enfle) | ★★ | Périmètre fermé explicitement dès la spec : un bloc markdown simple, pas d'éditeur riche façon Wordpress |
-| Téléchargement CSV client-side dégradé sur gros volumes | ★ (assumé) | Borne explicite + message clair ; levé naturellement par SP-15 (export serveur) |
+| Téléchargement CSV client-side dégradé sur gros volumes | ★ (assumé) | Borne explicite + message clair ; levé naturellement par SP-16 (export serveur) |
 | Le chantier dilue encore la route d'un solo à 10–25 h/sem | ★★ | Périmètre v1 volontairement étroit (A33/A38) ; sous-phases livrables à la rédaction du plan, sur le modèle SP-4/SP-8 |
 
 ## 9. Estimation

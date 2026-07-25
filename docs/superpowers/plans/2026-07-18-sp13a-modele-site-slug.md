@@ -1,10 +1,10 @@
-# SP-16a — modèle `site`/slug + route publique + résolution shell : plan d'implémentation
+# SP-13a — modèle `site`/slug + route publique + résolution shell : plan d'implémentation
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Permettre à un admin de créer un item de type `site` (slug auto-généré, éditable), de le publier, et à un visiteur anonyme de le consulter à `/sites/{slug}` qui rend `AppRenderer(config, "runtime")` — première sous-phase de SP-16 « Portails & Sites ».
+**Goal:** Permettre à un admin de créer un item de type `site` (slug auto-généré, éditable), de le publier, et à un visiteur anonyme de le consulter à `/sites/{slug}` qui rend `AppRenderer(config, "runtime")` — première sous-phase de SP-13 « Portails & Sites ».
 
-**Architecture:** Extension du module `items` existant (aucun nouveau module cœur) : colonne `items.slug` + unicité partielle par tenant, helpers de slug purs, route publique `GET /public/sites/{slug}` miroir de `GET /public/items/{id}`. Shell : premières méthodes `/public/*` de l'`itemClient` (`getItemBySlug`, `getPublicAppConfig`), route publique `/sites/:slug` hors `ProtectedLayout`, type « Site » dans `NewItemButton`. Aucun widget de contenu (SP-16b/c).
+**Architecture:** Extension du module `items` existant (aucun nouveau module cœur) : colonne `items.slug` + unicité partielle par tenant, helpers de slug purs, route publique `GET /public/sites/{slug}` miroir de `GET /public/items/{id}`. Shell : premières méthodes `/public/*` de l'`itemClient` (`getItemBySlug`, `getPublicAppConfig`), route publique `/sites/:slug` hors `ProtectedLayout`, type « Site » dans `NewItemButton`. Aucun widget de contenu (SP-13b/c).
 
 **Tech Stack:** Python 3 / FastAPI / SQLAlchemy / Alembic / pytest (cœur) ; React / TypeScript / react-query / Vitest / Playwright (shell).
 
@@ -177,7 +177,7 @@ Expected: PASS.
 
 ```bash
 git add core/app/items/slug.py core/tests/items/test_slug.py
-git commit -m "feat(core): helpers de slug purs (slugify, is_valid_slug, exceptions) — SP-16a"
+git commit -m "feat(core): helpers de slug purs (slugify, is_valid_slug, exceptions) — SP-13a"
 ```
 
 ---
@@ -380,7 +380,7 @@ Expected: aucune erreur (upgrade + downgrade + upgrade idempotents).
 
 ```bash
 git add core/alembic/versions/0015_items_slug.py core/app/items/models.py core/app/items/repository.py core/tests/items/test_slug_repository.py
-git commit -m "feat(core): items.slug + unicité partielle par tenant, génération à la création d'un site — SP-16a"
+git commit -m "feat(core): items.slug + unicité partielle par tenant, génération à la création d'un site — SP-13a"
 ```
 
 ---
@@ -519,7 +519,7 @@ Expected: PASS (aucune régression sur les créations app/dashboard/map existant
 
 ```bash
 git add core/app/configs/schemas.py core/app/configs/routes.py core/app/items/schemas.py core/app/items/repository.py core/tests/configs/test_create_site.py
-git commit -m "feat(core): créer un item type site via POST /configs (kind=site, slug), ItemRead.slug — SP-16a"
+git commit -m "feat(core): créer un item type site via POST /configs (kind=site, slug), ItemRead.slug — SP-13a"
 ```
 
 ---
@@ -634,7 +634,7 @@ Expected: PASS (4 tests).
 
 ```bash
 git add core/app/items/schemas.py core/app/items/repository.py core/app/items/routes.py core/tests/items/test_patch_slug.py
-git commit -m "feat(core): éditer le slug via PATCH /items (422 format, 409 collision) — SP-16a"
+git commit -m "feat(core): éditer le slug via PATCH /items (422 format, 409 collision) — SP-13a"
 ```
 
 ---
@@ -749,7 +749,7 @@ Expected: PASS (aucune régression) ; avec `CORE_TEST_DATABASE_URL` les tests `p
 
 ```bash
 git add core/app/public/routes.py core/app/items/repository.py core/tests/public/test_public_sites.py
-git commit -m "feat(core): GET /public/sites/{slug} (404 jamais 403, tenant default, isolation) — SP-16a"
+git commit -m "feat(core): GET /public/sites/{slug} (404 jamais 403, tenant default, isolation) — SP-13a"
 ```
 
 ---
@@ -914,7 +914,7 @@ Expected: PASS.
 
 ```bash
 git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
-git commit -m "feat(shell): types site/slug + getItemBySlug/getPublicAppConfig, slug dans createConfigItem — SP-16a"
+git commit -m "feat(shell): types site/slug + getItemBySlug/getPublicAppConfig, slug dans createConfigItem — SP-13a"
 ```
 
 ---
@@ -986,7 +986,7 @@ Expected: FAIL (modules absents).
 ```ts
 // SPDX-License-Identifier: Apache-2.0
 // Miroir client du slugify serveur (core/app/items/slug.py) — écho documenté,
-// PAS une frontière : le serveur reste l'autorité (409/422). Voir SP-16a.
+// PAS une frontière : le serveur reste l'autorité (409/422). Voir SP-13a.
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_LEN = 100;
 
@@ -1072,7 +1072,7 @@ Expected: PASS.
 
 ```bash
 git add shell/src/lib/slug.ts shell/src/lib/slug.test.ts shell/src/pages/SitePublicPage.tsx shell/src/pages/SitePublicPage.test.tsx shell/src/shell/routes.tsx
-git commit -m "feat(shell): slugify client + page publique /sites/:slug (AppRenderer runtime) — SP-16a"
+git commit -m "feat(shell): slugify client + page publique /sites/:slug (AppRenderer runtime) — SP-13a"
 ```
 
 ---
@@ -1167,7 +1167,7 @@ Expected: PASS (aucune erreur de type — unions élargies cohérentes).
 
 ```bash
 git add shell/src/shell/NewItemButton.tsx shell/src/shell/NewItemButton.test.tsx shell/src/api/hooks.ts
-git commit -m "feat(shell): type Site dans NewItemButton (slug auto-généré, éditable, validé) — SP-16a"
+git commit -m "feat(shell): type Site dans NewItemButton (slug auto-généré, éditable, validé) — SP-13a"
 ```
 
 ---
@@ -1201,7 +1201,7 @@ Expected: PASS.
 
 ```bash
 git add core/openapi.json shell/src/api/generated/core-schema.d.ts
-git commit -m "chore(api): régénère openapi.json + core-schema.d.ts (slug, kind=site, /public/sites) — SP-16a"
+git commit -m "chore(api): régénère openapi.json + core-schema.d.ts (slug, kind=site, /public/sites) — SP-13a"
 ```
 
 ---
@@ -1325,7 +1325,7 @@ Expected: PASS — 38 specs existantes + `sites-portal-shell` = **39 specs verte
 
 ```bash
 git add shell/e2e/sites-portal-shell.spec.ts shell/e2e/mocks.ts
-git commit -m "test(shell): E2E sites — créer/publier/consulter un site par slug + 404 — SP-16a"
+git commit -m "test(shell): E2E sites — créer/publier/consulter un site par slug + 404 — SP-13a"
 ```
 
 ---
@@ -1338,7 +1338,7 @@ git commit -m "test(shell): E2E sites — créer/publier/consulter un site par s
 - [ ] `cd shell && npm run e2e` — 39 specs vertes.
 - [ ] `cd core && uv run lint-imports` (frontières de modules) — clean.
 - [ ] Demander une revue finale de branche (modèle opus) avec l'exigence explicite de sécurité : **aucun chemin (notamment `GET /public/sites/{slug}`) ne contourne `can()`/la politique de publication ; l'isolation tenant×slug est testée** (cf. spec §8/§9).
-- [ ] Mettre à jour la section « État » de `CLAUDE.md` (entrée SP-16a) en commit séparé après la revue.
+- [ ] Mettre à jour la section « État » de `CLAUDE.md` (entrée SP-13a) en commit séparé après la revue.
 
 ---
 

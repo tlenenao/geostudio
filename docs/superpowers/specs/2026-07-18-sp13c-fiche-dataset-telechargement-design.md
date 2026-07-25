@@ -1,17 +1,17 @@
-# SP-16c — fiche dataset + téléchargement + template galerie : design
+# SP-13c — fiche dataset + téléchargement + template galerie : design
 
-> Troisième et dernière sous-phase de **SP-16 « Portails & Sites »** (design
+> Troisième et dernière sous-phase de **SP-13 « Portails & Sites »** (design
 > macro :
-> [`2026-07-14-sp16-portails-sites-design.md`](2026-07-14-sp16-portails-sites-design.md),
+> [`2026-07-14-sp13-portails-sites-design.md`](2026-07-14-sp13-portails-sites-design.md),
 > arbitrages A31/A33/A34/A35/A38 tranchés le 2026-07-14). Découpage a/b/c fixé
 > par le §9 du design macro : **a** = modèle `site`/slug + route publique +
 > résolution shell (livré et clos, cf.
-> [`2026-07-18-sp16a-modele-site-slug-design.md`](2026-07-18-sp16a-modele-site-slug-design.md)) ;
+> [`2026-07-18-sp13a-modele-site-slug-design.md`](2026-07-18-sp13a-modele-site-slug-design.md)) ;
 > **b** = widgets de contenu Hero/RichSection/Gallery (livré et clos, cf.
-> [`2026-07-18-sp16b-widgets-contenu-design.md`](2026-07-18-sp16b-widgets-contenu-design.md)) ;
-> **c** = fiche dataset + téléchargement + template galerie (ce document). SP-16
-> s'exécute après SP-11 (clos), avant SP-12/SP-13 (A34). **Cette sous-phase clôt
-> SP-16 et vise le jalon M13 « Portails ouverts ».**
+> [`2026-07-18-sp13b-widgets-contenu-design.md`](2026-07-18-sp13b-widgets-contenu-design.md)) ;
+> **c** = fiche dataset + téléchargement + template galerie (ce document). SP-13
+> s'exécute après SP-11 (clos), avant SP-12/SP-17 (A34). **Cette sous-phase clôt
+> SP-13 et vise le jalon M13 « Portails ouverts ».**
 
 ## 1. Objectif
 
@@ -28,7 +28,7 @@ jalon M13.
 
 ## 2. Décisions actées pour cette sous-phase
 
-Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter) :
+Rappel des arbitrages hérités du design macro SP-13 (§2, à ne pas rediscuter) :
 
 | # | Décision |
 |---|---|
@@ -36,14 +36,14 @@ Rappel des arbitrages hérités du design macro SP-16 (§2, à ne pas rediscuter
 | A33 | Domaine personnalisé **différé** : v1 accessible via `/sites/{slug}` et `/public/…`, pas de résolution par host. Les routes publiques ne servent que le tenant `default`. |
 | A38 | Fonctions communautaires (commentaires/follow/discussions) **hors périmètre**. |
 
-Décisions propres à SP-16c, tranchées au brainstorm du 2026-07-18 :
+Décisions propres à SP-13c, tranchées au brainstorm du 2026-07-18 :
 
 - **Forme = `DatasetCard` (widget placeable) + route publique dédiée
   `/public/datasets/:collectionId` rendant une `DatasetPage`.** La carte est un
   résumé compact posable sur n'importe quel item ; la page est la fiche
   complète (description + aperçu carte/table lecture seule + téléchargement).
 - **Aucune nouvelle route cœur.** Tout ce dont la fiche a besoin est **déjà**
-  exposé de façon anonyme pour les collections publiques (cf. §4). SP-16c est
+  exposé de façon anonyme pour les collections publiques (cf. §4). SP-13c est
   une sous-phase **shell + template**, sans changement de code cœur (hors
   éventuelle régénération de types si drift — non attendu).
 - **L'aperçu carte/table de `DatasetPage` passe par le seul runtime
@@ -55,10 +55,10 @@ Décisions propres à SP-16c, tranchées au brainstorm du 2026-07-18 :
   direct vers l'URL OGC API Features de la collection, téléchargé par le
   navigateur) ; **CSV généré côté client, plafonné à 10 000 entités** — au-delà,
   bouton CSV désactivé avec message clair (« trop volumineux, export serveur à
-  venir — SP-15 »), jamais de blocage silencieux ni de timeout navigateur.
+  venir — SP-16 »), jamais de blocage silencieux ni de timeout navigateur.
 - **Pas de fiche par item de type `map`/`app`** : la fiche décrit une
   **collection** (jeu de données), pas un item de config. La découverte des
-  items publiés reste le rôle de `Gallery` (SP-16b) ; la fiche dataset est un
+  items publiés reste le rôle de `Gallery` (SP-13b) ; la fiche dataset est un
   objet distinct, adressé par `collectionId`.
 
 ## 3. Périmètre
@@ -70,7 +70,7 @@ Décisions propres à SP-16c, tranchées au brainstorm du 2026-07-18 :
   `/public/datasets/{collectionId}`, boutons de téléchargement optionnels.
 - Route shell publique **`/public/datasets/:collectionId`** → vue
   **`DatasetPage`** : fiche complète, hors `ProtectedLayout` (à côté de
-  `/sites/:slug` et `/public/items/:pk` de SP-16a/b).
+  `/sites/:slug` et `/public/items/:pk` de SP-13a/b).
 - Util de téléchargement partagé, isolé et testé (`datasetDownload.ts`) :
   URL GeoJSON + génération CSV client-side bornée à 10 000.
 - `ItemClient` : lectures anonymes d'une collection et de son schéma
@@ -83,7 +83,7 @@ Décisions propres à SP-16c, tranchées au brainstorm du 2026-07-18 :
 **Hors périmètre (différé, pas oublié) :**
 - Toute nouvelle route ou nouveau modèle cœur (aucun besoin — cf. §4).
 - Export **DCAT-AP / STAC** des fiches dataset (attend SP-12).
-- Export **CSV/XLSX serveur** pour gros volumes (attend SP-15) — au-delà du
+- Export **CSV/XLSX serveur** pour gros volumes (attend SP-16) — au-delà du
   seuil, le CSV client-side est désactivé, pas remplacé par un export serveur.
 - Fiche pour un item de config (`map`/`app`/`dashboard`) — la fiche adresse une
   **collection**.
@@ -158,7 +158,7 @@ pour les collections **publiques** (vérifié sur le code au brainstorm) :
 - **Seuil 10 000** lu depuis `featureCount` des métadonnées de collection
   (SP-6c) : au-delà, le bouton CSV est **désactivé** avec un message clair
   (« Jeu de données trop volumineux pour l'export CSV navigateur — export
-  serveur à venir (SP-15) »). Le GeoJSON reste proposé.
+  serveur à venir (SP-16) »). Le GeoJSON reste proposé.
 
 ### 5.4 `ItemClient`
 - Lectures anonymes réutilisées ou ajoutées en miroir des endpoints existants
@@ -229,7 +229,7 @@ isolation tenant) déjà en place depuis SP-3a/SP-9.
 
 - Un admin construit, depuis le builder existant sans nouvelle formation, un
   portail avec accueil éditorial (Hero + texte riche), galerie de découverte
-  (Gallery, SP-16b) **et au moins une fiche dataset téléchargeable**
+  (Gallery, SP-13b) **et au moins une fiche dataset téléchargeable**
   (`DatasetCard` → `DatasetPage`), publié sur une URL stable.
 - Un visiteur **anonyme** parcourt le portail, ouvre une fiche dataset, voit un
   aperçu carte/table en lecture seule, et **télécharge le jeu de données**
@@ -242,14 +242,14 @@ isolation tenant) déjà en place depuis SP-3a/SP-9.
   d'un clic.
 - Toutes les specs E2E existantes (dont `sites-portal-shell.spec.ts` et
   `sites-portal-content.spec.ts`) restent vertes ; la nouvelle
-  `sites-portal-dataset.spec.ts` s'ajoute. **SP-16 est clos, jalon M13 atteint.**
+  `sites-portal-dataset.spec.ts` s'ajoute. **SP-13 est clos, jalon M13 atteint.**
 
 ## 9. Points d'attention d'intégration
 
-- **Pas de dérive OpenAPI attendue** : SP-16c n'ajoute aucune route ni champ
+- **Pas de dérive OpenAPI attendue** : SP-13c n'ajoute aucune route ni champ
   cœur. Vérifier néanmoins en fin de branche que `openapi.json`/
   `core-schema.d.ts` sont en phase (le job `api-types-drift` reste le garde-fou,
-  patron récurrent SP-9/SP-10/SP-16a/b).
+  patron récurrent SP-9/SP-10/SP-13a/b).
 - **Aperçu par config synthétisée** : la `previewConfig` de `DatasetPage` doit
   respecter le schéma `AppConfig` attendu par `AppRenderer` runtime (dataSource
   des widgets Carte/Table pointant sur `collectionId`). Vérifier qu'un item de
@@ -260,7 +260,7 @@ isolation tenant) déjà en place depuis SP-3a/SP-9.
   la ligne dans les valeurs) — testé, classe de bug classique.
 - **Réutilisation Carte/Table anonyme** : confirmer que les widgets Carte/Table
   lisent les features d'une collection publique **sans token** (chemin anonyme
-  OGC) en runtime — déjà le cas pour un site public (SP-16a/b), à re-vérifier
+  OGC) en runtime — déjà le cas pour un site public (SP-13a/b), à re-vérifier
   pour l'aperçu.
 
 ## 10. Risques
@@ -268,7 +268,7 @@ isolation tenant) déjà en place depuis SP-3a/SP-9.
 | Risque | Gravité | Garde-fou |
 |---|---|---|
 | Fuite d'une collection non publique via `DatasetCard`/`DatasetPage` | ★★★ (sécurité) | Lecture via `GET /collections/{id}` uniquement (404 avant 403, anonyme, tenant `default`) ; matrice de non-fuite testée ; revue finale vérifie l'absence de contournement |
-| CSV client-side dégradé sur gros volumes | ★ (assumé) | Borne explicite 10 000 + bouton désactivé + message clair ; GeoJSON toujours proposé ; levé par SP-15 (export serveur) |
+| CSV client-side dégradé sur gros volumes | ★ (assumé) | Borne explicite 10 000 + bouton désactivé + message clair ; GeoJSON toujours proposé ; levé par SP-16 (export serveur) |
 | Aperçu carte/table qui casse sur une collection atypique (sans géométrie, schéma exotique) | ★ | Config synthétisée testée sur cas dégradés ; carte vide + table plutôt que crash |
 | Échappement CSV incorrect (valeurs contenant `,`/`"`/`\n`) | ★ | Util `datasetDownload` isolé + test adversarial dédié |
 | Dérive OpenAPI / types générés | ★ | Aucune surface d'API ajoutée ; `api-types-drift` en garde-fou |
@@ -286,4 +286,4 @@ selon le découpage du plan, en tâches largement indépendantes :
 6. E2E `sites-portal-dataset.spec.ts` + vérification des types générés.
 
 Par analogie avec des lots widgets shell + template déjà livrés (SP-4a, SP-8a,
-SP-16b) et sans aucun code cœur : **≈ 15-25 h**.
+SP-13b) et sans aucun code cœur : **≈ 15-25 h**.

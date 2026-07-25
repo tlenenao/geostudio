@@ -14,7 +14,7 @@
 - **Jamais d'installation silencieuse ni d'élévation de privilège furtive** (spec §5.1) : toute action qui installe un paquet ou modifie les groupes système (`usermod -aG docker`) est précédée d'un message explicite et d'une confirmation `y/N`.
 - **`get.docker.com` est déjà distro-agnostique** (détecte lui-même apt/dnf/pacman en interne) — ce script ne réimplémente pas cette détection, il se contente de confirmer puis d'invoquer le script officiel. Simplification volontaire par rapport à la lettre de la spec §5.1 (qui évoque une détection de distro par ce script), justifiée : dupliquer une détection que l'outil officiel fait déjà romprait DRY sans bénéfice.
 - **Pas de binaire tunnel à installer sur l'hôte** : le service `tunnel` (SP-Deploy-a Task 5) tourne en conteneur (`tailscale/tailscale`) — l'installeur ne vérifie/installe donc **aucun binaire `tailscale` local**, seulement la présence d'une clé `TS_AUTHKEY` valide. Écart assumé par rapport à la lettre de la spec §5.1 (« vérifie le binaire du tunnel choisi »), cohérent avec l'architecture sidecar déjà actée.
-- **Menu de profils découvert, pas codé en dur** (spec §5.2) : `docker compose config --profiles` liste les profils réellement définis dans le dépôt ; `ETL no-code` (SP-17) reste affiché mais désactivé tant qu'il n'apparaît pas dans cette liste.
+- **Menu de profils découvert, pas codé en dur** (spec §5.2) : `docker compose config --profiles` liste les profils réellement définis dans le dépôt ; `ETL no-code` (SP-15) reste affiché mais désactivé tant qu'il n'apparaît pas dans cette liste.
 - **Idempotent** (spec §5.3, critère §7-6) : un second passage ne doit ni dupliquer un `.env` existant (`bootstrap-env.sh` s'en charge déjà), ni recréer un admin Keycloak déjà existant, ni casser une stack déjà démarrée.
 - **Toute vérification de ce sous-plan s'exécute dans un clone jetable** (`/tmp` ou le répertoire scratchpad), **jamais dans le dépôt de travail réel** — un incident de cette même session a effacé un `.env` réel en testant une commande directement dans le dépôt (`rm -f .env` après un test mal isolé) ; ce sous-plan ne reproduit pas cette erreur : chaque Step de vérification clone d'abord (`git clone . /tmp/...`), opère dans le clone, puis le supprime.
 - **En-tête** `# SPDX-License-Identifier: Apache-2.0` en première ligne (commentaire bash) de tout nouveau script.
@@ -148,7 +148,7 @@ Ajouter à `scripts/install.sh` :
 ```bash
 declare -A KNOWN_PROFILE_LABELS=(
   [observability]="Observabilité (Grafana/Loki/Tempo/Prometheus)"
-  [etl]="ETL no-code (SP-17)"
+  [etl]="ETL no-code (SP-15)"
 )
 
 SELECTED_PROFILES=()
@@ -168,10 +168,10 @@ prompt_profiles() {
     fi
   done <<< "$available"
 
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
+  # ETL (SP-15) : toujours affiché, jamais activable tant qu'absent du
   # dépôt — ne ment pas à l'utilisateur (spec §5.2).
   if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
+    echo "  (ETL no-code (SP-15) — à venir, pas encore disponible dans ce dépôt)"
   fi
 
   echo ""
@@ -191,7 +191,7 @@ cd /tmp/geostudio-install-test
 INSTALL_YES=1 ./scripts/install.sh 2>&1 | grep -A3 "Profils disponibles"
 ```
 
-Expected : `Activer : Observabilité (Grafana/Loki/Tempo/Prometheus) ? [y/N] → y (INSTALL_YES=1)`, ligne `(ETL no-code (SP-17) — à venir...)` affichée (le profil `etl` n'existe pas encore dans ce dépôt), puis la question sur le seed de démo.
+Expected : `Activer : Observabilité (Grafana/Loki/Tempo/Prometheus) ? [y/N] → y (INSTALL_YES=1)`, ligne `(ETL no-code (SP-15) — à venir...)` affichée (le profil `etl` n'existe pas encore dans ce dépôt), puis la question sur le seed de démo.
 
 ```bash
 cd /home/lenen/projets/geostudio && rm -rf /tmp/geostudio-install-test
