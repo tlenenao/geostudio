@@ -155,6 +155,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setNavigationMode = (navigationMode: "tabs" | "story") =>
     setDraft((d) => (d ? { ...d, navigationMode } : d));
 
+  const setInteractions = (interactions: "auto" | "manual") =>
+    setDraft((d) => (d ? { ...d, interactions } : d));
+
   const setActivePageOnEnter = (updated: (typeof pages)[number]) =>
     setDraft((d) => (d ? { ...d, pages: getPages(d).map((p) => (p.id === updated.id ? updated : p)) } : d));
 
@@ -216,6 +219,16 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 page={pages.find((p) => p.id === activePage) ?? pages[0]}
                 onPageChange={setActivePageOnEnter}
               />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Interactions</p>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  aria-label="Interactions automatiques (cross-filter)"
+                  checked={draft.interactions === "auto"}
+                  onChange={(e) => setInteractions(e.target.checked ? "auto" : "manual")}
+                />
+                Interactions automatiques (cross-filter)
+              </label>
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
               <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>

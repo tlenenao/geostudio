@@ -46,6 +46,18 @@ test("adds a widget from the palette and saves the config", async () => {
   expect(saved.layout.items[0].widget).toBe("text");
 });
 
+test("toggles interactions on and saves it with the app config", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await screen.findByLabelText("Interactions automatiques (cross-filter)");
+  expect(screen.getByLabelText("Interactions automatiques (cross-filter)")).not.toBeChecked();
+  await userEvent.click(screen.getByLabelText("Interactions automatiques (cross-filter)"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.interactions).toBe("auto");
+});
+
 test("shows an error when loading fails", async () => {
   renderPage({ getAppConfig: vi.fn().mockRejectedValue(new Error("x")) });
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
