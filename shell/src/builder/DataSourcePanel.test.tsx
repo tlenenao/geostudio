@@ -69,3 +69,26 @@ test("edits the default aggregation of a statistics source", async () => {
   expect(last.query.agg).toBe("sum");
   expect(last.query.groupBy).toBe("region");
 });
+
+test("promoting a features source calls onPromote and then shows it as shared", async () => {
+  const onChange = vi.fn();
+  const onPromote = vi.fn();
+  const sources: DataSource[] = [{ id: "s1", type: "features", service: "core", layer: "parcs", query: {} }];
+  const { rerender } = render(
+    <DataSourcePanel sources={sources} onChange={onChange} onPromote={onPromote} promotingId={null} />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Promouvoir en dataset partagé s1" }));
+  expect(onPromote).toHaveBeenCalledWith("s1");
+
+  rerender(
+    <DataSourcePanel
+      sources={[{ ...sources[0], datasetId: "ds-1" }]}
+      onChange={onChange}
+      onPromote={onPromote}
+      promotingId={null}
+    />,
+  );
+  expect(screen.getByText("Dataset partagé actif")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" })).not.toBeInTheDocument();
+});
