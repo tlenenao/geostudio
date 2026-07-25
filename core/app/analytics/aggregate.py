@@ -46,6 +46,18 @@ def _sql_lit(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+_RANGE_OPS = {"__gte": ">=", "__lte": "<="}
+
+
+def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
+    if raw_name.endswith("__in"):
+        return raw_name[: -len("__in")], "__in"
+    for suffix in _RANGE_OPS:
+        if raw_name.endswith(suffix):
+            return raw_name[: -len(suffix)], suffix
+    return raw_name, None
+
+
 def _valid_column_names(table_info) -> set[str]:
     names = {c.name for c in table_info.columns} | {table_info.pk_column}
     if table_info.geometry_column:
@@ -65,8 +77,9 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
     check(request.field, "field")
     for i, m in enumerate(request.measures or []):
         check(m.field, f"measures[{i}].field")
-    for name in request.filters:
-        check(name, f"filters.{name}")
+    for raw_name in request.filters:
+        field_name, _ = _split_filter_key(raw_name)
+        check(field_name, f"filters.{raw_name}")
     if request.bbox is not None and not table_info.geometry_column:
         raise UnknownAggregateField("bbox", "collection has no geometry")
 
@@ -101,9 +114,18 @@ def _measures_for(request: AggregateRequestBody) -> list[AggregateMeasure]:
 def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
     clauses = []
     params: list = []
-    for name, value in request.filters.items():
-        clauses.append(f"{_qi(name)} = ?")
-        params.append(value)
+    for raw_name, value in request.filters.items():
+        name, suffix = _split_filter_key(raw_name)
+        if suffix == "__in":
+            values = value.split(",")
+            clauses.append(f"{_qi(name)} IN ({', '.join('?' for _ in values)})")
+            params.extend(values)
+        elif suffix in _RANGE_OPS:
+            clauses.append(f"{_qi(name)} {_RANGE_OPS[suffix]} ?")
+            params.append(value)
+        else:
+            clauses.append(f"{_qi(name)} = ?")
+            params.append(value)
     if request.bbox is not None:
         minx, miny, maxx, maxy = request.bbox
         # Native GEOMETRY : la colonne géométrie du GeoParquet CDC est déjà
