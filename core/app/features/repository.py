@@ -51,18 +51,44 @@ def _coerce(col: ColumnInfo, raw: str):
         raise FilterError(col.name, f"cannot parse '{raw}' as {col.type}") from None
 
 
+_RANGE_OPS = {"__gte": ">=", "__lte": "<="}
+
+
+def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
+    if raw_name.endswith("__in"):
+        return raw_name[: -len("__in")], "__in"
+    for suffix in _RANGE_OPS:
+        if raw_name.endswith(suffix):
+            return raw_name[: -len(suffix)], suffix
+    return raw_name, None
+
+
 def _where(session: Session, info: TableInfo, bbox, filters):
     clauses, params = [], {}
     if filters:
         by_name = {c.name: c for c in _property_columns(info)}
-        for i, (name, raw) in enumerate(sorted(filters.items())):
+        for i, (raw_name, raw) in enumerate(sorted(filters.items())):
+            name, suffix = _split_filter_key(raw_name)
             col = by_name.get(name)
             if col is None:
                 raise FilterError(name, f"unknown filter property '{name}'")
             if col.type == "unsupported":
                 raise FilterError(name, "property not filterable")
-            clauses.append(f"{quote_ident(session, name)} = :f{i}")
-            params[f"f{i}"] = _coerce(col, raw)
+            ident = quote_ident(session, name)
+            if suffix == "__in":
+                values = raw.split(",")
+                placeholders = []
+                for j, value in enumerate(values):
+                    key = f"f{i}_{j}"
+                    params[key] = _coerce(col, value)
+                    placeholders.append(f":{key}")
+                clauses.append(f"{ident} IN ({', '.join(placeholders)})")
+            elif suffix in _RANGE_OPS:
+                clauses.append(f"{ident} {_RANGE_OPS[suffix]} :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
+            else:
+                clauses.append(f"{ident} = :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
     if bbox is not None:
         if info.geometry_column is None:
             raise FilterError("bbox", "collection has no geometry")
