@@ -111,3 +111,13 @@ test("accepts a valid when condition on a page onEnter message", () => {
   };
   expect(getConfigExpressionErrors(config)).toEqual([]);
 });
+
+test("accepts a visibleWhen expression referencing the ctx.* analytics prefix (cel-js parse is syntax-only)", () => {
+  const config: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 2, h: 2, props: {}, visibleWhen: "ctx.timeRange != null" },
+    ] },
+  };
+  expect(getConfigExpressionErrors(config)).toEqual([]);
+});
