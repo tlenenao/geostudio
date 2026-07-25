@@ -199,6 +199,46 @@ test("disables Enregistrer and shows the error when a widget's visibleWhen is in
   expect(saveAppConfig).not.toHaveBeenCalled();
 });
 
+test("promotes one data source to a shared dataset without touching its siblings", async () => {
+  const withSources: AppConfig = {
+    kind: "app", theme: {}, messages: [],
+    dataSources: [
+      { id: "s1", type: "features", service: "core", layer: "parcs", query: {} },
+      { id: "s2", type: "features", service: "core", layer: "routes", query: {} },
+    ],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  const createDatasetItem = vi.fn().mockResolvedValue({
+    pk: "ds-1", resourceType: "dataset", title: "parcs", abstract: "",
+    owner: "tanguy", thumbnailUrl: null, date: "", configId: "1", isPublished: false,
+  });
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(withSources),
+    saveAppConfig,
+    createDatasetItem,
+    featuresUrl: vi.fn().mockReturnValue(""),
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
+
+  const promoteButton = await screen.findByRole("button", { name: "Promouvoir en dataset partagé s1" });
+  await userEvent.click(promoteButton);
+
+  await waitFor(() => expect(createDatasetItem).toHaveBeenCalledWith({
+    title: "parcs", owner: "tanguy", collectionId: "parcs",
+  }));
+  await screen.findByText("Dataset partagé actif");
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+
+  const s1 = saved.dataSources.find((s) => s.id === "s1");
+  const s2 = saved.dataSources.find((s) => s.id === "s2");
+  expect(s1).toMatchObject({ id: "s1", layer: "parcs", query: {}, datasetId: "ds-1" });
+  expect(s2).toEqual({ id: "s2", type: "features", service: "core", layer: "routes", query: {} });
+});
+
 test("re-enables Enregistrer once the invalid visibleWhen is corrected", async () => {
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
