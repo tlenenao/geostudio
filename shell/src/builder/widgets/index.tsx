@@ -14,6 +14,7 @@ import { registerRichSectionWidget } from "./richSection";
 import { registerGalleryWidget } from "./gallery";
 import { registerDatasetCardWidget } from "./datasetCard";
 import { registerDateRangeFilterWidget } from "./dateRangeFilter";
+import { registerSelectFilterWidget } from "./selectFilter";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
 // bound source), then {{champ}} tokens from the record's properties (only
@@ -160,4 +161,5 @@ export function registerBuiltinWidgets(): void {
   registerGalleryWidget();
   registerDatasetCardWidget();
   registerDateRangeFilterWidget();
+  registerSelectFilterWidget();
 }
