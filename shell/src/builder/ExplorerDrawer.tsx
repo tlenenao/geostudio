@@ -94,11 +94,17 @@ export function ExplorerDrawer() {
         </Suspense>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto p-2 text-xs">
-        {recordsQuery.isLoading && <p className="text-[var(--gs-color-muted)]">Chargement…</p>}
-        {recordsQuery.isError && <p className="text-red-600">Erreur de données</p>}
-        {!recordsQuery.isLoading && !recordsQuery.isError && records.length === 0 && (
-          <p className="text-[var(--gs-color-muted)]">Aucune entité</p>
+        {(datasetQuery.isLoading || recordsQuery.isLoading) && (
+          <p className="text-[var(--gs-color-muted)]">Chargement…</p>
         )}
+        {!datasetQuery.isLoading && !recordsQuery.isLoading && (datasetQuery.isError || recordsQuery.isError) && (
+          <p className="text-red-600">Erreur de données</p>
+        )}
+        {!datasetQuery.isLoading &&
+          !recordsQuery.isLoading &&
+          !datasetQuery.isError &&
+          !recordsQuery.isError &&
+          records.length === 0 && <p className="text-[var(--gs-color-muted)]">Aucune entité</p>}
         {records.length >= EXPLORER_LIMIT && (
           <p className="mb-2 text-[var(--gs-color-muted)]">
             Affinez le contexte (période, emprise, filtre) pour voir l'ensemble des entités — {EXPLORER_LIMIT} premières affichées.
@@ -120,7 +126,16 @@ export function ExplorerDrawer() {
                 <tr
                   key={String(r.id)}
                   className={`cursor-pointer hover:bg-[var(--gs-color-surface)] ${selectedId === r.id ? "bg-[var(--gs-color-surface)]" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Voir ${String(r.properties[columns[0]] ?? r.id)}`}
                   onClick={() => selectRecord(r)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (e.key === " ") e.preventDefault();
+                      selectRecord(r);
+                    }
+                  }}
                 >
                   {columns.map((c) => (
                     <td key={c} className="border-b border-[var(--gs-color-border)] p-1">
@@ -134,10 +149,10 @@ export function ExplorerDrawer() {
         )}
         {pageCount > 1 && (
           <div className="mt-auto flex items-center justify-between pt-2 text-[10px] text-[var(--gs-color-muted)]">
-            <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+            <button type="button" aria-label="Page précédente" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
               disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
             <span>Page {current + 1} / {pageCount}</span>
-            <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+            <button type="button" aria-label="Page suivante" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
               disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
           </div>
         )}
