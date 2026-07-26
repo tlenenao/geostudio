@@ -1,202 +1,158 @@
-# Task 4 Implementation Report: `sliderFilter` Widget
+# Task 4 Report — `ExplorerDrawer` (drill panel: table + map)
 
-## Summary
+## What was implemented
 
-Successfully implemented the `sliderFilter` widget — a two-handle range slider for numeric filtering across dataset columns, following the exact architectural pattern established by Task 3's `selectFilter` widget.
+Wrote `shell/src/builder/ExplorerDrawer.tsx` and `shell/src/builder/ExplorerDrawer.test.tsx` exactly as given in the brief (`.superpowers/sdd/task-4-brief.md`), with **zero deviation** from the literal code — all real module signatures matched the brief's assumptions after verification:
 
-## What Was Implemented
+- `derivePatch(source, ctx, datasets)` in `shell/src/lib/analyticsPatch.ts` — signature and cross-filter "don't self-filter" exclusion (`crossFilter.originSourceId !== source.id`) matched exactly. This confirms the design rationale in the brief: since the drawer's synthetic `DataSource.id` is the constant `"__explorer__"` (never a real widget id), the exclusion never triggers for the drawer, so its query always reflects the live cross-filter even when the drawer was opened from the very widget that set it.
+- `useAnalyticsContext()` / `AnalyticsContextProvider` / `useSetCrossFilter()` in `shell/src/builder/AnalyticsContext.tsx` — matched.
+- `useItemClient()` / `ItemClientProvider` in `shell/src/api/ItemClientProvider.tsx` — matched.
+- `useExplorerTarget()` / `useCloseExplorer()` / `useOpenExplorer()` / `ExplorerProvider` in `shell/src/builder/ExplorerContext.tsx` (Task 1) — matched, including the `{ datasetId, dataSourceId }` target shape.
+- Types `DataSource`, `DataRecord`, `DatasetConfig`, `MapConfig`, `ItemClient` (incl. `getDatasetConfig`, `queryDataSource`, `featuresUrl`) in `shell/src/api/types.ts` — matched exactly.
+- `MapView` / `MapViewHandle` (`flyTo`, `highlight(geometry)`) in `shell/src/map/MapView.tsx` — matched exactly, including the lazy-import pattern already used elsewhere in the codebase for this component.
 
-### Files Created
-1. **`shell/src/builder/widgets/sliderFilter.tsx`** (89 lines)
-   - Widget registration function `registerSliderFilterWidget()`
-   - Component with PropsPanel for configuration (dataSourceId, field, label)
-   - Range bounds fetching via `queryDataSource` with statistics query (min/max measures)
-   - Cross-filter state management via `useSetCrossFilter` and `useClearCrossFilter` hooks
-   - Two-handle range input with aria-labels for accessibility
-   - Automatic filter clearing when range returns to full bounds
+Cross-checked against the existing analogous consumer `shell/src/builder/DataContext.tsx`, which uses the identical `derivePatch(s, analyticsCtx, datasets)` → merge query → `client.queryDataSource(merged)` pipeline, confirming the brief's pattern is idiomatic for this codebase.
 
-2. **`shell/src/builder/widgets/sliderFilter.test.tsx`** (95 lines)
-   - 4 comprehensive tests covering:
-     - Unbound state (shows discreet message when dataSourceId/field empty)
-     - Bounds fetching (two-measure statistics query for min/max)
-     - Range setting (moving min handle sets cross-filter value)
-     - Filter clearing (moving back to full bounds clears cross-filter)
+The component:
+- Renders `null` when `useExplorerTarget()` is `null`.
+- Builds a synthetic `DataSource` with fixed id `"__explorer__"`, `datasetId` from the target, `query: { limit: 200 }`.
+- Resolves the `DatasetConfig` via `client.getDatasetConfig`, runs `derivePatch` against the live `useAnalyticsContext()`, merges the patch into the query, and fetches rows via `client.queryDataSource`.
+- Renders a small `MapView` (lazy-loaded, wrapped in `Suspense`) showing a `feature` layer built from `client.featuresUrl(merged)`, plus a paginated (20/page) table with dataset-driven column labels (`dataset.columns[c]?.label ?? c`), a 200-row cap message, and row click → `mapHandle.current?.highlight(r.geometry ?? null)`.
+- Closes via a "Fermer le panneau" button or Escape key, both calling `useCloseExplorer()`'s `close()` only — no analytics-context writes anywhere.
 
-### Files Modified
-1. **`shell/src/builder/widgets/index.tsx`**
-   - Added import: `import { registerSliderFilterWidget } from "./sliderFilter";`
-   - Added registration call: `registerSliderFilterWidget();` in `registerBuiltinWidgets()` function
+## Testing
 
-## Testing & Verification
+Ran the focused test file first to confirm RED, then implemented, then confirmed GREEN, then ran the full unit suite once.
 
-### TDD Evidence
+### TDD Evidence — RED
 
-**RED (Failing Tests)**
-```bash
-$ cd shell && npx vitest run src/builder/widgets/sliderFilter.test.tsx
-
-Error: Failed to resolve import "./sliderFilter" from "src/builder/widgets/sliderFilter.test.tsx"
 ```
-Module did not exist, tests could not run.
-
-**GREEN (Passing Tests)**
-```bash
-$ cd shell && npx vitest run src/builder/widgets/sliderFilter.test.tsx
-
-✓ src/builder/widgets/sliderFilter.test.tsx (4 tests) 207ms
-
-Test Files  1 passed (1)
-      Tests  4 passed (4)
+$ cd shell && npx vitest run src/builder/ExplorerDrawer.test.tsx
+ FAIL  src/builder/ExplorerDrawer.test.tsx [ src/builder/ExplorerDrawer.test.tsx ]
+Error: Failed to resolve import "./ExplorerDrawer" from "src/builder/ExplorerDrawer.test.tsx". Does the file exist?
+...
+ Test Files  1 failed (1)
+      Tests  no tests
 ```
 
-All 4 tests pass, verifying:
-1. Unbound widget shows discreet message ✓
-2. Statistics query fetches min/max bounds correctly ✓
-3. Moving min handle sets cross-filter with correct range value ✓
-4. Returning to full bounds clears cross-filter ✓
+### TDD Evidence — GREEN
 
-### Full Suite Result
+```
+$ cd shell && npx vitest run src/builder/ExplorerDrawer.test.tsx
+ ✓ src/builder/ExplorerDrawer.test.tsx (8 tests) 632ms
 
-```bash
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+```
+
+All 8 scenarios pass:
+1. renders nothing when no target is open
+2. cross-filtered query applied even from own origin widget (proves `__explorer__` never self-excludes)
+3. dataset column labels used in table headers
+4. 200-row cap message shown
+5. pagination (20/page, "Suivant"/"Précédent")
+6. row click highlights geometry on drawer's own map, without touching analytics context
+7. close via "Fermer le panneau" button
+8. close via Escape key
+
+### Typecheck
+
+```
+$ cd shell && npx tsc --noEmit
+(no output — clean)
+```
+
+### Full unit suite (once, before commit)
+
+```
 $ cd shell && npm run test
-
-Test Files  95 passed (95)
-      Tests  671 passed (671)
-   Start at  17:32:36
-   Duration  33.93s
+ Test Files  99 passed (99)
+      Tests  701 passed (701)
+   Duration  37.70s
 ```
 
-**Before:** 667 tests (previous suites)
-**After:** 671 tests (+4 new sliderFilter tests)
-**Result:** ✓ No regressions, all tests passing
+Zero regressions. (Some stderr output from unrelated tests — `exprBindings.test.ts`, `ActionBus.test.ts` — is expected error-path logging from those tests' own assertions, not failures.)
 
-## Implementation Details
+## Files changed
 
-### Architecture Consistency
-- Follows exact pattern of `selectFilter` (Task 3)
-- Uses `useSetCrossFilter` hook from AnalyticsContext for state management
-- Calls `itemClient.queryDataSource` with statistics query type
-- Clears filter via `useClearCrossFilter` when range returns to bounds
+- `shell/src/builder/ExplorerDrawer.tsx` (new, 149 lines)
+- `shell/src/builder/ExplorerDrawer.test.tsx` (new, 129 lines)
 
-### Key Features
-- **Accessibility:** Both range inputs have `aria-label` attributes ("Borne minimale", "Borne maximale")
-- **French UI Copy:** Label ("Curseur"), loading/error messages, all in French
-- **Query Type:** Statistics with `measures: [{ field, agg: "min", label: "min" }, { field, agg: "max", label: "max" }]`
-- **Value Format:** Cross-filter value is object `{ from: string, to: string }`
-- **State Management:** Uncontrolled bounds initialization, automatic sync on data fetch via useEffect
-- **Handle Constraints:** Enforces min handle ≤ max handle with `Math.min/Math.max` in onChange callbacks
+## Self-review
 
-### Test Implementation Notes
-- Used `fireEvent.change` from React Testing Library to properly trigger React's onChange handlers
-- Manual event dispatching (`setAttribute` + `dispatchEvent`) does not work with controlled inputs — React needs synthetic events
-- All regex patterns in test assertions match the JSON stringified cross-filter state structure
+- **Never writes to analytics context**: `grep -n "setCrossFilter\|setExtent\|setTimeRange" shell/src/builder/ExplorerDrawer.tsx` returns **zero matches** (grep exit code 1). The component only calls `useAnalyticsContext()` (read) and `useCloseExplorer()` (drawer-local state), plus `mapHandle.current?.highlight(...)` (drawer's own map ref). Confirmed read-only with respect to `AnalyticsContextState`.
+- **Completeness**: all 8 test scenarios pass, matching the brief's expected 8/8.
+- **Discipline**: implementation written verbatim from the brief; no extra helper modules, no extra files beyond the two specified. No gold-plating.
+- **Testing hygiene**: RED confirmed before implementation existed; GREEN confirmed after; full suite run once before commit, zero regressions; only the two intended files were staged for commit (`git status` checked before commit — the other unrelated modified/untracked files in the working tree were left alone).
 
-## Self-Review Findings
+## Commit
 
-✓ **Completeness:** Widget file, test file, and wiring all complete per brief
-✓ **Code Quality:** Consistent with existing patterns (dateRangeFilter, selectFilter)
-✓ **Accessibility:** All interactive elements have aria-labels
-✓ **Testing:** All 4 tests exercise real behavior (bounds fetching, handle drag, clearing)
-✓ **No Regressions:** Full test suite passes, 671 tests (667 → +4)
-✓ **Discipline:** No scope creep, exactly as specified in brief
+`2131705` — `feat(shell): ExplorerDrawer — table+map drill panel for the active analytics context (SP-14d)`
+Files: `shell/src/builder/ExplorerDrawer.tsx` (new), `shell/src/builder/ExplorerDrawer.test.tsx` (new).
 
-### Minor Adaptation
-- Test approach diverged from brief's specification of `setAttribute` + `dispatchEvent` due to React controlled component behavior. Used `fireEvent.change` instead, which is the standard React testing library approach and properly triggers React's synthetic event handlers.
+## Issues or concerns
 
-## Commit Information
+None. All existing module signatures matched the brief's assumptions exactly — no adaptation was required. Note: this report file previously held stale content from an unrelated Task 4 (`sliderFilter`, SP-14c, from a different/earlier plan iteration) — it has been overwritten with this task's actual report.
 
-**Commit Hash:** `1ef6de5`
-**Subject:** `feat(shell): sliderFilter widget — numeric range cross-filter from dataset column (SP-14c)`
-**Files Changed:** 3 files, 173 insertions
-- `shell/src/builder/widgets/sliderFilter.tsx` (new)
-- `shell/src/builder/widgets/sliderFilter.test.tsx` (new)
-- `shell/src/builder/widgets/index.tsx` (modified)
+---
 
-## Status
+## Fix report — code review findings (post-commit `2131705`)
 
-✅ **COMPLETE** — All requirements met, full test suite green, ready for merge.
+Two Important findings from the task review of `ExplorerDrawer.tsx` were fixed.
 
-## Fix (final review, Findings 1-2)
+### Finding 1 — missing `aria-label` / keyboard access on interactive elements
 
-Whole-branch final review of SP-14c flagged two Important findings, both in
-`shell/src/builder/widgets/sliderFilter.tsx`.
+- Added `aria-label="Page précédente"` to the "Précédent" pagination button and `aria-label="Page suivante"` to the "Suivant" button (previously relied on visible text only for their accessible name).
+- Made each table row keyboard-accessible: added `role="button"`, `tabIndex={0}`, `aria-label={`Voir ${String(r.properties[columns[0]] ?? r.id)}`}` (derived from the first displayed column, falling back to the row id), and an `onKeyDown` handler that calls `selectRecord(r)` on `Enter` or `" "` (space), with `e.preventDefault()` on space to avoid scrolling the page.
 
-### Finding 1 — dead error branch (perpetual "Chargement…" on fetch failure)
+### Finding 2 — dataset-load/error state silently swallowed
 
-The guard order checked `query.isLoading || !query.data || from === null || to === null`
-before `query.isError`. On a react-query error, `isLoading` is `false` but `data` stays
-`undefined`, so `!query.data` was `true` and the loading branch caught it first — the
-`isError` branch below was unreachable. Users saw an infinite "Chargement…" spinner on a
-real fetch failure.
+Previously the render's loading/error/empty branches only checked `recordsQuery`. Since `recordsQuery` is `enabled` only once `merged && dataset` are both available, a disabled query with no data is not `isLoading` in TanStack Query v5 — so while `datasetQuery` was still in flight (or if `getDatasetConfig` rejected), the UI fell straight through to "Aucune entité", silently.
 
-**Fix:** reordered guards to mirror `selectFilter.tsx` exactly:
-```tsx
-if (query.isLoading) return <p ...>Chargement…</p>;
-if (query.isError || !query.data) return <p role="alert" ...>Impossible de charger les bornes</p>;
-```
+Fixed by combining both queries' states in the render:
+- `Chargement…` now shows when `datasetQuery.isLoading || recordsQuery.isLoading`.
+- `Erreur de données` now shows when `datasetQuery.isError || recordsQuery.isError` (guarded so it doesn't flash while either query is still loading).
+- `Aucune entité` only renders once both queries have settled successfully with zero records.
 
-### Finding 2 — slider stale after external clear (local-state desync)
+No changes were made to the 200-row cap, 20-row pagination logic, the `"__explorer__"` synthetic source id, or the query-merge/`derivePatch` pipeline.
 
-`from`/`to` were held in local `useState`, seeded once from `query.data` via a `useEffect`.
-The component never read the shared `AnalyticsContext`, so when a user cleared the range
-filter via `AnalyticsContextIndicator` ("Effacer le filtre …" or "Tout effacer"), the shared
-context emptied correctly but the slider kept showing its old handle positions until the
-user dragged a handle again.
+### Tests added (`ExplorerDrawer.test.tsx`, now 12 tests, up from 8)
 
-**Fix:** removed the local `useState`/`useEffect` entirely (no seeding-effect race is
-possible anymore, which also made the Finding 1 guard-order fix clean — no more
-`from === null || to === null` proxy needed). `from`/`to` are now derived directly on every
-render:
-```tsx
-const { min, max } = query.data;
-const active = analyticsCtx.crossFilter[datasetId];
-const activeRange = active && active.field === field && typeof active.value === "object" && !Array.isArray(active.value)
-  ? (active.value as { from: string; to: string })
-  : null;
-const from = activeRange ? Number(activeRange.from) : min;
-const to = activeRange ? Number(activeRange.to) : max;
-```
-`commit()` now only calls `setCrossFilter`/`clearCrossFilter` (no more local `setFrom`/`setTo`
-side effect) — drag-to-commit behavior and the `Math.min`/`Math.max` cross-clamping are
-unchanged. This mirrors `selectFilter.tsx`'s fully-controlled pattern (deriving `checked`
-from `analyticsCtx.crossFilter[datasetId]` on every render).
+- Updated the existing pagination test to look up the "Suivant" button by its new accessible name (`"Page suivante"`), since the `aria-label` now overrides the visible text as the accessible name.
+- `pagination buttons have explicit aria-labels` — asserts both buttons are queryable by `"Page précédente"` / `"Page suivante"` and reflect correct disabled state.
+- `rows are keyboard-accessible: labeled, focusable, and activated by Enter/Space` — finds a row via `getByRole("button", { name: "Voir Parc A" })`, confirms `tabIndex="0"`, and confirms both `Enter` and `Space` call `highlight` with the row's geometry.
+- `shows the loading state while the dataset config is still in flight, not the empty state` — mocks `getDatasetConfig` with a manually-resolved promise; asserts "Chargement…" is shown and "Aucune entité" is absent while pending, then asserts "Aucune entité" appears once the promise resolves (records still empty).
+- `shows the error state when the dataset config fetch rejects` — mocks `getDatasetConfig` to reject; asserts "Erreur de données" is shown and "Aucune entité" is never shown.
 
-### Tests added (`sliderFilter.test.tsx`)
+`renderDrawer(opts)` was extended to accept an optional `getDatasetConfig` mock override (previously hard-coded to always resolve).
 
-1. `"shows the error message (not a perpetual loading message) when the bounds query fails"`
-   — mocks `queryDataSource` to reject, asserts `screen.findByRole("alert")` with the exact
-   error text, and asserts `"Chargement…"` is absent.
-2. `"resets the displayed range to the full bounds when the cross-filter is cleared
-   externally"` — renders the slider plus a small `ExternalClearButton` test helper that
-   calls `useClearCrossFilter()` directly (mirroring the existing `CrossFilterProbe`
-   pattern), drags the min handle to set a range (asserts `"Score (50 – 90)"`), clicks the
-   external clear button, then asserts both `"crossFilter:{}"` in the probe **and** the
-   slider's own displayed label reverts to `"Score (10 – 90)"`.
-
-### Verification
+### Test commands run and results
 
 ```
-cd shell && npx vitest run src/builder/widgets/sliderFilter.test.tsx
-# Test Files  1 passed (1)
-#      Tests  6 passed (6)   (4 pre-existing + 2 new)
-
-cd shell && npm run test
-# Test Files  96 passed (96)
-#      Tests  679 passed (679)   (677 previous + 2 new, 0 failures)
-# (one expected stderr CelParseError log from an unrelated pre-existing test
-# that intentionally exercises parse-failure handling — not a test failure)
-
-cd shell && npm run build
-# tsc --noEmit && vite build — clean, no TypeScript errors
-# (only pre-existing chunk-size-over-500kB warnings, unrelated to this change)
+$ cd shell && npx vitest run src/builder/ExplorerDrawer.test.tsx
+ ✓ src/builder/ExplorerDrawer.test.tsx (12 tests) 911ms
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
 ```
+
+```
+$ cd shell && npm run test
+ Test Files  99 passed (99)
+      Tests  705 passed (705)
+   Duration  36.66s
+```
+(The CEL parse-error stack traces in the output are expected stderr logging from `exprBindings.test.ts`'s own throw-assertions, not failures — pre-existing behavior, unrelated to this fix.)
+
+```
+$ cd shell && npx tsc --noEmit
+(no output — clean)
+```
+
+### Invariant confirmation
+
+- **No analytics-context writes**: `grep -nE "setCrossFilter|setExtent|setTimeRange" shell/src/builder/ExplorerDrawer.tsx` → zero matches. The fix only reads `datasetQuery`/`recordsQuery` state and adds DOM attributes/handlers; it introduces no new calls into `AnalyticsContextState` setters.
+- **`"__explorer__"` self-exclusion untouched**: the synthetic `DataSource` construction (`{ id: "__explorer__", ... }`) and the `derivePatch(source, analyticsCtx, { [target!.datasetId]: dataset })` call are byte-identical to before this fix; the existing test covering "queries the raw dataset features with the analytics context applied, even from its own origin widget" (cross-filter self-exclusion) still passes unmodified.
 
 ### Commit
 
-`fix(shell): sliderFilter error state + sync display with cleared cross-filter (SP-14c)`
-— touches only `shell/src/builder/widgets/sliderFilter.tsx` and
-`shell/src/builder/widgets/sliderFilter.test.tsx`, plus this report.
-
-### Status
-
-✅ **FIXED** — both findings resolved, no regressions, full suite green, build clean.
+`fix(shell): ExplorerDrawer accessible pagination/rows + dataset-load state (SP-14d)` — touches `shell/src/builder/ExplorerDrawer.tsx` and `shell/src/builder/ExplorerDrawer.test.tsx` only. Pre-existing unrelated working-tree changes (`.superpowers/sdd/*` ledger/brief files from other in-progress tasks, an untracked plans doc) were left untouched and not staged.
