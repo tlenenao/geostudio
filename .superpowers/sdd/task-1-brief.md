@@ -1,153 +1,157 @@
-### Task 1: `AnalyticsContext` — range cross-filter value + `clearCrossFilter`
+## Task 1: `ExplorerContext` — open/close state and gating
 
 **Files:**
-- Modify: `shell/src/builder/AnalyticsContext.tsx` (whole file is 91 lines; changes touch lines 4, 16-27, 58-70, 88-91)
-- Test: `shell/src/builder/AnalyticsContext.test.tsx`
+- Create: `shell/src/builder/ExplorerContext.tsx`
+- Test: `shell/src/builder/ExplorerContext.test.tsx`
 
 **Interfaces:**
-- Consumes: nothing new.
-- Produces: `export type CrossFilterValue = string | string[] | { from: string; to: string }`; `CrossFilterEntry.value: CrossFilterValue` (was `string | string[]`); `export function useClearCrossFilter(): (datasetId: string) => void`.
+- Produces (consumed by every later task):
+  - `type ExplorerTarget = { datasetId: string; dataSourceId: string } | null`
+  - `function ExplorerProvider({ enabled, children }: { enabled?: boolean; children: ReactNode })`
+  - `function useExplorerTarget(): ExplorerTarget`
+  - `function useExplorerEnabled(): boolean`
+  - `function useOpenExplorer(): (target: { datasetId: string; dataSourceId: string }) => void`
+  - `function useCloseExplorer(): () => void`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-Add to `shell/src/builder/AnalyticsContext.test.tsx`, inside the existing `Probe` component add two buttons (import `useClearCrossFilter` at the top alongside the other hooks):
+Create `shell/src/builder/ExplorerContext.test.tsx`:
 
 ```tsx
-import {
-  AnalyticsContextProvider, useAnalyticsContext, useClearCrossFilter, useSetCrossFilter, useSetExtent, useSetTimeRange,
-} from "./AnalyticsContext";
+// SPDX-License-Identifier: Apache-2.0
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import { ExplorerProvider, useCloseExplorer, useExplorerEnabled, useExplorerTarget, useOpenExplorer } from "./ExplorerContext";
 
 function Probe() {
-  const ctx = useAnalyticsContext();
-  const setTimeRange = useSetTimeRange();
-  const setExtent = useSetExtent();
-  const setCrossFilter = useSetCrossFilter();
-  const clearCrossFilter = useClearCrossFilter();
+  const target = useExplorerTarget();
+  const enabled = useExplorerEnabled();
+  const open = useOpenExplorer();
+  const close = useCloseExplorer();
   return (
     <div>
-      <p>timeRange:{ctx.timeRange ? `${ctx.timeRange.from}..${ctx.timeRange.to}` : "none"}</p>
-      <p>extent:{ctx.extent ? ctx.extent.join(",") : "none"}</p>
-      <p>crossFilter:{JSON.stringify(ctx.crossFilter)}</p>
-      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>set-time</button>
-      <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
-      <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
-      <button onClick={() => setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")}>set-cf-range</button>
-      <button onClick={() => clearCrossFilter("ds1")}>clear-cf</button>
+      <p>enabled:{String(enabled)}</p>
+      <p>target:{target ? `${target.datasetId}/${target.dataSourceId}` : "none"}</p>
+      <button onClick={() => open({ datasetId: "ds1", dataSourceId: "src1" })}>open</button>
+      <button onClick={() => open({ datasetId: "ds2", dataSourceId: "src2" })}>open-other</button>
+      <button onClick={close}>close</button>
     </div>
   );
 }
+
+test("openExplorer is a silent no-op when the provider is disabled", async () => {
+  render(<ExplorerProvider enabled={false}><Probe /></ExplorerProvider>);
+  expect(screen.getByText("enabled:false")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
+
+test("openExplorer sets the target when enabled", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  expect(screen.getByText("enabled:true")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
+});
+
+test("opening a second target while one is open replaces it (last one wins)", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  await userEvent.click(screen.getByText("open"));
+  await userEvent.click(screen.getByText("open-other"));
+  expect(screen.getByText("target:ds2/src2")).toBeInTheDocument();
+});
+
+test("closeExplorer clears the target", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  await userEvent.click(screen.getByText("open"));
+  await userEvent.click(screen.getByText("close"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
+
+test("hooks work with no provider mounted at all (default disabled, no-op)", async () => {
+  render(<Probe />);
+  expect(screen.getByText("enabled:false")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
 ```
 
-Append these tests (after the existing `"setCrossFilter toggles..."` test, still outside the `describe("extent debounce", ...)` block):
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
+Expected: FAIL — `Failed to resolve import "./ExplorerContext"`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `shell/src/builder/ExplorerContext.tsx`:
 
 ```tsx
-test("setCrossFilter accepts a {from,to} range value", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
-  await userEvent.click(screen.getByText("set-cf-range"));
-  expect(screen.getByText(/"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/)).toBeInTheDocument();
+// SPDX-License-Identifier: Apache-2.0
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+
+export type ExplorerTarget = { datasetId: string; dataSourceId: string } | null;
+
+type OpenExplorer = (target: { datasetId: string; dataSourceId: string }) => void;
+type CloseExplorer = () => void;
+
+const ExplorerTargetContext = createContext<ExplorerTarget>(null);
+const ExplorerEnabledContext = createContext<boolean>(false);
+const ExplorerSettersContext = createContext<{ open: OpenExplorer; close: CloseExplorer }>({
+  open: () => {}, close: () => {},
 });
 
-test("clearCrossFilter removes the entry for that dataset", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
-  await userEvent.click(screen.getByText("set-cf"));
-  expect(screen.getByText(/"ds1":/)).toBeInTheDocument();
-  await userEvent.click(screen.getByText("clear-cf"));
-  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
-});
+export function ExplorerProvider({
+  enabled = false, children,
+}: {
+  enabled?: boolean;
+  children: ReactNode;
+}) {
+  const [target, setTarget] = useState<ExplorerTarget>(null);
 
-test("clearCrossFilter is a no-op when interactions is not 'auto'", async () => {
-  render(<AnalyticsContextProvider interactions="manual"><Probe /></AnalyticsContextProvider>);
-  await userEvent.click(screen.getByText("clear-cf"));
-  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
-});
-```
+  const open = useCallback<OpenExplorer>((next) => {
+    if (!enabled) return;
+    setTarget(next);
+  }, [enabled]);
 
-- [ ] **Step 2: Run tests to verify they fail**
+  const close = useCallback<CloseExplorer>(() => {
+    setTarget(null);
+  }, []);
 
-Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
-Expected: FAIL — `setCrossFilter` rejects/mistypes the range value (TS) and `useClearCrossFilter` does not exist (import error).
+  const setters = useMemo(() => ({ open, close }), [open, close]);
 
-- [ ] **Step 3: Implement**
-
-Replace line 4 of `shell/src/builder/AnalyticsContext.tsx`:
-
-```ts
-export type CrossFilterValue = string | string[] | { from: string; to: string };
-export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string };
-```
-
-Replace lines 16-27 (the two type aliases through `sameCrossFilterValue`):
-
-```ts
-type SetTimeRange = (range: { from: string; to: string } | null) => void;
-type SetExtent = (bbox: [number, number, number, number] | null) => void;
-type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string) => void;
-type ClearCrossFilter = (datasetId: string) => void;
-
-const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
-const AnalyticsSettersContext = createContext<{
-  setTimeRange: SetTimeRange; setExtent: SetExtent; setCrossFilter: SetCrossFilter; clearCrossFilter: ClearCrossFilter;
-}>({
-  setTimeRange: () => {}, setExtent: () => {}, setCrossFilter: () => {}, clearCrossFilter: () => {},
-});
-
-function sameCrossFilterValue(a: CrossFilterValue, b: CrossFilterValue): boolean {
-  return typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b);
-}
-```
-
-Replace lines 58-70 (from `const setCrossFilter = ...` through the `setters` memo):
-
-```ts
-  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId) => {
-    if (!active) return;
-    setState((prev) => {
-      const current = prev.crossFilter[datasetId];
-      const isToggleOff = Boolean(current) && current!.field === field && sameCrossFilterValue(current!.value, value);
-      const nextCrossFilter = { ...prev.crossFilter };
-      if (isToggleOff) delete nextCrossFilter[datasetId];
-      else nextCrossFilter[datasetId] = { field, value, originSourceId };
-      return { ...prev, crossFilter: nextCrossFilter };
-    });
-  }, [active]);
-
-  const clearCrossFilter = useCallback<ClearCrossFilter>((datasetId) => {
-    if (!active) return;
-    setState((prev) => {
-      if (!prev.crossFilter[datasetId]) return prev;
-      const nextCrossFilter = { ...prev.crossFilter };
-      delete nextCrossFilter[datasetId];
-      return { ...prev, crossFilter: nextCrossFilter };
-    });
-  }, [active]);
-
-  const setters = useMemo(
-    () => ({ setTimeRange, setExtent, setCrossFilter, clearCrossFilter }),
-    [setTimeRange, setExtent, setCrossFilter, clearCrossFilter],
+  return (
+    <ExplorerEnabledContext.Provider value={enabled}>
+      <ExplorerSettersContext.Provider value={setters}>
+        <ExplorerTargetContext.Provider value={target}>{children}</ExplorerTargetContext.Provider>
+      </ExplorerSettersContext.Provider>
+    </ExplorerEnabledContext.Provider>
   );
+}
+
+export function useExplorerTarget(): ExplorerTarget {
+  return useContext(ExplorerTargetContext);
+}
+export function useExplorerEnabled(): boolean {
+  return useContext(ExplorerEnabledContext);
+}
+export function useOpenExplorer(): OpenExplorer {
+  return useContext(ExplorerSettersContext).open;
+}
+export function useCloseExplorer(): CloseExplorer {
+  return useContext(ExplorerSettersContext).close;
+}
 ```
 
-Replace lines 88-91 (the final export block) — append the new hook after `useSetCrossFilter`:
+- [ ] **Step 4: Run test to verify it passes**
 
-```ts
-export function useSetCrossFilter(): SetCrossFilter {
-  return useContext(AnalyticsSettersContext).setCrossFilter;
-}
-export function useClearCrossFilter(): ClearCrossFilter {
-  return useContext(AnalyticsSettersContext).clearCrossFilter;
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
-Expected: PASS, all tests including the 3 new ones and the pre-existing ones (toggle, debounce, no-provider default).
+Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
+Expected: PASS (5/5).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd shell && git add src/builder/AnalyticsContext.tsx src/builder/AnalyticsContext.test.tsx
-git commit -m "feat(shell): cross-filter range value + clearCrossFilter setter (SP-14c)"
+git add shell/src/builder/ExplorerContext.tsx shell/src/builder/ExplorerContext.test.tsx
+git commit -m "feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)"
 ```
 
 ---

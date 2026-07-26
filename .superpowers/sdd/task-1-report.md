@@ -1,152 +1,105 @@
-# Task 1 Report: `AnalyticsContext` — range cross-filter value + `clearCrossFilter`
+# Task 1 Report: ExplorerContext — open/close state and gating
 
 ## Summary
 
-Successfully implemented cross-filter range value support and the `clearCrossFilter` setter in the `AnalyticsContext` provider. All 8 tests pass, including 3 new test cases.
+Successfully implemented `ExplorerContext`, a React context system for managing explorer panel state (open/close, dataset/dataSource tracking, and enabled/disabled gating). All 5 tests pass; full test suite (684 tests) passes without regressions.
 
 ## What Was Implemented
 
-### Files Modified
-- `shell/src/builder/AnalyticsContext.tsx` — Core implementation
-- `shell/src/builder/AnalyticsContext.test.tsx` — Tests and probe component
+### Files Created
+1. **`shell/src/builder/ExplorerContext.test.tsx`** (61 lines)
+   - 5 tests covering all use cases
+   - Probe component for integration testing
+   
+2. **`shell/src/builder/ExplorerContext.tsx`** (49 lines)
+   - `ExplorerProvider` component with optional `enabled` prop
+   - State management for explorer target (datasetId/dataSourceId)
+   - Three context layers (target, enabled, setters)
+   - Four hook exports: `useExplorerTarget()`, `useExplorerEnabled()`, `useOpenExplorer()`, `useCloseExplorer()`
 
-### Changes Made
+### Core Behavior
+- **Enabled gating:** When provider is `enabled=false` or no provider mounted, `openExplorer()` is a silent no-op
+- **State management:** When enabled, `openExplorer()` sets a `{ datasetId, dataSourceId }` target; `closeExplorer()` clears it
+- **Last-one-wins:** Multiple consecutive `openExplorer()` calls replace the target (latest wins)
+- **Default safety:** No provider mounted = safe defaults (enabled=false, target=null, no-op setters)
 
-#### 1. Type Definitions (AnalyticsContext.tsx, line 4-5)
-- Added `export type CrossFilterValue = string | string[] | { from: string; to: string };`
-- Updated `CrossFilterEntry.value` to use `CrossFilterValue` type instead of inline union
+## Testing & TDD Evidence
 
-#### 2. Setter Types and Context Setup (lines 16-29)
-- Updated `SetCrossFilter` type signature to accept `CrossFilterValue` instead of `string | string[]`
-- Added new `ClearCrossFilter` type: `(datasetId: string) => void`
-- Updated `AnalyticsSettersContext` to include `clearCrossFilter` in its shape
-- Updated `sameCrossFilterValue` function to handle object range values via JSON stringification
-
-#### 3. clearCrossFilter Implementation (lines 74-82)
-- Implemented `clearCrossFilter` callback with `useCallback` hook
-- Guards with `if (!active) return` to ensure silent no-op when `interactions !== "auto"`
-- Safely deletes dataset entry from `crossFilter` object
-- Early return if entry doesn't exist (optimization)
-
-#### 4. setters Memo Update (lines 84-87)
-- Updated `setters` memoization to include `clearCrossFilter`
-- Added to dependency array: `[setTimeRange, setExtent, setCrossFilter, clearCrossFilter]`
-
-#### 5. Export Hook (lines 108-110)
-- Added `export function useClearCrossFilter(): ClearCrossFilter`
-- Returns `clearCrossFilter` from `AnalyticsSettersContext`
-
-#### 6. Test Updates (AnalyticsContext.test.tsx)
-- Updated imports to include `useClearCrossFilter`
-- Added `clearCrossFilter` hook usage to `Probe` component
-- Added two new buttons: `set-cf-range` and `clear-cf`
-
-### New Test Cases
-
-#### Test 1: "setCrossFilter accepts a {from,to} range value"
-- Verifies that range values can be stored in `CrossFilterEntry.value`
-- Checks JSON stringification contains the range object with `from` and `to` fields
-- Status: **PASS**
-
-#### Test 2: "clearCrossFilter removes the entry for that dataset"
-- Sets a cross filter entry, verifies it exists
-- Calls `clearCrossFilter("ds1")`, verifies entry is removed
-- Status: **PASS**
-
-#### Test 3: "clearCrossFilter is a no-op when interactions is not 'auto'"
-- Tests that `clearCrossFilter` respects the `active` guard flag
-- Verifies context remains empty when interactions="manual"
-- Status: **PASS**
-
-## TDD Evidence
-
-### RED (Before Implementation)
+### RED (Test fails before implementation)
 ```bash
-$ cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
+$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
+Error: Failed to resolve import "./ExplorerContext" from "src/builder/ExplorerContext.test.tsx"
 ```
+Expected failure — implementation file doesn't exist.
 
-**Result:** 8 failed tests
-```
-FAIL  src/builder/AnalyticsContext.test.tsx > setters are silent no-ops when interactions is not 'auto'
-FAIL  src/builder/AnalyticsContext.test.tsx > setTimeRange updates state when interactions is 'auto'
-FAIL  src/builder/AnalyticsContext.test.tsx > hooks work with no provider mounted at all (default no-op context)
-FAIL  src/builder/AnalyticsContext.test.tsx > setCrossFilter toggles: same (field, value) twice clears it, a different value replaces it
-FAIL  src/builder/AnalyticsContext.test.tsx > setCrossFilter accepts a {from,to} range value
-FAIL  src/builder/AnalyticsContext.test.tsx > clearCrossFilter removes the entry for that dataset
-FAIL  src/builder/AnalyticsContext.test.tsx > clearCrossFilter is a no-op when interactions is not 'auto'
-FAIL  src/builder/AnalyticsContext.test.tsx > extent debounce > setExtent debounces ~500ms before updating state
-
-Error: TypeError: (0 , useClearCrossFilter) is not a function
-```
-
-### GREEN (After Implementation)
+### GREEN (Test passes after implementation)
 ```bash
-$ cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
+$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
+✓ src/builder/ExplorerContext.test.tsx (5 tests) 196ms
+
+Test Files  1 passed (1)
+Tests  5 passed (5)
 ```
 
-**Result:** All 8 tests pass
-```
-✓ src/builder/AnalyticsContext.test.tsx (8 tests) 320ms
+All 5 test cases pass:
+1. `openExplorer is a silent no-op when the provider is disabled`
+2. `openExplorer sets the target when enabled`
+3. `opening a second target while one is open replaces it (last one wins)`
+4. `closeExplorer clears the target`
+5. `hooks work with no provider mounted at all (default disabled, no-op)`
 
- Test Files  1 passed (1)
-      Tests  8 passed (8)
+### Full Suite
+```bash
+$ npm run test
+✓ Test Files  97 passed (97)
+✓ Tests  684 passed (684)
 ```
-
-## Commits Created
-- **b651175** `feat(shell): cross-filter range value + clearCrossFilter setter (SP-14c)`
+No regressions; all existing tests remain passing.
 
 ## Self-Review Findings
 
-### Completeness ✓
-- [x] New type `CrossFilterValue` defined and exported
-- [x] `CrossFilterEntry.value` updated to use `CrossFilterValue`
-- [x] `sameCrossFilterValue` function handles all value types correctly
-- [x] `clearCrossFilter` implementation complete with `active` guard
-- [x] `useClearCrossFilter` hook exported
-- [x] All 3 new test cases added
-- [x] Existing 5 tests still pass (2 existing + 3 new = 8 total)
+### Completeness
+- ✓ Both files created exactly as specified in brief
+- ✓ All 5 test cases implemented verbatim
+- ✓ Implementation handles all requirements: enabled gating, state management, default safety
+- ✓ Type exports match interface spec
+- ✓ SPDX license headers present on both files
 
-### Quality ✓
-- Follows existing code style (useCallback, guards with `if (!active) return`)
-- Type safety: TypeScript compilation passes
-- No breaking changes: all existing tests still pass
-- Naming consistent with existing patterns (useSetCrossFilter → useClearCrossFilter)
-- JSON stringification approach handles all CrossFilterValue types correctly
+### Code Quality
+- ✓ Follows repo conventions (TypeScript, React hooks, SPDX headers)
+- ✓ Clean context design: separate contexts for target, enabled, setters
+- ✓ `useCallback` with proper dependency arrays (`[enabled]` for open, `[]` for close)
+- ✓ `useMemo` for setters object to avoid recreation
+- ✓ Sensible defaults in default context values
 
-### Discipline ✓
-- No scope creep: implementation matches brief exactly
-- No unnecessary refactoring
-- Minimal diffs: only what's needed
-- No unintended changes to other files
+### Discipline
+- ✓ No overbuilding — only the code specified
+- ✓ No extra files, no configuration changes
+- ✓ TDD strictly followed: test first, RED, implementation, GREEN, commit
 
-### Testing ✓
-- All 8 tests pass without warnings
-- Tests cover: range values, clear operation, and no-op behavior
-- No flaky tests; consistent results
-- Pre-existing tests unaffected (debounce, toggle, no-provider scenarios)
+### Testing
+- ✓ Test file comprehensive: covers enabled/disabled paths, state transitions, no-provider case
+- ✓ Probe component correctly exercises all hooks and state paths
+- ✓ User events drive state changes (proper integration testing, not unit)
+- ✓ Tests are readable, focused, and test one behavior per case
 
-## Implementation Details
+## Git Commit
 
-### sameCrossFilterValue Logic
-Updated from the original array-checking logic to handle objects:
-```typescript
-// OLD: Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b
-// NEW: typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b)
+```
+8351e8b feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)
 ```
 
-This ensures string comparisons remain efficient (`===` for strings) while objects/arrays/ranges use JSON comparison. This is critical for the toggle-off behavior in `setCrossFilter` to work correctly with range values.
+Files:
+- `shell/src/builder/ExplorerContext.test.tsx` (new)
+- `shell/src/builder/ExplorerContext.tsx` (new)
 
-### clearCrossFilter Behavior
-- Silent no-op when `interactions !== "auto"` (via `if (!active) return` guard)
-- No-op if entry doesn't exist (early return optimization)
-- Correctly removes the entire dataset entry from the `crossFilter` record
+## Issues / Concerns
 
-## Next Steps (Not in Scope)
+None. Implementation is complete, well-tested, and ready for downstream tasks.
 
-Per the task description, later tasks will:
-- Task 2: Add `derivePatch` translation of range values to `field__gte`/`field__lte` query filters
-- Tasks 3-5: Build UI widgets/indicator that consume `clearCrossFilter`
+## Readiness for Next Task
 
-## Issues and Concerns
-
-**None.** Implementation is complete, tested, and follows all requirements exactly as specified in the brief.
+This context is now ready to be consumed by Task 2 (ExplorerMenu). The interface is stable:
+- `ExplorerProvider` wraps any widget that needs the explorer feature
+- Hooks provide read-only target state and write-only open/close functions
+- Default safe behavior when provider is missing or disabled

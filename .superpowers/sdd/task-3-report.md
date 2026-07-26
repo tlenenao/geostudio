@@ -1,116 +1,102 @@
-# Task 3: `selectFilter` Widget (Multi-Value) — Implementation Report
+## Task 3 report: Wire `ExplorerMenu` into the 5 eligible widgets
 
-## Summary
+### What I implemented
 
-Successfully implemented the `selectFilter` widget — a multi-value checkbox filter bound to a dataset column. The widget fetches distinct values via `itemClient.queryDataSource` with a `groupBy` statistics query and accumulates/clears cross-filters via `useSetCrossFilter`/`useClearCrossFilter` (Tasks 1–2).
+Wired the existing `<ExplorerMenu>` component (from Task 2) into all 5 data-bound
+widget render paths, exactly as described in the brief — no deviations. The
+actual current file contents matched the brief's line ranges almost exactly
+(off by 1-2 lines at most, e.g. the `data.tsx` type import was on line 9, the
+`table` return block started at line 190 as described), so all edits are
+verbatim from the brief:
 
-## Implementation Details
+- `shell/src/builder/widgets/chart.tsx` — import `ExplorerMenu` after the
+  `chartOption` import; wrapped the `Suspense` in `<div className="relative h-full">`
+  with `<ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />`
+  as first child.
+- `shell/src/builder/widgets/data.tsx` — import after the `DataRecord` type
+  import; same wrap pattern for both the `list` widget's `<ul>` return and the
+  `table` widget's return (added `relative` to the existing
+  `flex h-full flex-col text-xs` wrapper div and inserted the menu as first
+  child, right before the `<table>`).
+- `shell/src/builder/widgets/mapWidget.tsx` — import after the `MapViewHandle`
+  type import; wrapped the `Suspense`/`MapView` in a `relative h-full` div,
+  using `ctx.data?.datasetId` (map's component reads `ctx.data` directly, not a
+  destructured `data` local, matching the brief).
+- `shell/src/builder/widgets/indicator.tsx` — import after `DataSourceSelect`;
+  added `relative` to the existing centered flex wrapper and inserted the menu
+  as first child.
 
-### Files Created
+### What I tested
 
-1. **`shell/src/builder/widgets/selectFilter.tsx`** (74 lines)
-   - Widget registration function `registerSelectFilterWidget()`
-   - Widget type: `"selectFilter"`
-   - Default props: `{ dataSourceId: "", field: "", label: "Filtrer" }`
-   - Default size: `{ w: 3, h: 3 }`
-   - PropsPanel: DataSourceSelect + field + label inputs
-   - Component: fetches distinct values via `queryDataSource` (statistics query with `groupBy`), renders checkboxes with counts, toggles cross-filter on check/uncheck
+Added the 4 new tests exactly as specified in the brief (1 in chart.test.tsx,
+2 in data.test.tsx for `list` and `table`, 1 in mapWidget.test.tsx, 1 in
+indicator.test.tsx), each rendering the widget inside `<ExplorerProvider enabled>`
+with a dataset-bound `ctx.data` and asserting `screen.findByLabelText("Explorer")`
+resolves.
 
-2. **`shell/src/builder/widgets/selectFilter.test.tsx`** (104 lines)
-   - 4 tests covering:
-     - Unbound state (shows discreet message, no query)
-     - Distinct values fetched and rendered
-     - Single checkbox sets single-element array filter
-     - Multiple checkboxes accumulate; clearing all removes filter
+### TDD Evidence
 
-### Files Modified
+**RED** — `cd shell && npx vitest run src/builder/widgets/chart.test.tsx src/builder/widgets/data.test.tsx src/builder/widgets/mapWidget.test.tsx src/builder/widgets/indicator.test.tsx`
+```
+Test Files  4 failed (4)
+     Tests  5 failed | 36 passed (41)
+```
+All 5 new tests failed with `TestingLibraryElementError: Unable to find a label
+with the text of: Explorer`; all 36 pre-existing tests in these 4 files passed
+unchanged.
 
-**`shell/src/builder/widgets/index.tsx`** (2-line wiring change)
-- Line 17: Added import `import { registerSelectFilterWidget } from "./selectFilter";`
-- Line 163: Added registration call `registerSelectFilterWidget();`
-
-## TDD Evidence
-
-### RED (Tests Fail Before Implementation)
-
-```bash
-$ cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx
-
-⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯
- FAIL  src/builder/widgets/selectFilter.test.tsx
-Error: Failed to resolve import "./selectFilter" from "src/builder/widgets/selectFilter.test.tsx"
-  File: /home/lenen/projets/geostudio/shell/src/builder/widgets/selectFilter.test.tsx:7:43
+**GREEN** — same command after implementation:
+```
+✓ src/builder/widgets/indicator.test.tsx (4 tests) 67ms
+✓ src/builder/widgets/data.test.tsx (19 tests) 438ms
+✓ src/builder/widgets/mapWidget.test.tsx (9 tests) 481ms
+✓ src/builder/widgets/chart.test.tsx (9 tests) 516ms
+Test Files  4 passed (4)
+     Tests  41 passed (41)
 ```
 
-**Status**: FAIL (module does not exist) ✓
-
-### GREEN (Tests Pass After Implementation)
-
-```bash
-$ cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx
-
- ✓ src/builder/widgets/selectFilter.test.tsx (4 tests) 411ms
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
+Full suite — `cd shell && npm run test`:
 ```
-
-**Status**: PASS ✓
-
-## Full Suite Results
-
-**Before**: 663 tests across 94 test files
-**After**: 667 tests across 94 test files (+4 new tests)
-
-```bash
-$ cd shell && npm run test
-
- Test Files  94 passed (94)
-      Tests  667 passed (667)
-   Start at  17:23:34
-   Duration  32.71s
+Test Files  98 passed (98)
+     Tests  693 passed (693)
 ```
+(The stderr output visible during the run is expected console noise from an
+existing CEL-parse-error test in `exprBindings.test.ts`, unrelated to this
+change — no failures.)
 
-**Status**: All tests passing, 0 failures, no regressions ✓
+Typecheck — `cd shell && npx tsc --noEmit` — clean, no output.
 
-## Self-Review Findings
+### Files changed
 
-### Completeness
-- ✓ Widget file created with full implementation (type, label, defaultProps, defaultSize, PropsPanel, Component)
-- ✓ Test file created with 4 comprehensive tests
-- ✓ Wiring applied to index.tsx (import + registration call)
-- ✓ All code follows brief's specifications exactly (no deviation)
+- `shell/src/builder/widgets/chart.tsx`
+- `shell/src/builder/widgets/chart.test.tsx`
+- `shell/src/builder/widgets/data.tsx`
+- `shell/src/builder/widgets/data.test.tsx`
+- `shell/src/builder/widgets/mapWidget.tsx`
+- `shell/src/builder/widgets/mapWidget.test.tsx`
+- `shell/src/builder/widgets/indicator.tsx`
+- `shell/src/builder/widgets/indicator.test.tsx`
 
-### Quality
-- ✓ Widget follows existing conventions (cf. `dateRangeFilter.tsx`, `chart.tsx`)
-- ✓ All UI copy in French, tone consistent with existing widgets
-- ✓ Every interactive element has accessible name (`aria-label` on checkboxes, `<label>` wrapping in PropsPanel)
-- ✓ Cross-filter accumulation/clearing works correctly (tests verify behavior)
-- ✓ Statistics query via `queryDataSource` with correct parameters (id, type, service, layer, datasetId, query)
-- ✓ `originSourceId` correctly passed as `props.dataSourceId` (existing convention)
+Commit: `c048d6c` — `feat(shell): wire the explorer menu into chart/table/list/map/indicator (SP-14d)`
 
-### Discipline
-- ✓ No scope creep — implemented exactly what the brief specified
-- ✓ No core changes (none needed; `/collections/{id}/aggregate` endpoint already exists)
-- ✓ No unintended UI additions beyond brief
-- ✓ Test coverage includes: unbound state, fetching, single/multiple selections, clearing
+### Self-review
 
-### Testing
-- ✓ All 4 tests pass and exercise real behavior (data fetching, checkbox toggling, cross-filter state)
-- ✓ Full suite green (667 tests, 0 failures)
-- ✓ Output pristine (no unexpected warnings or errors)
+- Completeness: all 5 widget render paths (chart, list, table, map, indicator)
+  now render `<ExplorerMenu>` as the first child of a `relative`-positioned
+  wrapper; confirmed via the diff and via the passing tests for each.
+- Quality: matches repo conventions (import grouping, className patterns,
+  `String(props.dataSourceId ?? "")` idiom already used elsewhere in these
+  files for cross-filter calls). `aria-label="Explorer"` comes from
+  `ExplorerMenu` itself (Task 2), verified present via `findByLabelText`.
+- Discipline: no refactors beyond adding the import + wrapping div + menu
+  element in each file; no changes to unrelated widgets, no changes to
+  `ExplorerContext.tsx` or `ExplorerMenu.tsx`.
+- Testing: 4 new tests (5 assertions across list+table) pass; full suite
+  (98 files / 693 tests) has zero regressions; `git status --short` confirmed
+  only the 8 intended files were touched by this task before committing.
 
-## Commit
+### Issues or concerns
 
-```
-fb1a79b feat(shell): selectFilter widget — multi-value cross-filter from dataset column (SP-14c)
-```
-
-Files committed:
-- `shell/src/builder/widgets/selectFilter.tsx`
-- `shell/src/builder/widgets/selectFilter.test.tsx`
-- `shell/src/builder/widgets/index.tsx`
-
-## Concerns
-
-None. Implementation is complete, tested, and ready for integration.
+None. The brief's line numbers matched the actual files closely enough that no
+judgment calls were needed beyond straightforward whitespace/line-number
+drift.
