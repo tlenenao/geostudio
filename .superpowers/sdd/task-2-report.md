@@ -1,131 +1,100 @@
-# Task 2 : validation de `collectionId` à la sauvegarde d'un dataset — Rapport
+# Task 2 Report: `derivePatch` — range branch (SP-14c)
 
-> Note : ce fichier contenait auparavant le rapport d'une autre tâche
-> (« Task 2 — module OpenTofu Proxmox », SP-Deploy-e), sans rapport avec
-> SP-14a. Écrasé intégralement ci-dessous par le rapport de la tâche courante,
-> conformément à l'instruction de la brief.
+## What Was Implemented
 
-## Ce qui a été implémenté
+Modified `derivePatch` function in `shell/src/lib/analyticsPatch.ts` to handle a new cross-filter value shape: when a cross-filter's value is an object with `{from, to}` properties, the function now produces `field__gte`/`field__lte` query-filter keys instead of assigning the object directly to the field key.
 
-TDD strict, suivant le brief `.superpowers/sdd/task-2-brief.md` verbatim :
+### Implementation Details
 
-1. Créé `core/tests/test_create_dataset.py` (contenu transcrit tel quel depuis
-   le brief) : 3 tests — création réussie d'un dataset pointant vers une
-   collection existante et lisible, rejet 422 à la création (`POST /configs`)
-   avec un `collectionId` inexistant, rejet 422 à la mise à jour
-   (`PUT /configs/by-item/{item_id}`) avec un `collectionId` inexistant.
-2. Lancé les tests avant implémentation : confirmé l'échec attendu — les deux
-   tests de rejet obtenaient `201`/`200` au lieu de `422` ; le test du chemin
-   heureux passait déjà (rien ne le bloquait), exactement comme prédit par le
-   brief.
-3. Ajouté `_validate_dataset_payload(session, config, *, user) -> None` dans
-   `core/app/configs/routes.py`, juste après `_validate_extension_scope`.
-   No-op si `config.kind != "dataset"`. Pour un dataset : résout la collection
-   via `app.collections.repository.get_collection(session,
-   tenant_id=user.tenant_id, collection_id=payload.collectionId)` ; si `None`,
-   lève `HTTPException(422, detail="collection not found")`. Sinon vérifie la
-   lisibilité via `app.sharing.authorization.can(session, user_id=user.id,
-   action="read", item=get_access_facts(collection), kind="collection",
-   actor_is_admin=user.is_admin)` ; si non lisible, lève **exactement le même**
-   appel `HTTPException(422, detail="collection not found")` — vérifié par
-   construction (les deux branches lèvent l'appel identique dans le code
-   source, pas seulement testé sur les deux cas actuellement couverts), afin
-   qu'un utilisateur non autorisé ne puisse pas distinguer « collection
-   inexistante » de « collection existante mais non partagée avec lui ».
-4. Câblé l'appel dans les trois chemins de sauvegarde, juste après chaque
-   appel existant à `_validate_extension_scope(...)` :
-   - `create_config` (`POST /configs`)
-   - `update_config` (`PUT /configs/{config_id}`)
-   - `update_config_by_item` (`PUT /configs/by-item/{item_id}`)
+Added a new branch in the crossFilter block (lines 30-40) to handle three distinct value types:
+1. **Array values** (existing): `field__in` with comma-joined values
+2. **Object values** (new range case): `field__gte` and `field__lte` with respective values
+3. **Scalar string values** (existing): direct field assignment
 
-Aucun autre fichier modifié.
+### Changes Made
 
-## Résultats des tests
+**File: `shell/src/lib/analyticsPatch.ts`**
+- Replaced lines 30-34 (old crossFilter block) with enhanced implementation (lines 30-40)
+- Changed single-line else to proper if/else if/else branching
+- Added `typeof crossFilter.value === "object"` check for range detection
+- Extract `from` and `to` properties into separate `__gte` and `__lte` keys
 
-Commande ciblée (celle du brief) :
+**File: `shell/src/lib/analyticsPatch.test.ts`**
+- Added test: "uses field__gte/field__lte for a range cross-filter value"
+  - Verifies range object {from: "10", to: "50"} produces score__gte and score__lte
+- Added test: "excludes a range cross-filter patch when this source is the origin"
+  - Verifies originSourceId exclusion still works for range values
 
+## Testing and Test Results
+
+### TDD Evidence
+
+**RED (Failing Tests)**
 ```
-cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
+Initial test run: 1 failed | 11 passed (12)
+FAIL: uses field__gte/field__lte for a range cross-filter value
+  Expected { score__gte: '10', score__lte: '50' }
+  Received { score: { from: '10', to: '50' } }
 ```
 
-Résultat : **15 passed** — les 3 nouveaux tests, plus les tests préexistants
-de schéma dataset, de sites et de permissions d'extension (garde de
-non-régression), tous verts.
-
-Suite complète du cœur en contrôle supplémentaire :
-
+**GREEN (Passing Tests)**
 ```
-cd core && uv run pytest -q
+Final test run after implementation:
+✓ src/lib/analyticsPatch.test.ts (12 tests) 19ms
+✓ Test Files  1 passed (1)
+✓ Tests  12 passed (12)
 ```
 
-Résultat : **781 passed, 102 skipped** (les skips sont les tests marqués
-`postgis` nécessitant docker — conforme à la base connue documentée dans
-CLAUDE.md).
+All 12 tests pass:
+- 10 pre-existing tests continue to pass (backward compatibility verified)
+- 2 new tests pass (range functionality verified)
 
-## Écarts par rapport au brief
+### Test Coverage
 
-Aucun. L'implémentation reprend le code du Step 3 du brief au caractère près
-(même corps de fonction, mêmes points d'appel, même message d'erreur sur les
-deux branches).
+The new implementation is tested with:
+1. Range value with different originSourceId (should apply filter)
+2. Range value with same originSourceId (should exclude filter)
+3. Existing scalar string test still passes
+4. Existing array test still passes
+5. Combination test with time/extent/cross-filter still passes
+
+## Files Changed
+
+- `shell/src/lib/analyticsPatch.ts` — implementation (8 lines changed)
+- `shell/src/lib/analyticsPatch.test.ts` — tests (14 lines added)
 
 ## Commit
 
-- `c562404` — `feat(core): validate dataset collectionId on save (SP-14a)`
-  (`core/app/configs/routes.py`, `core/tests/test_create_dataset.py`)
-
-Seuls ces deux fichiers ont été stagés et commités. Les autres fichiers
-modifiés/non suivis présents dans l'arbre de travail
-(`.superpowers/sdd/progress.md`, `task-1-brief.md`, `task-1-report.md`,
-`task-2-brief.md`, `docs/superpowers/plans/2026-07-25-sp14a-datasets-partages.md`)
-appartiennent au processus d'orchestration ou à d'autres tâches et n'ont pas
-été touchés.
-
-## Problèmes ou préoccupations
-
-Aucun dans le périmètre de cette tâche. Un avertissement préexistant et sans
-rapport apparaît dans la sortie des tests : une erreur
-`procrastinate.exceptions.AppNotOpen` est loggée (pas levée) quand
-`items_repo.create_item` tente de mettre en file d'attente un job d'embedding
-pendant les tests ; elle est interceptée en interne par
-`app.items.repository._enqueue_embedding` et n'affecte ni le résultat des
-tests ni le périmètre de cette tâche — laissée telle quelle.
-
-## Fix : couverture du chemin "collection non lisible"
-
-Finding de la review : les tests existants ne couvraient que la branche
-« collection inexistante » de `_validate_dataset_payload`
-(`core/app/configs/routes.py:67-83`), pas la branche « collection existante
-mais illisible par l'appelant » — pourtant la branche la plus sensible côté
-sécurité, celle conçue spécifiquement pour ne pas révéler l'existence d'une
-collection privée à un utilisateur non autorisé. Aucun changement dans
-`routes.py` : l'implémentation était déjà correcte, il manquait juste le test.
-
-Changements dans `core/tests/test_create_dataset.py` :
-
-1. Fixture `client` étendue : création d'un second utilisateur `bob`
-   (`oidc_sub="sub-2"`) et d'une seconde collection `id="prives"`
-   (`is_public=False`, `owner_id=bob.id`) — sans aucun partage/rôle de groupe
-   accordé à `alice`, l'utilisatrice de test habituelle (qui n'est pas admin
-   par défaut, `bootstrap_admin` valant `False` dans `get_or_create_user`).
-2. Nouveau test `test_create_dataset_collection_non_lisible_rejete_avec_meme_message` :
-   POST `/configs` avec `collectionId="prives"` en tant qu'alice ; vérifie
-   `status_code == 422` **et** `response.json()["detail"] == "collection not found"`
-   — le même message exact que pour une collection inexistante, prouvant que
-   les deux échecs sont indiscernables pour l'appelant.
-
-### Résultats des tests
-
 ```
-cd core && uv run pytest tests/test_create_dataset.py -v
+785814c feat(shell): derivePatch translates a range cross-filter to __gte/__lte (SP-14c)
 ```
-→ **4 passed** (les 3 tests préexistants + le nouveau).
 
-```
-cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
-```
-→ **16 passed** (régression complète du périmètre de la tâche, tous verts).
+## Self-Review Findings
 
-### Commit
+### Quality Checks
 
-- `test(core): cover unreadable-collection branch for dataset validation (SP-14a)`
-  (`core/tests/test_create_dataset.py` uniquement).
+✓ **Correctness**: Range translation produces correct __gte/__lte keys
+✓ **Backward Compatibility**: All existing tests pass, scalar/array cases unchanged
+✓ **Discipline**: No scope creep, exactly as specified in brief
+✓ **Test Coverage**: New tests exercise the range branch and originSourceId exclusion
+✓ **Code Style**: Matches project conventions (else-if branching, no extra logic)
+✓ **Signature**: Function signature unchanged, purely additive change
+
+### Edge Cases Verified
+
+- Range values are properly destructured (from/to properties extracted)
+- originSourceId check applies before value type checking
+- Scalar strings still work (last else clause)
+- Arrays still work (first if clause)
+
+### Type Safety
+
+The implementation relies on runtime type checking (`typeof ... === "object"` and `Array.isArray()`). This is appropriate here as the CrossFilterValue type from AnalyticsContext allows these three distinct shapes.
+
+## Notes
+
+- Implementation matches brief exactly (lines 30-40)
+- No modifications needed to type definitions
+- No core changes required (as per plan constraints)
+- All pre-existing functionality preserved
+- Tests run in isolation with focused test file
