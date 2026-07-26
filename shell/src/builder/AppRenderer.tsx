@@ -95,6 +95,7 @@ export function AppRenderer({
   onAnalyticsContextChange?: (state: AnalyticsContextState) => void;
 }) {
   const editable = mode === "edit";
+  const analyticsUiEnabled = mode !== "edit" && config.interactions === "auto";
   const bus = useMemo(() => new ActionBus(), []);
   useEffect(() => {
     bus.configure(config.messages);
@@ -174,13 +175,13 @@ export function AppRenderer({
       <div className="min-h-0 flex-1">
         <ActionBusProvider bus={bus}>
           <VariablesProvider variables={config.variables ?? []}>
-            <ExplorerProvider enabled={mode !== "edit" && config.interactions === "auto"}>
+            <ExplorerProvider enabled={analyticsUiEnabled}>
               <AnalyticsContextProvider
                 interactions={config.interactions}
                 initialState={initialAnalyticsContext}
                 onStateChange={onAnalyticsContextChange}
               >
-                {mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}
+                {analyticsUiEnabled && <AnalyticsContextIndicator />}
                 <ExplorerDrawer />
                 <ActionConditionBridge bus={bus} />
                 {(config.variables ?? []).map((v) => (
