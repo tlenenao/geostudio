@@ -1,88 +1,152 @@
-# Task 1 Report: install.sh — mode non-interactif par variables d'environnement
+# Task 1 Report: `AnalyticsContext` — range cross-filter value + `clearCrossFilter`
 
 ## Summary
 
-Successfully modified `scripts/install.sh` to support non-interactive mode via environment variables while maintaining full backward compatibility with interactive mode. All 4 functions modified as specified in task-1-brief.md.
+Successfully implemented cross-filter range value support and the `clearCrossFilter` setter in the `AnalyticsContext` provider. All 8 tests pass, including 3 new test cases.
 
-## Implementation Details
+## What Was Implemented
 
-### Functions Modified
+### Files Modified
+- `shell/src/builder/AnalyticsContext.tsx` — Core implementation
+- `shell/src/builder/AnalyticsContext.test.tsx` — Tests and probe component
 
-1. **`prompt_profiles` (lines 113-165)**
-   - Added support for `INSTALL_PROFILES` environment variable (comma-separated profile list)
-   - Added support for `INSTALL_SEED_DEMO` environment variable (value "1" to enable)
-   - Both use `${VAR+x}` syntax to distinguish "not provided" from "provided empty"
-   - Interactive else branch identical to original: `confirm` calls + `SELECTED_PROFILES` array
+### Changes Made
 
-2. **`prompt_public_host` (lines 187-236)**
-   - Added support for `GEOSTUDIO_PUBLIC_HOST` environment variable
-   - Uses `${VAR+x}` syntax; supports both set-with-value and set-empty cases
-   - Interactive else branch: exact same `read -r -p` as original
-   - Rest of function unchanged, already consuming `PUBLIC_HOST_INPUT` correctly
+#### 1. Type Definitions (AnalyticsContext.tsx, line 4-5)
+- Added `export type CrossFilterValue = string | string[] | { from: string; to: string };`
+- Updated `CrossFilterEntry.value` to use `CrossFilterValue` type instead of inline union
 
-3. **`prompt_backup_target` (lines 246-276)**
-   - Added support for `BACKUP_S3_ENDPOINT`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`, `BACKUP_S3_BUCKET`
-   - Uses `${VAR+x}` syntax with `${VAR:-}` fallbacks for optional keys
-   - Refactored to declare local variables upfront for clarity
-   - Interactive else branch: exact same read sequence as original (endpoint, access key, secret key, bucket)
-   - `set_env_var` calls moved outside if/else to apply in both cases (correct)
+#### 2. Setter Types and Context Setup (lines 16-29)
+- Updated `SetCrossFilter` type signature to accept `CrossFilterValue` instead of `string | string[]`
+- Added new `ClearCrossFilter` type: `(datasetId: string) => void`
+- Updated `AnalyticsSettersContext` to include `clearCrossFilter` in its shape
+- Updated `sameCrossFilterValue` function to handle object range values via JSON stringification
 
-4. **`prompt_admin` (lines 281-289)**
-   - Added support for `INSTALL_ADMIN_EMAIL` environment variable
-   - Uses `-n` test (non-empty required), not `+x` — email is mandatory field
-   - ADMIN_EMAIL remains global variable (not `local`), as required
-   - Interactive else branch: exact same `read -r -p` as original
+#### 3. clearCrossFilter Implementation (lines 74-82)
+- Implemented `clearCrossFilter` callback with `useCallback` hook
+- Guards with `if (!active) return` to ensure silent no-op when `interactions !== "auto"`
+- Safely deletes dataset entry from `crossFilter` object
+- Early return if entry doesn't exist (optimization)
 
-## Verification Results
+#### 4. setters Memo Update (lines 84-87)
+- Updated `setters` memoization to include `clearCrossFilter`
+- Added to dependency array: `[setTimeRange, setExtent, setCrossFilter, clearCrossFilter]`
 
-### Step 5: Bash Syntax Check
+#### 5. Export Hook (lines 108-110)
+- Added `export function useClearCrossFilter(): ClearCrossFilter`
+- Returns `clearCrossFilter` from `AnalyticsSettersContext`
+
+#### 6. Test Updates (AnalyticsContext.test.tsx)
+- Updated imports to include `useClearCrossFilter`
+- Added `clearCrossFilter` hook usage to `Probe` component
+- Added two new buttons: `set-cf-range` and `clear-cf`
+
+### New Test Cases
+
+#### Test 1: "setCrossFilter accepts a {from,to} range value"
+- Verifies that range values can be stored in `CrossFilterEntry.value`
+- Checks JSON stringification contains the range object with `from` and `to` fields
+- Status: **PASS**
+
+#### Test 2: "clearCrossFilter removes the entry for that dataset"
+- Sets a cross filter entry, verifies it exists
+- Calls `clearCrossFilter("ds1")`, verifies entry is removed
+- Status: **PASS**
+
+#### Test 3: "clearCrossFilter is a no-op when interactions is not 'auto'"
+- Tests that `clearCrossFilter` respects the `active` guard flag
+- Verifies context remains empty when interactions="manual"
+- Status: **PASS**
+
+## TDD Evidence
+
+### RED (Before Implementation)
 ```bash
-bash -n scripts/install.sh
+$ cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
 ```
-**Result:** ✓ No output, exit code 0 (success)
 
-### Step 6: Shellcheck Verification
+**Result:** 8 failed tests
+```
+FAIL  src/builder/AnalyticsContext.test.tsx > setters are silent no-ops when interactions is not 'auto'
+FAIL  src/builder/AnalyticsContext.test.tsx > setTimeRange updates state when interactions is 'auto'
+FAIL  src/builder/AnalyticsContext.test.tsx > hooks work with no provider mounted at all (default no-op context)
+FAIL  src/builder/AnalyticsContext.test.tsx > setCrossFilter toggles: same (field, value) twice clears it, a different value replaces it
+FAIL  src/builder/AnalyticsContext.test.tsx > setCrossFilter accepts a {from,to} range value
+FAIL  src/builder/AnalyticsContext.test.tsx > clearCrossFilter removes the entry for that dataset
+FAIL  src/builder/AnalyticsContext.test.tsx > clearCrossFilter is a no-op when interactions is not 'auto'
+FAIL  src/builder/AnalyticsContext.test.tsx > extent debounce > setExtent debounces ~500ms before updating state
+
+Error: TypeError: (0 , useClearCrossFilter) is not a function
+```
+
+### GREEN (After Implementation)
 ```bash
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
-  koalaman/shellcheck:stable scripts/install.sh
+$ cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
 ```
-**Result:** ✓ No output (no new warnings introduced)
 
-### Step 7: Manual Non-Regression Review
-
-All 4 modified functions verified:
-
-- **`prompt_profiles` else branch** (lines 140-148): Exact copy of original interactive loop + confirm logic
-- **`prompt_profiles` demo section** (line 162): Original `confirm` call preserved in elif clause
-- **`prompt_public_host` else branch** (line 197): Exact same `read -r -p` as original
-- **`prompt_backup_target` else branch** (lines 256-263): All 4 read calls identical to original sequence
-- **`prompt_admin` else branch** (line 287): Exact same `read -r -p` as original
-
-**Conclusion:** All else branches reproduce original interactive behavior exactly. ✓
-
-## Files Changed
-
-- `scripts/install.sh`: 62 insertions, 16 deletions (net +46 lines)
-  - No lines removed from interactive paths
-  - Environment variable checks added using idiomatic bash patterns
-
-## Commit
-
+**Result:** All 8 tests pass
 ```
-1e552bb feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)
+✓ src/builder/AnalyticsContext.test.tsx (8 tests) 320ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
 ```
+
+## Commits Created
+- **b651175** `feat(shell): cross-filter range value + clearCrossFilter setter (SP-14c)`
 
 ## Self-Review Findings
 
-✓ All 4 replacements applied exactly as specified in brief
-✓ No accidental edits beyond the 4 functions
-✓ Bash syntax valid
-✓ No new shellcheck warnings introduced
-✓ Non-regression: all else branches preserve original behavior
-✓ Commit message exact match to brief specification
-✓ Variable naming conventions consistent with brief (INSTALL_*, GEOSTUDIO_*, BACKUP_*)
-✓ Test syntax correct: `${VAR+x}` for presence test, `-n` for mandatory fields
+### Completeness ✓
+- [x] New type `CrossFilterValue` defined and exported
+- [x] `CrossFilterEntry.value` updated to use `CrossFilterValue`
+- [x] `sameCrossFilterValue` function handles all value types correctly
+- [x] `clearCrossFilter` implementation complete with `active` guard
+- [x] `useClearCrossFilter` hook exported
+- [x] All 3 new test cases added
+- [x] Existing 5 tests still pass (2 existing + 3 new = 8 total)
 
-## Issues/Concerns
+### Quality ✓
+- Follows existing code style (useCallback, guards with `if (!active) return`)
+- Type safety: TypeScript compilation passes
+- No breaking changes: all existing tests still pass
+- Naming consistent with existing patterns (useSetCrossFilter → useClearCrossFilter)
+- JSON stringification approach handles all CrossFilterValue types correctly
 
-None. Task completed successfully with all verification steps passing.
+### Discipline ✓
+- No scope creep: implementation matches brief exactly
+- No unnecessary refactoring
+- Minimal diffs: only what's needed
+- No unintended changes to other files
+
+### Testing ✓
+- All 8 tests pass without warnings
+- Tests cover: range values, clear operation, and no-op behavior
+- No flaky tests; consistent results
+- Pre-existing tests unaffected (debounce, toggle, no-provider scenarios)
+
+## Implementation Details
+
+### sameCrossFilterValue Logic
+Updated from the original array-checking logic to handle objects:
+```typescript
+// OLD: Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b
+// NEW: typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b)
+```
+
+This ensures string comparisons remain efficient (`===` for strings) while objects/arrays/ranges use JSON comparison. This is critical for the toggle-off behavior in `setCrossFilter` to work correctly with range values.
+
+### clearCrossFilter Behavior
+- Silent no-op when `interactions !== "auto"` (via `if (!active) return` guard)
+- No-op if entry doesn't exist (early return optimization)
+- Correctly removes the entire dataset entry from the `crossFilter` record
+
+## Next Steps (Not in Scope)
+
+Per the task description, later tasks will:
+- Task 2: Add `derivePatch` translation of range values to `field__gte`/`field__lte` query filters
+- Tasks 3-5: Build UI widgets/indicator that consume `clearCrossFilter`
+
+## Issues and Concerns
+
+**None.** Implementation is complete, tested, and follows all requirements exactly as specified in the brief.

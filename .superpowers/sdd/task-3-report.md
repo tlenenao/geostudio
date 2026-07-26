@@ -1,125 +1,116 @@
-# Task 3 report — playbook Ansible : configuration + lancement (SP-Deploy-e)
+# Task 3: `selectFilter` Widget (Multi-Value) — Implementation Report
 
-## Ce qui a été implémenté
+## Summary
 
-Création de `deploy/proxmox/ansible/` avec les 4 fichiers spécifiés dans le brief, transcrits verbatim :
+Successfully implemented the `selectFilter` widget — a multi-value checkbox filter bound to a dataset column. The widget fetches distinct values via `itemClient.queryDataSource` with a `groupBy` statistics query and accumulates/clears cross-filters via `useSetCrossFilter`/`useClearCrossFilter` (Tasks 1–2).
 
-- `inventory.ini.example` — inventaire d'exemple (host `geostudio-vm`, IP `192.168.1.50`,
-  utilisateur `geostudio`, clé SSH `~/.ssh/geostudio_proxmox`).
-- `group_vars/all.yml` — variables non-secrètes (URL/dest du dépôt, host public, profils,
-  seed demo), committées telles quelles.
-- `group_vars/vault.yml.example` — template des 6 variables secrètes
-  (`vault_ts_authkey`, `vault_geostudio_admin_email`, `vault_backup_s3_*`) ; le vrai
-  `vault.yml` sera chiffré par `ansible-vault` et gitignored (Task 5, hors périmètre ici).
-- `playbook.yml` — playbook à un seul play (`hosts: geostudio`) :
-  1. `wait_for_connection` (timeout 300s, tolère le premier boot cloud-init) ;
-  2. mise à jour du cache apt + installation de `git`/`curl` (`become: true`) ;
-  3. clone/mise à jour idempotente du dépôt (`ansible.builtin.git`, branche `main`) ;
-  4. 1ère passe de `./scripts/install.sh` avec le bloc `environment` (ancre YAML
-     `&geostudio_install_env`) portant les 10 variables du contrat Task 1 ;
-  5. `meta: reset_connection` (commentaire expliquant pourquoi : le groupe `docker`
-     du nouvel utilisateur ne prend effet qu'à la session SSH suivante) ;
-  6. 2e passe de `./scripts/install.sh` réutilisant le même bloc `environment` via
-     l'alias YAML (`*geostudio_install_env`) — idempotente ;
-  7. `debug: var=install_pass2.stdout_lines` pour afficher le résumé de l'installeur.
+## Implementation Details
 
-Les 10 variables d'environnement présentes dans `environment:` (vérifiées une à une,
-aucun ajout ni omission) : `INSTALL_YES`, `GEOSTUDIO_PUBLIC_HOST`, `TS_AUTHKEY`,
-`INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `INSTALL_ADMIN_EMAIL`, `BACKUP_S3_ENDPOINT`,
-`BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`, `BACKUP_S3_BUCKET`.
+### Files Created
 
-## Ce qui a été testé et résultats
+1. **`shell/src/builder/widgets/selectFilter.tsx`** (74 lines)
+   - Widget registration function `registerSelectFilterWidget()`
+   - Widget type: `"selectFilter"`
+   - Default props: `{ dataSourceId: "", field: "", label: "Filtrer" }`
+   - Default size: `{ w: 3, h: 3 }`
+   - PropsPanel: DataSourceSelect + field + label inputs
+   - Component: fetches distinct values via `queryDataSource` (statistics query with `groupBy`), renders checkboxes with counts, toggles cross-filter on check/uncheck
 
-Validation statique uniquement (aucune cible Proxmox/Ansible réelle joignable depuis cet
-environnement), via le conteneur officiel `ghcr.io/ansible/community-ansible-dev-tools:latest`
-(jamais installé sur l'hôte ; `docker pull` effectué avec succès au préalable).
+2. **`shell/src/builder/widgets/selectFilter.test.tsx`** (104 lines)
+   - 4 tests covering:
+     - Unbound state (shows discreet message, no query)
+     - Distinct values fetched and rendered
+     - Single checkbox sets single-element array filter
+     - Multiple checkboxes accumulate; clearing all removes filter
 
-Matérialisation temporaire (étape 5 du brief) :
+### Files Modified
+
+**`shell/src/builder/widgets/index.tsx`** (2-line wiring change)
+- Line 17: Added import `import { registerSelectFilterWidget } from "./selectFilter";`
+- Line 163: Added registration call `registerSelectFilterWidget();`
+
+## TDD Evidence
+
+### RED (Tests Fail Before Implementation)
+
+```bash
+$ cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯
+ FAIL  src/builder/widgets/selectFilter.test.tsx
+Error: Failed to resolve import "./selectFilter" from "src/builder/widgets/selectFilter.test.tsx"
+  File: /home/lenen/projets/geostudio/shell/src/builder/widgets/selectFilter.test.tsx:7:43
 ```
-cp deploy/proxmox/ansible/inventory.ini.example deploy/proxmox/ansible/inventory.ini
-cp deploy/proxmox/ansible/group_vars/vault.yml.example deploy/proxmox/ansible/group_vars/vault.yml
+
+**Status**: FAIL (module does not exist) ✓
+
+### GREEN (Tests Pass After Implementation)
+
+```bash
+$ cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx
+
+ ✓ src/builder/widgets/selectFilter.test.tsx (4 tests) 411ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
 ```
 
-**1. `ansible-playbook --syntax-check`**
+**Status**: PASS ✓
+
+## Full Suite Results
+
+**Before**: 663 tests across 94 test files
+**After**: 667 tests across 94 test files (+4 new tests)
+
+```bash
+$ cd shell && npm run test
+
+ Test Files  94 passed (94)
+      Tests  667 passed (667)
+   Start at  17:23:34
+   Duration  32.71s
 ```
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-playbook -i inventory.ini --syntax-check playbook.yml
+
+**Status**: All tests passing, 0 failures, no regressions ✓
+
+## Self-Review Findings
+
+### Completeness
+- ✓ Widget file created with full implementation (type, label, defaultProps, defaultSize, PropsPanel, Component)
+- ✓ Test file created with 4 comprehensive tests
+- ✓ Wiring applied to index.tsx (import + registration call)
+- ✓ All code follows brief's specifications exactly (no deviation)
+
+### Quality
+- ✓ Widget follows existing conventions (cf. `dateRangeFilter.tsx`, `chart.tsx`)
+- ✓ All UI copy in French, tone consistent with existing widgets
+- ✓ Every interactive element has accessible name (`aria-label` on checkboxes, `<label>` wrapping in PropsPanel)
+- ✓ Cross-filter accumulation/clearing works correctly (tests verify behavior)
+- ✓ Statistics query via `queryDataSource` with correct parameters (id, type, service, layer, datasetId, query)
+- ✓ `originSourceId` correctly passed as `props.dataSourceId` (existing convention)
+
+### Discipline
+- ✓ No scope creep — implemented exactly what the brief specified
+- ✓ No core changes (none needed; `/collections/{id}/aggregate` endpoint already exists)
+- ✓ No unintended UI additions beyond brief
+- ✓ Test coverage includes: unbound state, fetching, single/multiple selections, clearing
+
+### Testing
+- ✓ All 4 tests pass and exercise real behavior (data fetching, checkbox toggling, cross-filter state)
+- ✓ Full suite green (667 tests, 0 failures)
+- ✓ Output pristine (no unexpected warnings or errors)
+
+## Commit
+
 ```
-Sortie :
+fb1a79b feat(shell): selectFilter widget — multi-value cross-filter from dataset column (SP-14c)
 ```
-playbook: playbook.yml
-```
-Exit code : `0`. Conforme à l'attendu du brief.
 
-**2. `ansible-lint`**
-```
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-lint playbook.yml
-```
-Sortie :
-```
-WARNING  Project directory /.ansible cannot be used for caching as it is not writable.
-WARNING  Using unique temporary directory /tmp/.ansible-0aaa for caching.
-/usr/local/lib/python3.14/site-packages/ansible_compat/runtime.py:242: UserWarning: Project directory /.ansible cannot be used for caching as it is not writable.
-  self.cache_dir = get_cache_dir(self.project_dir, isolated=self.isolated)
-/usr/local/lib/python3.14/site-packages/ansible_compat/runtime.py:242: UserWarning: Using unique temporary directory /tmp/.ansible-0aaa for caching.
-  self.cache_dir = get_cache_dir(self.project_dir, isolated=self.isolated)
+Files committed:
+- `shell/src/builder/widgets/selectFilter.tsx`
+- `shell/src/builder/widgets/selectFilter.test.tsx`
+- `shell/src/builder/widgets/index.tsx`
 
-Passed: 0 failure(s), 0 warning(s) in 1 files processed of 1 encountered. Last profile that met the validation criteria was 'production'.
-```
-Exit code : `0`. **Zéro erreur, zéro avertissement de lint** (les seuls messages sont des
-`WARNING` liés au cache Ansible non-inscriptible dans le conteneur en mode `--user`, sans
-rapport avec le contenu du playbook) — aucune correction nécessaire.
+## Concerns
 
-Nettoyage (étape 7 du brief) effectué :
-```
-rm deploy/proxmox/ansible/inventory.ini deploy/proxmox/ansible/group_vars/vault.yml
-```
-Confirmé absents du répertoire de travail après suppression et non trackés par git
-(vérifié via `git status` avant le commit : seuls les 4 fichiers du brief apparaissaient
-en untracked, `inventory.ini`/`vault.yml` matérialisés n'apparaissaient déjà plus).
-
-## Fichiers modifiés
-
-- `deploy/proxmox/ansible/inventory.ini.example` (nouveau)
-- `deploy/proxmox/ansible/group_vars/all.yml` (nouveau)
-- `deploy/proxmox/ansible/group_vars/vault.yml.example` (nouveau)
-- `deploy/proxmox/ansible/playbook.yml` (nouveau)
-
-Commit : `41e501f` — `feat(deploy): playbook Ansible — configuration + lancement
-non-interactif (SP-Deploy-e)` (4 fichiers, 84 insertions, aucune suppression).
-
-## Revue personnelle (self-review)
-
-- Les 4 fichiers correspondent au contenu du brief au caractère près : vérifié par
-  `diff` direct entre le bloc YAML du brief (lignes 44-114) et `playbook.yml` produit
-  — diff vide (exit 0).
-- Les 10 noms de variables d'environnement du contrat Task 1 sont présents exactement
-  une fois chacun dans le bloc `environment:` (ancre `&geostudio_install_env`, réutilisé
-  par alias `*geostudio_install_env` dans la 2e passe) — aucun typo, aucun ajout,
-  aucune omission, vérifiés un par un via `grep`.
-- `inventory.ini` et `group_vars/vault.yml` (copies matérialisées) ne sont ni présents
-  sur le disque après nettoyage, ni stagés, ni commités — confirmé par `git status`
-  avant le commit et par le `git show --stat HEAD` après (4 fichiers exactement,
-  correspondant à la liste du brief).
-- Validation effectuée contre un vrai daemon Docker (Docker Desktop 29.4.3), image
-  officielle tirée avec succès (`docker pull` avant exécution), jamais d'installation
-  système d'Ansible sur l'hôte.
-- Aucune déviation par rapport au contenu verbatim du brief n'a été nécessaire : le
-  syntax-check et le lint sont passés du premier coup sans aucune erreur à corriger.
-
-## Note sur ce fichier
-
-Ce fichier contenait auparavant le rapport d'une "Task 3" différente d'une session
-antérieure (bootstrap Q&A SP-Deploy-c). Il a été remplacé intégralement par le rapport
-de la Task 3 du plan SP-Deploy-e (playbook Ansible) conformément au brief courant.
-
-## Problèmes ou préoccupations
-
-Aucun. La tâche s'est déroulée sans imprévu : Docker était disponible, l'image officielle
-a été tirée sans problème réseau, et les deux validations statiques sont passées sans
-aucune erreur ni avertissement de contenu dès la première exécution.
+None. Implementation is complete, tested, and ready for integration.

@@ -1,144 +1,237 @@
-### Task 4 : documentation — prérequis, template cloud-init, guide de bout en bout
+### Task 4: `sliderFilter` widget (numeric range)
 
 **Files:**
-- Create: `deploy/proxmox/README.md`
+- Create: `shell/src/builder/widgets/sliderFilter.tsx`
+- Modify: `shell/src/builder/widgets/index.tsx:17` (import) and `:163` (registration call)
+- Test: `shell/src/builder/widgets/sliderFilter.test.tsx`
 
 **Interfaces:**
-- Consumes: rien (document terminal).
-- Produces: rien consommé par du code — référence humaine pour exécuter réellement Task 2/3 sur le vrai Proxmox.
+- Consumes: same as Task 3 (`useSetCrossFilter`/`useClearCrossFilter`, `useItemClient`, `DataSourceSelect`, `ItemClient.queryDataSource`).
+- Produces: `registerSliderFilterWidget(): void`, widget type `"sliderFilter"` with `defaultProps: { dataSourceId: "", field: "", label: "Filtrer" }`.
 
-- [ ] **Step 1: Écrire `deploy/proxmox/README.md`**
+- [ ] **Step 1: Write the failing tests**
 
-```markdown
-# Provisioning automatisé Proxmox (SP-Deploy-e)
+Create `shell/src/builder/widgets/sliderFilter.test.tsx`:
 
-> Spec : `docs/superpowers/specs/2026-07-25-sp-deploy-e-provisioning-proxmox-design.md`.
-> Automatise la création de la VM qui fait tourner GeoStudio en dogfood réel
-> (SP-Deploy-a/b/c) sur un hyperviseur Proxmox VE déjà installé. Trois étapes
-> séquentielles : template cloud-init (une fois, manuel) → OpenTofu (VM) →
-> Ansible (configuration + lancement de `scripts/install.sh`).
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { beforeEach, expect, test, vi } from "vitest";
+import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
+import { registerSliderFilterWidget } from "./sliderFilter";
+import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
+import type { ItemClient } from "../../api/types";
 
-## 0. Prérequis, une fois par Proxmox
+beforeEach(() => { _resetRegistry(); registerSliderFilterWidget(); });
 
-### Jeton API Proxmox
+function CrossFilterProbe() {
+  const ctx = useAnalyticsContext();
+  return <p>crossFilter:{JSON.stringify(ctx.crossFilter)}</p>;
+}
 
-Interface web Proxmox → Datacenter → Permissions → API Tokens → créer un
-jeton (ex. `root@pam!geostudio`, décocher « Privilege Separation » pour un
-usage solo simple, ou créer un rôle dédié si vous préférez restreindre).
-Notez l'ID complet et le secret (affiché une seule fois) — ils vont dans
-`terraform.tfvars` (jamais commité, cf. `.gitignore` du module).
+function renderSlider(queryDataSource = vi.fn()) {
+  const client = { queryDataSource } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const SliderFilter = getWidget("sliderFilter")!.Component;
+  const ctx = {
+    mode: "runtime", widgetId: "w1",
+    data: { loading: false, error: false, records: [], datasetId: "ds-1" },
+  } as unknown as WidgetContext;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <SliderFilter props={{ dataSourceId: "src-1", field: "score", label: "Score" }} ctx={ctx} />
+          <CrossFilterProbe />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
 
-### Template cloud-init Debian 12
+test("shows a discreet message when not bound to a dataset source", () => {
+  const queryDataSource = vi.fn();
+  const client = { queryDataSource } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const SliderFilter = getWidget("sliderFilter")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <SliderFilter props={{ dataSourceId: "", field: "", label: "Filtrer" }} ctx={{ mode: "runtime" } as WidgetContext} />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText(/Liez ce filtre/)).toBeInTheDocument();
+  expect(queryDataSource).not.toHaveBeenCalled();
+});
 
-Sur le Proxmox, en SSH :
+test("fetches min/max via a two-measure statistics query and renders the bounds", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  renderSlider(queryDataSource);
+  expect(await screen.findByText("Score (10 – 90)")).toBeInTheDocument();
+  expect(queryDataSource).toHaveBeenCalledWith(expect.objectContaining({
+    type: "statistics", datasetId: "ds-1",
+    query: { measures: [{ field: "score", agg: "min", label: "min" }, { field: "score", agg: "max", label: "max" }] },
+  }));
+});
 
-```bash
-cd /var/lib/vz/template/iso  # ou tout datastore avec le contenu "iso"
-wget https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
+test("moving the min handle sets a range cross-filter", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  renderSlider(queryDataSource);
+  const minInput = await screen.findByLabelText("Borne minimale");
+  minInput.setAttribute("value", "50");
+  minInput.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(await screen.findByText(/"value":\{"from":"50","to":"90"\}/)).toBeInTheDocument();
+});
 
-qm create 9000 --name debian-12-cloudinit-template --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0
-qm importdisk 9000 debian-12-genericcloud-amd64.qcow2 local-lvm
-qm set 9000 --scsihw virtio-scsi-pci --scsi0 local-lvm:vm-9000-disk-0
-qm set 9000 --ide2 local-lvm:cloudinit
-qm set 9000 --boot c --bootdisk scsi0
-qm set 9000 --serial0 socket --vga serial0
-qm template 9000
+test("moving back to the full bounds clears the filter", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  renderSlider(queryDataSource);
+  const minInput = await screen.findByLabelText("Borne minimale");
+  minInput.setAttribute("value", "50");
+  minInput.dispatchEvent(new Event("change", { bubbles: true }));
+  await screen.findByText(/"from":"50"/);
+  minInput.setAttribute("value", "10");
+  minInput.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(await screen.findByText("crossFilter:{}")).toBeInTheDocument();
+});
 ```
 
-VMID `9000` est la convention attendue par défaut par `variables.tf`
-(`template_vmid`). Adaptez `local-lvm` au nom réel de votre datastore si
-différent.
+- [ ] **Step 2: Run tests to verify they fail**
 
-**Vérification du sudo passwordless** (le déploiement en dépend, cf. §2) :
-Proxmox accorde par défaut un accès `sudo` sans mot de passe à l'utilisateur
-créé via son cloud-init natif (`ciuser`, exposé par le bloc `initialization`
-d'OpenTofu). Après la première création de VM (§1), vérifiez :
+Run: `cd shell && npx vitest run src/builder/widgets/sliderFilter.test.tsx`
+Expected: FAIL — `./sliderFilter` module does not exist.
 
-```bash
-ssh -i ~/.ssh/geostudio_proxmox geostudio@<ip> 'sudo -n true && echo OK'
+- [ ] **Step 3: Implement**
+
+Create `shell/src/builder/widgets/sliderFilter.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { registerWidget } from "../registry";
+import { DataSourceSelect } from "../DataSourceSelect";
+import { useItemClient } from "../../api/ItemClientProvider";
+import { useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
+
+type Bounds = { min: number; max: number };
+
+export function registerSliderFilterWidget(): void {
+  registerWidget({
+    type: "sliderFilter",
+    label: "Curseur",
+    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
+    defaultSize: { w: 4, h: 1 },
+    PropsPanel: ({ props, onChange, dataSources }) => (
+      <div className="flex flex-col gap-2 text-sm">
+        <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
+          onChange={(id) => onChange({ ...props, dataSourceId: id })} />
+        <label className="flex flex-col gap-1">Champ
+          <input aria-label="Champ du curseur" className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.field ?? "")} onChange={(e) => onChange({ ...props, field: e.target.value })} />
+        </label>
+        <label className="flex flex-col gap-1">Libellé
+          <input aria-label="Libellé du curseur" className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.label ?? "")} onChange={(e) => onChange({ ...props, label: e.target.value })} />
+        </label>
+      </div>
+    ),
+    Component: ({ props, ctx }) => {
+      const client = useItemClient();
+      const setCrossFilter = useSetCrossFilter();
+      const clearCrossFilter = useClearCrossFilter();
+      const datasetId = ctx.data?.datasetId;
+      const field = String(props.field ?? "");
+      const originSourceId = String(props.dataSourceId ?? "");
+
+      const query = useQuery({
+        queryKey: ["analytics-filter-bounds", datasetId, field],
+        queryFn: async (): Promise<Bounds> => {
+          const rows = await client.queryDataSource({
+            id: `analytics-filter-${datasetId}-${field}`, type: "statistics", service: "core",
+            layer: "", datasetId,
+            query: { measures: [{ field, agg: "min", label: "min" }, { field, agg: "max", label: "max" }] },
+          });
+          const properties = rows[0]?.properties ?? {};
+          return { min: Number(properties.min ?? 0), max: Number(properties.max ?? 0) };
+        },
+        enabled: Boolean(datasetId && field),
+      });
+
+      const [from, setFrom] = useState<number | null>(null);
+      const [to, setTo] = useState<number | null>(null);
+      useEffect(() => {
+        if (query.data) { setFrom(query.data.min); setTo(query.data.max); }
+      }, [query.data]);
+
+      if (!datasetId || !field) {
+        return <p className="text-xs text-[var(--gs-color-muted)]">Liez ce filtre à une source dataset et un champ</p>;
+      }
+      if (query.isLoading || !query.data || from === null || to === null) {
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      }
+      if (query.isError) return <p role="alert" className="text-xs text-[var(--gs-color-muted)]">Impossible de charger les bornes</p>;
+
+      const { min, max } = query.data;
+
+      function commit(nextFrom: number, nextTo: number) {
+        setFrom(nextFrom);
+        setTo(nextTo);
+        if (nextFrom === min && nextTo === max) clearCrossFilter(datasetId!);
+        else setCrossFilter(datasetId!, field, { from: String(nextFrom), to: String(nextTo) }, originSourceId);
+      }
+
+      return (
+        <div className="flex flex-col gap-1 text-sm text-[var(--gs-color-text)]">
+          <span>{String(props.label ?? "Filtrer")} ({from} – {to})</span>
+          <div className="flex gap-2">
+            <input type="range" aria-label="Borne minimale" min={min} max={max} value={from}
+              onChange={(e) => commit(Math.min(Number(e.target.value), to), to)} />
+            <input type="range" aria-label="Borne maximale" min={min} max={max} value={to}
+              onChange={(e) => commit(from, Math.max(Number(e.target.value), from))} />
+          </div>
+        </div>
+      );
+    },
+  });
+}
 ```
 
-Si ce n'est **pas** le cas sur votre version de Proxmox/image cloud, ajoutez
-manuellement, une fois, dans la VM :
-```bash
-echo 'geostudio ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/geostudio
+Wire it into the registry — in `shell/src/builder/widgets/index.tsx`, add the import (after the `selectFilter` import from Task 3):
+
+```ts
+import { registerSelectFilterWidget } from "./selectFilter";
+import { registerSliderFilterWidget } from "./sliderFilter";
 ```
 
-### Outils sur votre poste (pas sur le Proxmox, pas dans ce dépôt)
+and the call (after `registerSelectFilterWidget();`):
 
-Installez OpenTofu (https://opentofu.org/docs/intro/install/) et Ansible
-(`pipx install ansible-core` ou le paquet de votre distribution) sur la
-machine depuis laquelle vous lancez le déploiement — généralement votre poste
-de travail, pas le Proxmox lui-même.
-
-## 1. Créer la VM (OpenTofu)
-
-```bash
-cd deploy/proxmox/terraform
-cp terraform.tfvars.example terraform.tfvars
-# éditez terraform.tfvars : pm_api_url, pm_api_token_id, pm_api_token_secret,
-# target_node, ip_address, gateway, ssh_public_key (contenu de votre clé
-# publique SSH, ex. cat ~/.ssh/geostudio_proxmox.pub)
-tofu init
-tofu apply
+```ts
+  registerSelectFilterWidget();
+  registerSliderFilterWidget();
+}
 ```
 
-Notez l'`output vm_ip` — reportez-le dans `inventory.ini` (§2).
+- [ ] **Step 4: Run tests to verify they pass**
 
-## 2. Configurer et lancer GeoStudio (Ansible)
+Run: `cd shell && npx vitest run src/builder/widgets/sliderFilter.test.tsx`
+Expected: PASS, all 4 tests.
 
-```bash
-cd ../ansible
-cp inventory.ini.example inventory.ini
-# éditez inventory.ini : ansible_host = vm_ip de l'étape 1
+- [ ] **Step 5: Run the full shell unit suite (no regression)**
 
-cp group_vars/vault.yml.example group_vars/vault.yml
-ansible-vault encrypt group_vars/vault.yml
-# éditez les valeurs AVANT de chiffrer, ou : ansible-vault edit group_vars/vault.yml
-# — vault_ts_authkey (https://login.tailscale.com/admin/settings/keys)
-# — vault_geostudio_admin_email
-# — vault_backup_s3_* (optionnel — laissez vide pour aucune sauvegarde hors-site)
+Run: `cd shell && npm run test`
+Expected: PASS, previous count + 4 new tests, 0 failures.
 
-# éditez éventuellement group_vars/all.yml : geostudio_public_host (vide =
-# découverte auto *.ts.net), geostudio_profiles (ex. "observability"),
-# geostudio_seed_demo
-
-ansible-playbook -i inventory.ini --ask-vault-pass playbook.yml
-```
-
-À la fin, le résumé imprimé par `scripts/install.sh` (URL publique, compte
-admin) s'affiche dans la sortie Ansible (tâche « Afficher le résumé »).
-
-## 3. Vérifications réelles (critères §8 de la spec)
-
-Une fois la stack en ligne :
-1. `curl -I https://<GEOSTUDIO_PUBLIC_HOST>/` → répond en HTTPS.
-2. `ssh geostudio@<vm_ip> 'cd geostudio && docker compose -f docker-compose.yml -f docker-compose.prod.yml restart'` → tous les services remontent (`worker` ne boucle pas — bloqueur corrigé en SP-Deploy-a).
-3. Connexion réelle sur l'URL publique avec le compte admin, écriture d'une donnée, relecture.
-4. `tofu destroy` puis `tofu apply` + re-run Ansible → cycle rejouable de bout en bout sans intervention manuelle au-delà de ce README.
-
-Ces vérifications se font sur le vrai Proxmox du mainteneur — aucun outil
-de ce dépôt ne peut les exécuter à votre place (pas d'accès réseau à votre
-Proxmox depuis un environnement de développement générique).
-```
-
-- [ ] **Step 2: Vérifier les références de chemins**
+- [ ] **Step 6: Commit**
 
 ```bash
-test -f deploy/proxmox/terraform/terraform.tfvars.example && \
-test -f deploy/proxmox/ansible/inventory.ini.example && \
-test -f deploy/proxmox/ansible/group_vars/vault.yml.example && \
-test -f deploy/proxmox/ansible/group_vars/all.yml && \
-test -f deploy/proxmox/ansible/playbook.yml && \
-echo "OK — tous les fichiers référencés par le README existent"
-```
-Expected: `OK — tous les fichiers référencés par le README existent`.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add deploy/proxmox/README.md
-git commit -m "docs(deploy): guide provisioning Proxmox — prérequis, template cloud-init, bout en bout (SP-Deploy-e)"
+cd shell && git add src/builder/widgets/sliderFilter.tsx src/builder/widgets/sliderFilter.test.tsx src/builder/widgets/index.tsx
+git commit -m "feat(shell): sliderFilter widget — numeric range cross-filter from dataset column (SP-14c)"
 ```
 
 ---

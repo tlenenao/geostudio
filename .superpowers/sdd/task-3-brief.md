@@ -1,152 +1,239 @@
-### Task 3 : playbook Ansible — configuration + lancement
+### Task 3: `selectFilter` widget (multi-value)
 
 **Files:**
-- Create: `deploy/proxmox/ansible/inventory.ini.example`
-- Create: `deploy/proxmox/ansible/group_vars/all.yml`
-- Create: `deploy/proxmox/ansible/group_vars/vault.yml.example`
-- Create: `deploy/proxmox/ansible/playbook.yml`
+- Create: `shell/src/builder/widgets/selectFilter.tsx`
+- Modify: `shell/src/builder/widgets/index.tsx:16` (import) and `:162` (registration call)
+- Test: `shell/src/builder/widgets/selectFilter.test.tsx`
 
 **Interfaces:**
-- Consumes: le contrat de variables d'environnement défini en Task 1 (`INSTALL_YES`, `GEOSTUDIO_PUBLIC_HOST`, `TS_AUTHKEY`, `INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `INSTALL_ADMIN_EMAIL`, `BACKUP_S3_*`) ; l'IP/utilisateur produits par Task 2 (`vm_ip`/`vm_ssh_username`, reportés à la main dans `inventory.ini`).
-- Produces: rien consommé par un autre fichier de ce plan — nœud terminal de la chaîne.
+- Consumes: `useSetCrossFilter`/`useClearCrossFilter`/`useAnalyticsContext` (Task 1), `useItemClient` (`../../api/ItemClientProvider`), `DataSourceSelect` (`../DataSourceSelect`), `ItemClient.queryDataSource` (existing).
+- Produces: `registerSelectFilterWidget(): void`, widget type `"selectFilter"` with `defaultProps: { dataSourceId: "", field: "", label: "Filtrer" }`.
 
-- [ ] **Step 1: `inventory.ini.example`**
+- [ ] **Step 1: Write the failing tests**
 
-```ini
-[geostudio]
-geostudio-vm ansible_host=192.168.1.50 ansible_user=geostudio ansible_ssh_private_key_file=~/.ssh/geostudio_proxmox
+Create `shell/src/builder/widgets/selectFilter.test.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, test, vi } from "vitest";
+import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
+import { registerSelectFilterWidget } from "./selectFilter";
+import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
+import type { ItemClient } from "../../api/types";
+
+beforeEach(() => { _resetRegistry(); registerSelectFilterWidget(); });
+
+function CrossFilterProbe() {
+  const ctx = useAnalyticsContext();
+  return <p>crossFilter:{JSON.stringify(ctx.crossFilter)}</p>;
+}
+
+function renderSelect(props: Record<string, unknown>, queryDataSource = vi.fn()) {
+  const client = { queryDataSource } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const SelectFilter = getWidget("selectFilter")!.Component;
+  const ctx = {
+    mode: "runtime", widgetId: "w1",
+    data: { loading: false, error: false, records: [], datasetId: "ds-1" },
+  } as unknown as WidgetContext;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <SelectFilter props={{ dataSourceId: "src-1", field: "region", label: "Région", ...props }} ctx={ctx} />
+          <CrossFilterProbe />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  return { client };
+}
+
+test("shows a discreet message when not bound to a dataset source", () => {
+  const queryDataSource = vi.fn();
+  const client = { queryDataSource } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const SelectFilter = getWidget("selectFilter")!.Component;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <SelectFilter props={{ dataSourceId: "", field: "", label: "Filtrer" }} ctx={{ mode: "runtime" } as WidgetContext} />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText(/Liez ce filtre/)).toBeInTheDocument();
+  expect(queryDataSource).not.toHaveBeenCalled();
+});
+
+test("fetches distinct values via a groupBy statistics query and renders one checkbox per value", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([
+    { id: "Nord", properties: { region: "Nord", value: 3 } },
+    { id: "Sud", properties: { region: "Sud", value: 5 } },
+  ]);
+  renderSelect({}, queryDataSource);
+  expect(await screen.findByLabelText("Nord")).toBeInTheDocument();
+  expect(screen.getByLabelText("Sud")).toBeInTheDocument();
+  expect(screen.getByText("Nord (3)")).toBeInTheDocument();
+  expect(queryDataSource).toHaveBeenCalledWith(expect.objectContaining({
+    type: "statistics", datasetId: "ds-1", query: { groupBy: "region" },
+  }));
+});
+
+test("checking a value sets a single-element array cross-filter", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([
+    { id: "Nord", properties: { region: "Nord", value: 3 } },
+    { id: "Sud", properties: { region: "Sud", value: 5 } },
+  ]);
+  renderSelect({}, queryDataSource);
+  await userEvent.click(await screen.findByLabelText("Nord"));
+  expect(screen.getByText(/"ds-1":\{"field":"region","value":\["Nord"\],"originSourceId":"src-1"\}/)).toBeInTheDocument();
+});
+
+test("checking two values accumulates them, unchecking the last one clears the filter", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([
+    { id: "Nord", properties: { region: "Nord", value: 3 } },
+    { id: "Sud", properties: { region: "Sud", value: 5 } },
+  ]);
+  renderSelect({}, queryDataSource);
+  await userEvent.click(await screen.findByLabelText("Nord"));
+  await userEvent.click(screen.getByLabelText("Sud"));
+  expect(screen.getByText(/"value":\["Nord","Sud"\]/)).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Nord"));
+  await userEvent.click(screen.getByLabelText("Sud"));
+  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
+});
 ```
 
-- [ ] **Step 2: `group_vars/all.yml`** (non-secret, committé tel quel)
+- [ ] **Step 2: Run tests to verify they fail**
 
-```yaml
-geostudio_repo_url: "https://github.com/tlenenao/geostudio.git"
-geostudio_repo_dest: "/home/geostudio/geostudio"
-geostudio_public_host: ""
-geostudio_profiles: ""
-geostudio_seed_demo: false
+Run: `cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx`
+Expected: FAIL — `./selectFilter` module does not exist.
+
+- [ ] **Step 3: Implement**
+
+Create `shell/src/builder/widgets/selectFilter.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useQuery } from "@tanstack/react-query";
+import { registerWidget } from "../registry";
+import { DataSourceSelect } from "../DataSourceSelect";
+import { useItemClient } from "../../api/ItemClientProvider";
+import { useAnalyticsContext, useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
+
+type SelectOption = { value: string; count: number };
+
+export function registerSelectFilterWidget(): void {
+  registerWidget({
+    type: "selectFilter",
+    label: "Sélecteur",
+    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
+    defaultSize: { w: 3, h: 3 },
+    PropsPanel: ({ props, onChange, dataSources }) => (
+      <div className="flex flex-col gap-2 text-sm">
+        <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
+          onChange={(id) => onChange({ ...props, dataSourceId: id })} />
+        <label className="flex flex-col gap-1">Champ
+          <input aria-label="Champ du sélecteur" className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.field ?? "")} onChange={(e) => onChange({ ...props, field: e.target.value })} />
+        </label>
+        <label className="flex flex-col gap-1">Libellé
+          <input aria-label="Libellé du sélecteur" className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.label ?? "")} onChange={(e) => onChange({ ...props, label: e.target.value })} />
+        </label>
+      </div>
+    ),
+    Component: ({ props, ctx }) => {
+      const client = useItemClient();
+      const analyticsCtx = useAnalyticsContext();
+      const setCrossFilter = useSetCrossFilter();
+      const clearCrossFilter = useClearCrossFilter();
+      const datasetId = ctx.data?.datasetId;
+      const field = String(props.field ?? "");
+      const originSourceId = String(props.dataSourceId ?? "");
+
+      const query = useQuery({
+        queryKey: ["analytics-filter-options", datasetId, field],
+        queryFn: async () => {
+          const rows = await client.queryDataSource({
+            id: `analytics-filter-${datasetId}-${field}`, type: "statistics", service: "core",
+            layer: "", datasetId, query: { groupBy: field },
+          });
+          return rows.map((r): SelectOption => ({ value: String(r.id), count: Number(r.properties.value ?? 0) }));
+        },
+        enabled: Boolean(datasetId && field),
+      });
+
+      if (!datasetId || !field) {
+        return <p className="text-xs text-[var(--gs-color-muted)]">Liez ce filtre à une source dataset et un champ</p>;
+      }
+      if (query.isLoading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (query.isError || !query.data) {
+        return <p role="alert" className="text-xs text-[var(--gs-color-muted)]">Impossible de charger les valeurs</p>;
+      }
+
+      const active = analyticsCtx.crossFilter[datasetId];
+      const checked = active && active.field === field && Array.isArray(active.value) ? active.value : [];
+
+      function toggle(value: string, isChecked: boolean) {
+        const next = isChecked ? [...checked, value] : checked.filter((v) => v !== value);
+        if (next.length === 0) clearCrossFilter(datasetId!);
+        else setCrossFilter(datasetId!, field, next, originSourceId);
+      }
+
+      return (
+        <fieldset className="flex flex-col gap-1 text-sm text-[var(--gs-color-text)]">
+          <legend>{String(props.label ?? "Filtrer")}</legend>
+          {query.data.map((opt) => (
+            <label key={opt.value} className="flex items-center gap-2">
+              <input type="checkbox" aria-label={opt.value} checked={checked.includes(opt.value)}
+                onChange={(e) => toggle(opt.value, e.target.checked)} />
+              {opt.value} ({opt.count})
+            </label>
+          ))}
+        </fieldset>
+      );
+    },
+  });
+}
 ```
 
-- [ ] **Step 3: `group_vars/vault.yml.example`** (template — le vrai `vault.yml` est chiffré par `ansible-vault` et gitignored, cf. Task 5)
+Wire it into the registry — in `shell/src/builder/widgets/index.tsx`, add the import next to the other widget imports (line 16, after `registerDateRangeFilterWidget`):
 
-```yaml
-vault_ts_authkey: "tskey-auth-CHANGEME"
-vault_geostudio_admin_email: "admin@example.com"
-vault_backup_s3_endpoint: ""
-vault_backup_s3_access_key: ""
-vault_backup_s3_secret_key: ""
-vault_backup_s3_bucket: "geostudio-backups"
+```ts
+import { registerDateRangeFilterWidget } from "./dateRangeFilter";
+import { registerSelectFilterWidget } from "./selectFilter";
 ```
 
-- [ ] **Step 4: `playbook.yml`**
+and the call next to the other registrations (line 162, after `registerDateRangeFilterWidget();`):
 
-```yaml
----
-- name: Provisionner GeoStudio sur la VM Proxmox
-  hosts: geostudio
-  vars_files:
-    - group_vars/all.yml
-    - group_vars/vault.yml
-
-  tasks:
-    - name: Attendre que SSH soit disponible (premier boot cloud-init)
-      ansible.builtin.wait_for_connection:
-        timeout: 300
-
-    - name: Mettre à jour le cache apt
-      become: true
-      ansible.builtin.apt:
-        update_cache: true
-        cache_valid_time: 3600
-
-    - name: Installer les prérequis système (git, curl)
-      become: true
-      ansible.builtin.apt:
-        name:
-          - git
-          - curl
-        state: present
-
-    - name: Cloner ou mettre à jour le dépôt GeoStudio
-      ansible.builtin.git:
-        repo: "{{ geostudio_repo_url }}"
-        dest: "{{ geostudio_repo_dest }}"
-        version: main
-        force: false
-
-    - name: Lancer l'installeur GeoStudio (1ère passe — installe Docker si absent, peut s'arrêter là)
-      ansible.builtin.command:
-        cmd: ./scripts/install.sh
-        chdir: "{{ geostudio_repo_dest }}"
-      environment: &geostudio_install_env
-        INSTALL_YES: "1"
-        GEOSTUDIO_PUBLIC_HOST: "{{ geostudio_public_host }}"
-        TS_AUTHKEY: "{{ vault_ts_authkey }}"
-        INSTALL_PROFILES: "{{ geostudio_profiles }}"
-        INSTALL_SEED_DEMO: "{{ '1' if geostudio_seed_demo else '0' }}"
-        INSTALL_ADMIN_EMAIL: "{{ vault_geostudio_admin_email }}"
-        BACKUP_S3_ENDPOINT: "{{ vault_backup_s3_endpoint }}"
-        BACKUP_S3_ACCESS_KEY: "{{ vault_backup_s3_access_key }}"
-        BACKUP_S3_SECRET_KEY: "{{ vault_backup_s3_secret_key }}"
-        BACKUP_S3_BUCKET: "{{ vault_backup_s3_bucket }}"
-      register: install_pass1
-      changed_when: true
-
-    # Si ensure_docker (scripts/install.sh) vient d'installer Docker, le
-    # script s'arrête volontairement après (exit 0) : l'appartenance au
-    # groupe docker du nouvel utilisateur ne prend effet qu'à la prochaine
-    # session. reset_connection force Ansible à rouvrir une session SSH
-    # neuve avant la 2e passe plutôt que de réutiliser la connexion
-    # persistante existante, qui ignorerait ce changement.
-    - name: Réinitialiser la connexion SSH (prise en compte du groupe docker)
-      ansible.builtin.meta: reset_connection
-
-    - name: Lancer l'installeur GeoStudio (2e passe — idempotente, termine le déploiement)
-      ansible.builtin.command:
-        cmd: ./scripts/install.sh
-        chdir: "{{ geostudio_repo_dest }}"
-      environment: *geostudio_install_env
-      register: install_pass2
-      changed_when: true
-
-    - name: Afficher le résumé de l'installeur
-      ansible.builtin.debug:
-        var: install_pass2.stdout_lines
+```ts
+  registerDateRangeFilterWidget();
+  registerSelectFilterWidget();
+}
 ```
 
-- [ ] **Step 5: Matérialiser temporairement les fichiers `.example` pour la vérification**
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/widgets/selectFilter.test.tsx`
+Expected: PASS, all 4 tests.
+
+- [ ] **Step 5: Run the full shell unit suite (no regression)**
+
+Run: `cd shell && npm run test`
+Expected: PASS, previous count + 4 new tests, 0 failures.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-cp deploy/proxmox/ansible/inventory.ini.example deploy/proxmox/ansible/inventory.ini
-cp deploy/proxmox/ansible/group_vars/vault.yml.example deploy/proxmox/ansible/group_vars/vault.yml
-```
-
-- [ ] **Step 6: Vérifier la syntaxe et lint (conteneur officiel, aucune installation système)**
-
-Run:
-```bash
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-playbook -i inventory.ini --syntax-check playbook.yml
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-lint playbook.yml
-```
-Expected : `--syntax-check` répond `playbook: playbook.yml` sans erreur (code `0`) ; `ansible-lint` ne remonte aucune erreur bloquante (des avertissements de style sont acceptables, à corriger seulement s'ils sont triviaux).
-
-- [ ] **Step 7: Nettoyer les fichiers matérialisés (ne pas les laisser trackés — ils contiennent des valeurs d'exemple, pas les vraies)**
-
-```bash
-rm deploy/proxmox/ansible/inventory.ini deploy/proxmox/ansible/group_vars/vault.yml
-```
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add deploy/proxmox/ansible/
-git commit -m "feat(deploy): playbook Ansible — configuration + lancement non-interactif (SP-Deploy-e)"
+cd shell && git add src/builder/widgets/selectFilter.tsx src/builder/widgets/selectFilter.test.tsx src/builder/widgets/index.tsx
+git commit -m "feat(shell): selectFilter widget — multi-value cross-filter from dataset column (SP-14c)"
 ```
 
 ---

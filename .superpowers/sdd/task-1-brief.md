@@ -1,258 +1,153 @@
-### Task 1 : `scripts/install.sh` — mode non-interactif par variables d'environnement
+### Task 1: `AnalyticsContext` — range cross-filter value + `clearCrossFilter`
 
 **Files:**
-- Modify: `scripts/install.sh:113-146` (fonction `prompt_profiles`)
-- Modify: `scripts/install.sh:168-208` (fonction `prompt_public_host`)
-- Modify: `scripts/install.sh:218-235` (fonction `prompt_backup_target`)
-- Modify: `scripts/install.sh:240-242` (début de la fonction `prompt_admin`)
+- Modify: `shell/src/builder/AnalyticsContext.tsx` (whole file is 91 lines; changes touch lines 4, 16-27, 58-70, 88-91)
+- Test: `shell/src/builder/AnalyticsContext.test.tsx`
 
 **Interfaces:**
-- Consumes: rien de nouveau — mêmes fonctions/variables globales existantes (`SELECTED_PROFILES`, `SEED_DEMO`, `PUBLIC_HOST`, `ADMIN_EMAIL`, `set_env_var`, `confirm`).
-- Produces: le contrat de variables d'environnement listé dans Global Constraints, consommé par le playbook Ansible de Task 3.
+- Consumes: nothing new.
+- Produces: `export type CrossFilterValue = string | string[] | { from: string; to: string }`; `CrossFilterEntry.value: CrossFilterValue` (was `string | string[]`); `export function useClearCrossFilter(): (datasetId: string) => void`.
 
-**Règle appliquée aux quatre fonctions** : si la variable d'environnement dédiée est **définie** (même vide, testée avec `${VAR+x}` — teste la présence, pas le contenu, pour distinguer « non fournie » de « fournie vide = choix explicite »), sauter le `read` correspondant et utiliser sa valeur ; sinon, comportement interactif inchangé.
+- [ ] **Step 1: Write the failing tests**
 
-- [ ] **Step 1: Modifier `prompt_profiles` — profils et seed démo non-interactifs**
+Add to `shell/src/builder/AnalyticsContext.test.tsx`, inside the existing `Probe` component add two buttons (import `useClearCrossFilter` at the top alongside the other hooks):
 
-Remplacer (lignes 113-146) :
+```tsx
+import {
+  AnalyticsContextProvider, useAnalyticsContext, useClearCrossFilter, useSetCrossFilter, useSetExtent, useSetTimeRange,
+} from "./AnalyticsContext";
 
-```bash
-prompt_profiles() {
-  local available
-  local label
-  local compose_err
-  compose_err="$(mktemp)"
-  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
-    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
-    cat "$compose_err" >&2
-    rm -f "$compose_err"
-    exit 1
-  fi
-  rm -f "$compose_err"
-
-  echo ""
-  echo "── Profils disponibles ──"
-  while IFS= read -r profile; do
-    [ -z "$profile" ] && continue
-    label="$(profile_label "$profile")"
-    if confirm "Activer : ${label} ?"; then
-      SELECTED_PROFILES+=("$profile")
-    fi
-  done <<< "$available"
-
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
-  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
-  if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
-  fi
-
-  echo ""
-  if confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
-    SEED_DEMO=true
-  fi
+function Probe() {
+  const ctx = useAnalyticsContext();
+  const setTimeRange = useSetTimeRange();
+  const setExtent = useSetExtent();
+  const setCrossFilter = useSetCrossFilter();
+  const clearCrossFilter = useClearCrossFilter();
+  return (
+    <div>
+      <p>timeRange:{ctx.timeRange ? `${ctx.timeRange.from}..${ctx.timeRange.to}` : "none"}</p>
+      <p>extent:{ctx.extent ? ctx.extent.join(",") : "none"}</p>
+      <p>crossFilter:{JSON.stringify(ctx.crossFilter)}</p>
+      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>set-time</button>
+      <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
+      <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
+      <button onClick={() => setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")}>set-cf-range</button>
+      <button onClick={() => clearCrossFilter("ds1")}>clear-cf</button>
+    </div>
+  );
 }
 ```
 
-par :
+Append these tests (after the existing `"setCrossFilter toggles..."` test, still outside the `describe("extent debounce", ...)` block):
 
-```bash
-prompt_profiles() {
-  local available
-  local label
-  local compose_err
-  compose_err="$(mktemp)"
-  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
-    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
-    cat "$compose_err" >&2
-    rm -f "$compose_err"
-    exit 1
-  fi
-  rm -f "$compose_err"
+```tsx
+test("setCrossFilter accepts a {from,to} range value", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf-range"));
+  expect(screen.getByText(/"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/)).toBeInTheDocument();
+});
 
-  echo ""
-  echo "── Profils disponibles ──"
-  if [ -n "${INSTALL_PROFILES+x}" ]; then
-    echo "INSTALL_PROFILES=\"${INSTALL_PROFILES}\" — sélection non-interactive."
-    while IFS= read -r profile; do
-      [ -z "$profile" ] && continue
-      label="$(profile_label "$profile")"
-      if [[ ",${INSTALL_PROFILES}," == *",${profile},"* ]]; then
-        echo "  ✓ ${label}"
-        SELECTED_PROFILES+=("$profile")
-      else
-        echo "  ✗ ${label}"
-      fi
-    done <<< "$available"
-  else
-    while IFS= read -r profile; do
-      [ -z "$profile" ] && continue
-      label="$(profile_label "$profile")"
-      if confirm "Activer : ${label} ?"; then
-        SELECTED_PROFILES+=("$profile")
-      fi
-    done <<< "$available"
-  fi
+test("clearCrossFilter removes the entry for that dataset", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText(/"ds1":/)).toBeInTheDocument();
+  await userEvent.click(screen.getByText("clear-cf"));
+  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
+});
 
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
-  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
-  if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
-  fi
+test("clearCrossFilter is a no-op when interactions is not 'auto'", async () => {
+  render(<AnalyticsContextProvider interactions="manual"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("clear-cf"));
+  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
+});
+```
 
-  echo ""
-  if [ -n "${INSTALL_SEED_DEMO+x}" ]; then
-    if [ "$INSTALL_SEED_DEMO" = "1" ]; then
-      SEED_DEMO=true
-    fi
-    echo "INSTALL_SEED_DEMO=${INSTALL_SEED_DEMO} — démo $([ "$SEED_DEMO" = true ] && echo activée || echo désactivée)."
-  elif confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
-    SEED_DEMO=true
-  fi
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
+Expected: FAIL — `setCrossFilter` rejects/mistypes the range value (TS) and `useClearCrossFilter` does not exist (import error).
+
+- [ ] **Step 3: Implement**
+
+Replace line 4 of `shell/src/builder/AnalyticsContext.tsx`:
+
+```ts
+export type CrossFilterValue = string | string[] | { from: string; to: string };
+export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string };
+```
+
+Replace lines 16-27 (the two type aliases through `sameCrossFilterValue`):
+
+```ts
+type SetTimeRange = (range: { from: string; to: string } | null) => void;
+type SetExtent = (bbox: [number, number, number, number] | null) => void;
+type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string) => void;
+type ClearCrossFilter = (datasetId: string) => void;
+
+const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
+const AnalyticsSettersContext = createContext<{
+  setTimeRange: SetTimeRange; setExtent: SetExtent; setCrossFilter: SetCrossFilter; clearCrossFilter: ClearCrossFilter;
+}>({
+  setTimeRange: () => {}, setExtent: () => {}, setCrossFilter: () => {}, clearCrossFilter: () => {},
+});
+
+function sameCrossFilterValue(a: CrossFilterValue, b: CrossFilterValue): boolean {
+  return typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b);
 }
 ```
 
-- [ ] **Step 2: Modifier `prompt_public_host` — hôte public non-interactif**
+Replace lines 58-70 (from `const setCrossFilter = ...` through the `setters` memo):
 
-Remplacer les 3 premières lignes du corps (lignes 168-171) :
+```ts
+  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId) => {
+    if (!active) return;
+    setState((prev) => {
+      const current = prev.crossFilter[datasetId];
+      const isToggleOff = Boolean(current) && current!.field === field && sameCrossFilterValue(current!.value, value);
+      const nextCrossFilter = { ...prev.crossFilter };
+      if (isToggleOff) delete nextCrossFilter[datasetId];
+      else nextCrossFilter[datasetId] = { field, value, originSourceId };
+      return { ...prev, crossFilter: nextCrossFilter };
+    });
+  }, [active]);
 
-```bash
-prompt_public_host() {
-  echo ""
-  read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
-  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
-  # cette tâche) : ne pas redemander — sinon, question interactive.
+  const clearCrossFilter = useCallback<ClearCrossFilter>((datasetId) => {
+    if (!active) return;
+    setState((prev) => {
+      if (!prev.crossFilter[datasetId]) return prev;
+      const nextCrossFilter = { ...prev.crossFilter };
+      delete nextCrossFilter[datasetId];
+      return { ...prev, crossFilter: nextCrossFilter };
+    });
+  }, [active]);
+
+  const setters = useMemo(
+    () => ({ setTimeRange, setExtent, setCrossFilter, clearCrossFilter }),
+    [setTimeRange, setExtent, setCrossFilter, clearCrossFilter],
+  );
 ```
 
-par :
+Replace lines 88-91 (the final export block) — append the new hook after `useSetCrossFilter`:
 
-```bash
-prompt_public_host() {
-  echo ""
-  if [ -n "${GEOSTUDIO_PUBLIC_HOST+x}" ]; then
-    PUBLIC_HOST_INPUT="$GEOSTUDIO_PUBLIC_HOST"
-    if [ -n "$PUBLIC_HOST_INPUT" ]; then
-      echo "Nom d'hôte public : ${PUBLIC_HOST_INPUT} (GEOSTUDIO_PUBLIC_HOST)"
-    else
-      echo "GEOSTUDIO_PUBLIC_HOST défini vide — découverte automatique via Tailscale Funnel."
-    fi
-  else
-    read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
-  fi
-  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
-  # cette tâche) : ne pas redemander — sinon, question interactive.
-```
-
-Le reste de la fonction (lignes 172-208 : lecture de `TS_AUTHKEY` si absent, démarrage du tunnel, retour anticipé si `PUBLIC_HOST_INPUT` non vide, boucle de découverte auto) **ne change pas** — il consomme déjà `PUBLIC_HOST_INPUT`, peu importe sa provenance.
-
-- [ ] **Step 3: Modifier `prompt_backup_target` — cible de sauvegarde non-interactive**
-
-Remplacer (lignes 218-235) :
-
-```bash
-prompt_backup_target() {
-  echo ""
-  read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
-  if [ -n "$s3_endpoint" ]; then
-    read -r -p "  Access key : " s3_access
-    read -r -s -p "  Secret key : " s3_secret
-    echo
-    read -r -p "  Bucket [geostudio-backups] : " s3_bucket
-    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
-    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
-    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "${s3_bucket:-geostudio-backups}"
-    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
-    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
-  else
-    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
-  fi
+```ts
+export function useSetCrossFilter(): SetCrossFilter {
+  return useContext(AnalyticsSettersContext).setCrossFilter;
+}
+export function useClearCrossFilter(): ClearCrossFilter {
+  return useContext(AnalyticsSettersContext).clearCrossFilter;
 }
 ```
 
-par :
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
+Expected: PASS, all tests including the 3 new ones and the pre-existing ones (toggle, debounce, no-provider default).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-prompt_backup_target() {
-  echo ""
-  local s3_endpoint s3_access s3_secret s3_bucket
-  if [ -n "${BACKUP_S3_ENDPOINT+x}" ]; then
-    echo "BACKUP_S3_ENDPOINT défini — cible de sauvegarde non-interactive."
-    s3_endpoint="$BACKUP_S3_ENDPOINT"
-    s3_access="${BACKUP_S3_ACCESS_KEY:-}"
-    s3_secret="${BACKUP_S3_SECRET_KEY:-}"
-    s3_bucket="${BACKUP_S3_BUCKET:-geostudio-backups}"
-  else
-    read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
-    if [ -n "$s3_endpoint" ]; then
-      read -r -p "  Access key : " s3_access
-      read -r -s -p "  Secret key : " s3_secret
-      echo
-      read -r -p "  Bucket [geostudio-backups] : " s3_bucket
-      s3_bucket="${s3_bucket:-geostudio-backups}"
-    fi
-  fi
-
-  if [ -n "$s3_endpoint" ]; then
-    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
-    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
-    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "$s3_bucket"
-    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
-    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
-  else
-    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
-  fi
-}
-```
-
-- [ ] **Step 4: Modifier `prompt_admin` — email admin non-interactif**
-
-Remplacer les 2 premières lignes du corps (lignes 240-242) :
-
-```bash
-prompt_admin() {
-  echo ""
-  read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
-```
-
-par :
-
-```bash
-prompt_admin() {
-  echo ""
-  if [ -n "${INSTALL_ADMIN_EMAIL:-}" ]; then
-    ADMIN_EMAIL="$INSTALL_ADMIN_EMAIL"
-    echo "Email administrateur : ${ADMIN_EMAIL} (INSTALL_ADMIN_EMAIL)"
-  else
-    read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
-  fi
-```
-
-Note : ce test utilise `-n` (valeur non vide requise), pas `+x` — contrairement aux trois autres prompts, un email admin ne peut pas être « explicitement vide » : c'est le seul champ obligatoire du flux. `ADMIN_EMAIL` reste une variable globale (pas de `local`), exactement comme dans le script actuel — `print_summary` la lit après coup.
-
-- [ ] **Step 5: Vérifier la syntaxe (bash)**
-
-Run: `bash -n scripts/install.sh`
-Expected: aucune sortie, code de sortie `0`.
-
-- [ ] **Step 6: Lint shellcheck (conteneur jetable, aucune installation système)**
-
-Run:
-```bash
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
-  koalaman/shellcheck:stable scripts/install.sh
-```
-Expected: pas de nouvelle alerte introduite par rapport à l'état avant modification (si des avertissements préexistants apparaissent déjà sur des lignes non touchées par ce Step, les laisser — hors périmètre).
-
-- [ ] **Step 7: Relecture de non-régression du chemin interactif**
-
-Relire les 4 fonctions modifiées et confirmer, pour chacune, que la branche `else` reproduit **exactement** le comportement d'avant (mêmes messages, mêmes `read`, aucune ligne supprimée) — condition explicite de Global Constraints. Aucune commande, vérification par lecture.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add scripts/install.sh
-git commit -m "feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)"
+cd shell && git add src/builder/AnalyticsContext.tsx src/builder/AnalyticsContext.test.tsx
+git commit -m "feat(shell): cross-filter range value + clearCrossFilter setter (SP-14c)"
 ```
 
 ---
