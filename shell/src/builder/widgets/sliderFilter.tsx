@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
-import { useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
+import { useAnalyticsContext, useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
 
 type Bounds = { min: number; max: number };
 
@@ -30,6 +29,7 @@ export function registerSliderFilterWidget(): void {
     ),
     Component: ({ props, ctx }) => {
       const client = useItemClient();
+      const analyticsCtx = useAnalyticsContext();
       const setCrossFilter = useSetCrossFilter();
       const clearCrossFilter = useClearCrossFilter();
       const datasetId = ctx.data?.datasetId;
@@ -50,25 +50,23 @@ export function registerSliderFilterWidget(): void {
         enabled: Boolean(datasetId && field),
       });
 
-      const [from, setFrom] = useState<number | null>(null);
-      const [to, setTo] = useState<number | null>(null);
-      useEffect(() => {
-        if (query.data) { setFrom(query.data.min); setTo(query.data.max); }
-      }, [query.data]);
-
       if (!datasetId || !field) {
         return <p className="text-xs text-[var(--gs-color-muted)]">Liez ce filtre à une source dataset et un champ</p>;
       }
-      if (query.isLoading || !query.data || from === null || to === null) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (query.isLoading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (query.isError || !query.data) {
+        return <p role="alert" className="text-xs text-[var(--gs-color-muted)]">Impossible de charger les bornes</p>;
       }
-      if (query.isError) return <p role="alert" className="text-xs text-[var(--gs-color-muted)]">Impossible de charger les bornes</p>;
 
       const { min, max } = query.data;
+      const active = analyticsCtx.crossFilter[datasetId];
+      const activeRange = active && active.field === field && typeof active.value === "object" && !Array.isArray(active.value)
+        ? (active.value as { from: string; to: string })
+        : null;
+      const from = activeRange ? Number(activeRange.from) : min;
+      const to = activeRange ? Number(activeRange.to) : max;
 
       function commit(nextFrom: number, nextTo: number) {
-        setFrom(nextFrom);
-        setTo(nextTo);
         if (nextFrom === min && nextTo === max) clearCrossFilter(datasetId!);
         else setCrossFilter(datasetId!, field, { from: String(nextFrom), to: String(nextTo) }, originSourceId);
       }
