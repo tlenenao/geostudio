@@ -9,7 +9,7 @@ function formatCrossFilterValue(value: CrossFilterValue): string {
   return value;
 }
 
-export function AnalyticsContextIndicator(): JSX.Element | null {
+export function AnalyticsContextIndicator() {
   const ctx = useAnalyticsContext();
   const setTimeRange = useSetTimeRange();
   const setExtent = useSetExtent();
