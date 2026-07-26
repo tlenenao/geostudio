@@ -1,78 +1,139 @@
-### Task 2: `derivePatch` — range branch
+## Task 2: `ExplorerMenu` — the shared `⋮` button
 
 **Files:**
-- Modify: `shell/src/lib/analyticsPatch.ts:26-33` (the `crossFilter` block inside `derivePatch`)
-- Test: `shell/src/lib/analyticsPatch.test.ts`
+- Create: `shell/src/builder/widgets/ExplorerMenu.tsx`
+- Test: `shell/src/builder/widgets/ExplorerMenu.test.tsx`
 
 **Interfaces:**
-- Consumes: `CrossFilterValue` from Task 1 (`../builder/AnalyticsContext`).
-- Produces: no new exports — `derivePatch`'s existing signature and behavior for scalar/array values is unchanged; only a new range case is added.
+- Consumes (from Task 1): `useExplorerEnabled()`, `useOpenExplorer()`, `useExplorerTarget()` from `../ExplorerContext`.
+- Produces (consumed by Task 3): `function ExplorerMenu({ datasetId, dataSourceId }: { datasetId: string | undefined; dataSourceId: string })`. Renders `null` unless `useExplorerEnabled()` is true and `datasetId` is truthy. Renders a button `aria-label="Explorer"` that toggles a one-item menu; the item `aria-label="Voir les entités"` calls `useOpenExplorer()({ datasetId, dataSourceId })` and closes the menu.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `shell/src/lib/analyticsPatch.test.ts`:
+Create `shell/src/builder/widgets/ExplorerMenu.test.tsx`:
 
-```ts
-test("uses field__gte/field__lte for a range cross-filter value", () => {
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-OTHER" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({ score__gte: "10", score__lte: "50" });
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import { ExplorerMenu } from "./ExplorerMenu";
+import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
+
+function TargetProbe() {
+  const target = useExplorerTarget();
+  return <p>target:{target ? `${target.datasetId}/${target.dataSourceId}` : "none"}</p>;
+}
+
+test("renders nothing when the explorer is disabled", () => {
+  render(
+    <ExplorerProvider enabled={false}>
+      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
+    </ExplorerProvider>,
+  );
+  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
 });
 
-test("excludes a range cross-filter patch when this source is the origin", () => {
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-1" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
+test("renders nothing when there is no datasetId", () => {
+  render(
+    <ExplorerProvider enabled>
+      <ExplorerMenu datasetId={undefined} dataSourceId="src1" />
+    </ExplorerProvider>,
+  );
+  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
+});
+
+test("clicking the button then the menu item opens the explorer with the right target", async () => {
+  render(
+    <ExplorerProvider enabled>
+      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
+      <TargetProbe />
+    </ExplorerProvider>,
+  );
+  expect(screen.queryByLabelText("Voir les entités")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Voir les entités"));
+  expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
+});
+
+test("the menu closes again after selecting the item", async () => {
+  render(
+    <ExplorerProvider enabled>
+      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
+    </ExplorerProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Voir les entités"));
+  expect(screen.queryByLabelText("Voir les entités")).not.toBeInTheDocument();
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd shell && npx vitest run src/lib/analyticsPatch.test.ts`
-Expected: FAIL — current code does `patch[crossFilter.field] = crossFilter.value` for a non-array value, so the range object gets assigned directly to `score` instead of producing `score__gte`/`score__lte`.
+Run: `cd shell && npx vitest run src/builder/widgets/ExplorerMenu.test.tsx`
+Expected: FAIL — `Failed to resolve import "./ExplorerMenu"`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Write minimal implementation**
 
-In `shell/src/lib/analyticsPatch.ts`, replace the `crossFilter` block (currently):
+Create `shell/src/builder/widgets/ExplorerMenu.tsx`:
 
-```ts
-  const crossFilter = ctx.crossFilter[source.datasetId];
-  if (crossFilter && crossFilter.originSourceId !== source.id) {
-    if (Array.isArray(crossFilter.value)) patch[`${crossFilter.field}__in`] = crossFilter.value.join(",");
-    else patch[crossFilter.field] = crossFilter.value;
-  }
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
+import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
+
+export function ExplorerMenu({
+  datasetId, dataSourceId,
+}: {
+  datasetId: string | undefined;
+  dataSourceId: string;
+}) {
+  const enabled = useExplorerEnabled();
+  const open = useOpenExplorer();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  if (!enabled || !datasetId) return null;
+
+  return (
+    <div className="absolute right-1 top-1 z-10">
+      <button
+        type="button"
+        aria-label="Explorer"
+        className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
+        onClick={() => setMenuOpen((v) => !v)}
+      >
+        ⋮
+      </button>
+      {menuOpen && (
+        <div className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm">
+          <button
+            type="button"
+            aria-label="Voir les entités"
+            className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
+            onClick={() => {
+              setMenuOpen(false);
+              open({ datasetId, dataSourceId });
+            }}
+          >
+            Voir les entités
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 ```
 
-with:
+- [ ] **Step 4: Run test to verify it passes**
 
-```ts
-  const crossFilter = ctx.crossFilter[source.datasetId];
-  if (crossFilter && crossFilter.originSourceId !== source.id) {
-    if (Array.isArray(crossFilter.value)) {
-      patch[`${crossFilter.field}__in`] = crossFilter.value.join(",");
-    } else if (typeof crossFilter.value === "object") {
-      patch[`${crossFilter.field}__gte`] = crossFilter.value.from;
-      patch[`${crossFilter.field}__lte`] = crossFilter.value.to;
-    } else {
-      patch[crossFilter.field] = crossFilter.value;
-    }
-  }
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/lib/analyticsPatch.test.ts`
-Expected: PASS, all tests (the 2 new ones plus the full pre-existing suite for scalar/array/time/extent combinations).
+Run: `cd shell && npx vitest run src/builder/widgets/ExplorerMenu.test.tsx`
+Expected: PASS (4/4).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd shell && git add src/lib/analyticsPatch.ts src/lib/analyticsPatch.test.ts
-git commit -m "feat(shell): derivePatch translates a range cross-filter to __gte/__lte (SP-14c)"
+git add shell/src/builder/widgets/ExplorerMenu.tsx shell/src/builder/widgets/ExplorerMenu.test.tsx
+git commit -m "feat(shell): ExplorerMenu — shared ⋮ button, one item Voir les entités (SP-14d)"
 ```
 
 ---

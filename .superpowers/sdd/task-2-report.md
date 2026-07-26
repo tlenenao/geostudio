@@ -1,100 +1,164 @@
-# Task 2 Report: `derivePatch` — range branch (SP-14c)
+# Task 2: `ExplorerMenu` — the shared `⋮` button — Report
+
+**Date:** 2026-07-26  
+**Status:** DONE
+
+## Summary
+
+Successfully implemented `ExplorerMenu`, a small shared button component that integrates with the ExplorerContext from Task 1. The component renders a `⋮` button that opens a dropdown menu with one item (`Voir les entités`), allowing users to open the explorer panel with the given dataset and data source.
 
 ## What Was Implemented
 
-Modified `derivePatch` function in `shell/src/lib/analyticsPatch.ts` to handle a new cross-filter value shape: when a cross-filter's value is an object with `{from, to}` properties, the function now produces `field__gte`/`field__lte` query-filter keys instead of assigning the object directly to the field key.
+Created two new files following TDD discipline:
 
-### Implementation Details
+### `shell/src/builder/widgets/ExplorerMenu.test.tsx` (59 lines)
+- 4 comprehensive test cases covering all scenarios
+- Tests conditional rendering, menu toggle, explorer invocation, and menu closure
+- Uses `TargetProbe` child component to verify explorer context state
 
-Added a new branch in the crossFilter block (lines 30-40) to handle three distinct value types:
-1. **Array values** (existing): `field__in` with comma-joined values
-2. **Object values** (new range case): `field__gte` and `field__lte` with respective values
-3. **Scalar string values** (existing): direct field assignment
+### `shell/src/builder/widgets/ExplorerMenu.tsx` (38 lines)
+- Functional React component with TypeScript props interface
+- Props: `{ datasetId: string | undefined; dataSourceId: string }`
+- Uses `useState` for menu toggle state
+- Consumes three hooks from ExplorerContext: `useExplorerEnabled`, `useOpenExplorer`
+- Proper early return when disabled or datasetId missing
+- Styled with Tailwind + CSS variables for theming
 
-### Changes Made
+## Component Behavior
 
-**File: `shell/src/lib/analyticsPatch.ts`**
-- Replaced lines 30-34 (old crossFilter block) with enhanced implementation (lines 30-40)
-- Changed single-line else to proper if/else if/else branching
-- Added `typeof crossFilter.value === "object"` check for range detection
-- Extract `from` and `to` properties into separate `__gte` and `__lte` keys
+**Renders Nothing If:**
+- `useExplorerEnabled()` returns false
+- `datasetId` is undefined
 
-**File: `shell/src/lib/analyticsPatch.test.ts`**
-- Added test: "uses field__gte/field__lte for a range cross-filter value"
-  - Verifies range object {from: "10", to: "50"} produces score__gte and score__lte
-- Added test: "excludes a range cross-filter patch when this source is the origin"
-  - Verifies originSourceId exclusion still works for range values
+**Renders Button If:**
+- Explorer is enabled AND datasetId is provided
+
+**Button Interaction:**
+- Click `⋮` button to toggle dropdown menu
+- Click "Voir les entités" menu item to:
+  1. Close menu
+  2. Call `useOpenExplorer()({ datasetId, dataSourceId })`
+  3. Menu automatically closes after selection
+
+**Accessibility:**
+- Button: `aria-label="Explorer"`
+- Menu item: `aria-label="Voir les entités"`
+- French user-facing copy follows repo convention
 
 ## Testing and Test Results
 
 ### TDD Evidence
 
-**RED (Failing Tests)**
+**RED (Test Fails):**
 ```
-Initial test run: 1 failed | 11 passed (12)
-FAIL: uses field__gte/field__lte for a range cross-filter value
-  Expected { score__gte: '10', score__lte: '50' }
-  Received { score: { from: '10', to: '50' } }
-```
-
-**GREEN (Passing Tests)**
-```
-Final test run after implementation:
-✓ src/lib/analyticsPatch.test.ts (12 tests) 19ms
-✓ Test Files  1 passed (1)
-✓ Tests  12 passed (12)
+Exit code 1
+FAIL  src/builder/widgets/ExplorerMenu.test.tsx
+Error: Failed to resolve import "./ExplorerMenu" from "src/builder/widgets/ExplorerMenu.test.tsx". Does the file exist?
 ```
 
-All 12 tests pass:
-- 10 pre-existing tests continue to pass (backward compatibility verified)
-- 2 new tests pass (range functionality verified)
+**GREEN (Tests Pass):**
+```
+✓ src/builder/widgets/ExplorerMenu.test.tsx (4 tests) 155ms
 
-### Test Coverage
+Test Files  1 passed (1)
+     Tests  4 passed (4)
+```
 
-The new implementation is tested with:
-1. Range value with different originSourceId (should apply filter)
-2. Range value with same originSourceId (should exclude filter)
-3. Existing scalar string test still passes
-4. Existing array test still passes
-5. Combination test with time/extent/cross-filter still passes
+### Test Cases (4/4 Passing)
+
+1. **"renders nothing when the explorer is disabled"**
+   - Verifies component returns `null` when `enabled={false}`
+   - No button appears in DOM
+
+2. **"renders nothing when there is no datasetId"**
+   - Verifies component returns `null` when `datasetId={undefined}`
+   - No button appears in DOM
+
+3. **"clicking the button then the menu item opens the explorer with the right target"**
+   - Verifies full user flow: click button → click menu item
+   - Confirms `useOpenExplorer()` is called with correct target
+   - Uses `TargetProbe` to verify explorer context updates
+
+4. **"the menu closes again after selecting the item"**
+   - Verifies menu state cleanup after interaction
+   - Menu item not in DOM after selection
+
+### Full Suite Regression Check
+
+```
+Test Files  98 passed (98)
+     Tests  688 passed (688)
+```
+
+No regressions. All existing tests continue to pass.
 
 ## Files Changed
 
-- `shell/src/lib/analyticsPatch.ts` — implementation (8 lines changed)
-- `shell/src/lib/analyticsPatch.test.ts` — tests (14 lines added)
+- `shell/src/builder/widgets/ExplorerMenu.test.tsx` — **created** (59 lines)
+- `shell/src/builder/widgets/ExplorerMenu.tsx` — **created** (38 lines)
 
 ## Commit
 
 ```
-785814c feat(shell): derivePatch translates a range cross-filter to __gte/__lte (SP-14c)
+[dev f3c7856] feat(shell): ExplorerMenu — shared ⋮ button, one item Voir les entités (SP-14d)
+ 2 files changed, 97 insertions(+)
+ create mode 100644 shell/src/builder/widgets/ExplorerMenu.test.tsx
+ create mode 100644 shell/src/builder/widgets/ExplorerMenu.tsx
 ```
+
+**Message:** Exactly as specified in brief  
+**Branch:** `dev` (per repo convention)
 
 ## Self-Review Findings
 
-### Quality Checks
+### Completeness Checklist
 
-✓ **Correctness**: Range translation produces correct __gte/__lte keys
-✓ **Backward Compatibility**: All existing tests pass, scalar/array cases unchanged
-✓ **Discipline**: No scope creep, exactly as specified in brief
-✓ **Test Coverage**: New tests exercise the range branch and originSourceId exclusion
-✓ **Code Style**: Matches project conventions (else-if branching, no extra logic)
-✓ **Signature**: Function signature unchanged, purely additive change
+✓ Implementation matches brief exactly (no deviations)
+✓ SPDX license header on both files
+✓ TypeScript strict mode compatible
+✓ Proper `aria-label` on all interactive elements (repo convention)
+✓ French copy for user-facing text
+✓ Follows repo naming conventions
+✓ TDD discipline: test written first, failing for correct reason, then implementation
+✓ All tests passing, no regressions
+✓ No extra features beyond specification
+✓ Minimal, focused component
 
-### Edge Cases Verified
+### Code Quality
 
-- Range values are properly destructured (from/to properties extracted)
-- originSourceId check applies before value type checking
-- Scalar strings still work (last else clause)
-- Arrays still work (first if clause)
+**Correctness:**
+- Conditional logic correct (`!enabled || !datasetId`)
+- State management simple and correct (useState for menu toggle)
+- Hooks used correctly
+- Menu closes after selection (setMenuOpen called in onClick)
+- Explorer opened with correct target data
 
-### Type Safety
+**Architecture:**
+- Component responsibility: Rendering + menu state only
+- Explorer state (open/close/target) managed by ExplorerContext (Task 1)
+- Reusable: accepts datasetId and dataSourceId as props
+- Ready for Task 3: wiring into 5 widgets
 
-The implementation relies on runtime type checking (`typeof ... === "object"` and `Array.isArray()`). This is appropriate here as the CrossFilterValue type from AnalyticsContext allows these three distinct shapes.
+**Accessibility & UX:**
+- Interactive elements have aria-labels
+- French copy matches project conventions
+- Keyboard accessible (buttons support Enter/Space)
+- Visual feedback with hover states (Tailwind classes)
 
-## Notes
+### No Issues Found
 
-- Implementation matches brief exactly (lines 30-40)
-- No modifications needed to type definitions
-- No core changes required (as per plan constraints)
-- All pre-existing functionality preserved
-- Tests run in isolation with focused test file
+- No linting errors
+- No unused imports
+- No type safety violations
+- No accessibility gaps
+- No style conflicts
+- No regressions
+
+## Next Steps
+
+This component is ready for Task 3, which will wire it into 5 eligible widgets:
+- ListWidget
+- TableWidget
+- ScatterPlotWidget
+- BarChartWidget
+- PieChartWidget
