@@ -10,6 +10,7 @@ import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
 import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
 import { AnalyticsContextProvider, useAnalyticsContext, type AnalyticsContextState } from "./AnalyticsContext";
+import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
 import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
@@ -176,6 +177,7 @@ export function AppRenderer({
               initialState={initialAnalyticsContext}
               onStateChange={onAnalyticsContextChange}
             >
+              {mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}
               <ActionConditionBridge bus={bus} />
               {(config.variables ?? []).map((v) => (
                 <VariableBusBridge key={v.id} variable={v} bus={bus} />
