@@ -26,6 +26,8 @@ beforeEach(() => {
 const stubClient = {
   queryDataSource: vi.fn().mockResolvedValue([]),
   featuresUrl: vi.fn().mockReturnValue(""),
+  getDatasetConfig: vi.fn().mockResolvedValue({ source: "collection", collectionId: "col1", columns: {} }),
+  getCollectionSchema: vi.fn().mockResolvedValue({ collection: "col1", pk: "id", geometry: null, fields: [] }),
 } as unknown as ItemClient;
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -491,4 +493,23 @@ test("shows the analytics context indicator only in non-edit mode with interacti
 
   rerender(<AppRenderer config={{ ...config, interactions: "manual" }} mode="runtime" />);
   expect(screen.queryByLabelText("Effacer la période")).not.toBeInTheDocument();
+});
+
+test("shows the explorer menu on an eligible widget only when interactions is auto and not edit mode", async () => {
+  const autoConfig: AppConfig = {
+    ...config,
+    interactions: "auto",
+    dataSources: [{ id: "src1", type: "features", service: "core", layer: "col1", datasetId: "ds1", query: {} }],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "ind1", widget: "indicator", x: 0, y: 0, w: 2, h: 2, props: { dataSourceId: "src1", label: "Total" } },
+    ] },
+  };
+  const { rerender } = render(<AppRenderer config={autoConfig} mode="runtime" />, { wrapper: Wrapper });
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
+
+  rerender(<AppRenderer config={autoConfig} mode="edit" />);
+  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
+
+  rerender(<AppRenderer config={{ ...autoConfig, interactions: "manual" }} mode="runtime" />);
+  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
 });
