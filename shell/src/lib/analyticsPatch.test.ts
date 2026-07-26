@@ -67,3 +67,19 @@ test("combines time, extent and cross-filter patches together", () => {
     bbox: "1,2,3,4", region: "Nord",
   });
 });
+
+test("uses field__gte/field__lte for a range cross-filter value", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-OTHER" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({ score__gte: "10", score__lte: "50" });
+});
+
+test("excludes a range cross-filter patch when this source is the origin", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-1" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
+});
