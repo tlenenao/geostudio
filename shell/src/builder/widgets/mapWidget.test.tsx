@@ -9,6 +9,7 @@ import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
+import { ExplorerProvider } from "../ExplorerContext";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
@@ -139,4 +140,11 @@ test("map sets a cross-filter by pkColumn on feature click when dataset-bound", 
   );
   await userEvent.click(await screen.findByTestId("feature"));
   expect(await screen.findByText("cf:id=1")).toBeInTheDocument();
+});
+
+test("shows an explorer menu when bound to a dataset and interactions are auto", async () => {
+  const Map = getWidget("map")!.Component;
+  const ctx = { mode: "runtime", data: { loading: false, error: false, records: [], datasetId: "ds1", url: "https://core/collections/geo/items" } } as unknown as WidgetContext;
+  render(<ExplorerProvider enabled><Map props={{ dataSourceId: "src1" }} ctx={ctx} /></ExplorerProvider>);
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });

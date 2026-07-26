@@ -1,131 +1,164 @@
-# Task 2 : validation de `collectionId` à la sauvegarde d'un dataset — Rapport
+# Task 2: `ExplorerMenu` — the shared `⋮` button — Report
 
-> Note : ce fichier contenait auparavant le rapport d'une autre tâche
-> (« Task 2 — module OpenTofu Proxmox », SP-Deploy-e), sans rapport avec
-> SP-14a. Écrasé intégralement ci-dessous par le rapport de la tâche courante,
-> conformément à l'instruction de la brief.
+**Date:** 2026-07-26  
+**Status:** DONE
 
-## Ce qui a été implémenté
+## Summary
 
-TDD strict, suivant le brief `.superpowers/sdd/task-2-brief.md` verbatim :
+Successfully implemented `ExplorerMenu`, a small shared button component that integrates with the ExplorerContext from Task 1. The component renders a `⋮` button that opens a dropdown menu with one item (`Voir les entités`), allowing users to open the explorer panel with the given dataset and data source.
 
-1. Créé `core/tests/test_create_dataset.py` (contenu transcrit tel quel depuis
-   le brief) : 3 tests — création réussie d'un dataset pointant vers une
-   collection existante et lisible, rejet 422 à la création (`POST /configs`)
-   avec un `collectionId` inexistant, rejet 422 à la mise à jour
-   (`PUT /configs/by-item/{item_id}`) avec un `collectionId` inexistant.
-2. Lancé les tests avant implémentation : confirmé l'échec attendu — les deux
-   tests de rejet obtenaient `201`/`200` au lieu de `422` ; le test du chemin
-   heureux passait déjà (rien ne le bloquait), exactement comme prédit par le
-   brief.
-3. Ajouté `_validate_dataset_payload(session, config, *, user) -> None` dans
-   `core/app/configs/routes.py`, juste après `_validate_extension_scope`.
-   No-op si `config.kind != "dataset"`. Pour un dataset : résout la collection
-   via `app.collections.repository.get_collection(session,
-   tenant_id=user.tenant_id, collection_id=payload.collectionId)` ; si `None`,
-   lève `HTTPException(422, detail="collection not found")`. Sinon vérifie la
-   lisibilité via `app.sharing.authorization.can(session, user_id=user.id,
-   action="read", item=get_access_facts(collection), kind="collection",
-   actor_is_admin=user.is_admin)` ; si non lisible, lève **exactement le même**
-   appel `HTTPException(422, detail="collection not found")` — vérifié par
-   construction (les deux branches lèvent l'appel identique dans le code
-   source, pas seulement testé sur les deux cas actuellement couverts), afin
-   qu'un utilisateur non autorisé ne puisse pas distinguer « collection
-   inexistante » de « collection existante mais non partagée avec lui ».
-4. Câblé l'appel dans les trois chemins de sauvegarde, juste après chaque
-   appel existant à `_validate_extension_scope(...)` :
-   - `create_config` (`POST /configs`)
-   - `update_config` (`PUT /configs/{config_id}`)
-   - `update_config_by_item` (`PUT /configs/by-item/{item_id}`)
+## What Was Implemented
 
-Aucun autre fichier modifié.
+Created two new files following TDD discipline:
 
-## Résultats des tests
+### `shell/src/builder/widgets/ExplorerMenu.test.tsx` (59 lines)
+- 4 comprehensive test cases covering all scenarios
+- Tests conditional rendering, menu toggle, explorer invocation, and menu closure
+- Uses `TargetProbe` child component to verify explorer context state
 
-Commande ciblée (celle du brief) :
+### `shell/src/builder/widgets/ExplorerMenu.tsx` (38 lines)
+- Functional React component with TypeScript props interface
+- Props: `{ datasetId: string | undefined; dataSourceId: string }`
+- Uses `useState` for menu toggle state
+- Consumes three hooks from ExplorerContext: `useExplorerEnabled`, `useOpenExplorer`
+- Proper early return when disabled or datasetId missing
+- Styled with Tailwind + CSS variables for theming
 
+## Component Behavior
+
+**Renders Nothing If:**
+- `useExplorerEnabled()` returns false
+- `datasetId` is undefined
+
+**Renders Button If:**
+- Explorer is enabled AND datasetId is provided
+
+**Button Interaction:**
+- Click `⋮` button to toggle dropdown menu
+- Click "Voir les entités" menu item to:
+  1. Close menu
+  2. Call `useOpenExplorer()({ datasetId, dataSourceId })`
+  3. Menu automatically closes after selection
+
+**Accessibility:**
+- Button: `aria-label="Explorer"`
+- Menu item: `aria-label="Voir les entités"`
+- French user-facing copy follows repo convention
+
+## Testing and Test Results
+
+### TDD Evidence
+
+**RED (Test Fails):**
 ```
-cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
-```
-
-Résultat : **15 passed** — les 3 nouveaux tests, plus les tests préexistants
-de schéma dataset, de sites et de permissions d'extension (garde de
-non-régression), tous verts.
-
-Suite complète du cœur en contrôle supplémentaire :
-
-```
-cd core && uv run pytest -q
+Exit code 1
+FAIL  src/builder/widgets/ExplorerMenu.test.tsx
+Error: Failed to resolve import "./ExplorerMenu" from "src/builder/widgets/ExplorerMenu.test.tsx". Does the file exist?
 ```
 
-Résultat : **781 passed, 102 skipped** (les skips sont les tests marqués
-`postgis` nécessitant docker — conforme à la base connue documentée dans
-CLAUDE.md).
+**GREEN (Tests Pass):**
+```
+✓ src/builder/widgets/ExplorerMenu.test.tsx (4 tests) 155ms
 
-## Écarts par rapport au brief
+Test Files  1 passed (1)
+     Tests  4 passed (4)
+```
 
-Aucun. L'implémentation reprend le code du Step 3 du brief au caractère près
-(même corps de fonction, mêmes points d'appel, même message d'erreur sur les
-deux branches).
+### Test Cases (4/4 Passing)
+
+1. **"renders nothing when the explorer is disabled"**
+   - Verifies component returns `null` when `enabled={false}`
+   - No button appears in DOM
+
+2. **"renders nothing when there is no datasetId"**
+   - Verifies component returns `null` when `datasetId={undefined}`
+   - No button appears in DOM
+
+3. **"clicking the button then the menu item opens the explorer with the right target"**
+   - Verifies full user flow: click button → click menu item
+   - Confirms `useOpenExplorer()` is called with correct target
+   - Uses `TargetProbe` to verify explorer context updates
+
+4. **"the menu closes again after selecting the item"**
+   - Verifies menu state cleanup after interaction
+   - Menu item not in DOM after selection
+
+### Full Suite Regression Check
+
+```
+Test Files  98 passed (98)
+     Tests  688 passed (688)
+```
+
+No regressions. All existing tests continue to pass.
+
+## Files Changed
+
+- `shell/src/builder/widgets/ExplorerMenu.test.tsx` — **created** (59 lines)
+- `shell/src/builder/widgets/ExplorerMenu.tsx` — **created** (38 lines)
 
 ## Commit
 
-- `c562404` — `feat(core): validate dataset collectionId on save (SP-14a)`
-  (`core/app/configs/routes.py`, `core/tests/test_create_dataset.py`)
-
-Seuls ces deux fichiers ont été stagés et commités. Les autres fichiers
-modifiés/non suivis présents dans l'arbre de travail
-(`.superpowers/sdd/progress.md`, `task-1-brief.md`, `task-1-report.md`,
-`task-2-brief.md`, `docs/superpowers/plans/2026-07-25-sp14a-datasets-partages.md`)
-appartiennent au processus d'orchestration ou à d'autres tâches et n'ont pas
-été touchés.
-
-## Problèmes ou préoccupations
-
-Aucun dans le périmètre de cette tâche. Un avertissement préexistant et sans
-rapport apparaît dans la sortie des tests : une erreur
-`procrastinate.exceptions.AppNotOpen` est loggée (pas levée) quand
-`items_repo.create_item` tente de mettre en file d'attente un job d'embedding
-pendant les tests ; elle est interceptée en interne par
-`app.items.repository._enqueue_embedding` et n'affecte ni le résultat des
-tests ni le périmètre de cette tâche — laissée telle quelle.
-
-## Fix : couverture du chemin "collection non lisible"
-
-Finding de la review : les tests existants ne couvraient que la branche
-« collection inexistante » de `_validate_dataset_payload`
-(`core/app/configs/routes.py:67-83`), pas la branche « collection existante
-mais illisible par l'appelant » — pourtant la branche la plus sensible côté
-sécurité, celle conçue spécifiquement pour ne pas révéler l'existence d'une
-collection privée à un utilisateur non autorisé. Aucun changement dans
-`routes.py` : l'implémentation était déjà correcte, il manquait juste le test.
-
-Changements dans `core/tests/test_create_dataset.py` :
-
-1. Fixture `client` étendue : création d'un second utilisateur `bob`
-   (`oidc_sub="sub-2"`) et d'une seconde collection `id="prives"`
-   (`is_public=False`, `owner_id=bob.id`) — sans aucun partage/rôle de groupe
-   accordé à `alice`, l'utilisatrice de test habituelle (qui n'est pas admin
-   par défaut, `bootstrap_admin` valant `False` dans `get_or_create_user`).
-2. Nouveau test `test_create_dataset_collection_non_lisible_rejete_avec_meme_message` :
-   POST `/configs` avec `collectionId="prives"` en tant qu'alice ; vérifie
-   `status_code == 422` **et** `response.json()["detail"] == "collection not found"`
-   — le même message exact que pour une collection inexistante, prouvant que
-   les deux échecs sont indiscernables pour l'appelant.
-
-### Résultats des tests
-
 ```
-cd core && uv run pytest tests/test_create_dataset.py -v
+[dev f3c7856] feat(shell): ExplorerMenu — shared ⋮ button, one item Voir les entités (SP-14d)
+ 2 files changed, 97 insertions(+)
+ create mode 100644 shell/src/builder/widgets/ExplorerMenu.test.tsx
+ create mode 100644 shell/src/builder/widgets/ExplorerMenu.tsx
 ```
-→ **4 passed** (les 3 tests préexistants + le nouveau).
 
-```
-cd core && uv run pytest tests/test_create_dataset.py tests/test_dataset_config_schema.py tests/test_create_site.py tests/test_configs_extension_permissions.py -v
-```
-→ **16 passed** (régression complète du périmètre de la tâche, tous verts).
+**Message:** Exactly as specified in brief  
+**Branch:** `dev` (per repo convention)
 
-### Commit
+## Self-Review Findings
 
-- `test(core): cover unreadable-collection branch for dataset validation (SP-14a)`
-  (`core/tests/test_create_dataset.py` uniquement).
+### Completeness Checklist
+
+✓ Implementation matches brief exactly (no deviations)
+✓ SPDX license header on both files
+✓ TypeScript strict mode compatible
+✓ Proper `aria-label` on all interactive elements (repo convention)
+✓ French copy for user-facing text
+✓ Follows repo naming conventions
+✓ TDD discipline: test written first, failing for correct reason, then implementation
+✓ All tests passing, no regressions
+✓ No extra features beyond specification
+✓ Minimal, focused component
+
+### Code Quality
+
+**Correctness:**
+- Conditional logic correct (`!enabled || !datasetId`)
+- State management simple and correct (useState for menu toggle)
+- Hooks used correctly
+- Menu closes after selection (setMenuOpen called in onClick)
+- Explorer opened with correct target data
+
+**Architecture:**
+- Component responsibility: Rendering + menu state only
+- Explorer state (open/close/target) managed by ExplorerContext (Task 1)
+- Reusable: accepts datasetId and dataSourceId as props
+- Ready for Task 3: wiring into 5 widgets
+
+**Accessibility & UX:**
+- Interactive elements have aria-labels
+- French copy matches project conventions
+- Keyboard accessible (buttons support Enter/Space)
+- Visual feedback with hover states (Tailwind classes)
+
+### No Issues Found
+
+- No linting errors
+- No unused imports
+- No type safety violations
+- No accessibility gaps
+- No style conflicts
+- No regressions
+
+## Next Steps
+
+This component is ready for Task 3, which will wire it into 5 eligible widgets:
+- ListWidget
+- TableWidget
+- ScatterPlotWidget
+- BarChartWidget
+- PieChartWidget

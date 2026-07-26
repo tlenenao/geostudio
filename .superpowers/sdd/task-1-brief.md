@@ -1,258 +1,157 @@
-### Task 1 : `scripts/install.sh` — mode non-interactif par variables d'environnement
+## Task 1: `ExplorerContext` — open/close state and gating
 
 **Files:**
-- Modify: `scripts/install.sh:113-146` (fonction `prompt_profiles`)
-- Modify: `scripts/install.sh:168-208` (fonction `prompt_public_host`)
-- Modify: `scripts/install.sh:218-235` (fonction `prompt_backup_target`)
-- Modify: `scripts/install.sh:240-242` (début de la fonction `prompt_admin`)
+- Create: `shell/src/builder/ExplorerContext.tsx`
+- Test: `shell/src/builder/ExplorerContext.test.tsx`
 
 **Interfaces:**
-- Consumes: rien de nouveau — mêmes fonctions/variables globales existantes (`SELECTED_PROFILES`, `SEED_DEMO`, `PUBLIC_HOST`, `ADMIN_EMAIL`, `set_env_var`, `confirm`).
-- Produces: le contrat de variables d'environnement listé dans Global Constraints, consommé par le playbook Ansible de Task 3.
+- Produces (consumed by every later task):
+  - `type ExplorerTarget = { datasetId: string; dataSourceId: string } | null`
+  - `function ExplorerProvider({ enabled, children }: { enabled?: boolean; children: ReactNode })`
+  - `function useExplorerTarget(): ExplorerTarget`
+  - `function useExplorerEnabled(): boolean`
+  - `function useOpenExplorer(): (target: { datasetId: string; dataSourceId: string }) => void`
+  - `function useCloseExplorer(): () => void`
 
-**Règle appliquée aux quatre fonctions** : si la variable d'environnement dédiée est **définie** (même vide, testée avec `${VAR+x}` — teste la présence, pas le contenu, pour distinguer « non fournie » de « fournie vide = choix explicite »), sauter le `read` correspondant et utiliser sa valeur ; sinon, comportement interactif inchangé.
+- [ ] **Step 1: Write the failing test**
 
-- [ ] **Step 1: Modifier `prompt_profiles` — profils et seed démo non-interactifs**
+Create `shell/src/builder/ExplorerContext.test.tsx`:
 
-Remplacer (lignes 113-146) :
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+import { ExplorerProvider, useCloseExplorer, useExplorerEnabled, useExplorerTarget, useOpenExplorer } from "./ExplorerContext";
 
-```bash
-prompt_profiles() {
-  local available
-  local label
-  local compose_err
-  compose_err="$(mktemp)"
-  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
-    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
-    cat "$compose_err" >&2
-    rm -f "$compose_err"
-    exit 1
-  fi
-  rm -f "$compose_err"
+function Probe() {
+  const target = useExplorerTarget();
+  const enabled = useExplorerEnabled();
+  const open = useOpenExplorer();
+  const close = useCloseExplorer();
+  return (
+    <div>
+      <p>enabled:{String(enabled)}</p>
+      <p>target:{target ? `${target.datasetId}/${target.dataSourceId}` : "none"}</p>
+      <button onClick={() => open({ datasetId: "ds1", dataSourceId: "src1" })}>open</button>
+      <button onClick={() => open({ datasetId: "ds2", dataSourceId: "src2" })}>open-other</button>
+      <button onClick={close}>close</button>
+    </div>
+  );
+}
 
-  echo ""
-  echo "── Profils disponibles ──"
-  while IFS= read -r profile; do
-    [ -z "$profile" ] && continue
-    label="$(profile_label "$profile")"
-    if confirm "Activer : ${label} ?"; then
-      SELECTED_PROFILES+=("$profile")
-    fi
-  done <<< "$available"
+test("openExplorer is a silent no-op when the provider is disabled", async () => {
+  render(<ExplorerProvider enabled={false}><Probe /></ExplorerProvider>);
+  expect(screen.getByText("enabled:false")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
 
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
-  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
-  if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
-  fi
+test("openExplorer sets the target when enabled", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  expect(screen.getByText("enabled:true")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
+});
 
-  echo ""
-  if confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
-    SEED_DEMO=true
-  fi
+test("opening a second target while one is open replaces it (last one wins)", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  await userEvent.click(screen.getByText("open"));
+  await userEvent.click(screen.getByText("open-other"));
+  expect(screen.getByText("target:ds2/src2")).toBeInTheDocument();
+});
+
+test("closeExplorer clears the target", async () => {
+  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  await userEvent.click(screen.getByText("open"));
+  await userEvent.click(screen.getByText("close"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
+
+test("hooks work with no provider mounted at all (default disabled, no-op)", async () => {
+  render(<Probe />);
+  expect(screen.getByText("enabled:false")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("open"));
+  expect(screen.getByText("target:none")).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
+Expected: FAIL — `Failed to resolve import "./ExplorerContext"`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `shell/src/builder/ExplorerContext.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+
+export type ExplorerTarget = { datasetId: string; dataSourceId: string } | null;
+
+type OpenExplorer = (target: { datasetId: string; dataSourceId: string }) => void;
+type CloseExplorer = () => void;
+
+const ExplorerTargetContext = createContext<ExplorerTarget>(null);
+const ExplorerEnabledContext = createContext<boolean>(false);
+const ExplorerSettersContext = createContext<{ open: OpenExplorer; close: CloseExplorer }>({
+  open: () => {}, close: () => {},
+});
+
+export function ExplorerProvider({
+  enabled = false, children,
+}: {
+  enabled?: boolean;
+  children: ReactNode;
+}) {
+  const [target, setTarget] = useState<ExplorerTarget>(null);
+
+  const open = useCallback<OpenExplorer>((next) => {
+    if (!enabled) return;
+    setTarget(next);
+  }, [enabled]);
+
+  const close = useCallback<CloseExplorer>(() => {
+    setTarget(null);
+  }, []);
+
+  const setters = useMemo(() => ({ open, close }), [open, close]);
+
+  return (
+    <ExplorerEnabledContext.Provider value={enabled}>
+      <ExplorerSettersContext.Provider value={setters}>
+        <ExplorerTargetContext.Provider value={target}>{children}</ExplorerTargetContext.Provider>
+      </ExplorerSettersContext.Provider>
+    </ExplorerEnabledContext.Provider>
+  );
+}
+
+export function useExplorerTarget(): ExplorerTarget {
+  return useContext(ExplorerTargetContext);
+}
+export function useExplorerEnabled(): boolean {
+  return useContext(ExplorerEnabledContext);
+}
+export function useOpenExplorer(): OpenExplorer {
+  return useContext(ExplorerSettersContext).open;
+}
+export function useCloseExplorer(): CloseExplorer {
+  return useContext(ExplorerSettersContext).close;
 }
 ```
 
-par :
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
+Expected: PASS (5/5).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-prompt_profiles() {
-  local available
-  local label
-  local compose_err
-  compose_err="$(mktemp)"
-  if ! available="$($COMPOSE config --profiles 2>"$compose_err")"; then
-    echo "✗ Impossible de lire la configuration Docker Compose :" >&2
-    cat "$compose_err" >&2
-    rm -f "$compose_err"
-    exit 1
-  fi
-  rm -f "$compose_err"
-
-  echo ""
-  echo "── Profils disponibles ──"
-  if [ -n "${INSTALL_PROFILES+x}" ]; then
-    echo "INSTALL_PROFILES=\"${INSTALL_PROFILES}\" — sélection non-interactive."
-    while IFS= read -r profile; do
-      [ -z "$profile" ] && continue
-      label="$(profile_label "$profile")"
-      if [[ ",${INSTALL_PROFILES}," == *",${profile},"* ]]; then
-        echo "  ✓ ${label}"
-        SELECTED_PROFILES+=("$profile")
-      else
-        echo "  ✗ ${label}"
-      fi
-    done <<< "$available"
-  else
-    while IFS= read -r profile; do
-      [ -z "$profile" ] && continue
-      label="$(profile_label "$profile")"
-      if confirm "Activer : ${label} ?"; then
-        SELECTED_PROFILES+=("$profile")
-      fi
-    done <<< "$available"
-  fi
-
-  # ETL (SP-17) : toujours affiché, jamais activable tant qu'absent du
-  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
-  if ! grep -qx "etl" <<< "$available"; then
-    echo "  (ETL no-code (SP-17) — à venir, pas encore disponible dans ce dépôt)"
-  fi
-
-  echo ""
-  if [ -n "${INSTALL_SEED_DEMO+x}" ]; then
-    if [ "$INSTALL_SEED_DEMO" = "1" ]; then
-      SEED_DEMO=true
-    fi
-    echo "INSTALL_SEED_DEMO=${INSTALL_SEED_DEMO} — démo $([ "$SEED_DEMO" = true ] && echo activée || echo désactivée)."
-  elif confirm "Charger des données de démo (collections incidents/points_interet, publiques, éditables) ?"; then
-    SEED_DEMO=true
-  fi
-}
-```
-
-- [ ] **Step 2: Modifier `prompt_public_host` — hôte public non-interactif**
-
-Remplacer les 3 premières lignes du corps (lignes 168-171) :
-
-```bash
-prompt_public_host() {
-  echo ""
-  read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
-  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
-  # cette tâche) : ne pas redemander — sinon, question interactive.
-```
-
-par :
-
-```bash
-prompt_public_host() {
-  echo ""
-  if [ -n "${GEOSTUDIO_PUBLIC_HOST+x}" ]; then
-    PUBLIC_HOST_INPUT="$GEOSTUDIO_PUBLIC_HOST"
-    if [ -n "$PUBLIC_HOST_INPUT" ]; then
-      echo "Nom d'hôte public : ${PUBLIC_HOST_INPUT} (GEOSTUDIO_PUBLIC_HOST)"
-    else
-      echo "GEOSTUDIO_PUBLIC_HOST défini vide — découverte automatique via Tailscale Funnel."
-    fi
-  else
-    read -r -p "Nom d'hôte public (laisser vide pour le découvrir via Tailscale Funnel) : " PUBLIC_HOST_INPUT
-  fi
-  # TS_AUTHKEY déjà exporté dans l'environnement (automatisation, Step 5 de
-  # cette tâche) : ne pas redemander — sinon, question interactive.
-```
-
-Le reste de la fonction (lignes 172-208 : lecture de `TS_AUTHKEY` si absent, démarrage du tunnel, retour anticipé si `PUBLIC_HOST_INPUT` non vide, boucle de découverte auto) **ne change pas** — il consomme déjà `PUBLIC_HOST_INPUT`, peu importe sa provenance.
-
-- [ ] **Step 3: Modifier `prompt_backup_target` — cible de sauvegarde non-interactive**
-
-Remplacer (lignes 218-235) :
-
-```bash
-prompt_backup_target() {
-  echo ""
-  read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
-  if [ -n "$s3_endpoint" ]; then
-    read -r -p "  Access key : " s3_access
-    read -r -s -p "  Secret key : " s3_secret
-    echo
-    read -r -p "  Bucket [geostudio-backups] : " s3_bucket
-    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
-    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
-    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "${s3_bucket:-geostudio-backups}"
-    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
-    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
-  else
-    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
-  fi
-}
-```
-
-par :
-
-```bash
-prompt_backup_target() {
-  echo ""
-  local s3_endpoint s3_access s3_secret s3_bucket
-  if [ -n "${BACKUP_S3_ENDPOINT+x}" ]; then
-    echo "BACKUP_S3_ENDPOINT défini — cible de sauvegarde non-interactive."
-    s3_endpoint="$BACKUP_S3_ENDPOINT"
-    s3_access="${BACKUP_S3_ACCESS_KEY:-}"
-    s3_secret="${BACKUP_S3_SECRET_KEY:-}"
-    s3_bucket="${BACKUP_S3_BUCKET:-geostudio-backups}"
-  else
-    read -r -p "Cible de sauvegarde hors-site (endpoint S3-compatible, optionnel — Entrée pour ignorer) : " s3_endpoint
-    if [ -n "$s3_endpoint" ]; then
-      read -r -p "  Access key : " s3_access
-      read -r -s -p "  Secret key : " s3_secret
-      echo
-      read -r -p "  Bucket [geostudio-backups] : " s3_bucket
-      s3_bucket="${s3_bucket:-geostudio-backups}"
-    fi
-  fi
-
-  if [ -n "$s3_endpoint" ]; then
-    set_env_var BACKUP_S3_ENDPOINT "$s3_endpoint"
-    set_env_var BACKUP_S3_ACCESS_KEY "$s3_access"
-    set_env_var BACKUP_S3_SECRET_KEY "$s3_secret"
-    set_env_var BACKUP_S3_BUCKET "$s3_bucket"
-    echo "  Rappel : générez une paire de clés age (age-keygen) et renseignez la clé"
-    echo "  PUBLIQUE dans BACKUP_AGE_RECIPIENT — gardez la clé privée hors de cette machine."
-  else
-    echo "  Aucune cible hors-site — les sauvegardes resteront locales (avertissement du service backup à chaque exécution)."
-  fi
-}
-```
-
-- [ ] **Step 4: Modifier `prompt_admin` — email admin non-interactif**
-
-Remplacer les 2 premières lignes du corps (lignes 240-242) :
-
-```bash
-prompt_admin() {
-  echo ""
-  read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
-```
-
-par :
-
-```bash
-prompt_admin() {
-  echo ""
-  if [ -n "${INSTALL_ADMIN_EMAIL:-}" ]; then
-    ADMIN_EMAIL="$INSTALL_ADMIN_EMAIL"
-    echo "Email administrateur : ${ADMIN_EMAIL} (INSTALL_ADMIN_EMAIL)"
-  else
-    read -r -p "Email de l'administrateur (créera un compte Keycloak) : " ADMIN_EMAIL
-  fi
-```
-
-Note : ce test utilise `-n` (valeur non vide requise), pas `+x` — contrairement aux trois autres prompts, un email admin ne peut pas être « explicitement vide » : c'est le seul champ obligatoire du flux. `ADMIN_EMAIL` reste une variable globale (pas de `local`), exactement comme dans le script actuel — `print_summary` la lit après coup.
-
-- [ ] **Step 5: Vérifier la syntaxe (bash)**
-
-Run: `bash -n scripts/install.sh`
-Expected: aucune sortie, code de sortie `0`.
-
-- [ ] **Step 6: Lint shellcheck (conteneur jetable, aucune installation système)**
-
-Run:
-```bash
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
-  koalaman/shellcheck:stable scripts/install.sh
-```
-Expected: pas de nouvelle alerte introduite par rapport à l'état avant modification (si des avertissements préexistants apparaissent déjà sur des lignes non touchées par ce Step, les laisser — hors périmètre).
-
-- [ ] **Step 7: Relecture de non-régression du chemin interactif**
-
-Relire les 4 fonctions modifiées et confirmer, pour chacune, que la branche `else` reproduit **exactement** le comportement d'avant (mêmes messages, mêmes `read`, aucune ligne supprimée) — condition explicite de Global Constraints. Aucune commande, vérification par lecture.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add scripts/install.sh
-git commit -m "feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)"
+git add shell/src/builder/ExplorerContext.tsx shell/src/builder/ExplorerContext.test.tsx
+git commit -m "feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)"
 ```
 
 ---

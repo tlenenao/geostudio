@@ -7,6 +7,7 @@ import { useSetFilter } from "../DataContext";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { evaluateExpression } from "../expr";
 import type { DataRecord } from "../../api/types";
+import { ExplorerMenu } from "./ExplorerMenu";
 
 type CalculatedColumn = { label: string; expr: string };
 type TableColumn = string | CalculatedColumn;
@@ -58,17 +59,20 @@ export function registerDataWidgets(): void {
       }
 
       return (
-        <ul className="flex flex-col gap-0.5 text-sm">
-          {data.records.map((r) => (
-            <li
-              key={String(r.id)}
-              className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-              onClick={() => selectRecord(r)}
-            >
-              {String(r.properties[field] ?? r.id)}
-            </li>
-          ))}
-        </ul>
+        <div className="relative h-full">
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <ul className="flex flex-col gap-0.5 text-sm">
+            {data.records.map((r) => (
+              <li
+                key={String(r.id)}
+                className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
+                onClick={() => selectRecord(r)}
+              >
+                {String(r.properties[field] ?? r.id)}
+              </li>
+            ))}
+          </ul>
+        </div>
       );
     },
   });
@@ -188,7 +192,8 @@ export function registerDataWidgets(): void {
       }
 
       return (
-        <div className="flex h-full flex-col text-xs">
+        <div className="relative flex h-full flex-col text-xs">
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
               <tr>

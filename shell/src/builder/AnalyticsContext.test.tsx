@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  AnalyticsContextProvider, useAnalyticsContext, useSetCrossFilter, useSetExtent, useSetTimeRange,
+  AnalyticsContextProvider, useAnalyticsContext, useClearCrossFilter, useSetCrossFilter, useSetExtent, useSetTimeRange,
 } from "./AnalyticsContext";
 
 function Probe() {
@@ -11,6 +11,7 @@ function Probe() {
   const setTimeRange = useSetTimeRange();
   const setExtent = useSetExtent();
   const setCrossFilter = useSetCrossFilter();
+  const clearCrossFilter = useClearCrossFilter();
   return (
     <div>
       <p>timeRange:{ctx.timeRange ? `${ctx.timeRange.from}..${ctx.timeRange.to}` : "none"}</p>
@@ -19,6 +20,8 @@ function Probe() {
       <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>set-time</button>
       <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
       <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
+      <button onClick={() => setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")}>set-cf-range</button>
+      <button onClick={() => clearCrossFilter("ds1")}>clear-cf</button>
     </div>
   );
 }
@@ -46,6 +49,26 @@ test("setCrossFilter toggles: same (field, value) twice clears it, a different v
   await userEvent.click(screen.getByText("set-cf"));
   expect(screen.getByText(/"ds1":\{"field":"region","value":"Nord","originSourceId":"src1"\}/)).toBeInTheDocument();
   await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
+});
+
+test("setCrossFilter accepts a {from,to} range value", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf-range"));
+  expect(screen.getByText(/"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/)).toBeInTheDocument();
+});
+
+test("clearCrossFilter removes the entry for that dataset", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText(/"ds1":/)).toBeInTheDocument();
+  await userEvent.click(screen.getByText("clear-cf"));
+  expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
+});
+
+test("clearCrossFilter is a no-op when interactions is not 'auto'", async () => {
+  render(<AnalyticsContextProvider interactions="manual"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("clear-cf"));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
 });
 

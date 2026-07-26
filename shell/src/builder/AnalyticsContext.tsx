@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 export const EXTENT_DEBOUNCE_MS = 500;
 
-export type CrossFilterEntry = { field: string; value: string | string[]; originSourceId: string };
+export type CrossFilterValue = string | string[] | { from: string; to: string };
+export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string };
 
 export type AnalyticsContextState = {
   timeRange: { from: string; to: string } | null;
@@ -15,15 +16,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 type SetTimeRange = (range: { from: string; to: string } | null) => void;
 type SetExtent = (bbox: [number, number, number, number] | null) => void;
-type SetCrossFilter = (datasetId: string, field: string, value: string | string[], originSourceId: string) => void;
+type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string) => void;
+type ClearCrossFilter = (datasetId: string) => void;
 
 const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
-const AnalyticsSettersContext = createContext<{ setTimeRange: SetTimeRange; setExtent: SetExtent; setCrossFilter: SetCrossFilter }>({
-  setTimeRange: () => {}, setExtent: () => {}, setCrossFilter: () => {},
+const AnalyticsSettersContext = createContext<{
+  setTimeRange: SetTimeRange; setExtent: SetExtent; setCrossFilter: SetCrossFilter; clearCrossFilter: ClearCrossFilter;
+}>({
+  setTimeRange: () => {}, setExtent: () => {}, setCrossFilter: () => {}, clearCrossFilter: () => {},
 });
 
-function sameCrossFilterValue(a: CrossFilterEntry["value"], b: CrossFilterEntry["value"]): boolean {
-  return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b;
+function sameCrossFilterValue(a: CrossFilterValue, b: CrossFilterValue): boolean {
+  return typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b);
 }
 
 export function AnalyticsContextProvider({
@@ -67,7 +71,20 @@ export function AnalyticsContextProvider({
     });
   }, [active]);
 
-  const setters = useMemo(() => ({ setTimeRange, setExtent, setCrossFilter }), [setTimeRange, setExtent, setCrossFilter]);
+  const clearCrossFilter = useCallback<ClearCrossFilter>((datasetId) => {
+    if (!active) return;
+    setState((prev) => {
+      if (!prev.crossFilter[datasetId]) return prev;
+      const nextCrossFilter = { ...prev.crossFilter };
+      delete nextCrossFilter[datasetId];
+      return { ...prev, crossFilter: nextCrossFilter };
+    });
+  }, [active]);
+
+  const setters = useMemo(
+    () => ({ setTimeRange, setExtent, setCrossFilter, clearCrossFilter }),
+    [setTimeRange, setExtent, setCrossFilter, clearCrossFilter],
+  );
 
   return (
     <AnalyticsSettersContext.Provider value={setters}>
@@ -87,4 +104,7 @@ export function useSetExtent(): SetExtent {
 }
 export function useSetCrossFilter(): SetCrossFilter {
   return useContext(AnalyticsSettersContext).setCrossFilter;
+}
+export function useClearCrossFilter(): ClearCrossFilter {
+  return useContext(AnalyticsSettersContext).clearCrossFilter;
 }

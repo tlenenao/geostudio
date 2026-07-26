@@ -12,6 +12,7 @@ import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsConte
 import type { ReactElement } from "react";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
+import { ExplorerProvider } from "../ExplorerContext";
 
 beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
 
@@ -256,4 +257,18 @@ test("table PropsPanel edits a calculated column's label and expression", async 
   const afterExpr = onChange.mock.calls.at(-1)![0];
   expect(afterExpr.columns[0]).toBe("nom"); // colonne texte inchangée
   expect(afterExpr.columns[1].expr).toBe("1");
+});
+
+test("list shows an explorer menu when bound to a dataset and interactions are auto", async () => {
+  const List = getWidget("list")!.Component;
+  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
+  render(<ExplorerProvider enabled><List props={{ dataSourceId: "src1" }} ctx={ctx} /></ExplorerProvider>);
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
+});
+
+test("table shows an explorer menu when bound to a dataset and interactions are auto", async () => {
+  const Table = getWidget("table")!.Component;
+  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
+  render(<ExplorerProvider enabled><Table props={{ dataSourceId: "src1", columns: ["nom"] }} ctx={ctx} /></ExplorerProvider>);
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });

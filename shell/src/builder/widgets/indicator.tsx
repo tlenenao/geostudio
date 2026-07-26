@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
+import { ExplorerMenu } from "./ExplorerMenu";
 
 export function registerIndicatorWidget(): void {
   registerWidget({
@@ -40,7 +41,8 @@ export function registerIndicatorWidget(): void {
           ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
           : data.records.length;
       return (
-        <div className="flex h-full flex-col items-center justify-center">
+        <div className="relative flex h-full flex-col items-center justify-center">
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
           <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
           <span className="text-xs text-[var(--gs-color-muted)]">{String(props.label ?? "")}</span>
         </div>

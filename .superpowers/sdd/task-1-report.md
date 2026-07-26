@@ -1,88 +1,105 @@
-# Task 1 Report: install.sh — mode non-interactif par variables d'environnement
+# Task 1 Report: ExplorerContext — open/close state and gating
 
 ## Summary
 
-Successfully modified `scripts/install.sh` to support non-interactive mode via environment variables while maintaining full backward compatibility with interactive mode. All 4 functions modified as specified in task-1-brief.md.
+Successfully implemented `ExplorerContext`, a React context system for managing explorer panel state (open/close, dataset/dataSource tracking, and enabled/disabled gating). All 5 tests pass; full test suite (684 tests) passes without regressions.
 
-## Implementation Details
+## What Was Implemented
 
-### Functions Modified
+### Files Created
+1. **`shell/src/builder/ExplorerContext.test.tsx`** (61 lines)
+   - 5 tests covering all use cases
+   - Probe component for integration testing
+   
+2. **`shell/src/builder/ExplorerContext.tsx`** (49 lines)
+   - `ExplorerProvider` component with optional `enabled` prop
+   - State management for explorer target (datasetId/dataSourceId)
+   - Three context layers (target, enabled, setters)
+   - Four hook exports: `useExplorerTarget()`, `useExplorerEnabled()`, `useOpenExplorer()`, `useCloseExplorer()`
 
-1. **`prompt_profiles` (lines 113-165)**
-   - Added support for `INSTALL_PROFILES` environment variable (comma-separated profile list)
-   - Added support for `INSTALL_SEED_DEMO` environment variable (value "1" to enable)
-   - Both use `${VAR+x}` syntax to distinguish "not provided" from "provided empty"
-   - Interactive else branch identical to original: `confirm` calls + `SELECTED_PROFILES` array
+### Core Behavior
+- **Enabled gating:** When provider is `enabled=false` or no provider mounted, `openExplorer()` is a silent no-op
+- **State management:** When enabled, `openExplorer()` sets a `{ datasetId, dataSourceId }` target; `closeExplorer()` clears it
+- **Last-one-wins:** Multiple consecutive `openExplorer()` calls replace the target (latest wins)
+- **Default safety:** No provider mounted = safe defaults (enabled=false, target=null, no-op setters)
 
-2. **`prompt_public_host` (lines 187-236)**
-   - Added support for `GEOSTUDIO_PUBLIC_HOST` environment variable
-   - Uses `${VAR+x}` syntax; supports both set-with-value and set-empty cases
-   - Interactive else branch: exact same `read -r -p` as original
-   - Rest of function unchanged, already consuming `PUBLIC_HOST_INPUT` correctly
+## Testing & TDD Evidence
 
-3. **`prompt_backup_target` (lines 246-276)**
-   - Added support for `BACKUP_S3_ENDPOINT`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`, `BACKUP_S3_BUCKET`
-   - Uses `${VAR+x}` syntax with `${VAR:-}` fallbacks for optional keys
-   - Refactored to declare local variables upfront for clarity
-   - Interactive else branch: exact same read sequence as original (endpoint, access key, secret key, bucket)
-   - `set_env_var` calls moved outside if/else to apply in both cases (correct)
-
-4. **`prompt_admin` (lines 281-289)**
-   - Added support for `INSTALL_ADMIN_EMAIL` environment variable
-   - Uses `-n` test (non-empty required), not `+x` — email is mandatory field
-   - ADMIN_EMAIL remains global variable (not `local`), as required
-   - Interactive else branch: exact same `read -r -p` as original
-
-## Verification Results
-
-### Step 5: Bash Syntax Check
+### RED (Test fails before implementation)
 ```bash
-bash -n scripts/install.sh
+$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
+Error: Failed to resolve import "./ExplorerContext" from "src/builder/ExplorerContext.test.tsx"
 ```
-**Result:** ✓ No output, exit code 0 (success)
+Expected failure — implementation file doesn't exist.
 
-### Step 6: Shellcheck Verification
+### GREEN (Test passes after implementation)
 ```bash
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/mnt -w /mnt \
-  koalaman/shellcheck:stable scripts/install.sh
+$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
+✓ src/builder/ExplorerContext.test.tsx (5 tests) 196ms
+
+Test Files  1 passed (1)
+Tests  5 passed (5)
 ```
-**Result:** ✓ No output (no new warnings introduced)
 
-### Step 7: Manual Non-Regression Review
+All 5 test cases pass:
+1. `openExplorer is a silent no-op when the provider is disabled`
+2. `openExplorer sets the target when enabled`
+3. `opening a second target while one is open replaces it (last one wins)`
+4. `closeExplorer clears the target`
+5. `hooks work with no provider mounted at all (default disabled, no-op)`
 
-All 4 modified functions verified:
-
-- **`prompt_profiles` else branch** (lines 140-148): Exact copy of original interactive loop + confirm logic
-- **`prompt_profiles` demo section** (line 162): Original `confirm` call preserved in elif clause
-- **`prompt_public_host` else branch** (line 197): Exact same `read -r -p` as original
-- **`prompt_backup_target` else branch** (lines 256-263): All 4 read calls identical to original sequence
-- **`prompt_admin` else branch** (line 287): Exact same `read -r -p` as original
-
-**Conclusion:** All else branches reproduce original interactive behavior exactly. ✓
-
-## Files Changed
-
-- `scripts/install.sh`: 62 insertions, 16 deletions (net +46 lines)
-  - No lines removed from interactive paths
-  - Environment variable checks added using idiomatic bash patterns
-
-## Commit
-
+### Full Suite
+```bash
+$ npm run test
+✓ Test Files  97 passed (97)
+✓ Tests  684 passed (684)
 ```
-1e552bb feat(deploy): install.sh — mode non-interactif par variables d'environnement (SP-Deploy-e)
-```
+No regressions; all existing tests remain passing.
 
 ## Self-Review Findings
 
-✓ All 4 replacements applied exactly as specified in brief
-✓ No accidental edits beyond the 4 functions
-✓ Bash syntax valid
-✓ No new shellcheck warnings introduced
-✓ Non-regression: all else branches preserve original behavior
-✓ Commit message exact match to brief specification
-✓ Variable naming conventions consistent with brief (INSTALL_*, GEOSTUDIO_*, BACKUP_*)
-✓ Test syntax correct: `${VAR+x}` for presence test, `-n` for mandatory fields
+### Completeness
+- ✓ Both files created exactly as specified in brief
+- ✓ All 5 test cases implemented verbatim
+- ✓ Implementation handles all requirements: enabled gating, state management, default safety
+- ✓ Type exports match interface spec
+- ✓ SPDX license headers present on both files
 
-## Issues/Concerns
+### Code Quality
+- ✓ Follows repo conventions (TypeScript, React hooks, SPDX headers)
+- ✓ Clean context design: separate contexts for target, enabled, setters
+- ✓ `useCallback` with proper dependency arrays (`[enabled]` for open, `[]` for close)
+- ✓ `useMemo` for setters object to avoid recreation
+- ✓ Sensible defaults in default context values
 
-None. Task completed successfully with all verification steps passing.
+### Discipline
+- ✓ No overbuilding — only the code specified
+- ✓ No extra files, no configuration changes
+- ✓ TDD strictly followed: test first, RED, implementation, GREEN, commit
+
+### Testing
+- ✓ Test file comprehensive: covers enabled/disabled paths, state transitions, no-provider case
+- ✓ Probe component correctly exercises all hooks and state paths
+- ✓ User events drive state changes (proper integration testing, not unit)
+- ✓ Tests are readable, focused, and test one behavior per case
+
+## Git Commit
+
+```
+8351e8b feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)
+```
+
+Files:
+- `shell/src/builder/ExplorerContext.test.tsx` (new)
+- `shell/src/builder/ExplorerContext.tsx` (new)
+
+## Issues / Concerns
+
+None. Implementation is complete, well-tested, and ready for downstream tasks.
+
+## Readiness for Next Task
+
+This context is now ready to be consumed by Task 2 (ExplorerMenu). The interface is stable:
+- `ExplorerProvider` wraps any widget that needs the explorer feature
+- Hooks provide read-only target state and write-only open/close functions
+- Default safe behavior when provider is missing or disabled

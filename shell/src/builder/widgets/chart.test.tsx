@@ -10,6 +10,7 @@ import { ActionBus } from "../ActionBus";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
+import { ExplorerProvider } from "../ExplorerContext";
 
 vi.mock("../EChart", () => ({
   EChart: ({ option, onClick }: { option: { series?: unknown }; onClick?: (params: { name?: string }) => void }) => {
@@ -117,4 +118,17 @@ test("does not set a cross-filter when the source has no datasetId (manual wirin
   );
   await userEvent.click(await screen.findByTestId("echart"));
   expect(await screen.findByText("cf-count:0")).toBeInTheDocument();
+});
+
+test("shows an explorer menu when the widget is bound to a dataset and interactions are auto", async () => {
+  const Chart = getWidget("chart")!.Component;
+  render(
+    <ExplorerProvider enabled>
+      <Chart
+        props={{ chartType: "bar", categoryField: "region", dataSourceId: "src1" }}
+        ctx={{ mode: "runtime", data: { ...wide, datasetId: "ds1" } } as WidgetContext}
+      />
+    </ExplorerProvider>,
+  );
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });

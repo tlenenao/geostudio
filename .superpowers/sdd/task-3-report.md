@@ -1,125 +1,102 @@
-# Task 3 report — playbook Ansible : configuration + lancement (SP-Deploy-e)
+## Task 3 report: Wire `ExplorerMenu` into the 5 eligible widgets
 
-## Ce qui a été implémenté
+### What I implemented
 
-Création de `deploy/proxmox/ansible/` avec les 4 fichiers spécifiés dans le brief, transcrits verbatim :
+Wired the existing `<ExplorerMenu>` component (from Task 2) into all 5 data-bound
+widget render paths, exactly as described in the brief — no deviations. The
+actual current file contents matched the brief's line ranges almost exactly
+(off by 1-2 lines at most, e.g. the `data.tsx` type import was on line 9, the
+`table` return block started at line 190 as described), so all edits are
+verbatim from the brief:
 
-- `inventory.ini.example` — inventaire d'exemple (host `geostudio-vm`, IP `192.168.1.50`,
-  utilisateur `geostudio`, clé SSH `~/.ssh/geostudio_proxmox`).
-- `group_vars/all.yml` — variables non-secrètes (URL/dest du dépôt, host public, profils,
-  seed demo), committées telles quelles.
-- `group_vars/vault.yml.example` — template des 6 variables secrètes
-  (`vault_ts_authkey`, `vault_geostudio_admin_email`, `vault_backup_s3_*`) ; le vrai
-  `vault.yml` sera chiffré par `ansible-vault` et gitignored (Task 5, hors périmètre ici).
-- `playbook.yml` — playbook à un seul play (`hosts: geostudio`) :
-  1. `wait_for_connection` (timeout 300s, tolère le premier boot cloud-init) ;
-  2. mise à jour du cache apt + installation de `git`/`curl` (`become: true`) ;
-  3. clone/mise à jour idempotente du dépôt (`ansible.builtin.git`, branche `main`) ;
-  4. 1ère passe de `./scripts/install.sh` avec le bloc `environment` (ancre YAML
-     `&geostudio_install_env`) portant les 10 variables du contrat Task 1 ;
-  5. `meta: reset_connection` (commentaire expliquant pourquoi : le groupe `docker`
-     du nouvel utilisateur ne prend effet qu'à la session SSH suivante) ;
-  6. 2e passe de `./scripts/install.sh` réutilisant le même bloc `environment` via
-     l'alias YAML (`*geostudio_install_env`) — idempotente ;
-  7. `debug: var=install_pass2.stdout_lines` pour afficher le résumé de l'installeur.
+- `shell/src/builder/widgets/chart.tsx` — import `ExplorerMenu` after the
+  `chartOption` import; wrapped the `Suspense` in `<div className="relative h-full">`
+  with `<ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />`
+  as first child.
+- `shell/src/builder/widgets/data.tsx` — import after the `DataRecord` type
+  import; same wrap pattern for both the `list` widget's `<ul>` return and the
+  `table` widget's return (added `relative` to the existing
+  `flex h-full flex-col text-xs` wrapper div and inserted the menu as first
+  child, right before the `<table>`).
+- `shell/src/builder/widgets/mapWidget.tsx` — import after the `MapViewHandle`
+  type import; wrapped the `Suspense`/`MapView` in a `relative h-full` div,
+  using `ctx.data?.datasetId` (map's component reads `ctx.data` directly, not a
+  destructured `data` local, matching the brief).
+- `shell/src/builder/widgets/indicator.tsx` — import after `DataSourceSelect`;
+  added `relative` to the existing centered flex wrapper and inserted the menu
+  as first child.
 
-Les 10 variables d'environnement présentes dans `environment:` (vérifiées une à une,
-aucun ajout ni omission) : `INSTALL_YES`, `GEOSTUDIO_PUBLIC_HOST`, `TS_AUTHKEY`,
-`INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `INSTALL_ADMIN_EMAIL`, `BACKUP_S3_ENDPOINT`,
-`BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`, `BACKUP_S3_BUCKET`.
+### What I tested
 
-## Ce qui a été testé et résultats
+Added the 4 new tests exactly as specified in the brief (1 in chart.test.tsx,
+2 in data.test.tsx for `list` and `table`, 1 in mapWidget.test.tsx, 1 in
+indicator.test.tsx), each rendering the widget inside `<ExplorerProvider enabled>`
+with a dataset-bound `ctx.data` and asserting `screen.findByLabelText("Explorer")`
+resolves.
 
-Validation statique uniquement (aucune cible Proxmox/Ansible réelle joignable depuis cet
-environnement), via le conteneur officiel `ghcr.io/ansible/community-ansible-dev-tools:latest`
-(jamais installé sur l'hôte ; `docker pull` effectué avec succès au préalable).
+### TDD Evidence
 
-Matérialisation temporaire (étape 5 du brief) :
+**RED** — `cd shell && npx vitest run src/builder/widgets/chart.test.tsx src/builder/widgets/data.test.tsx src/builder/widgets/mapWidget.test.tsx src/builder/widgets/indicator.test.tsx`
 ```
-cp deploy/proxmox/ansible/inventory.ini.example deploy/proxmox/ansible/inventory.ini
-cp deploy/proxmox/ansible/group_vars/vault.yml.example deploy/proxmox/ansible/group_vars/vault.yml
+Test Files  4 failed (4)
+     Tests  5 failed | 36 passed (41)
+```
+All 5 new tests failed with `TestingLibraryElementError: Unable to find a label
+with the text of: Explorer`; all 36 pre-existing tests in these 4 files passed
+unchanged.
+
+**GREEN** — same command after implementation:
+```
+✓ src/builder/widgets/indicator.test.tsx (4 tests) 67ms
+✓ src/builder/widgets/data.test.tsx (19 tests) 438ms
+✓ src/builder/widgets/mapWidget.test.tsx (9 tests) 481ms
+✓ src/builder/widgets/chart.test.tsx (9 tests) 516ms
+Test Files  4 passed (4)
+     Tests  41 passed (41)
 ```
 
-**1. `ansible-playbook --syntax-check`**
+Full suite — `cd shell && npm run test`:
 ```
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-playbook -i inventory.ini --syntax-check playbook.yml
+Test Files  98 passed (98)
+     Tests  693 passed (693)
 ```
-Sortie :
-```
-playbook: playbook.yml
-```
-Exit code : `0`. Conforme à l'attendu du brief.
+(The stderr output visible during the run is expected console noise from an
+existing CEL-parse-error test in `exprBindings.test.ts`, unrelated to this
+change — no failures.)
 
-**2. `ansible-lint`**
-```
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$PWD/deploy/proxmox/ansible:/workspace" -w /workspace \
-  ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-lint playbook.yml
-```
-Sortie :
-```
-WARNING  Project directory /.ansible cannot be used for caching as it is not writable.
-WARNING  Using unique temporary directory /tmp/.ansible-0aaa for caching.
-/usr/local/lib/python3.14/site-packages/ansible_compat/runtime.py:242: UserWarning: Project directory /.ansible cannot be used for caching as it is not writable.
-  self.cache_dir = get_cache_dir(self.project_dir, isolated=self.isolated)
-/usr/local/lib/python3.14/site-packages/ansible_compat/runtime.py:242: UserWarning: Using unique temporary directory /tmp/.ansible-0aaa for caching.
-  self.cache_dir = get_cache_dir(self.project_dir, isolated=self.isolated)
+Typecheck — `cd shell && npx tsc --noEmit` — clean, no output.
 
-Passed: 0 failure(s), 0 warning(s) in 1 files processed of 1 encountered. Last profile that met the validation criteria was 'production'.
-```
-Exit code : `0`. **Zéro erreur, zéro avertissement de lint** (les seuls messages sont des
-`WARNING` liés au cache Ansible non-inscriptible dans le conteneur en mode `--user`, sans
-rapport avec le contenu du playbook) — aucune correction nécessaire.
+### Files changed
 
-Nettoyage (étape 7 du brief) effectué :
-```
-rm deploy/proxmox/ansible/inventory.ini deploy/proxmox/ansible/group_vars/vault.yml
-```
-Confirmé absents du répertoire de travail après suppression et non trackés par git
-(vérifié via `git status` avant le commit : seuls les 4 fichiers du brief apparaissaient
-en untracked, `inventory.ini`/`vault.yml` matérialisés n'apparaissaient déjà plus).
+- `shell/src/builder/widgets/chart.tsx`
+- `shell/src/builder/widgets/chart.test.tsx`
+- `shell/src/builder/widgets/data.tsx`
+- `shell/src/builder/widgets/data.test.tsx`
+- `shell/src/builder/widgets/mapWidget.tsx`
+- `shell/src/builder/widgets/mapWidget.test.tsx`
+- `shell/src/builder/widgets/indicator.tsx`
+- `shell/src/builder/widgets/indicator.test.tsx`
 
-## Fichiers modifiés
+Commit: `c048d6c` — `feat(shell): wire the explorer menu into chart/table/list/map/indicator (SP-14d)`
 
-- `deploy/proxmox/ansible/inventory.ini.example` (nouveau)
-- `deploy/proxmox/ansible/group_vars/all.yml` (nouveau)
-- `deploy/proxmox/ansible/group_vars/vault.yml.example` (nouveau)
-- `deploy/proxmox/ansible/playbook.yml` (nouveau)
+### Self-review
 
-Commit : `41e501f` — `feat(deploy): playbook Ansible — configuration + lancement
-non-interactif (SP-Deploy-e)` (4 fichiers, 84 insertions, aucune suppression).
+- Completeness: all 5 widget render paths (chart, list, table, map, indicator)
+  now render `<ExplorerMenu>` as the first child of a `relative`-positioned
+  wrapper; confirmed via the diff and via the passing tests for each.
+- Quality: matches repo conventions (import grouping, className patterns,
+  `String(props.dataSourceId ?? "")` idiom already used elsewhere in these
+  files for cross-filter calls). `aria-label="Explorer"` comes from
+  `ExplorerMenu` itself (Task 2), verified present via `findByLabelText`.
+- Discipline: no refactors beyond adding the import + wrapping div + menu
+  element in each file; no changes to unrelated widgets, no changes to
+  `ExplorerContext.tsx` or `ExplorerMenu.tsx`.
+- Testing: 4 new tests (5 assertions across list+table) pass; full suite
+  (98 files / 693 tests) has zero regressions; `git status --short` confirmed
+  only the 8 intended files were touched by this task before committing.
 
-## Revue personnelle (self-review)
+### Issues or concerns
 
-- Les 4 fichiers correspondent au contenu du brief au caractère près : vérifié par
-  `diff` direct entre le bloc YAML du brief (lignes 44-114) et `playbook.yml` produit
-  — diff vide (exit 0).
-- Les 10 noms de variables d'environnement du contrat Task 1 sont présents exactement
-  une fois chacun dans le bloc `environment:` (ancre `&geostudio_install_env`, réutilisé
-  par alias `*geostudio_install_env` dans la 2e passe) — aucun typo, aucun ajout,
-  aucune omission, vérifiés un par un via `grep`.
-- `inventory.ini` et `group_vars/vault.yml` (copies matérialisées) ne sont ni présents
-  sur le disque après nettoyage, ni stagés, ni commités — confirmé par `git status`
-  avant le commit et par le `git show --stat HEAD` après (4 fichiers exactement,
-  correspondant à la liste du brief).
-- Validation effectuée contre un vrai daemon Docker (Docker Desktop 29.4.3), image
-  officielle tirée avec succès (`docker pull` avant exécution), jamais d'installation
-  système d'Ansible sur l'hôte.
-- Aucune déviation par rapport au contenu verbatim du brief n'a été nécessaire : le
-  syntax-check et le lint sont passés du premier coup sans aucune erreur à corriger.
-
-## Note sur ce fichier
-
-Ce fichier contenait auparavant le rapport d'une "Task 3" différente d'une session
-antérieure (bootstrap Q&A SP-Deploy-c). Il a été remplacé intégralement par le rapport
-de la Task 3 du plan SP-Deploy-e (playbook Ansible) conformément au brief courant.
-
-## Problèmes ou préoccupations
-
-Aucun. La tâche s'est déroulée sans imprévu : Docker était disponible, l'image officielle
-a été tirée sans problème réseau, et les deux validations statiques sont passées sans
-aucune erreur ni avertissement de contenu dès la première exécution.
+None. The brief's line numbers matched the actual files closely enough that no
+judgment calls were needed beyond straightforward whitespace/line-number
+drift.
