@@ -11,6 +11,8 @@ import { ActionBusProvider, useBusAction } from "./ActionBusContext";
 import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
 import { AnalyticsContextProvider, useAnalyticsContext, type AnalyticsContextState } from "./AnalyticsContext";
 import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
+import { ExplorerProvider } from "./ExplorerContext";
+import { ExplorerDrawer } from "./ExplorerDrawer";
 import { useAuth } from "../auth/useAuth";
 import { themeToCssVars } from "./theme";
 
@@ -172,28 +174,31 @@ export function AppRenderer({
       <div className="min-h-0 flex-1">
         <ActionBusProvider bus={bus}>
           <VariablesProvider variables={config.variables ?? []}>
-            <AnalyticsContextProvider
-              interactions={config.interactions}
-              initialState={initialAnalyticsContext}
-              onStateChange={onAnalyticsContextChange}
-            >
-              {mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}
-              <ActionConditionBridge bus={bus} />
-              {(config.variables ?? []).map((v) => (
-                <VariableBusBridge key={v.id} variable={v} bus={bus} />
-              ))}
-              <DataProvider sources={config.dataSources}>
-                <GridCanvas
-                  items={activeLayout.items}
-                  breakpoint={bp}
-                  editable={editable}
-                  selectedId={selectedId}
-                  onSelect={(id) => onSelect?.(id)}
-                  onMoveItem={handleMove}
-                  renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
-                />
-              </DataProvider>
-            </AnalyticsContextProvider>
+            <ExplorerProvider enabled={mode !== "edit" && config.interactions === "auto"}>
+              <AnalyticsContextProvider
+                interactions={config.interactions}
+                initialState={initialAnalyticsContext}
+                onStateChange={onAnalyticsContextChange}
+              >
+                {mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}
+                <ExplorerDrawer />
+                <ActionConditionBridge bus={bus} />
+                {(config.variables ?? []).map((v) => (
+                  <VariableBusBridge key={v.id} variable={v} bus={bus} />
+                ))}
+                <DataProvider sources={config.dataSources}>
+                  <GridCanvas
+                    items={activeLayout.items}
+                    breakpoint={bp}
+                    editable={editable}
+                    selectedId={selectedId}
+                    onSelect={(id) => onSelect?.(id)}
+                    onMoveItem={handleMove}
+                    renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
+                  />
+                </DataProvider>
+              </AnalyticsContextProvider>
+            </ExplorerProvider>
           </VariablesProvider>
         </ActionBusProvider>
       </div>
