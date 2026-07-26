@@ -6,6 +6,7 @@ import { useBusAction } from "../ActionBusContext";
 import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import type { MapConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
+import { ExplorerMenu } from "./ExplorerMenu";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -55,22 +56,25 @@ export function registerMapWidget(): void {
           : [],
       };
       return (
-        <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
-          <MapView
-            ref={handle}
-            config={config}
-            onViewChange={(v) => {
-              ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
-              setExtent(v.bbox);
-            }}
-            onFeatureClick={(record) => {
-              ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record);
-              const datasetId = ctx.data?.datasetId;
-              const pkColumn = ctx.data?.pkColumn;
-              if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""));
-            }}
-          />
-        </Suspense>
+        <div className="relative h-full">
+          <ExplorerMenu datasetId={ctx.data?.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+            <MapView
+              ref={handle}
+              config={config}
+              onViewChange={(v) => {
+                ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
+                setExtent(v.bbox);
+              }}
+              onFeatureClick={(record) => {
+                ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record);
+                const datasetId = ctx.data?.datasetId;
+                const pkColumn = ctx.data?.pkColumn;
+                if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""));
+              }}
+            />
+          </Suspense>
+        </div>
       );
     },
   });

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, test } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
+import { ExplorerProvider } from "../ExplorerContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState } from "../../api/types";
 
@@ -34,4 +35,11 @@ test("indicator uses the theme text/muted tokens", () => {
   render(<Ind props={{ label: "Total" }} ctx={ctx} />);
   expect(screen.getByText("1")).toHaveClass("text-[var(--gs-color-text)]");
   expect(screen.getByText("Total")).toHaveClass("text-[var(--gs-color-muted)]");
+});
+
+test("shows an explorer menu when bound to a dataset and interactions are auto", async () => {
+  const Ind = getWidget("indicator")!.Component;
+  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { pop: 10 } }] }) } as WidgetContext;
+  render(<ExplorerProvider enabled><Ind props={{ dataSourceId: "src1", label: "Total" }} ctx={ctx} /></ExplorerProvider>);
+  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });
