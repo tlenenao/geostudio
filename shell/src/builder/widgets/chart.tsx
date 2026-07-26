@@ -4,6 +4,7 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { buildOption, type ChartProps } from "./chartOption";
+import { ExplorerMenu } from "./ExplorerMenu";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -110,9 +111,12 @@ export function registerChartWidget(): void {
         if (data?.datasetId) setCrossFilter(data.datasetId, categoryField, value, String(props.dataSourceId ?? ""));
       }
       return (
-        <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
-          <EChart option={option} onClick={handleClick} />
-        </Suspense>
+        <div className="relative h-full">
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
+            <EChart option={option} onClick={handleClick} />
+          </Suspense>
+        </div>
       );
     },
   });
