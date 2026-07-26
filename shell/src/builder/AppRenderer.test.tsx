@@ -483,3 +483,12 @@ test("a widget under AppRenderer can read the analytics context via useAnalytics
   expect(await screen.findByText("probe:set")).toBeInTheDocument();
   expect(getWidget("__analytics_probe__")).toBeDefined();
 });
+
+test("shows the analytics context indicator only in non-edit mode with interactions auto", async () => {
+  const autoConfig: AppConfig = { ...config, interactions: "auto" };
+  const { rerender } = render(<AppRenderer config={autoConfig} mode="edit" />, { wrapper: Wrapper });
+  expect(screen.queryByLabelText("Effacer la période")).not.toBeInTheDocument();
+
+  rerender(<AppRenderer config={{ ...config, interactions: "manual" }} mode="runtime" />);
+  expect(screen.queryByLabelText("Effacer la période")).not.toBeInTheDocument();
+});
