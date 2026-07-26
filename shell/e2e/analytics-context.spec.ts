@@ -460,3 +460,259 @@ async function setupTimeFieldDatasetAndApp(page: Page) {
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
   await page.getByRole("button", { name: "Enregistrer" }).click();
 }
+
+// -------------------------------------------------------------------------
+// Scénario 6 — select multi-valeurs : cocher/décocher des valeurs filtre une
+// table sur le même dataset via field__in.
+// -------------------------------------------------------------------------
+test("a select filter multi-value cross-filters a table via field__in", async ({ page }) => {
+  await mockCore(page);
+
+  await page.route("**/collections/analytics/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "analytics", pk: "id", geometry: null,
+        fields: [{ name: "categorie", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/analytics/items*", async (route) => {
+    const inList = new URL(route.request().url()).searchParams.get("categorie__in");
+    const all = [
+      { id: 1, properties: { categorie: "Nord" } },
+      { id: 2, properties: { categorie: "Sud" } },
+    ];
+    const features = inList ? all.filter((f) => inList.split(",").includes(f.properties.categorie)) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/analytics/aggregate", async (route) => {
+    await route.fulfill({ json: { categoryKey: "categorie", rows: [{ categorie: "Nord", value: 1 }, { categorie: "Sud", value: 1 }] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "analytics", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Select cross-filter");
+  await addFeaturesSource(page, "analytics");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "analytics");
+  await promoteLastSource(page, 2);
+
+  await page.getByRole("button", { name: "Sélecteur" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ du sélecteur").fill("categorie");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible();
+
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/analytics/items") && r.url().includes("categorie__in=Nord"));
+  await page.getByLabel("Nord").check();
+  await filteredReq;
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeHidden();
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+
+  await page.getByLabel("Nord").uncheck();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 7 — slider numérique : déplacer une poignée filtre une table par
+// plage (field__gte/field__lte), revenir aux bornes complètes l'efface.
+// -------------------------------------------------------------------------
+test("a slider filter cross-filters a table by range, resetting to full bounds clears it", async ({ page }) => {
+  await mockCore(page);
+
+  await page.route("**/collections/mesures/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "mesures", pk: "id", geometry: null,
+        fields: [{ name: "score", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/mesures/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const gte = url.searchParams.get("score__gte");
+    const all = [
+      { id: 1, properties: { score: 10 } },
+      { id: 2, properties: { score: 90 } },
+    ];
+    const features = gte ? all.filter((f) => f.properties.score >= Number(gte)) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/mesures/aggregate", async (route) => {
+    await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", min: 10, max: 90 }] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "mesures", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Slider cross-filter");
+  await addFeaturesSource(page, "mesures");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "mesures");
+  await promoteLastSource(page, 2);
+
+  await page.getByRole("button", { name: "Curseur" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ du curseur").fill("score");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "10" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "90" })).toBeVisible();
+
+  const minInput = page.getByLabel("Borne minimale");
+  await expect(minInput).toHaveValue("10");
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/mesures/items") && r.url().includes("score__gte=50"));
+  await minInput.evaluate((el: HTMLInputElement) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    setter.call(el, "50");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await filteredReq;
+  await expect(page.getByRole("cell", { name: "10" })).toBeHidden();
+  await expect(page.getByRole("cell", { name: "90" })).toBeVisible();
+
+  await minInput.evaluate((el: HTMLInputElement) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    setter.call(el, "10");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.getByRole("cell", { name: "10" })).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 8 — indicateur : période + cross-filter affichent deux chips,
+// effacer une chip ne touche pas l'autre, "Tout effacer" vide tout.
+// -------------------------------------------------------------------------
+test("the context indicator shows chips for active period and cross-filter, clears individually and globally", async ({ page }) => {
+  await mockCore(page);
+
+  await page.route("**/collections/analytics/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "analytics", pk: "id", geometry: null,
+        fields: [{ name: "categorie", type: "string" }, { name: "valeur", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/analytics/items*", async (route) => {
+    await route.fulfill({ json: { type: "FeatureCollection", features: [
+      { id: 1, properties: { categorie: "Nord", valeur: 100 } },
+      { id: 2, properties: { categorie: "Sud", valeur: 100 } },
+    ] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "analytics", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Indicateur");
+  await addFeaturesSource(page, "analytics");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Graphique" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ catégorie").fill("categorie");
+
+  await page.getByRole("button", { name: "Plage de dates" }).click();
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await page.getByLabel("Date de début").fill("2026-01-01");
+  await page.getByLabel("Date de fin").fill("2026-02-01");
+  await expect(page.getByText(/Période : 2026-01-01 → 2026-02-01/)).toBeVisible();
+  await expect(page.getByText("Tout effacer")).toBeHidden();
+
+  const chart = page.getByTestId("echart");
+  const box = await chart.boundingBox();
+  if (!box) throw new Error("chart canvas has no bounding box");
+  await chart.click({ position: { x: box.width * 0.3, y: box.height * 0.42 } });
+  await expect(page.getByText(/categorie : Nord/)).toBeVisible();
+
+  await page.getByLabel("Effacer le filtre categorie").click();
+  await expect(page.getByText(/categorie : Nord/)).toBeHidden();
+  await expect(page.getByText(/Période :/)).toBeVisible();
+
+  await chart.click({ position: { x: box.width * 0.3, y: box.height * 0.42 } });
+  await page.getByRole("button", { name: "Tout effacer" }).click();
+  await expect(page.getByText(/Période :/)).toBeHidden();
+  await expect(page.getByText(/categorie : Nord/)).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 9 — non-régression : une app en interactions "manual" n'affiche
+// jamais l'indicateur et le sélecteur ne filtre jamais rien.
+// -------------------------------------------------------------------------
+test("interactions manual: no indicator, select/slider never cross-filter", async ({ page }) => {
+  await mockCore(page);
+
+  await page.route("**/collections/analytics/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "analytics", pk: "id", geometry: null, fields: [{ name: "categorie", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/analytics/items*", async (route) => {
+    await route.fulfill({ json: { type: "FeatureCollection", features: [
+      { id: 1, properties: { categorie: "Nord" } },
+      { id: 2, properties: { categorie: "Sud" } },
+    ] } });
+  });
+  await page.route("**/collections/analytics/aggregate", async (route) => {
+    await route.fulfill({ json: { categoryKey: "categorie", rows: [{ categorie: "Nord", value: 1 }, { categorie: "Sud", value: 1 }] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "analytics", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Manual non-regression");
+  await addFeaturesSource(page, "analytics");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "analytics");
+  await promoteLastSource(page, 2);
+
+  await page.getByRole("button", { name: "Sélecteur" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ du sélecteur").fill("categorie");
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+
+  // Interactions automatiques OFF — le défaut des nouvelles apps est "auto"
+  // (cf. scénario 5), donc il faut décocher explicitement pour tester "manual".
+  await page.getByLabel("Interactions automatiques (cross-filter)").uncheck();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible();
+  // Le sélecteur est un composant entièrement piloté par AnalyticsContext (pas
+  // d'état local) : en mode "manual", setCrossFilter est un no-op, donc la case
+  // ne passe jamais à cochée après le clic — on utilise .click() (pas .check(),
+  // qui échouerait sur l'assertion Playwright « la case doit finir cochée »).
+  await page.getByLabel("Nord").click();
+  await expect(page.getByLabel("Nord")).not.toBeChecked();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible(); // toujours visible : pas de filtrage
+  // …et rien n'a été écrit dans AnalyticsContext : aucune chip d'indicateur
+  // n'apparaît pour ce filtre, preuve que le canal automatique est resté inerte.
+  await expect(page.getByLabel("Effacer le filtre categorie")).toHaveCount(0);
+});
