@@ -29,8 +29,14 @@ export function derivePatch(
 
   const crossFilter = ctx.crossFilter[source.datasetId];
   if (crossFilter && crossFilter.originSourceId !== source.id) {
-    if (Array.isArray(crossFilter.value)) patch[`${crossFilter.field}__in`] = crossFilter.value.join(",");
-    else patch[crossFilter.field] = crossFilter.value;
+    if (Array.isArray(crossFilter.value)) {
+      patch[`${crossFilter.field}__in`] = crossFilter.value.join(",");
+    } else if (typeof crossFilter.value === "object") {
+      patch[`${crossFilter.field}__gte`] = crossFilter.value.from;
+      patch[`${crossFilter.field}__lte`] = crossFilter.value.to;
+    } else {
+      patch[crossFilter.field] = crossFilter.value;
+    }
   }
 
   return patch;
