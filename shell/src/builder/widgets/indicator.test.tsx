@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
@@ -126,6 +126,49 @@ test("shows a delta badge computed from the server value/reference when referenc
   );
   expect(await screen.findByText("120")).toBeInTheDocument();
   expect(await screen.findByText(/\+20 % vs période précédente/)).toBeInTheDocument();
+});
+
+test("two indicator widgets on the same dataset and metric do not collide on cache when a cross-filter singles one of them out", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({ source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: false });
+  const queryDataSource = vi.fn().mockImplementation((source: { query: Record<string, unknown> }) =>
+    Promise.resolve([{ id: "Total", properties: { value: source.query.region ? 5 : 20 } }]),
+  );
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = { queryDataSource, getDatasetConfig } as unknown as ItemClient;
+  const Ind = getWidget("indicator")!.Component;
+  const widgetData = state({ datasetId: "ds-1", records: [] });
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider
+          interactions="auto"
+          initialState={{
+            timeRange: { from: "2026-01-01", to: "2026-01-31" },
+            extent: null,
+            crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-A" } },
+          }}
+        >
+          <div data-testid="widget-a">
+            <Ind props={{ dataSourceId: "src-A", label: "A", agg: "count", referencePeriod: "previous" }}
+              ctx={{ mode: "runtime", data: widgetData } as WidgetContext} />
+          </div>
+          <div data-testid="widget-b">
+            <Ind props={{ dataSourceId: "src-B", label: "B", agg: "count", referencePeriod: "previous" }}
+              ctx={{ mode: "runtime", data: widgetData } as WidgetContext} />
+          </div>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  // src-A originated the cross-filter, so derivePatch excludes it for A's own
+  // queries (region unfiltered → 20); src-B did not originate it, so B's
+  // queries carry region=Nord (→ 5). Before the cache-key fix, both widgets'
+  // "kpi-value" queries shared the same key (datasetId/window/agg/field only)
+  // and would race to the same cache entry — this proves they're isolated.
+  expect(await within(screen.getByTestId("widget-a")).findByText("20")).toBeInTheDocument();
+  expect(await within(screen.getByTestId("widget-b")).findByText("5")).toBeInTheDocument();
 });
 
 test("shows a sparkline mini-chart when sparkline is true and time context is active", async () => {

@@ -220,3 +220,77 @@ panel, and hook signature are untouched.
 ### Commit
 
 `fix(shell): key indicator KPI queries by resolved source, not just dataset/window (cache collision under cross-filter)`
+
+## Fix: cache-collision regression test
+
+### What was added
+
+The prior fix (commit `2646bbe`) was verified only by static reasoning — no
+test actually exercised the two-widget collision scenario. Added one new
+test to `shell/src/builder/widgets/indicator.test.tsx`, right after "shows a
+delta badge computed from the server value/reference…":
+
+`"two indicator widgets on the same dataset and metric do not collide on
+cache when a cross-filter singles one of them out"`
+
+Unlike the other tests in the file, this one does not use the
+`renderIndicator` helper (which creates a fresh `QueryClient` per call,
+which would hide any cache collision). Instead it renders two `indicator`
+widget instances directly under one shared `QueryClientProvider`/`QueryClient`
+and one shared `AnalyticsContextProvider`, both bound to `datasetId: "ds-1"`
+with identical `agg`/`field`/`referencePeriod`, but different
+`dataSourceId` (`"src-A"` vs `"src-B"`). The `AnalyticsContextProvider`'s
+`initialState.crossFilter` has an entry for `ds-1` with
+`originSourceId: "src-A"`, so `derivePatch` (`shell/src/lib/analyticsPatch.ts:31`)
+excludes the `region` filter for widget A's own queries (it originated the
+filter) but includes it for widget B's queries. A `queryDataSource` mock
+returns `value: 20` when the request carries no `region` filter and
+`value: 5` when it does, so the two widgets must display different numbers
+(`"20"` for A, `"5"` for B) if — and only if — their `useQuery` cache
+entries are actually isolated. `within(screen.getByTestId(...))` scopes each
+assertion to its own widget's DOM subtree. Added `within` to the
+`@testing-library/react` import (was previously only `render, screen,
+waitFor`); confirmed `state()` is a plain object-returning helper, safe to
+share as `ctx.data` between both widget instances (read-only, no mutation).
+
+### Confirmation it's a real regression test (pre-fix reasoning)
+
+Inspected the pre-fix hook via `git show aa3be6d:shell/src/builder/widgets/indicator.tsx`
+(read-only, working tree untouched). Pre-fix `valueQuery` used:
+
+```ts
+queryKey: ["kpi-value", datasetId, timeRange, agg, field]
+```
+
+For both widgets in the new test: `datasetId = "ds-1"`, `timeRange = {
+from: "2026-01-01", to: "2026-01-31" }` (same value, deep-equal — TanStack
+Query keys are compared structurally), `agg = "count"`, `field = undefined`.
+This key is identical for widget A and widget B — the widget's own id
+(`"src-A"`/`"src-B"`) never entered the key, only inputs shared by both
+widgets. With both queries `enabled` and keyed identically, TanStack Query
+treats them as the same cache entry: only one network request fires, and
+both widgets read whichever result resolved first, regardless of the fact
+that `windowedStatisticsSource` (called inside `queryFn`, using the correct
+per-widget `originSourceId`) would have produced two different effective
+`DataSource.query` objects (one with `region=Nord`, one without). This is
+exactly the collision the fix closes. Post-fix, the key is
+`["kpi-value", valueSource?.id, valueSource?.query]`, where `valueSource.id
+= originSourceId` differs per widget (`"src-A"` vs `"src-B"`) and
+`valueSource.query` differs too (only B carries `region`), so the two
+widgets get independent cache entries and independently correct values.
+
+### Verification
+
+1. Pre-fix collision confirmed by inspection of `aa3be6d` (see reasoning
+   above) — not re-run against a checked-out old working tree, per
+   instructions (`git show`, read-only).
+2. `cd shell && npx vitest run src/builder/widgets/indicator.test.tsx` —
+   **12/12 passed** (11 pre-existing + the new collision test).
+3. `cd shell && npm run test` — **100/100 test files, 721/721 tests
+   passed** (720 + 1 new), no regressions.
+4. `cd shell && npm run build` — `tsc --noEmit && vite build` completed
+   clean, no type errors.
+
+### Commit
+
+`test(shell): cover indicator KPI cache isolation across two widgets sharing a dataset+metric under cross-filter`
