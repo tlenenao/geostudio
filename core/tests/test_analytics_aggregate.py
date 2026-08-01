@@ -223,3 +223,68 @@ def test_suffixed_filter_on_unknown_field_raises_with_stripped_name(tmp_path, co
             table_info=TABLE_INFO, request=request,
         )
     assert "inconnu" in str(exc_info.value)
+
+
+def test_bucket_groups_rows_by_day(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2026-01-05", 10, lsn=1), _row(2, "Sud", "2026-01-05", 3, lsn=1),
+        _row(3, "Nord", "2026-01-06", 4, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="count")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert category_key == "annee"
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-05 00:00:00", "value": 2},
+        {"annee": "2026-01-06 00:00:00", "value": 1},
+    ]
+
+
+def test_bucket_groups_rows_by_month(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2026-01-05", 10, lsn=1), _row(2, "Nord", "2026-01-20", 5, lsn=1),
+        _row(3, "Nord", "2026-02-10", 7, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="month", agg="sum", field="pop")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-01 00:00:00", "value": 15},
+        {"annee": "2026-02-01 00:00:00", "value": 7},
+    ]
+
+
+def test_bucket_without_group_by_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2026-01-05", 10, lsn=1)])
+    request = AggregateRequestBody(bucket="day")
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bucket"
+
+
+def test_bucket_on_non_castable_field_groups_under_a_null_bucket(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "pas-une-date", 10, lsn=1), _row(2, "Sud", "2026-01-05", 3, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="sum", field="pop")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    by_key = {r["annee"]: r["value"] for r in rows}
+    assert by_key["None"] == 10
+    assert by_key["2026-01-05 00:00:00"] == 3
