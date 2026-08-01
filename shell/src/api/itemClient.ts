@@ -37,7 +37,7 @@ type StatMeasure = { field?: string; agg: string; label?: string };
 // supprimée par cette migration (groupBy/split/agg/field/measures), plus
 // toute autre clé de query non reconnue traitée comme un filtre attributaire
 // (même convention que buildFeaturesUrl pour une source "features").
-const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox"]);
+const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket"]);
 
 function parseBboxQueryValue(value: unknown): [number, number, number, number] | undefined {
   if (typeof value !== "string" || !value) return undefined;
@@ -52,6 +52,7 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   if (query.split) body.split = String(query.split);
   if (query.agg) body.agg = String(query.agg);
   if (query.field) body.field = String(query.field);
+  if (query.bucket) body.bucket = String(query.bucket);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
       field: m.field || undefined, agg: m.agg, label: m.label || undefined,
