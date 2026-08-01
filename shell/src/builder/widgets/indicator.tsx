@@ -9,7 +9,7 @@ import { useAnalyticsContext } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { evaluateExpression } from "../expr";
 import { bucketFor, referenceWindow, windowedStatisticsSource, type ReferenceMode } from "../../lib/comparisonWindow";
-import type { DatasetConfig } from "../../api/types";
+import type { DataSource, DatasetConfig } from "../../api/types";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -49,31 +49,34 @@ function useKpiComparison(
   const timeRange = analyticsCtx.timeRange;
   const active = wantsComparison && Boolean(dataset?.timeField) && Boolean(timeRange);
 
+  const valueSource: DataSource | null = active && referencePeriod
+    ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange as { from: string; to: string }, { agg, field: field || undefined })
+    : null;
   const valueQuery = useQuery({
-    queryKey: ["kpi-value", datasetId, timeRange, agg, field],
-    queryFn: () => client.queryDataSource(
-      windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange as { from: string; to: string }, { agg, field: field || undefined }),
-    ),
+    queryKey: ["kpi-value", valueSource?.id, valueSource?.query],
+    queryFn: () => client.queryDataSource(valueSource as DataSource),
     enabled: Boolean(active && referencePeriod),
   });
 
   const referenceRange = active && referencePeriod ? referenceWindow(timeRange as { from: string; to: string }, referencePeriod) : null;
+  const referenceSource: DataSource | null = referenceRange
+    ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, referenceRange, { agg, field: field || undefined })
+    : null;
   const referenceQuery = useQuery({
-    queryKey: ["kpi-reference", datasetId, referenceRange, agg, field],
-    queryFn: () => client.queryDataSource(
-      windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, referenceRange as { from: string; to: string }, { agg, field: field || undefined }),
-    ),
+    queryKey: ["kpi-reference", referenceSource?.id, referenceSource?.query],
+    queryFn: () => client.queryDataSource(referenceSource as DataSource),
     enabled: Boolean(active && referencePeriod && referenceRange),
   });
 
   const bucket = active && timeRange ? bucketFor(timeRange) : "day";
-  const sparklineQuery = useQuery({
-    queryKey: ["kpi-sparkline", datasetId, timeRange, bucket, agg, field],
-    queryFn: () => client.queryDataSource(
-      windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange as { from: string; to: string }, {
+  const sparklineSource: DataSource | null = active && sparklineEnabled
+    ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange as { from: string; to: string }, {
         groupBy: (dataset as DatasetConfig).timeField as string, bucket, agg, field: field || undefined,
-      }),
-    ),
+      })
+    : null;
+  const sparklineQuery = useQuery({
+    queryKey: ["kpi-sparkline", sparklineSource?.id, sparklineSource?.query],
+    queryFn: () => client.queryDataSource(sparklineSource as DataSource),
     enabled: Boolean(active && sparklineEnabled),
   });
 
