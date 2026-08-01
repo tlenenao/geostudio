@@ -956,7 +956,7 @@ test("a KPI shows a critical pastille when criticalWhen is exceeded, none otherw
 
   await page.goto("/apps/9");
   await expect(page.getByText("3")).toBeVisible();
-  await expect(page.locator('[aria-label*="critique"], [title*="critique"]')).toBeVisible();
+  await expect(page.getByLabel("Seuil critique atteint")).toBeVisible();
 });
 
 // -------------------------------------------------------------------------
