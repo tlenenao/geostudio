@@ -1,147 +1,116 @@
-# Task 5 Report: Wire `ExplorerProvider`/`ExplorerDrawer` into `AppRenderer` (SP-14d)
+# Task 5 report — `chart` widget "compare periods" mode (SP-14e)
 
 Note: this report file previously held an unrelated report from an earlier plan's differently-numbered
-"Task 5" (SP-14c, `AnalyticsContextIndicator` + `AppRenderer` wiring, commit `5833a33`). It has been
-overwritten below with the current SP-14d Task 5 report, per this task's brief file path.
+"Task 5" (SP-14d, `ExplorerProvider`/`ExplorerDrawer` wiring). It has been overwritten below with the
+current SP-14e Task 5 report, per this task's brief file path.
 
 ## What was implemented
 
-Matches the brief exactly; no deviations of substance. The brief's line numbers had drifted slightly
-(actual file was 202 lines, JSX block started at line 174 not 172) but the surrounding code (the
-existing `AnalyticsContextIndicator` import, the `ActionBusProvider`/`VariablesProvider`/
-`AnalyticsContextProvider`/`DataProvider`/`GridCanvas` JSX tree) matched the brief's assumed structure
-exactly, so the insertion was a straightforward textual match against that context.
+1. `shell/src/builder/widgets/chartOption.ts` — new export `buildCompareOption(props, current, reference, bucket)` and `type ComparePoint = { bucket: string; value: number }`. Builds two ECharts line series ("Période courante" / "Référence", the latter dashed at 0.6 opacity) on a relative offset axis (`Jour N` / `Semaine N` / `Mois N` depending on `bucket`), reusing `finalize` (advanced-option JSON merge) and `valueFormatter` (yAxisUnit/yAxisFormat) exactly like `buildOption`. Implemented verbatim per the brief's Step 3 code.
 
-### `shell/src/builder/AppRenderer.tsx`
-- Added two imports right after the existing `AnalyticsContextIndicator` import:
-  ```tsx
-  import { ExplorerProvider } from "./ExplorerContext";
-  import { ExplorerDrawer } from "./ExplorerDrawer";
-  ```
-- Wrapped the existing subtree (`AnalyticsContextProvider` and everything inside it) in:
-  ```tsx
-  <ExplorerProvider enabled={mode !== "edit" && config.interactions === "auto"}>
-    ...
-  </ExplorerProvider>
-  ```
-  placed between `VariablesProvider` and `AnalyticsContextProvider`.
-- Added `<ExplorerDrawer />` as a sibling right after the existing
-  `{mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}` line, before
-  `<ActionConditionBridge bus={bus} />`.
-- The gating expression used for `ExplorerProvider`'s `enabled` prop is textually identical to the
-  expression already gating `AnalyticsContextIndicator` — no new boolean, no risk of drift between
-  the two.
+2. `shell/src/builder/widgets/chart.tsx` — full rewrite:
+   - `PropsPanel`: added a "Comparer les périodes" checkbox + "Période de référence" select, both shown only when `chartType` is `line`/`area`; relabeled the value-field hint to mention comparison; added `compareEnabled: false, comparePeriod: "previous"` to `defaultProps`.
+   - `Component`: computes `compareRequested` (compareEnabled && chartType is line/area), fetches `dataset` config via `useQuery(["dataset", datasetId])` gated on `compareRequested && datasetId` (same key as `DataContext.tsx`/`indicator.tsx`, so it shares cache), then `compareActive = compareRequested && dataset?.timeField && ctx.timeRange`. When active: computes `bucket` via `bucketFor`, `referenceRange` via `referenceWindow(timeRange, comparePeriod)`, fetches current/reference windowed statistics via `windowedStatisticsSource` + `client.queryDataSource`, converts records to `ComparePoint[]` via `toComparePoints` (keyed on `dataset.timeField` / `value`), and renders through `buildCompareOption`. Falls back to the original `buildOption` per-column chart in all other cases — this path is untouched apart from being nested under the `compareActive` branch.
+   - Measure convention: `agg = valueField ? "sum" : "count"`, `field: valueField || undefined` — mirrors `indicator.tsx`'s `agg`/`field` convention, no new "agg" prop added, as the brief's design note specifies.
 
-### `shell/src/builder/AppRenderer.test.tsx`
-- Extended the shared `stubClient` fixture (as specified in the brief) with `getDatasetConfig` and
-  `getCollectionSchema` mocks, needed because with a `dataSources` entry carrying a `datasetId`, the
-  `DataContext`/`ExplorerDrawer` machinery resolves dataset config; without these mocks the client
-  interface would be missing methods the drill-down path expects.
-- Appended the new test exactly as given in the brief:
-  `"shows the explorer menu on an eligible widget only when interactions is auto and not edit mode"`,
-  verifying the `Explorer`-labelled button (rendered by `ExplorerMenu` inside the `indicator` widget)
-  appears in `runtime` + `interactions: "auto"`, and is absent in `edit` mode and in
-  `interactions: "manual"` mode.
+## TDD evidence
 
-## Testing
+### Step 1–4: `buildCompareOption` (chartOption.ts / chartOption.test.ts)
 
-### TDD Evidence
-
-**RED** — before implementation:
+**RED** — appended the 3 tests from the brief to `chartOption.test.ts`, then ran:
 ```
-cd shell && npx vitest run src/builder/AppRenderer.test.tsx
+cd shell && npx vitest run src/builder/widgets/chartOption.test.ts -t "buildCompareOption"
 ```
-Result: 1 failed / 27 passed. Failure:
-```
-❯ src/builder/AppRenderer.test.tsx:508:23
-expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
-Unable to find a label with the text of: Explorer
-```
-This matches the brief's predicted failure exactly — `ExplorerProvider` not yet mounted, so
-`useExplorerEnabled()` defaults to `false` and `ExplorerMenu` renders nothing.
+Result: 3 failed with `TypeError: (0 , buildCompareOption) is not a function` (import existed, export didn't) — expected, since `buildCompareOption` wasn't implemented yet.
 
-**GREEN** — after implementation:
+**GREEN** — implemented `buildCompareOption` exactly per the brief's Step 3 code (plus the `BucketGranularity` import). Ran:
 ```
-cd shell && npx vitest run src/builder/AppRenderer.test.tsx
+cd shell && npx vitest run src/builder/widgets/chartOption.test.ts
 ```
-Result: `Test Files 1 passed (1)`, `Tests 28 passed (28)`.
+Result: `15 tests passed` (12 pre-existing + 3 new).
 
-**Full suite** — regression check:
+### Step 5–8: `chart.tsx` compare-mode wiring (chart.tsx / chart.test.tsx)
+
+**RED** — replaced `chart.test.tsx` wholesale with the brief's Step 5 file (providers wired for `QueryClientProvider`/`ItemClientProvider`/`AnalyticsContextProvider`, new `renderChart` helper, two new PropsPanel/compare-mode tests). Ran against the *old* `chart.tsx`:
+```
+cd shell && npx vitest run src/builder/widgets/chart.test.tsx
+```
+Result: `2 failed | 10 passed` —
+- `"PropsPanel shows the compare-periods toggle only for line/area chart types"` failed: `Unable to find a label with the text of: Comparer les périodes` (toggle didn't exist yet).
+- `"compareEnabled has no visible effect without an active time range..."` failed: `expected "spy" to be called at least once` on `getDatasetConfig` (old `chart.tsx` never called `useItemClient`/`useQuery` at all).
+
+Both failures are exactly the ones the brief predicted for Step 6.
+
+**GREEN** — implemented `chart.tsx` per the brief's Step 7 code, with the cache-key deviation (see below) applied to `currentQuery`/`referenceQuery`. Ran:
+```
+cd shell && npx vitest run src/builder/widgets/chart.test.tsx src/builder/widgets/chartOption.test.ts
+```
+Result: `2 files passed — 27 tests passed` (12 chart.test.tsx + 15 chartOption.test.ts).
+
+## Full shell unit suite
+
 ```
 cd shell && npm run test
 ```
-Result: `Test Files 99 passed (99)`, `Tests 706 passed (706)`. Zero regressions. (Some pre-existing
-stderr noise from unrelated CEL-expression tests intentionally exercising error paths — not
-failures, present before this change.)
+Result: `100 files passed — 727 tests passed`. (Console shows expected `CelParseError` stack traces from a pre-existing error-path test in `exprBindings.test.ts` that intentionally exercises invalid CEL — not a failure, no test reported red.)
+
+## Build
+
+```
+cd shell && npm run build
+```
+Result: `tsc --noEmit` clean, `vite build` succeeded (`✓ built in 26.28s`). Only pre-existing warnings (large `EChart`/`index` chunks, `env-config.js` script-type note, `MapView.tsx` dual dynamic/static import) — none introduced by this change.
 
 ## Files changed
 
-- `/home/lenen/projets/geostudio/shell/src/builder/AppRenderer.tsx` (imports + JSX wiring)
-- `/home/lenen/projets/geostudio/shell/src/builder/AppRenderer.test.tsx` (fixture update + new test)
+- `shell/src/builder/widgets/chartOption.ts` — added `buildCompareOption`, `ComparePoint`, `offsetLabel`, `BucketGranularity` import.
+- `shell/src/builder/widgets/chartOption.test.ts` — added 3 tests for `buildCompareOption`.
+- `shell/src/builder/widgets/chart.tsx` — full rewrite: compare-mode gating/fetch/render, PropsPanel toggle.
+- `shell/src/builder/widgets/chart.test.tsx` — full rewrite per the brief's Step 5 (provider-wrapped `renderChart` helper, PropsPanel compare-toggle test, 2 compare-mode Component tests).
 
-## Commit
+## Cache-key deviation — confirmed applied
 
-`88d5b14` — `feat(shell): mount ExplorerProvider/ExplorerDrawer in AppRenderer, gated like the
-context indicator (SP-14d)`.
+Per the task instructions, did **not** use the brief's literal `["chart-compare-current", datasetId, timeRange, bucket, agg, valueField]` form. Instead, mirrored `indicator.tsx`'s `useKpiComparison` / `DataContext.tsx`'s `["datasource", s.id, merged.query]` idiom:
 
-`git status --short` before commit showed only these two files staged
-(`M  shell/src/builder/AppRenderer.test.tsx`, `M  shell/src/builder/AppRenderer.tsx`); unrelated
-pre-existing worktree changes (`.superpowers/sdd/*` docs, an unrelated new plan doc) were left
-untouched and unstaged.
+```ts
+const currentSource: DataSource | null = compareActive && timeRange
+  ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange, {
+      groupBy: (dataset as DatasetConfig).timeField as string, bucket, agg, field: valueField || undefined,
+    })
+  : null;
+const currentQuery = useQuery({
+  queryKey: ["chart-compare-current", currentSource?.id, currentSource?.query],
+  queryFn: () => client.queryDataSource(currentSource as DataSource),
+  enabled: Boolean(compareActive && currentSource),
+});
 
-## Self-review
+const referenceSource: DataSource | null = compareActive && referenceRange
+  ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, referenceRange, {
+      groupBy: (dataset as DatasetConfig).timeField as string, bucket, agg, field: valueField || undefined,
+    })
+  : null;
+const referenceQuery = useQuery({
+  queryKey: ["chart-compare-reference", referenceSource?.id, referenceSource?.query],
+  queryFn: () => client.queryDataSource(referenceSource as DataSource),
+  enabled: Boolean(compareActive && referenceSource),
+});
+```
 
-- **Completeness**: menu never shows in edit mode (asserted by the test's rerender to
-  `mode="edit"`); never shows when `interactions !== "auto"` (asserted by the test's rerender to
-  `interactions: "manual"`); confirmed by reading the final JSX that `ExplorerProvider`'s `enabled`
-  prop and `AnalyticsContextIndicator`'s render condition use the byte-identical expression
-  `mode !== "edit" && config.interactions === "auto"` — no duplicated/divergent gating logic exists
-  anywhere in the file.
-- **Quality**: no unrelated changes to `AppRenderer.tsx` — the diff is exactly the two-line import
-  addition and the wrap/insert in the JSX tree. `ExplorerDrawer` is unconditionally rendered once
-  inside `ExplorerProvider` (correct: it self-gates via `useExplorerTarget()` returning `null` until
-  `open()` is called, and `open()` itself is a no-op when `enabled` is false per
-  `ExplorerContext.tsx`'s own `open` callback — so no separate gate is needed around
-  `<ExplorerDrawer />` itself).
-- **Testing**: the new test's 3 assertions all pass (auto+runtime shows the "Explorer" label; edit
-  mode hides it; manual interactions hides it). Full suite: 99 files / 706 tests, zero regressions,
-  pristine output.
+`currentSource`/`referenceSource` are computed as plain `const`s via `windowedStatisticsSource` FIRST (which already folds in `originSourceId` as the `DataSource.id`, and the cross-filter-patched query via `derivePatch`), and the query keys are `["chart-compare-current", source?.id, source?.query]` / `["chart-compare-reference", source?.id, source?.query]` — resolving the effective per-widget-instance query into the cache key, so two `chart` widgets on the same dataset+metric can't collide when a cross-filter makes their effective queries diverge. Both `useQuery` calls remain unconditional (Rules of Hooks); only `enabled` and the source computation are conditional.
 
-## Issues or concerns
+## Self-review findings
 
-None. The wiring is a direct, minimal application of the existing `AnalyticsContextIndicator` gating
-pattern, extended to a second consumer of the identical boolean — by construction the two can never
-disagree.
+- **Completeness**: all 4 files touched exactly as the brief scoped (2 modified/2 modified — no new files). Both chartOption.test.ts additions and the full chart.test.tsx rewrite are present and passing.
+- **Discipline**: no extra compare modes, no extra props beyond `compareEnabled`/`comparePeriod` (already in the brief). The only intentional deviation is the cache-key shape, as instructed. `agg`/`field` derivation from `valueField` matches the brief's stated design note; no redundant `agg` prop was added.
+- **Quality**: `compareActive` render branch returns before touching `data`/`ctx.data`, so the normal per-column path (loading/error/empty states, `handleClick`, cross-filter, `ExplorerMenu`) is fully unchanged and reused untouched when compare mode is off or inactive — verified by the pre-existing tests all still passing unmodified.
+- **Testing**: the two new Component-level compare tests exercise real gating (`compareEnabled` with no `ctx.timeRange` → falls back to normal per-column series and `queryDataSource` never called; `compareEnabled` + active `timeRange` + `timeField` → `queryDataSource` invoked, 2-series echart rendered) rather than tautologies — the mocked `queryDataSource` branches on the actual `date__gte` value in the resolved query, so the test is content-aware, not call-order-aware. The PropsPanel test asserts the toggle is present/absent based on `chartType` and that toggling it calls `onChange` with `compareEnabled: true`.
+- No regressions detected: full 727-test suite green, `tsc --noEmit` clean, `vite build` succeeds.
 
----
+## Concerns
 
-## Follow-up: Code review finding fix (2026-07-26)
+None. All RED/GREEN steps behaved as the brief predicted, the deviation was verified against `indicator.tsx`'s and `DataContext.tsx`'s actual current code (both matched the task description exactly, no reconciliation needed), and no test or type-check regression was introduced.
 
-### Finding
+## Commits
 
-Post-review code quality pass identified that the gating expression
-`mode !== "edit" && config.interactions === "auto"` was duplicated as two independent literals:
-- Line 177: `<ExplorerProvider enabled={mode !== "edit" && config.interactions === "auto"}>`
-- Line 183: `{mode !== "edit" && config.interactions === "auto" && <AnalyticsContextIndicator />}`
-
-This created a maintenance risk: editing one without the other could cause unintended divergence.
-
-### Fix applied
-
-Hoisted the expression into a single local variable `const analyticsUiEnabled = mode !== "edit" && config.interactions === "auto";`
-placed near line 97 alongside the existing `const editable = mode === "edit";` pattern, then replaced both
-literal occurrences with references to `analyticsUiEnabled`.
-
-### Tests run
-
-- **`AppRenderer.test.tsx` unit tests**: `npx vitest run src/builder/AppRenderer.test.tsx` → 28 passed ✓
-- **Full suite regression check**: `npm run test` → 706 tests passed (99 files) ✓
-- **TypeScript check**: `npx tsc --noEmit` → clean ✓
-
-### Commit
-
-`df409f7` — `refactor(shell): hoist shared analytics-UI gating expression in AppRenderer (SP-14d)`
-
-### Files changed
-
-- `/home/lenen/projets/geostudio/shell/src/builder/AppRenderer.tsx` (line 98: added const; lines 177, 183: replaced with variable reference)
+- `dd896e3` — `feat(shell): chartOption gains buildCompareOption for aligned period series`
+- `5dc3f21` — `feat(shell): chart gets a compare-periods mode for line/area (2 aligned series on a relative axis)`

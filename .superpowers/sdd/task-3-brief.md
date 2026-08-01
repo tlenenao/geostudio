@@ -1,261 +1,163 @@
-## Task 3: Wire `ExplorerMenu` into the 5 eligible widgets
+### Task 3: Shell — shared time-window mechanic (`comparisonWindow.ts`)
 
 **Files:**
-- Modify: `shell/src/builder/widgets/chart.tsx:1-6` (imports), `:112-116` (return)
-- Modify: `shell/src/builder/widgets/data.tsx:1-9` (imports), `:60-72` (`list` return), `:190-233` (`table` return)
-- Modify: `shell/src/builder/widgets/mapWidget.tsx:1-11` (imports), `:57-74` (return)
-- Modify: `shell/src/builder/widgets/indicator.tsx:1-3` (imports), `:42-47` (return)
-- Modify (tests): `shell/src/builder/widgets/chart.test.tsx`, `shell/src/builder/widgets/data.test.tsx`, `shell/src/builder/widgets/mapWidget.test.tsx`, `shell/src/builder/widgets/indicator.test.tsx`
+- Create: `shell/src/lib/comparisonWindow.ts`
+- Test: `shell/src/lib/comparisonWindow.test.ts`
 
 **Interfaces:**
-- Consumes (from Task 2): `ExplorerMenu` component, props `{ datasetId: string | undefined; dataSourceId: string }`.
-- Consumes (from Task 1, in tests only): `ExplorerProvider` to enable the menu in the new assertions.
-- Produces: nothing new consumed by later tasks — this task only wires an existing component into existing widgets.
+- Consumes: `derivePatch` (`shell/src/lib/analyticsPatch.ts:10-43`), `AnalyticsContextState` (`shell/src/builder/AnalyticsContext.tsx:7-11`), `DataSource`/`DatasetConfig` (`shell/src/api/types.ts`).
+- Produces (used by Task 4 and Task 5):
+  - `type ReferenceMode = "previous" | "sameLastYear"`
+  - `type BucketGranularity = "day" | "week" | "month"`
+  - `referenceWindow(current: {from: string; to: string}, mode: ReferenceMode): {from: string; to: string}`
+  - `bucketFor(current: {from: string; to: string}): BucketGranularity`
+  - `windowedStatisticsSource(originSourceId: string, datasetId: string, dataset: DatasetConfig, analyticsCtx: AnalyticsContextState, window: {from: string; to: string}, query: {groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string}): DataSource`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `shell/src/builder/widgets/chart.test.tsx` (add the import alongside the existing ones, then the test at the end of the file):
+Create `shell/src/lib/comparisonWindow.test.ts`:
 
-```tsx
-import { ExplorerProvider } from "../ExplorerContext";
-```
+```ts
+// SPDX-License-Identifier: Apache-2.0
+import { expect, test } from "vitest";
+import { bucketFor, referenceWindow, windowedStatisticsSource } from "./comparisonWindow";
+import { EMPTY_ANALYTICS_CONTEXT } from "../builder/AnalyticsContext";
+import type { DatasetConfig } from "../api/types";
 
-```tsx
-test("shows an explorer menu when the widget is bound to a dataset and interactions are auto", async () => {
-  const Chart = getWidget("chart")!.Component;
-  render(
-    <ExplorerProvider enabled>
-      <Chart
-        props={{ chartType: "bar", categoryField: "region", dataSourceId: "src1" }}
-        ctx={{ mode: "runtime", data: { ...wide, datasetId: "ds1" } } as WidgetContext}
-      />
-    </ExplorerProvider>,
+const MS_PER_DAY = 86_400_000;
+function addDays(iso: string, days: number): string {
+  return new Date(new Date(iso).getTime() + days * MS_PER_DAY).toISOString().slice(0, 10);
+}
+
+test("referenceWindow(previous) shifts back by exactly the window's duration, contiguous with it", () => {
+  expect(referenceWindow({ from: "2026-02-01", to: "2026-02-28" }, "previous"))
+    .toEqual({ from: "2026-01-05", to: "2026-02-01" });
+});
+
+test("referenceWindow(sameLastYear) shifts both bounds back exactly one calendar year", () => {
+  expect(referenceWindow({ from: "2026-03-10", to: "2026-03-20" }, "sameLastYear"))
+    .toEqual({ from: "2025-03-10", to: "2025-03-20" });
+});
+
+test("referenceWindow(sameLastYear) clamps Feb 29 to Feb 28 in a non-leap reference year (documented repli, not a crash)", () => {
+  expect(referenceWindow({ from: "2024-02-29", to: "2024-02-29" }, "sameLastYear"))
+    .toEqual({ from: "2023-02-28", to: "2023-02-28" });
+});
+
+test("bucketFor picks day up to 31 days, week up to 180, month beyond", () => {
+  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 31) })).toBe("day");
+  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 32) })).toBe("week");
+  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 180) })).toBe("week");
+  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 181) })).toBe("month");
+});
+
+test("windowedStatisticsSource merges the window's time filter and reuses ambient extent", () => {
+  const dataset: DatasetConfig = { source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: true };
+  const ctx = { ...EMPTY_ANALYTICS_CONTEXT, extent: [1, 2, 3, 4] as [number, number, number, number] };
+  const source = windowedStatisticsSource(
+    "src-1", "ds-1", dataset, ctx, { from: "2026-01-01", to: "2026-01-31" }, { agg: "sum", field: "pop" },
   );
-  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
+  expect(source).toMatchObject({
+    id: "src-1", type: "statistics", service: "core", datasetId: "ds-1",
+    query: { agg: "sum", field: "pop", date__gte: "2026-01-01", date__lte: "2026-01-31", bbox: "1,2,3,4" },
+  });
+});
+
+test("windowedStatisticsSource carries groupBy/bucket through untouched", () => {
+  const dataset: DatasetConfig = { source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: false };
+  const source = windowedStatisticsSource(
+    "src-1", "ds-1", dataset, EMPTY_ANALYTICS_CONTEXT, { from: "2026-01-01", to: "2026-01-31" },
+    { groupBy: "date", bucket: "day", agg: "count" },
+  );
+  expect(source.query).toMatchObject({ groupBy: "date", bucket: "day", agg: "count" });
 });
 ```
 
-Append to `shell/src/builder/widgets/data.test.tsx`:
+- [ ] **Step 2: Run the tests to verify they fail**
 
-```tsx
-import { ExplorerProvider } from "../ExplorerContext";
+Run: `cd shell && npx vitest run src/lib/comparisonWindow.test.ts`
+Expected: FAIL — `Cannot find module './comparisonWindow'`.
+
+- [ ] **Step 3: Implement `shell/src/lib/comparisonWindow.ts`**
+
+```ts
+// SPDX-License-Identifier: Apache-2.0
+import type { AnalyticsContextState } from "../builder/AnalyticsContext";
+import type { DataSource, DatasetConfig } from "../api/types";
+import { derivePatch } from "./analyticsPatch";
+
+export type ReferenceMode = "previous" | "sameLastYear";
+export type BucketGranularity = "day" | "week" | "month";
+
+const MS_PER_DAY = 86_400_000;
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+// `current.from`/`current.to` are "YYYY-MM-DD" strings, parsed by `new
+// Date(...)` as UTC midnight (ISO date-only parsing rule) — every accessor
+// here stays UTC too, so the computed calendar day never drifts depending on
+// the runtime's local timezone offset.
+function shiftYears(d: Date, years: number): Date {
+  const year = d.getUTCFullYear() + years;
+  const month = d.getUTCMonth();
+  const day = d.getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, daysInMonth(year, month))));
+}
+
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export function referenceWindow(
+  current: { from: string; to: string },
+  mode: ReferenceMode,
+): { from: string; to: string } {
+  const from = new Date(current.from), to = new Date(current.to);
+  if (mode === "sameLastYear") {
+    return { from: toISODate(shiftYears(from, -1)), to: toISODate(shiftYears(to, -1)) };
+  }
+  const durationMs = to.getTime() - from.getTime();
+  const refTo = new Date(from.getTime());
+  const refFrom = new Date(from.getTime() - durationMs);
+  return { from: toISODate(refFrom), to: toISODate(refTo) };
+}
+
+export function bucketFor(current: { from: string; to: string }): BucketGranularity {
+  const days = (new Date(current.to).getTime() - new Date(current.from).getTime()) / MS_PER_DAY;
+  return days <= 31 ? "day" : days <= 180 ? "week" : "month";
+}
+
+// Shared query-construction mechanic (spec §3), reused by indicator's KPI
+// comparison (Task 4) and chart's period-comparison mode (Task 5): builds a
+// synthetic `statistics` DataSource for one time window and merges it with
+// the same ambient filters (extent, cross-filter) DataContext would apply
+// for the widget's own flat value — only `timeRange` is substituted.
+export function windowedStatisticsSource(
+  originSourceId: string,
+  datasetId: string,
+  dataset: DatasetConfig,
+  analyticsCtx: AnalyticsContextState,
+  window: { from: string; to: string },
+  query: { groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string },
+): DataSource {
+  const synthetic: DataSource = { id: originSourceId, type: "statistics", service: "core", layer: "", datasetId, query: {} };
+  const patch = derivePatch(synthetic, { ...analyticsCtx, timeRange: window }, { [datasetId]: dataset });
+  return { ...synthetic, query: { ...query, ...patch } };
+}
 ```
 
-```tsx
-test("list shows an explorer menu when bound to a dataset and interactions are auto", async () => {
-  const List = getWidget("list")!.Component;
-  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
-  render(<ExplorerProvider enabled><List props={{ dataSourceId: "src1" }} ctx={ctx} /></ExplorerProvider>);
-  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
-});
+- [ ] **Step 4: Run the tests to verify they pass**
 
-test("table shows an explorer menu when bound to a dataset and interactions are auto", async () => {
-  const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
-  render(<ExplorerProvider enabled><Table props={{ dataSourceId: "src1", columns: ["nom"] }} ctx={ctx} /></ExplorerProvider>);
-  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
-});
-```
-
-Append to `shell/src/builder/widgets/mapWidget.test.tsx`:
-
-```tsx
-import { ExplorerProvider } from "../ExplorerContext";
-```
-
-```tsx
-test("shows an explorer menu when bound to a dataset and interactions are auto", async () => {
-  const Map = getWidget("map")!.Component;
-  const ctx = { mode: "runtime", data: { loading: false, error: false, records: [], datasetId: "ds1", url: "https://core/collections/geo/items" } } as unknown as WidgetContext;
-  render(<ExplorerProvider enabled><Map props={{ dataSourceId: "src1" }} ctx={ctx} /></ExplorerProvider>);
-  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
-});
-```
-
-Append to `shell/src/builder/widgets/indicator.test.tsx`:
-
-```tsx
-import { ExplorerProvider } from "../ExplorerContext";
-```
-
-```tsx
-test("shows an explorer menu when bound to a dataset and interactions are auto", async () => {
-  const Ind = getWidget("indicator")!.Component;
-  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { pop: 10 } }] }) } as WidgetContext;
-  render(<ExplorerProvider enabled><Ind props={{ dataSourceId: "src1", label: "Total" }} ctx={ctx} /></ExplorerProvider>);
-  expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd shell && npx vitest run src/builder/widgets/chart.test.tsx src/builder/widgets/data.test.tsx src/builder/widgets/mapWidget.test.tsx src/builder/widgets/indicator.test.tsx`
-Expected: the 4 new tests FAIL (`Unable to find a label with the text of: Explorer`), all pre-existing tests in these files still PASS.
-
-- [ ] **Step 3: Write minimal implementation**
-
-In `shell/src/builder/widgets/chart.tsx`, add the import after the existing `chartOption` import (line 6):
-
-```tsx
-import { ExplorerMenu } from "./ExplorerMenu";
-```
-
-Replace the `return` block (lines 112-116):
-
-```tsx
-      return (
-        <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
-          <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
-            <EChart option={option} onClick={handleClick} />
-          </Suspense>
-        </div>
-      );
-```
-
-In `shell/src/builder/widgets/data.tsx`, add the import after the `DataRecord` type import (line 9):
-
-```tsx
-import { ExplorerMenu } from "./ExplorerMenu";
-```
-
-Replace the `list` widget's `return` block (lines 60-72):
-
-```tsx
-      return (
-        <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
-          <ul className="flex flex-col gap-0.5 text-sm">
-            {data.records.map((r) => (
-              <li
-                key={String(r.id)}
-                className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-                onClick={() => selectRecord(r)}
-              >
-                {String(r.properties[field] ?? r.id)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-```
-
-Replace the `table` widget's opening wrapper `<div className="flex h-full flex-col text-xs">` (line 191) and add the menu right after it, so the block at lines 190-233 becomes:
-
-```tsx
-      return (
-        <div className="relative flex h-full flex-col text-xs">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
-          <table className="w-full text-left text-[var(--gs-color-text)]">
-            <thead>
-              <tr>
-                {columns.map((c) => {
-                  const key = columnKey(c);
-                  return (
-                    <th key={key} className="border-b border-[var(--gs-color-border)] p-1">
-                      {isCalculatedColumn(c) ? (
-                        <span className="font-medium">{columnLabel(c)}</span>
-                      ) : (
-                        <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(key)}>
-                          {columnLabel(c)}{sortCol === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                        </button>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r) => (
-                <tr
-                  key={String(r.id)}
-                  className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
-                  onClick={() => selectRecord(r)}
-                >
-                  {columns.map((c) => <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">{cellValue(c, r)}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {pageCount > 1 && (
-            <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-[var(--gs-color-muted)]">
-              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-                disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
-              <span>Page {current + 1} / {pageCount}</span>
-              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-                disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
-            </div>
-          )}
-        </div>
-      );
-```
-
-In `shell/src/builder/widgets/mapWidget.tsx`, add the import after the `MapViewHandle` type import (line 8):
-
-```tsx
-import { ExplorerMenu } from "./ExplorerMenu";
-```
-
-Replace the `return` block (lines 57-74):
-
-```tsx
-      return (
-        <div className="relative h-full">
-          <ExplorerMenu datasetId={ctx.data?.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
-          <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
-            <MapView
-              ref={handle}
-              config={config}
-              onViewChange={(v) => {
-                ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
-                setExtent(v.bbox);
-              }}
-              onFeatureClick={(record) => {
-                ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record);
-                const datasetId = ctx.data?.datasetId;
-                const pkColumn = ctx.data?.pkColumn;
-                if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""));
-              }}
-            />
-          </Suspense>
-        </div>
-      );
-```
-
-In `shell/src/builder/widgets/indicator.tsx`, add the import after the `DataSourceSelect` import (line 3):
-
-```tsx
-import { ExplorerMenu } from "./ExplorerMenu";
-```
-
-Replace the `return` block (lines 42-47):
-
-```tsx
-      return (
-        <div className="relative flex h-full flex-col items-center justify-center">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
-          <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
-          <span className="text-xs text-[var(--gs-color-muted)]">{String(props.label ?? "")}</span>
-        </div>
-      );
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/builder/widgets/chart.test.tsx src/builder/widgets/data.test.tsx src/builder/widgets/mapWidget.test.tsx src/builder/widgets/indicator.test.tsx`
-Expected: PASS, all tests including the 4 new ones.
-
-Run: `cd shell && npm run test`
-Expected: full suite green (no regression in any other widget/test file).
+Run: `cd shell && npx vitest run src/lib/comparisonWindow.test.ts`
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/builder/widgets/chart.tsx shell/src/builder/widgets/chart.test.tsx \
-        shell/src/builder/widgets/data.tsx shell/src/builder/widgets/data.test.tsx \
-        shell/src/builder/widgets/mapWidget.tsx shell/src/builder/widgets/mapWidget.test.tsx \
-        shell/src/builder/widgets/indicator.tsx shell/src/builder/widgets/indicator.test.tsx
-git commit -m "feat(shell): wire the explorer menu into chart/table/list/map/indicator (SP-14d)"
+git add shell/src/lib/comparisonWindow.ts shell/src/lib/comparisonWindow.test.ts
+git commit -m "feat(shell): add comparisonWindow — reference windows, bucket sizing, windowed statistics source"
 ```
 
 ---
