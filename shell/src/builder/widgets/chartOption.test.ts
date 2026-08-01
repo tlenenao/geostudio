@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { buildOption } from "./chartOption";
+import { buildCompareOption, buildOption } from "./chartOption";
 import type { DataRecord } from "../../api/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,4 +99,29 @@ test("radar builds one radar series per column", () => {
   expect(series(opt)[0].type).toBe("radar");
   expect(series(opt)[0].data).toHaveLength(2);
   expect((opt as { radar?: { indicator?: unknown[] } }).radar?.indicator).toHaveLength(2);
+});
+
+test("buildCompareOption renders two aligned series on a relative offset axis", () => {
+  const current = [{ bucket: "2026-01-01 00:00:00", value: 10 }, { bucket: "2026-01-02 00:00:00", value: 12 }];
+  const reference = [{ bucket: "2025-01-01 00:00:00", value: 8 }, { bucket: "2025-01-02 00:00:00", value: 9 }];
+  const opt = buildCompareOption({ chartType: "line" }, current, reference, "day");
+  expect(series(opt)).toHaveLength(2);
+  expect(series(opt).map((s) => s.name)).toEqual(["Période courante", "Référence"]);
+  expect(series(opt)[0].data).toEqual([10, 12]);
+  expect(series(opt)[1].data).toEqual([8, 9]);
+  expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Jour 1", "Jour 2"]);
+  expect(series(opt)[1].lineStyle?.type).toBe("dashed");
+});
+
+test("buildCompareOption labels the offset axis by week/month depending on bucket", () => {
+  const weekOpt = buildCompareOption({ chartType: "line" }, [{ bucket: "w", value: 1 }], [], "week");
+  expect((weekOpt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Semaine 1"]);
+  const monthOpt = buildCompareOption({ chartType: "area" }, [{ bucket: "m", value: 1 }], [], "month");
+  expect((monthOpt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Mois 1"]);
+});
+
+test("buildCompareOption applies the yAxisUnit/yAxisFormat formatter like buildOption", () => {
+  const opt = buildCompareOption({ chartType: "line", yAxisUnit: "kg" }, [{ bucket: "d", value: 1 }], [], "day");
+  const formatter = (opt as { yAxis?: { axisLabel?: { formatter?: (v: unknown) => string } } }).yAxis?.axisLabel?.formatter;
+  expect(formatter?.(5)).toBe("5 kg");
 });

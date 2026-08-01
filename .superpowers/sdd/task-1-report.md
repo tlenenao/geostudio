@@ -1,105 +1,125 @@
-# Task 1 Report: ExplorerContext — open/close state and gating
+# Task 1 Report: Core — `bucket` param on `/collections/{id}/aggregate`
 
 ## Summary
 
-Successfully implemented `ExplorerContext`, a React context system for managing explorer panel state (open/close, dataset/dataSource tracking, and enabled/disabled gating). All 5 tests pass; full test suite (684 tests) passes without regressions.
+Implemented the optional `bucket` parameter on the `/collections/{id}/aggregate` endpoint to support time-bucketed aggregates. When set to `"day"`, `"week"`, or `"month"`, the grouping expression switches from raw column values to `DATE_TRUNC` results, enabling sparklines and period comparisons in downstream shell work.
 
-## What Was Implemented
+## Implementation Details
 
-### Files Created
-1. **`shell/src/builder/ExplorerContext.test.tsx`** (61 lines)
-   - 5 tests covering all use cases
-   - Probe component for integration testing
-   
-2. **`shell/src/builder/ExplorerContext.tsx`** (49 lines)
-   - `ExplorerProvider` component with optional `enabled` prop
-   - State management for explorer target (datasetId/dataSourceId)
-   - Three context layers (target, enabled, setters)
-   - Four hook exports: `useExplorerTarget()`, `useExplorerEnabled()`, `useOpenExplorer()`, `useCloseExplorer()`
+### Code Changes
 
-### Core Behavior
-- **Enabled gating:** When provider is `enabled=false` or no provider mounted, `openExplorer()` is a silent no-op
-- **State management:** When enabled, `openExplorer()` sets a `{ datasetId, dataSourceId }` target; `closeExplorer()` clears it
-- **Last-one-wins:** Multiple consecutive `openExplorer()` calls replace the target (latest wins)
-- **Default safety:** No provider mounted = safe defaults (enabled=false, target=null, no-op setters)
+#### 1. `core/app/analytics/aggregate.py`
 
-## Testing & TDD Evidence
-
-### RED (Test fails before implementation)
-```bash
-$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
-Error: Failed to resolve import "./ExplorerContext" from "src/builder/ExplorerContext.test.tsx"
-```
-Expected failure — implementation file doesn't exist.
-
-### GREEN (Test passes after implementation)
-```bash
-$ cd shell && npx vitest run src/builder/ExplorerContext.test.tsx
-✓ src/builder/ExplorerContext.test.tsx (5 tests) 196ms
-
-Test Files  1 passed (1)
-Tests  5 passed (5)
+**Import added (line 15):**
+```python
+from typing import Literal
 ```
 
-All 5 test cases pass:
-1. `openExplorer is a silent no-op when the provider is disabled`
-2. `openExplorer sets the target when enabled`
-3. `opening a second target while one is open replaces it (last one wins)`
-4. `closeExplorer clears the target`
-5. `hooks work with no provider mounted at all (default disabled, no-op)`
-
-### Full Suite
-```bash
-$ npm run test
-✓ Test Files  97 passed (97)
-✓ Tests  684 passed (684)
+**Field added to AggregateRequestBody (line 33):**
+```python
+bucket: Literal["day", "week", "month"] | None = None
 ```
-No regressions; all existing tests remain passing.
+
+**Guard added to _validate_fields (lines 76-77):**
+```python
+if request.bucket is not None and not request.groupBy:
+    raise UnknownAggregateField("bucket", "bucket requires groupBy")
+```
+
+**cat_expr logic updated in run_collection_aggregate (lines 213-216):**
+```python
+if request.bucket:
+    cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
+else:
+    cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+```
+
+#### 2. `core/tests/test_analytics_aggregate.py`
+
+Added 4 test cases:
+- `test_bucket_groups_rows_by_day` — verifies day-level bucketing groups 2026-01-05 records together
+- `test_bucket_groups_rows_by_month` — verifies month-level bucketing groups January and February separately with correct aggregation
+- `test_bucket_without_group_by_raises` — verifies that bucket without groupBy raises `UnknownAggregateField` with field="bucket"
+- `test_bucket_on_non_castable_field_groups_under_a_null_bucket` — verifies graceful handling of non-castable dates (NULL truncation)
+
+## TDD Evidence
+
+### GREEN Phase (All Tests Pass)
+
+**Bucket tests execution:**
+```bash
+cd core && uv run pytest tests/test_analytics_aggregate.py -k bucket -v
+```
+
+Result:
+```
+tests/test_analytics_aggregate.py::test_bucket_groups_rows_by_day PASSED [ 25%]
+tests/test_analytics_aggregate.py::test_bucket_groups_rows_by_month PASSED [ 50%]
+tests/test_analytics_aggregate.py::test_bucket_without_group_by_raises PASSED [ 75%]
+tests/test_analytics_aggregate.py::test_bucket_on_non_castable_field_groups_under_a_null_bucket PASSED [100%]
+
+============================== 4 passed in 2.08s =======================
+```
+
+## Non-Regression Suite
+
+**Command:**
+```bash
+cd core && uv run pytest tests/test_analytics_aggregate.py tests/test_features_aggregate_routes.py -v
+```
+
+**Result:**
+```
+============================== 21 passed in 5.07s =======================
+```
+
+All pre-existing tests remain unaffected:
+- 13 pre-existing aggregation tests: PASS
+- 4 route integration tests: PASS
+- 4 new bucket tests: PASS
+
+The `bucket=None` default ensures backward compatibility.
+
+## Files Changed
+
+- `/home/lenen/projets/geostudio/core/app/analytics/aggregate.py` (+18 lines)
+- `/home/lenen/projets/geostudio/core/tests/test_analytics_aggregate.py` (+57 lines)
+
+## Commit Information
+
+**Commit SHA:** 1338041
+**Subject:** `feat(core): add optional bucket param to /collections/{id}/aggregate`
 
 ## Self-Review Findings
 
-### Completeness
-- ✓ Both files created exactly as specified in brief
-- ✓ All 5 test cases implemented verbatim
-- ✓ Implementation handles all requirements: enabled gating, state management, default safety
-- ✓ Type exports match interface spec
-- ✓ SPDX license headers present on both files
+### Completeness ✓
+- [x] Added `bucket` field to `AggregateRequestBody` with correct type
+- [x] Added validation guard for bucket requiring groupBy
+- [x] Updated `cat_expr` logic to use `DATE_TRUNC` when bucket is set
+- [x] Appended all 4 test cases with correct assertions
+- [x] All changes match brief specifications exactly
 
-### Code Quality
-- ✓ Follows repo conventions (TypeScript, React hooks, SPDX headers)
-- ✓ Clean context design: separate contexts for target, enabled, setters
-- ✓ `useCallback` with proper dependency arrays (`[enabled]` for open, `[]` for close)
-- ✓ `useMemo` for setters object to avoid recreation
-- ✓ Sensible defaults in default context values
+### Quality ✓
+- **Naming:** Field and parameter names follow existing convention (e.g., `groupBy`, `split`)
+- **Clarity:** Validation error message is explicit ("bucket requires groupBy")
+- **Type Safety:** Used `Literal["day", "week", "month"]` for type checking
+- **SQL Safety:** Used helper functions `_sql_lit()` and `_qi()` for proper SQL escaping
 
-### Discipline
-- ✓ No overbuilding — only the code specified
-- ✓ No extra files, no configuration changes
-- ✓ TDD strictly followed: test first, RED, implementation, GREEN, commit
+### Discipline ✓
+- No extra validation added beyond the brief requirement
+- No additional bucket modes added (only "day", "week", "month")
+- No changes to existing function signatures or behavior
+- Implementation is minimal and focused
 
-### Testing
-- ✓ Test file comprehensive: covers enabled/disabled paths, state transitions, no-provider case
-- ✓ Probe component correctly exercises all hooks and state paths
-- ✓ User events drive state changes (proper integration testing, not unit)
-- ✓ Tests are readable, focused, and test one behavior per case
+### Testing ✓
+- 4 tests exercise core bucket behavior:
+  - Day-level aggregation
+  - Month-level aggregation with numeric field aggregation
+  - Error case (bucket without groupBy)
+  - Edge case (non-castable dates fall through to NULL bucket)
+- Tests use existing fixtures and helpers (`_row`, `_write_partition`, `TABLE_INFO`)
+- Tests verify both the category_key and row values
 
-## Git Commit
+### Concerns
 
-```
-8351e8b feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)
-```
-
-Files:
-- `shell/src/builder/ExplorerContext.test.tsx` (new)
-- `shell/src/builder/ExplorerContext.tsx` (new)
-
-## Issues / Concerns
-
-None. Implementation is complete, well-tested, and ready for downstream tasks.
-
-## Readiness for Next Task
-
-This context is now ready to be consumed by Task 2 (ExplorerMenu). The interface is stable:
-- `ExplorerProvider` wraps any widget that needs the explorer feature
-- Hooks provide read-only target state and write-only open/close functions
-- Default safe behavior when provider is missing or disabled
+None identified. The implementation is straightforward, well-tested, and maintains backward compatibility.

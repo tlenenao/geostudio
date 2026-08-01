@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { EChartsOption } from "echarts";
 import type { DataRecord } from "../../api/types";
+import type { BucketGranularity } from "../../lib/comparisonWindow";
 
 export type ChartProps = {
   dataSourceId?: string;
@@ -147,6 +148,40 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
       ...(props.stack ? { stack: "total" } : {}),
     })),
   });
+}
+
+export type ComparePoint = { bucket: string; value: number };
+
+function offsetLabel(bucket: BucketGranularity, index: number): string {
+  const unit = bucket === "day" ? "Jour" : bucket === "week" ? "Semaine" : "Mois";
+  return `${unit} ${index + 1}`;
+}
+
+// Compare-periods mode (SP-14e §5): two line series on a relative offset
+// axis (index-based, not calendar dates) so the current window and its
+// reference period overlay regardless of their absolute dates. Independent
+// of buildOption — when compare mode is off, buildOption is untouched.
+export function buildCompareOption(
+  props: ChartProps, current: ComparePoint[], reference: ComparePoint[], bucket: BucketGranularity,
+): EChartsOption {
+  const length = Math.max(current.length, reference.length);
+  const categories = Array.from({ length }, (_, i) => offsetLabel(bucket, i));
+  const fmt = valueFormatter(props);
+  const yAxis: Record<string, unknown> = { type: props.yAxisType ?? "value" };
+  if (fmt) yAxis.axisLabel = { formatter: fmt };
+
+  const built: Record<string, unknown> = {
+    tooltip: { trigger: "axis" },
+    legend: { show: props.legend ?? true },
+    xAxis: { type: "category", data: categories },
+    yAxis,
+    series: [
+      { type: "line", name: "Période courante", data: current.map((p) => p.value) },
+      { type: "line", name: "Référence", data: reference.map((p) => p.value), lineStyle: { type: "dashed" }, itemStyle: { opacity: 0.6 } },
+    ],
+  };
+  if (props.title) built.title = { text: props.title };
+  return finalize(props, built);
 }
 
 function finalize(props: ChartProps, built: Record<string, unknown>): EChartsOption {

@@ -1,139 +1,88 @@
-## Task 2: `ExplorerMenu` — the shared `⋮` button
+### Task 2: Shell — pass `bucket` through `itemClient.queryDataSource`
 
 **Files:**
-- Create: `shell/src/builder/widgets/ExplorerMenu.tsx`
-- Test: `shell/src/builder/widgets/ExplorerMenu.test.tsx`
+- Modify: `shell/src/api/itemClient.ts:40` (`STAT_KEYS`), `shell/src/api/itemClient.ts:49-71` (`buildAggregateBody`)
+- Test: `shell/src/api/itemClient.test.ts`
 
 **Interfaces:**
-- Consumes (from Task 1): `useExplorerEnabled()`, `useOpenExplorer()`, `useExplorerTarget()` from `../ExplorerContext`.
-- Produces (consumed by Task 3): `function ExplorerMenu({ datasetId, dataSourceId }: { datasetId: string | undefined; dataSourceId: string })`. Renders `null` unless `useExplorerEnabled()` is true and `datasetId` is truthy. Renders a button `aria-label="Explorer"` that toggles a one-item menu; the item `aria-label="Voir les entités"` calls `useOpenExplorer()({ datasetId, dataSourceId })` and closes the menu.
+- Consumes: nothing new (extends the existing `DataSource.query` vocabulary).
+- Produces: a `statistics`-type `DataSource` with `query.bucket` set now posts `body.bucket` to `/collections/{id}/aggregate` instead of leaking into `body.filters`. Task 3/4/5 rely on this to make bucketed sparkline/compare queries reach the core.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `shell/src/builder/widgets/ExplorerMenu.test.tsx`:
+Add to `shell/src/api/itemClient.test.ts`, right after the existing `"queryDataSource sends a bbox query key as body.bbox, not as a filter"` test:
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
-import { ExplorerMenu } from "./ExplorerMenu";
-import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
-
-function TargetProbe() {
-  const target = useExplorerTarget();
-  return <p>target:{target ? `${target.datasetId}/${target.dataSourceId}` : "none"}</p>;
-}
-
-test("renders nothing when the explorer is disabled", () => {
-  render(
-    <ExplorerProvider enabled={false}>
-      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
-    </ExplorerProvider>,
+```ts
+test("queryDataSource sends a bucket query key as body.bucket, not as a filter", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "annee", rows: [] });
+    }),
   );
-  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
-});
-
-test("renders nothing when there is no datasetId", () => {
-  render(
-    <ExplorerProvider enabled>
-      <ExplorerMenu datasetId={undefined} dataSourceId="src1" />
-    </ExplorerProvider>,
-  );
-  expect(screen.queryByLabelText("Explorer")).not.toBeInTheDocument();
-});
-
-test("clicking the button then the menu item opens the explorer with the right target", async () => {
-  render(
-    <ExplorerProvider enabled>
-      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
-      <TargetProbe />
-    </ExplorerProvider>,
-  );
-  expect(screen.queryByLabelText("Voir les entités")).not.toBeInTheDocument();
-  await userEvent.click(screen.getByLabelText("Explorer"));
-  await userEvent.click(screen.getByLabelText("Voir les entités"));
-  expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
-});
-
-test("the menu closes again after selecting the item", async () => {
-  render(
-    <ExplorerProvider enabled>
-      <ExplorerMenu datasetId="ds1" dataSourceId="src1" />
-    </ExplorerProvider>,
-  );
-  await userEvent.click(screen.getByLabelText("Explorer"));
-  await userEvent.click(screen.getByLabelText("Voir les entités"));
-  expect(screen.queryByLabelText("Voir les entités")).not.toBeInTheDocument();
+  await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "annee", bucket: "week", agg: "count" },
+  });
+  expect(posted!.bucket).toBe("week");
+  expect(posted!.filters).toBeUndefined();
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd shell && npx vitest run src/builder/widgets/ExplorerMenu.test.tsx`
-Expected: FAIL — `Failed to resolve import "./ExplorerMenu"`.
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts -t "sends a bucket query key"`
+Expected: FAIL — `posted!.bucket` is `undefined` (it currently lands in `body.filters.bucket` instead).
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Implement the passthrough**
 
-Create `shell/src/builder/widgets/ExplorerMenu.tsx`:
+In `shell/src/api/itemClient.ts:40`:
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
-import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
+```ts
+const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket"]);
+```
 
-export function ExplorerMenu({
-  datasetId, dataSourceId,
-}: {
-  datasetId: string | undefined;
-  dataSourceId: string;
-}) {
-  const enabled = useExplorerEnabled();
-  const open = useOpenExplorer();
-  const [menuOpen, setMenuOpen] = useState(false);
+In `shell/src/api/itemClient.ts:49-72` (`buildAggregateBody`), add the `bucket` line next to `field`:
 
-  if (!enabled || !datasetId) return null;
-
-  return (
-    <div className="absolute right-1 top-1 z-10">
-      <button
-        type="button"
-        aria-label="Explorer"
-        className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
-        onClick={() => setMenuOpen((v) => !v)}
-      >
-        ⋮
-      </button>
-      {menuOpen && (
-        <div className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm">
-          <button
-            type="button"
-            aria-label="Voir les entités"
-            className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-            onClick={() => {
-              setMenuOpen(false);
-              open({ datasetId, dataSourceId });
-            }}
-          >
-            Voir les entités
-          </button>
-        </div>
-      )}
-    </div>
-  );
+```ts
+function buildAggregateBody(query: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (query.groupBy) body.groupBy = String(query.groupBy);
+  if (query.split) body.split = String(query.split);
+  if (query.agg) body.agg = String(query.agg);
+  if (query.field) body.field = String(query.field);
+  if (query.bucket) body.bucket = String(query.bucket);
+  if (Array.isArray(query.measures) && query.measures.length) {
+    body.measures = (query.measures as StatMeasure[]).map((m) => ({
+      field: m.field || undefined, agg: m.agg, label: m.label || undefined,
+    }));
+  }
+  const bbox = parseBboxQueryValue(query.bbox);
+  if (bbox) body.bbox = bbox;
+  const filters: Record<string, string> = {};
+  for (const [k, v] of Object.entries(query)) {
+    if (STAT_KEYS.has(k)) continue;
+    if (v === null || v === undefined || v === "") continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      filters[k] = String(v);
+    }
+  }
+  if (Object.keys(filters).length) body.filters = filters;
+  return body;
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd shell && npx vitest run src/builder/widgets/ExplorerMenu.test.tsx`
-Expected: PASS (4/4).
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
+Expected: PASS (all tests in the file, including the new one)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/builder/widgets/ExplorerMenu.tsx shell/src/builder/widgets/ExplorerMenu.test.tsx
-git commit -m "feat(shell): ExplorerMenu — shared ⋮ button, one item Voir les entités (SP-14d)"
+git add shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
+git commit -m "feat(shell): pass bucket through to /collections/{id}/aggregate"
 ```
 
 ---
