@@ -12,6 +12,8 @@ vrai GeoParquet sur MinIO) que DuckDB lit la colonne géométrie d'un
 GeoParquet directement comme un type GEOMETRY natif — ST_GeomFromWKB(...)
 n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -29,6 +31,7 @@ class AggregateRequestBody(BaseModel):
     measures: list[AggregateMeasure] | None = None
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
+    bucket: Literal["day", "week", "month"] | None = None
 
 
 class UnknownAggregateField(Exception):
@@ -71,6 +74,9 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
     def check(name: str | None, label: str) -> None:
         if name is not None and name not in valid:
             raise UnknownAggregateField(label, f"unknown field '{name}'")
+
+    if request.bucket is not None and not request.groupBy:
+        raise UnknownAggregateField("bucket", "bucket requires groupBy")
 
     check(request.groupBy, "groupBy")
     check(request.split, "split")
@@ -205,7 +211,10 @@ def run_collection_aggregate(
 
     dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(request, table_info)
-    cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+    if request.bucket:
+        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
+    else:
+        cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
 
     if request.split:
         agg_sql = _agg_expr(request.agg, request.field)
