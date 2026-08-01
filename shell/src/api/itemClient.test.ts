@@ -704,6 +704,22 @@ test("queryDataSource sends a bbox query key as body.bbox, not as a filter", asy
   expect(posted!.filters).toBeUndefined();
 });
 
+test("queryDataSource sends a bucket query key as body.bucket, not as a filter", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "annee", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "annee", bucket: "week", agg: "count" },
+  });
+  expect(posted!.bucket).toBe("week");
+  expect(posted!.filters).toBeUndefined();
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s", type: "statistics", service: "core", layer: "villes",
