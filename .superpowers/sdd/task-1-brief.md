@@ -1,157 +1,174 @@
-## Task 1: `ExplorerContext` — open/close state and gating
+### Task 1: Core — `bucket` param on `/collections/{id}/aggregate`
 
 **Files:**
-- Create: `shell/src/builder/ExplorerContext.tsx`
-- Test: `shell/src/builder/ExplorerContext.test.tsx`
+- Modify: `core/app/analytics/aggregate.py:24-31` (`AggregateRequestBody`), `core/app/analytics/aggregate.py:68-84` (`_validate_fields`), `core/app/analytics/aggregate.py:197-223` (`run_collection_aggregate`)
+- Test: `core/tests/test_analytics_aggregate.py`
 
 **Interfaces:**
-- Produces (consumed by every later task):
-  - `type ExplorerTarget = { datasetId: string; dataSourceId: string } | null`
-  - `function ExplorerProvider({ enabled, children }: { enabled?: boolean; children: ReactNode })`
-  - `function useExplorerTarget(): ExplorerTarget`
-  - `function useExplorerEnabled(): boolean`
-  - `function useOpenExplorer(): (target: { datasetId: string; dataSourceId: string }) => void`
-  - `function useCloseExplorer(): () => void`
+- Produces: `AggregateRequestBody.bucket: Literal["day", "week", "month"] | None = None`. When set, `run_collection_aggregate` groups by `DATE_TRUNC(bucket, TRY_CAST(groupBy AS TIMESTAMP))` instead of the raw `groupBy` column, using the same `category_key = request.groupBy` and the same `_pivot_measures`/`_pivot_split` shape as before. `bucket` without `groupBy` raises `UnknownAggregateField("bucket", ...)`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing core tests**
 
-Create `shell/src/builder/ExplorerContext.test.tsx`:
+Append to `core/tests/test_analytics_aggregate.py` (uses the existing `TABLE_INFO`, `_write_partition`, `_row`, `conn` fixture already in the file — `_row`'s third positional arg is stored under the `annee` column, which we reuse to hold date-like strings for these tests since `TABLE_INFO` already declares it as a plain string column):
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
-import { ExplorerProvider, useCloseExplorer, useExplorerEnabled, useExplorerTarget, useOpenExplorer } from "./ExplorerContext";
+```python
+def test_bucket_groups_rows_by_day(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2026-01-05", 10, lsn=1), _row(2, "Sud", "2026-01-05", 3, lsn=1),
+        _row(3, "Nord", "2026-01-06", 4, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="count")
 
-function Probe() {
-  const target = useExplorerTarget();
-  const enabled = useExplorerEnabled();
-  const open = useOpenExplorer();
-  const close = useCloseExplorer();
-  return (
-    <div>
-      <p>enabled:{String(enabled)}</p>
-      <p>target:{target ? `${target.datasetId}/${target.dataSourceId}` : "none"}</p>
-      <button onClick={() => open({ datasetId: "ds1", dataSourceId: "src1" })}>open</button>
-      <button onClick={() => open({ datasetId: "ds2", dataSourceId: "src2" })}>open-other</button>
-      <button onClick={close}>close</button>
-    </div>
-  );
-}
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
 
-test("openExplorer is a silent no-op when the provider is disabled", async () => {
-  render(<ExplorerProvider enabled={false}><Probe /></ExplorerProvider>);
-  expect(screen.getByText("enabled:false")).toBeInTheDocument();
-  await userEvent.click(screen.getByText("open"));
-  expect(screen.getByText("target:none")).toBeInTheDocument();
-});
+    assert category_key == "annee"
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-05 00:00:00", "value": 2},
+        {"annee": "2026-01-06 00:00:00", "value": 1},
+    ]
 
-test("openExplorer sets the target when enabled", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
-  expect(screen.getByText("enabled:true")).toBeInTheDocument();
-  await userEvent.click(screen.getByText("open"));
-  expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
-});
 
-test("opening a second target while one is open replaces it (last one wins)", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
-  await userEvent.click(screen.getByText("open"));
-  await userEvent.click(screen.getByText("open-other"));
-  expect(screen.getByText("target:ds2/src2")).toBeInTheDocument();
-});
+def test_bucket_groups_rows_by_month(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2026-01-05", 10, lsn=1), _row(2, "Nord", "2026-01-20", 5, lsn=1),
+        _row(3, "Nord", "2026-02-10", 7, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="month", agg="sum", field="pop")
 
-test("closeExplorer clears the target", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
-  await userEvent.click(screen.getByText("open"));
-  await userEvent.click(screen.getByText("close"));
-  expect(screen.getByText("target:none")).toBeInTheDocument();
-});
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
 
-test("hooks work with no provider mounted at all (default disabled, no-op)", async () => {
-  render(<Probe />);
-  expect(screen.getByText("enabled:false")).toBeInTheDocument();
-  await userEvent.click(screen.getByText("open"));
-  expect(screen.getByText("target:none")).toBeInTheDocument();
-});
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-01 00:00:00", "value": 15},
+        {"annee": "2026-02-01 00:00:00", "value": 7},
+    ]
+
+
+def test_bucket_without_group_by_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2026-01-05", 10, lsn=1)])
+    request = AggregateRequestBody(bucket="day")
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bucket"
+
+
+def test_bucket_on_non_castable_field_groups_under_a_null_bucket(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "pas-une-date", 10, lsn=1), _row(2, "Sud", "2026-01-05", 3, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="sum", field="pop")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    by_key = {r["annee"]: r["value"] for r in rows}
+    assert by_key["None"] == 10
+    assert by_key["2026-01-05 00:00:00"] == 3
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the new tests to verify they fail**
 
-Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
-Expected: FAIL — `Failed to resolve import "./ExplorerContext"`.
+Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bucket -v`
+Expected: FAIL — `AggregateRequestBody` has no field `"bucket"` (pydantic `ValidationError` / `TypeError`).
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Implement `bucket` in `core/app/analytics/aggregate.py`**
 
-Create `shell/src/builder/ExplorerContext.tsx`:
+Add the import and the new field (`core/app/analytics/aggregate.py:1-31`):
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+```python
+from typing import Literal
 
-export type ExplorerTarget = { datasetId: string; dataSourceId: string } | null;
+from pydantic import BaseModel
 
-type OpenExplorer = (target: { datasetId: string; dataSourceId: string }) => void;
-type CloseExplorer = () => void;
 
-const ExplorerTargetContext = createContext<ExplorerTarget>(null);
-const ExplorerEnabledContext = createContext<boolean>(false);
-const ExplorerSettersContext = createContext<{ open: OpenExplorer; close: CloseExplorer }>({
-  open: () => {}, close: () => {},
-});
+class AggregateMeasure(BaseModel):
+    field: str | None = None
+    agg: str = "count"
+    label: str | None = None
 
-export function ExplorerProvider({
-  enabled = false, children,
-}: {
-  enabled?: boolean;
-  children: ReactNode;
-}) {
-  const [target, setTarget] = useState<ExplorerTarget>(null);
 
-  const open = useCallback<OpenExplorer>((next) => {
-    if (!enabled) return;
-    setTarget(next);
-  }, [enabled]);
-
-  const close = useCallback<CloseExplorer>(() => {
-    setTarget(null);
-  }, []);
-
-  const setters = useMemo(() => ({ open, close }), [open, close]);
-
-  return (
-    <ExplorerEnabledContext.Provider value={enabled}>
-      <ExplorerSettersContext.Provider value={setters}>
-        <ExplorerTargetContext.Provider value={target}>{children}</ExplorerTargetContext.Provider>
-      </ExplorerSettersContext.Provider>
-    </ExplorerEnabledContext.Provider>
-  );
-}
-
-export function useExplorerTarget(): ExplorerTarget {
-  return useContext(ExplorerTargetContext);
-}
-export function useExplorerEnabled(): boolean {
-  return useContext(ExplorerEnabledContext);
-}
-export function useOpenExplorer(): OpenExplorer {
-  return useContext(ExplorerSettersContext).open;
-}
-export function useCloseExplorer(): CloseExplorer {
-  return useContext(ExplorerSettersContext).close;
-}
+class AggregateRequestBody(BaseModel):
+    groupBy: str | None = None
+    split: str | None = None
+    agg: str = "count"
+    field: str | None = None
+    measures: list[AggregateMeasure] | None = None
+    filters: dict[str, str] = {}
+    bbox: tuple[float, float, float, float] | None = None
+    bucket: Literal["day", "week", "month"] | None = None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+Add the guard at the top of `_validate_fields` (`core/app/analytics/aggregate.py:68-84`):
 
-Run: `cd shell && npx vitest run src/builder/ExplorerContext.test.tsx`
-Expected: PASS (5/5).
+```python
+def _validate_fields(request: AggregateRequestBody, table_info) -> None:
+    valid = _valid_column_names(table_info)
 
-- [ ] **Step 5: Commit**
+    def check(name: str | None, label: str) -> None:
+        if name is not None and name not in valid:
+            raise UnknownAggregateField(label, f"unknown field '{name}'")
+
+    if request.bucket is not None and not request.groupBy:
+        raise UnknownAggregateField("bucket", "bucket requires groupBy")
+
+    check(request.groupBy, "groupBy")
+    check(request.split, "split")
+    check(request.field, "field")
+    for i, m in enumerate(request.measures or []):
+        check(m.field, f"measures[{i}].field")
+    for raw_name in request.filters:
+        field_name, _ = _split_filter_key(raw_name)
+        check(field_name, f"filters.{raw_name}")
+    if request.bbox is not None and not table_info.geometry_column:
+        raise UnknownAggregateField("bbox", "collection has no geometry")
+```
+
+Switch `cat_expr` in `run_collection_aggregate` (`core/app/analytics/aggregate.py:197-208`, only the `cat_expr` line changes):
+
+```python
+def run_collection_aggregate(
+    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info, request: AggregateRequestBody,
+) -> tuple[str, list[dict]]:
+    category_key = request.groupBy or "group"
+    _validate_fields(request, table_info)
+
+    if not _has_any_file(conn, base_uri, tenant_id, collection_id):
+        return category_key, []
+
+    dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
+    where_sql, where_params = _build_where(request, table_info)
+    if request.bucket:
+        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
+    else:
+        cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+```
+
+- [ ] **Step 4: Run the new tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bucket -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Run the full core test suite for non-regression**
+
+Run: `cd core && uv run pytest tests/test_analytics_aggregate.py tests/test_features_aggregate_routes.py -v`
+Expected: PASS — all pre-existing tests unaffected (`bucket` defaults to `None`).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/builder/ExplorerContext.tsx shell/src/builder/ExplorerContext.test.tsx
-git commit -m "feat(shell): ExplorerContext — open/close state for the analytics drill panel (SP-14d)"
+git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
+git commit -m "feat(core): add optional bucket param to /collections/{id}/aggregate"
 ```
 
 ---

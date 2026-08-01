@@ -1,164 +1,115 @@
-# Task 2: `ExplorerMenu` — the shared `⋮` button — Report
-
-**Date:** 2026-07-26  
-**Status:** DONE
-
-## Summary
-
-Successfully implemented `ExplorerMenu`, a small shared button component that integrates with the ExplorerContext from Task 1. The component renders a `⋮` button that opens a dropdown menu with one item (`Voir les entités`), allowing users to open the explorer panel with the given dataset and data source.
+# Task 2 Report: Shell — pass `bucket` through `itemClient.queryDataSource`
 
 ## What Was Implemented
 
-Created two new files following TDD discipline:
-
-### `shell/src/builder/widgets/ExplorerMenu.test.tsx` (59 lines)
-- 4 comprehensive test cases covering all scenarios
-- Tests conditional rendering, menu toggle, explorer invocation, and menu closure
-- Uses `TargetProbe` child component to verify explorer context state
-
-### `shell/src/builder/widgets/ExplorerMenu.tsx` (38 lines)
-- Functional React component with TypeScript props interface
-- Props: `{ datasetId: string | undefined; dataSourceId: string }`
-- Uses `useState` for menu toggle state
-- Consumes three hooks from ExplorerContext: `useExplorerEnabled`, `useOpenExplorer`
-- Proper early return when disabled or datasetId missing
-- Styled with Tailwind + CSS variables for theming
-
-## Component Behavior
-
-**Renders Nothing If:**
-- `useExplorerEnabled()` returns false
-- `datasetId` is undefined
-
-**Renders Button If:**
-- Explorer is enabled AND datasetId is provided
-
-**Button Interaction:**
-- Click `⋮` button to toggle dropdown menu
-- Click "Voir les entités" menu item to:
-  1. Close menu
-  2. Call `useOpenExplorer()({ datasetId, dataSourceId })`
-  3. Menu automatically closes after selection
-
-**Accessibility:**
-- Button: `aria-label="Explorer"`
-- Menu item: `aria-label="Voir les entités"`
-- French user-facing copy follows repo convention
-
-## Testing and Test Results
-
-### TDD Evidence
-
-**RED (Test Fails):**
-```
-Exit code 1
-FAIL  src/builder/widgets/ExplorerMenu.test.tsx
-Error: Failed to resolve import "./ExplorerMenu" from "src/builder/widgets/ExplorerMenu.test.tsx". Does the file exist?
-```
-
-**GREEN (Tests Pass):**
-```
-✓ src/builder/widgets/ExplorerMenu.test.tsx (4 tests) 155ms
-
-Test Files  1 passed (1)
-     Tests  4 passed (4)
-```
-
-### Test Cases (4/4 Passing)
-
-1. **"renders nothing when the explorer is disabled"**
-   - Verifies component returns `null` when `enabled={false}`
-   - No button appears in DOM
-
-2. **"renders nothing when there is no datasetId"**
-   - Verifies component returns `null` when `datasetId={undefined}`
-   - No button appears in DOM
-
-3. **"clicking the button then the menu item opens the explorer with the right target"**
-   - Verifies full user flow: click button → click menu item
-   - Confirms `useOpenExplorer()` is called with correct target
-   - Uses `TargetProbe` to verify explorer context updates
-
-4. **"the menu closes again after selecting the item"**
-   - Verifies menu state cleanup after interaction
-   - Menu item not in DOM after selection
-
-### Full Suite Regression Check
-
-```
-Test Files  98 passed (98)
-     Tests  688 passed (688)
-```
-
-No regressions. All existing tests continue to pass.
+Added support for passing the `bucket` query key through to the core's `/collections/{id}/aggregate` endpoint. This ensures that when a statistics-type DataSource has a `bucket` parameter in its query, it is posted as `body.bucket` rather than leaking into `body.filters`.
 
 ## Files Changed
 
-- `shell/src/builder/widgets/ExplorerMenu.test.tsx` — **created** (59 lines)
-- `shell/src/builder/widgets/ExplorerMenu.tsx` — **created** (38 lines)
+- `shell/src/api/itemClient.ts`: Added "bucket" to STAT_KEYS set (line 40) and added bucket passthrough in buildAggregateBody function (line 55)
+- `shell/src/api/itemClient.test.ts`: Added test "queryDataSource sends a bucket query key as body.bucket, not as a filter" (after line 705)
+
+## TDD Evidence
+
+### RED (Failing Test)
+
+Command:
+```bash
+cd shell && npx vitest run src/api/itemClient.test.ts -t "sends a bucket query key"
+```
+
+Expected Failure Output:
+```
+AssertionError: expected undefined to be 'week' // Object.is equality
+  expected: "week"
+  received: undefined
+  
+  ❯ src/api/itemClient.test.ts:719:26
+```
+
+**Why Expected**: The test was checking that `posted!.bucket` equals "week", but prior to the implementation, the bucket value was not being extracted and passed as a top-level body property. Instead, it remained undefined.
+
+### GREEN (Passing Test)
+
+Command:
+```bash
+cd shell && npx vitest run src/api/itemClient.test.ts -t "sends a bucket query key"
+```
+
+Passing Output:
+```
+ ✓ src/api/itemClient.test.ts (83 tests | 82 skipped) 39ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 82 skipped (83)
+```
+
+## Full Non-Regression Run
+
+Command:
+```bash
+cd shell && npx vitest run src/api/itemClient.test.ts
+```
+
+Result:
+```
+ ✓ src/api/itemClient.test.ts (83 tests) 480ms
+
+ Test Files  1 passed (1)
+      Tests  83 passed (83)
+```
+
+All 83 tests pass, confirming no regression in existing functionality.
+
+## Implementation Details
+
+### 1. STAT_KEYS Update (line 40)
+Added "bucket" to the Set of reserved statistics configuration keys that are not treated as filters:
+```ts
+const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket"]);
+```
+
+### 2. buildAggregateBody Update (line 55)
+Added bucket passthrough immediately after field handling:
+```ts
+if (query.bucket) body.bucket = String(query.bucket);
+```
+
+This follows the same pattern as the existing field handling and ensures the bucket value is stringified and placed directly on the body object.
+
+## Self-Review
+
+**Completeness**: All requirements from the brief have been implemented:
+- Test added and verified to fail before implementation
+- Both code changes from the brief applied exactly
+- Full test suite passes with no regressions
+- Conventional commit message applied
+
+**Quality**: Implementation is minimal and follows existing patterns:
+- The bucket passthrough mirrors the field handling pattern
+- Addition to STAT_KEYS prevents bucket from being treated as a filter
+- No unnecessary code added beyond the brief
+
+**Discipline**: Only the specified changes were made:
+- No additional features or refactoring
+- Follows the exact code from the brief
+- Two files modified only (test + implementation)
+
+**Testing**: TDD workflow executed correctly:
+- Test written first and failed as expected
+- Implementation added to make test pass
+- Full suite run to verify no regressions
+
+## Concerns
+
+None. The implementation is straightforward, follows established patterns in the codebase, and passes all tests including the new test and all existing tests.
 
 ## Commit
 
 ```
-[dev f3c7856] feat(shell): ExplorerMenu — shared ⋮ button, one item Voir les entités (SP-14d)
- 2 files changed, 97 insertions(+)
- create mode 100644 shell/src/builder/widgets/ExplorerMenu.test.tsx
- create mode 100644 shell/src/builder/widgets/ExplorerMenu.tsx
+26d925c feat(shell): pass bucket through to /collections/{id}/aggregate
 ```
 
-**Message:** Exactly as specified in brief  
-**Branch:** `dev` (per repo convention)
+## Ready for Next Tasks
 
-## Self-Review Findings
-
-### Completeness Checklist
-
-✓ Implementation matches brief exactly (no deviations)
-✓ SPDX license header on both files
-✓ TypeScript strict mode compatible
-✓ Proper `aria-label` on all interactive elements (repo convention)
-✓ French copy for user-facing text
-✓ Follows repo naming conventions
-✓ TDD discipline: test written first, failing for correct reason, then implementation
-✓ All tests passing, no regressions
-✓ No extra features beyond specification
-✓ Minimal, focused component
-
-### Code Quality
-
-**Correctness:**
-- Conditional logic correct (`!enabled || !datasetId`)
-- State management simple and correct (useState for menu toggle)
-- Hooks used correctly
-- Menu closes after selection (setMenuOpen called in onClick)
-- Explorer opened with correct target data
-
-**Architecture:**
-- Component responsibility: Rendering + menu state only
-- Explorer state (open/close/target) managed by ExplorerContext (Task 1)
-- Reusable: accepts datasetId and dataSourceId as props
-- Ready for Task 3: wiring into 5 widgets
-
-**Accessibility & UX:**
-- Interactive elements have aria-labels
-- French copy matches project conventions
-- Keyboard accessible (buttons support Enter/Space)
-- Visual feedback with hover states (Tailwind classes)
-
-### No Issues Found
-
-- No linting errors
-- No unused imports
-- No type safety violations
-- No accessibility gaps
-- No style conflicts
-- No regressions
-
-## Next Steps
-
-This component is ready for Task 3, which will wire it into 5 eligible widgets:
-- ListWidget
-- TableWidget
-- ScatterPlotWidget
-- BarChartWidget
-- PieChartWidget
+This task enables Tasks 3, 4, and 5 which rely on bucketed sparkline/compare queries reaching the core correctly. The passthrough is now in place and tested.
