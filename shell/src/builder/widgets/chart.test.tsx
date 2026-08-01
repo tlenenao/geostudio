@@ -245,3 +245,52 @@ test("compareEnabled builds a 2-series compare option once timeRange + timeField
   const el = await screen.findByTestId("echart");
   await waitFor(() => expect(el).toHaveAttribute("data-series", "2"));
 });
+
+test("two chart widgets in compare mode on the same dataset and metric do not collide on cache when a cross-filter singles one of them out", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({ source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: false });
+  // Content-aware, not call-order-aware — same reasoning as the "builds a
+  // 2-series compare option" test above: key the response off date__gte.
+  const queryDataSource = vi.fn().mockImplementation((source: { query: Record<string, unknown> }) => {
+    if (source.query.date__gte === "2026-01-01") {
+      return Promise.resolve([{ id: "2026-01-01 00:00:00", properties: { date: "2026-01-01 00:00:00", value: 5 } }]);
+    }
+    return Promise.resolve([{ id: "2025-12-31 00:00:00", properties: { date: "2025-12-31 00:00:00", value: 3 } }]);
+  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = { queryDataSource, getDatasetConfig } as unknown as ItemClient;
+  const Chart = getWidget("chart")!.Component;
+  const widgetData = { ...wide, datasetId: "ds-1" };
+  const compareProps = { chartType: "line", categoryField: "region", compareEnabled: true, comparePeriod: "previous" };
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider
+          interactions="auto"
+          initialState={{
+            timeRange: { from: "2026-01-01", to: "2026-01-02" },
+            extent: null,
+            crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-A" } },
+          }}
+        >
+          <Chart props={{ ...compareProps, dataSourceId: "src-A" }} ctx={{ mode: "runtime", data: widgetData } as WidgetContext} />
+          <Chart props={{ ...compareProps, dataSourceId: "src-B" }} ctx={{ mode: "runtime", data: widgetData } as WidgetContext} />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    const currentCalls = queryDataSource.mock.calls
+      .map(([source]) => source as { query: Record<string, unknown> })
+      .filter((source) => source.query.date__gte === "2026-01-01");
+    // src-A originated the cross-filter so derivePatch excludes it from its own
+    // currentQuery (region undefined); src-B did not, so its currentQuery carries
+    // region=Nord. Under the old cache key ([label, datasetId, timeRange, bucket,
+    // agg, valueField], no source id / resolved query) both widgets' currentQuery
+    // calls would be identical and TanStack Query would only invoke queryFn once
+    // for the shared entry — so at most one of these two conditions could ever hold.
+    expect(currentCalls.some((source) => source.query.region === "Nord")).toBe(true);
+    expect(currentCalls.some((source) => source.query.region === undefined)).toBe(true);
+  });
+});
