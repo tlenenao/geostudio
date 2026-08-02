@@ -38,7 +38,7 @@ export function registerChartWidget(): void {
       dataSourceId: "", chartType: "bar", categoryField: "", valueField: "",
       stack: false, legend: true, zoom: false,
       xAxisType: "category", yAxisType: "value", yAxisFormat: "", yAxisUnit: "",
-      title: "", advancedOption: "", compareEnabled: false, comparePeriod: "previous", bins: 10,
+      title: "", advancedOption: "", compareEnabled: false, comparePeriod: "previous",
     },
     defaultSize: { w: 6, h: 4 },
     events: ["categorySelected"],
@@ -49,7 +49,6 @@ export function registerChartWidget(): void {
       const showCategoryValue = chartType !== "sankey" && chartType !== "treemap" && chartType !== "sunburst";
       const showSankeyEncodings = chartType === "sankey";
       const showHierarchyEncodings = chartType === "treemap" || chartType === "sunburst";
-      const showBins = chartType === "histogram";
       const encodings = (props.encodings as ChartProps["encodings"]) ?? {};
       const setEncodings = (patch: Record<string, unknown>) => set({ encodings: { ...encodings, ...patch } });
       const levels = encodings.levels ?? [];
@@ -105,12 +104,6 @@ export function registerChartWidget(): void {
                 </button>
               )}
             </div>
-          )}
-          {showBins && (
-            <label className={labelCls}>Nombre de classes
-              <input aria-label="Nombre de classes" type="number" min={1} max={100} className={inputCls}
-                value={String(props.bins ?? 10)} onChange={(e) => set({ bins: Number(e.target.value) })} />
-            </label>
           )}
           {showCompare && (
             <>
