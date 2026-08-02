@@ -125,3 +125,27 @@ test("buildCompareOption applies the yAxisUnit/yAxisFormat formatter like buildO
   const formatter = (opt as { yAxis?: { axisLabel?: { formatter?: (v: unknown) => string } } }).yAxis?.axisLabel?.formatter;
   expect(formatter?.(5)).toBe("5 kg");
 });
+
+const histogramRows: DataRecord[] = [
+  { id: "0", properties: { bucketIndex: 0, bucketStart: 0, bucketEnd: 5, count: 3 } },
+  { id: "2", properties: { bucketIndex: 2, bucketStart: 10, bucketEnd: 15, count: 7 } },
+];
+
+test("funnel builds one funnel series from category/value fields", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("funnel");
+  expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
+});
+
+test("histogram renders one bar series labeled by bucket bounds", () => {
+  const opt = buildOption({ chartType: "histogram" }, histogramRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("bar");
+  expect(series(opt)[0].data).toEqual([3, 7]);
+  expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["0–5", "10–15"]);
+});
