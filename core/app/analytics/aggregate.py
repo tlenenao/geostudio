@@ -24,7 +24,7 @@ class AggregateMeasure(BaseModel):
 
 
 class AggregateRequestBody(BaseModel):
-    groupBy: str | None = None
+    groupBy: str | list[str] | None = None
     split: str | None = None
     agg: str = "count"
     field: str | None = None
@@ -32,6 +32,7 @@ class AggregateRequestBody(BaseModel):
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
     bucket: Literal["day", "week", "month"] | None = None
+    bins: int | None = None
 
 
 class UnknownAggregateField(Exception):
@@ -68,6 +69,12 @@ def _valid_column_names(table_info) -> set[str]:
     return names
 
 
+def _groupby_fields(request: AggregateRequestBody) -> list[str]:
+    if not request.groupBy:
+        return []
+    return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
+
+
 def _validate_fields(request: AggregateRequestBody, table_info) -> None:
     valid = _valid_column_names(table_info)
 
@@ -75,10 +82,17 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
         if name is not None and name not in valid:
             raise UnknownAggregateField(label, f"unknown field '{name}'")
 
-    if request.bucket is not None and not request.groupBy:
-        raise UnknownAggregateField("bucket", "bucket requires groupBy")
+    fields = _groupby_fields(request)
+    if len(fields) != len(set(fields)):
+        raise UnknownAggregateField("groupBy", "duplicate field in groupBy")
+    for f in fields:
+        check(f, "groupBy")
 
-    check(request.groupBy, "groupBy")
+    if request.bucket is not None and len(fields) != 1:
+        raise UnknownAggregateField("bucket", "bucket requires a single-field groupBy")
+    if request.split and len(fields) > 1:
+        raise UnknownAggregateField("split", "split cannot combine with a multi-field groupBy")
+
     check(request.split, "split")
     check(request.field, "field")
     for i, m in enumerate(request.measures or []):
