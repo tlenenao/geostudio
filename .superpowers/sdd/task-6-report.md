@@ -1,205 +1,151 @@
-# Task 6 Report: E2E — extend `analytics-context.spec.ts` (SP-14e)
+# Task 6 Report: Shell — chartOption.ts Funnel & Histogram
 
 ## Summary
 
-Successfully appended 4 new E2E scenarios (12-15) to `shell/e2e/analytics-context.spec.ts` covering SP-14e features:
-- **Scenario 12:** KPI delta badge against reference period
-- **Scenario 13:** CEL critical threshold pastille
-- **Scenario 14:** Chart compare-periods mode with two aligned series
-- **Scenario 15:** Non-regression for indicator/chart without new SP-14e props
+Implemented two new chart types (`funnel` and `histogram`) in `shell/src/builder/widgets/chartOption.ts` following exact TDD protocol: failing tests → implementation → passing tests → commit.
 
-All tests pass and full E2E suite remains green (66/66 tests).
+## Implementation Details
 
-## What Was Implemented
+### Changes to ChartProps Type (lines 6-24)
+- Added `encodings?: { source?: string; target?: string; levels?: string[]; value?: string }` field for future sankey/treemap/sunburst support
+- Added `bins?: number` field for histogram bin count configuration
+- Updated `chartType` comment to list all supported chart types including "funnel|histogram"
+- Updated `valueField` comment to mention funnel/histogram support
+- Added explanatory comment clarifying that `encodings` is used only by sankey/treemap/sunburst, while all other types keep categoryField/valueField
 
-### File Changed
-- `shell/e2e/analytics-context.spec.ts` — 4 new test scenarios appended after existing scenario 11 (SP-14d)
+### Added round2 Helper (lines 65-67)
+Pure utility function that formats numbers to 2 decimal places:
+- Returns string representation
+- Handles non-finite numbers gracefully
+- Used by histogram to format bucket boundaries
 
-### Changes Made
+### Funnel Implementation (lines 144-153)
+- Triggers on `chartType === "funnel"`
+- Reuses existing `categoryField` and `valueField` properties (no new encoding fields needed)
+- Maps each row to `{ name, value }` structure expected by ECharts funnel series
+- Returns single funnel series with finalized option
 
-1. **Scenario 12 (KPI delta)**: Tests that a KPI widget displays a delta badge when:
-   - A date range is active (2026-01-01 to 2026-02-01)
-   - The dataset has a `timeField` configured
-   - The indicator has `referencePeriod: "previous"` set
-   - Mock aggregate returns 120 for current period, 100 for reference
-   - Assertion checks for "120" value and "+20 % vs période précédente" delta text
+### Histogram Implementation (lines 155-164)
+- Triggers on `chartType === "histogram"`
+- Reads `bucketStart`, `bucketEnd`, `count` directly off row properties (shape produced by Task 3's `_run_binned_histogram` endpoint)
+- Formats bucket boundaries using round2 helper: `"0–5"` pattern
+- Returns single bar series with explicit name "Effectif"
+- Properly configures xAxis (category), yAxis (value), and base configuration
 
-2. **Scenario 13 (CEL threshold pastille)**: Tests that a KPI shows a critical pastille when:
-   - The `criticalWhen` expression (`record.value > 2`) is exceeded
-   - Aggregate returns value: 3 (sum of 3 items with valeur: 1)
-   - Pastille appears with aria-label or title containing "critique"
-   - **Technical fix:** Added missing `/collections/analytics/aggregate` mock route not provided in brief
+## Tests
 
-3. **Scenario 14 (Chart compare-periods)**: Tests that a chart in compare-periods mode renders two aligned series:
-   - Date range 2026-01-01 to 2026-01-02
-   - Chart type: line
-   - `comparePeriodsChecked: true`
-   - Assertion checks `data-chart-series="2"` attribute on EChart wrapper with timeout
+### Test Coverage
+Two new unit tests added to `shell/src/builder/widgets/chartOption.test.ts`:
 
-4. **Scenario 15 (Non-regression)**: Tests that indicator and chart behave identically to pre-SP-14e behavior:
-   - Without `referencePeriod` or `comparePeriods` props set
-   - Even with an active time range (2026-01-01 to 2026-02-01)
-   - Value "2" displays, chart has single series (`data-chart-series="1"`)
+1. **Funnel test** (lines 133-143)
+   - Verifies single funnel series is created
+   - Confirms data structure matches ECharts expectations
+   - Tests categoryField/valueField mapping
 
-## Technical Adjustments Made
+2. **Histogram test** (lines 145-151)
+   - Verifies single bar series is created
+   - Confirms bucket boundary labels are correctly formatted
+   - Confirms count values are extracted correctly
 
-### 1. Syntax Error Fix
-**Problem:** Initial append created extra `);` at end of last scenario  
-**Fix:** Removed duplicate closing parenthesis
+### Test Results
 
-### 2. Missing Aggregate Mock (Scenario 13)
-**Problem:** Brief omitted the `/collections/analytics/aggregate` route handler  
-**Solution:** Added:
-```ts
-await page.route("**/collections/analytics/aggregate", async (route) => {
-  await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: 3 }] } });
-});
+**Step 2 (RED phase):**
 ```
-This enables the KPI widget to fetch and display the aggregated value needed for CEL threshold evaluation.
-
-### 3. Selector Fix (Scenario 13, CEL pastille)
-**Problem:** Brief specified `page.getByLabelText("Seuil critique atteint")` which doesn't exist in Playwright  
-**Root Cause:** The brief was written with React Testing Library syntax, not Playwright  
-**Solution:** Replaced with flexible CSS/attribute selector:
-```ts
-page.locator('[aria-label*="critique"], [title*="critique"]')
-```
-This correctly locates DOM elements with "critique" in either their `aria-label` or `title` attributes, matching the actual badge/pastille rendering.
-
-## Test Execution Results
-
-### New Scenarios Only (Step 2 from Brief)
-```bash
-cd shell && VITE_AUTH_MODE=mock npx playwright test e2e/analytics-context.spec.ts \
-  -g "SP-14e|KPI|compare-periods|behave exactly as before without the new SP-14e"
+× funnel builds one funnel series from category/value fields
+  → expected 'bar' to be 'funnel'
+× histogram renders one bar series labeled by bucket bounds
+  → expected [ { type: 'bar', …(2) }, …(2) ] to have a length of 1 but got 3
 ```
 
-**Result:**
+**Step 4 (GREEN phase):**
 ```
-Running 4 tests using 1 worker
-
-  ✓ 1 e2e/analytics-context.spec.ts:845:1 › a KPI shows a delta badge against the reference period (2.3s)
-  ✓ 2 e2e/analytics-context.spec.ts:926:1 › a KPI shows a critical pastille when criticalWhen is exceeded, none otherwise (1.4s)
-  ✓ 3 e2e/analytics-context.spec.ts:967:1 › chart compare-periods mode renders two aligned series (3.0s)
-  ✓ 4 e2e/analytics-context.spec.ts:1054:1 › indicator and chart behave exactly as before without the new SP-14e props, even with an active time range (2.4s)
-
-4 passed (52.9s)
+✓ All 17 tests pass (15 existing + 2 new)
+✓ Funnel test: PASS
+✓ Histogram test: PASS
+✓ No regressions in existing tests
 ```
-
-### Full E2E Suite (Step 3 from Brief)
-```bash
-cd shell && npm run e2e
-```
-
-**Result:**
-```
-Running 66 tests using 8 workers
-
-✓ All 66 tests passed (1.5m)
-```
-
-Breakdown:
-- 15 scenarios in `analytics-context.spec.ts` (11 existing SP-14b/14c/14d + 4 new SP-14e)
-- 51 scenarios across 17 other E2E spec files
-- 0 regressions
-
-## Files Changed
-
-- `/home/lenen/projets/geostudio/shell/e2e/analytics-context.spec.ts` — +288 lines (4 scenarios appended)
-
-No product code modified; pure test coverage addition.
-
-## Commit
-
-**SHA:** `ce7ea2a`  
-**Message:** `test(e2e): cover KPI delta, CEL threshold pastille, chart compare-periods, non-regression (SP-14e)`
 
 ## Self-Review Findings
 
-✓ **Completeness:** All 4 scenarios appended exactly as specified in brief (with necessary technical corrections)
-✓ **Code Quality:** Follows existing E2E patterns, reuses helper functions (`createApp`, `addFeaturesSource`, `promoteLastSource`), proper mocking
-✓ **Testing Discipline:** All 4 new scenarios pass individually, full suite stays green (66/66), no pre-existing tests modified
-✓ **Selector Accuracy:** All queries use Playwright's API correctly (replaced non-existent `getByLabelText` with CSS selector)
-✓ **Documentation:** French UI text preserved, comments from brief included
+### Strengths
+- Implementation follows exact brief specification: literal code transcription
+- TDD protocol correctly applied (RED → GREEN verified)
+- No external dependencies added
+- Pure functional module remains testable without React/echarts runtime
+- Follows existing code patterns in the file (similar to pie/gauge/radar handling)
+- Backward compatible: new fields are optional, new chart types only activate on explicit selection
 
-## Issues Encountered & Resolution
+### Code Quality Checks
+✓ Type safety: ChartProps properly typed with new fields
+✓ Error handling: round2 gracefully handles non-finite numbers
+✓ Consistency: funnel follows pie/gauge pattern (single series, categoryField/valueField), histogram follows bar pattern (xAxis labels, single series)
+✓ No unused code: both implementations are called by tests
+✓ Clear comments: added SP-14f reference, field roles documented
 
-| Issue | Root Cause | Resolution |
-|-------|-----------|------------|
-| Syntax error at EOF | Extra `);` during append | Removed duplicate closing |
-| Test 13 fails on KPI display | Missing aggregate mock | Added route handler returning value: 3 |
-| Test 13 fails on pastille selector | Brief used React Testing Library API | Changed to Playwright CSS selector `locator('[aria-label*="critique"], [title*="critique"]')` |
-| Pastille element still not found | Selector was too strict | Made selector flexible to match partial aria-label/title |
+### Potential Considerations
+- `bins` field added but not yet used (reserved for future histogram bin configuration at the server level per SP-14f task description)
+- `encodings` field added but not yet used (reserved for sankey/treemap/sunburst from later tasks)
+- Both reserved fields are optional, so they don't force consumers to specify them
+- Histogram assumes exact property names (bucketStart, bucketEnd, count) matching server output format
 
-All issues resolved through reasonable technical inference based on:
-- Standard Playwright API patterns
-- Existing E2E test conventions in this file
-- Expected DOM structure for status badges/pastilles
+## Files Changed
+- `shell/src/builder/widgets/chartOption.ts` — ChartProps type + round2 helper + funnel/histogram branches
+- `shell/src/builder/widgets/chartOption.test.ts` — two new unit tests
 
-## Concerns
+## Commits
+- `6a9f447` feat(shell): chartOption gains funnel and server-binned histogram (SP-14f)
 
-None. All 4 new scenarios pass, full E2E suite green, no regressions introduced. Technical fixes were minimal and appropriate.
+## Fix: funnel tooltip trigger (review round 1)
 
-## Next Steps (from Brief's Step 4 Final Verification)
-
-Optional cross-stack check per brief:
-```bash
-cd core && uv run pytest
-cd ../shell && npm run test && npm run build && npm run e2e
-```
-
-Current status: E2E suite verified ✓. Core and shell unit tests not re-run (they were presumably passing at task start).
-
----
-
-## Fix: exact-match CEL pastille selector
-
-### Problem Identified
-
-Scenario 13's pastille assertion used a workaround CSS selector:
-```ts
-await expect(page.locator('[aria-label*="critique"], [title*="critique"]')).toBeVisible();
-```
-
-**Issues:**
-1. The `[title*="critique"]` half was dead code — the pastille element (`shell/src/builder/widgets/indicator.tsx:211-216`) never sets a `title` attribute anywhere in the codebase.
-2. Partial-match (`*=`) on `aria-label` is looser than necessary — risks masking future regressions if unrelated text with "critique" is ever added.
-3. Playwright's idiomatic equivalent is `page.getByLabel("Seuil critique atteint")` (exact accessible-name match), verified with standalone Playwright script against the exact `<span aria-label="...">` markup.
+### Issue Identified
+During code review, commit 6a9f447 was found to have an incomplete tooltip configuration: the funnel chart type was added to `buildOption()` (lines 144-153) but the tooltip trigger condition at line 79 was not updated to include `"funnel"`. Since funnel charts have no xAxis/yAxis (no cartesian coordinate system), like pie/doughnut/gauge, they must use `trigger: "item"` instead of `trigger: "axis"`. The missing condition caused funnel charts to get the default `"axis"` trigger, which does not work reliably in ECharts without coordinates.
 
 ### Fix Applied
-
-Replaced loose CSS selector with exact Playwright locator:
+**Line 79** in `shell/src/builder/widgets/chartOption.ts`:
 ```ts
-await expect(page.getByLabel("Seuil critique atteint")).toBeVisible();
+// Before:
+tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" ? "item" : "axis" }
+
+// After:
+tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" ? "item" : "axis" }
 ```
 
-**Why this is correct:**
-- The pastille element is `<span aria-label="Seuil critique atteint">` (verified in `indicator.tsx:214`)
-- `getByLabel()` matches exact accessible names — idiomatic Playwright, same pattern as other locators in the file (`getByLabel("Type")`, etc.)
-- No dead code, no risk of false negatives on future unrelated text changes
+### Regression Test Added
+New test in `shell/src/builder/widgets/chartOption.test.ts` (lines 145-152):
+```ts
+test("funnel uses an item tooltip trigger, not axis", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect((opt as { tooltip?: { trigger?: string } }).tooltip?.trigger).toBe("item");
+});
+```
 
-### Verification Results
+### Test Results
 
-1. **Targeted scenario (13):**
-   ```
-   VITE_AUTH_MODE=mock npx playwright test e2e/analytics-context.spec.ts -g "critical pastille"
-   ✓ 1 passed (56.3s)
-   ```
+**Verification with buggy code (before fix):**
+```
+✗ funnel uses an item tooltip trigger, not axis
+  → expected 'axis' to be 'item'
+  Expected: "item"
+  Received: "axis"
+```
 
-2. **All 4 SP-14e scenarios (12-15):**
-   ```
-   VITE_AUTH_MODE=mock npx playwright test e2e/analytics-context.spec.ts -g "KPI shows|critical pastille|compare-periods|behave exactly as before"
-   ✓ 4 passed (1.1m)
-   ```
+**Targeted test run (after fix):**
+```
+✓ src/builder/widgets/chartOption.test.ts (2 funnel tests | 0 failed)
+  ✓ funnel builds one funnel series from category/value fields
+  ✓ funnel uses an item tooltip trigger, not axis
+Tests: 2 passed | 16 skipped (18)
+```
 
-3. **Full E2E suite (66/66 tests):**
-   ```
-   npm run e2e
-   ✓ 66 passed (1.8m)
-   ```
-   All pre-existing 11 scenarios in `analytics-context.spec.ts` remain green, all 4 new SP-14e scenarios green.
+**Full file test run (after fix):**
+```
+✓ src/builder/widgets/chartOption.test.ts (18 tests)
+Tests: 18 passed (18)
+```
 
 ### Commit
-
-**SHA:** `503faf3`  
-**Message:** `test(e2e): use exact getByLabel match for CEL pastille assertion instead of loose CSS selector`
+- `abbae68` fix(shell): funnel utilise un tooltip de type item, pas axis (SP-14f)
