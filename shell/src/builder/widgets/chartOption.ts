@@ -20,7 +20,6 @@ export type ChartProps = {
   // Field-role mapping used only by sankey and treemap/sunburst — every
   // other chart type keeps categoryField/valueField (SP-14f §3).
   encodings?: { source?: string; target?: string; levels?: string[]; value?: string };
-  bins?: number; // histogram bin count, default 10
 };
 
 type Row = Record<string, unknown>;

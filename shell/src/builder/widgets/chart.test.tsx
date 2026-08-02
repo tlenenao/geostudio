@@ -344,19 +344,6 @@ test("PropsPanel lets the author add up to 3 hierarchy levels for treemap/sunbur
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { levels: ["region", ""] } }));
 });
 
-test("PropsPanel shows a bin-count field for histogram", () => {
-  const Panel = getWidget("chart")!.PropsPanel;
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={{} as unknown as ItemClient}>
-        <Panel props={{ chartType: "histogram" }} dataSources={[]} onChange={vi.fn()} />
-      </ItemClientProvider>
-    </QueryClientProvider>,
-  );
-  expect(screen.getByLabelText("Nombre de classes")).toBeInTheDocument();
-});
-
 test("handleClick uses resolveClickFilter — treemap click cross-filters on the deepest level", async () => {
   function Probe() {
     const ctx = useAnalyticsContext();
