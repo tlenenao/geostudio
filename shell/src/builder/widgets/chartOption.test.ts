@@ -182,3 +182,40 @@ test("sankey builds nodes (tagged by role) and links from source/target/value en
   // Lyon is both a target (row 1) and a source (row 3) — source wins (documented tie-break).
   expect(nodesByName.Lyon).toBe("source");
 });
+
+const sales: DataRecord[] = [
+  { id: "1", properties: { region: "Nord", city: "Lille", value: 10 } },
+  { id: "2", properties: { region: "Nord", city: "Reims", value: 5 } },
+  { id: "3", properties: { region: "Sud", city: "Nice", value: 7 } },
+];
+
+test("treemap builds a hierarchy from levels, summing values bottom-up", () => {
+  const opt = buildOption(
+    { chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, sales,
+  );
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("treemap");
+  const tree = series(opt)[0].data as { name: string; value: number; children?: { name: string; value: number }[] }[];
+  const nord = tree.find((n) => n.name === "Nord")!;
+  expect(nord.value).toBe(15);
+  expect(nord.children).toEqual([{ name: "Lille", value: 10 }, { name: "Reims", value: 5 }]);
+  const sud = tree.find((n) => n.name === "Sud")!;
+  expect(sud.value).toBe(7);
+});
+
+test("sunburst uses the same hierarchy builder as treemap", () => {
+  const opt = buildOption({ chartType: "sunburst", encodings: { levels: ["region"], value: "value" } }, sales);
+  expect(series(opt)[0].type).toBe("sunburst");
+  const tree = series(opt)[0].data as { name: string; value: number }[];
+  expect(tree.find((n) => n.name === "Nord")?.value).toBe(15);
+});
+
+test("treemap groups missing intermediate-level values under a literal placeholder node", () => {
+  const withGap: DataRecord[] = [
+    { id: "1", properties: { region: "Nord", city: null, value: 4 } },
+    { id: "2", properties: { region: "Nord", city: "Lille", value: 6 } },
+  ];
+  const opt = buildOption({ chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, withGap);
+  const nord = (series(opt)[0].data as { name: string; children?: { name: string; value: number }[] }[]).find((n) => n.name === "Nord")!;
+  expect(nord.children).toEqual(expect.arrayContaining([{ name: "—", value: 4 }, { name: "Lille", value: 6 }]));
+});

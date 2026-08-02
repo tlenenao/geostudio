@@ -51,6 +51,43 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+type TreeNode = { name: string; value?: number; children?: TreeNode[] };
+
+// Builds a root→leaf hierarchy from tidy rows: one path per row through
+// `levels`, leaf values accumulated then summed bottom-up into every ancestor.
+function buildHierarchy(rows: Row[], levels: string[], valueKey: string): TreeNode[] {
+  const roots: TreeNode[] = [];
+  const index = new Map<string, TreeNode>();
+  for (const row of rows) {
+    let path = "";
+    let siblings = roots;
+    let node: TreeNode | undefined;
+    for (const level of levels) {
+      const name = String(row[level] ?? "—");
+      path = `${path}/${name}`;
+      node = index.get(path);
+      if (!node) {
+        node = { name };
+        index.set(path, node);
+        siblings.push(node);
+      }
+      node.children ??= [];
+      siblings = node.children;
+    }
+    if (node) node.value = (node.value ?? 0) + num(row[valueKey]);
+  }
+  const sumUp = (node: TreeNode): number => {
+    if (!node.children || node.children.length === 0) {
+      delete node.children;
+      return node.value ?? 0;
+    }
+    node.value = node.children.reduce((acc, c) => acc + sumUp(c), 0);
+    return node.value;
+  };
+  roots.forEach(sumUp);
+  return roots;
+}
+
 function valueFormatter(props: ChartProps): ((val: unknown) => string) | undefined {
   const unit = String(props.yAxisUnit ?? "");
   const fmt = String(props.yAxisFormat ?? "");
@@ -76,7 +113,7 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   const fmt = valueFormatter(props);
 
   const base: Record<string, unknown> = {
-    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" || type === "sankey" ? "item" : "axis" },
+    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" || type === "sankey" || type === "treemap" || type === "sunburst" ? "item" : "axis" },
     legend: { show: props.legend ?? true },
   };
   if (props.title) base.title = { text: props.title };
@@ -178,6 +215,13 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
       source: String(row[sourceField] ?? ""), target: String(row[targetField] ?? ""), value: num(row[valueKey]),
     }));
     return finalize(props, { ...base, series: [{ type: "sankey", data: nodes, links }] });
+  }
+
+  if (type === "treemap" || type === "sunburst") {
+    const levels = props.encodings?.levels ?? [];
+    const valueKey = props.encodings?.value || seriesKeys.find((k) => !levels.includes(k)) || "";
+    const tree = buildHierarchy(rows, levels, valueKey);
+    return finalize(props, { ...base, series: [{ type, data: tree }] });
   }
 
   // bar | line | area | scatter — dataset + encode, one series per column.
