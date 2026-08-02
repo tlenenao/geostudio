@@ -225,6 +225,12 @@ test("resolveClickFilter: default types (bar/pie/...) resolve categoryField, lik
   expect(resolveClickFilter("bar", {}, { name: "Nord" })).toBeNull(); // no categoryField → no filter, unchanged
 });
 
+test("resolveClickFilter: default types resolve an empty-string value when name is missing, matching today's chart.tsx behavior (not a null bail-out)", () => {
+  expect(resolveClickFilter("bar", { categoryField: "region" }, {})).toEqual({ field: "region", value: "" });
+  expect(resolveClickFilter("pie", { categoryField: "stage" }, {})).toEqual({ field: "stage", value: "" });
+  expect(resolveClickFilter("line", { categoryField: "x" }, {})).toEqual({ field: "x", value: "" });
+});
+
 test("resolveClickFilter: funnel resolves categoryField same as pie/bar", () => {
   expect(resolveClickFilter("funnel", { categoryField: "stage" }, { name: "Panier" })).toEqual({ field: "stage", value: "Panier" });
 });
