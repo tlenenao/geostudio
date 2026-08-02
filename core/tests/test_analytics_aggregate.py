@@ -332,3 +332,65 @@ def test_groupby_list_with_unknown_field_raises(tmp_path, conn):
             table_info=TABLE_INFO, request=request,
         )
     assert exc.value.field == "groupBy"
+
+
+def test_two_field_groupby_produces_tidy_rows(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2026", 12, lsn=1),
+        _row(3, "Sud", "2025", 5, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy=["region", "annee"], agg="sum", field="pop")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert category_key == ["region", "annee"]
+    assert sorted(rows, key=lambda r: (r["region"], r["annee"])) == [
+        {"region": "Nord", "annee": "2025", "value": 10},
+        {"region": "Nord", "annee": "2026", "value": 12},
+        {"region": "Sud", "annee": "2025", "value": 5},
+    ]
+
+
+def test_three_field_groupby_produces_tidy_rows(tmp_path, conn):
+    # Réutilise "pop" comme 3e dimension (valeurs distinctes = niveau de hiérarchie),
+    # TABLE_INFO n'a que 3 colonnes non-géométrie disponibles pour ce test.
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy=["region", "annee", "pop"], agg="count")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert category_key == ["region", "annee", "pop"]
+    assert sorted(rows, key=lambda r: r["pop"]) == [
+        {"region": "Nord", "annee": "2025", "pop": 10, "value": 1},
+        {"region": "Nord", "annee": "2025", "pop": 20, "value": 1},
+    ]
+
+
+def test_multi_field_groupby_with_multiple_measures(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
+        _row(3, "Sud", "2025", 5, lsn=1),
+    ])
+    request = AggregateRequestBody(
+        groupBy=["region", "annee"],
+        measures=[AggregateMeasure(agg="sum", field="pop", label="total"),
+                  AggregateMeasure(agg="count", label="nb")],
+    )
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["region"]) == [
+        {"region": "Nord", "annee": "2025", "total": 30, "nb": 2},
+        {"region": "Sud", "annee": "2025", "total": 5, "nb": 1},
+    ]
