@@ -1,163 +1,182 @@
-### Task 3: Shell — shared time-window mechanic (`comparisonWindow.ts`)
+### Task 3: Core — server-side binned histogram (`bins`)
 
 **Files:**
-- Create: `shell/src/lib/comparisonWindow.ts`
-- Test: `shell/src/lib/comparisonWindow.test.ts`
+- Modify: `core/app/analytics/aggregate.py` (`_validate_fields`, add `_run_binned_histogram`, `run_collection_aggregate`)
+- Test: `core/tests/test_analytics_aggregate.py`
 
 **Interfaces:**
-- Consumes: `derivePatch` (`shell/src/lib/analyticsPatch.ts:10-43`), `AnalyticsContextState` (`shell/src/builder/AnalyticsContext.tsx:7-11`), `DataSource`/`DatasetConfig` (`shell/src/api/types.ts`).
-- Produces (used by Task 4 and Task 5):
-  - `type ReferenceMode = "previous" | "sameLastYear"`
-  - `type BucketGranularity = "day" | "week" | "month"`
-  - `referenceWindow(current: {from: string; to: string}, mode: ReferenceMode): {from: string; to: string}`
-  - `bucketFor(current: {from: string; to: string}): BucketGranularity`
-  - `windowedStatisticsSource(originSourceId: string, datasetId: string, dataset: DatasetConfig, analyticsCtx: AnalyticsContextState, window: {from: string; to: string}, query: {groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string}): DataSource`
+- Consumes: `request.bins: int | None` (Task 1), `request.field`.
+- Produces: when `bins` is set, `run_collection_aggregate` returns rows shaped `{"bucketIndex": int, "bucketStart": float, "bucketEnd": float, "count": int}`, one per non-empty bin, ordered by `bucketIndex`. `category_key` in this mode is `"bins"` (a fixed label, not consumed by the shell for id-building since the histogram doesn't need a categorical id — see Task 4).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `shell/src/lib/comparisonWindow.test.ts`:
+Append to `core/tests/test_analytics_aggregate.py`:
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
-import { bucketFor, referenceWindow, windowedStatisticsSource } from "./comparisonWindow";
-import { EMPTY_ANALYTICS_CONTEXT } from "../builder/AnalyticsContext";
-import type { DatasetConfig } from "../api/types";
+```python
+def test_bins_produces_equal_width_buckets(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Nord", "2025", 2, lsn=1),
+        _row(3, "Nord", "2025", 9, lsn=1), _row(4, "Nord", "2025", 10, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=3)
 
-const MS_PER_DAY = 86_400_000;
-function addDays(iso: string, days: number): string {
-  return new Date(new Date(iso).getTime() + days * MS_PER_DAY).toISOString().slice(0, 10);
-}
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
 
-test("referenceWindow(previous) shifts back by exactly the window's duration, contiguous with it", () => {
-  expect(referenceWindow({ from: "2026-02-01", to: "2026-02-28" }, "previous"))
-    .toEqual({ from: "2026-01-05", to: "2026-02-01" });
-});
+    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10] (last bin absorbs the max via LEAST clamp)
+    by_index = {r["bucketIndex"]: r["count"] for r in rows}
+    assert by_index == {0: 2, 2: 2}  # pop 1,2 → bin 0 ; pop 9,10 → bin 2 (clamped) ; bin 1 empty, absent
 
-test("referenceWindow(sameLastYear) shifts both bounds back exactly one calendar year", () => {
-  expect(referenceWindow({ from: "2026-03-10", to: "2026-03-20" }, "sameLastYear"))
-    .toEqual({ from: "2025-03-10", to: "2025-03-20" });
-});
 
-test("referenceWindow(sameLastYear) clamps Feb 29 to Feb 28 in a non-leap reference year (documented repli, not a crash)", () => {
-  expect(referenceWindow({ from: "2024-02-29", to: "2024-02-29" }, "sameLastYear"))
-    .toEqual({ from: "2023-02-28", to: "2023-02-28" });
-});
+def test_bins_on_a_constant_field_returns_one_bucket(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 5, lsn=1), _row(2, "Sud", "2025", 5, lsn=1)])
+    request = AggregateRequestBody(field="pop", bins=4)
 
-test("bucketFor picks day up to 31 days, week up to 180, month beyond", () => {
-  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 31) })).toBe("day");
-  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 32) })).toBe("week");
-  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 180) })).toBe("week");
-  expect(bucketFor({ from: "2026-01-01", to: addDays("2026-01-01", 181) })).toBe("month");
-});
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
 
-test("windowedStatisticsSource merges the window's time filter and reuses ambient extent", () => {
-  const dataset: DatasetConfig = { source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: true };
-  const ctx = { ...EMPTY_ANALYTICS_CONTEXT, extent: [1, 2, 3, 4] as [number, number, number, number] };
-  const source = windowedStatisticsSource(
-    "src-1", "ds-1", dataset, ctx, { from: "2026-01-01", to: "2026-01-31" }, { agg: "sum", field: "pop" },
-  );
-  expect(source).toMatchObject({
-    id: "src-1", type: "statistics", service: "core", datasetId: "ds-1",
-    query: { agg: "sum", field: "pop", date__gte: "2026-01-01", date__lte: "2026-01-31", bbox: "1,2,3,4" },
-  });
-});
+    assert rows == [{"bucketIndex": 0, "bucketStart": 5.0, "bucketEnd": 5.0, "count": 2}]
 
-test("windowedStatisticsSource carries groupBy/bucket through untouched", () => {
-  const dataset: DatasetConfig = { source: "collection", collectionId: "events", columns: {}, timeField: "date", reactsToExtent: false };
-  const source = windowedStatisticsSource(
-    "src-1", "ds-1", dataset, EMPTY_ANALYTICS_CONTEXT, { from: "2026-01-01", to: "2026-01-31" },
-    { groupBy: "date", bucket: "day", agg: "count" },
-  );
-  expect(source.query).toMatchObject({ groupBy: "date", bucket: "day", agg: "count" });
-});
+
+def test_bins_without_field_raises(tmp_path, conn):
+    request = AggregateRequestBody(bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_with_groupby_raises(tmp_path, conn):
+    request = AggregateRequestBody(groupBy="region", field="pop", bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_out_of_bounds_raises(tmp_path, conn):
+    for bad in (0, 101):
+        request = AggregateRequestBody(field="pop", bins=bad)
+        with pytest.raises(UnknownAggregateField) as exc:
+            run_collection_aggregate(
+                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+                table_info=TABLE_INFO, request=request,
+            )
+        assert exc.value.field == "bins"
+
+
+def test_bins_narrowed_by_attribute_filter(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Sud", "2025", 9, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=2, filters={"region": "Nord"})
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"bucketIndex": 0, "bucketStart": 1.0, "bucketEnd": 1.0, "count": 1}]
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd shell && npx vitest run src/lib/comparisonWindow.test.ts`
-Expected: FAIL — `Cannot find module './comparisonWindow'`.
+Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bins -v`
+Expected: FAIL (`bins` not yet validated/implemented)
 
-- [ ] **Step 3: Implement `shell/src/lib/comparisonWindow.ts`**
+- [ ] **Step 3: Add bins validation**
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import type { AnalyticsContextState } from "../builder/AnalyticsContext";
-import type { DataSource, DatasetConfig } from "../api/types";
-import { derivePatch } from "./analyticsPatch";
+In `_validate_fields` (edited in Task 1), add before the final `bbox` check:
 
-export type ReferenceMode = "previous" | "sameLastYear";
-export type BucketGranularity = "day" | "week" | "month";
-
-const MS_PER_DAY = 86_400_000;
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-}
-
-// `current.from`/`current.to` are "YYYY-MM-DD" strings, parsed by `new
-// Date(...)` as UTC midnight (ISO date-only parsing rule) — every accessor
-// here stays UTC too, so the computed calendar day never drifts depending on
-// the runtime's local timezone offset.
-function shiftYears(d: Date, years: number): Date {
-  const year = d.getUTCFullYear() + years;
-  const month = d.getUTCMonth();
-  const day = d.getUTCDate();
-  return new Date(Date.UTC(year, month, Math.min(day, daysInMonth(year, month))));
-}
-
-function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function referenceWindow(
-  current: { from: string; to: string },
-  mode: ReferenceMode,
-): { from: string; to: string } {
-  const from = new Date(current.from), to = new Date(current.to);
-  if (mode === "sameLastYear") {
-    return { from: toISODate(shiftYears(from, -1)), to: toISODate(shiftYears(to, -1)) };
-  }
-  const durationMs = to.getTime() - from.getTime();
-  const refTo = new Date(from.getTime());
-  const refFrom = new Date(from.getTime() - durationMs);
-  return { from: toISODate(refFrom), to: toISODate(refTo) };
-}
-
-export function bucketFor(current: { from: string; to: string }): BucketGranularity {
-  const days = (new Date(current.to).getTime() - new Date(current.from).getTime()) / MS_PER_DAY;
-  return days <= 31 ? "day" : days <= 180 ? "week" : "month";
-}
-
-// Shared query-construction mechanic (spec §3), reused by indicator's KPI
-// comparison (Task 4) and chart's period-comparison mode (Task 5): builds a
-// synthetic `statistics` DataSource for one time window and merges it with
-// the same ambient filters (extent, cross-filter) DataContext would apply
-// for the widget's own flat value — only `timeRange` is substituted.
-export function windowedStatisticsSource(
-  originSourceId: string,
-  datasetId: string,
-  dataset: DatasetConfig,
-  analyticsCtx: AnalyticsContextState,
-  window: { from: string; to: string },
-  query: { groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string },
-): DataSource {
-  const synthetic: DataSource = { id: originSourceId, type: "statistics", service: "core", layer: "", datasetId, query: {} };
-  const patch = derivePatch(synthetic, { ...analyticsCtx, timeRange: window }, { [datasetId]: dataset });
-  return { ...synthetic, query: { ...query, ...patch } };
-}
+```python
+    if request.bins is not None:
+        if request.field is None:
+            raise UnknownAggregateField("bins", "bins requires a field")
+        if fields:
+            raise UnknownAggregateField("bins", "bins cannot combine with groupBy")
+        if not (1 <= request.bins <= 100):
+            raise UnknownAggregateField("bins", "bins must be between 1 and 100")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Add `_run_binned_histogram` and wire it into `run_collection_aggregate`**
 
-Run: `cd shell && npx vitest run src/lib/comparisonWindow.test.ts`
-Expected: PASS (6 tests)
+Add next to `_pivot_multi_measures` in `core/app/analytics/aggregate.py`:
 
-- [ ] **Step 5: Commit**
+```python
+def _run_binned_histogram(
+    conn, *, dedup_cte: str, where_sql: str, where_params: list, field: str, bins: int,
+) -> list[dict]:
+    field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    minmax_sql = f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
+    minmax_rows = _fetch_rows(conn, minmax_sql, where_params)
+    lo = minmax_rows[0]["lo"] if minmax_rows else None
+    hi = minmax_rows[0]["hi"] if minmax_rows else None
+    if lo is None or hi is None:
+        return []
+
+    not_null_clause = f"{_qi(field)} IS NOT NULL"
+    full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
+
+    if lo == hi:
+        sql = f"{dedup_cte} SELECT COUNT(*) AS __val FROM live {full_where}"
+        rows = _fetch_rows(conn, sql, where_params)
+        return [{"bucketIndex": 0, "bucketStart": lo, "bucketEnd": hi, "count": rows[0]["__val"]}]
+
+    width = (hi - lo) / bins
+    bucket_expr = f"LEAST(? - 1, CAST(FLOOR(({field_expr} - ?) / ?) AS INTEGER))"
+    sql = (
+        f"{dedup_cte} SELECT {bucket_expr} AS __bucket, COUNT(*) AS __val "
+        f"FROM live {full_where} GROUP BY __bucket ORDER BY __bucket"
+    )
+    params = [bins, lo, width, *where_params]
+    rows = _fetch_rows(conn, sql, params)
+    return [
+        {
+            "bucketIndex": int(r["__bucket"]),
+            "bucketStart": lo + r["__bucket"] * width,
+            "bucketEnd": lo + (r["__bucket"] + 1) * width,
+            "count": r["__val"],
+        }
+        for r in rows
+    ]
+```
+
+In `run_collection_aggregate`, insert right after the `where_sql, where_params = _build_where(...)` line, before the `if len(fields) > 1:` branch:
+
+```python
+    if request.bins is not None:
+        rows = _run_binned_histogram(
+            conn, dedup_cte=dedup_cte, where_sql=where_sql, where_params=where_params,
+            field=request.field, bins=request.bins,
+        )
+        return "bucketIndex", rows
+```
+
+(`"bucketIndex"` is a real column present on every row this branch returns — unlike a fixed `"bins"` literal, this lets the shell's `statRowId` (Task 4) derive a correct, unique per-row id via the existing single-field path, with no histogram-specific case needed.)
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bins -v`
+Expected: PASS
+
+- [ ] **Step 6: Run the full core suite for non-regression**
+
+Run: `cd core && uv run pytest -v`
+Expected: PASS — full suite (606+ existing + new tests from Tasks 1-3).
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add shell/src/lib/comparisonWindow.ts shell/src/lib/comparisonWindow.test.ts
-git commit -m "feat(shell): add comparisonWindow — reference windows, bucket sizing, windowed statistics source"
+git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
+git commit -m "feat(core): server-side binned histogram via bins param on /aggregate (SP-14f)"
 ```
 
 ---
