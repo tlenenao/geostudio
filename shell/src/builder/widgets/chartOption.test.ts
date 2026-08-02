@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { buildCompareOption, buildOption } from "./chartOption";
+import { buildCompareOption, buildOption, resolveClickFilter } from "./chartOption";
 import type { DataRecord } from "../../api/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -218,4 +218,36 @@ test("treemap groups missing intermediate-level values under a literal placehold
   const opt = buildOption({ chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, withGap);
   const nord = (series(opt)[0].data as { name: string; children?: { name: string; value: number }[] }[]).find((n) => n.name === "Nord")!;
   expect(nord.children).toEqual(expect.arrayContaining([{ name: "—", value: 4 }, { name: "Lille", value: 6 }]));
+});
+
+test("resolveClickFilter: default types (bar/pie/...) resolve categoryField, like today", () => {
+  expect(resolveClickFilter("bar", { categoryField: "region" }, { name: "Nord" })).toEqual({ field: "region", value: "Nord" });
+  expect(resolveClickFilter("bar", {}, { name: "Nord" })).toBeNull(); // no categoryField → no filter, unchanged
+});
+
+test("resolveClickFilter: funnel resolves categoryField same as pie/bar", () => {
+  expect(resolveClickFilter("funnel", { categoryField: "stage" }, { name: "Panier" })).toEqual({ field: "stage", value: "Panier" });
+});
+
+test("resolveClickFilter: histogram never resolves a filter", () => {
+  expect(resolveClickFilter("histogram", { categoryField: "x" }, { name: "0–5" })).toBeNull();
+});
+
+test("resolveClickFilter: treemap/sunburst resolve the deepest clicked level", () => {
+  const props = { chartType: "treemap", encodings: { levels: ["region", "city"] } };
+  // Clicking a leaf: treePathInfo has 2 entries (region, city) → depth 1 → levels[1] = "city".
+  expect(resolveClickFilter("treemap", props, { name: "Lille", treePathInfo: [{ name: "Nord" }, { name: "Lille" }] }))
+    .toEqual({ field: "city", value: "Lille" });
+  // Clicking a root: treePathInfo has 1 entry → depth 0 → levels[0] = "region".
+  expect(resolveClickFilter("treemap", props, { name: "Nord", treePathInfo: [{ name: "Nord" }] }))
+    .toEqual({ field: "region", value: "Nord" });
+});
+
+test("resolveClickFilter: sankey resolves source or target depending on the clicked node's role, ignores edge clicks", () => {
+  const props = { chartType: "sankey", encodings: { source: "origin", target: "destination" } };
+  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Paris", data: { _role: "source" } }))
+    .toEqual({ field: "origin", value: "Paris" });
+  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Lyon", data: { _role: "target" } }))
+    .toEqual({ field: "destination", value: "Lyon" });
+  expect(resolveClickFilter("sankey", props, { dataType: "edge", name: "Paris" })).toBeNull();
 });

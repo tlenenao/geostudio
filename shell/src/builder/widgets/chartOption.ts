@@ -241,6 +241,46 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   });
 }
 
+export type ClickParams = {
+  name?: string;
+  dataType?: string;
+  data?: Record<string, unknown>;
+  treePathInfo?: { name: string }[];
+};
+
+// Generalizes the click→cross-filter mapping across all chart types. Default
+// (bar/line/pie/.../funnel): unchanged categoryField behavior. Histogram:
+// never resolves (range-filtering is out of the single-value cross-filter
+// model). Treemap/sunburst: the deepest clicked hierarchy level. Sankey: the
+// clicked node's role (tagged _role in buildOption, see the sankey branch)
+// disambiguates whether it maps to encodings.source or encodings.target.
+export function resolveClickFilter(
+  chartType: string, props: ChartProps, params: ClickParams,
+): { field: string; value: string } | null {
+  if (chartType === "histogram") return null;
+
+  if (chartType === "sankey") {
+    if (params.dataType !== "node" || params.name == null) return null;
+    const role = params.data?._role as "source" | "target" | undefined;
+    const field = role === "target" ? props.encodings?.target : props.encodings?.source;
+    if (!field) return null;
+    return { field, value: String(params.name) };
+  }
+
+  if (chartType === "treemap" || chartType === "sunburst") {
+    const levels = props.encodings?.levels ?? [];
+    if (!levels.length || params.name == null) return null;
+    const depth = Math.min(Math.max((params.treePathInfo?.length ?? 1) - 1, 0), levels.length - 1);
+    const field = levels[depth];
+    if (!field) return null;
+    return { field, value: String(params.name) };
+  }
+
+  const field = props.categoryField;
+  if (!field || params.name == null) return null;
+  return { field, value: String(params.name) };
+}
+
 export type ComparePoint = { bucket: string; value: number };
 
 function offsetLabel(bucket: BucketGranularity, index: number): string {
