@@ -191,6 +191,16 @@ def _pivot_measures(sql_rows: list[dict], *, category_key: str, measures: list[A
     return out
 
 
+def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]) -> list[dict]:
+    out = []
+    for r in sql_rows:
+        row = {f: r[f] for f in fields}
+        for i, m in enumerate(measures):
+            row[_measure_label(m)] = r[f"m{i}"]
+        out.append(row)
+    return out
+
+
 def _dedup_cte(table_info, base_uri: str, tenant_id: str, collection_id: str) -> str:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     pk = _qi(table_info.pk_column)
@@ -216,8 +226,9 @@ def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
 
 def run_collection_aggregate(
     conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info, request: AggregateRequestBody,
-) -> tuple[str, list[dict]]:
-    category_key = request.groupBy or "group"
+) -> tuple[str | list[str], list[dict]]:
+    fields = _groupby_fields(request)
+    category_key: str | list[str] = fields if len(fields) > 1 else (fields[0] if fields else "group")
     _validate_fields(request, table_info)
 
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
@@ -225,10 +236,20 @@ def run_collection_aggregate(
 
     dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(request, table_info)
+
+    if len(fields) > 1:
+        measures = _measures_for(request)
+        measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
+        group_cols = ", ".join(_qi(f) for f in fields)
+        sql = f"{dedup_cte} SELECT {group_cols}, {measure_cols} FROM live {where_sql} GROUP BY {group_cols}"
+        sql_rows = _fetch_rows(conn, sql, where_params)
+        return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
+
+    single_field = fields[0] if fields else None
     if request.bucket:
-        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
+        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
     else:
-        cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+        cat_expr = _qi(single_field) if single_field else "'Total'"
 
     if request.split:
         agg_sql = _agg_expr(request.agg, request.field)
@@ -237,10 +258,10 @@ def run_collection_aggregate(
             f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split"
         )
         sql_rows = _fetch_rows(conn, sql, where_params)
-        return category_key, _pivot_split(sql_rows, category_key=category_key)
+        return category_key, _pivot_split(sql_rows, category_key=str(category_key))
 
     measures = _measures_for(request)
     measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
     sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} GROUP BY __cat"
     sql_rows = _fetch_rows(conn, sql, where_params)
-    return category_key, _pivot_measures(sql_rows, category_key=category_key, measures=measures)
+    return category_key, _pivot_measures(sql_rows, category_key=str(category_key), measures=measures)
