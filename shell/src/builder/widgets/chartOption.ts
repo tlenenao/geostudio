@@ -5,9 +5,9 @@ import type { BucketGranularity } from "../../lib/comparisonWindow";
 
 export type ChartProps = {
   dataSourceId?: string;
-  chartType?: string; // bar|line|area|scatter|pie|doughnut|radar|heatmap|gauge|boxplot
+  chartType?: string; // bar|line|area|scatter|pie|doughnut|radar|heatmap|gauge|boxplot|sankey|treemap|sunburst|funnel|histogram
   categoryField?: string;
-  valueField?: string; // measure key for pie/gauge (defaults to first series)
+  valueField?: string; // measure key for pie/gauge/funnel/histogram (defaults to first series)
   stack?: boolean;
   legend?: boolean;
   zoom?: boolean;
@@ -17,6 +17,10 @@ export type ChartProps = {
   yAxisUnit?: string;
   title?: string;
   advancedOption?: string; // raw ECharts option JSON, deep-merged last
+  // Field-role mapping used only by sankey and treemap/sunburst — every
+  // other chart type keeps categoryField/valueField (SP-14f §3).
+  encodings?: { source?: string; target?: string; levels?: string[]; value?: string };
+  bins?: number; // histogram bin count, default 10
 };
 
 type Row = Record<string, unknown>;
@@ -56,6 +60,10 @@ function valueFormatter(props: ChartProps): ((val: unknown) => string) | undefin
     const s = nf && Number.isFinite(Number(val)) ? nf.format(Number(val)) : String(val);
     return unit ? `${s} ${unit}` : s;
   };
+}
+
+function round2(n: number): string {
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(n);
 }
 
 // Pure translation of the widget config + resolved records into an ECharts
@@ -130,6 +138,28 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
       xAxis: { type: "category", data: rows.map((row) => String(row[catKey] ?? "")) },
       yAxis,
       series: [{ type: "boxplot", data: rows.map((row) => seriesKeys.map((k) => num(row[k]))) }],
+    });
+  }
+
+  if (type === "funnel") {
+    const valueKey = props.valueField || seriesKeys[0] || "";
+    return finalize(props, {
+      ...base,
+      series: [{
+        type: "funnel",
+        data: rows.map((row) => ({ name: String(row[catKey] ?? ""), value: num(row[valueKey]) })),
+      }],
+    });
+  }
+
+  if (type === "histogram") {
+    const labels = rows.map((row) => `${round2(Number(row.bucketStart))}–${round2(Number(row.bucketEnd))}`);
+    const counts = rows.map((row) => num(row.count));
+    return finalize(props, {
+      ...base,
+      xAxis: { type: "category", data: labels },
+      yAxis,
+      series: [{ type: "bar", name: "Effectif", data: counts }],
     });
   }
 
