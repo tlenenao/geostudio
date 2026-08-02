@@ -76,7 +76,7 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   const fmt = valueFormatter(props);
 
   const base: Record<string, unknown> = {
-    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" ? "item" : "axis" },
+    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" ? "item" : "axis" },
     legend: { show: props.legend ?? true },
   };
   if (props.title) base.title = { text: props.title };
