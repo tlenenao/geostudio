@@ -288,3 +288,47 @@ def test_bucket_on_non_castable_field_groups_under_a_null_bucket(tmp_path, conn)
     by_key = {r["annee"]: r["value"] for r in rows}
     assert by_key["None"] == 10
     assert by_key["2026-01-05 00:00:00"] == 3
+
+
+def test_groupby_list_with_duplicate_field_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "region"])
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "groupBy"
+
+
+def test_bucket_with_multi_field_groupby_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "annee"], bucket="day")
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bucket"
+
+
+def test_split_with_multi_field_groupby_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "annee"], split="annee")
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "split"
+
+
+def test_groupby_list_with_unknown_field_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "inconnu"])
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "groupBy"
