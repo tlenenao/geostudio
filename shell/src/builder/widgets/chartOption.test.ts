@@ -142,6 +142,15 @@ test("funnel builds one funnel series from category/value fields", () => {
   expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
 });
 
+test("funnel uses an item tooltip trigger, not axis", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect((opt as { tooltip?: { trigger?: string } }).tooltip?.trigger).toBe("item");
+});
+
 test("histogram renders one bar series labeled by bucket bounds", () => {
   const opt = buildOption({ chartType: "histogram" }, histogramRows);
   expect(series(opt)).toHaveLength(1);
