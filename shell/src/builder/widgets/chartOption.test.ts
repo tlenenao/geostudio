@@ -158,3 +158,27 @@ test("histogram renders one bar series labeled by bucket bounds", () => {
   expect(series(opt)[0].data).toEqual([3, 7]);
   expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["0–5", "10–15"]);
 });
+
+const flows: DataRecord[] = [
+  { id: "1", properties: { origin: "Paris", destination: "Lyon", value: 10 } },
+  { id: "2", properties: { origin: "Paris", destination: "Marseille", value: 5 } },
+  { id: "3", properties: { origin: "Lyon", destination: "Marseille", value: 3 } }, // "Lyon" is both a destination and an origin
+];
+
+test("sankey builds nodes (tagged by role) and links from source/target/value encodings", () => {
+  const opt = buildOption(
+    { chartType: "sankey", encodings: { source: "origin", target: "destination", value: "value" } }, flows,
+  );
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("sankey");
+  expect(series(opt)[0].links).toEqual([
+    { source: "Paris", target: "Lyon", value: 10 },
+    { source: "Paris", target: "Marseille", value: 5 },
+    { source: "Lyon", target: "Marseille", value: 3 },
+  ]);
+  const nodesByName = Object.fromEntries(series(opt)[0].data.map((n: { name: string; _role: string }) => [n.name, n._role]));
+  expect(nodesByName.Paris).toBe("source");
+  expect(nodesByName.Marseille).toBe("target");
+  // Lyon is both a target (row 1) and a source (row 3) — source wins (documented tie-break).
+  expect(nodesByName.Lyon).toBe("source");
+});
