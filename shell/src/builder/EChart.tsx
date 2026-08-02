@@ -4,7 +4,7 @@ import * as echarts from "echarts/core";
 import {
   BarChart, LineChart, PieChart, ScatterChart, RadarChart,
   HeatmapChart, GaugeChart, BoxplotChart, CandlestickChart,
-  FunnelChart, SankeyChart, TreemapChart,
+  FunnelChart, SankeyChart, TreemapChart, SunburstChart,
 } from "echarts/charts";
 import {
   TooltipComponent, LegendComponent, GridComponent, DataZoomComponent,
@@ -19,7 +19,7 @@ import type { EChartsOption } from "echarts";
 echarts.use([
   BarChart, LineChart, PieChart, ScatterChart, RadarChart,
   HeatmapChart, GaugeChart, BoxplotChart, CandlestickChart,
-  FunnelChart, SankeyChart, TreemapChart,
+  FunnelChart, SankeyChart, TreemapChart, SunburstChart,
   TooltipComponent, LegendComponent, GridComponent, DataZoomComponent,
   VisualMapComponent, TitleComponent, ToolboxComponent, PolarComponent,
   DatasetComponent, MarkLineComponent, MarkAreaComponent,
@@ -38,7 +38,11 @@ function seriesList(option: EChartsOption): { type?: string }[] {
 // disposes on unmount. This is the only module that pulls in echarts, so the
 // Chart widget lazy-loads it (and unit tests mock it).
 export function EChart({ option, className, onClick }: {
-  option: EChartsOption; className?: string; onClick?: (params: { name?: string; value?: unknown }) => void;
+  option: EChartsOption; className?: string;
+  onClick?: (params: {
+    name?: string; value?: unknown; dataType?: string;
+    data?: Record<string, unknown>; treePathInfo?: { name: string }[];
+  }) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
@@ -50,7 +54,10 @@ export function EChart({ option, className, onClick }: {
     if (!el) return;
     const chart = echarts.init(el);
     chartRef.current = chart;
-    chart.on("click", (params) => onClickRef.current?.(params as { name?: string; value?: unknown }));
+    chart.on("click", (params) => onClickRef.current?.(params as {
+      name?: string; value?: unknown; dataType?: string;
+      data?: Record<string, unknown>; treePathInfo?: { name: string }[];
+    }));
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
     return () => {
