@@ -468,3 +468,30 @@ def test_bins_narrowed_by_attribute_filter(tmp_path, conn):
     )
 
     assert rows == [{"bucketIndex": 0, "bucketStart": 1.0, "bucketEnd": 1.0, "count": 1}]
+
+
+def test_bins_excludes_non_numeric_values_from_top_bucket(tmp_path, conn):
+    """Regression test: non-numeric strings should be filtered out by TRY_CAST,
+    not silently miscounted into the top bucket by DuckDB's NULL-ignoring LEAST."""
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", "1", lsn=1),     # numeric string
+        _row(2, "Nord", "2025", "2", lsn=1),     # numeric string
+        _row(3, "Nord", "2025", "abc", lsn=1),   # non-numeric string → TRY_CAST → NULL
+        _row(4, "Nord", "2025", "10", lsn=1),    # numeric string (max)
+    ])
+    request = AggregateRequestBody(field="pop", bins=3)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    # After TRY_CAST("1"/"2"/"abc"/"10" AS DOUBLE): 1.0, 2.0, NULL, 10.0
+    # lo=1.0, hi=10.0, width=3.0
+    # Bucket 0: [1, 4) contains 1.0, 2.0 → count=2
+    # Bucket 2: [7, 10] contains 10.0 → count=1
+    # "abc" should NOT appear in any bucket; total count must be 3, not 4
+    by_index = {r["bucketIndex"]: r["count"] for r in rows}
+    assert by_index == {0: 2, 2: 1}, f"Expected {{0: 2, 2: 1}}, got {by_index}"
+    total_count = sum(r["count"] for r in rows)
+    assert total_count == 3, f"Expected total count 3, got {total_count} (non-numeric 'abc' was not excluded)"

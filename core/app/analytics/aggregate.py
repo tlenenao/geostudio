@@ -220,7 +220,7 @@ def _run_binned_histogram(
     if lo is None or hi is None:
         return []
 
-    not_null_clause = f"{_qi(field)} IS NOT NULL"
+    not_null_clause = f"{field_expr} IS NOT NULL"
     full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
 
     if lo == hi:
