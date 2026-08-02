@@ -394,3 +394,77 @@ def test_multi_field_groupby_with_multiple_measures(tmp_path, conn):
         {"region": "Nord", "annee": "2025", "total": 30, "nb": 2},
         {"region": "Sud", "annee": "2025", "total": 5, "nb": 1},
     ]
+
+
+def test_bins_produces_equal_width_buckets(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Nord", "2025", 2, lsn=1),
+        _row(3, "Nord", "2025", 9, lsn=1), _row(4, "Nord", "2025", 10, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=3)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10] (last bin absorbs the max via LEAST clamp)
+    by_index = {r["bucketIndex"]: r["count"] for r in rows}
+    assert by_index == {0: 2, 2: 2}  # pop 1,2 → bin 0 ; pop 9,10 → bin 2 (clamped) ; bin 1 empty, absent
+
+
+def test_bins_on_a_constant_field_returns_one_bucket(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 5, lsn=1), _row(2, "Sud", "2025", 5, lsn=1)])
+    request = AggregateRequestBody(field="pop", bins=4)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"bucketIndex": 0, "bucketStart": 5.0, "bucketEnd": 5.0, "count": 2}]
+
+
+def test_bins_without_field_raises(tmp_path, conn):
+    request = AggregateRequestBody(bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_with_groupby_raises(tmp_path, conn):
+    request = AggregateRequestBody(groupBy="region", field="pop", bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_out_of_bounds_raises(tmp_path, conn):
+    for bad in (0, 101):
+        request = AggregateRequestBody(field="pop", bins=bad)
+        with pytest.raises(UnknownAggregateField) as exc:
+            run_collection_aggregate(
+                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+                table_info=TABLE_INFO, request=request,
+            )
+        assert exc.value.field == "bins"
+
+
+def test_bins_narrowed_by_attribute_filter(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Sud", "2025", 9, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=2, filters={"region": "Nord"})
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"bucketIndex": 0, "bucketStart": 1.0, "bucketEnd": 1.0, "count": 1}]
