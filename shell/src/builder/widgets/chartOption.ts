@@ -277,8 +277,8 @@ export function resolveClickFilter(
   }
 
   const field = props.categoryField;
-  if (!field || params.name == null) return null;
-  return { field, value: String(params.name) };
+  if (!field) return null;
+  return { field, value: params.name != null ? String(params.name) : "" };
 }
 
 export type ComparePoint = { bucket: string; value: number };
