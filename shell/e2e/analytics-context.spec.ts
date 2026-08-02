@@ -1250,12 +1250,29 @@ test("sankey, treemap and sunburst render from a multi-field groupBy dataset (SP
 // Scénario 18 (SP-14f) — histogramme : rend les classes calculées côté
 // serveur et ne croise-filtre jamais au clic (filtrage par plage hors du
 // modèle de cross-filter à valeur unique).
+//
+// Preuve à charge (task 12 review round 1) : un second widget Table réel,
+// sur le MÊME dataset partagé que le graphique, cross-filter activé — pas
+// seulement une absence de requête réseau avec rien d'abonné. La source du
+// graphique est promue (comme la table) PUIS basculée en type
+// "statistiques" : elle conserve ainsi le datasetId acquis par la
+// promotion (DataSourcePanel ne le réinitialise pas au changement de type),
+// donc `data.datasetId` reste défini côté graphique — si resolveClickFilter
+// se trompait un jour pour "histogram", `setCrossFilter` serait bien émis
+// et la table (même datasetId) le verrait. Le "Champ catégorie" est
+// renseigné avec un champ réel ("city") : si le garde-fou
+// `chartType === "histogram" → null` disparaissait de resolveClickFilter,
+// le clic tomberait dans la branche générique et produirait un filtre
+// `city=<label de la barre>` — observable par la table via le mock
+// `/collections/pops/items*` (même mécanisme conditionnel que le mock
+// `analytics/items*` du scénario funnel ci-dessus).
 // -------------------------------------------------------------------------
 test("a histogram renders binned data and never cross-filters on click (SP-14f)", async ({ page }) => {
   await mockCore(page);
   await page.route("**/collections/pops/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "pops", pk: "id", geometry: null, fields: [{ name: "pop", type: "number" }] },
+      json: { collection: "pops", pk: "id", geometry: null,
+        fields: [{ name: "city", type: "string" }, { name: "pop", type: "number" }] },
     });
   });
   await page.route("**/collections/pops/aggregate", async (route) => {
@@ -1266,28 +1283,65 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
       ] },
     });
   });
+  await page.route("**/collections/pops/items*", async (route) => {
+    const city = new URL(route.request().url()).searchParams.get("city");
+    const all = [
+      { id: 1, properties: { city: "Paris", pop: 5 } },
+      { id: 2, properties: { city: "Lyon", pop: 8 } },
+    ];
+    const features = city ? all.filter((f) => f.properties.city === city) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "pops", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
 
   await createApp(page, "Histogram smoke");
-  await page.getByRole("button", { name: "Ajouter une source" }).click();
-  await page.getByLabel(/Type de la source/).last().selectOption("statistics");
-  await page.getByLabel(/Collection de la source/).last().fill("pops");
+
+  // Deux sources sur le même dataset partagé "pops" : une pour l'histogramme
+  // (basculée en "Statistiques" après promotion), une pour la table qui
+  // consomme réellement /items.
+  await addFeaturesSource(page, "pops");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "pops");
+  await promoteLastSource(page, 2);
+
+  await page.getByLabel(/Type de la source/).first().selectOption("statistics");
   await page.getByLabel(/Champ agrégé/).last().fill("pop");
   await page.getByLabel(/Nombre de classes/).last().fill("2");
 
   await page.getByRole("button", { name: "Graphique" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Type de graphique").selectOption("histogram");
+  await page.getByLabel("Champ catégorie").fill("city");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
   await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Paris" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Lyon" })).toBeVisible();
+
   const chart = page.getByTestId("echart");
   await expect(chart.locator("canvas")).toBeVisible();
   const box = await chart.boundingBox();
   if (!box) throw new Error("chart canvas has no bounding box");
 
-  let sawItemsRequest = false;
-  page.on("request", (r) => { if (r.url().includes("/collections/pops/items")) sawItemsRequest = true; });
+  let sawFilteredItemsRequest = false;
+  page.on("request", (r) => {
+    if (r.url().includes("/collections/pops/items") && new URL(r.url()).searchParams.has("city")) sawFilteredItemsRequest = true;
+  });
   await chart.click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
-  await page.waitForTimeout(300); // no debounce/refetch to await — just proving nothing fires
-  expect(sawItemsRequest).toBe(false);
+  await page.waitForTimeout(300); // no debounce/refetch to await — proving nothing fires
+
+  // Primary assertion: the table — a real consuming widget — still shows
+  // every original row (it never narrowed), not just "no request was seen".
+  await expect(page.getByRole("cell", { name: "Paris" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Lyon" })).toBeVisible();
+  expect(sawFilteredItemsRequest).toBe(false);
 });
