@@ -76,7 +76,7 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   const fmt = valueFormatter(props);
 
   const base: Record<string, unknown> = {
-    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" ? "item" : "axis" },
+    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" || type === "sankey" ? "item" : "axis" },
     legend: { show: props.legend ?? true },
   };
   if (props.title) base.title = { text: props.title };
@@ -161,6 +161,23 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
       yAxis,
       series: [{ type: "bar", name: "Effectif", data: counts }],
     });
+  }
+
+  if (type === "sankey") {
+    const sourceField = props.encodings?.source ?? "";
+    const targetField = props.encodings?.target ?? "";
+    const valueKey = props.encodings?.value || seriesKeys.find((k) => k !== sourceField && k !== targetField) || "";
+    const sourceNames = new Set(rows.map((row) => String(row[sourceField] ?? "")));
+    const allNames = new Set<string>();
+    rows.forEach((row) => {
+      allNames.add(String(row[sourceField] ?? ""));
+      allNames.add(String(row[targetField] ?? ""));
+    });
+    const nodes = [...allNames].map((name) => ({ name, _role: sourceNames.has(name) ? "source" : "target" }));
+    const links = rows.map((row) => ({
+      source: String(row[sourceField] ?? ""), target: String(row[targetField] ?? ""), value: num(row[valueKey]),
+    }));
+    return finalize(props, { ...base, series: [{ type: "sankey", data: nodes, links }] });
   }
 
   // bar | line | area | scatter — dataset + encode, one series per column.
