@@ -1336,7 +1336,21 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   page.on("request", (r) => {
     if (r.url().includes("/collections/pops/items") && new URL(r.url()).searchParams.has("city")) sawFilteredItemsRequest = true;
   });
-  await chart.click({ position: { x: box.width * 0.5, y: box.height * 0.5 } });
+  // Click position verified empirically (not assumed), same technique as the
+  // funnel scenario above: rendered this exact 2-bucket histogram (counts 3
+  // and 7) in a real browser and sampled canvas pixels on a grid to map the
+  // two bars. ECharts only dispatches its "click" event when the click lands
+  // on an actual graphic element — a click on blank canvas never fires it at
+  // all, which would make this test pass vacuously regardless of whether the
+  // histogram guard in resolveClickFilter is correct. The naive geometric
+  // center (x:0.5, y:0.5) actually lands in the empty gap BETWEEN the two
+  // bars (confirmed by sampling: at y:0.5 the solid-fill pixels stop around
+  // x:0.47 and resume around x:0.57) — it would never have exercised the
+  // click handler at all. The second bucket's bar (count=7, the taller one)
+  // renders as a solid fill from x:0.59–0.88 / y:0.40–0.50 of the canvas box,
+  // a comfortable margin; x:0.72/y:0.45 sits well inside it.
+  const secondBar = { x: box.width * 0.72, y: box.height * 0.45 };
+  await chart.click({ position: secondBar });
   await page.waitForTimeout(300); // no debounce/refetch to await — proving nothing fires
 
   // Primary assertion: the table — a real consuming widget — still shows
