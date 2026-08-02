@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { DataSource } from "../api/types";
@@ -91,4 +91,24 @@ test("promoting a features source calls onPromote and then shows it as shared", 
   );
   expect(screen.getByText("Dataset partagé actif")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" })).not.toBeInTheDocument();
+});
+
+test("a comma-separated group-by becomes a string array; a single field stays a string", async () => {
+  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const onChange = vi.fn();
+  const { rerender } = render(<DataSourcePanel sources={sources} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Grouper par (source d1)"), { target: { value: "origin,destination" } });
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.groupBy).toEqual(["origin", "destination"]);
+
+  const withArray: DataSource[] = [{ ...sources[0], query: { groupBy: ["origin", "destination"] } }];
+  rerender(<DataSourcePanel sources={withArray} onChange={onChange} />);
+  expect(screen.getByLabelText("Grouper par (source d1)")).toHaveValue("origin,destination");
+});
+
+test("edits the histogram bin count on a statistics source", async () => {
+  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={sources} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Nombre de classes (source d1)"), "8");
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.bins).toBe(8);
 });

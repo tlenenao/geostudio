@@ -6,7 +6,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useAnalyticsContext, useSetCrossFilter } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { bucketFor, referenceWindow, windowedStatisticsSource, type ReferenceMode } from "../../lib/comparisonWindow";
-import { buildOption, buildCompareOption, type ChartProps, type ComparePoint } from "./chartOption";
+import { buildOption, buildCompareOption, resolveClickFilter, type ChartProps, type ClickParams, type ComparePoint } from "./chartOption";
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 
@@ -16,6 +16,8 @@ const CHART_TYPES: [string, string][] = [
   ["bar", "Barres"], ["line", "Lignes"], ["area", "Aires"], ["scatter", "Nuage de points"],
   ["pie", "Camembert"], ["doughnut", "Anneau"], ["radar", "Radar"], ["heatmap", "Carte de chaleur"],
   ["gauge", "Jauge"], ["boxplot", "Boîte à moustaches"],
+  ["sankey", "Flux (sankey)"], ["treemap", "Zones hiérarchiques (treemap)"],
+  ["sunburst", "Soleil hiérarchique (sunburst)"], ["funnel", "Entonnoir"], ["histogram", "Histogramme"],
 ];
 const AXIS_TYPES: [string, string][] = [
   ["category", "Catégorie"], ["value", "Valeur"], ["time", "Temps"], ["log", "Logarithmique"],
@@ -44,6 +46,12 @@ export function registerChartWidget(): void {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       const chartType = String(props.chartType ?? "bar");
       const showCompare = chartType === "line" || chartType === "area";
+      const showCategoryValue = chartType !== "sankey" && chartType !== "treemap" && chartType !== "sunburst";
+      const showSankeyEncodings = chartType === "sankey";
+      const showHierarchyEncodings = chartType === "treemap" || chartType === "sunburst";
+      const encodings = (props.encodings as ChartProps["encodings"]) ?? {};
+      const setEncodings = (patch: Record<string, unknown>) => set({ encodings: { ...encodings, ...patch } });
+      const levels = encodings.levels ?? [];
       return (
         <div className="flex flex-col gap-2 text-sm">
           <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
@@ -54,14 +62,49 @@ export function registerChartWidget(): void {
               {CHART_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
-          <label className={labelCls}>Champ catégorie / X
-            <input aria-label="Champ catégorie" className={inputCls}
-              value={String(props.categoryField ?? "")} onChange={(e) => set({ categoryField: e.target.value })} />
-          </label>
-          <label className={labelCls}>Champ valeur (camembert / jauge / comparaison)
-            <input aria-label="Champ valeur" className={inputCls}
-              value={String(props.valueField ?? "")} onChange={(e) => set({ valueField: e.target.value })} />
-          </label>
+          {showCategoryValue && (
+            <>
+              <label className={labelCls}>Champ catégorie / X
+                <input aria-label="Champ catégorie" className={inputCls}
+                  value={String(props.categoryField ?? "")} onChange={(e) => set({ categoryField: e.target.value })} />
+              </label>
+              <label className={labelCls}>Champ valeur (camembert / jauge / comparaison)
+                <input aria-label="Champ valeur" className={inputCls}
+                  value={String(props.valueField ?? "")} onChange={(e) => set({ valueField: e.target.value })} />
+              </label>
+            </>
+          )}
+          {showSankeyEncodings && (
+            <>
+              <label className={labelCls}>Champ source
+                <input aria-label="Champ source" className={inputCls}
+                  value={String(encodings.source ?? "")} onChange={(e) => setEncodings({ source: e.target.value })} />
+              </label>
+              <label className={labelCls}>Champ cible
+                <input aria-label="Champ cible" className={inputCls}
+                  value={String(encodings.target ?? "")} onChange={(e) => setEncodings({ target: e.target.value })} />
+              </label>
+            </>
+          )}
+          {showHierarchyEncodings && (
+            <div className={labelCls}>
+              <span>Niveaux (hiérarchie)</span>
+              {levels.map((lvl, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <input aria-label={`Niveau ${i + 1}`} className={inputCls}
+                    value={lvl} onChange={(e) => setEncodings({ levels: levels.map((l, j) => (j === i ? e.target.value : l)) })} />
+                  <button type="button" aria-label={`Retirer le niveau ${i + 1}`} className="text-xs text-red-600"
+                    onClick={() => setEncodings({ levels: levels.filter((_, j) => j !== i) })}>✕</button>
+                </div>
+              ))}
+              {levels.length < 3 && (
+                <button type="button" className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  onClick={() => setEncodings({ levels: [...levels, ""] })}>
+                  + Niveau
+                </button>
+              )}
+            </div>
+          )}
           {showCompare && (
             <>
               <label className="flex items-center gap-2">
@@ -196,12 +239,11 @@ export function registerChartWidget(): void {
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);
-      const categoryField = String(props.categoryField ?? "");
-      function handleClick(params: { name?: string }) {
-        if (!categoryField) return;
-        const value = params.name != null ? String(params.name) : "";
-        ctx.bus?.emit(ctx.widgetId ?? "", "categorySelected", { [categoryField]: value });
-        if (data?.datasetId) setCrossFilter(data.datasetId, categoryField, value, originSourceId);
+      function handleClick(params: ClickParams) {
+        const resolved = resolveClickFilter(chartType, props as unknown as ChartProps, params);
+        if (!resolved) return;
+        ctx.bus?.emit(ctx.widgetId ?? "", "categorySelected", { [resolved.field]: resolved.value });
+        if (data?.datasetId) setCrossFilter(data.datasetId, resolved.field, resolved.value, originSourceId);
       }
       return (
         <div className="relative h-full">

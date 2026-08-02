@@ -37,7 +37,7 @@ type StatMeasure = { field?: string; agg: string; label?: string };
 // supprimée par cette migration (groupBy/split/agg/field/measures), plus
 // toute autre clé de query non reconnue traitée comme un filtre attributaire
 // (même convention que buildFeaturesUrl pour une source "features").
-const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket"]);
+const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket", "bins"]);
 
 function parseBboxQueryValue(value: unknown): [number, number, number, number] | undefined {
   if (typeof value !== "string" || !value) return undefined;
@@ -48,11 +48,13 @@ function parseBboxQueryValue(value: unknown): [number, number, number, number] |
 
 function buildAggregateBody(query: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
-  if (query.groupBy) body.groupBy = String(query.groupBy);
+  if (Array.isArray(query.groupBy)) body.groupBy = query.groupBy.map(String);
+  else if (query.groupBy) body.groupBy = String(query.groupBy);
   if (query.split) body.split = String(query.split);
   if (query.agg) body.agg = String(query.agg);
   if (query.field) body.field = String(query.field);
   if (query.bucket) body.bucket = String(query.bucket);
+  if (query.bins) body.bins = Number(query.bins);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
       field: m.field || undefined, agg: m.agg, label: m.label || undefined,
@@ -70,6 +72,14 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   }
   if (Object.keys(filters).length) body.filters = filters;
   return body;
+}
+
+// Multi-field groupBy responses carry no single categorical key — this joins
+// the group columns' values into a stable per-row id (single-field case
+// unchanged: same as `String(row[categoryKey])` today).
+function statRowId(row: Record<string, unknown>, categoryKey: string | string[]): string {
+  if (Array.isArray(categoryKey)) return categoryKey.map((k) => String(row[k] ?? "")).join("|");
+  return String(row[categoryKey] ?? "");
 }
 
 export class FeatureValidationError extends Error {
@@ -626,10 +636,10 @@ export function createItemClient(opts: {
       }
       if (resolved.type === "statistics") {
         const body = buildAggregateBody(resolved.query);
-        const data = await request<{ categoryKey: string; rows: Record<string, unknown>[] }>(
+        const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
           "POST", `/collections/${resolved.layer}/aggregate`, body,
         );
-        return data.rows.map((row) => ({ id: String(row[data.categoryKey] ?? ""), properties: row }));
+        return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       const token = getToken();
       const res = await fetch(buildFeaturesUrl(coreUrl, resolved), {

@@ -1,329 +1,118 @@
-### Task 6: E2E — extend `analytics-context.spec.ts`
+### Task 6: Shell — `chartOption.ts`: `encodings`/`bins` types, funnel and histogram
 
 **Files:**
-- Modify: `shell/e2e/analytics-context.spec.ts`
+- Modify: `shell/src/builder/widgets/chartOption.ts:6-20` (`ChartProps`), `shell/src/builder/widgets/chartOption.ts:127-151` (add branches before the fallback bar/line/area/scatter block)
+- Test: `shell/src/builder/widgets/chartOption.test.ts`
 
 **Interfaces:**
-- Consumes: `mockCore` (`shell/e2e/mocks.ts`), the existing `createApp`/`addFeaturesSource`/`promoteLastSource` helpers already in the file (unchanged).
-- Produces: no new exports — pure E2E coverage addition.
+- Produces: `ChartProps.encodings?: { source?: string; target?: string; levels?: string[]; value?: string }` and `ChartProps.bins?: number`. `buildOption` handles `chartType === "funnel"` (reuses `categoryField`/`valueField`) and `chartType === "histogram"` (reads `bucketStart`/`bucketEnd`/`count` off each row — the shape `_run_binned_histogram` (Task 3) produces).
 
-- [ ] **Step 1: Write the new E2E scenarios**
+- [ ] **Step 1: Write the failing tests**
 
-Append to `shell/e2e/analytics-context.spec.ts` (after the last existing test, scenario 11):
+Append to `shell/src/builder/widgets/chartOption.test.ts`:
 
 ```ts
-// -------------------------------------------------------------------------
-// Scénario 12 (SP-14e) — KPI riche : delta affiché contre la période de
-// référence quand referencePeriod + plage temporelle + dataset.timeField
-// sont tous actifs.
-// -------------------------------------------------------------------------
-test("a KPI shows a delta badge against the reference period", async ({ page }) => {
-  await mockCore(page);
+const histogramRows: DataRecord[] = [
+  { id: "0", properties: { bucketIndex: 0, bucketStart: 0, bucketEnd: 5, count: 3 } },
+  { id: "2", properties: { bucketIndex: 2, bucketStart: 10, bucketEnd: 15, count: 7 } },
+];
 
-  let savedDataset: Record<string, unknown> = {};
-
-  await page.route("**/collections", async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: { collections: [{ id: "events", title: "Événements", description: "", tableName: "events", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 2, owner: "mockuser" }] },
-    });
-  });
-  await page.route("**/collections/events/schema", async (route) => {
-    await route.fulfill({
-      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }] },
-    });
-  });
-  await page.route("**/collections/events/items*", async (route) => {
-    await route.fulfill({ json: { type: "FeatureCollection", features: [
-      { id: 1, properties: { nom: "A", date: "2026-01-10" } }, { id: 2, properties: { nom: "B", date: "2026-01-20" } },
-    ] } });
-  });
-  await page.route("**/collections/events/aggregate", async (route) => {
-    const body = await route.request().postDataJSON();
-    const gte = body.filters?.date__gte;
-    if (gte === "2026-01-01") return route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: 120 }] } });
-    if (gte === "2025-12-01") return route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: 100 }] } });
-    await route.fulfill({ json: { categoryKey: "group", rows: [] } });
-  });
-  await page.route("**/configs/by-item/dataset-1", async (route) => {
-    if (route.request().method() === "PUT") {
-      savedDataset = (await route.request().postDataJSON()).dataset;
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: savedDataset } });
-      return;
-    }
-    await route.fulfill({
-      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "events", columns: {}, ...savedDataset } } },
-    });
-  });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Événements partagés", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
-    });
-  });
-
-  await page.goto("/");
-  await page.getByRole("button", { name: "Nouveau" }).click();
-  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
-  await dialog.getByLabel("Type").selectOption("dataset");
-  await dialog.getByLabel("Collection source").selectOption("events");
-  await dialog.getByLabel("Titre").fill("Événements partagés");
-  await dialog.getByRole("button", { name: "Créer" }).click();
-  await expect(page).toHaveURL(/\/datasets\/dataset-1\/edit$/);
-  await page.getByLabel("Colonne temporelle").selectOption("date");
-  await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();
-
-  await createApp(page, "KPI delta");
-  await addFeaturesSource(page, "events");
-  await promoteLastSource(page, 1);
-
-  await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Indicateur" }).click();
-  await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByLabel("Comparer à").selectOption("previous");
-
-  await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
-
-  await page.goto("/apps/9");
-  await page.getByLabel("Date de début").fill("2026-01-01");
-  await page.getByLabel("Date de fin").fill("2026-02-01");
-
-  await expect(page.getByText("120")).toBeVisible();
-  await expect(page.getByText(/\+20 % vs période précédente/)).toBeVisible();
+test("funnel builds one funnel series from category/value fields", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("funnel");
+  expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
 });
 
-// -------------------------------------------------------------------------
-// Scénario 13 (SP-14e) — seuil CEL : une pastille critique apparaît quand
-// criticalWhen dépasse le seuil, absente sinon (indicateur à plat, sans
-// contexte temporel).
-// -------------------------------------------------------------------------
-test("a KPI shows a critical pastille when criticalWhen is exceeded, none otherwise", async ({ page }) => {
-  await mockCore(page);
-
-  await page.route("**/collections/analytics/schema", async (route) => {
-    await route.fulfill({ json: { collection: "analytics", pk: "id", geometry: null, fields: [{ name: "valeur", type: "number" }] } });
-  });
-  await page.route("**/collections/analytics/items*", async (route) => {
-    await route.fulfill({ json: { type: "FeatureCollection", features: [
-      { id: 1, properties: { valeur: 1 } }, { id: 2, properties: { valeur: 1 } }, { id: 3, properties: { valeur: 1 } },
-    ] } });
-  });
-  await page.route("**/configs/by-item/dataset-1", async (route) => {
-    await route.fulfill({
-      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "analytics", columns: {}, timeField: null, reactsToExtent: false } } },
-    });
-  });
-
-  await createApp(page, "Seuil CEL");
-  await addFeaturesSource(page, "analytics");
-  await promoteLastSource(page, 1);
-
-  await page.getByRole("button", { name: "Indicateur" }).click();
-  await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByLabel("Seuil critique (CEL)").fill("record.value > 2");
-
-  await page.getByRole("button", { name: "Enregistrer" }).click();
-
-  await page.goto("/apps/9");
-  await expect(page.getByText("3")).toBeVisible();
-  await expect(page.getByLabelText("Seuil critique atteint")).toBeVisible();
-});
-
-// -------------------------------------------------------------------------
-// Scénario 14 (SP-14e) — chart en mode comparaison : 2 séries visibles
-// (attribut data-chart-series du wrapper EChart, seul signal DOM fiable
-// pour une légende rendue en canvas).
-// -------------------------------------------------------------------------
-test("chart compare-periods mode renders two aligned series", async ({ page }) => {
-  await mockCore(page);
-
-  let savedDataset: Record<string, unknown> = {};
-
-  await page.route("**/collections", async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: { collections: [{ id: "events", title: "Événements", description: "", tableName: "events", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 2, owner: "mockuser" }] },
-    });
-  });
-  await page.route("**/collections/events/schema", async (route) => {
-    await route.fulfill({
-      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }] },
-    });
-  });
-  await page.route("**/collections/events/items*", async (route) => {
-    await route.fulfill({ json: { type: "FeatureCollection", features: [
-      { id: 1, properties: { nom: "A", date: "2026-01-01" } }, { id: 2, properties: { nom: "B", date: "2026-01-02" } },
-    ] } });
-  });
-  await page.route("**/collections/events/aggregate", async (route) => {
-    const body = await route.request().postDataJSON();
-    const gte = body.filters?.date__gte;
-    if (gte === "2026-01-01") {
-      return route.fulfill({ json: { categoryKey: "date", rows: [
-        { date: "2026-01-01 00:00:00", value: 5 }, { date: "2026-01-02 00:00:00", value: 7 },
-      ] } });
-    }
-    if (gte === "2025-12-31") {
-      return route.fulfill({ json: { categoryKey: "date", rows: [{ date: "2025-12-31 00:00:00", value: 3 }] } });
-    }
-    await route.fulfill({ json: { categoryKey: "date", rows: [] } });
-  });
-  await page.route("**/configs/by-item/dataset-1", async (route) => {
-    if (route.request().method() === "PUT") {
-      savedDataset = (await route.request().postDataJSON()).dataset;
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: savedDataset } });
-      return;
-    }
-    await route.fulfill({
-      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "events", columns: {}, ...savedDataset } } },
-    });
-  });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Événements partagés", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
-    });
-  });
-
-  await page.goto("/");
-  await page.getByRole("button", { name: "Nouveau" }).click();
-  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
-  await dialog.getByLabel("Type").selectOption("dataset");
-  await dialog.getByLabel("Collection source").selectOption("events");
-  await dialog.getByLabel("Titre").fill("Événements partagés");
-  await dialog.getByRole("button", { name: "Créer" }).click();
-  await expect(page).toHaveURL(/\/datasets\/dataset-1\/edit$/);
-  await page.getByLabel("Colonne temporelle").selectOption("date");
-  await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();
-
-  await createApp(page, "Chart compare");
-  await addFeaturesSource(page, "events");
-  await promoteLastSource(page, 1);
-
-  await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Graphique" }).click();
-  await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByLabel("Type de graphique").selectOption("line");
-  await page.getByLabel("Comparer les périodes").check();
-
-  await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
-
-  await page.goto("/apps/9");
-  await page.getByLabel("Date de début").fill("2026-01-01");
-  await page.getByLabel("Date de fin").fill("2026-01-02");
-
-  await expect(page.getByTestId("echart")).toHaveAttribute("data-chart-series", "2", { timeout: 10000 });
-});
-
-// -------------------------------------------------------------------------
-// Scénario 15 (SP-14e) — non-régression explicite : indicateur/graphique
-// sans les nouvelles props se comportent exactement comme avant, y compris
-// avec une plage temporelle active.
-// -------------------------------------------------------------------------
-test("indicator and chart behave exactly as before without the new SP-14e props, even with an active time range", async ({ page }) => {
-  await mockCore(page);
-
-  let savedDataset: Record<string, unknown> = {};
-
-  await page.route("**/collections", async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: { collections: [{ id: "events", title: "Événements", description: "", tableName: "events", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 2, owner: "mockuser" }] },
-    });
-  });
-  await page.route("**/collections/events/schema", async (route) => {
-    await route.fulfill({
-      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }] },
-    });
-  });
-  await page.route("**/collections/events/items*", async (route) => {
-    await route.fulfill({ json: { type: "FeatureCollection", features: [
-      { id: 1, properties: { nom: "A", date: "2026-01-05" } }, { id: 2, properties: { nom: "B", date: "2026-01-20" } },
-    ] } });
-  });
-  await page.route("**/collections/events/aggregate", async (route) => {
-    await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: 2 }] } });
-  });
-  await page.route("**/configs/by-item/dataset-1", async (route) => {
-    if (route.request().method() === "PUT") {
-      savedDataset = (await route.request().postDataJSON()).dataset;
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: savedDataset } });
-      return;
-    }
-    await route.fulfill({
-      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "events", columns: {}, ...savedDataset } } },
-    });
-  });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Événements partagés", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
-    });
-  });
-
-  await page.goto("/");
-  await page.getByRole("button", { name: "Nouveau" }).click();
-  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
-  await dialog.getByLabel("Type").selectOption("dataset");
-  await dialog.getByLabel("Collection source").selectOption("events");
-  await dialog.getByLabel("Titre").fill("Événements partagés");
-  await dialog.getByRole("button", { name: "Créer" }).click();
-  await expect(page).toHaveURL(/\/datasets\/dataset-1\/edit$/);
-  await page.getByLabel("Colonne temporelle").selectOption("date");
-  await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();
-
-  await createApp(page, "Non-régression KPI/Chart");
-  await addFeaturesSource(page, "events");
-  await promoteLastSource(page, 1);
-
-  await page.getByRole("button", { name: "Plage de dates" }).click();
-  await page.getByRole("button", { name: "Indicateur" }).click();
-  await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Graphique" }).click();
-  await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByLabel("Type de graphique").selectOption("line");
-
-  await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
-
-  await page.goto("/apps/9");
-  await page.getByLabel("Date de début").fill("2026-01-01");
-  await page.getByLabel("Date de fin").fill("2026-02-01");
-
-  await expect(page.getByText("2")).toBeVisible();
-  await expect(page.getByTestId("echart")).toHaveAttribute("data-chart-series", "1");
+test("histogram renders one bar series labeled by bucket bounds", () => {
+  const opt = buildOption({ chartType: "histogram" }, histogramRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("bar");
+  expect(series(opt)[0].data).toEqual([3, 7]);
+  expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["0–5", "10–15"]);
 });
 ```
 
-- [ ] **Step 2: Run the new scenarios**
+- [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd shell && VITE_AUTH_MODE=mock npx playwright test e2e/analytics-context.spec.ts -g "SP-14e|KPI|compare-periods|behave exactly as before without the new SP-14e"`
-Expected: PASS (scenarios 12-15)
+Run: `cd shell && npx vitest run src/builder/widgets/chartOption.test.ts -t "funnel|histogram"`
+Expected: FAIL (unknown chart types fall through to the default bar/line branch, wrong shape)
 
-- [ ] **Step 3: Run the full E2E suite for non-regression**
+- [ ] **Step 3: Implement**
 
-Run: `cd shell && npm run e2e`
-Expected: PASS — all 18+ specs (including the full `analytics-context.spec.ts`, now 15 scenarios) stay green.
+In `shell/src/builder/widgets/chartOption.ts`, replace the `ChartProps` type (lines 6-20):
 
-- [ ] **Step 4: Commit**
+```ts
+export type ChartProps = {
+  dataSourceId?: string;
+  chartType?: string; // bar|line|area|scatter|pie|doughnut|radar|heatmap|gauge|boxplot|sankey|treemap|sunburst|funnel|histogram
+  categoryField?: string;
+  valueField?: string; // measure key for pie/gauge/funnel/histogram (defaults to first series)
+  stack?: boolean;
+  legend?: boolean;
+  zoom?: boolean;
+  xAxisType?: string; // category|value|time|log
+  yAxisType?: string; // value|log|category
+  yAxisFormat?: string; // any non-empty value → grouped number formatting
+  yAxisUnit?: string;
+  title?: string;
+  advancedOption?: string; // raw ECharts option JSON, deep-merged last
+  // Field-role mapping used only by sankey and treemap/sunburst — every
+  // other chart type keeps categoryField/valueField (SP-14f §3).
+  encodings?: { source?: string; target?: string; levels?: string[]; value?: string };
+  bins?: number; // histogram bin count, default 10
+};
+```
+
+Add a small formatting helper right after `valueFormatter` (after line 59):
+
+```ts
+function round2(n: number): string {
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(n);
+}
+```
+
+In `buildOption`, insert two new branches right before the `// bar | line | area | scatter` fallback comment (before line 136):
+
+```ts
+  if (type === "funnel") {
+    const valueKey = props.valueField || seriesKeys[0] || "";
+    return finalize(props, {
+      ...base,
+      series: [{
+        type: "funnel",
+        data: rows.map((row) => ({ name: String(row[catKey] ?? ""), value: num(row[valueKey]) })),
+      }],
+    });
+  }
+
+  if (type === "histogram") {
+    const labels = rows.map((row) => `${round2(Number(row.bucketStart))}–${round2(Number(row.bucketEnd))}`);
+    const counts = rows.map((row) => num(row.count));
+    return finalize(props, {
+      ...base,
+      xAxis: { type: "category", data: labels },
+      yAxis,
+      series: [{ type: "bar", name: "Effectif", data: counts }],
+    });
+  }
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/widgets/chartOption.test.ts`
+Expected: PASS — new tests plus full existing file green.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add shell/e2e/analytics-context.spec.ts
-git commit -m "test(e2e): cover KPI delta, CEL threshold pastille, chart compare-periods, non-regression (SP-14e)"
+git add shell/src/builder/widgets/chartOption.ts shell/src/builder/widgets/chartOption.test.ts
+git commit -m "feat(shell): chartOption gains funnel and server-binned histogram (SP-14f)"
 ```
 
 ---
 
-## Final verification
-
-- [ ] Run the complete cross-stack suite one more time before declaring the branch done:
-
-```bash
-cd core && uv run pytest
-cd ../shell && npm run test && npm run build && npm run e2e
-```
-
-Expected: all green — 606+4 core tests, 61+ shell unit test files, `tsc --noEmit` + `vite build` clean, 18+ E2E specs (15 scenarios in `analytics-context.spec.ts`).

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { buildCompareOption, buildOption } from "./chartOption";
+import { buildCompareOption, buildOption, resolveClickFilter } from "./chartOption";
 import type { DataRecord } from "../../api/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,4 +124,136 @@ test("buildCompareOption applies the yAxisUnit/yAxisFormat formatter like buildO
   const opt = buildCompareOption({ chartType: "line", yAxisUnit: "kg" }, [{ bucket: "d", value: 1 }], [], "day");
   const formatter = (opt as { yAxis?: { axisLabel?: { formatter?: (v: unknown) => string } } }).yAxis?.axisLabel?.formatter;
   expect(formatter?.(5)).toBe("5 kg");
+});
+
+const histogramRows: DataRecord[] = [
+  { id: "0", properties: { bucketIndex: 0, bucketStart: 0, bucketEnd: 5, count: 3 } },
+  { id: "2", properties: { bucketIndex: 2, bucketStart: 10, bucketEnd: 15, count: 7 } },
+];
+
+test("funnel builds one funnel series from category/value fields", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("funnel");
+  expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
+});
+
+test("funnel uses an item tooltip trigger, not axis", () => {
+  const funnelRows: DataRecord[] = [
+    { id: "1", properties: { stage: "Visite", value: 100 } },
+    { id: "2", properties: { stage: "Panier", value: 40 } },
+  ];
+  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  expect((opt as { tooltip?: { trigger?: string } }).tooltip?.trigger).toBe("item");
+});
+
+test("histogram renders one bar series labeled by bucket bounds", () => {
+  const opt = buildOption({ chartType: "histogram" }, histogramRows);
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("bar");
+  expect(series(opt)[0].data).toEqual([3, 7]);
+  expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["0–5", "10–15"]);
+});
+
+const flows: DataRecord[] = [
+  { id: "1", properties: { origin: "Paris", destination: "Lyon", value: 10 } },
+  { id: "2", properties: { origin: "Paris", destination: "Marseille", value: 5 } },
+  { id: "3", properties: { origin: "Lyon", destination: "Marseille", value: 3 } }, // "Lyon" is both a destination and an origin
+];
+
+test("sankey builds nodes (tagged by role) and links from source/target/value encodings", () => {
+  const opt = buildOption(
+    { chartType: "sankey", encodings: { source: "origin", target: "destination", value: "value" } }, flows,
+  );
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("sankey");
+  expect(series(opt)[0].links).toEqual([
+    { source: "Paris", target: "Lyon", value: 10 },
+    { source: "Paris", target: "Marseille", value: 5 },
+    { source: "Lyon", target: "Marseille", value: 3 },
+  ]);
+  const nodesByName = Object.fromEntries(series(opt)[0].data.map((n: { name: string; _role: string }) => [n.name, n._role]));
+  expect(nodesByName.Paris).toBe("source");
+  expect(nodesByName.Marseille).toBe("target");
+  // Lyon is both a target (row 1) and a source (row 3) — source wins (documented tie-break).
+  expect(nodesByName.Lyon).toBe("source");
+});
+
+const sales: DataRecord[] = [
+  { id: "1", properties: { region: "Nord", city: "Lille", value: 10 } },
+  { id: "2", properties: { region: "Nord", city: "Reims", value: 5 } },
+  { id: "3", properties: { region: "Sud", city: "Nice", value: 7 } },
+];
+
+test("treemap builds a hierarchy from levels, summing values bottom-up", () => {
+  const opt = buildOption(
+    { chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, sales,
+  );
+  expect(series(opt)).toHaveLength(1);
+  expect(series(opt)[0].type).toBe("treemap");
+  const tree = series(opt)[0].data as { name: string; value: number; children?: { name: string; value: number }[] }[];
+  const nord = tree.find((n) => n.name === "Nord")!;
+  expect(nord.value).toBe(15);
+  expect(nord.children).toEqual([{ name: "Lille", value: 10 }, { name: "Reims", value: 5 }]);
+  const sud = tree.find((n) => n.name === "Sud")!;
+  expect(sud.value).toBe(7);
+});
+
+test("sunburst uses the same hierarchy builder as treemap", () => {
+  const opt = buildOption({ chartType: "sunburst", encodings: { levels: ["region"], value: "value" } }, sales);
+  expect(series(opt)[0].type).toBe("sunburst");
+  const tree = series(opt)[0].data as { name: string; value: number }[];
+  expect(tree.find((n) => n.name === "Nord")?.value).toBe(15);
+});
+
+test("treemap groups missing intermediate-level values under a literal placeholder node", () => {
+  const withGap: DataRecord[] = [
+    { id: "1", properties: { region: "Nord", city: null, value: 4 } },
+    { id: "2", properties: { region: "Nord", city: "Lille", value: 6 } },
+  ];
+  const opt = buildOption({ chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, withGap);
+  const nord = (series(opt)[0].data as { name: string; children?: { name: string; value: number }[] }[]).find((n) => n.name === "Nord")!;
+  expect(nord.children).toEqual(expect.arrayContaining([{ name: "—", value: 4 }, { name: "Lille", value: 6 }]));
+});
+
+test("resolveClickFilter: default types (bar/pie/...) resolve categoryField, like today", () => {
+  expect(resolveClickFilter("bar", { categoryField: "region" }, { name: "Nord" })).toEqual({ field: "region", value: "Nord" });
+  expect(resolveClickFilter("bar", {}, { name: "Nord" })).toBeNull(); // no categoryField → no filter, unchanged
+});
+
+test("resolveClickFilter: default types resolve an empty-string value when name is missing, matching today's chart.tsx behavior (not a null bail-out)", () => {
+  expect(resolveClickFilter("bar", { categoryField: "region" }, {})).toEqual({ field: "region", value: "" });
+  expect(resolveClickFilter("pie", { categoryField: "stage" }, {})).toEqual({ field: "stage", value: "" });
+  expect(resolveClickFilter("line", { categoryField: "x" }, {})).toEqual({ field: "x", value: "" });
+});
+
+test("resolveClickFilter: funnel resolves categoryField same as pie/bar", () => {
+  expect(resolveClickFilter("funnel", { categoryField: "stage" }, { name: "Panier" })).toEqual({ field: "stage", value: "Panier" });
+});
+
+test("resolveClickFilter: histogram never resolves a filter", () => {
+  expect(resolveClickFilter("histogram", { categoryField: "x" }, { name: "0–5" })).toBeNull();
+});
+
+test("resolveClickFilter: treemap/sunburst resolve the deepest clicked level", () => {
+  const props = { chartType: "treemap", encodings: { levels: ["region", "city"] } };
+  // Clicking a leaf: treePathInfo has 2 entries (region, city) → depth 1 → levels[1] = "city".
+  expect(resolveClickFilter("treemap", props, { name: "Lille", treePathInfo: [{ name: "Nord" }, { name: "Lille" }] }))
+    .toEqual({ field: "city", value: "Lille" });
+  // Clicking a root: treePathInfo has 1 entry → depth 0 → levels[0] = "region".
+  expect(resolveClickFilter("treemap", props, { name: "Nord", treePathInfo: [{ name: "Nord" }] }))
+    .toEqual({ field: "region", value: "Nord" });
+});
+
+test("resolveClickFilter: sankey resolves source or target depending on the clicked node's role, ignores edge clicks", () => {
+  const props = { chartType: "sankey", encodings: { source: "origin", target: "destination" } };
+  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Paris", data: { _role: "source" } }))
+    .toEqual({ field: "origin", value: "Paris" });
+  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Lyon", data: { _role: "target" } }))
+    .toEqual({ field: "destination", value: "Lyon" });
+  expect(resolveClickFilter("sankey", props, { dataType: "edge", name: "Paris" })).toBeNull();
 });

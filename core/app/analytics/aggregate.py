@@ -24,7 +24,7 @@ class AggregateMeasure(BaseModel):
 
 
 class AggregateRequestBody(BaseModel):
-    groupBy: str | None = None
+    groupBy: str | list[str] | None = None
     split: str | None = None
     agg: str = "count"
     field: str | None = None
@@ -32,6 +32,7 @@ class AggregateRequestBody(BaseModel):
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
     bucket: Literal["day", "week", "month"] | None = None
+    bins: int | None = None
 
 
 class UnknownAggregateField(Exception):
@@ -68,6 +69,12 @@ def _valid_column_names(table_info) -> set[str]:
     return names
 
 
+def _groupby_fields(request: AggregateRequestBody) -> list[str]:
+    if not request.groupBy:
+        return []
+    return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
+
+
 def _validate_fields(request: AggregateRequestBody, table_info) -> None:
     valid = _valid_column_names(table_info)
 
@@ -75,10 +82,17 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
         if name is not None and name not in valid:
             raise UnknownAggregateField(label, f"unknown field '{name}'")
 
-    if request.bucket is not None and not request.groupBy:
-        raise UnknownAggregateField("bucket", "bucket requires groupBy")
+    fields = _groupby_fields(request)
+    if len(fields) != len(set(fields)):
+        raise UnknownAggregateField("groupBy", "duplicate field in groupBy")
+    for f in fields:
+        check(f, "groupBy")
 
-    check(request.groupBy, "groupBy")
+    if request.bucket is not None and len(fields) != 1:
+        raise UnknownAggregateField("bucket", "bucket requires a single-field groupBy")
+    if request.split and len(fields) > 1:
+        raise UnknownAggregateField("split", "split cannot combine with a multi-field groupBy")
+
     check(request.split, "split")
     check(request.field, "field")
     for i, m in enumerate(request.measures or []):
@@ -88,6 +102,14 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
         check(field_name, f"filters.{raw_name}")
     if request.bbox is not None and not table_info.geometry_column:
         raise UnknownAggregateField("bbox", "collection has no geometry")
+
+    if request.bins is not None:
+        if request.field is None:
+            raise UnknownAggregateField("bins", "bins requires a field")
+        if fields:
+            raise UnknownAggregateField("bins", "bins cannot combine with groupBy")
+        if not (1 <= request.bins <= 100):
+            raise UnknownAggregateField("bins", "bins must be between 1 and 100")
 
 
 def _agg_expr(agg: str, field: str | None) -> str:
@@ -177,6 +199,54 @@ def _pivot_measures(sql_rows: list[dict], *, category_key: str, measures: list[A
     return out
 
 
+def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]) -> list[dict]:
+    out = []
+    for r in sql_rows:
+        row = {f: r[f] for f in fields}
+        for i, m in enumerate(measures):
+            row[_measure_label(m)] = r[f"m{i}"]
+        out.append(row)
+    return out
+
+
+def _run_binned_histogram(
+    conn, *, dedup_cte: str, where_sql: str, where_params: list, field: str, bins: int,
+) -> list[dict]:
+    field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    minmax_sql = f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
+    minmax_rows = _fetch_rows(conn, minmax_sql, where_params)
+    lo = minmax_rows[0]["lo"] if minmax_rows else None
+    hi = minmax_rows[0]["hi"] if minmax_rows else None
+    if lo is None or hi is None:
+        return []
+
+    not_null_clause = f"{field_expr} IS NOT NULL"
+    full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
+
+    if lo == hi:
+        sql = f"{dedup_cte} SELECT COUNT(*) AS __val FROM live {full_where}"
+        rows = _fetch_rows(conn, sql, where_params)
+        return [{"bucketIndex": 0, "bucketStart": lo, "bucketEnd": hi, "count": rows[0]["__val"]}]
+
+    width = (hi - lo) / bins
+    bucket_expr = f"LEAST(? - 1, CAST(FLOOR(({field_expr} - ?) / ?) AS INTEGER))"
+    sql = (
+        f"{dedup_cte} SELECT {bucket_expr} AS __bucket, COUNT(*) AS __val "
+        f"FROM live {full_where} GROUP BY __bucket ORDER BY __bucket"
+    )
+    params = [bins, lo, width, *where_params]
+    rows = _fetch_rows(conn, sql, params)
+    return [
+        {
+            "bucketIndex": int(r["__bucket"]),
+            "bucketStart": lo + r["__bucket"] * width,
+            "bucketEnd": lo + (r["__bucket"] + 1) * width,
+            "count": r["__val"],
+        }
+        for r in rows
+    ]
+
+
 def _dedup_cte(table_info, base_uri: str, tenant_id: str, collection_id: str) -> str:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     pk = _qi(table_info.pk_column)
@@ -202,8 +272,9 @@ def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
 
 def run_collection_aggregate(
     conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info, request: AggregateRequestBody,
-) -> tuple[str, list[dict]]:
-    category_key = request.groupBy or "group"
+) -> tuple[str | list[str], list[dict]]:
+    fields = _groupby_fields(request)
+    category_key: str | list[str] = fields if len(fields) > 1 else (fields[0] if fields else "group")
     _validate_fields(request, table_info)
 
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
@@ -211,10 +282,27 @@ def run_collection_aggregate(
 
     dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(request, table_info)
+
+    if request.bins is not None:
+        rows = _run_binned_histogram(
+            conn, dedup_cte=dedup_cte, where_sql=where_sql, where_params=where_params,
+            field=request.field, bins=request.bins,
+        )
+        return "bucketIndex", rows
+
+    if len(fields) > 1:
+        measures = _measures_for(request)
+        measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
+        group_cols = ", ".join(_qi(f) for f in fields)
+        sql = f"{dedup_cte} SELECT {group_cols}, {measure_cols} FROM live {where_sql} GROUP BY {group_cols}"
+        sql_rows = _fetch_rows(conn, sql, where_params)
+        return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
+
+    single_field = fields[0] if fields else None
     if request.bucket:
-        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
+        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
     else:
-        cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+        cat_expr = _qi(single_field) if single_field else "'Total'"
 
     if request.split:
         agg_sql = _agg_expr(request.agg, request.field)
@@ -223,10 +311,10 @@ def run_collection_aggregate(
             f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split"
         )
         sql_rows = _fetch_rows(conn, sql, where_params)
-        return category_key, _pivot_split(sql_rows, category_key=category_key)
+        return category_key, _pivot_split(sql_rows, category_key=str(category_key))
 
     measures = _measures_for(request)
     measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
     sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} GROUP BY __cat"
     sql_rows = _fetch_rows(conn, sql, where_params)
-    return category_key, _pivot_measures(sql_rows, category_key=category_key, measures=measures)
+    return category_key, _pivot_measures(sql_rows, category_key=str(category_key), measures=measures)

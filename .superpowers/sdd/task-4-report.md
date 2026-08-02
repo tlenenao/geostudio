@@ -1,296 +1,97 @@
-# Task 4 — indicator widget implementation report
+# Task 4 Report: Shell — `itemClient` passes `groupBy` arrays and `bins` through (SP-14f)
 
 ## Summary
 
-Implemented the complete Task 4 spec: enriched the `indicator` widget with three optional, independently-gated features:
-
-1. **Delta badge vs reference period** — computes `value - reference` and displays as percentage or absolute delta
-2. **Sparkline mini-chart** — renders a line chart of bucketed values over the time range
-3. **CEL threshold pastille** — displays a colored dot (red for critical, orange for warning) when expressions evaluate truthy
-
-All three features are strictly additive and backward-compatible — when their props are absent, the widget behaves exactly as before (passing existing tests unchanged).
-
-## TDD Evidence
-
-### RED step (failing tests)
-
-```
-Command: cd shell && npx vitest run src/builder/widgets/indicator.test.tsx
-
-Output (excerpt):
- ❯ src/builder/widgets/indicator.test.tsx (11 tests | 6 failed) 6250ms
-   ✓ indicator counts records by default (unchanged, no new props)
-   ✓ indicator sums a field when agg=sum (unchanged, no new props)
-   ✓ indicator uses the theme text/muted tokens
-   ✓ shows an explorer menu when bound to a dataset and interactions are auto
-   × does not show a delta badge without an active time range even if referencePeriod is set
-   × does not show a delta badge when the dataset has no timeField, even with an active time range
-   × shows a delta badge computed from the server value/reference when referencePeriod + timeRange + timeField are all active
-   × shows a sparkline mini-chart when sparkline is true and time context is active
-   × shows a critical pastille when criticalWhen evaluates truthy against the displayed value
-   × shows a warning pastille when only warningWhen evaluates truthy
-   × shows no pastille when threshold expressions are absent
-```
-
-**Why expected:** The old implementation didn't:
-- Accept `referencePeriod`, `sparkline`, `criticalWhen`, `warningWhen` props
-- Call `useQuery` to fetch dataset config or windowed statistics
-- Render delta badges, sparklines, or threshold pastilles
-
-### GREEN step (passing tests)
-
-```
-Command: cd shell && npx vitest run src/builder/widgets/indicator.test.tsx
-
-Output:
- ✓ src/builder/widgets/indicator.test.tsx (11 tests) 561ms
-   ✓ shows a sparkline mini-chart when sparkline is true and time context is active  327ms
-
- Test Files  1 passed (1)
-      Tests  11 passed (11)
-```
-
-All 11 tests pass:
-1. ✓ indicator counts records by default (unchanged, no new props)
-2. ✓ indicator sums a field when agg=sum (unchanged, no new props)
-3. ✓ indicator uses the theme text/muted tokens
-4. ✓ shows an explorer menu when bound to a dataset and interactions are auto
-5. ✓ does not show a delta badge without an active time range even if referencePeriod is set
-6. ✓ does not show a delta badge when the dataset has no timeField, even with an active time range
-7. ✓ shows a delta badge computed from the server value/reference when referencePeriod + timeRange + timeField are all active
-8. ✓ shows a sparkline mini-chart when sparkline is true and time context is active
-9. ✓ shows a critical pastille when criticalWhen evaluates truthy against the displayed value
-10. ✓ shows a warning pastille when only warningWhen evaluates truthy
-11. ✓ shows no pastille when threshold expressions are absent
-
-## Full Shell Unit Suite (non-regression)
-
-```
-Command: cd shell && npm run test
-
-Output:
- Test Files  100 passed (100)
-      Tests  720 passed (720)
-   Start at  19:29:36
-   Duration  36.94s
-```
-
-✓ All 720 tests pass across 100 test files — no regressions introduced.
-
-## Files Changed
-
-- `/home/lenen/projets/geostudio/shell/src/builder/widgets/indicator.test.tsx` — Full rewrite with 11 tests
-- `/home/lenen/projets/geostudio/shell/src/builder/widgets/indicator.tsx` — Full rewrite with enriched component
+Successfully implemented client-side plumbing in `shell/src/api/itemClient.ts` to support multi-field `groupBy` arrays and `bins` parameter forwarding to the core's `/collections/{id}/aggregate` endpoint. Added `statRowId` helper function to build stable composite row IDs when `categoryKey` is a multi-field array.
 
 ## Implementation Details
 
-### `useKpiComparison` hook
+### Files Modified
 
-Centralized all asynchronous data fetching for the three optional features:
+1. **`shell/src/api/itemClient.ts`**
+   - Updated `STAT_KEYS` (line 40) to include `"bins"`
+   - Enhanced `buildAggregateBody()` function (lines 49-75) to:
+     - Forward `query.groupBy` as a `string[]` when it's already an array (unchanged as `string` otherwise)
+     - Forward `query.bins` as a `number` in the POST body
+   - Added new `statRowId()` helper function (lines 77-82) that:
+     - Joins multi-field values with `"|"` for stable per-row ids when `categoryKey` is an array
+     - Returns unchanged single-field behavior: `String(row[categoryKey])`
+   - Updated `queryDataSource()` statistics branch (lines 639-643) to:
+     - Accept `categoryKey: string | string[]` from response
+     - Use `statRowId()` helper for building composite row IDs
 
-1. **Dataset lookup** (`useQuery` with `enabled: Boolean(wantsComparison && datasetId)`)
-   - Fetches `DatasetConfig` to read `timeField`
-   - Prerequisite for gating delta/sparkline eligibility
-   - Deduped against queries made by `DataContext`/`ExplorerDrawer` for the same dataset
+2. **`shell/src/api/itemClient.test.ts`**
+   - Added 3 new test cases after line 721:
+     - `queryDataSource sends an array groupBy as-is in the aggregate request body`
+     - `queryDataSource builds a composite id when categoryKey is a multi-field array`
+     - `queryDataSource sends a bins query key as body.bins, not as a filter`
 
-2. **Value query** (current time window, when `referencePeriod` is set)
-   - Calls `windowedStatisticsSource()` with current time range
-   - Gated by `active && referencePeriod`
+## Test Results
 
-3. **Reference query** (comparison time window, when `referencePeriod` is set)
-   - Calls `windowedStatisticsSource()` with past/previous range
-   - Gated by `active && referencePeriod && referenceRange`
+### Step 2 - Verify Failing Tests (RED)
 
-4. **Sparkline query** (time-bucketed series, when `sparkline` is true)
-   - Calls `windowedStatisticsSource()` with `groupBy` and `bucket` params
-   - Gated by `active && sparklineEnabled`
+```
+cd shell && npx vitest run src/api/itemClient.test.ts -t "groupBy|composite id|bins query"
 
-### Feature gating logic
+✗ queryDataSource sends an array groupBy as-is in the aggregate request body
+  → expected 'region,annee' to deeply equal [ 'region', 'annee' ]
 
-- **Delta badge** only renders when:
-  - User explicitly set `referencePeriod` prop, AND
-  - `ctx.timeRange` is active (non-null), AND
-  - Dataset has a `timeField`, AND
-  - Both value and reference queries resolved successfully
+✗ queryDataSource builds a composite id when categoryKey is a multi-field array
+  → expected [ { id: '', properties: { …(3) } } ] to deeply equal [ { id: 'Nord|2025', …(1) } ]
 
-- **Sparkline** only renders when:
-  - User explicitly set `sparkline: true` prop, AND
-  - `ctx.timeRange` is active, AND
-  - Dataset has a `timeField`, AND
-  - Sparkline query returned data
+✗ queryDataSource sends a bins query key as body.bins, not as a filter
+  → expected undefined to be 5 // Object.is equality
+```
 
-- **Threshold pastilles** only render when:
-  - User explicitly set `criticalWhen` or `warningWhen` expressions
-  - Evaluated via `evaluateExpression()` against `{ vars, user, record: { value, delta, deltaPct } }`
-  - Displays "Seuil critique atteint" (aria-label) for critical, "Seuil d'alerte atteint" for warning
+Expected failures confirmed: 3 failed, 83 skipped.
 
-### Props Panel additions
+### Step 4 - Verify Passing Tests (GREEN)
 
-Added 4 new input fields to the builder UI:
+```
+cd shell && npx vitest run src/api/itemClient.test.ts
 
-1. **Comparer à** (dropdown) — "Aucune" / "Période précédente" / "Même période l'an dernier"
-2. **Afficher un sparkline** (checkbox)
-3. **Seuil critique (CEL)** (text input)
-4. **Seuil d'alerte (CEL)** (text input)
+✓ src/api/itemClient.test.ts (86 tests) 681ms
 
-## Self-Review Findings
+Test Files  1 passed (1)
+Tests  86 passed (86)
+```
 
-✓ **Completeness** — All 11 tests implemented and passing; both files fully specified in brief; no shortcuts taken.
-
-✓ **Backward compatibility** — First 4 tests (unchanged behavior) pass without modification; existing code paths untouched.
-
-✓ **Gating logic correct** — Delta badge doesn't render without timeRange (test 5); doesn't render without timeField (test 6); renders correctly when all preconditions met (test 7). Similar rigorous gating for sparkline and pastilles.
-
-✓ **Query deduplication** — Dataset lookup uses `["dataset", datasetId]` key matching `DataContext` queries; TanStack Query handles dedup automatically.
-
-✓ **Rules of Hooks compliance** — All `useQuery` calls unconditional (declared at top level); gating happens via `enabled` flag, not conditional hook calls.
-
-✓ **Error handling** — Rendering falls back to "Erreur" when `data.error` true; loading state shows "Chargement…"; CEL evaluation errors logged but don't crash (existing `evaluateExpression` behavior).
-
-✓ **Internationalization** — All UI strings in French (labels, aria-labels, reference period names) per CLAUDE.md convention.
-
-✓ **Style consistency** — Uses existing theme tokens (`var(--gs-color-text)`, `var(--gs-color-muted)`); sparkline chart matches EChart registry setup in `/builder/EChart.tsx`; lazy loading of EChart via Suspense.
-
-✓ **Test quality** — Tests exercise real gating logic (not just existence checks); content-aware mocking for delta tests (keyed off query params, not call order); mock EChart provides data-points attribute for sparkline count verification.
-
-## Concerns
-
-**None.** Implementation matches brief exactly, all dependencies verified, all tests pass, non-regression clean.
+All tests pass, including:
+- The 3 new tests for multi-field groupBy, composite IDs, and bins parameter
+- All 83 existing tests remain green (no regressions)
 
 ## Commit
 
-**aa3be6d** — `feat(shell): indicator gets delta vs reference period, sparkline, CEL threshold pastille`
+**SHA:** `c59950d`
+**Message:** `feat(shell): itemClient forwards multi-field groupBy and bins to /aggregate (SP-14f)`
 
-## Fix: cache-key collision
+## Self-Review Findings
 
-### What was wrong
+### Correctness
 
-`useKpiComparison`'s three `useQuery` calls (`kpi-value`, `kpi-reference`,
-`kpi-sparkline`) keyed their cache entries on `datasetId`/`agg`/`field`/the
-raw time window only, then called `windowedStatisticsSource(...)` **inline
-inside `queryFn`**. `windowedStatisticsSource` merges in `derivePatch`'s
-cross-filter patch, whose outcome depends on the widget's own source id
-(`crossFilter.originSourceId !== source.id` in
-`shell/src/lib/analyticsPatch.ts` excludes a widget's own cross-filter from
-its own query). Since the widget's own id never entered the cache key, two
-`indicator` widgets bound to the same dataset/agg/field — one that
-originated a cross-filter and one that didn't — collided on an identical
-`queryKey` while actually needing different effective queries. Whichever
-widget's query resolved first would silently populate the shared cache
-entry for both.
+✓ **Multi-field groupBy forwarding:** `buildAggregateBody()` correctly detects array groupBy and forwards as-is via `map(String)`, maintaining single-field behavior when groupBy is a string.
 
-### Fix
+✓ **Bins parameter handling:** Added `bins` to STAT_KEYS to exclude it from filters, forwarded as `Number(query.bins)` in request body.
 
-Applied the same idiom already used in `shell/src/builder/DataContext.tsx:54-61`
-(`queryKey: ["datasource", s.id, merged.query]`): compute the resolved
-`DataSource` (via `windowedStatisticsSource`, which sets `id:
-originSourceId` and merges the `derivePatch` patch into `query`) **once per
-render**, store it as `valueSource` / `referenceSource` / `sparklineSource`
-(each `null` when its `enabled` condition doesn't hold), and:
+✓ **Composite row ID generation:** `statRowId()` correctly joins array category keys with `"|"` separator (e.g., `["region", "annee"]` → `"Nord|2025"`), and single-field keys work unchanged.
 
-- key each query on `[label, source?.id, source?.query]` instead of the raw
-  dataset/window/agg/field tuple
-- call `client.queryDataSource(source as DataSource)` in `queryFn`, reusing
-  the same object computed for the key (no more inline
-  `windowedStatisticsSource(...)` call inside `queryFn`)
+✓ **Type safety:** Updated response type annotation to `categoryKey: string | string[]` to reflect API contract.
 
-`enabled` semantics are unchanged: `valueQuery` still gates on `active &&
-referencePeriod`, `referenceQuery` on `active && referencePeriod &&
-referenceRange`, `sparklineQuery` on `active && sparklineEnabled` — only
-the key/fetch construction moved from "computed lazily inside `queryFn`,
-keyed on raw inputs" to "computed once, keyed on the resolved `DataSource`".
+### Test Coverage
 
-Also added `DataSource` to the `../../api/types` import (needed for the
-`Source | null` locals and the `queryFn` cast).
+✓ All three new tests verify distinct behaviors:
+1. Array groupBy transmitted unchanged in POST body
+2. Multi-field composite IDs built correctly with `"|"` delimiter
+3. `bins` parameter passed in body, not in URL filters
 
-No other code in the file changed — gating logic, render code, props
-panel, and hook signature are untouched.
+✓ No regressions: All 83 existing tests pass, confirming backward compatibility.
 
-### Verification
+### Code Quality
 
-1. `cd shell && npx vitest run src/builder/widgets/indicator.test.tsx` —
-   **11/11 passed** (all pre-existing gating/value/delta/sparkline/pastille
-   behavior unchanged).
-2. `cd shell && npm run test` — **100/100 test files, 720/720 tests
-   passed**, no regressions.
-3. `cd shell && npm run build` — `tsc --noEmit && vite build` completed
-   clean (no type errors from the new `DataSource` import/casts; build
-   output produced normally).
+✓ Implementation follows existing patterns in the file (parallel to `bbox` and `bucket` handling).
+✓ Comments added to `statRowId()` explain the multi-field vs. single-field logic.
+✓ Minimal scope: Changes are focused on the specific task, no unnecessary refactoring.
 
-### Commit
+## Concerns
 
-`fix(shell): key indicator KPI queries by resolved source, not just dataset/window (cache collision under cross-filter)`
-
-## Fix: cache-collision regression test
-
-### What was added
-
-The prior fix (commit `2646bbe`) was verified only by static reasoning — no
-test actually exercised the two-widget collision scenario. Added one new
-test to `shell/src/builder/widgets/indicator.test.tsx`, right after "shows a
-delta badge computed from the server value/reference…":
-
-`"two indicator widgets on the same dataset and metric do not collide on
-cache when a cross-filter singles one of them out"`
-
-Unlike the other tests in the file, this one does not use the
-`renderIndicator` helper (which creates a fresh `QueryClient` per call,
-which would hide any cache collision). Instead it renders two `indicator`
-widget instances directly under one shared `QueryClientProvider`/`QueryClient`
-and one shared `AnalyticsContextProvider`, both bound to `datasetId: "ds-1"`
-with identical `agg`/`field`/`referencePeriod`, but different
-`dataSourceId` (`"src-A"` vs `"src-B"`). The `AnalyticsContextProvider`'s
-`initialState.crossFilter` has an entry for `ds-1` with
-`originSourceId: "src-A"`, so `derivePatch` (`shell/src/lib/analyticsPatch.ts:31`)
-excludes the `region` filter for widget A's own queries (it originated the
-filter) but includes it for widget B's queries. A `queryDataSource` mock
-returns `value: 20` when the request carries no `region` filter and
-`value: 5` when it does, so the two widgets must display different numbers
-(`"20"` for A, `"5"` for B) if — and only if — their `useQuery` cache
-entries are actually isolated. `within(screen.getByTestId(...))` scopes each
-assertion to its own widget's DOM subtree. Added `within` to the
-`@testing-library/react` import (was previously only `render, screen,
-waitFor`); confirmed `state()` is a plain object-returning helper, safe to
-share as `ctx.data` between both widget instances (read-only, no mutation).
-
-### Confirmation it's a real regression test (pre-fix reasoning)
-
-Inspected the pre-fix hook via `git show aa3be6d:shell/src/builder/widgets/indicator.tsx`
-(read-only, working tree untouched). Pre-fix `valueQuery` used:
-
-```ts
-queryKey: ["kpi-value", datasetId, timeRange, agg, field]
-```
-
-For both widgets in the new test: `datasetId = "ds-1"`, `timeRange = {
-from: "2026-01-01", to: "2026-01-31" }` (same value, deep-equal — TanStack
-Query keys are compared structurally), `agg = "count"`, `field = undefined`.
-This key is identical for widget A and widget B — the widget's own id
-(`"src-A"`/`"src-B"`) never entered the key, only inputs shared by both
-widgets. With both queries `enabled` and keyed identically, TanStack Query
-treats them as the same cache entry: only one network request fires, and
-both widgets read whichever result resolved first, regardless of the fact
-that `windowedStatisticsSource` (called inside `queryFn`, using the correct
-per-widget `originSourceId`) would have produced two different effective
-`DataSource.query` objects (one with `region=Nord`, one without). This is
-exactly the collision the fix closes. Post-fix, the key is
-`["kpi-value", valueSource?.id, valueSource?.query]`, where `valueSource.id
-= originSourceId` differs per widget (`"src-A"` vs `"src-B"`) and
-`valueSource.query` differs too (only B carries `region`), so the two
-widgets get independent cache entries and independently correct values.
-
-### Verification
-
-1. Pre-fix collision confirmed by inspection of `aa3be6d` (see reasoning
-   above) — not re-run against a checked-out old working tree, per
-   instructions (`git show`, read-only).
-2. `cd shell && npx vitest run src/builder/widgets/indicator.test.tsx` —
-   **12/12 passed** (11 pre-existing + the new collision test).
-3. `cd shell && npm run test` — **100/100 test files, 721/721 tests
-   passed** (720 + 1 new), no regressions.
-4. `cd shell && npm run build` — `tsc --noEmit && vite build` completed
-   clean, no type errors.
-
-### Commit
-
-`test(shell): cover indicator KPI cache isolation across two widgets sharing a dataset+metric under cross-filter`
+None. The implementation is complete, tested, and ready for integration.

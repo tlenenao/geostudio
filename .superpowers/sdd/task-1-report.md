@@ -1,125 +1,127 @@
-# Task 1 Report: Core — `bucket` param on `/collections/{id}/aggregate`
+# Task 1 Report: SP-14f — Core `groupBy` Widened to `str | list[str] | None`
 
 ## Summary
 
-Implemented the optional `bucket` parameter on the `/collections/{id}/aggregate` endpoint to support time-bucketed aggregates. When set to `"day"`, `"week"`, or `"month"`, the grouping expression switches from raw column values to `DATE_TRUNC` results, enabling sparklines and period comparisons in downstream shell work.
+Successfully implemented Task 1 of the SP-14f plan ("Nouveaux types de graphiques"). The `/collections/{id}/aggregate` endpoint now accepts `groupBy` as either a string or a list of strings, with comprehensive validation for duplicates, unknown fields, and conflicts with `bucket`/`split` options.
 
 ## Implementation Details
 
+### Files Modified
+
+1. **`core/app/analytics/aggregate.py`**
+   - Widened `AggregateRequestBody.groupBy` type: `str | None` → `str | list[str] | None`
+   - Added new `AggregateRequestBody.bins: int | None = None` field (declared for Task 3+)
+   - Added helper function `_groupby_fields()` to normalize groupBy to a list of field names
+   - Replaced `_validate_fields()` with comprehensive validation rules
+
+2. **`core/tests/test_analytics_aggregate.py`**
+   - Added 4 new validation test cases (as specified in brief)
+
 ### Code Changes
 
-#### 1. `core/app/analytics/aggregate.py`
-
-**Import added (line 15):**
+#### Model Update
 ```python
-from typing import Literal
+class AggregateRequestBody(BaseModel):
+    groupBy: str | list[str] | None = None  # Now accepts both types
+    split: str | None = None
+    agg: str = "count"
+    field: str | None = None
+    measures: list[AggregateMeasure] | None = None
+    filters: dict[str, str] = {}
+    bbox: tuple[float, float, float, float] | None = None
+    bucket: Literal["day", "week", "month"] | None = None
+    bins: int | None = None  # New field, unused until Task 3
 ```
 
-**Field added to AggregateRequestBody (line 33):**
+#### Helper Function
 ```python
-bucket: Literal["day", "week", "month"] | None = None
+def _groupby_fields(request: AggregateRequestBody) -> list[str]:
+    if not request.groupBy:
+        return []
+    return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
 ```
 
-**Guard added to _validate_fields (lines 76-77):**
-```python
-if request.bucket is not None and not request.groupBy:
-    raise UnknownAggregateField("bucket", "bucket requires groupBy")
+#### Validation Rules
+The updated `_validate_fields()` now enforces:
+1. **Duplicate detection**: Raises error if the same field appears multiple times in groupBy list
+2. **Unknown field validation**: Checks all fields in the groupBy list are valid
+3. **Bucket constraint**: Bucket can only be used with exactly one group-by field
+4. **Split constraint**: Split cannot be combined with multi-field groupBy
+
+## Testing Results
+
+### TDD Workflow
+
+**Step 2 - RED (failing tests before implementation):**
+```
+FAILED test_groupby_list_with_duplicate_field_raises
+FAILED test_bucket_with_multi_field_groupby_raises
+FAILED test_split_with_multi_field_groupby_raises
+FAILED test_groupby_list_with_unknown_field_raises
+```
+Error: Pydantic validation error — model didn't accept lists yet.
+
+**Step 4 - GREEN (tests passing after implementation):**
+```
+PASSED test_groupby_list_with_duplicate_field_raises
+PASSED test_bucket_with_multi_field_groupby_raises
+PASSED test_split_with_multi_field_groupby_raises
+PASSED test_groupby_list_with_unknown_field_raises
 ```
 
-**cat_expr logic updated in run_collection_aggregate (lines 213-216):**
-```python
-if request.bucket:
-    cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(request.groupBy)} AS TIMESTAMP))"
-else:
-    cat_expr = _qi(request.groupBy) if request.groupBy else "'Total'"
+**Step 5 - Non-regression (full test suite):**
+```
+======================== 21 passed in 1.75s ========================
 ```
 
-#### 2. `core/tests/test_analytics_aggregate.py`
-
-Added 4 test cases:
-- `test_bucket_groups_rows_by_day` — verifies day-level bucketing groups 2026-01-05 records together
-- `test_bucket_groups_rows_by_month` — verifies month-level bucketing groups January and February separately with correct aggregation
-- `test_bucket_without_group_by_raises` — verifies that bucket without groupBy raises `UnknownAggregateField` with field="bucket"
-- `test_bucket_on_non_castable_field_groups_under_a_null_bucket` — verifies graceful handling of non-castable dates (NULL truncation)
-
-## TDD Evidence
-
-### GREEN Phase (All Tests Pass)
-
-**Bucket tests execution:**
-```bash
-cd core && uv run pytest tests/test_analytics_aggregate.py -k bucket -v
-```
-
-Result:
-```
-tests/test_analytics_aggregate.py::test_bucket_groups_rows_by_day PASSED [ 25%]
-tests/test_analytics_aggregate.py::test_bucket_groups_rows_by_month PASSED [ 50%]
-tests/test_analytics_aggregate.py::test_bucket_without_group_by_raises PASSED [ 75%]
-tests/test_analytics_aggregate.py::test_bucket_on_non_castable_field_groups_under_a_null_bucket PASSED [100%]
-
-============================== 4 passed in 2.08s =======================
-```
-
-## Non-Regression Suite
-
-**Command:**
-```bash
-cd core && uv run pytest tests/test_analytics_aggregate.py tests/test_features_aggregate_routes.py -v
-```
-
-**Result:**
-```
-============================== 21 passed in 5.07s =======================
-```
-
-All pre-existing tests remain unaffected:
-- 13 pre-existing aggregation tests: PASS
-- 4 route integration tests: PASS
-- 4 new bucket tests: PASS
-
-The `bucket=None` default ensures backward compatibility.
-
-## Files Changed
-
-- `/home/lenen/projets/geostudio/core/app/analytics/aggregate.py` (+18 lines)
-- `/home/lenen/projets/geostudio/core/tests/test_analytics_aggregate.py` (+57 lines)
-
-## Commit Information
-
-**Commit SHA:** 1338041
-**Subject:** `feat(core): add optional bucket param to /collections/{id}/aggregate`
+Test results breakdown:
+- All 17 existing tests continue to pass ✓
+- All 4 new validation tests pass ✓
+- Zero-behavior-change for existing single-field `groupBy` callers ✓
 
 ## Self-Review Findings
 
-### Completeness ✓
-- [x] Added `bucket` field to `AggregateRequestBody` with correct type
-- [x] Added validation guard for bucket requiring groupBy
-- [x] Updated `cat_expr` logic to use `DATE_TRUNC` when bucket is set
-- [x] Appended all 4 test cases with correct assertions
-- [x] All changes match brief specifications exactly
+### Implementation Correctness ✓
+- Model change: `groupBy` now accepts `str | list[str] | None` ✓
+- New field `bins` declared (unused until Task 3) ✓
+- Helper `_groupby_fields()` correctly normalizes all input types ✓
+- Validation logic comprehensive and correct:
+  - Duplicate detection via set comparison ✓
+  - Unknown field validation per field ✓
+  - Bucket constraint enforced (requires exactly 1 field) ✓
+  - Split constraint enforced (incompatible with >1 field) ✓
 
-### Quality ✓
-- **Naming:** Field and parameter names follow existing convention (e.g., `groupBy`, `split`)
-- **Clarity:** Validation error message is explicit ("bucket requires groupBy")
-- **Type Safety:** Used `Literal["day", "week", "month"]` for type checking
-- **SQL Safety:** Used helper functions `_sql_lit()` and `_qi()` for proper SQL escaping
+### Backward Compatibility ✓
+- Existing string `groupBy` values work unchanged
+- Validation still catches unknown fields
+- Bucket/split behavior unchanged for single-field groupBy
+- All 17 pre-existing tests pass without modification
 
-### Discipline ✓
-- No extra validation added beyond the brief requirement
-- No additional bucket modes added (only "day", "week", "month")
-- No changes to existing function signatures or behavior
-- Implementation is minimal and focused
+### Code Quality ✓
+- Helper function follows naming convention and pattern
+- Validation logic is clear and maintainable
+- Error messages are specific and actionable
+- Follows existing code style and structure
 
-### Testing ✓
-- 4 tests exercise core bucket behavior:
-  - Day-level aggregation
-  - Month-level aggregation with numeric field aggregation
-  - Error case (bucket without groupBy)
-  - Edge case (non-castable dates fall through to NULL bucket)
-- Tests use existing fixtures and helpers (`_row`, `_write_partition`, `TABLE_INFO`)
-- Tests verify both the category_key and row values
+### Design Notes
+- Multi-field `groupBy` SQL generation reserved for Task 3+
+- Validation prevents bucket/split from being used with multi-field groupBy
+- Model structure unchanged for single-field callers
+- `bins` field declared now to avoid model changes in Task 3
 
-### Concerns
+## Files Changed
 
-None identified. The implementation is straightforward, well-tested, and maintains backward compatibility.
+- `core/app/analytics/aggregate.py`: 53 lines added/modified
+- `core/tests/test_analytics_aggregate.py`: 42 lines added
+
+## Commit
+
+```
+48d4c17 feat(core): accept groupBy as a list of fields on /aggregate, with validation (SP-14f)
+```
+
+---
+
+**Report generated:** 2026-08-02  
+**Task Status:** ✓ COMPLETE  
+**Test Results:** 21/21 PASS (17 existing + 4 new)

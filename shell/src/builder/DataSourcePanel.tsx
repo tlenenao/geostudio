@@ -3,6 +3,18 @@ import type { DataSource } from "../api/types";
 
 type Measure = { field?: string; agg: string; label?: string };
 
+// A single field ("region") is passed through unchanged; a comma-separated
+// value ("origin,destination") becomes a string[] — the multi-field tidy
+// groupBy that sankey/treemap/sunburst need (SP-14f).
+function parseGroupBy(raw: string): string | string[] {
+  const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts : raw;
+}
+
+function groupByDisplayValue(groupBy: unknown): string {
+  return Array.isArray(groupBy) ? groupBy.join(",") : String(groupBy ?? "");
+}
+
 const inputCls = "h-8 w-full rounded border border-slate-300 px-2 text-xs";
 const selectCls = "h-8 w-full rounded border border-slate-300 text-xs";
 
@@ -73,9 +85,10 @@ export function DataSourcePanel({
             )}
             {s.type === "statistics" && (
               <div className="mt-1 flex flex-col gap-1">
-                <input aria-label={`Grouper par (source ${s.id})`} placeholder="grouper par (axe X)"
+                <input aria-label={`Grouper par (source ${s.id})`} placeholder="grouper par (axe X, virgule = plusieurs niveaux)"
                   className={inputCls}
-                  value={String(s.query.groupBy ?? "")} onChange={(e) => patchQuery(s.id, { groupBy: e.target.value })} />
+                  value={groupByDisplayValue(s.query.groupBy)}
+                  onChange={(e) => patchQuery(s.id, { groupBy: parseGroupBy(e.target.value) })} />
                 <input aria-label={`Séparer par (source ${s.id})`} placeholder="séparer par (séries, optionnel)"
                   className={inputCls}
                   value={String(s.query.split ?? "")} onChange={(e) => patchQuery(s.id, { split: e.target.value })} />
@@ -92,6 +105,10 @@ export function DataSourcePanel({
                     className={inputCls}
                     value={String(s.query.field ?? "")} onChange={(e) => patchQuery(s.id, { field: e.target.value })} />
                 </div>
+                <input aria-label={`Nombre de classes (source ${s.id})`} type="number" min={1} max={100}
+                  placeholder="classes (histogramme)" className={inputCls}
+                  value={String(s.query.bins ?? "")}
+                  onChange={(e) => patchQuery(s.id, { bins: e.target.value ? Number(e.target.value) : undefined })} />
                 {measuresOf(s).length > 0 && (
                   <ul className="flex flex-col gap-1">
                     {measuresOf(s).map((m, mi) => (

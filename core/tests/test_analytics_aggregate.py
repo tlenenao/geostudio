@@ -288,3 +288,210 @@ def test_bucket_on_non_castable_field_groups_under_a_null_bucket(tmp_path, conn)
     by_key = {r["annee"]: r["value"] for r in rows}
     assert by_key["None"] == 10
     assert by_key["2026-01-05 00:00:00"] == 3
+
+
+def test_groupby_list_with_duplicate_field_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "region"])
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "groupBy"
+
+
+def test_bucket_with_multi_field_groupby_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "annee"], bucket="day")
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bucket"
+
+
+def test_split_with_multi_field_groupby_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "annee"], split="annee")
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "split"
+
+
+def test_groupby_list_with_unknown_field_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy=["region", "inconnu"])
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "groupBy"
+
+
+def test_two_field_groupby_produces_tidy_rows(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2026", 12, lsn=1),
+        _row(3, "Sud", "2025", 5, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy=["region", "annee"], agg="sum", field="pop")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert category_key == ["region", "annee"]
+    assert sorted(rows, key=lambda r: (r["region"], r["annee"])) == [
+        {"region": "Nord", "annee": "2025", "value": 10},
+        {"region": "Nord", "annee": "2026", "value": 12},
+        {"region": "Sud", "annee": "2025", "value": 5},
+    ]
+
+
+def test_three_field_groupby_produces_tidy_rows(tmp_path, conn):
+    # Réutilise "pop" comme 3e dimension (valeurs distinctes = niveau de hiérarchie),
+    # TABLE_INFO n'a que 3 colonnes non-géométrie disponibles pour ce test.
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
+    ])
+    request = AggregateRequestBody(groupBy=["region", "annee", "pop"], agg="count")
+
+    category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert category_key == ["region", "annee", "pop"]
+    assert sorted(rows, key=lambda r: r["pop"]) == [
+        {"region": "Nord", "annee": "2025", "pop": 10, "value": 1},
+        {"region": "Nord", "annee": "2025", "pop": 20, "value": 1},
+    ]
+
+
+def test_multi_field_groupby_with_multiple_measures(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
+        _row(3, "Sud", "2025", 5, lsn=1),
+    ])
+    request = AggregateRequestBody(
+        groupBy=["region", "annee"],
+        measures=[AggregateMeasure(agg="sum", field="pop", label="total"),
+                  AggregateMeasure(agg="count", label="nb")],
+    )
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["region"]) == [
+        {"region": "Nord", "annee": "2025", "total": 30, "nb": 2},
+        {"region": "Sud", "annee": "2025", "total": 5, "nb": 1},
+    ]
+
+
+def test_bins_produces_equal_width_buckets(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Nord", "2025", 2, lsn=1),
+        _row(3, "Nord", "2025", 9, lsn=1), _row(4, "Nord", "2025", 10, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=3)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10] (last bin absorbs the max via LEAST clamp)
+    by_index = {r["bucketIndex"]: r["count"] for r in rows}
+    assert by_index == {0: 2, 2: 2}  # pop 1,2 → bin 0 ; pop 9,10 → bin 2 (clamped) ; bin 1 empty, absent
+
+
+def test_bins_on_a_constant_field_returns_one_bucket(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 5, lsn=1), _row(2, "Sud", "2025", 5, lsn=1)])
+    request = AggregateRequestBody(field="pop", bins=4)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"bucketIndex": 0, "bucketStart": 5.0, "bucketEnd": 5.0, "count": 2}]
+
+
+def test_bins_without_field_raises(tmp_path, conn):
+    request = AggregateRequestBody(bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_with_groupby_raises(tmp_path, conn):
+    request = AggregateRequestBody(groupBy="region", field="pop", bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+            table_info=TABLE_INFO, request=request,
+        )
+    assert exc.value.field == "bins"
+
+
+def test_bins_out_of_bounds_raises(tmp_path, conn):
+    for bad in (0, 101):
+        request = AggregateRequestBody(field="pop", bins=bad)
+        with pytest.raises(UnknownAggregateField) as exc:
+            run_collection_aggregate(
+                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+                table_info=TABLE_INFO, request=request,
+            )
+        assert exc.value.field == "bins"
+
+
+def test_bins_narrowed_by_attribute_filter(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Sud", "2025", 9, lsn=1),
+    ])
+    request = AggregateRequestBody(field="pop", bins=2, filters={"region": "Nord"})
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"bucketIndex": 0, "bucketStart": 1.0, "bucketEnd": 1.0, "count": 1}]
+
+
+def test_bins_excludes_non_numeric_values_from_top_bucket(tmp_path, conn):
+    """Regression test: non-numeric strings should be filtered out by TRY_CAST,
+    not silently miscounted into the top bucket by DuckDB's NULL-ignoring LEAST."""
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", "1", lsn=1),     # numeric string
+        _row(2, "Nord", "2025", "2", lsn=1),     # numeric string
+        _row(3, "Nord", "2025", "abc", lsn=1),   # non-numeric string → TRY_CAST → NULL
+        _row(4, "Nord", "2025", "10", lsn=1),    # numeric string (max)
+    ])
+    request = AggregateRequestBody(field="pop", bins=3)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    # After TRY_CAST("1"/"2"/"abc"/"10" AS DOUBLE): 1.0, 2.0, NULL, 10.0
+    # lo=1.0, hi=10.0, width=3.0
+    # Bucket 0: [1, 4) contains 1.0, 2.0 → count=2
+    # Bucket 2: [7, 10] contains 10.0 → count=1
+    # "abc" should NOT appear in any bucket; total count must be 3, not 4
+    by_index = {r["bucketIndex"]: r["count"] for r in rows}
+    assert by_index == {0: 2, 2: 1}, f"Expected {{0: 2, 2: 1}}, got {by_index}"
+    total_count = sum(r["count"] for r in rows)
+    assert total_count == 3, f"Expected total count 3, got {total_count} (non-numeric 'abc' was not excluded)"

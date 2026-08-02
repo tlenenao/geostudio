@@ -1,221 +1,404 @@
-# SP-14e — KPI riche & séries temporelles comparées — Progress Ledger
+# SP-14f — Nouveaux types de graphiques (sankey, treemap, sunburst, funnel, histogramme binné) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-07-28-sp14e-kpi-riche-series-comparees.md
+Plan: docs/superpowers/plans/2026-08-02-sp14f-nouveaux-types-graphiques.md
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@2d18b9c (plan + spec SP-14e committés).
+Base globale: dev@1888fc1 (plan + spec SP-14f committés).
 
-Note : ce fichier remplace le ledger SP-14d (complet, revue finale
-ready-to-merge) — même fichier scratch réutilisé par convention du
-dépôt ; contenu SP-14d préservé dans l'historique git (commit f88af51
-pour la finalisation du ledger, 543e3c8 pour le dernier code).
+Note : ce fichier remplace le ledger SP-14e (complet, revue finale
+ready-to-merge, HEAD=f136501) — même fichier scratch réutilisé par
+convention du dépôt ; contenu SP-14e préservé dans l'historique git.
 
 ## Pré-vol
 
-Scan des 6 tâches (Task 1 `bucket` param core, Task 2 passthrough
-itemClient, Task 3 `comparisonWindow.ts`, Task 4 `indicator` enrichi,
-Task 5 `chart` mode comparaison, Task 6 E2E) contre les 5 contraintes
-globales (chaque nouvelle prop optionnelle et absente par défaut = zéro
-changement de comportement ; `bucket` absent = comportement inchangé
-byte-for-byte, suite `test_analytics_aggregate.py` verte sans
-modification ; seulement `previous`/`sameLastYear`, pas de granularité
-de bucket configurable, pas de texte de message CEL — juste une
-pastille à 3 niveaux ; commits en français / code en anglais ; branche
-`dev`) : pas de contradiction. Le plan fournit du code complet et
-littéral pour chaque tâche (types, implémentation, tests unitaires et
-E2E) — transcription + tests, pas de conception à faire. Dépendances
-d'interface : Task 3 (`comparisonWindow.ts`) est consommé directement
-par Task 4 et Task 5 ; Task 2 (passthrough `bucket`) est un
-prérequis fonctionnel pour que les requêtes bucketées de Task 3/4/5
-atteignent réellement le cœur, mais aucune des deux ne l'importe — pas
-de couplage de code, juste d'ordre logique ; Task 6 exerce l'UI réelle
-produite par Tasks 1-5. Tâches exécutées dans l'ordre du plan (1→6).
+Scan des 12 tâches (1-3 core : groupBy liste + validation, tidy rows
+multi-champs, histogramme binné DuckDB ; 4-5 shell plomberie :
+itemClient passthrough + id composite, DataSourcePanel groupBy CSV +
+bins ; 6-9 chartOption.ts : funnel/histogram, sankey (rôle des nœuds),
+treemap/sunburst (hiérarchie), resolveClickFilter généralisé ; 10-11
+EChart.tsx (SunburstChart) + chart.tsx (UI builder, handleClick) ; 12
+E2E) contre les 7 contraintes globales (zéro changement de comportement
+pour les 10 types existants et tous les appelants d'AggregateRequestBody ;
+`encodings` réservé à sankey/treemap/sunburst ; funnel réutilise
+categoryField/valueField, histogram réutilise valueField+bins
+[défaut 10, borné 1-100] ; bucket réservé à un groupBy à un seul champ,
+split et groupBy multi-champs mutuellement exclusifs — les deux en
+erreur de validation ; sankey v1 = un seul saut, hiérarchie
+treemap/sunburst plafonnée à 3 niveaux ; pas de cross-filter au clic sur
+histogramme ; commits français / code anglais, branche `dev`) : pas de
+contradiction. Le plan fournit du code complet et littéral pour chaque
+tâche (types, implémentation, tests unitaires, E2E) — transcription +
+tests, pas de conception à faire, comme SP-14e. Dépendances d'interface
+notées : Task 2 consomme `_groupby_fields` (Task 1) ; Task 3 consomme la
+validation `bins` ajoutée dans `_validate_fields` (Task 1) ; Task 4
+(itemClient) consomme les formes de réponse core des Tasks 1-3 ; Task 6
+introduit `encodings`/`bins` sur `ChartProps`, consommés par Tasks 7-9 ;
+Task 9 (`resolveClickFilter`) consomme le tag `_role` posé par la
+branche sankey de Task 7 et les `levels` de la branche treemap/sunburst
+de Task 8 ; Task 11 consomme `resolveClickFilter`/`ClickParams` (Task 9)
+et `SunburstChart` enregistré (Task 10) ; Task 12 exerce l'UI réelle
+produite par Tasks 1-11. Tâches exécutées dans l'ordre du plan (1→12).
 
 Poursuite sans confirmation utilisateur (scan de contradictions clean).
 
 ## Tasks
 
-Base Task 1: 2d18b9c
-Task 1: complete (commit 1338041, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). `bucket`
-transcrit du brief presque littéralement : champ `Literal["day","week",
-"month"] | None`, garde `bucket` sans `groupBy` → `UnknownAggregateField`,
-`cat_expr` basculé sur `DATE_TRUNC(..., TRY_CAST(... AS TIMESTAMP))`
-uniquement quand `bucket` est fourni (branche par défaut inchangée,
-comportement byte-for-byte préservé). Réutilise les helpers SQL déjà
-audités `_sql_lit`/`_qi`, pas de nouvelle interpolation de chaîne.
-4/4 nouveaux tests (day, month, erreur sans groupBy, cas TRY_CAST
-NULL/regroupement), suite complète 21/21 (0 régression). 2 Minor notés
-par le reviewer (pas bloquants) : pas de test dédié `bucket="week"`
-(seuls day/month couverts, conforme au brief) ; le bucket NULL est
-sérialisé comme chaîne littérale `"None"` dans `category_key` (via
-`_pivot_measures`/`_pivot_split` existants) — à garder à l'esprit côté
-shell (Task 3+) si un jour un filtrage sur cette valeur est nécessaire.
+Base Task 1: 1888fc1
+Task 1: complete (commit 48d4c17, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). `groupBy`
+élargi à `str | list[str] | None`, `bins: int | None = None` déclaré
+(inutilisé jusqu'à Task 3), helper `_groupby_fields`, validation
+(doublons, champ inconnu, `bucket`+multi-champ, `split`+multi-champ).
+Rétrocompatibilité vérifiée par le reviewer contre l'ancien garde
+`bucket` et les tests existants. 21/21 tests (17 existants + 4
+nouveaux). 3 Minor notés (non bloquants) : un `groupBy` multi-champ
+valide sans `bucket`/`split` passe la validation mais provoque un
+`AttributeError` non géré plus loin dans `run_collection_aggregate`
+(`_qi` appelé sur une liste) — état intermédiaire délibéré, résolu par
+Task 2 (prochaine tâche du même plan) ; message de commit en anglais
+(CLAUDE.md demande le français, précédent mixte déjà dans l'historique
+core) ; décompte de lignes du rapport de l'implémenteur légèrement
+inexact (cosmétique, rapport seulement).
 
-Base Task 2: 1338041
-Task 2: complete (commit 26d925c, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding). `bucket` ajouté à
-`STAT_KEYS` et `buildAggregateBody` (transcription exacte du brief).
-Bénéfice collatéral relevé par le reviewer : `STAT_KEYS` étant partagé
-avec `buildFeaturesUrl`, `bucket` est aussi correctement filtré des
-query params `/items` pour les sources `type: "features"` — cohérent
-avec le traitement existant de `bbox`/`agg`, aucun effet de bord.
-1/1 nouveau test (positif + négatif : `body.bucket` posé, `body.filters`
-reste `undefined`), suite complète `itemClient.test.ts` 83/83.
+Base Task 2: 48d4c17
+Task 2: complete (commit d61b699, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). Ferme le
+trou laissé par Task 1 : `_pivot_multi_measures` + branche `len(fields)
+> 1` dans `run_collection_aggregate`, réutilise intégralement
+`_measures_for`/`_agg_expr`/`_qi`/`_dedup_cte`/`_build_where`/
+`_fetch_rows` du chemin single-field (pas de réimplémentation
+parallèle). `category_key` élargi à `str | list[str]`, chemin
+single-field inchangé au runtime (juste un `str()` cosmétique pour le
+typage). 24/24 tests (21 existants + 3 nouveaux), requêtes DuckDB
+réelles sur parquet, pas de mocks. 3 Minor notés (non bloquants) : un
+one-liner `measure_cols` dupliqué entre branches (DRY marginal) ; pas
+de test dédié multi-champ + collection vide (chemin trivial partagé,
+risque faible) ; les tidy rows gardent les types natifs (`pop` en int)
+alors que `_pivot_measures`/`_pivot_split` stringifient — comportement
+délibéré conforme au brief, mais incohérence de forme entre les deux
+formats de réponse à garder à l'esprit pour les tâches shell (Task 4+).
 
-Base Task 3: 26d925c
-Task 3: complete (commit a424e0f, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding). `comparisonWindow.ts`
-créé (fichier pur, 2 nouveaux fichiers, aucun fichier existant modifié).
-Signatures réelles de `derivePatch`/`AnalyticsContextState`/
-`EMPTY_ANALYTICS_CONTEXT`/`DataSource`/`DatasetConfig` vérifiées par
-l'implémenteur ET indépendamment par le reviewer, correspondance exacte
-avec le brief. Point de correction subtil bien géré par réutilisation
-(pas de logique neuve) : `windowedStatisticsSource` passe
-`originSourceId` comme id de la source synthétique, ce qui fait
-fonctionner correctement l'auto-exclusion cross-filter de `derivePatch`
-(`originSourceId !== source.id`) pour les fenêtres de comparaison.
-Arithmétique de dates UTC-safe (`Date.UTC`/`getUTCFullYear` partout,
-pas de dérive de fuseau horaire sur des chaînes ISO date-only),
-clamping année bissextile testé sur une vraie transition
-(2024-02-29 → 2023-02-28). 6/6 tests, comportement calculé réel (pas de
-mocks). 2 Minor notés (pas bloquants) : absence de filtre temporel
-silencieuse si `dataset.timeField` est absent (héritée du contrat
-`derivePatch`, à documenter pour Task 4/5) ; pas de contrainte de type
-sur le format `{from,to}` (accepte toute chaîne), non risqué vu les
-call sites actuels.
+Base Task 3: d61b699
+Task 3: complete (commits 4ce6421, a992b78 ; 1 Important trouvé et
+corrigé en 1 round de fix). Histogramme binné DuckDB : validation
+`bins` (field requis, exclusif de `groupBy`, borné 1-100),
+`_run_binned_histogram` (requête MIN/MAX puis GROUP BY sur bucket
+`FLOOR`/`LEAST` clampé), câblé dans `run_collection_aggregate` juste
+après `_build_where`. Ordre des placeholders SQL de `bucket_expr`
+explicitement revérifié par le reviewer (3 `?` positionnels contre
+`params = [bins, lo, width, *where_params]`) : correct. 1 Important
+trouvé en 1re revue et confirmé par reproduction directe : corruption
+silencieuse — `not_null_clause` filtrait sur la colonne brute au lieu
+du résultat `TRY_CAST`, donc une valeur non numérique non nulle (ex.
+`"abc"`) devenait `NULL` après cast puis `LEAST(bins-1, NULL)` de
+DuckDB (qui ignore les NULL) la comptait silencieusement dans le
+dernier bucket au lieu de l'exclure. Fix (a992b78) : `not_null_clause`
+filtre maintenant sur `field_expr` (le résultat du `TRY_CAST`) au lieu
+de la colonne brute. Test de régression ajouté
+(`test_bins_excludes_non_numeric_values_from_top_bucket`), vérifié
+RED contre l'ancien code (4 lignes comptées, `{0:2, 2:2}`) et GREEN
+contre le correctif (`{0:2, 2:1}`, total 3). Revue 2 : fix vérifié
+correct, aucun nouveau problème introduit, test non tautologique
+confirmé par traçage manuel du bug. 1 Minor laissé tel quel (non
+bloquant) : le `TABLE_INFO` du nouveau test déclare `pop` en
+`type="integer"` alors que le test y écrit des chaînes — inoffensif
+(DuckDB infère les types du parquet, pas de `ColumnInfo`), juste une
+incohérence cosmétique avec la convention du fichier. 7/7 tests bins,
+suite complète core 808/808 passés (106 skipped, stable).
 
-Base Task 4: 26d925c → a424e0f (Task 3)
-Task 4: complete (commits aa3be6d, 2646bbe, 3c93ae0 ; 1 Important
-trouvé et corrigé en 2 rounds de fix). Réécriture complète
-`indicator.tsx`/`indicator.test.tsx` conforme au brief : badge delta
-vs référence, sparkline, pastille de seuil CEL à 3 niveaux, tout
-strictement additif et gated sur `active = wantsComparison &&
-Boolean(dataset?.timeField) && Boolean(timeRange)`. 1 Important trouvé
-en 1re revue, **labellisé plan-mandated** (code littéral du brief) :
-les clés de cache `useQuery` (`kpi-value`/`kpi-reference`/
-`kpi-sparkline`) ne incluaient que `datasetId`/fenêtre/`agg`/`field`,
-sans l'id de la source d'origine ni la requête résolue (post-patch
-cross-filter) — contrairement au pattern établi `DataContext.tsx`
-(`["datasource", s.id, merged.query]`). Risque réel : deux widgets
-`indicator` sur le même dataset+métrique auraient pu se marcher dessus
-en cache sous cross-filter actif. **Décision utilisateur demandée et
-obtenue : corriger.** Fix (2646bbe) : les 3 `useQuery` calculent
-maintenant la `DataSource` résolue une fois via `windowedStatisticsSource`
-et clés sur `[label, source?.id, source?.query]`, `enabled` inchangé,
-0 violation Rules of Hooks. Revue 2 : fix vérifié correct mais a
-signalé un 2e Important — aucun test n'exerçait le scénario de
-collision à 2 widgets (uniquement raisonnement statique). Fix 2
-(3c93ae0) : test ajouté avec 2 widgets partageant un seul `QueryClient`,
-cross-filter ciblant l'un et pas l'autre (`originSourceId` test tracé à
-la main par le reviewer contre `derivePatch`, confirmé non tautologique
-et confirmé qu'il aurait échoué avec l'ancienne clé). Revue finale
-(round 3) : les 2 findings marqués RESOLVED indépendamment sur les 3
-commits, aucune dérive, 0 changement hors scope. 12/12 tests ciblés,
-suite complète 721/721 (100 fichiers), build clean.
+Base Task 4: a992b78
+Task 4: complete (commit c59950d, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). `bins`
+ajouté à `STAT_KEYS`, `buildAggregateBody` transmet `groupBy` tableau
+tel quel + `bins` en `Number`, helper `statRowId` (jointure `"|"` pour
+id composite multi-champs). Équivalence byte-for-byte du chemin
+single-field vérifiée par le reviewer (`String(row[categoryKey] ?? "")`
+identique à l'ancien code). `bins` confirmé routé vers le body (via
+`STAT_KEYS`) et non vers `filters`. Ligne manquant un champ groupBy
+dégrade proprement en segment vide (pas de `"undefined"`). Tests
+réels via mock HTTP msw, pas de mocks internes. 86/86 tests (3
+nouveaux + 83 existants). 2 Minor notés (non bloquants) : `bins: 0`
+traité comme absent (`if (query.bins)` falsy) — cohérent avec le
+pattern existant `bucket`/`split`, pas une régression ; rapport de
+l'implémenteur un peu redondant avec le diff (pas un défaut de code).
 
-Base Task 5: 3c93ae0
-Task 5: complete (commits dd896e3, 5dc3f21, review clean au premier
-passage — ✅ spec compliant, task quality Approved, 0 finding
-bloquant). `buildCompareOption` (chartOption.ts) + mode comparaison
-`chart.tsx` conformes au brief : 2 séries alignées sur axe relatif
-(Jour/Semaine/Mois N), restreint à line/area, gating identique à
-`indicator` (`compareEnabled` + `ctx.timeRange` actif + `timeField` du
-dataset, sinon repli sur le graphique normal). Réutilise `valueField`
-existant comme mesure (`agg = valueField ? "sum" : "count"`) plutôt
-qu'une prop redondante, comme prévu par la note de conception du brief.
-**Déviation délibérée du code littéral du brief appliquée dès
-l'implémentation** (pas un correctif après-coup cette fois) : mêmes
-clés de cache `useQuery` bugguées que Task 4 identifiées dans le code
-littéral du brief (`["chart-compare-current", datasetId, timeRange,
-bucket, agg, valueField]`, sans id de source ni requête résolue) —
-l'implémenteur a été instruit dès le dispatch de suivre le pattern déjà
-corrigé et revu d'`indicator.tsx` (`useKpiComparison`) : source résolue
-calculée une fois via `windowedStatisticsSource`, clé sur `[label,
-source?.id, source?.query]`. Vérifié par le reviewer : structurellement
-identique au pattern d'`indicator.tsx`, `enabled` équivalent, aucune
-régression introduite. 3 Minor notés (pas bloquants) : état vide en
-mode comparaison rend un graphique à axe 0 point plutôt que "Aucune
-donnée" (incohérence UX mineure, non spécifiée) ; pas de test dédié
-`compareEnabled` sur chartType bar (couvert indirectement) ; pas de
-test d'intégration `comparePeriod: "sameLastYear"` au niveau Component
-(couvert unitairement en Task 3). Suite complète 727/727 (100
-fichiers), build clean.
+Base Task 5: c59950d
+Task 5: complete (commit 567d95d, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). Champ
+"Grouper par" gagne `parseGroupBy` (CSV → `string[]`, sinon la valeur
+`raw` d'origine retournée telle quelle — byte-for-byte inchangé pour
+tout appelant single-field, y compris virgule finale ou espaces,
+vérifié par le reviewer sur l'expression de retour elle-même, pas
+seulement les tests) + `groupByDisplayValue` miroir. Nouveau champ
+"Nombre de classes" écrit `query.bins` via `patchQuery` (merge
+superficiel, n'affecte aucun autre champ — vérifié par lecture directe
+du helper). Tests réels via `fireEvent`/`userEvent` sur DOM rendu.
+10/10 tests (2 nouveaux + 8 existants). 2 Minor notés (non bloquants) :
+bornes `min`/`max` sur l'input `bins` sont de simples indices HTML5,
+aucune validation cliente réelle (le bornage 1-100 est fait
+côté core, Task 3) ; pas de test unitaire dédié aux cas limites de
+`parseGroupBy` (virgule finale, double virgule) — corrects par lecture
+du code mais non figés par un test.
 
-## Note méthodologique : la déviation de clé de cache d'indicator.tsx
-## (Task 4) a été appliquée proactivement à Task 5 dès le dispatch de
-## l'implémenteur, évitant un round de fix redondant — decision
-## utilisateur du round Task 4 étendue par cohérence à un pattern de
-## code identique, pas une nouvelle question posée.
+Base Task 6: 567d95d
+Task 6: complete (commits 6a9f447, abbae68 ; 1 Important trouvé et
+corrigé en 1 round de fix). `ChartProps.encodings`/`bins` déclarés
+(non consommés hors funnel/histogram ici), branches `funnel` (mirroir
+de `pie`) et `histogram` (lit `bucketStart`/`bucketEnd`/`count`) ajoutées
+avant le fallback bar/line/area/scatter, confirmées ne jamais tomber
+dedans. Les 10 types existants byte-for-byte inchangés (vérifié par le
+reviewer sur les lignes de contexte du diff). 1 Important trouvé en 1re
+revue (hérité du code littéral du brief, pas une déviation de
+l'implémenteur) : le trigger de tooltip (`chartOption.ts`) ne couvrait
+pas `funnel` dans la liste `pie|doughnut|gauge` → `"item"`, donc
+funnel retombait sur `"axis"` (faux, funnel n'a pas d'axe cartésien).
+Fix (abbae68) : ajout de `|| type === "funnel"` à la condition. Test
+de régression ajouté, vérifié RED contre l'ancien code
+(`expected 'axis' to be 'item'`) et GREEN après fix. Revue 2 : fix
+vérifié minimal et correct, n'affecte aucun des 10 autres types, ne
+touche pas `encodings`/`categoryField`/`valueField`/`bins`. 18/18
+tests. 1 Minor laissé tel quel (non bloquant) : le nouveau test duplique
+le littéral `funnelRows` déjà défini deux tests plus haut (stylistique).
 
-Base Task 6: 5dc3f21
-Task 6: complete (commits ce7ea2a, 503faf3, 1 Important trouvé et
-corrigé en 1 round de fix). 4 scénarios E2E ajoutés à
-`analytics-context.spec.ts` (append-only, 15 scénarios au total,
-0 code produit modifié, 0 scénario existant/helper touché). Scénarios
-12/14/15 transcription fidèle du brief. Le brief lui-même contenait un
-bug réel dans le scénario 13 : `page.getByLabelText(...)` n'existe pas
-dans l'API Playwright (syntaxe Testing Library, pas Playwright) —
-correction nécessaire, pas une déviation de spec. 1 Important trouvé
-en 1re revue sur le correctif choisi par l'implémenteur : sélecteur CSS
-`[aria-label*="critique"], [title*="critique"]` (match partiel sur 2
-attributs, dont `title` qui n'est jamais posé nulle part dans le code —
-confirmé par grep, ainsi que par un script Playwright autonome montrant
-que l'équivalent Playwright réel `page.getByLabel("Seuil critique
-atteint")` (match exact) fonctionne correctement contre le
-`<span aria-label="...">` réel d'`indicator.tsx`) — risque de masquage
-de régression future via le match partiel. Fix (503faf3) : remplacé
-par `page.getByLabel("Seuil critique atteint")`, exact, cohérent avec
-le style du reste du fichier. Revue 2 : fix vérifié, diff strictement
-scopé à la ligne concernée, rien d'autre n'a bougé. 1 Minor laissé tel
-quel (non bloquant, hors scope de la revue) : une route mock
-`/collections/analytics/aggregate` ajoutée au scénario 13 n'est en
-réalité jamais appelée (le KPI de ce scénario n'a ni `referencePeriod`
-ni `sparkline`, donc `useKpiComparison` reste inactif et la valeur
-affichée vient du chemin `flatValue`/`ctx.data` existant, pas de
-l'agrégat) — route inoffensive mais diagnostic de la justification
-initialement incorrect, à noter pour la revue finale de branche.
-4/4 scénarios ciblés + suite E2E complète 66/66 (18 specs), à chaque
-round.
+Base Task 7: abbae68
+Task 7: complete (commit ce55a83, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). Branche
+`sankey` : lit `source`/`target`/`value` depuis `props.encodings`
+(aucun repli sur `categoryField`/`valueField`), tag `_role` par nœud
+("source" gagne en cas d'ambiguïté, vérifié à la main par le reviewer
+sur le cas "Lyon" du test), single-hop uniquement (ignore `levels`).
+Ajout non demandé par le brief mais divulgué explicitement dans le
+rapport et jugé correct par le reviewer : `sankey` ajouté à la
+condition de trigger tooltip (même défaut que le funnel de Task 6,
+proactivement corrigé par l'implémenteur avant même la revue) — noté
+comme "process nit" (aurait dû être signalé en attente d'accord
+plutôt que committé directement) mais pas un défaut. 19/19 tests.
+3 Minor notés (non bloquants) : pas de test dédié pour le trigger
+tooltip sankey (contrairement au funnel de Task 6) ; pas de test pour
+`encodings` vide ou self-loop (source===target) — comportement tracé
+à la main comme sûr par le reviewer, juste non couvert ; la condition
+de trigger devient une chaîne `||` à 5 branches, lisibilité en baisse
+avec chaque nouveau type non-cartésien (déjà amorcé en Task 6).
 
-## SP-14e COMPLET — 6 tâches, 3 rounds de fix au total (Task 4 : 2
-## Important — clé de cache dupliquée puis test de régression manquant ;
-## Task 6 : 1 Important — sélecteur E2E trop permissif), tout re-vérifié
-## indépendamment à chaque étape (pas seulement les rapports). Décision
-## utilisateur obtenue explicitement pour le premier finding
-## plan-mandated (Task 4, clé de cache), puis le même pattern de
-## correctif appliqué proactivement à Task 5 sans re-demander (code
-## identique, décision déjà prise). HEAD=503faf3. Prêt pour la revue
-## finale de branche.
+Base Task 8: ce55a83
+Task 8: complete (commit a1b69a0, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant).
+`buildHierarchy` (Map indexé par chemin, sommation bottom-up via
+`sumUp`, placeholder `"—"` pour niveau intermédiaire manquant) +
+branche `treemap`/`sunburst` partagée. Sommation vérifiée à la main
+par le reviewer sur les 3 cas du brief (15/5/10 Nord, 7 Sud, cas
+placeholder). Ajout divulgué et jugé nécessaire (pas cosmétique) :
+`treemap`/`sunburst` ajoutés au trigger tooltip `"item"` — sans lui
+ces types seraient tombés dans le fallback cartésien bar/line/scatter
+avec un trigger `"axis"` erroné, car la nouvelle branche treemap/
+sunburst ne pose ni xAxis ni yAxis. 22/22 tests. 1 point ⚠️ noté (pas
+un défaut de cette tâche) : le plafond "3 niveaux" du plan n'est
+imposé nulle part dans `buildHierarchy` lui-même — le reviewer soupçonne
+qu'il est appliqué côté UI (à vérifier en Task 11, dont le brief a bien
+`{levels.length < 3 && <button>+ Niveau</button>}`). 1 Minor (non
+bloquant) : pas de test au plafond exact 3 niveaux ni rows=[] (tracés
+sûrs par lecture de code, non exécutés).
 
-## Revue finale de branche (opus, 2d18b9c..503faf3, 10 commits) —
-## 0 Critical, 1 Important, 6 Minor, ready to merge: With fixes.
-## Cohérence cross-task confirmée : les 2 correctifs de clé de cache
-## (Task 4 réactif, Task 5 proactif) convergent réellement vers le même
-## pattern `[label, source?.id, source?.query]`, identique à l'idiome
-## `DataContext.tsx` (`["datasource", s.id, merged.query]`) — vérifié
-## sur le code final, pas seulement les rapports. `bucket` tracé
-## bout-en-bout core→itemClient→comparisonWindow→widgets, aucune
-## injection SQL (Literal fermé + `_sql_lit`). Contrainte "zéro
-## changement de comportement" tenue par construction et vérifiée E2E
-## (scénario 15). 1 Important : asymétrie de couverture — `indicator`
-## avait un test dédié de non-collision à 2 widgets (exigé par la
-## revue Task 4) mais `chart` (qui porte le même correctif appliqué
-## proactivement en Task 5) n'en avait pas. Fix (commit f136501) :
-## test ajouté à `chart.test.tsx`, vérifie l'isolation via les
-## arguments d'appel du mock `queryDataSource` (pas le DOM, le mock
-## EChart n'exposant que le nombre de séries) — prouvé qu'il aurait
-## échoué avec l'ancienne forme de clé (les 6 entrées identiques pour
-## les 2 widgets → dédoublonnage TanStack Query → un seul appel
-## `queryFn` → assertion double impossible à satisfaire). Revue ciblée
-## du fix : Approved, 0 issue, scope propre (1 fichier test seul).
-## 6 Minor non bloquants (déjà notés dans les tâches individuelles +
-## nouveaux) : pas d'état vide dédié en mode comparaison chart (rend un
-## axe 0 point plutôt que "Aucune donnée") ; `chartType: "area"` rendu
-## en `type: "line"` dans `buildCompareOption` (conforme au code
-## littéral du plan, à confirmer délibéré) ; bucket `"week"` jamais
-## testé côté core ; chevauchement de borne `from` entre fenêtre
-## courante et référence pour `referenceWindow("previous")` (inhérent
-## à la conception du plan, testé tel quel) ; `ChartProps` n'inclut pas
-## `compareEnabled`/`comparePeriod` dans son typage (lus depuis
-## `props` brut, cosmétique) ; route mock inutilisée scénario 13 E2E.
-## HEAD=f136501. SP-14e prêt pour finishing-a-development-branch.
+Base Task 9: a1b69a0
+Task 9: complete (commits 63deb66, f24bfba ; 1 Important trouvé et
+corrigé en 1 round de fix). `resolveClickFilter` généralise le
+click→cross-filter : histogram → toujours `null` (confirmé
+inconditionnel, 1re instruction de la fonction) ; sankey → `_role`
+"source" mappe `encodings.source`, "target" mappe `encodings.target`,
+rejette les clics d'arête (`dataType !== "node"`) ; treemap/sunburst →
+profondeur clampée via `Math.min(Math.max(treePathInfo.length-1,0),
+levels.length-1)` (racine → niveau 0, feuille → niveau max, sur-profond
+→ clampé sans out-of-bounds, vérifié par trace manuelle). 1 Important
+trouvé en 1re revue et vérifié indépendamment contre le code de
+production réel de `chart.tsx` (pas seulement le rapport) : la branche
+par défaut (bar/pie/line/funnel) retournait `null` dès que
+`params.name` était absent, alors que le `handleClick` actuel de
+`chart.tsx` ne bloque que sur `categoryField` manquant et retombe sur
+`value: ""` sinon — divergence réelle qui aurait cassé l'équivalence
+dont Task 11 a besoin pour remplacer la logique câblée en dur. Risque
+pratique faible (ECharts fournit quasi toujours `name`) mais explicitement
+requis par l'intention du brief ("resolve categoryField, like today").
+Fix (f24bfba) : branche par défaut ne bloque plus que sur `field`
+manquant, `value` retombe sur `""` si `name` absent — comportement
+désormais byte-for-byte identique à `chart.tsx`. Branches
+histogram/sankey/treemap/sunburst confirmées intactes (leurs propres
+gardes `params.name == null` sont un choix de conception intentionnel
+pour ces types neufs, pas une régression). Test de régression vérifié
+RED contre l'ancien code puis GREEN après fix. Revue 2 : fix vérifié
+minimal et correct, 0 nouveau problème. 28/28 tests. 3 Minor laissés
+tels quels de la revue 1 (non bloquants) : pas de test au clamp
+sur-profond de treemap ; `_role` ni "source" ni "target" retombe
+silencieusement sur `encodings.source` (invariant non vérifié dans ce
+diff, posé par `buildOption`) ; petite duplication
+`{field, value: String(params.name)}` répétée 3 fois.
+
+Base Task 10: f24bfba
+Task 10: complete (commits ba69359, 39eb87d ; 1 Critical + 2 Important
+trouvés et corrigés en 1 round de fix). `SunburstChart` importé +
+enregistré dans `echarts.use([...])`, type `onClick` élargi en
+sur-ensemble strict (vérifié par `tsc --noEmit`). 1 Critical trouvé en
+1re revue et vérifié indépendamment par le contrôleur AVANT même la
+revue (A/B direct sur `setup.ts` via copie de fichier, pas de commande
+git) : l'implémenteur avait ajouté un mock global
+`global.ResizeObserver` dans `shell/src/test/setup.ts` (hors périmètre
+du brief, qui ne citait que `EChart.tsx`/`EChart.test.tsx`) — ce mock
+global inversait une garde intentionnelle d'`AppRenderer.tsx`
+(`typeof ResizeObserver === "undefined"`, utilisée pour figer le
+breakpoint à "lg" en test) et cassait 2 tests d'`AppRenderer.test.tsx`
+déjà verts, contredisant le rapport de l'implémenteur ("no
+regressions"). 2 Important additionnels : le test `EChart.test.tsx`
+mockait tout `echarts/core`/`echarts/charts`, rendant l'assertion
+incapable de détecter un `SunburstChart` non enregistré (aurait
+réussi même sans l'enregistrement) ; import `beforeEach` inutilisé
+cassait `tsc --noEmit` (`noUnusedLocals`). Fix (39eb87d) : `setup.ts`
+intégralement reverté (absent du diff base→head, preuve directe de
+réversion complète) ; mock `ResizeObserver` isolé dans
+`EChart.test.tsx` via `vi.stubGlobal`/`vi.unstubAllGlobals` en
+`beforeEach`/`afterEach` (résout aussi l'import inutilisé) ; nouveau
+test `useMock` capturé via `vi.hoisted`, assertion `toContain`
+(égalité de référence) au lieu de `arrayContaining` suggéré initialement
+par le contrôleur — l'implémenteur a détecté et documenté que
+`arrayContaining` aurait été un piège à faux positif (égalité
+structurelle : tous les mocks de type de graphique sont des `{}` nus,
+donc déep-equal entre eux peu importe lequel est réellement
+`SunburstChart`) ; ce point technique reçu comme un vrai constat,
+re-vérifié indépendamment par le reviewer en revue 2 (sémantique
+`toContain` vs `arrayContaining` confirmée exacte). Vérifié par
+suppression temporaire de `SunburstChart` de `echarts.use([...])` :
+le nouveau test échoue bien, puis fichier restauré (diff confirmé
+identique). `EChart.test.tsx` 2/2, `AppRenderer.test.tsx` 28/28,
+`npm run build` propre, suite complète 748/748 (101 fichiers), 0
+échec. Revue 2 : les 3 findings vérifiés résolus directement sur le
+diff (absence de `setup.ts` du diff = preuve de réversion complète,
+pas seulement le rapport), 0 nouveau problème.
+
+Base Task 11: 39eb87d
+Task 11: complete (commit 7bbdc5d, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). 5 nouveaux
+`CHART_TYPES`, `bins: 10` en défaut, `PropsPanel` gagne des blocs
+conditionnels (`showCategoryValue`/`showSankeyEncodings`/
+`showHierarchyEncodings`/`showBins`) suivant le pattern déjà établi par
+`showCompare`. Plafond "3 niveaux" (laissé non imposé par
+`buildHierarchy` en Task 8) atterrit ici côté UI : le bouton
+"+ Niveau" disparaît dès `levels.length >= 3`, confirmé par lecture
+directe du code. `categoryField`/`valueField` masqués pour
+sankey/treemap/sunburst, gardés pour funnel/histogram (conforme au
+brief). `handleClick` délègue à `resolveClickFilter` — vérifié que
+l'appel ne réintroduit pas le bug `params.name == null` corrigé en
+Task 9 (comparé ligne à ligne à l'ancienne logique câblée en dur
+supprimée, correspondance verbatim). Scope confirmé strictement
+limité à `chart.tsx`/`chart.test.tsx` (pas de `setup.ts`, la régression
+de Task 10 ne se reproduit pas). Test d'intégration réel (rendu
+`AnalyticsContextProvider`, clic réel, assertion sur l'état
+`crossFilter` via un composant `Probe`), pas de mock de la logique
+métier. RED 5/5 échoués → GREEN 18/18 `chart.test.tsx` → suite complète
+753/753 (101 fichiers) → build propre. 2 Minor notés (non bloquants) :
+pas de test à la limite exacte du plafond 3 niveaux (seulement 1→2
+testé, la logique elle-même vérifiée correcte par lecture) ; commit en
+anglais (cohérent avec le précédent mixte déjà établi dans la série
+SP-14f).
+
+Base Task 12: 7bbdc5d
+Task 12: complete (commits eea4094, 8d75c24, 5461b34 ; 1 Important
+trouvé (plan-mandated, hérité du code littéral du brief) et corrigé en
+2 rounds de fix). 4 scénarios E2E ajoutés en append-only à
+`analytics-context.spec.ts` (0 scénario existant touché) : clic
+funnel → cross-filter réel sur une table (requête filtrée +
+disparition visible d'une ligne) ; rendu seul sankey/treemap/sunburst
+(3 widgets indépendants, layouts non cliquables de façon fiable —
+scope délibérément limité, confirmé respecté) ; histogramme rendu +
+absence de cross-filter au clic. L'implémenteur a détecté et corrigé
+3 bugs réels dans le code littéral du brief avant même la revue :
+mauvais label pour "Champ valeur" (aria-label réel vs texte du
+&lt;label&gt;), clic "+ Niveau" manquant avant de remplir "Niveau 1"
+(l'input n'existe pas tant qu'aucun niveau n'est ajouté), coordonnée
+de clic funnel non fiable (0.25 atterrissait sur canvas transparent,
+remplacée par 0.42 — valeur réutilisée d'ailleurs dans le même
+fichier, donc déjà éprouvée). Les 3 corrections vérifiées indépendamment
+par le reviewer contre le code source réel (chart.tsx, pas seulement
+le rapport). 1 Important trouvé en 1re revue, labellisé plan-mandated
+(structure identique au snippet littéral du brief) : le scénario
+histogramme n'avait aucun widget consommateur (pas de table sur le
+même dataset), rendant l'assertion "jamais de cross-filter" vacuously
+true — elle aurait réussi identiquement même si `resolveClickFilter`
+avait régressé pour histogram. Fix round 1 (8d75c24) : ajout d'une
+table réelle sur le même dataset via la technique "promue puis
+retypée en statistics" (vérifiée par le reviewer contre le code source
+réel de `DataSourcePanel.tsx` — le sélecteur de type ne touche jamais
+`datasetId`, confirmé par un spread superficiel, et corroborée par un
+usage préexistant identique ailleurs dans le même fichier de specs) +
+mock `/collections/pops/items` filtrant sur `city`. Revue round 2 :
+fix du round 1 approuvé sur le fond, mais a détecté un NOUVEAU risque
+introduit par le fix lui-même — la coordonnée de clic histogramme
+(0.5, 0.5) n'avait jamais été vérifiée empiriquement (contrairement au
+funnel dans le même commit), et selon la sémantique de dispatch de clic
+d'ECharts (tracée dans le code source du reviewer), un clic qui manque
+tout élément graphique ne déclenche jamais l'événement "click" —
+laissant le test vacuously true par un mécanisme différent (clic dans
+le vide plutôt qu'absence d'abonné). Fix round 2 (5461b34) :
+échantillonnage de pixels empirique confirmant que (0.5, 0.5) tombait
+bien dans l'espace vide entre les deux barres ; remplacé par (0.72,
+0.45), vérifié à l'intérieur du remplissage solide de la barre haute.
+Preuve décisive : le garde `if (chartType === "histogram") return
+null;` désactivé temporairement dans `chartOption.ts` → le test E2E
+échoue bien (la table se filtre, une ligne disparaît) → garde restauré
+(`git diff` confirmé propre, non commité) → test repasse au vert.
+Revue round 3 : `chartOption.ts` confirmé absent du diff final (la
+désactivation temporaire n'a pas fuité dans le commit), toujours
+exactement 3 scénarios SP-14f, coordonnée cohérente avec les mesures
+empiriques documentées en commentaire (même style que le funnel).
+Suite E2E ciblée 3/3 à chaque round, suite complète 69/69 (39 specs)
+au round final, vérification finale cross-stack (pytest 808/106
+skipped, vitest 753/753, tsc+build propre) déjà passée par
+l'implémenteur en avance sur la tâche finale du plan.
+
+## SP-14f COMPLET — 12 tâches, 18 commits de tâches + 1 commit de
+## revue finale (19 au total). Rounds de fix : Task 3 (1, corruption
+## silencieuse), Task 6 (1, tooltip funnel), Task 7 (0, ajout
+## proactif divulgué), Task 8 (0, ajout proactif divulgué), Task 9
+## (1, divergence clic par défaut), Task 10 (1, régression cross-
+## fichier + test non discriminant), Task 12 (2, scénario histogramme
+## vacuously true deux fois de suite). HEAD=5461b34 avant revue finale.
+
+## Revue finale de branche (opus, 1888fc1..5461b34, 18 commits) —
+## 0 Critical, 1 Important, 3 Minor, ready to merge: With fixes.
+## Cohérence cross-tâche vérifiée en profondeur (au-delà des revues
+## par tâche) : flux de données bout-en-bout core→itemClient→
+## chartOption tracé et confirmé correct (tidy rows multi-champs →
+## `statRowId` id composite → branches sankey/treemap) ; forme
+## histogramme (`bucketIndex`/`bucketStart`/`bucketEnd`/`count`)
+## confirmée identique entre core (Task 3) et chartOption (Task 6) ;
+## SQL paramétrée vérifiée sans injection ; contrainte n°1 "zéro
+## changement de comportement" tenue et vérifiée indépendamment
+## (byte-for-byte sur `statRowId` single-field, `resolveClickFilter`
+## default branch, trigger tooltip additif) ; régression Task 10
+## confirmée réellement absente du diff final (`setup.ts` absent des
+## fichiers modifiés). 1 Important trouvé, propre aux tâches
+## individuelles mais invisible à leur échelle (chacune ne voyait
+## qu'un fichier) : le contrôle "Nombre de classes" du panneau du
+## graphique (`props.bins`, ajouté Task 11) était mort — le
+## binning réel passe uniquement par `query.bins` de la source de
+## données (Task 5) ; `chartOption.ts` ne lit jamais `props.bins`.
+## Pire qu'une redondance : un auteur réglant les classes UNIQUEMENT
+## sur le panneau du graphique obtenait un histogramme cassé
+## ("NaN–NaN"). Fix (3d28b64) : contrôle mort retiré de `chart.tsx`
+## (`showBins`, `defaultProps.bins`) et du type `ChartProps.bins`
+## dans `chartOption.ts`, test associé supprimé ; contrôle
+## fonctionnel de `DataSourcePanel.tsx` non touché. Vérifié par grep
+## qu'aucun autre code ne lisait `ChartProps.bins` avant suppression.
+## Tests ciblés 45/45, suite complète 752/752 (101 fichiers), build
+## propre, E2E complet 69/69 (39 specs, y compris les 3 scénarios
+## SP-14f). Revue de vérification (opus) : suppression confirmée
+## complète et sans effet de bord sur le disque réel (pas seulement
+## le rapport), contrôle `DataSourcePanel` confirmé intact, commit
+## de fix scopé à exactement 3 fichiers (+1/−22 lignes). 3 Minor de
+## la revue finale laissés tels quels (non bloquants, cosmétiques/UX
+## secondaires) : sankey/treemap/sunburst n'exposent aucune UI pour
+## `encodings.value` (toujours inféré, dégénère si la ligne porte une
+## dimension non-niveau — touche le smoke test Task 12 dont le
+## fixture `levels` ne correspond pas exactement au `groupBy` du
+## mock, rendu quand même valide car seul le nombre de canvas est
+## vérifié) ; petite duplication `{field, value: String(params.name)}`
+## dans `resolveClickFilter` ; bornes `min`/`max` HTML5 sur les inputs
+## bins = indicatives seulement (le vrai bornage 1-100 est côté
+## serveur, Task 3, ce qui est correct). HEAD=3d28b64.
+## SP-14f READY TO MERGE — prêt pour finishing-a-development-branch.

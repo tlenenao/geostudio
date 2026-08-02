@@ -294,3 +294,78 @@ test("two chart widgets in compare mode on the same dataset and metric do not co
     expect(currentCalls.some((source) => source.query.region === undefined)).toBe(true);
   });
 });
+
+test("PropsPanel offers the 5 new chart types", () => {
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "bar" }} dataSources={[]} onChange={vi.fn()} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  const select = screen.getByLabelText("Type de graphique") as HTMLSelectElement;
+  const values = Array.from(select.options).map((o) => o.value);
+  expect(values).toEqual(expect.arrayContaining(["sankey", "treemap", "sunburst", "funnel", "histogram"]));
+});
+
+test("PropsPanel shows source/target encodings for sankey, hides categoryField/valueField", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "sankey" }} dataSources={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByLabelText("Champ source")).toBeInTheDocument();
+  expect(screen.getByLabelText("Champ cible")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Champ catégorie")).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Champ source"), "o");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { source: "o" } }));
+});
+
+test("PropsPanel lets the author add up to 3 hierarchy levels for treemap/sunburst", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "treemap", encodings: { levels: ["region"] } }} dataSources={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByLabelText("Niveau 1")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "+ Niveau" }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { levels: ["region", ""] } }));
+});
+
+test("handleClick uses resolveClickFilter — treemap click cross-filters on the deepest level", async () => {
+  function Probe() {
+    const ctx = useAnalyticsContext();
+    const entry = ctx.crossFilter["ds-1"];
+    return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+  }
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = { queryDataSource: vi.fn(), getDatasetConfig: vi.fn() } as unknown as ItemClient;
+  const Chart = getWidget("chart")!.Component;
+  const treeRecords = state({ records: [{ id: "1", properties: { region: "Nord", value: 1 } }], datasetId: "ds-1" });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="auto">
+          <Chart props={{ chartType: "treemap", encodings: { levels: ["region"] }, dataSourceId: "src-1" }} ctx={{ mode: "runtime", data: treeRecords } as WidgetContext} />
+          <Probe />
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByTestId("echart"));
+  // The shared EChart mock (top of file) fires onClick({ name: "Nord" }) — no
+  // treePathInfo, so resolveClickFilter falls back to depth 0 → levels[0].
+  expect(await screen.findByText("cf:region=Nord")).toBeInTheDocument();
+});
