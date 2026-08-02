@@ -720,6 +720,55 @@ test("queryDataSource sends a bucket query key as body.bucket, not as a filter",
   expect(posted!.filters).toBeUndefined();
 });
 
+test("queryDataSource sends an array groupBy as-is in the aggregate request body", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: ["region", "annee"], rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: ["region", "annee"], agg: "count" },
+  });
+  expect(posted!.groupBy).toEqual(["region", "annee"]);
+});
+
+test("queryDataSource builds a composite id when categoryKey is a multi-field array", async () => {
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", () =>
+      HttpResponse.json({
+        categoryKey: ["region", "annee"],
+        rows: [{ region: "Nord", annee: "2025", value: 10 }],
+      }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: ["region", "annee"], agg: "sum", field: "pop" },
+  });
+  expect(records).toEqual([
+    { id: "Nord|2025", properties: { region: "Nord", annee: "2025", value: 10 } },
+  ]);
+});
+
+test("queryDataSource sends a bins query key as body.bins, not as a filter", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "bucketIndex", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s", type: "statistics", service: "core", layer: "villes",
+    query: { field: "pop", bins: 5 },
+  });
+  expect(posted!.bins).toBe(5);
+  expect(posted!.filters).toBeUndefined();
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s", type: "statistics", service: "core", layer: "villes",
