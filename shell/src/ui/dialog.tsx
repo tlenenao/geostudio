@@ -5,11 +5,13 @@ export function Dialog({
   open,
   onClose,
   title,
+  wide = false,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -29,7 +31,7 @@ export function Dialog({
       <div
         role="dialog"
         aria-label={title}
-        className="relative z-10 w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
+        className={`relative z-10 w-full rounded-lg bg-white p-6 shadow-lg ${wide ? "max-w-2xl" : "max-w-md"}`}
       >
         <h2 className="mb-4 text-lg font-semibold">{title}</h2>
         {children}
