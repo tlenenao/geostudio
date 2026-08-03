@@ -47,6 +47,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </>
           )}
+          {meQuery.data?.isAnalyst === true && (
+            <Link to="/analytics/sql" className="mt-2 block text-sm font-medium hover:underline">
+              SQL Lab
+            </Link>
+          )}
         </nav>
         <main className="flex-1 p-6">{children}</main>
       </div>
