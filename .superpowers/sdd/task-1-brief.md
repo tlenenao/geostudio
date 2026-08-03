@@ -1,139 +1,306 @@
-### Task 1: Core — `groupBy` widened to `str | list[str] | None`, validation
+## Task 1: `mapSymbology.ts` — geometry detection, paint expressions, legend spec
 
 **Files:**
-- Modify: `core/app/analytics/aggregate.py:26-34` (`AggregateRequestBody`), `core/app/analytics/aggregate.py:71-90` (`_validate_fields`)
-- Test: `core/tests/test_analytics_aggregate.py`
+- Create: `shell/src/builder/widgets/mapSymbology.ts`
+- Test: `shell/src/builder/widgets/mapSymbology.test.ts`
 
 **Interfaces:**
-- Produces: `AggregateRequestBody.groupBy: str | list[str] | None` (unchanged default `None`; a bare `str` behaves exactly as before). New `AggregateRequestBody.bins: int | None = None` field is declared here too (used starting Task 3) so the model only changes once. New helper `_groupby_fields(request: AggregateRequestBody) -> list[str]` — returns `[]` if `groupBy` is falsy, `[groupBy]` if it's a `str`, or the list itself if it's already a `list[str]`. Validation: duplicate fields in a `groupBy` list raise `UnknownAggregateField("groupBy", ...)`; `bucket` set with anything other than exactly one group-by field raises `UnknownAggregateField("bucket", ...)`; `split` set together with a multi-field `groupBy` raises `UnknownAggregateField("split", ...)`.
+- Consumes: nothing from other tasks (pure module, no imports beyond its own types).
+- Produces (consumed by Task 3):
+  ```ts
+  export type GeometryKind = "point" | "line" | "polygon";
+  export type ColorDomain = { kind: "categorical"; values: string[] } | { kind: "numeric"; min: number; max: number };
+  export type SizeDomain = { min: number; max: number };
+  export type MapEncodings = {
+    color?: { field: string; mode: "categorical" | "numeric" };
+    size?: { field: string };
+  };
+  export type MapPaintResult = { renderAs: "fill" | "circle" | "line"; paint: Record<string, unknown> };
+  export type LegendSpec = {
+    color?:
+      | { kind: "categorical"; field: string; entries: { value: string; color: string }[] }
+      | { kind: "numeric"; field: string; min: number; max: number; colorLow: string; colorHigh: string };
+    size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
+  };
+  export function detectGeometryKind(geometry: unknown): GeometryKind;
+  export function buildMapPaint(
+    encodings: MapEncodings | undefined,
+    colorDomain: ColorDomain | null,
+    sizeDomain: SizeDomain | null,
+    geometryKind: GeometryKind,
+  ): MapPaintResult;
+  export function buildLegend(
+    encodings: MapEncodings | undefined,
+    colorDomain: ColorDomain | null,
+    sizeDomain: SizeDomain | null,
+    geometryKind: GeometryKind,
+  ): LegendSpec | null;
+  ```
 
-- [ ] **Step 1: Write the failing validation tests**
+- [ ] **Step 1: Write the failing test file**
 
-Append to `core/tests/test_analytics_aggregate.py`:
+Create `shell/src/builder/widgets/mapSymbology.test.ts`:
 
-```python
-def test_groupby_list_with_duplicate_field_raises(tmp_path, conn):
-    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
-    request = AggregateRequestBody(groupBy=["region", "region"])
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
-        )
-    assert exc.value.field == "groupBy"
+```ts
+// SPDX-License-Identifier: Apache-2.0
+import { expect, test } from "vitest";
+import { buildLegend, buildMapPaint, detectGeometryKind } from "./mapSymbology";
 
+test("detectGeometryKind maps GeoJSON types to a rendering kind", () => {
+  expect(detectGeometryKind({ type: "Point" })).toBe("point");
+  expect(detectGeometryKind({ type: "MultiPoint" })).toBe("point");
+  expect(detectGeometryKind({ type: "LineString" })).toBe("line");
+  expect(detectGeometryKind({ type: "MultiLineString" })).toBe("line");
+  expect(detectGeometryKind({ type: "Polygon" })).toBe("polygon");
+  expect(detectGeometryKind({ type: "MultiPolygon" })).toBe("polygon");
+  expect(detectGeometryKind(undefined)).toBe("polygon");
+  expect(detectGeometryKind(null)).toBe("polygon");
+});
 
-def test_bucket_with_multi_field_groupby_raises(tmp_path, conn):
-    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
-    request = AggregateRequestBody(groupBy=["region", "annee"], bucket="day")
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
-        )
-    assert exc.value.field == "bucket"
+test("buildMapPaint returns a match expression with a trailing default color for a categorical domain", () => {
+  const { renderAs, paint } = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: ["Nord", "Sud"] },
+    null,
+    "polygon",
+  );
+  expect(renderAs).toBe("fill");
+  expect(paint["fill-color"]).toEqual([
+    "match", ["get", "region"],
+    "Nord", "#2563eb",
+    "Sud", "#dc2626",
+    "#2563eb",
+  ]);
+});
 
+test("cycles the categorical palette past 8 distinct values", () => {
+  const values = Array.from({ length: 9 }, (_, i) => `v${i}`);
+  const { paint } = buildMapPaint({ color: { field: "cat", mode: "categorical" } }, { kind: "categorical", values }, null, "polygon");
+  const match = paint["fill-color"] as unknown[];
+  // ["match", ["get","cat"], v0,c0, v1,c1, ..., v8,c8, default] — v8 is the
+  // 9th distinct value (index 8) and must reuse c0 (palette wraps at 8).
+  expect(match[2]).toBe("v0");
+  expect(match[3]).toBe("#2563eb");
+  expect(match[18]).toBe("v8");
+  expect(match[19]).toBe("#2563eb");
+});
 
-def test_split_with_multi_field_groupby_raises(tmp_path, conn):
-    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
-    request = AggregateRequestBody(groupBy=["region", "annee"], split="annee")
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
-        )
-    assert exc.value.field == "split"
+test("buildMapPaint returns an interpolate expression for a numeric color domain", () => {
+  const { paint } = buildMapPaint({ color: { field: "valeur", mode: "numeric" } }, { kind: "numeric", min: 0, max: 100 }, null, "point");
+  expect(paint["circle-color"]).toEqual(["interpolate", ["linear"], ["get", "valeur"], 0, "#dbeafe", 100, "#1e3a8a"]);
+});
 
+test("a numeric color domain with min === max renders a constant color, not an interpolate expression", () => {
+  const { paint } = buildMapPaint({ color: { field: "valeur", mode: "numeric" } }, { kind: "numeric", min: 5, max: 5 }, null, "polygon");
+  expect(paint["fill-color"]).toBe("#dbeafe");
+});
 
-def test_groupby_list_with_unknown_field_raises(tmp_path, conn):
-    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
-    request = AggregateRequestBody(groupBy=["region", "inconnu"])
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
-        )
-    assert exc.value.field == "groupBy"
+test("renderAs follows the geometry kind, independent of encodings", () => {
+  expect(buildMapPaint(undefined, null, null, "point").renderAs).toBe("circle");
+  expect(buildMapPaint(undefined, null, null, "line").renderAs).toBe("line");
+  expect(buildMapPaint(undefined, null, null, "polygon").renderAs).toBe("fill");
+});
+
+test("size encoding produces a circle-radius interpolate expression only for point geometry", () => {
+  const point = buildMapPaint({ size: { field: "montant" } }, null, { min: 0, max: 50 }, "point");
+  expect(point.paint["circle-radius"]).toEqual(["interpolate", ["linear"], ["get", "montant"], 0, 4, 50, 24]);
+
+  const polygon = buildMapPaint({ size: { field: "montant" } }, null, { min: 0, max: 50 }, "polygon");
+  expect(polygon.paint["circle-radius"]).toBeUndefined();
+});
+
+test("a size domain with min === max renders a constant radius", () => {
+  const { paint } = buildMapPaint({ size: { field: "montant" } }, null, { min: 10, max: 10 }, "point");
+  expect(paint["circle-radius"]).toBe(4);
+});
+
+test("no active encodings produce an empty paint object", () => {
+  const { paint } = buildMapPaint(undefined, null, null, "polygon");
+  expect(paint).toEqual({});
+});
+
+test("buildLegend returns null when no encoding is active", () => {
+  expect(buildLegend(undefined, null, null, "polygon")).toBeNull();
+});
+
+test("buildLegend builds a categorical color section", () => {
+  const legend = buildLegend({ color: { field: "region", mode: "categorical" } }, { kind: "categorical", values: ["Nord", "Sud"] }, null, "polygon");
+  expect(legend).toEqual({
+    color: {
+      kind: "categorical", field: "region",
+      entries: [{ value: "Nord", color: "#2563eb" }, { value: "Sud", color: "#dc2626" }],
+    },
+  });
+});
+
+test("buildLegend builds a numeric color section", () => {
+  const legend = buildLegend({ color: { field: "valeur", mode: "numeric" } }, { kind: "numeric", min: 0, max: 100 }, null, "point");
+  expect(legend).toEqual({
+    color: { kind: "numeric", field: "valeur", min: 0, max: 100, colorLow: "#dbeafe", colorHigh: "#1e3a8a" },
+  });
+});
+
+test("buildLegend builds a size section only for point geometry", () => {
+  const onPoint = buildLegend({ size: { field: "montant" } }, null, { min: 0, max: 50 }, "point");
+  expect(onPoint).toEqual({ size: { field: "montant", min: 0, max: 50, radiusMin: 4, radiusMax: 24 } });
+
+  const onPolygon = buildLegend({ size: { field: "montant" } }, null, { min: 0, max: 50 }, "polygon");
+  expect(onPolygon).toBeNull();
+});
+
+test("buildLegend combines color and size sections when both encodings are active", () => {
+  const legend = buildLegend(
+    { color: { field: "region", mode: "categorical" }, size: { field: "montant" } },
+    { kind: "categorical", values: ["Nord"] },
+    { min: 0, max: 10 },
+    "point",
+  );
+  expect(legend).toEqual({
+    color: { kind: "categorical", field: "region", entries: [{ value: "Nord", color: "#2563eb" }] },
+    size: { field: "montant", min: 0, max: 10, radiusMin: 4, radiusMax: 24 },
+  });
+});
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k "duplicate or multi_field or unknown_field" -v`
-Expected: FAIL (model doesn't accept a list yet / no validation exists)
+Run: `cd shell && npm run test -- mapSymbology.test.ts`
+Expected: FAIL — `Cannot find module './mapSymbology'` (file does not exist yet).
 
-- [ ] **Step 3: Widen the model and add validation**
+- [ ] **Step 3: Write the implementation**
 
-In `core/app/analytics/aggregate.py`, replace the `AggregateRequestBody` class (lines 26-34):
+Create `shell/src/builder/widgets/mapSymbology.ts`:
 
-```python
-class AggregateRequestBody(BaseModel):
-    groupBy: str | list[str] | None = None
-    split: str | None = None
-    agg: str = "count"
-    field: str | None = None
-    measures: list[AggregateMeasure] | None = None
-    filters: dict[str, str] = {}
-    bbox: tuple[float, float, float, float] | None = None
-    bucket: Literal["day", "week", "month"] | None = None
-    bins: int | None = None
+```ts
+// SPDX-License-Identifier: Apache-2.0
+export type GeometryKind = "point" | "line" | "polygon";
+
+export type ColorDomain =
+  | { kind: "categorical"; values: string[] }
+  | { kind: "numeric"; min: number; max: number };
+
+export type SizeDomain = { min: number; max: number };
+
+export type MapEncodings = {
+  color?: { field: string; mode: "categorical" | "numeric" };
+  size?: { field: string };
+};
+
+export type MapPaintResult = { renderAs: "fill" | "circle" | "line"; paint: Record<string, unknown> };
+
+export type LegendSpec = {
+  color?:
+    | { kind: "categorical"; field: string; entries: { value: string; color: string }[] }
+    | { kind: "numeric"; field: string; min: number; max: number; colorLow: string; colorHigh: string };
+  size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
+};
+
+const CATEGORICAL_PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+const NUMERIC_COLOR_LOW = "#dbeafe";
+const NUMERIC_COLOR_HIGH = "#1e3a8a";
+const SIZE_RADIUS_MIN = 4;
+const SIZE_RADIUS_MAX = 24;
+
+function paletteColor(index: number): string {
+  return CATEGORICAL_PALETTE[index % CATEGORICAL_PALETTE.length];
+}
+
+// GeoJSON geometry.type → the MapLibre layer type that can render it and
+// carry a data-driven symbology (spec §3): points get circles (the only
+// geometry a size encoding can apply to), lines/polygons keep the existing
+// line/fill rendering. Absent/unrecognized geometry defaults to "polygon"
+// (identical to today's hard-coded "fill" behavior — see Task 2).
+export function detectGeometryKind(geometry: unknown): GeometryKind {
+  const type = (geometry as { type?: string } | null | undefined)?.type;
+  if (type === "Point" || type === "MultiPoint") return "point";
+  if (type === "LineString" || type === "MultiLineString") return "line";
+  return "polygon";
+}
+
+function colorPaintProperty(renderAs: "fill" | "circle" | "line"): string {
+  if (renderAs === "circle") return "circle-color";
+  if (renderAs === "line") return "line-color";
+  return "fill-color";
+}
+
+export function buildMapPaint(
+  encodings: MapEncodings | undefined,
+  colorDomain: ColorDomain | null,
+  sizeDomain: SizeDomain | null,
+  geometryKind: GeometryKind,
+): MapPaintResult {
+  const renderAs: "fill" | "circle" | "line" =
+    geometryKind === "point" ? "circle" : geometryKind === "line" ? "line" : "fill";
+  const paint: Record<string, unknown> = {};
+
+  if (encodings?.color && colorDomain) {
+    const prop = colorPaintProperty(renderAs);
+    if (colorDomain.kind === "categorical") {
+      const match: unknown[] = ["match", ["get", encodings.color.field]];
+      colorDomain.values.forEach((value, i) => match.push(value, paletteColor(i)));
+      match.push(paletteColor(0)); // default color for a value outside the observed domain
+      paint[prop] = match;
+    } else if (colorDomain.min === colorDomain.max) {
+      paint[prop] = NUMERIC_COLOR_LOW;
+    } else {
+      paint[prop] = ["interpolate", ["linear"], ["get", encodings.color.field],
+        colorDomain.min, NUMERIC_COLOR_LOW, colorDomain.max, NUMERIC_COLOR_HIGH];
+    }
+  }
+
+  if (encodings?.size && sizeDomain && renderAs === "circle") {
+    paint["circle-radius"] = sizeDomain.min === sizeDomain.max
+      ? SIZE_RADIUS_MIN
+      : ["interpolate", ["linear"], ["get", encodings.size.field],
+        sizeDomain.min, SIZE_RADIUS_MIN, sizeDomain.max, SIZE_RADIUS_MAX];
+  }
+
+  return { renderAs, paint };
+}
+
+export function buildLegend(
+  encodings: MapEncodings | undefined,
+  colorDomain: ColorDomain | null,
+  sizeDomain: SizeDomain | null,
+  geometryKind: GeometryKind,
+): LegendSpec | null {
+  const legend: LegendSpec = {};
+
+  if (encodings?.color && colorDomain) {
+    legend.color = colorDomain.kind === "categorical"
+      ? {
+          kind: "categorical", field: encodings.color.field,
+          entries: colorDomain.values.map((value, i) => ({ value, color: paletteColor(i) })),
+        }
+      : {
+          kind: "numeric", field: encodings.color.field,
+          min: colorDomain.min, max: colorDomain.max,
+          colorLow: NUMERIC_COLOR_LOW, colorHigh: NUMERIC_COLOR_HIGH,
+        };
+  }
+
+  // Size legend only makes sense where size is actually rendered (points).
+  if (encodings?.size && sizeDomain && geometryKind === "point") {
+    legend.size = {
+      field: encodings.size.field, min: sizeDomain.min, max: sizeDomain.max,
+      radiusMin: SIZE_RADIUS_MIN, radiusMax: SIZE_RADIUS_MAX,
+    };
+  }
+
+  return legend.color || legend.size ? legend : null;
+}
 ```
 
-Add the helper right after `_valid_column_names` (after line 68):
+- [ ] **Step 4: Run the test to verify it passes**
 
-```python
-def _groupby_fields(request: AggregateRequestBody) -> list[str]:
-    if not request.groupBy:
-        return []
-    return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
-```
+Run: `cd shell && npm run test -- mapSymbology.test.ts`
+Expected: PASS — 14 tests green.
 
-Replace `_validate_fields` (lines 71-90) with:
-
-```python
-def _validate_fields(request: AggregateRequestBody, table_info) -> None:
-    valid = _valid_column_names(table_info)
-
-    def check(name: str | None, label: str) -> None:
-        if name is not None and name not in valid:
-            raise UnknownAggregateField(label, f"unknown field '{name}'")
-
-    fields = _groupby_fields(request)
-    if len(fields) != len(set(fields)):
-        raise UnknownAggregateField("groupBy", "duplicate field in groupBy")
-    for f in fields:
-        check(f, "groupBy")
-
-    if request.bucket is not None and len(fields) != 1:
-        raise UnknownAggregateField("bucket", "bucket requires a single-field groupBy")
-    if request.split and len(fields) > 1:
-        raise UnknownAggregateField("split", "split cannot combine with a multi-field groupBy")
-
-    check(request.split, "split")
-    check(request.field, "field")
-    for i, m in enumerate(request.measures or []):
-        check(m.field, f"measures[{i}].field")
-    for raw_name in request.filters:
-        field_name, _ = _split_filter_key(raw_name)
-        check(field_name, f"filters.{raw_name}")
-    if request.bbox is not None and not table_info.geometry_column:
-        raise UnknownAggregateField("bbox", "collection has no geometry")
-```
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k "duplicate or multi_field or unknown_field" -v`
-Expected: PASS
-
-- [ ] **Step 5: Run the full core suite for non-regression**
-
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -v`
-Expected: PASS — all existing tests (single-field `groupBy`, `bucket`, `split`, filters, bbox) stay green.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
-git commit -m "feat(core): accept groupBy as a list of fields on /aggregate, with validation (SP-14f)"
+cd shell && git add src/builder/widgets/mapSymbology.ts src/builder/widgets/mapSymbology.test.ts
+git commit -m "feat(shell): mapSymbology builds MapLibre paint expressions and a legend spec from dataset encodings (SP-14h)"
 ```
 
 ---

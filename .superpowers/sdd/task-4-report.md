@@ -1,97 +1,115 @@
-# Task 4 Report: Shell — `itemClient` passes `groupBy` arrays and `bins` through (SP-14f)
+# Task 4 report — E2E: map symbology legends, cross-filter regression, unconfigured no-op (SP-14h)
 
-## Summary
+## What was implemented
 
-Successfully implemented client-side plumbing in `shell/src/api/itemClient.ts` to support multi-field `groupBy` arrays and `bins` parameter forwarding to the core's `/collections/{id}/aggregate` endpoint. Added `statRowId` helper function to build stable composite row IDs when `categoryKey` is a multi-field array.
+Appended four Playwright E2E scenarios to the end of `shell/e2e/analytics-context.spec.ts`
+(after the SP-14g unconfigured-pivot test), exactly as given in the task brief, plus one
+necessary robustness fix in scenario 24 (see "Concerns" below):
 
-## Implementation Details
+1. **Scénario 22 (SP-14h)** — categorical color: a polygon layer colored by `region`
+   shows a legend built from a `groupBy` statistics query, distinct from the `features`
+   DataSource feeding the geometry.
+2. **Scénario 23 (SP-14h)** — numeric color + size: a point layer sized/colored by two
+   numeric fields (`valeur`, `montant`) shows a legend with both domains' min–max bounds,
+   fetched via two separate statistics (`measures`) queries.
+3. **Scénario 24 (SP-14h)** — regression: a click on a styled map feature still
+   cross-filters a sibling table by pk, unchanged by the new symbology.
+4. **Scénario 25 (SP-14h)** — regression: a map with no encodings configured issues zero
+   domain (aggregate) queries — behaves exactly as before Task 1–3.
 
-### Files Modified
+## Test evidence
 
-1. **`shell/src/api/itemClient.ts`**
-   - Updated `STAT_KEYS` (line 40) to include `"bins"`
-   - Enhanced `buildAggregateBody()` function (lines 49-75) to:
-     - Forward `query.groupBy` as a `string[]` when it's already an array (unchanged as `string` otherwise)
-     - Forward `query.bins` as a `number` in the POST body
-   - Added new `statRowId()` helper function (lines 77-82) that:
-     - Joins multi-field values with `"|"` for stable per-row ids when `categoryKey` is an array
-     - Returns unchanged single-field behavior: `String(row[categoryKey])`
-   - Updated `queryDataSource()` statistics branch (lines 639-643) to:
-     - Accept `categoryKey: string | string[]` from response
-     - Use `statRowId()` helper for building composite row IDs
-
-2. **`shell/src/api/itemClient.test.ts`**
-   - Added 3 new test cases after line 721:
-     - `queryDataSource sends an array groupBy as-is in the aggregate request body`
-     - `queryDataSource builds a composite id when categoryKey is a multi-field array`
-     - `queryDataSource sends a bins query key as body.bins, not as a filter`
-
-## Test Results
-
-### Step 2 - Verify Failing Tests (RED)
+### Targeted E2E (the 4 new SP-14h scenarios)
 
 ```
-cd shell && npx vitest run src/api/itemClient.test.ts -t "groupBy|composite id|bins query"
-
-✗ queryDataSource sends an array groupBy as-is in the aggregate request body
-  → expected 'region,annee' to deeply equal [ 'region', 'annee' ]
-
-✗ queryDataSource builds a composite id when categoryKey is a multi-field array
-  → expected [ { id: '', properties: { …(3) } } ] to deeply equal [ { id: 'Nord|2025', …(1) } ]
-
-✗ queryDataSource sends a bins query key as body.bins, not as a filter
-  → expected undefined to be 5 // Object.is equality
+$ cd shell && npm run e2e -- analytics-context.spec.ts -g "SP-14h"
+Running 4 tests using 1 worker
+  ✓ a map with a categorical color encoding shows a legend built from a groupBy domain query (SP-14h)
+  ✓ a map with numeric color and size encodings shows a legend with both domains' bounds (SP-14h)
+  ✓ a click on a styled map feature still cross-filters a sibling table by pk (SP-14h)
+  ✓ a map with no encodings configured issues no domain query (SP-14h)
+4 passed (34.3s)
 ```
 
-Expected failures confirmed: 3 failed, 83 skipped.
+Also verified with `--repeat-each=5 --workers=3` (20 runs total): 20 passed, no flakes,
+after the retry-loop fix described below.
 
-### Step 4 - Verify Passing Tests (GREEN)
+### Full E2E suite
 
 ```
-cd shell && npx vitest run src/api/itemClient.test.ts
-
-✓ src/api/itemClient.test.ts (86 tests) 681ms
-
-Test Files  1 passed (1)
-Tests  86 passed (86)
+$ cd shell && npm run e2e
+Running 76 tests using 8 workers
+...
+76 passed (1.4m)
 ```
 
-All tests pass, including:
-- The 3 new tests for multi-field groupBy, composite IDs, and bins parameter
-- All 83 existing tests remain green (no regressions)
+First run showed 1 unrelated failure in `publication.spec.ts` (thumbnail-capture flake
+under 8-way worker contention — confirmed pre-existing: passes standalone, file last
+touched in an old commit unrelated to this task, `git log -1 -- e2e/publication.spec.ts`
+→ `a1499a2`). A second full run passed all 76/76 clean.
 
-## Commit
+### Full unit suite + build
 
-**SHA:** `c59950d`
-**Message:** `feat(shell): itemClient forwards multi-field groupBy and bins to /aggregate (SP-14f)`
+```
+$ cd shell && npm run test
+Test Files  104 passed (104)
+     Tests  792 passed (792)
 
-## Self-Review Findings
+$ cd shell && npm run build
+tsc --noEmit && vite build
+✓ 2714 modules transformed.
+✓ built in 13.13s
+```
 
-### Correctness
+## Files changed
 
-✓ **Multi-field groupBy forwarding:** `buildAggregateBody()` correctly detects array groupBy and forwards as-is via `map(String)`, maintaining single-field behavior when groupBy is a string.
+- `shell/e2e/analytics-context.spec.ts` — append-only: `git diff --stat` shows
+  `237 insertions(+), 0 deletions(-)`. No existing test or helper (`mockCore`, `createApp`,
+  `addFeaturesSource`, `promoteLastSource`) was modified.
 
-✓ **Bins parameter handling:** Added `bins` to STAT_KEYS to exclude it from filters, forwarded as `Number(query.bins)` in request body.
+## Self-review
 
-✓ **Composite row ID generation:** `statRowId()` correctly joins array category keys with `"|"` separator (e.g., `["region", "annee"]` → `"Nord|2025"`), and single-field keys work unchanged.
+- Completeness: all 4 new scenarios pass individually and under repeated/parallel
+  stress; full E2E suite (76/76) green; full unit suite (792/792) green; build clean.
+- Quality: diff is strictly additive (confirmed via `git diff` — zero `-` lines besides
+  the `---` diff header). No existing test's assertions or helpers were touched.
+- Discipline: no scope creep — only this one file was modified; the widget
+  implementation (`mapWidget.tsx`, `mapSymbology.ts`, `MapView.tsx` from Tasks 1–3) was
+  read for verification but never edited.
+- Testing: pristine final run (76/76, no Playwright-level retries reported); the one
+  retry mechanism that exists is inside the test body itself (see below), not a
+  Playwright-level retry/flake.
 
-✓ **Type safety:** Updated response type annotation to `categoryKey: string | string[]` to reflect API contract.
+## Concerns (selector/timing adjustment made, and why)
 
-### Test Coverage
+Scenario 24 ("a click on a styled map feature still cross-filters a sibling table by
+pk") as literally specified in the brief used a single `page.mouse.click(...)` guarded
+by a fixed assumption that the polygon would already be painted on the WebGL canvas.
+In practice this raced against MapLibre's async pipeline: `ctx.data.url` is a real
+network URL fetched by MapLibre itself (a GeoJSON source), and the layer's `click`
+handler (`map.on("click", layer.id, handler)` in `src/map/MapView.tsx`) only fires
+when a feature is actually painted under the cursor — so a click sent before the first
+paint completes silently produces no cross-filter effect and the test hung until the
+30s Playwright timeout.
 
-✓ All three new tests verify distinct behaviors:
-1. Array groupBy transmitted unchanged in POST body
-2. Multi-field composite IDs built correctly with `"|"` delimiter
-3. `bins` parameter passed in body, not in URL filters
+This is not a wrong selector or an incorrect assertion about the widget's contract
+(confirmed by reading `mapWidget.tsx`'s `onFeatureClick` wiring and `MapView.tsx`'s
+click-handler registration — both behave exactly as documented in the SP-14h spec,
+untouched by Tasks 1–3). It is inherent test flakiness from asserting on real WebGL
+paint timing, which varies with machine load — a fixed `page.waitForTimeout(500)`
+worked once but still failed under `--workers=3` parallel load.
 
-✓ No regressions: All 83 existing tests pass, confirming backward compatibility.
+Fix applied (in the test only): replaced the single click with a bounded retry loop
+(up to 10 attempts, 1s each) that re-clicks the same canvas center until the expected
+`id=1` request is observed. This is safe specifically because a "missed" click (no
+feature under cursor) produces zero side effects — no cross-filter is set, no toggle
+state changes (`AnalyticsContext.tsx`'s `setCrossFilter` only toggles when the handler
+actually fires with a matching value) — so retrying is idempotent right up until the
+one click that actually lands on the painted polygon, at which point the loop stops.
+Verified with 20 repeated runs under parallel workers with zero failures after the fix
+(vs. 2 timeouts out of 16 runs before it, both isolated to this scenario).
 
-### Code Quality
-
-✓ Implementation follows existing patterns in the file (parallel to `bbox` and `bucket` handling).
-✓ Comments added to `statRowId()` explain the multi-field vs. single-field logic.
-✓ Minimal scope: Changes are focused on the specific task, no unnecessary refactoring.
-
-## Concerns
-
-None. The implementation is complete, tested, and ready for integration.
+No other test in the brief required adjustment; scenarios 22, 23, 25 passed as
+literally specified on the first try, matching the actual DOM/legend text
+(`buildLegend` in `mapSymbology.ts` produces `"{min} – {max}"` with an en dash, which
+matched the brief's `"10 – 90"` / `"2 – 18"` assertions exactly).
