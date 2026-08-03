@@ -1,74 +1,75 @@
-# Task 5 Report — Shell `DataSourcePanel` Multi-Field `groupBy` and Histogram Bins
+# Task 5 report — E2E coverage for SQL Lab (SP-14i)
 
-## Implementation Summary
+## What was implemented
 
-Implemented the builder UI enhancements for SP-14f's new chart types (sankey, treemap, sunburst, funnel) by adding:
+Created `shell/e2e/sql-lab.spec.ts` exactly as specified in the task brief (verbatim, no
+code changes) — 3 Playwright scenarios:
 
-1. **`parseGroupBy()` helper**: Parses comma-separated field names into a `string[]` for multi-field grouping; single fields remain unchanged as `string` (byte-for-byte backward compatible).
+1. **Happy path**: an analyst (`isAnalyst: true`) navigates to `/analytics/sql`, sees the
+   "SQL Lab" nav link, fills the SQL editor, executes, sees the results table (columns +
+   rows), verifies the POST body sent to `https://core.test/analytics/sql`, clears the
+   editor, reloads a query from history via its labelled button, and confirms the editor
+   value is restored.
+2. **SQL error**: the mocked `/analytics/sql` route returns HTTP 400 with a structured
+   error body; the test verifies the `role="alert"` message shows the server's error text
+   and that the editor still holds the offending SQL (not cleared on failure).
+3. **Access denial**: a non-analyst user (using `mockCore`'s default `/me` route, which
+   omits `isAnalyst` entirely) navigates to `/analytics/sql`, sees the access-denied alert
+   ("Accès réservé aux analystes."), confirms the "SQL Lab" nav link is absent, and that
+   the `/analytics/sql` endpoint was never called.
 
-2. **`groupByDisplayValue()` helper**: Formats `groupBy` values (whether `string` or `string[]`) for display in the input field.
+No application source code was touched — only the new spec file.
 
-3. **Updated "Grouper par" input**: 
-   - Now uses `groupByDisplayValue()` for display and `parseGroupBy()` on change
-   - Updated placeholder text to indicate comma-separation support
-   - Handles both single and multi-field workflows transparently
+## What was tested and results
 
-4. **New "Nombre de classes" numeric input**:
-   - Accepts values 1–100
-   - Writes to `query.bins` for histogram bin count control
-   - Supports undefined state (no value → undefined field)
+1. **New spec only**: `npm run e2e -- e2e/sql-lab.spec.ts` → **3/3 passed** (49.7s), first
+   try, no adjustments needed to the brief's literal selectors/timing.
+2. **Full E2E suite**: `npm run e2e` → **79/79 passed** (~2.0m), confirming 76 pre-existing
+   specs + 3 new ones, no regressions.
+3. **Final whole-suite check** (per brief's "Final check" section):
+   - `npm test` → **807 tests passed across 106 files** (unit/Vitest), including the
+     pre-existing `src/lib/sqlLabHistory.test.ts` (4 tests, from Task 2).
+   - `npx tsc --noEmit` → clean, no errors.
+   - `npm run e2e` (re-run) → **79/79 passed** again, pristine.
 
-## Test Results
+## Files changed
 
-**RED (Before Implementation):**
-```
- RUN  v3.2.6 /home/lenen/projets/geostudio/shell
+- Created: `/home/lenen/projets/geostudio/shell/e2e/sql-lab.spec.ts` (77 lines, 3 tests)
+- Commit: `f7f7b6d` — `test(e2e): couvre SQL Lab — exécution, erreur, historique, garde analyste (SP-14i)`
+  (only this one file staged and committed; other working-tree changes under
+  `.superpowers/sdd/*` from prior tasks were left untouched, out of scope for this task)
 
- ❯ src/builder/DataSourcePanel.test.tsx (10 tests | 2 failed | 8 skipped)
-   × a comma-separated group-by becomes a string array; a single field stays a string 80ms
-   × edits the histogram bin count on a statistics source 28ms
-```
+## Self-review
 
-**GREEN (After Implementation):**
-```
- RUN  v3.2.6 /home/lenen/projets/geostudio/shell
+- **Completeness**: all 3 scenarios from the brief present, matching intent (execute +
+  history reload; SQL error message + editor text preserved; non-analyst denial + no nav
+  link + no API call).
+- **Quality**: selectors use `getByRole`/`getByLabel` (accessible, robust — no CSS/test-id
+  hacks); no arbitrary `sleep`/timeouts; `expect.poll` used correctly to await the async
+  POST body rather than racing it.
+- **Discipline**: no application source code modified; only the single new spec file
+  created and committed, exactly per the brief.
+- **Testing**: full 79-spec E2E suite green twice (once right after adding the spec, once
+  again as part of the final whole-branch check), plus unit tests (807/807) and `tsc
+  --noEmit` clean.
 
- ✓ src/builder/DataSourcePanel.test.tsx (10 tests) 557ms
+## Deviations from the brief's literal code
 
- Test Files  1 passed (1)
-      Tests  10 passed (10)
-```
+**None.** The spec file is byte-for-byte the code given in the brief. It passed against
+the real running app on the first attempt with no selector or timing adjustments required.
 
-All existing tests remain passing (including "edits a statistics source's group-by and split", confirming backward compatibility).
+## Issues or concerns
 
-## Files Changed
+None. Task 5 is the final task of the SP-14i plan; all prior tasks (1-4) were already
+in place on `dev` HEAD and this task's E2E coverage confirms they integrate correctly
+end-to-end.
 
-- `shell/src/builder/DataSourcePanel.tsx`:
-  - Added `parseGroupBy(raw: string): string | string[]` helper
-  - Added `groupByDisplayValue(groupBy: unknown): string` helper
-  - Updated "Grouper par" input to use new helpers and improved placeholder
-  - Added "Nombre de classes" numeric input after the aggregation section
+## Fix: SPDX header
 
-- `shell/src/builder/DataSourcePanel.test.tsx`:
-  - Added `fireEvent` to imports
-  - Added test: "a comma-separated group-by becomes a string array; a single field stays a string"
-  - Added test: "edits the histogram bin count on a statistics source"
+**Finding:** `shell/e2e/sql-lab.spec.ts` was missing the SPDX license identifier header required by the SP-14i plan's Global Constraints.
 
-## Commit
+**Fix applied:** Added `// SPDX-License-Identifier: Apache-2.0` as the first line, followed by a blank line, before the existing `import` statement.
 
-**Commit:** `567d95d` — feat(shell): DataSourcePanel supports multi-field groupBy and a histogram bin count (SP-14f)
+**Test result:** `npm run e2e -- e2e/sql-lab.spec.ts` → **3/3 passed** (46.7s), all SQL Lab scenarios remain green.
 
-## Self-Review
-
-✓ **TDD discipline followed**: Failing tests written first, implementation second, all tests passing
-✓ **Backward compatibility**: Single-field `groupBy` values remain `string` (no change to existing behavior)
-✓ **Clean implementation**: Helper functions are pure and testable
-✓ **Test coverage**: Both new features covered (comma-separated parsing, bins input)
-✓ **UI/UX**: Placeholder text updated to guide users on multi-field syntax
-✓ **Code style**: Consistent with existing DataSourcePanel patterns (input helpers, className reuse)
-
-## No Issues or Concerns
-
-- Implementation matches brief specifications exactly
-- All tests passing
-- Ready for merge to main
+**Commit:** `27428d4` — `fix(shell): ajoute l'en-tête SPDX manquant à sql-lab.spec.ts (SP-14i)`
