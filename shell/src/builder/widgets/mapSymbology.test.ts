@@ -29,6 +29,22 @@ test("buildMapPaint returns a match expression with a trailing default color for
   ]);
 });
 
+test("buildMapPaint returns a match expression on line-color for a categorical domain on line geometry", () => {
+  const { renderAs, paint } = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: ["Nord", "Sud"] },
+    null,
+    "line",
+  );
+  expect(renderAs).toBe("line");
+  expect(paint["line-color"]).toEqual([
+    "match", ["get", "region"],
+    "Nord", "#2563eb",
+    "Sud", "#dc2626",
+    "#2563eb",
+  ]);
+});
+
 test("cycles the categorical palette past 8 distinct values", () => {
   const values = Array.from({ length: 9 }, (_, i) => `v${i}`);
   const { paint } = buildMapPaint({ color: { field: "cat", mode: "categorical" } }, { kind: "categorical", values }, null, "polygon");

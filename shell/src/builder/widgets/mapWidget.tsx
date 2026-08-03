@@ -39,7 +39,7 @@ function useNumericDomain(client: ItemClient, datasetId: string | undefined, fie
     queryFn: async (): Promise<SizeDomain> => {
       const rows = await client.queryDataSource({
         id: `map-domain-${datasetId}-${field}`, type: "statistics", service: "core",
-        layer: "", datasetId, query: { measures: [{ field, agg: "min" }, { field, agg: "max" }] },
+        layer: "", datasetId, query: { measures: [{ field, agg: "min", label: "min" }, { field, agg: "max", label: "max" }] },
       });
       const properties = rows[0]?.properties ?? {};
       return { min: Number(properties.min ?? 0), max: Number(properties.max ?? 0) };
