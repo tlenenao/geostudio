@@ -7,6 +7,7 @@ import { registerIndicatorWidget } from "./indicator";
 import { registerMapWidget } from "./mapWidget";
 import { registerFilterWidget } from "./filter";
 import { registerChartWidget } from "./chart";
+import { registerPivotWidget } from "./pivot";
 import { registerNavigationWidget } from "./navigation";
 import { registerFormWidget } from "./form";
 import { registerHeroWidget } from "./hero";
@@ -155,6 +156,7 @@ export function registerBuiltinWidgets(): void {
   registerMapWidget();
   registerFilterWidget();
   registerChartWidget();
+  registerPivotWidget();
   registerNavigationWidget();
   registerFormWidget();
   registerHeroWidget();

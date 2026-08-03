@@ -55,7 +55,17 @@ function applyLayers(
         });
       } else if (layer.kind === "feature") {
         map.addSource(layer.id, { type: "geojson", data: layer.url });
-        map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+        switch (layer.renderAs ?? "fill") {
+          case "circle":
+            map.addLayer({ id: layer.id, type: "circle", source: layer.id, paint: layer.paint ?? {} });
+            break;
+          case "line":
+            map.addLayer({ id: layer.id, type: "line", source: layer.id, paint: layer.paint ?? {} });
+            break;
+          default:
+            map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+            break;
+        }
         const handler = (e: maplibregl.MapLayerMouseEvent) => {
           const f = e.features?.[0];
           if (!f || f.id == null) return;

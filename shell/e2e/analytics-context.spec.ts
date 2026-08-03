@@ -1359,3 +1359,465 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   await expect(page.getByRole("cell", { name: "Lyon" })).toBeVisible();
   expect(sawFilteredItemsRequest).toBe(false);
 });
+
+// -------------------------------------------------------------------------
+// Scénario 19 (SP-14g) — tableau croisé : rend une grille avec totaux à
+// partir d'une source statistiques à groupBy 2 champs (region, quarter),
+// puis un clic sur un en-tête de LIGNE cross-filtre une table réelle sur le
+// même dataset.
+//
+// Choix de fixture délibérés pour éviter toute ambiguïté de sélecteur :
+// - Les 4 combinaisons région×trimestre sont TOUTES présentes (aucune
+//   cellule à 0) : avec seulement 2 colonnes, un total de colonne égal à
+//   l'unique cellule non nulle de cette colonne serait indiscernable d'une
+//   cellule de donnée (`getByRole("cell", ...)` échouerait en mode strict).
+//   Les 9 valeurs affichées (4 cellules + 2 totaux de ligne + 2 totaux de
+//   colonne + 1 grand total) sont choisies deux à deux distinctes.
+// - La table brute affiche une seule colonne calculée "label" (ex.
+//   "Nord-Q1"), pas les champs bruts région/trimestre/valeur — sinon ses
+//   propres cellules dupliqueraient soit les nombres du pivot, soit ses
+//   propres libellés "Nord"/"Q1" entre les 2 lignes qui les partagent.
+// -------------------------------------------------------------------------
+test("a pivot renders row/column totals and a row-header click cross-filters a table on the same dataset (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/sales/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "sales", pk: "id", geometry: null,
+        fields: [{ name: "region", type: "string" }, { name: "quarter", type: "string" }, { name: "label", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/sales/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const region = url.searchParams.get("region");
+    const quarter = url.searchParams.get("quarter");
+    const all = [
+      { id: 1, properties: { region: "Nord", quarter: "Q1", label: "Nord-Q1" } },
+      { id: 2, properties: { region: "Nord", quarter: "Q2", label: "Nord-Q2" } },
+      { id: 3, properties: { region: "Sud", quarter: "Q1", label: "Sud-Q1" } },
+      { id: 4, properties: { region: "Sud", quarter: "Q2", label: "Sud-Q2" } },
+    ];
+    const features = all.filter((f) =>
+      (!region || f.properties.region === region) && (!quarter || f.properties.quarter === quarter));
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/sales/aggregate", async (route) => {
+    await route.fulfill({
+      json: {
+        categoryKey: ["region", "quarter"],
+        rows: [
+          { region: "Nord", quarter: "Q1", value: 100 },
+          { region: "Nord", quarter: "Q2", value: 23 },
+          { region: "Sud", quarter: "Q1", value: 7 },
+          { region: "Sud", quarter: "Q2", value: 41 },
+        ],
+      },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "sales", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Pivot cross-filter");
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 2);
+
+  // Source 1 → basculée en statistiques, groupBy à 2 champs pour le pivot.
+  await page.getByLabel(/Type de la source/).first().selectOption("statistics");
+  await page.getByLabel(/Grouper par/).first().fill("region,quarter");
+  await page.getByLabel(/Agrégation \(source/).first().selectOption("sum");
+  await page.getByLabel(/Champ agrégé/).first().fill("value");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ lignes").fill("region");
+  await page.getByLabel("Champ colonnes").fill("quarter");
+
+  // Source 2 → table brute liée au même dataset partagé, restreinte à la
+  // colonne "label" pour ne jamais dupliquer un texte affiché par le pivot.
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("label");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+
+  // Grille rendue : cellules et totaux attendus, valeurs connues du fixture.
+  // `exact: true` partout : Playwright fait un match par sous-chaîne par
+  // défaut sur `name`, et "7"/"23" sont des sous-chaînes de "107"/"123".
+  await expect(page.getByRole("cell", { name: "100", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "23", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "7", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "123", exact: true })).toBeVisible(); // total de ligne Nord (100+23)
+  await expect(page.getByRole("cell", { name: "107", exact: true })).toBeVisible(); // total de colonne Q1 (100+7)
+  await expect(page.getByRole("cell", { name: "171", exact: true })).toBeVisible(); // grand total
+
+  // La table montre les 4 lignes avant tout clic.
+  await expect(page.getByText("Sud-Q1")).toBeVisible();
+  await expect(page.getByText("Sud-Q2")).toBeVisible();
+
+  // Clic sur l'en-tête de ligne "Nord" → la table ne montre plus que Nord.
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/sales/items") && r.url().includes("region=Nord"));
+  await page.getByRole("button", { name: "Nord", exact: true }).click();
+  await filteredReq;
+  await expect(page.getByText("Nord-Q1")).toBeVisible();
+  await expect(page.getByText("Nord-Q2")).toBeVisible();
+  await expect(page.getByText("Sud-Q1")).toBeHidden();
+  await expect(page.getByText("Sud-Q2")).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 20 (SP-14g) — même montage que le scénario 19, mais le clic est
+// sur un en-tête de COLONNE : preuve que le filtre porte sur le champ
+// colonnes (`quarter`), pas sur le champ lignes.
+// -------------------------------------------------------------------------
+test("a pivot column-header click cross-filters a table on the columns field (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/sales/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "sales", pk: "id", geometry: null,
+        fields: [{ name: "region", type: "string" }, { name: "quarter", type: "string" }, { name: "label", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/sales/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const region = url.searchParams.get("region");
+    const quarter = url.searchParams.get("quarter");
+    const all = [
+      { id: 1, properties: { region: "Nord", quarter: "Q1", label: "Nord-Q1" } },
+      { id: 2, properties: { region: "Nord", quarter: "Q2", label: "Nord-Q2" } },
+      { id: 3, properties: { region: "Sud", quarter: "Q1", label: "Sud-Q1" } },
+      { id: 4, properties: { region: "Sud", quarter: "Q2", label: "Sud-Q2" } },
+    ];
+    const features = all.filter((f) =>
+      (!region || f.properties.region === region) && (!quarter || f.properties.quarter === quarter));
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/sales/aggregate", async (route) => {
+    await route.fulfill({
+      json: {
+        categoryKey: ["region", "quarter"],
+        rows: [
+          { region: "Nord", quarter: "Q1", value: 100 },
+          { region: "Nord", quarter: "Q2", value: 23 },
+          { region: "Sud", quarter: "Q1", value: 7 },
+          { region: "Sud", quarter: "Q2", value: 41 },
+        ],
+      },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "sales", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Pivot column cross-filter");
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 2);
+
+  await page.getByLabel(/Type de la source/).first().selectOption("statistics");
+  await page.getByLabel(/Grouper par/).first().fill("region,quarter");
+  await page.getByLabel(/Agrégation \(source/).first().selectOption("sum");
+  await page.getByLabel(/Champ agrégé/).first().fill("value");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ lignes").fill("region");
+  await page.getByLabel("Champ colonnes").fill("quarter");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("label");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+
+  // Clic sur l'en-tête de colonne "Q1" → seules les lignes du trimestre Q1
+  // restent (Nord-Q1 et Sud-Q1), quelle que soit la région.
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/sales/items") && r.url().includes("quarter=Q1"));
+  await page.getByRole("button", { name: "Q1", exact: true }).click();
+  await filteredReq;
+  await expect(page.getByText("Nord-Q1")).toBeVisible();
+  await expect(page.getByText("Sud-Q1")).toBeVisible();
+  await expect(page.getByText("Nord-Q2")).toBeHidden();
+  await expect(page.getByText("Sud-Q2")).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 21 (SP-14g) — un pivot sans champs lignes/colonnes configurés
+// affiche un message de configuration, ne plante jamais.
+// -------------------------------------------------------------------------
+test("an unconfigured pivot (no rows/columns fields) shows a configuration message (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/analytics/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "analytics", pk: "id", geometry: null,
+        fields: [{ name: "categorie", type: "string" }, { name: "valeur", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/analytics/items*", async (route) => {
+    await route.fulfill({ json: { type: "FeatureCollection", features: [
+      { id: 1, properties: { categorie: "Nord", valeur: 100 } },
+    ] } });
+  });
+
+  await createApp(page, "Pivot unconfigured");
+  await addFeaturesSource(page, "analytics");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByText("Configurez les champs lignes et colonnes")).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 22 (SP-14h) — couleur catégorielle : le widget Carte colore une
+// couche polygonale par un champ catégoriel ; la légende affiche les valeurs
+// distinctes obtenues via une requête statistics (groupBy) séparée de la
+// DataSource "features" qui alimente la géométrie.
+// -------------------------------------------------------------------------
+test("a map with a categorical color encoding shows a legend built from a groupBy domain query (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/communes/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "communes", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/communes/items*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, geometry: { type: "Polygon", coordinates: [[[2, 46], [3, 46], [3, 47], [2, 47], [2, 46]]] }, properties: { region: "Nord" } },
+          { id: 2, geometry: { type: "Polygon", coordinates: [[[2, 44], [3, 44], [3, 45], [2, 45], [2, 44]]] }, properties: { region: "Sud" } },
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/communes/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "region", rows: [{ region: "Nord", value: 1 }, { region: "Sud", value: 1 }] },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "communes", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte catégorielle");
+  await addFeaturesSource(page, "communes");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("region");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  await expect(page.getByText("Nord")).toBeVisible();
+  await expect(page.getByText("Sud")).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 23 (SP-14h) — couleur + taille numériques : le widget Carte
+// dimensionne et colore une couche ponctuelle par deux champs numériques ;
+// la légende affiche les bornes des deux domaines (deux requêtes
+// statistics distinctes, une par champ).
+// -------------------------------------------------------------------------
+test("a map with numeric color and size encodings shows a legend with both domains' bounds (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/points/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "points", pk: "id", geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [{ name: "valeur", type: "number" }, { name: "montant", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/points/items*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, geometry: { type: "Point", coordinates: [2.3, 46.5] }, properties: { valeur: 10, montant: 2 } },
+          { id: 2, geometry: { type: "Point", coordinates: [2.5, 46.7] }, properties: { valeur: 90, montant: 18 } },
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/points/aggregate", async (route) => {
+    const body = route.request().postDataJSON() as { measures?: { field: string }[] };
+    const field = body.measures?.[0]?.field;
+    if (field === "valeur") {
+      await route.fulfill({ json: { categoryKey: "valeur", rows: [{ min: 10, max: 90 }] } });
+      return;
+    }
+    await route.fulfill({ json: { categoryKey: "montant", rows: [{ min: 2, max: 18 }] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "points", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte numérique");
+  await addFeaturesSource(page, "points");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("valeur");
+  await page.getByLabel("Type de couleur").selectOption("numeric");
+  await page.getByLabel("Champ taille").fill("montant");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  await expect(page.getByText("10 – 90")).toBeVisible();
+  await expect(page.getByText("2 – 18")).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 24 (SP-14h) — non-régression : un clic sur une entité stylée
+// déclenche toujours le cross-filter par pk (comportement pk existant,
+// inchangé par la symbologie). Fixture : une entité (id=1) en polygone
+// couvrant tout le viewport par défaut (center [2.4,46.6], zoom 5), une
+// seconde (id=2) placée hors champ (jamais rendue à l'écran) — n'importe
+// quel clic sur le canvas ne peut donc toucher que id=1, sans dépendre
+// d'un calcul précis de projection Web Mercator.
+// -------------------------------------------------------------------------
+test("a click on a styled map feature still cross-filters a sibling table by pk (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/zones/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "zones", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/zones/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const id = url.searchParams.get("id");
+    const all = [
+      { id: 1, geometry: { type: "Polygon", coordinates: [[[-20, 30], [30, 30], [30, 65], [-20, 65], [-20, 30]]] }, properties: { region: "Nord" } },
+      { id: 2, geometry: { type: "Polygon", coordinates: [[[170, -80], [175, -80], [175, -75], [170, -75], [170, -80]]] }, properties: { region: "Sud" } },
+    ];
+    const features = id ? all.filter((f) => String(f.id) === id) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/zones/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "region", rows: [{ region: "Nord", value: 1 }, { region: "Sud", value: 1 }] },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "zones", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte cross-filter");
+  await addFeaturesSource(page, "zones");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "zones");
+  await promoteLastSource(page, 2);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("region");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("region");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible();
+
+  const canvas = page.locator("canvas.maplibregl-canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("map canvas has no bounding box");
+
+  // La géométrie de la couche (GeoJSON fetché puis peint par MapLibre) arrive
+  // après le premier paint du canvas WebGL, sur un délai variable selon la
+  // charge machine. MapLibre ne déclenche le callback "click" que si une
+  // feature est effectivement peinte sous le curseur : un clic "manqué" ne
+  // produit donc aucun effet (pas de cross-filter, pas de toggle) — retenter
+  // le même clic jusqu'à observer la requête filtrée est donc sûr (idempotent
+  // tant qu'aucun clic n'a touché la feature) et n'a pas besoin d'un délai
+  // fixe fragile.
+  let filtered = false;
+  for (let attempt = 0; attempt < 10 && !filtered; attempt++) {
+    const attemptReq = page
+      .waitForRequest((r) => r.url().includes("/collections/zones/items") && r.url().includes("id=1"), { timeout: 1000 })
+      .then(() => true)
+      .catch(() => false);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    filtered = await attemptReq;
+  }
+  if (!filtered) throw new Error("clicking the map canvas never triggered the pk cross-filter request");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 25 (SP-14h) — non-régression : sans encodings configurés, le
+// widget Carte se comporte exactement comme avant (aucune requête statistics
+// de domaine n'est émise).
+// -------------------------------------------------------------------------
+test("a map with no encodings configured issues no domain query (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  let aggregateCalls = 0;
+  await page.route("**/collections/parcelles/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "parcelles", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/parcelles/items*", async (route) => {
+    await route.fulfill({
+      json: { type: "FeatureCollection", features: [
+        { id: 1, geometry: { type: "Polygon", coordinates: [[[2, 46], [3, 46], [3, 47], [2, 47], [2, 46]]] }, properties: { region: "Nord" } },
+      ] },
+    });
+  });
+  await page.route("**/collections/parcelles/aggregate", async (route) => {
+    aggregateCalls++;
+    await route.fulfill({ json: { categoryKey: "region", rows: [] } });
+  });
+
+  await createApp(page, "Carte sans symbologie");
+  await addFeaturesSource(page, "parcelles");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  const itemsReq = page.waitForRequest((r) => r.url().includes("/collections/parcelles/items"));
+  await page.goto("/apps/9");
+  await itemsReq;
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  expect(aggregateCalls).toBe(0);
+});
