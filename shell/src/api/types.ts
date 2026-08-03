@@ -59,7 +59,7 @@ export type BaseMap = { style: string };
 export type MapLayer =
   | { id: string; title: string; visible: boolean; kind: "vector"; tilesUrl: string; sourceLayer: string; paint?: Record<string, unknown> }
   | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown> }
+  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
   | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> };
 export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[] };
 
