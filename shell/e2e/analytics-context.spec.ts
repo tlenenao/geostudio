@@ -1809,6 +1809,7 @@ test("a map with no encodings configured issues no domain query (SP-14h)", async
 
   await createApp(page, "Carte sans symbologie");
   await addFeaturesSource(page, "parcelles");
+  await promoteLastSource(page, 1);
 
   await page.getByRole("button", { name: "Carte" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
