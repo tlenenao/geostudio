@@ -1359,3 +1359,227 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   await expect(page.getByRole("cell", { name: "Lyon" })).toBeVisible();
   expect(sawFilteredItemsRequest).toBe(false);
 });
+
+// -------------------------------------------------------------------------
+// Scénario 19 (SP-14g) — tableau croisé : rend une grille avec totaux à
+// partir d'une source statistiques à groupBy 2 champs (region, quarter),
+// puis un clic sur un en-tête de LIGNE cross-filtre une table réelle sur le
+// même dataset.
+//
+// Choix de fixture délibérés pour éviter toute ambiguïté de sélecteur :
+// - Les 4 combinaisons région×trimestre sont TOUTES présentes (aucune
+//   cellule à 0) : avec seulement 2 colonnes, un total de colonne égal à
+//   l'unique cellule non nulle de cette colonne serait indiscernable d'une
+//   cellule de donnée (`getByRole("cell", ...)` échouerait en mode strict).
+//   Les 9 valeurs affichées (4 cellules + 2 totaux de ligne + 2 totaux de
+//   colonne + 1 grand total) sont choisies deux à deux distinctes.
+// - La table brute affiche une seule colonne calculée "label" (ex.
+//   "Nord-Q1"), pas les champs bruts région/trimestre/valeur — sinon ses
+//   propres cellules dupliqueraient soit les nombres du pivot, soit ses
+//   propres libellés "Nord"/"Q1" entre les 2 lignes qui les partagent.
+// -------------------------------------------------------------------------
+test("a pivot renders row/column totals and a row-header click cross-filters a table on the same dataset (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/sales/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "sales", pk: "id", geometry: null,
+        fields: [{ name: "region", type: "string" }, { name: "quarter", type: "string" }, { name: "label", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/sales/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const region = url.searchParams.get("region");
+    const quarter = url.searchParams.get("quarter");
+    const all = [
+      { id: 1, properties: { region: "Nord", quarter: "Q1", label: "Nord-Q1" } },
+      { id: 2, properties: { region: "Nord", quarter: "Q2", label: "Nord-Q2" } },
+      { id: 3, properties: { region: "Sud", quarter: "Q1", label: "Sud-Q1" } },
+      { id: 4, properties: { region: "Sud", quarter: "Q2", label: "Sud-Q2" } },
+    ];
+    const features = all.filter((f) =>
+      (!region || f.properties.region === region) && (!quarter || f.properties.quarter === quarter));
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/sales/aggregate", async (route) => {
+    await route.fulfill({
+      json: {
+        categoryKey: ["region", "quarter"],
+        rows: [
+          { region: "Nord", quarter: "Q1", value: 100 },
+          { region: "Nord", quarter: "Q2", value: 23 },
+          { region: "Sud", quarter: "Q1", value: 7 },
+          { region: "Sud", quarter: "Q2", value: 41 },
+        ],
+      },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "sales", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Pivot cross-filter");
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 2);
+
+  // Source 1 → basculée en statistiques, groupBy à 2 champs pour le pivot.
+  await page.getByLabel(/Type de la source/).first().selectOption("statistics");
+  await page.getByLabel(/Grouper par/).first().fill("region,quarter");
+  await page.getByLabel(/Agrégation \(source/).first().selectOption("sum");
+  await page.getByLabel(/Champ agrégé/).first().fill("value");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ lignes").fill("region");
+  await page.getByLabel("Champ colonnes").fill("quarter");
+
+  // Source 2 → table brute liée au même dataset partagé, restreinte à la
+  // colonne "label" pour ne jamais dupliquer un texte affiché par le pivot.
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("label");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+
+  // Grille rendue : cellules et totaux attendus, valeurs connues du fixture.
+  // `exact: true` partout : Playwright fait un match par sous-chaîne par
+  // défaut sur `name`, et "7"/"23" sont des sous-chaînes de "107"/"123".
+  await expect(page.getByRole("cell", { name: "100", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "23", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "7", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "123", exact: true })).toBeVisible(); // total de ligne Nord (100+23)
+  await expect(page.getByRole("cell", { name: "107", exact: true })).toBeVisible(); // total de colonne Q1 (100+7)
+  await expect(page.getByRole("cell", { name: "171", exact: true })).toBeVisible(); // grand total
+
+  // La table montre les 4 lignes avant tout clic.
+  await expect(page.getByText("Sud-Q1")).toBeVisible();
+  await expect(page.getByText("Sud-Q2")).toBeVisible();
+
+  // Clic sur l'en-tête de ligne "Nord" → la table ne montre plus que Nord.
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/sales/items") && r.url().includes("region=Nord"));
+  await page.getByRole("button", { name: "Nord", exact: true }).click();
+  await filteredReq;
+  await expect(page.getByText("Nord-Q1")).toBeVisible();
+  await expect(page.getByText("Nord-Q2")).toBeVisible();
+  await expect(page.getByText("Sud-Q1")).toBeHidden();
+  await expect(page.getByText("Sud-Q2")).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 20 (SP-14g) — même montage que le scénario 19, mais le clic est
+// sur un en-tête de COLONNE : preuve que le filtre porte sur le champ
+// colonnes (`quarter`), pas sur le champ lignes.
+// -------------------------------------------------------------------------
+test("a pivot column-header click cross-filters a table on the columns field (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/sales/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "sales", pk: "id", geometry: null,
+        fields: [{ name: "region", type: "string" }, { name: "quarter", type: "string" }, { name: "label", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/sales/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const region = url.searchParams.get("region");
+    const quarter = url.searchParams.get("quarter");
+    const all = [
+      { id: 1, properties: { region: "Nord", quarter: "Q1", label: "Nord-Q1" } },
+      { id: 2, properties: { region: "Nord", quarter: "Q2", label: "Nord-Q2" } },
+      { id: 3, properties: { region: "Sud", quarter: "Q1", label: "Sud-Q1" } },
+      { id: 4, properties: { region: "Sud", quarter: "Q2", label: "Sud-Q2" } },
+    ];
+    const features = all.filter((f) =>
+      (!region || f.properties.region === region) && (!quarter || f.properties.quarter === quarter));
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/sales/aggregate", async (route) => {
+    await route.fulfill({
+      json: {
+        categoryKey: ["region", "quarter"],
+        rows: [
+          { region: "Nord", quarter: "Q1", value: 100 },
+          { region: "Nord", quarter: "Q2", value: 23 },
+          { region: "Sud", quarter: "Q1", value: 7 },
+          { region: "Sud", quarter: "Q2", value: 41 },
+        ],
+      },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "sales", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Pivot column cross-filter");
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "sales");
+  await promoteLastSource(page, 2);
+
+  await page.getByLabel(/Type de la source/).first().selectOption("statistics");
+  await page.getByLabel(/Grouper par/).first().fill("region,quarter");
+  await page.getByLabel(/Agrégation \(source/).first().selectOption("sum");
+  await page.getByLabel(/Champ agrégé/).first().fill("value");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ lignes").fill("region");
+  await page.getByLabel("Champ colonnes").fill("quarter");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("label");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+
+  // Clic sur l'en-tête de colonne "Q1" → seules les lignes du trimestre Q1
+  // restent (Nord-Q1 et Sud-Q1), quelle que soit la région.
+  const filteredReq = page.waitForRequest((r) => r.url().includes("/collections/sales/items") && r.url().includes("quarter=Q1"));
+  await page.getByRole("button", { name: "Q1", exact: true }).click();
+  await filteredReq;
+  await expect(page.getByText("Nord-Q1")).toBeVisible();
+  await expect(page.getByText("Sud-Q1")).toBeVisible();
+  await expect(page.getByText("Nord-Q2")).toBeHidden();
+  await expect(page.getByText("Sud-Q2")).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 21 (SP-14g) — un pivot sans champs lignes/colonnes configurés
+// affiche un message de configuration, ne plante jamais.
+// -------------------------------------------------------------------------
+test("an unconfigured pivot (no rows/columns fields) shows a configuration message (SP-14g)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/analytics/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "analytics", pk: "id", geometry: null,
+        fields: [{ name: "categorie", type: "string" }, { name: "valeur", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/analytics/items*", async (route) => {
+    await route.fulfill({ json: { type: "FeatureCollection", features: [
+      { id: 1, properties: { categorie: "Nord", valeur: 100 } },
+    ] } });
+  });
+
+  await createApp(page, "Pivot unconfigured");
+  await addFeaturesSource(page, "analytics");
+
+  await page.getByRole("button", { name: "Pivot" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByText("Configurez les champs lignes et colonnes")).toBeVisible();
+});
