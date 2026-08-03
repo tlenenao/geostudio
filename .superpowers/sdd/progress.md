@@ -1,182 +1,158 @@
-# SP-14h — Carte analytique : symbologie pilotée par dataset — Progress Ledger
+# SP-14i — SQL Lab (éditeur, exécution, historique local) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-03-sp14h-carte-analytique.md
+Plan: docs/superpowers/plans/2026-08-03-sp14i-sql-lab.md
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@02cb9a5 (plan + spec SP-14h committés).
+Base globale: dev@93ccab1 (plan + spec SP-14i committés ; ledger SP-14h et
+plans épars SP-14b/14i committés en amont par hygiène de dépôt).
 
-Note : ce fichier remplace le ledger SP-14g (complet, revue finale
-ready-to-merge, HEAD=5e63346) — même fichier scratch réutilisé par
-convention du dépôt ; contenu SP-14g préservé dans l'historique git.
+Note : ce fichier remplace le ledger SP-14h (complet, revue finale
+ready-to-merge, HEAD=eadbdd7) — même fichier scratch réutilisé par
+convention du dépôt ; contenu SP-14h préservé dans l'historique git
+(commit 8b06677).
 
 ## Pré-vol
 
-Scan des 4 tâches (1: `mapSymbology.ts` pure function — détection géométrie,
-expressions de peinture MapLibre, spec de légende ; 2: `MapLayer.renderAs`
-additif honoré par `MapView` ; 3: widget `map` — encodings couleur/taille,
-requêtes de domaine, overlay légende ; 4: E2E légende catégorielle,
-légende numérique couleur+taille, non-régression cross-filter pk, no-op
-sans encodings) contre les 8 contraintes globales (zéro changement à
-core/itemClient.ts/DataSourcePanel.tsx/LayersPanel.tsx/MapEditorPage.tsx/
-MapLegend.tsx — seuls fichiers partagés touchés : types.ts + MapView.tsx ;
-`renderAs` optionnel additif, défaut "fill" ; `encodings.size` ne produit
-`circle-radius` que pour une géométrie point ; palette fixe 8 couleurs
-catégorielle + rampe fixe 2 stops numérique + interpolation linéaire
-uniquement, rayon cercle 4-24px, pas de palette configurable ni classes
-en v1 ; domaine min===max → constante, jamais un `interpolate` à deux
-stops identiques ; requêtes de domaine déclenchées seulement si
-`ctx.data.datasetId` présent ; UI en français ; en-tête SPDX ; commits
-conventionnels avec suffixe (SP-14h)) : pas de contradiction. Le plan
-fournit du code complet et littéral pour chaque tâche (types,
-implémentation, tests unitaires, E2E) — transcription + tests, pas de
-conception à faire, comme SP-14e/14f/14g. Dépendances d'interface notées :
-Task 3 consomme `detectGeometryKind`/`buildMapPaint`/`buildLegend`/types
-(Task 1) et `MapLayer.renderAs` (Task 2) ; Task 4 exerce l'UI réelle
-produite par Tasks 1-3 (widget "Carte", champs PropsPanel "Champ
-couleur"/"Type de couleur"/"Champ taille"). Tâches exécutées dans l'ordre
-du plan (1→4). Task 1 et Task 2 sont mutuellement indépendantes d'après
-le plan (Task 2 "Consomme: rien de Task 1") mais exécutées séquentiellement
-par convention de cette skill (jamais deux implémenteurs en parallèle).
+Scan des 5 tâches (1: `itemClient.runAnalyticsSql`+`SqlQueryError` ;
+2: `sqlLabHistory.ts` module pur localStorage ; 3: `SqlLabPage` — éditeur,
+exécution, résultats, historique ; 4: route `/analytics/sql` + lien nav
+gardé par `isAnalyst` ; 5: E2E exécution/erreur/garde-analyste) contre les
+9 contraintes globales (zéro changement à `core/` — contrat backend
+`POST /analytics/sql`/`GET /me.isAnalyst` déjà figé depuis SP-11c ; route
+`/analytics/sql` + lien nav conditionné sur `isAnalyst === true`,
+indépendant du bloc `isAdmin` ; éditeur = `<textarea>` brut, pas de
+dépendance code-editor ; historique `localStorage` seul, clé fixe
+`"geostudio.sqlLab.history"`, plafonné à 20, dégrade silencieusement ;
+"Enregistrer comme dataset" explicitement hors périmètre ; UI en
+français ; en-tête SPDX ; commits conventionnels suffixés (SP-14i) ; 76
+E2E existants + suite unitaire complète restent verts) : pas de
+contradiction. Le plan fournit du code complet et littéral pour chaque
+tâche (types, implémentation, tests unitaires, E2E) — transcription +
+tests, pas de conception à faire, comme SP-14e/14f/14g/14h. Dépendances
+d'interface notées : Task 3 consomme `runAnalyticsSql`/`SqlQueryError`
+(Task 1) et `readSqlHistory`/`appendSqlHistory`/`SqlHistoryEntry`
+(Task 2) ; Task 4 consomme `SqlLabPage` (Task 3) ; Task 5 exerce l'UI
+réelle produite par Tasks 1-4 (route, lien nav, textarea, bouton
+Exécuter, table de résultats, historique). Tâches exécutées dans l'ordre
+du plan (1→5), toutes séquentiellement dépendantes sauf 1/2 qui sont
+mutuellement indépendantes mais exécutées en séquence par convention de
+cette skill (jamais deux implémenteurs en parallèle).
 
 Poursuite sans confirmation utilisateur (scan de contradictions clean).
 
 ## Tasks
 
-Base Task 1: 02cb9a5
-Task 1: complete (commit 0763e7d, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). `mapSymbology.ts`
-(module pur, zéro import) : `detectGeometryKind` (Point/MultiPoint→point,
-LineString/MultiLineString→line, sinon→polygon, y compris undefined/null) ;
-`buildMapPaint` (match catégoriel avec couleur par défaut en fin de liste,
-palette 8 couleurs cyclique via modulo, interpolate linéaire 2 stops pour
-numérique, constante si min===max, circle-radius 4-24px uniquement quand
-renderAs==="circle") ; `buildLegend` (miroir de buildMapPaint, section size
-seulement si geometryKind==="point"). 14/14 tests, sortie propre. 2 Minor
-notés (non bloquants) : la branche `renderAs==="line"` → `"line-color"`
-n'est pas exercée par un test direct (couverture indirecte seulement) ;
-léger écart cosmétique de décompte de lignes dans le rapport de
-l'implémenteur (116 vs 117 réel, 127 vs 118 réel).
+Base Task 1: 93ccab1
+Task 1: complete (commit a7b6078, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). `SqlQueryError`
+(itemClient.ts) + `requestAnalyticsSql` (mirrors `requestFeatureWrite`
+pattern) + `ItemClient.runAnalyticsSql` (types.ts). Reviewer a vérifié la
+forme d'erreur/succès directement contre le vrai contrat backend
+(`core/app/features/routes.py` — 400 structured errors, 403 plain
+string, 200 columns/rows/truncated), pas seulement contre le mock des
+tests. 89/89 tests, `tsc --noEmit` propre. 1 Minor non bloquant : message
+de repli 400 en français ("Requête SQL invalide.") alors que les autres
+chaînes de repli du fichier sont en anglais — cosmétique, jamais atteint
+en pratique (le backend fournit toujours un message sur 400).
 
-Base Task 2: 0763e7d
-Task 2: complete (commits 99475c6 puis fix 326dd04, 1 round de fix — le
-premier passage a trouvé un Important). `MapLayer` (kind "feature") gagne
-`renderAs?: "fill"|"circle"|"line"` (types.ts), 3 nouveaux tests MapView
-(circle/line/défaut fill). Défaut trouvé en revue : le code littéral
-du brief pour MapView.tsx (`map.addLayer({..., type: layer.renderAs ??
-"fill", ...})`) ne compile pas — le type `AddLayerObject` de MapLibre est
-une union discriminée par la valeur littérale de `type`, et passer une
-variable typée union (`"fill"|"circle"|"line"`) échoue `tsc --noEmit`
-(TS2345), alors que chaque littéral seul compile. Bug réel dans le code
-littéral du plan (pas un choix de conception délibéré), donc corrigé sans
-interrompre l'exécution (pas un cas "plan-mandated" au sens du garde-fou
-de la skill — la sémantique requise par le plan, `renderAs ?? "fill"` par
-défaut, est préservée à l'identique ; seule la mécanique TypeScript
-change). Fix : `switch` sur `layer.renderAs ?? "fill"`, un appel
-`map.addLayer` par branche avec un littéral de chaîne unique. Re-revue :
-✅ spec compliant, Approved, `tsc --noEmit` et 21/21 MapView.test.tsx
-re-vérifiés indépendamment par le reviewer. 2 Minor notés (non
-bloquants) : duplication cosmétique de `source`/`paint` entre les 3
-branches du switch (factorisable via un objet `common` partagé, non
-requis) ; le 3e test (défaut fill) était déjà vert avant le changement
-(couverture de non-régression, pas preuve de logique nouvelle).
+Base Task 2: a7b6078
+Task 2: complete (commit 55bbdfb, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). `sqlLabHistory.ts`
+(module pur, zéro import) : `SqlHistoryEntry`, `readSqlHistory`/`appendSqlHistory`,
+clé `"geostudio.sqlLab.history"`, plafond 20 entrées (plus ancienne
+évincée), échec silencieux lecture ET écriture (try/catch scindé
+correctement — ne masque rien d'autre). 4/4 tests contre un vrai
+`localStorage` jsdom (pas de mock). 1 Minor non bloquant : cast
+`as SqlHistoryEntry[]` après seul `Array.isArray`, sans validation de
+forme par élément — conforme au brief, latent seulement si une future
+migration de schéma laisse des données mal formées en stockage.
 
-Base Task 3: 326dd04
-Task 3: complete (commit e05744e, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). Widget `map`
-étendu : PropsPanel avec "Champ couleur"/"Type de couleur"/"Champ taille"
-(français, conventions labelCls/inputCls comme pivot.tsx/sliderFilter.tsx) ;
-`useNumericDomain` partagé entre couleur numérique et taille (requête
-statistics `measures` min/max) ; requête catégorielle séparée (`groupBy`) ;
-les 3 `useQuery` toujours appelés avant le early-return d'erreur (pas de
-violation de l'ordre des hooks) ; délégation complète à `mapSymbology.ts`
-(Task 1) pour `buildMapPaint`/`buildLegend`/`detectGeometryKind` — aucune
-réimplémentation locale ; `MapLayer.renderAs`/`paint` (Task 2) consommé
-sans cast. Intégration cross-tâche vérifiée par le reviewer (signatures
-Task 1 et Task 2 tracées jusqu'aux points d'appel réels). Contrairement à
-Task 2, le code littéral du brief a compilé et testé sans aucune
-correction (`tsc --noEmit` et 15/15 `mapWidget.test.tsx` re-vérifiés
-indépendamment par le reviewer, pas seulement le rapport de
-l'implémenteur). 792/792 suite complète. 2 Minor notés (non bloquants) :
-aucun test widget n'exerce la légende combinée couleur+taille en même
-temps (couverture indirecte seulement via mapSymbology.test.ts de Task 1,
-pas un gap sur le comportement requis) ; `detectGeometryKind` n'inspecte
-que la géométrie du premier enregistrement (raisonnable pour des couches
-GeoJSON homogènes, non documenté par un commentaire local — la
-justification vit dans mapSymbology.ts).
+Base Task 3: 55bbdfb
+Task 3: complete (commit 1e5bd05, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). `SqlLabPage.tsx` :
+éditeur `<textarea>` brut (pas de CodeMirror/Monaco), garde `isAnalyst`,
+`useMutation` sur `runAnalyticsSql`, table de résultats, notice de
+troncature, historique cliquable (recharge sans exécuter). Aucune
+réimplémentation des interfaces Task 1/Task 2 — consommées telles
+quelles, vérifié par le reviewer contre le code source réel de
+`useMe`/`useItemClient`/`Button`. Ordre des hooks correct (tous appelés
+avant les deux early-return). "Enregistrer comme dataset" absent (hors
+périmètre respecté). 5/5 tests (Testing Library + MSW, vrai rendu), 106
+fichiers/805 tests suite complète, `tsc --noEmit` propre. 2 Minor non
+bloquants : cast `as Error` redondant (TanStack Query type déjà `Error`
+par défaut) ; état `isLoading`/`Chargement…` non exercé par un test
+(hors périmètre du brief, pas un gap).
 
-Base Task 4: e05744e
-Task 4: complete (commit 000f141, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). 4 scénarios
-E2E ajoutés en append-only à `analytics-context.spec.ts` (confirmé par le
-reviewer au niveau de l'octet : 1 seul hunk, 0 suppression, 247
-insertions) : scénario 22 couleur catégorielle (légende via `groupBy`) ;
-scénario 23 couleur+taille numériques (légende à deux domaines
-`measures` séparés) ; scénario 24 non-régression cross-filter pk sur
-entité stylée ; scénario 25 aucune requête de domaine sans encodings
-configurés. **1 déviation divulguée** dans le scénario 24 : le clic figé
-à timing fixe du brief courait après le pipeline WebGL asynchrone réel
-de MapLibre (le handler `click` ne se déclenche qu'une fois la feature
-peinte), causant des timeouts intermittents sous charge parallèle — fix
-en boucle de retry bornée (10×1s) dans le test uniquement, jamais dans
-l'implémentation (Tasks 1-3). Reviewer a vérifié la solidité de cette
-déviation ligne à ligne contre le code réel de cross-filter
-(`AnalyticsContext.tsx`) et de handler de clic (`MapView.tsx`) : la
-boucle ne peut pas masquer une vraie régression (handler cassé → throw
-explicite ; mauvais id → même throw ; clic manqué → idempotent sans
-effet ; les assertions finales après la boucle re-vérifient
-indépendamment l'état DOM réel, donc un faux succès de boucle serait
-quand même intercepté). 1 Minor noté (non bloquant) : la justification
-d'idempotence dans le commentaire/rapport survend légèrement (un clic
-qui touche réellement une feature déjà peinte peut bien basculer le
-toggle `isToggleOff` — la boucle reste sûre en pratique car elle
-s'arrête au premier match observé, mais la formulation mériterait d'être
-resserrée) ; la déviation dépasse à la lettre la catégorie
-"ajustement de sélecteur/assertion" pré-autorisée par le brief mais a
-été divulguée de façon transparente. 76/76 E2E complet, 792/792 unitaire,
-build propre. 20 exécutions répétées sous charge parallèle sans échec
-après le fix.
+Base Task 4: 1e5bd05
+Task 4: complete (commit 51a7f43, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). Route
+`/analytics/sql` (routes.tsx, dans `<ProtectedLayout>`, aucune collision
+— pas de route catch-all dans le fichier) + lien nav "SQL Lab"
+(AppLayout.tsx) en frère (pas imbriqué) du bloc `isAdmin`, confirmé
+inchangé octet pour octet par le reviewer. Styling identique au premier
+lien du bloc admin. 807/807 suite complète, build propre. 2 Minor non
+bloquants (déjà notés par le plan lui-même, pas des déviations de
+l'implémenteur) : le test "cache le lien pour un non-analyste" ne
+surcharge pas `/me`, s'appuie sur le mock partagé qui omet `isAnalyst`
+(passerait même si le bloc conditionnel était supprimé — le brief
+l'annonçait déjà "passes trivially") ; `Me.isAnalyst` est un champ requis
+dans `types.ts` mais absent du mock MSW par défaut (dérive pré-existante,
+hors diff de cette tâche).
 
-## SP-14h COMPLET — 4 tâches, 5 commits de tâches (0763e7d, 99475c6,
-## 326dd04 [fix], e05744e, 000f141), 1 round de fix (Task 2, bug de
-## compilation réel dans le code littéral du plan, corrigé et re-revu).
-## HEAD=000f141, prêt pour la revue finale de branche.
+Base Task 5: 51a7f43
+Task 5: complete (commit f7f7b6d, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant). 3 scénarios
+E2E ajoutés (`shell/e2e/sql-lab.spec.ts`, fichier neuf, zéro changement
+de code applicatif) : exécution + rechargement depuis l'historique ;
+message d'erreur serveur + texte préservé dans l'éditeur ; non-analyste
+refusé + lien absent + aucun appel SQL. Reviewer a vérifié chaque
+assertion contre le vrai code (`SqlLabPage.tsx`, `AppLayout.tsx`,
+`itemClient.ts`), pas seulement le rapport. Route mockée host-scoped
+(`https://core.test/analytics/sql`), pas path-only — rationale vérifiée
+correcte (la route client `/analytics/sql` de l'app collisionnerait avec
+un glob path-only, même précédent que `admin-extensions.spec.ts`).
+Sélecteurs uniformément role/label, `expect.poll` pour l'observation
+async, pas de sleep arbitraire. Spec seule 3/3, suite E2E complète
+79/79 (deux fois), suite unitaire 807/807, `tsc --noEmit` propre. 1
+Minor non bloquant : `.count()` manuel au lieu de `toHaveCount()`
+auto-retry (ligne 89, cosmétique).
 
-## Revue finale de branche (opus, 02cb9a5..000f141, 5 commits) —
-## 1 Critical, 0 Important, 2 Minor, PAS prêt à merger (No).
-## Bug confirmé : `useNumericDomain` (mapWidget.tsx) envoie des mesures
-## `min`/`max` sans `label`, alors que le cœur réel (`aggregate.py`,
-## `_measure_label`) calcule la clé d'une mesure non étiquetée comme
-## `f"{agg}_{field}"` (ex. `min_montant`), jamais `min`/`max` bruts — la
-## couleur numérique et la taille s'effondrent silencieusement en
-## constante (domaine {0,0}) contre le vrai backend. Masqué par les deux
-## niveaux de mock (unitaire ET E2E) qui renvoient directement la forme
-## `{min, max}` sans validation de label. Fix attendu : ajouter
-## `label: "min"`/`label: "max"` comme le fait déjà sliderFilter.tsx.
-## 2 Minor : scénario E2E 25 ("sans encodings") ne promeut jamais sa
-## source donc n'a pas de datasetId — passe pour la mauvaise raison ;
-## branche `line-color` de mapSymbology.ts non testée. Dispatch d'un
-## fixer unique couvrant les 3 findings (Critical + 2 Minor).
+## SP-14i COMPLET — 5 tâches, 5 commits de tâches (a7b6078, 55bbdfb,
+## 1e5bd05, 51a7f43, f7f7b6d), 0 round de fix (les 5 tâches approuvées
+## au premier passage). HEAD=f7f7b6d, prêt pour la revue finale de
+## branche. Minors cumulés à trianger par la revue finale (aucun
+## bloquant à ce stade) : message de repli 400 en français isolé
+## (Task 1) ; cast as SqlHistoryEntry[] sans validation par élément
+## (Task 2) ; cast as Error redondant + Chargement… non testé (Task 3) ;
+## test négatif "cache le lien" plan-mandated faible + Me.isAnalyst
+## requis mais absent du mock MSW par défaut, pré-existant (Task 4) ;
+## .count() manuel vs toHaveCount() (Task 5).
 
-## Fix (commit eadbdd7) : label: "min"/label: "max" ajoutés aux 2
-## mesures de useNumericDomain (mapWidget.tsx, un seul helper partagé
-## par couleur numérique ET taille — le fix corrige les deux d'un coup) ;
-## promoteLastSource(page, 1) ajouté au scénario E2E 25 ; test
-## line-color ajouté à mapSymbology.test.ts. 3 fichiers, 18
-## insertions/1 suppression. 30 tests ciblés + 793 suite unitaire + 76/76
-## E2E + build propres.
+## Revue finale de branche (opus, 93ccab1..f7f7b6d, 5 commits) —
+## 1 Important, 0 Critical, plusieurs Minor confirmés non bloquants
+## à l'échelle de la branche (cf. liste ci-dessus, tous re-confirmés
+## comme non bloquants par ce reviewer indépendant), "With fixes".
+## Important : en-tête SPDX manquant sur `shell/e2e/sql-lab.spec.ts`
+## (Task 5) — violation vérifiable de la contrainte globale du plan
+## ("Every new file starts with SPDX..."), aucun autre nouveau fichier
+## de la branche n'a cette lacune. Intégration cross-tâche vérifiée
+## saine (SqlLabPage consomme runAnalyticsSql/SqlQueryError et
+## sqlLabHistory sans écart d'interface ; route/nav Task 4 cohérente
+## avec ce qu'exerce l'E2E Task 5). Aucune surface XSS/injection
+## introduite (rendu React échappé, SQL envoyé en corps JSON, sandbox
+## backend non touché). Dispatch d'un fixer unique pour le seul
+## Important.
 
-## Re-revue finale (opus, 02cb9a5..eadbdd7, 6 commits) — les 3 findings
-## re-vérifiés FIXÉS indépendamment (pas seulement le rapport du fixer) :
-## label fix confirmé contre le vrai _measure_label du cœur
-## (core/app/analytics/aggregate.py:132-133, honore label explicite
-## comme clé de réponse) et symétrique (un seul helper useNumericDomain
-## partagé par couleur numérique et taille) ; scénario 25 re-exécuté
-## isolément (24.7s, vert) et confirmé qu'il teste bien "sans encodings"
-## et non "sans dataset" (datasetId vient de la config de source,
-## indépendant de la route /configs/by-item/... absente dans ce
-## scénario) ; test line-color confirmé non-vacueux (assertion sur
-## l'expression match complète). 0 Critical, 0 Important, 1 Minor
-## cosmétique (scénario 25 pourrait ajouter la route /configs/by-item/
-## dataset-1 par cohérence structurelle avec 22-24, non bloquant).
-## READY TO MERGE (Yes, sans réserve).
-## SP-14h READY TO MERGE — prêt pour finishing-a-development-branch.
-## HEAD=eadbdd7.
+## Fix (commit 27428d4) : en-tête SPDX ajouté en première ligne de
+## `sql-lab.spec.ts`, rien d'autre touché (2 insertions, 0 suppression).
+## 3/3 E2E ciblé re-vérifié par l'implémenteur.
+
+## Re-vérification finale (opus, commit 27428d4 isolé) : fix confirmé
+## correct et isolé (diff --stat : 1 fichier, 2 insertions ; header en
+## ligne 1 ; aucune logique de test modifiée). Aucun nouveau problème
+## introduit. READY TO MERGE (Yes).
+## SP-14i READY TO MERGE — prêt pour finishing-a-development-branch.
+## HEAD=27428d4.
+
+
+
+

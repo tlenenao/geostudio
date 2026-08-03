@@ -1,99 +1,112 @@
-## Task 2: `MapLayer.renderAs` — additive field honored by `MapView`
+### Task 2: `lib/sqlLabHistory.ts` — local query history
 
 **Files:**
-- Modify: `shell/src/api/types.ts:62`
-- Modify: `shell/src/map/MapView.tsx:56-58`
-- Modify: `shell/src/map/MapView.test.tsx`
+- Create: `shell/src/lib/sqlLabHistory.ts`
+- Test: `shell/src/lib/sqlLabHistory.test.ts`
 
 **Interfaces:**
-- Consumes: nothing from Task 1 (independent, purely additive change to shared map rendering).
-- Produces (consumed by Task 3): `MapLayer` (kind `"feature"`) now accepts an optional `renderAs?: "fill" | "circle" | "line"`; `MapView` renders that MapLibre layer `type` instead of the hard-coded `"fill"`, defaulting to `"fill"` when absent.
+- Consumes: nothing (pure module, `localStorage` only, no imports from elsewhere in the app).
+- Produces: `SqlHistoryEntry` type (`{ sql: string; executedAt: string; status: "ok" | "error"; rowCount?: number }`), `readSqlHistory(): SqlHistoryEntry[]`, `appendSqlHistory(entry: SqlHistoryEntry): SqlHistoryEntry[]` (from `shell/src/lib/sqlLabHistory.ts`). Task 3 imports all three.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-In `shell/src/map/MapView.test.tsx`, add these three tests right after the existing `"re-applies layers when config.layers changes"` test (after its closing `});`, before `"reports view changes on moveend"`):
+Create `shell/src/lib/sqlLabHistory.test.ts`:
 
 ```ts
-test("renders a circle layer for a feature layer with renderAs \"circle\"", () => {
-  const cfg: MapConfig = {
-    ...config,
-    layers: [{ id: "pts", title: "Points", visible: true, kind: "feature", url: "https://fs/pts", renderAs: "circle", paint: { "circle-color": "#111" } }],
-  };
-  render(<MapView config={cfg} />);
-  const map = mapInstances[0];
-  expect(map.getLayer("pts")).toMatchObject({ type: "circle", source: "pts", paint: { "circle-color": "#111" } });
+// SPDX-License-Identifier: Apache-2.0
+import { appendSqlHistory, readSqlHistory } from "./sqlLabHistory";
+
+beforeEach(() => localStorage.clear());
+
+describe("sqlLabHistory", () => {
+  test("readSqlHistory returns an empty list when nothing is stored", () => {
+    expect(readSqlHistory()).toEqual([]);
+  });
+
+  test("readSqlHistory returns an empty list when the stored value is corrupted JSON", () => {
+    localStorage.setItem("geostudio.sqlLab.history", "{not json");
+    expect(readSqlHistory()).toEqual([]);
+  });
+
+  test("appendSqlHistory prepends the newest entry and persists it", () => {
+    appendSqlHistory({ sql: "select 1", executedAt: "2026-08-03T10:00:00Z", status: "ok", rowCount: 1 });
+    const after = appendSqlHistory({ sql: "select 2", executedAt: "2026-08-03T10:01:00Z", status: "error" });
+    expect(after).toEqual([
+      { sql: "select 2", executedAt: "2026-08-03T10:01:00Z", status: "error" },
+      { sql: "select 1", executedAt: "2026-08-03T10:00:00Z", status: "ok", rowCount: 1 },
+    ]);
+    expect(readSqlHistory()).toEqual(after);
+  });
+
+  test("appendSqlHistory caps the list at 20 entries, dropping the oldest", () => {
+    for (let i = 0; i < 20; i++) {
+      appendSqlHistory({ sql: `select ${i}`, executedAt: `t${i}`, status: "ok" });
+    }
+    const result = appendSqlHistory({ sql: "select 20", executedAt: "t20", status: "ok" });
+    expect(result).toHaveLength(20);
+    expect(result[0].sql).toBe("select 20");
+    expect(result.find((e) => e.sql === "select 0")).toBeUndefined();
+  });
 });
-
-test("renders a line layer for a feature layer with renderAs \"line\"", () => {
-  const cfg: MapConfig = {
-    ...config,
-    layers: [{ id: "lns", title: "Lignes", visible: true, kind: "feature", url: "https://fs/lns", renderAs: "line" }],
-  };
-  render(<MapView config={cfg} />);
-  const map = mapInstances[0];
-  expect(map.getLayer("lns")).toMatchObject({ type: "line", source: "lns" });
-});
-
-test("defaults a feature layer to fill when renderAs is not set", () => {
-  const cfg: MapConfig = {
-    ...config,
-    layers: [{ id: "poly", title: "Polygones", visible: true, kind: "feature", url: "https://fs/poly" }],
-  };
-  render(<MapView config={cfg} />);
-  expect(mapInstances[0].getLayer("poly")).toMatchObject({ type: "fill", source: "poly" });
-});
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+(`beforeEach`/`describe`/`test`/`expect` are Vitest globals in this project — `globals: true` in `shell/vite.config.ts`, no import needed, matching the style already used in `shell/src/lib/datasetSchema.test.ts`.)
 
-Run: `cd shell && npm run test -- MapView.test.tsx`
-Expected: FAIL — the first two new tests fail (`type` is `"fill"` for both, since MapView doesn't know about `renderAs` yet, and TypeScript itself would already reject `renderAs` as an unknown property on `MapLayer` until Step 3's type change lands). The third test passes already (it doesn't exercise anything new).
+- [ ] **Step 2: Run the test to verify it fails**
 
-- [ ] **Step 3: Add `renderAs` to `MapLayer` and honor it in `MapView`**
+Run: `cd shell && npx vitest run src/lib/sqlLabHistory.test.ts`
+Expected: FAIL — cannot find module `./sqlLabHistory`.
 
-In `shell/src/api/types.ts`, change line 62 from:
+- [ ] **Step 3: Write the implementation**
+
+Create `shell/src/lib/sqlLabHistory.ts`:
 
 ```ts
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown> }
+// SPDX-License-Identifier: Apache-2.0
+export type SqlHistoryEntry = {
+  sql: string;
+  executedAt: string;
+  status: "ok" | "error";
+  rowCount?: number;
+};
+
+const STORAGE_KEY = "geostudio.sqlLab.history";
+const MAX_ENTRIES = 20;
+
+export function readSqlHistory(): SqlHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as SqlHistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function appendSqlHistory(entry: SqlHistoryEntry): SqlHistoryEntry[] {
+  const next = [entry, ...readSqlHistory()].slice(0, MAX_ENTRIES);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage indisponible (navigation privée, quota dépassé) —
+    // l'historique dégrade silencieusement, l'exécution de la requête
+    // elle-même n'est pas affectée.
+  }
+  return next;
+}
 ```
 
-to:
+- [ ] **Step 4: Run the test to verify it passes**
 
-```ts
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
-```
+Run: `cd shell && npx vitest run src/lib/sqlLabHistory.test.ts`
+Expected: PASS, 4/4 tests green.
 
-In `shell/src/map/MapView.tsx`, change (lines 56-58):
-
-```ts
-      } else if (layer.kind === "feature") {
-        map.addSource(layer.id, { type: "geojson", data: layer.url });
-        map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
-```
-
-to:
-
-```ts
-      } else if (layer.kind === "feature") {
-        map.addSource(layer.id, { type: "geojson", data: layer.url });
-        map.addLayer({ id: layer.id, type: layer.renderAs ?? "fill", source: layer.id, paint: layer.paint ?? {} });
-```
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `cd shell && npm run test -- MapView.test.tsx`
-Expected: PASS — all tests green, including the 3 new ones.
-
-- [ ] **Step 5: Run the full unit suite to check for regressions**
-
-Run: `cd shell && npm run test`
-Expected: PASS — no other suite references `MapLayer`'s `feature` variant in a way that would break from an additive optional field.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-cd shell && git add src/api/types.ts src/map/MapView.tsx src/map/MapView.test.tsx
-git commit -m "feat(shell): MapLayer gains an optional renderAs, honored by MapView for feature layers (SP-14h)"
+cd shell && git add src/lib/sqlLabHistory.ts src/lib/sqlLabHistory.test.ts
+git commit -m "feat(shell): sqlLabHistory — historique local des requêtes SQL Lab (SP-14i)"
 ```
 
 ---
