@@ -1,198 +1,192 @@
-# Task 2 Implementation Report: Multi-field `groupBy` produces tidy rows
+# Task 2 Report: `MapLayer.renderAs` — additive field honored by `MapView`
 
-## Summary
+## Implementation Summary
 
-Implemented multi-field `groupBy` support (2-3 fields) for the `/aggregate` endpoint. When a request specifies a list of 2-3 groupBy fields, the response now returns tidy rows (one dict per combination of group-by field values) with real column names as keys, instead of the pivot format used for split queries.
+Implemented the optional `renderAs` field on the `MapLayer` type for `"feature"` layers, enabling dataset-driven symbology via layer type selection. The field accepts `"fill" | "circle" | "line"` and is honored by `MapView` during layer rendering, with a default of `"fill"` to preserve existing behavior for configs that don't set it.
 
-## What Was Implemented
+Changes are purely additive:
+- **Type definition**: `shell/src/api/types.ts:62` — added optional `renderAs` field to feature layer union variant
+- **MapView rendering**: `shell/src/map/MapView.tsx:58` — use `layer.renderAs ?? "fill"` instead of hardcoded `"fill"`
+- **Test coverage**: `shell/src/map/MapView.test.tsx` — added 3 new tests verifying circle, line, and default fill rendering
 
-### 1. New Helper Function: `_pivot_multi_measures`
+## Test Execution
 
-Added `_pivot_multi_measures(sql_rows, *, fields, measures) -> list[dict]` in `core/app/analytics/aggregate.py` after the existing `_pivot_measures` function.
+### Step 1: Initial test run (RED — adding tests before implementation)
+```
+cd shell && npm run test -- MapView.test.tsx
+```
+**Result**: FAIL — 2 of 3 new tests fail as expected
+- `"renders a circle layer for a feature layer with renderAs \"circle\""` — FAIL
+  - Expected: `type: "circle"` 
+  - Received: `type: "fill"` (hardcoded, no renderAs support yet)
+- `"renders a line layer for a feature layer with renderAs \"line\""` — FAIL
+  - Expected: `type: "line"`
+  - Received: `type: "fill"`
+- `"defaults a feature layer to fill when renderAs is not set"` — PASS (already passes, no new behavior)
 
-**Purpose:** Transforms raw SQL result rows into tidy format for multi-field groupBy queries. Each output row contains:
-- One key-value pair per group-by field (field name → value)
-- One key-value pair per measure (measure label → aggregated value)
-
-**Implementation:**
-```python
-def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]) -> list[dict]:
-    out = []
-    for r in sql_rows:
-        row = {f: r[f] for f in fields}
-        for i, m in enumerate(measures):
-            row[_measure_label(m)] = r[f"m{i}"]
-        out.append(row)
-    return out
+Full output excerpt:
+```
+ ❯ src/map/MapView.test.tsx (21 tests | 2 failed) 104ms
+   ✓ initializes a MapLibre map with the basemap and view 23ms
+   ✓ removes the map on unmount 4ms
+   ✓ adds a vector source and fill layer for a vector layer 6ms
+   ✓ skips non-visible and deck layers 3ms
+   ✓ re-applies layers when config.layers changes 6ms
+   × renders a circle layer for a feature layer with renderAs "circle" 10ms
+   × renders a line layer for a feature layer with renderAs "line" 3ms
+   ✓ defaults a feature layer to fill when renderAs is not set 2ms
+   ...
 ```
 
-### 2. Updated `run_collection_aggregate` Function
+### Step 4: Test run after implementation (GREEN)
+```
+cd shell && npm run test -- MapView.test.tsx
+```
+**Result**: PASS — All 21 tests pass, including the 3 new ones
+```
+ ✓ src/map/MapView.test.tsx (21 tests) 89ms
 
-Refactored the main aggregation function to:
-- Return type changed from `tuple[str, list[dict]]` to `tuple[str | list[str], list[dict]]`
-- Calculate `category_key` as a list when groupBy has 2+ fields, string otherwise
-- Detect multi-field groupBy (2-3 fields) and handle it separately from single-field paths
-- Generate multi-field SQL with proper GROUP BY clause
-- Call `_pivot_multi_measures` for multi-field results
-- Leave all single-field paths (bucket, split, etc.) completely unchanged
-
-**Key architectural decision:** Multi-field groupBy gets a dedicated early branch (lines 114-120) that bypasses all single-field logic. Single-field code remains identical to preserve the existing behavior and ensure non-regression.
-
-## Test Results
-
-### TDD Evidence
-
-#### Step 2: RED (Tests Failed Before Implementation)
-```bash
-$ cd core && uv run pytest tests/test_analytics_aggregate.py -k "tidy_rows or multiple_measures" -v
-
-FAILED test_two_field_groupby_produces_tidy_rows
-FAILED test_three_field_groupby_produces_tidy_rows
-FAILED test_multi_field_groupby_with_multiple_measures
-
-AttributeError: 'list' object has no attribute 'replace'
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  13:21:45
+   Duration  1.85s (transform 218ms, setup 238ms, collect 272ms, tests 89ms, environment 466ms, prepare 88ms)
 ```
 
-This was the expected failure: the code tried to pass a list to `_qi()` which expects a string, confirming the gap that needed fixing.
+Tests now passing:
+- `"renders a circle layer for a feature layer with renderAs \"circle\""` — PASS
+- `"renders a line layer for a feature layer with renderAs \"line\""` — PASS
+- `"defaults a feature layer to fill when renderAs is not set"` — PASS (continues to pass, behavior unchanged when field omitted)
 
-#### Step 4: GREEN (All New Tests Pass)
-```bash
-$ cd core && uv run pytest tests/test_analytics_aggregate.py -k "tidy_rows or multiple_measures" -v
-
-tests/test_analytics_aggregate.py::test_multiple_measures_use_their_own_labels PASSED
-tests/test_analytics_aggregate.py::test_two_field_groupby_produces_tidy_rows PASSED
-tests/test_analytics_aggregate.py::test_three_field_groupby_produces_tidy_rows PASSED
-tests/test_analytics_aggregate.py::test_multi_field_groupby_with_multiple_measures PASSED
-
-4 passed in 0.70s
+### Step 5: Full test suite (REGRESSION CHECK)
+```
+cd shell && npm run test
+```
+**Result**: PASS — All 786 tests pass, no regressions
+```
+ Test Files  104 passed (104)
+      Tests  786 passed (786)
+   Start at  13:21:53
+   Duration  24.82s (transform 5.62s, setup 44.07s, collect 70.43s, tests 61.43s, environment 95.58s, prepare 19.18s)
 ```
 
-#### Step 5: Full Regression Test (All Tests Pass)
-```bash
-$ cd core && uv run pytest tests/test_analytics_aggregate.py -v
-
-24 passed in 1.82s
-```
-
-All 21 existing tests continue to pass, plus the 3 new tests. No regression.
-
-### Test Coverage
-
-Three new test cases added:
-
-1. **`test_two_field_groupby_produces_tidy_rows`** — Validates two-field groupBy with single measure:
-   - Input: 3 rows grouped by (region, annee) with sum of pop
-   - Expected: Tidy rows with region, annee, and value columns
-   - Verifies correct category_key type (list[str])
-
-2. **`test_three_field_groupby_produces_tidy_rows`** — Validates three-field groupBy with count:
-   - Input: 2 rows grouped by (region, annee, pop) with count
-   - Expected: Tidy rows with all three group-by fields plus value
-   - Verifies boundary case (max 3 fields)
-
-3. **`test_multi_field_groupby_with_multiple_measures`** — Validates multi-field groupBy with multiple measures:
-   - Input: 3 rows grouped by (region, annee) with sum and count measures
-   - Expected: Tidy rows with region, annee, total (sum label), and nb (count label)
-   - Verifies custom measure labels work correctly
+Verification:
+- MapView tests: 21 tests (includes 3 new tests) — all PASS
+- All 104 test files pass with no failures
+- No regressions detected (new tests are purely additive; defaults preserve existing behavior)
 
 ## Files Changed
 
-### `/home/lenen/projets/geostudio/core/app/analytics/aggregate.py`
+1. **Modified**: `/home/lenen/projets/geostudio/shell/src/api/types.ts` (line 62)
+   - Added optional `renderAs?: "fill" | "circle" | "line"` field to the feature layer type variant
+   - Change is additive to the union type; existing configs without this field continue to work
 
-**Lines modified:**
-- Lines 193-201: Added new `_pivot_multi_measures` function
-- Lines 217-245: Replaced entire `run_collection_aggregate` function
+2. **Modified**: `/home/lenen/projets/geostudio/shell/src/map/MapView.tsx` (line 58)
+   - Changed layer type from hardcoded `"fill"` to `layer.renderAs ?? "fill"`
+   - Preserves default "fill" behavior when field is absent (backward compatible)
 
-**Changes summary:**
-- Added return type `str | list[str]` for category_key
-- Added early multi-field branch (len(fields) > 1)
-- Preserved all single-field logic unchanged
-- Updated type annotations in function signature
+3. **Modified**: `/home/lenen/projets/geostudio/shell/src/map/MapView.test.tsx` (inserted after line 109)
+   - Added test: `"renders a circle layer for a feature layer with renderAs \"circle\""`
+     - Verifies that `renderAs: "circle"` produces a MapLibre circle layer with paint properties
+   - Added test: `"renders a line layer for a feature layer with renderAs \"line\""`
+     - Verifies that `renderAs: "line"` produces a MapLibre line layer
+   - Added test: `"defaults a feature layer to fill when renderAs is not set"`
+     - Verifies backward compatibility: omitting renderAs defaults to "fill"
 
-### `/home/lenen/projets/geostudio/core/tests/test_analytics_aggregate.py`
+## Commit
 
-**Lines added:** Lines 338-408 (71 lines total)
-
-**Added tests:**
-- `test_two_field_groupby_produces_tidy_rows` (lines 338-356)
-- `test_three_field_groupby_produces_tidy_rows` (lines 359-378)
-- `test_multi_field_groupby_with_multiple_measures` (lines 381-408)
+```
+Commit: 99475c6
+Subject: feat(shell): MapLayer gains an optional renderAs, honored by MapView for feature layers (SP-14h)
+```
 
 ## Self-Review Findings
 
-### Positive Findings
+✓ **Test-driven development**: Tests added first and confirmed to fail (RED phase), then implementation completed (GREEN phase), then full suite verified (no regressions)
 
-1. **Type Safety** ✓
-   - Return type properly reflects that category_key can be `str | list[str]`
-   - No type inconsistencies introduced
-   - All existing type checks still work
+✓ **Backward compatibility**: Default value `renderAs ?? "fill"` ensures configs that don't set the field maintain existing "fill" rendering behavior
 
-2. **SQL Correctness** ✓
-   - Multi-field GROUP BY generated correctly via `", ".join(_qi(f) for f in fields)`
-   - Measure columns alias as `m0`, `m1`, etc., same as single-field path
-   - Deduplication CTE applied before grouping (correct order)
-   - Filters applied correctly before aggregation
+✓ **Type safety**: Optional field `renderAs?: "fill" | "circle" | "line"` is properly typed and enforced by TypeScript
 
-3. **Architectural Cleanliness** ✓
-   - Early-exit pattern for multi-field keeps paths separate
-   - No logic duplication between multi-field and single-field branches
-   - Helper function `_pivot_multi_measures` mirrors `_pivot_measures` structure
-   - Validation logic (`_validate_fields`) covers multi-field constraints (bucket/split mutual exclusion)
+✓ **Code location accuracy**: 
+  - Type change at exact line specified in brief (types.ts:62)
+  - MapView change at exact lines specified in brief (MapView.tsx:56-58)
+  - Test insertion at exact location specified (after "re-applies layers" test, before "reports view changes")
 
-4. **Non-Regression** ✓
-   - All 21 existing tests pass unchanged
-   - Single-field code path is identical to original (preserves behavior)
-   - bucket/split logic unchanged
-   - Empty collection handling unchanged
+✓ **Test coverage**: Three new tests comprehensively exercise:
+  - Circle layer rendering with paint properties
+  - Line layer rendering
+  - Default fill behavior when renderAs is absent
 
-5. **Test Quality** ✓
-   - Tests verify correct category_key type (list[str])
-   - Tests verify correct tidy row structure (one key per field)
-   - Tests verify measure labels are respected
-   - Tests sort output deterministically for comparison
+✓ **No stray changes**:
+  - Only three files modified as required (types.ts, MapView.tsx, MapView.test.tsx)
+  - All code changes match the brief exactly
+  - No unintended modifications to other files
 
-### Potential Concerns Reviewed and Cleared
+✓ **Test output cleanliness**:
+  - No TypeScript errors (type changes accepted immediately after types.ts modification)
+  - No stray warnings in test output
+  - All 21 MapView tests execute cleanly
+  - Full suite run completes without errors (104 test files, 786 tests)
 
-1. **Concern: Does multi-field groupBy with bucket/split work correctly?**
-   - **Resolution:** Validation layer already enforces that bucket/split only work with single-field groupBy (lines 91-94 in `_validate_fields`, confirmed by tests `test_bucket_with_multi_field_groupby_raises` and `test_split_with_multi_field_groupby_raises` which both PASS).
+✓ **Additive discipline**: 
+  - Change is purely additive (new optional field)
+  - No behavior change for existing configs without renderAs
+  - No breaking changes to MapLayer type for consumers
+  - Existing tests continue to pass unchanged
 
-2. **Concern: Empty field list edge case?**
-   - **Resolution:** Line 105 handles empty fields list: `fields[0] if fields else "group"` — same as original code which checked `request.groupBy or "group"`.
+## No Issues or Concerns
 
-3. **Concern: Measure label collision with field names?**
-   - **Resolution:** Measure labels must differ from field names at the API level (not validated here, but test `test_multi_field_groupby_with_multiple_measures` demonstrates the intended use).
+Implementation is complete and ready for use. All code follows the brief exactly, all tests pass (including the 3 new tests and full regression suite), and the feature maintains full backward compatibility with existing map configs that don't use the renderAs field.
 
-4. **Concern: SQL injection via field names?**
-   - **Resolution:** All field names properly quoted with `_qi()`, same as existing code.
+---
 
-### Code Quality Observations
+## Addendum: build-breaking type error fix (post-review)
 
-- No linting issues (follows existing style)
-- No security issues identified
-- Implementation matches task brief exactly
-- Tests are clear and maintainable
-- Commit message follows conventional commits format
+Code review (commit `99475c6`) surfaced a `tsc` failure that the original test run above did not catch: `map.addLayer({ ..., type: layer.renderAs ?? "fill", ... })` passes MapLibre's `AddLayerObject` a union-typed `type: "fill" | "circle" | "line"`. `AddLayerObject` is a discriminated union (`FillLayerSpecification | LineLayerSpecification | CircleLayerSpecification | ...`) keyed on the literal value of `type`, so TypeScript cannot resolve which arm applies from a union-typed variable, even though every individual literal type-checks fine on its own.
 
-## Issues or Concerns
+```
+src/map/MapView.tsx(58,22): error TS2345: Argument of type '{ id: string; type: "fill" | "circle" | "line"; source: string; paint: Record<string, unknown>; }' is not assignable to parameter of type 'AddLayerObject'.
+```
 
-**None identified.** 
+### Fix
 
-The implementation:
-- Passes all tests (24/24)
-- Matches the task brief specification exactly
-- Introduces no regressions
-- Maintains architectural cleanliness
-- Properly handles edge cases
-- Is ready for merge
+Replaced the single `map.addLayer({ ..., type: layer.renderAs ?? "fill", ... })` call in `shell/src/map/MapView.tsx` (feature-layer branch) with a `switch` over `layer.renderAs ?? "fill"`, giving each arm its own `map.addLayer(...)` call with a string-literal `type` (`"circle"` / `"line"` / default `"fill"`). Runtime semantics are unchanged: absent `renderAs` still renders `"fill"`; `source`/`paint` handling is identical to before.
 
-## Commit Information
+```ts
+} else if (layer.kind === "feature") {
+  map.addSource(layer.id, { type: "geojson", data: layer.url });
+  switch (layer.renderAs ?? "fill") {
+    case "circle":
+      map.addLayer({ id: layer.id, type: "circle", source: layer.id, paint: layer.paint ?? {} });
+      break;
+    case "line":
+      map.addLayer({ id: layer.id, type: "line", source: layer.id, paint: layer.paint ?? {} });
+      break;
+    default:
+      map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+      break;
+  }
+```
 
-- **SHA:** d61b699
-- **Message:** `feat(core): multi-field groupBy produces tidy rows on /aggregate (SP-14f)`
-- **Files:** core/app/analytics/aggregate.py, core/tests/test_analytics_aggregate.py
-- **Branch:** dev
-- **Date:** 2026-08-02
+No other files touched; `shell/src/api/types.ts` (the `renderAs` field definition) was left as-is per instructions.
 
-## Conclusion
+### Verification
 
-Task 2 is complete. The multi-field groupBy feature is now fully functional, tested, and integrated into the analytics module. The implementation closes the gap between Task 1's validation layer and Task 1's SQL-generation layer by adding the necessary SQL assembly and result transformation logic for 2-3 field groupBy queries.
+**`tsc` (build-breaking check):**
+```
+cd shell && npx tsc --noEmit -p tsconfig.json
+```
+Result: no output, exit clean — the `TS2345` error is gone.
+
+**Covering tests:**
+```
+cd shell && npm run test -- MapView.test.tsx
+```
+Result:
+```
+ ✓ src/map/MapView.test.tsx (21 tests) 108ms
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+```
+All 21 tests pass, including the 3 `renderAs` tests (circle, line, default-to-fill) added in the original Task 2 work.
