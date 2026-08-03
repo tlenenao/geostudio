@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Component, type ReactNode } from "react";
 import type { Page, RenderMode, WidgetItem } from "../api/types";
+import type { Breakpoint } from "./grid";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
@@ -31,11 +32,13 @@ export function WidgetHost({
   mode,
   pages = [],
   navigate,
+  breakpoint,
 }: {
   item: WidgetItem;
   mode: RenderMode;
   pages?: Page[];
   navigate?: (pageId: string) => void;
+  breakpoint?: Breakpoint;
 }) {
   const states = useDataStates();
   const bus = useActionBus();
@@ -57,7 +60,7 @@ export function WidgetHost({
   const resolvedProps = resolveExprBindings(item.props, exprCtx) as Record<string, unknown>;
   return (
     <WidgetErrorBoundary>
-      <Widget props={resolvedProps} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user }} />
+      <Widget props={resolvedProps} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user, breakpoint }} />
     </WidgetErrorBoundary>
   );
 }
