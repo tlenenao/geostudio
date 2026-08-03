@@ -85,3 +85,19 @@ test("hides the read-only demo banner by default", async () => {
   await screen.findByText("GeoStudio");
   expect(screen.queryByText(/Mode démo/)).not.toBeInTheDocument();
 });
+
+test("shows the SQL Lab link only when the current user is an analyst", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false, isAnalyst: true }),
+    ),
+  );
+  renderLayout();
+  expect(await screen.findByRole("link", { name: "SQL Lab" })).toBeInTheDocument();
+});
+
+test("hides the SQL Lab link for a non-analyst user", async () => {
+  renderLayout();
+  await screen.findByText("GeoStudio");
+  expect(screen.queryByRole("link", { name: "SQL Lab" })).not.toBeInTheDocument();
+});
