@@ -1583,3 +1583,240 @@ test("an unconfigured pivot (no rows/columns fields) shows a configuration messa
   await page.goto("/apps/9");
   await expect(page.getByText("Configurez les champs lignes et colonnes")).toBeVisible();
 });
+
+// -------------------------------------------------------------------------
+// Scénario 22 (SP-14h) — couleur catégorielle : le widget Carte colore une
+// couche polygonale par un champ catégoriel ; la légende affiche les valeurs
+// distinctes obtenues via une requête statistics (groupBy) séparée de la
+// DataSource "features" qui alimente la géométrie.
+// -------------------------------------------------------------------------
+test("a map with a categorical color encoding shows a legend built from a groupBy domain query (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/communes/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "communes", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/communes/items*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, geometry: { type: "Polygon", coordinates: [[[2, 46], [3, 46], [3, 47], [2, 47], [2, 46]]] }, properties: { region: "Nord" } },
+          { id: 2, geometry: { type: "Polygon", coordinates: [[[2, 44], [3, 44], [3, 45], [2, 45], [2, 44]]] }, properties: { region: "Sud" } },
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/communes/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "region", rows: [{ region: "Nord", value: 1 }, { region: "Sud", value: 1 }] },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "communes", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte catégorielle");
+  await addFeaturesSource(page, "communes");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("region");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  await expect(page.getByText("Nord")).toBeVisible();
+  await expect(page.getByText("Sud")).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 23 (SP-14h) — couleur + taille numériques : le widget Carte
+// dimensionne et colore une couche ponctuelle par deux champs numériques ;
+// la légende affiche les bornes des deux domaines (deux requêtes
+// statistics distinctes, une par champ).
+// -------------------------------------------------------------------------
+test("a map with numeric color and size encodings shows a legend with both domains' bounds (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/points/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "points", pk: "id", geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [{ name: "valeur", type: "number" }, { name: "montant", type: "number" }] },
+    });
+  });
+  await page.route("**/collections/points/items*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [
+          { id: 1, geometry: { type: "Point", coordinates: [2.3, 46.5] }, properties: { valeur: 10, montant: 2 } },
+          { id: 2, geometry: { type: "Point", coordinates: [2.5, 46.7] }, properties: { valeur: 90, montant: 18 } },
+        ],
+      },
+    });
+  });
+  await page.route("**/collections/points/aggregate", async (route) => {
+    const body = route.request().postDataJSON() as { measures?: { field: string }[] };
+    const field = body.measures?.[0]?.field;
+    if (field === "valeur") {
+      await route.fulfill({ json: { categoryKey: "valeur", rows: [{ min: 10, max: 90 }] } });
+      return;
+    }
+    await route.fulfill({ json: { categoryKey: "montant", rows: [{ min: 2, max: 18 }] } });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "points", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte numérique");
+  await addFeaturesSource(page, "points");
+  await promoteLastSource(page, 1);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("valeur");
+  await page.getByLabel("Type de couleur").selectOption("numeric");
+  await page.getByLabel("Champ taille").fill("montant");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  await expect(page.getByText("10 – 90")).toBeVisible();
+  await expect(page.getByText("2 – 18")).toBeVisible();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 24 (SP-14h) — non-régression : un clic sur une entité stylée
+// déclenche toujours le cross-filter par pk (comportement pk existant,
+// inchangé par la symbologie). Fixture : une entité (id=1) en polygone
+// couvrant tout le viewport par défaut (center [2.4,46.6], zoom 5), une
+// seconde (id=2) placée hors champ (jamais rendue à l'écran) — n'importe
+// quel clic sur le canvas ne peut donc toucher que id=1, sans dépendre
+// d'un calcul précis de projection Web Mercator.
+// -------------------------------------------------------------------------
+test("a click on a styled map feature still cross-filters a sibling table by pk (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  await page.route("**/collections/zones/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "zones", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/zones/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const id = url.searchParams.get("id");
+    const all = [
+      { id: 1, geometry: { type: "Polygon", coordinates: [[[-20, 30], [30, 30], [30, 65], [-20, 65], [-20, 30]]] }, properties: { region: "Nord" } },
+      { id: 2, geometry: { type: "Polygon", coordinates: [[[170, -80], [175, -80], [175, -75], [170, -75], [170, -80]]] }, properties: { region: "Sud" } },
+    ];
+    const features = id ? all.filter((f) => String(f.id) === id) : all;
+    await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  await page.route("**/collections/zones/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "region", rows: [{ region: "Nord", value: 1 }, { region: "Sud", value: 1 }] },
+    });
+  });
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "collection", collectionId: "zones", columns: {}, timeField: null, reactsToExtent: false } } },
+    });
+  });
+
+  await createApp(page, "Carte cross-filter");
+  await addFeaturesSource(page, "zones");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "zones");
+  await promoteLastSource(page, 2);
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ couleur").fill("region");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  await page.getByLabel("Colonnes").fill("region");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.goto("/apps/9");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeVisible();
+
+  const canvas = page.locator("canvas.maplibregl-canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("map canvas has no bounding box");
+
+  // La géométrie de la couche (GeoJSON fetché puis peint par MapLibre) arrive
+  // après le premier paint du canvas WebGL, sur un délai variable selon la
+  // charge machine. MapLibre ne déclenche le callback "click" que si une
+  // feature est effectivement peinte sous le curseur : un clic "manqué" ne
+  // produit donc aucun effet (pas de cross-filter, pas de toggle) — retenter
+  // le même clic jusqu'à observer la requête filtrée est donc sûr (idempotent
+  // tant qu'aucun clic n'a touché la feature) et n'a pas besoin d'un délai
+  // fixe fragile.
+  let filtered = false;
+  for (let attempt = 0; attempt < 10 && !filtered; attempt++) {
+    const attemptReq = page
+      .waitForRequest((r) => r.url().includes("/collections/zones/items") && r.url().includes("id=1"), { timeout: 1000 })
+      .then(() => true)
+      .catch(() => false);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    filtered = await attemptReq;
+  }
+  if (!filtered) throw new Error("clicking the map canvas never triggered the pk cross-filter request");
+  await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Sud" })).toBeHidden();
+});
+
+// -------------------------------------------------------------------------
+// Scénario 25 (SP-14h) — non-régression : sans encodings configurés, le
+// widget Carte se comporte exactement comme avant (aucune requête statistics
+// de domaine n'est émise).
+// -------------------------------------------------------------------------
+test("a map with no encodings configured issues no domain query (SP-14h)", async ({ page }) => {
+  await mockCore(page);
+  let aggregateCalls = 0;
+  await page.route("**/collections/parcelles/schema", async (route) => {
+    await route.fulfill({
+      json: { collection: "parcelles", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 },
+        fields: [{ name: "region", type: "string" }] },
+    });
+  });
+  await page.route("**/collections/parcelles/items*", async (route) => {
+    await route.fulfill({
+      json: { type: "FeatureCollection", features: [
+        { id: 1, geometry: { type: "Polygon", coordinates: [[[2, 46], [3, 46], [3, 47], [2, 47], [2, 46]]] }, properties: { region: "Nord" } },
+      ] },
+    });
+  });
+  await page.route("**/collections/parcelles/aggregate", async (route) => {
+    aggregateCalls++;
+    await route.fulfill({ json: { categoryKey: "region", rows: [] } });
+  });
+
+  await createApp(page, "Carte sans symbologie");
+  await addFeaturesSource(page, "parcelles");
+
+  await page.getByRole("button", { name: "Carte" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  const itemsReq = page.waitForRequest((r) => r.url().includes("/collections/parcelles/items"));
+  await page.goto("/apps/9");
+  await itemsReq;
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
+  expect(aggregateCalls).toBe(0);
+});
