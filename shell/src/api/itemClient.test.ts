@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
-import { createItemClient, FeatureValidationError } from "./itemClient";
+import { createItemClient, FeatureValidationError, SqlQueryError } from "./itemClient";
 
 function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
@@ -1314,4 +1314,43 @@ test("listPublicItems round-trips keywords from the response", async () => {
   );
   const page = await makeClient().listPublicItems();
   expect(page.items[0].keywords).toEqual(["risques"]);
+});
+
+test("runAnalyticsSql posts { sql } and returns columns/rows/truncated", async () => {
+  let auth: string | null = null;
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/analytics/sql", async ({ request }) => {
+      auth = request.headers.get("authorization");
+      body = await request.json();
+      return HttpResponse.json({ columns: ["nom"], rows: [["Alice"]], truncated: false });
+    }),
+  );
+  const result = await makeClient("abc").runAnalyticsSql("select nom from personnes");
+  expect(auth).toBe("Bearer abc");
+  expect(body).toEqual({ sql: "select nom from personnes" });
+  expect(result).toEqual({ columns: ["nom"], rows: [["Alice"]], truncated: false });
+});
+
+test("runAnalyticsSql throws SqlQueryError with the server message on 400", async () => {
+  server.use(
+    http.post("https://core.test/analytics/sql", () =>
+      HttpResponse.json(
+        { detail: { errors: [{ field: "sql", code: "sql_error", message: "Binder Error: table 'x' does not exist" }] } },
+        { status: 400 },
+      ),
+    ),
+  );
+  const err = await makeClient().runAnalyticsSql("select * from x").catch((e) => e);
+  expect(err).toBeInstanceOf(SqlQueryError);
+  expect((err as SqlQueryError).message).toBe("Binder Error: table 'x' does not exist");
+});
+
+test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
+  server.use(
+    http.post("https://core.test/analytics/sql", () =>
+      HttpResponse.json({ detail: "analyst role required" }, { status: 403 }),
+    ),
+  );
+  await expect(makeClient().runAnalyticsSql("select 1")).rejects.toThrow(/403/);
 });

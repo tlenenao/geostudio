@@ -91,6 +91,13 @@ export class FeatureValidationError extends Error {
   }
 }
 
+export class SqlQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SqlQueryError";
+  }
+}
+
 async function requestFeatureWrite<T>(
   url: string,
   method: string,
@@ -115,6 +122,28 @@ async function requestFeatureWrite<T>(
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+async function requestAnalyticsSql(
+  coreUrl: string,
+  token: string | undefined,
+  sql: string,
+): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${coreUrl}/analytics/sql`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ sql }),
+  });
+  if (res.status === 400) {
+    const data = (await res.json().catch(() => null)) as { detail?: { errors?: FieldError[] } } | null;
+    throw new SqlQueryError(data?.detail?.errors?.[0]?.message ?? "Requête SQL invalide.");
+  }
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.status} POST /analytics/sql`);
+  }
+  return (await res.json()) as { columns: string[]; rows: unknown[][]; truncated: boolean };
 }
 
 function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
@@ -715,6 +744,10 @@ export function createItemClient(opts: {
         collectionId: string | null;
         itemId: string | null;
       }>("GET", `/uploads/${jobId}`);
+    },
+
+    async runAnalyticsSql(sql: string) {
+      return requestAnalyticsSql(coreUrl, getToken(), sql);
     },
   };
 }
