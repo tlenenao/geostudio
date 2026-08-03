@@ -162,6 +162,7 @@ export interface ItemClient {
     collectionId: string | null;
     itemId: string | null;
   }>;
+  runAnalyticsSql(sql: string): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
