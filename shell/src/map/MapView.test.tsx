@@ -108,6 +108,35 @@ test("re-applies layers when config.layers changes", () => {
   expect(map.getSource("b")).toMatchObject({ spec: { type: "geojson", data: "https://fs/b" } });
 });
 
+test("renders a circle layer for a feature layer with renderAs \"circle\"", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "pts", title: "Points", visible: true, kind: "feature", url: "https://fs/pts", renderAs: "circle", paint: { "circle-color": "#111" } }],
+  };
+  render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("pts")).toMatchObject({ type: "circle", source: "pts", paint: { "circle-color": "#111" } });
+});
+
+test("renders a line layer for a feature layer with renderAs \"line\"", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "lns", title: "Lignes", visible: true, kind: "feature", url: "https://fs/lns", renderAs: "line" }],
+  };
+  render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("lns")).toMatchObject({ type: "line", source: "lns" });
+});
+
+test("defaults a feature layer to fill when renderAs is not set", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "poly", title: "Polygones", visible: true, kind: "feature", url: "https://fs/poly" }],
+  };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].getLayer("poly")).toMatchObject({ type: "fill", source: "poly" });
+});
+
 test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);

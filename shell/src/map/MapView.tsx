@@ -55,7 +55,7 @@ function applyLayers(
         });
       } else if (layer.kind === "feature") {
         map.addSource(layer.id, { type: "geojson", data: layer.url });
-        map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+        map.addLayer({ id: layer.id, type: layer.renderAs ?? "fill", source: layer.id, paint: layer.paint ?? {} });
         const handler = (e: maplibregl.MapLayerMouseEvent) => {
           const f = e.features?.[0];
           if (!f || f.id == null) return;
