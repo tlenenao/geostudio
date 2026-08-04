@@ -5,6 +5,7 @@ dataset source="arcgis" (SP-14k) — lecture live, sans copie locale. Les
 requêtes sortantes utilisent le client HTTP injecté par la route appelante
 (gardé par le même egress guard que le moissonnage, SP-12d, egress.py)."""
 import json
+import re
 import time
 from urllib.parse import urlencode
 
@@ -13,6 +14,7 @@ import httpx
 _CACHE_TTL_SECONDS = 20.0
 _RANGE_OPS = {"__gte": ">=", "__lte": "<="}
 _STAT_TYPES = {"count", "sum", "avg", "min", "max"}
+_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _cache: dict[str, tuple[float, dict]] = {}
 
@@ -41,6 +43,8 @@ def _build_where(filters: dict[str, str]) -> str:
     clauses = []
     for raw_name, value in sorted(filters.items()):
         name, suffix = _split_filter_key(raw_name)
+        if not _FIELD_NAME_RE.match(name):
+            raise ArcgisQueryError(raw_name, f"invalid filter field name '{name}'")
         if suffix == "__in":
             values = value.split(",")
             clauses.append(f"{name} IN ({', '.join(_sql_lit(v) for v in values)})")

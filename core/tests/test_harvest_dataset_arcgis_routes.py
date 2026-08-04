@@ -181,6 +181,23 @@ def test_post_aggregate_groupby_and_measure(client):
     assert body["rows"] == [{"commune": "Metz", "value": 3}, {"commune": "Nancy", "value": 7}]
 
 
+def test_get_items_invalid_filter_field_name_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.get(
+        f"/datasets/{dataset_item_id}/arcgis/items",
+        params={"1) OR (1=1--": "x"},
+    )
+    assert resp.status_code == 400
+
+
+def test_post_aggregate_invalid_filter_field_name_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "agg": "count", "filters": {"1) OR (1=1--": "x"},
+    })
+    assert resp.status_code == 400
+
+
 def test_post_aggregate_bucket_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={

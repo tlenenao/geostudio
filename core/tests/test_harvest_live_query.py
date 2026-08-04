@@ -50,6 +50,13 @@ def test_translate_features_query_escapes_single_quotes():
     assert "l''école" in params["where"]
 
 
+def test_translate_features_query_rejects_invalid_field_name():
+    with pytest.raises(live_query.ArcgisQueryError):
+        live_query.translate_features_query(
+            filters={"1) OR (1=1--": "x"}, bbox=None, limit=10, offset=0,
+        )
+
+
 def test_translate_aggregate_query_count_no_groupby():
     params = live_query.translate_aggregate_query(
         group_by=[], measures=[("count", None, "total")], filters={}, bbox=None,
