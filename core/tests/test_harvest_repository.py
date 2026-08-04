@@ -44,6 +44,12 @@ def pg_session(pg_engine):
 
 
 @pytest.fixture()
+def tenant(tenant_and_user):
+    t, _ = tenant_and_user
+    return t
+
+
+@pytest.fixture()
 def pg_tenant_and_user(pg_session):
     tenant = get_or_create_default_tenant(pg_session)
     user = get_or_create_user(
@@ -231,3 +237,71 @@ def test_unique_constraint_rejects_duplicate_external_id_for_same_source(pg_sess
         )
         pg_session.commit()
     pg_session.rollback()
+
+
+def test_get_feature_layer_record_returns_feature_kind_only(session, tenant_and_user):
+    from app.items import repository as items_repo
+
+    tenant, user = tenant_and_user
+    source = repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="arcgis",
+        url="https://gis.example.com/FeatureServer", mode="reference",
+        enabled=True, interval_minutes=None,
+    )
+    feature_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="external", title="Feature Layer",
+    )
+    repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="a",
+        item_id=feature_item.id, collection_id=None, content_hash=None,
+        external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+    )
+    raster_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="external", title="Raster Layer",
+    )
+    repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="b",
+        item_id=raster_item.id, collection_id=None, content_hash=None,
+        tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
+    )
+    found = repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id=feature_item.id)
+    assert found is not None
+    assert found.external_url == "https://gis.example.com/FeatureServer/0"
+    assert repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id=raster_item.id) is None
+    assert repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id="no-such-item") is None
+
+
+def test_list_feature_layer_records_excludes_raster_and_filters_by_q(session, tenant_and_user):
+    from app.items import repository as items_repo
+
+    tenant, user = tenant_and_user
+    source = repo.create_source(
+        session, tenant_id=tenant.id, owner_id=user.id, type="arcgis",
+        url="https://gis.example.com/FeatureServer", mode="reference",
+        enabled=True, interval_minutes=None,
+    )
+    feature_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="external", title="Bâtiments",
+    )
+    repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="a",
+        item_id=feature_item.id, collection_id=None, content_hash=None,
+        external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+    )
+    raster_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="external", title="Ortho",
+    )
+    repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="b",
+        item_id=raster_item.id, collection_id=None, content_hash=None,
+        tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
+    )
+    session.commit()
+
+    rows = repo.list_feature_layer_records(session, tenant_id=tenant.id)
+    ids = {r[0] for r in rows}
+    assert feature_item.id in ids
+    assert raster_item.id not in ids
+
+    filtered = repo.list_feature_layer_records(session, tenant_id=tenant.id, q="zzz-nomatch")
+    assert filtered == []
