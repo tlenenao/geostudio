@@ -237,7 +237,7 @@ test("promotes one data source to a shared dataset without touching its siblings
   await userEvent.click(promoteButton);
 
   await waitFor(() => expect(createDatasetItem).toHaveBeenCalledWith({
-    title: "parcs", owner: "tanguy", collectionId: "parcs",
+    title: "parcs", owner: "tanguy", source: "collection", collectionId: "parcs",
   }));
   await screen.findByText("Dataset partagé actif");
 

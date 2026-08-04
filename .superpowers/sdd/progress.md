@@ -1,404 +1,288 @@
-# SP-14f — Nouveaux types de graphiques (sankey, treemap, sunburst, funnel, histogramme binné) — Progress Ledger
+# SP-14k — Source `arcgis` (référencement live) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-02-sp14f-nouveaux-types-graphiques.md
+Plan: docs/superpowers/plans/2026-08-04-sp14k-source-arcgis.md
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@1888fc1 (plan + spec SP-14f committés).
+Base globale: dev@1bd8a2d (plan + spec SP-14k committés ; ledger SP-14j committé
+en amont par hygiène de dépôt, commit 1bd8a2d).
 
-Note : ce fichier remplace le ledger SP-14e (complet, revue finale
-ready-to-merge, HEAD=f136501) — même fichier scratch réutilisé par
-convention du dépôt ; contenu SP-14e préservé dans l'historique git.
+Note : ce fichier remplace le ledger SP-14j (complet, READY TO MERGE, poussé,
+HEAD=700084e) — même fichier scratch réutilisé par convention du dépôt ;
+contenu SP-14j préservé dans l'historique git (commit 1bd8a2d).
 
 ## Pré-vol
 
-Scan des 12 tâches (1-3 core : groupBy liste + validation, tidy rows
-multi-champs, histogramme binné DuckDB ; 4-5 shell plomberie :
-itemClient passthrough + id composite, DataSourcePanel groupBy CSV +
-bins ; 6-9 chartOption.ts : funnel/histogram, sankey (rôle des nœuds),
-treemap/sunburst (hiérarchie), resolveClickFilter généralisé ; 10-11
-EChart.tsx (SunburstChart) + chart.tsx (UI builder, handleClick) ; 12
-E2E) contre les 7 contraintes globales (zéro changement de comportement
-pour les 10 types existants et tous les appelants d'AggregateRequestBody ;
-`encodings` réservé à sankey/treemap/sunburst ; funnel réutilise
-categoryField/valueField, histogram réutilise valueField+bins
-[défaut 10, borné 1-100] ; bucket réservé à un groupBy à un seul champ,
-split et groupBy multi-champs mutuellement exclusifs — les deux en
-erreur de validation ; sankey v1 = un seul saut, hiérarchie
-treemap/sunburst plafonnée à 3 niveaux ; pas de cross-filter au clic sur
-histogramme ; commits français / code anglais, branche `dev`) : pas de
-contradiction. Le plan fournit du code complet et littéral pour chaque
-tâche (types, implémentation, tests unitaires, E2E) — transcription +
-tests, pas de conception à faire, comme SP-14e. Dépendances d'interface
-notées : Task 2 consomme `_groupby_fields` (Task 1) ; Task 3 consomme la
-validation `bins` ajoutée dans `_validate_fields` (Task 1) ; Task 4
-(itemClient) consomme les formes de réponse core des Tasks 1-3 ; Task 6
-introduit `encodings`/`bins` sur `ChartProps`, consommés par Tasks 7-9 ;
-Task 9 (`resolveClickFilter`) consomme le tag `_role` posé par la
-branche sankey de Task 7 et les `levels` de la branche treemap/sunburst
-de Task 8 ; Task 11 consomme `resolveClickFilter`/`ClickParams` (Task 9)
-et `SunburstChart` enregistré (Task 10) ; Task 12 exerce l'UI réelle
-produite par Tasks 1-11. Tâches exécutées dans l'ordre du plan (1→12).
+Scan des 9 tâches (1: `DatasetPayload.source="arcgis"` + registre de
+validateurs par source ; 2: `harvest_repo.get/list_feature_layer_record` ;
+3: `GET /harvest/feature-layers` ; 4: `app/harvest/live_query.py` — traduction
+pure filtres/bbox/groupBy → ArcGIS REST + cache TTL ; 5:
+`GET/POST /datasets/{itemId}/arcgis/items|aggregate` — proxy live ; 6:
+shell `itemClient.ts` — branchement par source ; 7: `useFeatureLayers` +
+`NewItemButton` ; 8: `DataContext` — résolution pk sûre pour les datasets
+arcgis ; 9: E2E `dataset-arcgis.spec.ts`) contre les 9 contraintes globales
+(additive only — aucun `DatasetPayload`/`DatasetConfig` source="collection"
+ne change de comportement ; `bucket`/`split`/`bins` sur l'aggregate arcgis →
+400 explicite, jamais ignoré silencieusement ; posture ArcGIS
+services-publics-seulement inchangée ; tout egress sortant via
+`build_guarded_client()` ; en-tête SPDX sur tout nouveau fichier Python ;
+contrat importlinter vert ; UI shell en français ; commits conventionnels
+suffixés (SP-14k) ; 82+ E2E + suites unitaires (pytest/vitest) restent
+vertes, vérifiées à la fin de chaque tâche) :
 
-Poursuite sans confirmation utilisateur (scan de contradictions clean).
+- **Point vérifié, pas une lacune** : Task 5 (`app/harvest/routes.py`)
+  importe `app.analytics.aggregate` depuis `app.harvest`. Le texte de la
+  tâche liste les modules autorisés sans citer `app.analytics` — vérifié
+  directement dans `core/pyproject.toml` `[tool.importlinter]` : `app.analytics`
+  n'apparaît dans aucune des 17 couches du contrat `layered architecture`
+  (seul contrat déclaré), donc cet import n'est contraint par rien — déjà le
+  cas aujourd'hui pour `app.features.routes` qui importe la même chose.
+  Aucune action requise, `lint-imports` restera vert.
+- **Écart auto-documenté par le plan, pas une contradiction à trancher** :
+  Task 1 Step 10-12 committe `test_create_dataset_arcgis.py` alors que ce
+  test échoue encore (`get_feature_layer_record` n'existe qu'après Task 2)
+  — donc la suite complète `pytest` est rouge un temps très court entre le
+  commit de Task 1 et celui de Task 2 (mêmes session, tâches consécutives,
+  jamais poussé dans cet état). Le texte du plan l'anticipe et le justifie
+  explicitement ligne par ligne (Step 12 : "test will go green once Task 2
+  lands"). Précédent direct : la lacune SPDX de SP-14j (Task 8), déjà
+  résolue sans interrompre l'exécution. Décision : appliquer Task 1 puis
+  Task 2 sans pause, considérer le duo comme la fenêtre d'évaluation
+  "fin de tâche" plutôt que d'exiger un vert intermédiaire artificiel. Pas
+  de contradiction de fond, aucune question à poser.
+
+Aucune autre lacune trouvée. Le plan fournit du code complet et littéral
+pour chaque tâche (schémas, implémentation, tests unitaires, E2E) —
+transcription + tests, pas de conception à faire, comme SP-14e→14j.
+Dépendances d'interface notées : Task 1 dépend de Task 2 pour son propre
+test HTTP (voir ci-dessus) ; Task 3 consomme `list_feature_layer_record`
+(Task 2) ; Task 5 consomme `live_query` (Task 4), `get_feature_layer_record`
+(Task 2) et le validateur/schema de Task 1 ; Tasks 6-8 (shell) consomment
+les routes core (Tasks 1-5) au niveau contrat JSON seulement (mocks HTTP,
+pas d'appel réel) ; Task 9 (E2E) exerce l'UI shell produite par Tasks 6-8,
+mock `page.route()` uniquement — ne parle jamais au core Python réel ni à
+un vrai service ArcGIS. Ordre du plan (1→9) respecté.
+
+Poursuite sans confirmation utilisateur (scan de contradictions clean à
+l'exception des deux points ci-dessus, résolus sans ambiguïté).
 
 ## Tasks
 
-Base Task 1: 1888fc1
-Task 1: complete (commit 48d4c17, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). `groupBy`
-élargi à `str | list[str] | None`, `bins: int | None = None` déclaré
-(inutilisé jusqu'à Task 3), helper `_groupby_fields`, validation
-(doublons, champ inconnu, `bucket`+multi-champ, `split`+multi-champ).
-Rétrocompatibilité vérifiée par le reviewer contre l'ancien garde
-`bucket` et les tests existants. 21/21 tests (17 existants + 4
-nouveaux). 3 Minor notés (non bloquants) : un `groupBy` multi-champ
-valide sans `bucket`/`split` passe la validation mais provoque un
-`AttributeError` non géré plus loin dans `run_collection_aggregate`
-(`_qi` appelé sur une liste) — état intermédiaire délibéré, résolu par
-Task 2 (prochaine tâche du même plan) ; message de commit en anglais
-(CLAUDE.md demande le français, précédent mixte déjà dans l'historique
-core) ; décompte de lignes du rapport de l'implémenteur légèrement
-inexact (cosmétique, rapport seulement).
+Base Task 1: 1bd8a2d
+Task 1: complete (commit ed74164, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 2 Minor
+cosmétiques : ordre d'import dans main.py, type-narrowing non vérifié par
+mypy). `DatasetPayload.source: Literal["collection","arcgis"]` +
+`arcgisItemId`/`collectionId` optionnels avec `model_validator` mutuel-
+exclusif ; registre de validateurs par source (`configs/dataset_validation.py`) ;
+validateur arcgis (`harvest/dataset_validation.py`) — même message
+d'erreur 422 "arcgis layer not found" pour item introuvable et item non
+lisible (vérifié indépendamment par le reviewer contre du vrai `can()`,
+pas un mock). Import-linter vert (vérifié indépendamment : `uv run
+lint-imports`). 3 tests HTTP rouges de façon attendue (Task 2 les rend
+verts) — cause confirmée = `AttributeError` sur `get_feature_layer_record`,
+rien d'autre. 9/9 tests pydantic + 4/4 collection existants verts.
 
-Base Task 2: 48d4c17
-Task 2: complete (commit d61b699, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). Ferme le
-trou laissé par Task 1 : `_pivot_multi_measures` + branche `len(fields)
-> 1` dans `run_collection_aggregate`, réutilise intégralement
-`_measures_for`/`_agg_expr`/`_qi`/`_dedup_cte`/`_build_where`/
-`_fetch_rows` du chemin single-field (pas de réimplémentation
-parallèle). `category_key` élargi à `str | list[str]`, chemin
-single-field inchangé au runtime (juste un `str()` cosmétique pour le
-typage). 24/24 tests (21 existants + 3 nouveaux), requêtes DuckDB
-réelles sur parquet, pas de mocks. 3 Minor notés (non bloquants) : un
-one-liner `measure_cols` dupliqué entre branches (DRY marginal) ; pas
-de test dédié multi-champ + collection vide (chemin trivial partagé,
-risque faible) ; les tidy rows gardent les types natifs (`pop` en int)
-alors que `_pivot_measures`/`_pivot_split` stringifient — comportement
-délibéré conforme au brief, mais incohérence de forme entre les deux
-formats de réponse à garder à l'esprit pour les tâches shell (Task 4+).
+Base Task 2: ed74164
+Task 2: complete (commit 8e05eb7, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 1 Minor
+cosmétique : fixture `tenant` ajoutée mais non utilisée par les 2 nouveaux
+tests, qui unpack `tenant_and_user` directement). `get_feature_layer_record`
+et `list_feature_layer_records` (`harvest/repository.py`), tous deux
+filtrés par `tenant_id` (vérifié indépendamment par le reviewer — pas
+seulement par `item_id`/`layer_kind`). Débloque les 3 tests rouges de
+Task 1 (`test_create_dataset_arcgis.py`), vérifiés verts. 2/2 tests
+nouveaux + 817/817 suite complète, plus de test rouge connu.
 
-Base Task 3: d61b699
-Task 3: complete (commits 4ce6421, a992b78 ; 1 Important trouvé et
-corrigé en 1 round de fix). Histogramme binné DuckDB : validation
-`bins` (field requis, exclusif de `groupBy`, borné 1-100),
-`_run_binned_histogram` (requête MIN/MAX puis GROUP BY sur bucket
-`FLOOR`/`LEAST` clampé), câblé dans `run_collection_aggregate` juste
-après `_build_where`. Ordre des placeholders SQL de `bucket_expr`
-explicitement revérifié par le reviewer (3 `?` positionnels contre
-`params = [bins, lo, width, *where_params]`) : correct. 1 Important
-trouvé en 1re revue et confirmé par reproduction directe : corruption
-silencieuse — `not_null_clause` filtrait sur la colonne brute au lieu
-du résultat `TRY_CAST`, donc une valeur non numérique non nulle (ex.
-`"abc"`) devenait `NULL` après cast puis `LEAST(bins-1, NULL)` de
-DuckDB (qui ignore les NULL) la comptait silencieusement dans le
-dernier bucket au lieu de l'exclure. Fix (a992b78) : `not_null_clause`
-filtre maintenant sur `field_expr` (le résultat du `TRY_CAST`) au lieu
-de la colonne brute. Test de régression ajouté
-(`test_bins_excludes_non_numeric_values_from_top_bucket`), vérifié
-RED contre l'ancien code (4 lignes comptées, `{0:2, 2:2}`) et GREEN
-contre le correctif (`{0:2, 2:1}`, total 3). Revue 2 : fix vérifié
-correct, aucun nouveau problème introduit, test non tautologique
-confirmé par traçage manuel du bug. 1 Minor laissé tel quel (non
-bloquant) : le `TABLE_INFO` du nouveau test déclare `pop` en
-`type="integer"` alors que le test y écrit des chaînes — inoffensif
-(DuckDB infère les types du parquet, pas de `ColumnInfo`), juste une
-incohérence cosmétique avec la convention du fichier. 7/7 tests bins,
-suite complète core 808/808 passés (106 skipped, stable).
+Base Task 3: 8e05eb7
+Task 3: complete (commit de5aa0b, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 2 Minor).
+`GET /harvest/feature-layers?q=` (`harvest/routes.py`) : autorisation
+`can()` par item appliquée dans la boucle avant ajout (pas de filtre
+post-hoc, aucune fuite partielle possible — vérifié indépendamment par le
+reviewer) ; réponse `{id, title}` seulement, `external_url` jamais exposé
+(assertion explicite dans le test, pas seulement implicite). 2/2 tests
+nouveaux + 819/819 suite complète.
 
-Base Task 4: a992b78
-Task 4: complete (commit c59950d, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). `bins`
-ajouté à `STAT_KEYS`, `buildAggregateBody` transmet `groupBy` tableau
-tel quel + `bins` en `Number`, helper `statRowId` (jointure `"|"` pour
-id composite multi-champs). Équivalence byte-for-byte du chemin
-single-field vérifiée par le reviewer (`String(row[categoryKey] ?? "")`
-identique à l'ancien code). `bins` confirmé routé vers le body (via
-`STAT_KEYS`) et non vers `filters`. Ligne manquant un champ groupBy
-dégrade proprement en segment vide (pas de `"undefined"`). Tests
-réels via mock HTTP msw, pas de mocks internes. 86/86 tests (3
-nouveaux + 83 existants). 2 Minor notés (non bloquants) : `bins: 0`
-traité comme absent (`if (query.bins)` falsy) — cohérent avec le
-pattern existant `bucket`/`split`, pas une régression ; rapport de
-l'implémenteur un peu redondant avec le diff (pas un défaut de code).
+Base Task 4: de5aa0b
+Task 4: complete (commit 8d7dd3a, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 3 Minor).
+`harvest/live_query.py` (nouveau, pur, aucune route HTTP) : échappement
+des quotes simples appliqué de façon cohérente sur les 3 branches de
+`_build_where` (égalité/`__gte`/`__lte`/`__in`), vérifié indépendamment
+par le reviewer avec assertion sur la chaîne échappée réelle (pas
+seulement "pas d'exception") ; cache TTL 20s à éviction réelle (`del`
+avant re-fetch, pas de lecture silencieuse de valeur périmée) ; test TTL
+déterministe via `monkeypatch` de `time.monotonic` (pas de `sleep`).
+15/15 tests nouveaux + 834/834 suite complète.
 
-Base Task 5: c59950d
-Task 5: complete (commit 567d95d, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). Champ
-"Grouper par" gagne `parseGroupBy` (CSV → `string[]`, sinon la valeur
-`raw` d'origine retournée telle quelle — byte-for-byte inchangé pour
-tout appelant single-field, y compris virgule finale ou espaces,
-vérifié par le reviewer sur l'expression de retour elle-même, pas
-seulement les tests) + `groupByDisplayValue` miroir. Nouveau champ
-"Nombre de classes" écrit `query.bins` via `patchQuery` (merge
-superficiel, n'affecte aucun autre champ — vérifié par lecture directe
-du helper). Tests réels via `fireEvent`/`userEvent` sur DOM rendu.
-10/10 tests (2 nouveaux + 8 existants). 2 Minor notés (non bloquants) :
-bornes `min`/`max` sur l'input `bins` sont de simples indices HTML5,
-aucune validation cliente réelle (le bornage 1-100 est fait
-côté core, Task 3) ; pas de test unitaire dédié aux cas limites de
-`parseGroupBy` (virgule finale, double virgule) — corrects par lecture
-du code mais non figés par un test.
+**Point de vigilance reporté explicitement à la revue de Task 5** (signalé
+par le reviewer de Task 4, non bloquant ici — `_build_where` n'échappe que
+les *valeurs* de filtre via `_sql_lit`, jamais les *noms de champ* utilisés
+comme identifiants SQL bruts dans la clause. Task 4 seule ne construit pas
+ces noms depuis une entrée non validée, donc rien à corriger ici. Mais le
+texte de la Task 5 (lu en pré-vol) construit justement `filters` depuis
+`request.query_params.items()` bruts, sans allowlist — c'est exactement le
+vecteur anticipé. À vérifier explicitement à la revue de Task 5 : soit une
+protection existe déjà dans le code produit, soit c'est une vraie lacune
+à faire remonter comme finding.
 
-Base Task 6: 567d95d
-Task 6: complete (commits 6a9f447, abbae68 ; 1 Important trouvé et
-corrigé en 1 round de fix). `ChartProps.encodings`/`bins` déclarés
-(non consommés hors funnel/histogram ici), branches `funnel` (mirroir
-de `pie`) et `histogram` (lit `bucketStart`/`bucketEnd`/`count`) ajoutées
-avant le fallback bar/line/area/scatter, confirmées ne jamais tomber
-dedans. Les 10 types existants byte-for-byte inchangés (vérifié par le
-reviewer sur les lignes de contexte du diff). 1 Important trouvé en 1re
-revue (hérité du code littéral du brief, pas une déviation de
-l'implémenteur) : le trigger de tooltip (`chartOption.ts`) ne couvrait
-pas `funnel` dans la liste `pie|doughnut|gauge` → `"item"`, donc
-funnel retombait sur `"axis"` (faux, funnel n'a pas d'axe cartésien).
-Fix (abbae68) : ajout de `|| type === "funnel"` à la condition. Test
-de régression ajouté, vérifié RED contre l'ancien code
-(`expected 'axis' to be 'item'`) et GREEN après fix. Revue 2 : fix
-vérifié minimal et correct, n'affecte aucun des 10 autres types, ne
-touche pas `encodings`/`categoryField`/`valueField`/`bins`. 18/18
-tests. 1 Minor laissé tel quel (non bloquant) : le nouveau test duplique
-le littéral `funnelRows` déjà défini deux tests plus haut (stylistique).
+Base Task 5: 8d7dd3a
+Task 5: complete (commits 53e2cd0 + fix 05e99dd, 1 round de fix — 1
+finding **Critical** trouvé et corrigé, ✅ spec compliant, task quality
+Approved après re-revue). Implémentation initiale (53e2cd0) conforme au
+brief : double autorisation dataset+couche dans `_resolve_arcgis_dataset`,
+egress guard sans contournement, `bucket`/`split`/`bins` → 400 avant tout
+appel réseau. **Finding critique confirmé par le reviewer** (anticipé dès
+la revue de Task 4, cf. note ci-dessus) : les *noms* de champ de filtre
+(clés `request.query_params` sur GET /items, clés `body.filters` sur POST
+/aggregate) atteignaient la clause `where=` ArcGIS sans validation ni
+échappement — seules les *valeurs* étaient échappées (`_sql_lit`).
+Injection réelle démontrée (`?1) OR (1=1--=x`). Corrigé (05e99dd) :
+regex d'identifiant strict `^[A-Za-z_][A-Za-z0-9_]*$` validée dans
+`_build_where` (post-découpage de suffixe `__gte`/`__lte`/`__in`, avant
+la construction de toute clause), `ArcgisQueryError` → 400 sur la route
+GET (nouveau try/except, scindé proprement du try/except réseau existant)
+et sur la route POST (déjà couverte gratuitement, même `_build_where`
+partagé — vérifié par tracé direct du code par le reviewer, pas seulement
+sur la foi du rapport). Re-revue : 5 points de vérification tous confirmés
+indépendamment (rejet du payload exact, non-régression des noms légitimes
+et des suffixes, portée du try/except, couverture gratuite de la route
+POST, assertions de statut réelles dans les nouveaux tests). 1 Minor non
+bloquant : regex ASCII-only, rejetterait un nom de champ accentué (pas un
+souci de sécurité). 847/847 suite complète, `lint-imports` vert.
 
-Base Task 7: abbae68
-Task 7: complete (commit ce55a83, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). Branche
-`sankey` : lit `source`/`target`/`value` depuis `props.encodings`
-(aucun repli sur `categoryField`/`valueField`), tag `_role` par nœud
-("source" gagne en cas d'ambiguïté, vérifié à la main par le reviewer
-sur le cas "Lyon" du test), single-hop uniquement (ignore `levels`).
-Ajout non demandé par le brief mais divulgué explicitement dans le
-rapport et jugé correct par le reviewer : `sankey` ajouté à la
-condition de trigger tooltip (même défaut que le funnel de Task 6,
-proactivement corrigé par l'implémenteur avant même la revue) — noté
-comme "process nit" (aurait dû être signalé en attente d'accord
-plutôt que committé directement) mais pas un défaut. 19/19 tests.
-3 Minor notés (non bloquants) : pas de test dédié pour le trigger
-tooltip sankey (contrairement au funnel de Task 6) ; pas de test pour
-`encodings` vide ou self-loop (source===target) — comportement tracé
-à la main comme sûr par le reviewer, juste non couvert ; la condition
-de trigger devient une chaîne `||` à 5 branches, lisibilité en baisse
-avec chaque nouveau type non-cartésien (déjà amorcé en Task 6).
+Base Task 6: 05e99dd
+Task 6: complete (commit 14030ff, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 2 Minor
+cosmétiques). Les 3 fichiers du brief (`types.ts` union discriminée,
+`itemClient.ts` branchement par source des 5 méthodes + `listFeatureLayers`,
+`itemClient.test.ts` 6 nouveaux tests) conformes au code littéral, vérifiés
+ligne à ligne par le reviewer.
 
-Base Task 8: ce55a83
-Task 8: complete (commit a1b69a0, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant).
-`buildHierarchy` (Map indexé par chemin, sommation bottom-up via
-`sumUp`, placeholder `"—"` pour niveau intermédiaire manquant) +
-branche `treemap`/`sunburst` partagée. Sommation vérifiée à la main
-par le reviewer sur les 3 cas du brief (15/5/10 Nord, 7 Sud, cas
-placeholder). Ajout divulgué et jugé nécessaire (pas cosmétique) :
-`treemap`/`sunburst` ajoutés au trigger tooltip `"item"` — sans lui
-ces types seraient tombés dans le fallback cartésien bar/line/scatter
-avec un trigger `"axis"` erroné, car la nouvelle branche treemap/
-sunburst ne pose ni xAxis ni yAxis. 22/22 tests. 1 point ⚠️ noté (pas
-un défaut de cette tâche) : le plafond "3 niveaux" du plan n'est
-imposé nulle part dans `buildHierarchy` lui-même — le reviewer soupçonne
-qu'il est appliqué côté UI (à vérifier en Task 11, dont le brief a bien
-`{levels.length < 3 && <button>+ Niveau</button>}`). 1 Minor (non
-bloquant) : pas de test au plafond exact 3 niveaux ni rows=[] (tracés
-sûrs par lecture de code, non exécutés).
+**Extension de portée nécessaire, évaluée délibérément (pas un écart
+caché)** : rendre `DatasetConfig` discriminé casse `tsc --noEmit` partout
+où `.collectionId` était lu sans narrowing — 6 fichiers hors liste du brief
+touchés par des fixes mécaniques minimaux, sans changement de comportement
+pour `source:"collection"` (vérifié indépendamment par le reviewer,
+notamment `.filter(Boolean)` dans `DataContext.tsx` jugé sûr — aucun
+`collectionId` légitime ne peut être falsy) : `hooks.ts`, `DataContext.tsx`,
+`ExplorerDrawer.tsx`, `AppBuilderPage.tsx(.test.tsx)`, `DatasetEditPage.tsx`,
+`NewItemButton.tsx`. Build propre + 837/837 vitest.
 
-Base Task 9: a1b69a0
-Task 9: complete (commits 63deb66, f24bfba ; 1 Important trouvé et
-corrigé en 1 round de fix). `resolveClickFilter` généralise le
-click→cross-filter : histogram → toujours `null` (confirmé
-inconditionnel, 1re instruction de la fonction) ; sankey → `_role`
-"source" mappe `encodings.source`, "target" mappe `encodings.target`,
-rejette les clics d'arête (`dataType !== "node"`) ; treemap/sunburst →
-profondeur clampée via `Math.min(Math.max(treePathInfo.length-1,0),
-levels.length-1)` (racine → niveau 0, feuille → niveau max, sur-profond
-→ clampé sans out-of-bounds, vérifié par trace manuelle). 1 Important
-trouvé en 1re revue et vérifié indépendamment contre le code de
-production réel de `chart.tsx` (pas seulement le rapport) : la branche
-par défaut (bar/pie/line/funnel) retournait `null` dès que
-`params.name` était absent, alors que le `handleClick` actuel de
-`chart.tsx` ne bloque que sur `categoryField` manquant et retombe sur
-`value: ""` sinon — divergence réelle qui aurait cassé l'équivalence
-dont Task 11 a besoin pour remplacer la logique câblée en dur. Risque
-pratique faible (ECharts fournit quasi toujours `name`) mais explicitement
-requis par l'intention du brief ("resolve categoryField, like today").
-Fix (f24bfba) : branche par défaut ne bloque plus que sur `field`
-manquant, `value` retombe sur `""` si `name` absent — comportement
-désormais byte-for-byte identique à `chart.tsx`. Branches
-histogram/sankey/treemap/sunburst confirmées intactes (leurs propres
-gardes `params.name == null` sont un choix de conception intentionnel
-pour ces types neufs, pas une régression). Test de régression vérifié
-RED contre l'ancien code puis GREEN après fix. Revue 2 : fix vérifié
-minimal et correct, 0 nouveau problème. 28/28 tests. 3 Minor laissés
-tels quels de la revue 1 (non bloquants) : pas de test au clamp
-sur-profond de treemap ; `_role` ni "source" ni "target" retombe
-silencieusement sur `encodings.source` (invariant non vérifié dans ce
-diff, posé par `buildOption`) ; petite duplication
-`{field, value: String(params.name)}` répétée 3 fois.
+**Conséquence pour Tasks 7 et 8** : leurs briefs (extraits littéralement du
+plan, écrit *avant* cette découverte d'implémentation) supposent l'état
+pré-Task-6 de `hooks.ts` (`mutationFn` typé en dur) et `DataContext.tsx`
+(`collectionIds`/`pkColumn` sans narrowing) — ces deux fichiers sont déjà
+partiellement modifiés. Task 8's deux changements prévus sur
+`DataContext.tsx` (`collectionIds` + `pkColumn`) sont déjà fonctionnellement
+faits par Task 6, mais avec un style différent du type-guard `Extract<...>`
+du plan. Task 7's changement prévu sur `hooks.ts` (remplacer le type
+littéral par `CreateDatasetInput` importé) trouvera `Parameters<typeof
+client.createDatasetItem>[0]` à la place — même effet, style différent.
+Décision : ne pas ré-ouvrir Task 6, dispatcher Tasks 7/8 avec le contexte
+exact de l'état actuel des fichiers (pas le texte brut du plan) et laisser
+leurs implémenteurs adapter l'intention (types nommés explicites, pattern
+`Extract<>`) au lieu du diff littéral périmé — écart déjà signalé
+proactivement, pas découvert a posteriori par un reviewer surpris.
 
-Base Task 10: f24bfba
-Task 10: complete (commits ba69359, 39eb87d ; 1 Critical + 2 Important
-trouvés et corrigés en 1 round de fix). `SunburstChart` importé +
-enregistré dans `echarts.use([...])`, type `onClick` élargi en
-sur-ensemble strict (vérifié par `tsc --noEmit`). 1 Critical trouvé en
-1re revue et vérifié indépendamment par le contrôleur AVANT même la
-revue (A/B direct sur `setup.ts` via copie de fichier, pas de commande
-git) : l'implémenteur avait ajouté un mock global
-`global.ResizeObserver` dans `shell/src/test/setup.ts` (hors périmètre
-du brief, qui ne citait que `EChart.tsx`/`EChart.test.tsx`) — ce mock
-global inversait une garde intentionnelle d'`AppRenderer.tsx`
-(`typeof ResizeObserver === "undefined"`, utilisée pour figer le
-breakpoint à "lg" en test) et cassait 2 tests d'`AppRenderer.test.tsx`
-déjà verts, contredisant le rapport de l'implémenteur ("no
-regressions"). 2 Important additionnels : le test `EChart.test.tsx`
-mockait tout `echarts/core`/`echarts/charts`, rendant l'assertion
-incapable de détecter un `SunburstChart` non enregistré (aurait
-réussi même sans l'enregistrement) ; import `beforeEach` inutilisé
-cassait `tsc --noEmit` (`noUnusedLocals`). Fix (39eb87d) : `setup.ts`
-intégralement reverté (absent du diff base→head, preuve directe de
-réversion complète) ; mock `ResizeObserver` isolé dans
-`EChart.test.tsx` via `vi.stubGlobal`/`vi.unstubAllGlobals` en
-`beforeEach`/`afterEach` (résout aussi l'import inutilisé) ; nouveau
-test `useMock` capturé via `vi.hoisted`, assertion `toContain`
-(égalité de référence) au lieu de `arrayContaining` suggéré initialement
-par le contrôleur — l'implémenteur a détecté et documenté que
-`arrayContaining` aurait été un piège à faux positif (égalité
-structurelle : tous les mocks de type de graphique sont des `{}` nus,
-donc déep-equal entre eux peu importe lequel est réellement
-`SunburstChart`) ; ce point technique reçu comme un vrai constat,
-re-vérifié indépendamment par le reviewer en revue 2 (sémantique
-`toContain` vs `arrayContaining` confirmée exacte). Vérifié par
-suppression temporaire de `SunburstChart` de `echarts.use([...])` :
-le nouveau test échoue bien, puis fichier restauré (diff confirmé
-identique). `EChart.test.tsx` 2/2, `AppRenderer.test.tsx` 28/28,
-`npm run build` propre, suite complète 748/748 (101 fichiers), 0
-échec. Revue 2 : les 3 findings vérifiés résolus directement sur le
-diff (absence de `setup.ts` du diff = preuve de réversion complète,
-pas seulement le rapport), 0 nouveau problème.
+Base Task 7: 14030ff
+Task 7: complete (commit 674faad, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 2 Minor déjà
+présents dans la convention existante du fichier). `useFeatureLayers` hook
+(`hooks.ts`) ; `useCreateDataset` finalisé vers `CreateDatasetInput`
+explicite (résout la divergence notée à Task 6 — implémenteur a même
+corrigé une erreur de chemin d'import du brief, `"./types"` au lieu de
+`"../api/types"`, vérifié par le reviewer) ; `NewItemButton.tsx` —
+sélecteur de type de source, picker de couche ArcGIS, branchement submit,
+libellés français exacts. Test bout-en-bout réel (MSW + vrai
+`createItemClient`, pas un mock superficiel) vérifiant le corps POST réel.
+Chemin collection par défaut prouvé inchangé. Build + 838/838 vitest.
 
-Base Task 11: 39eb87d
-Task 11: complete (commit 7bbdc5d, review clean au premier passage — ✅
-spec compliant, task quality Approved, 0 finding bloquant). 5 nouveaux
-`CHART_TYPES`, `bins: 10` en défaut, `PropsPanel` gagne des blocs
-conditionnels (`showCategoryValue`/`showSankeyEncodings`/
-`showHierarchyEncodings`/`showBins`) suivant le pattern déjà établi par
-`showCompare`. Plafond "3 niveaux" (laissé non imposé par
-`buildHierarchy` en Task 8) atterrit ici côté UI : le bouton
-"+ Niveau" disparaît dès `levels.length >= 3`, confirmé par lecture
-directe du code. `categoryField`/`valueField` masqués pour
-sankey/treemap/sunburst, gardés pour funnel/histogram (conforme au
-brief). `handleClick` délègue à `resolveClickFilter` — vérifié que
-l'appel ne réintroduit pas le bug `params.name == null` corrigé en
-Task 9 (comparé ligne à ligne à l'ancienne logique câblée en dur
-supprimée, correspondance verbatim). Scope confirmé strictement
-limité à `chart.tsx`/`chart.test.tsx` (pas de `setup.ts`, la régression
-de Task 10 ne se reproduit pas). Test d'intégration réel (rendu
-`AnalyticsContextProvider`, clic réel, assertion sur l'état
-`crossFilter` via un composant `Probe`), pas de mock de la logique
-métier. RED 5/5 échoués → GREEN 18/18 `chart.test.tsx` → suite complète
-753/753 (101 fichiers) → build propre. 2 Minor notés (non bloquants) :
-pas de test à la limite exacte du plafond 3 niveaux (seulement 1→2
-testé, la logique elle-même vérifiée correcte par lecture) ; commit en
-anglais (cohérent avec le précédent mixte déjà établi dans la série
-SP-14f).
+Base Task 8: 674faad
+Task 8: complete (commit d3af851, review clean au premier passage — ✅
+spec compliant, task quality Approved, 0 finding bloquant, 1 Minor
+théorique). Tâche redirigée en restylage + couverture de test (le
+comportement était déjà correct depuis Task 6) : `collectionIds` migré
+vers le pattern `Extract<DatasetConfig,{source:"collection"}>` prévu par
+le plan (typage sûr, sans cast, vérifié par le reviewer) ; `pkColumn`
+confirmé déjà dans sa forme finale, inchangé. Nouveau test bout-en-bout
+(vrai rendu à travers `QueryClientProvider`/`ItemClientProvider`/
+`DataProvider`) prouvant `getCollectionSchema` jamais appelé + `pkColumn`
+undefined + records peuplés pour un dataset arcgis. Build + 839/839
+vitest. Divergence des Tasks 6-8 avec le texte littéral du plan
+entièrement résorbée — Task 9 (E2E) peut repartir sur un état de fichiers
+propre et conforme à l'intention du plan.
 
-Base Task 12: 7bbdc5d
-Task 12: complete (commits eea4094, 8d75c24, 5461b34 ; 1 Important
-trouvé (plan-mandated, hérité du code littéral du brief) et corrigé en
-2 rounds de fix). 4 scénarios E2E ajoutés en append-only à
-`analytics-context.spec.ts` (0 scénario existant touché) : clic
-funnel → cross-filter réel sur une table (requête filtrée +
-disparition visible d'une ligne) ; rendu seul sankey/treemap/sunburst
-(3 widgets indépendants, layouts non cliquables de façon fiable —
-scope délibérément limité, confirmé respecté) ; histogramme rendu +
-absence de cross-filter au clic. L'implémenteur a détecté et corrigé
-3 bugs réels dans le code littéral du brief avant même la revue :
-mauvais label pour "Champ valeur" (aria-label réel vs texte du
-&lt;label&gt;), clic "+ Niveau" manquant avant de remplir "Niveau 1"
-(l'input n'existe pas tant qu'aucun niveau n'est ajouté), coordonnée
-de clic funnel non fiable (0.25 atterrissait sur canvas transparent,
-remplacée par 0.42 — valeur réutilisée d'ailleurs dans le même
-fichier, donc déjà éprouvée). Les 3 corrections vérifiées indépendamment
-par le reviewer contre le code source réel (chart.tsx, pas seulement
-le rapport). 1 Important trouvé en 1re revue, labellisé plan-mandated
-(structure identique au snippet littéral du brief) : le scénario
-histogramme n'avait aucun widget consommateur (pas de table sur le
-même dataset), rendant l'assertion "jamais de cross-filter" vacuously
-true — elle aurait réussi identiquement même si `resolveClickFilter`
-avait régressé pour histogram. Fix round 1 (8d75c24) : ajout d'une
-table réelle sur le même dataset via la technique "promue puis
-retypée en statistics" (vérifiée par le reviewer contre le code source
-réel de `DataSourcePanel.tsx` — le sélecteur de type ne touche jamais
-`datasetId`, confirmé par un spread superficiel, et corroborée par un
-usage préexistant identique ailleurs dans le même fichier de specs) +
-mock `/collections/pops/items` filtrant sur `city`. Revue round 2 :
-fix du round 1 approuvé sur le fond, mais a détecté un NOUVEAU risque
-introduit par le fix lui-même — la coordonnée de clic histogramme
-(0.5, 0.5) n'avait jamais été vérifiée empiriquement (contrairement au
-funnel dans le même commit), et selon la sémantique de dispatch de clic
-d'ECharts (tracée dans le code source du reviewer), un clic qui manque
-tout élément graphique ne déclenche jamais l'événement "click" —
-laissant le test vacuously true par un mécanisme différent (clic dans
-le vide plutôt qu'absence d'abonné). Fix round 2 (5461b34) :
-échantillonnage de pixels empirique confirmant que (0.5, 0.5) tombait
-bien dans l'espace vide entre les deux barres ; remplacé par (0.72,
-0.45), vérifié à l'intérieur du remplissage solide de la barre haute.
-Preuve décisive : le garde `if (chartType === "histogram") return
-null;` désactivé temporairement dans `chartOption.ts` → le test E2E
-échoue bien (la table se filtre, une ligne disparaît) → garde restauré
-(`git diff` confirmé propre, non commité) → test repasse au vert.
-Revue round 3 : `chartOption.ts` confirmé absent du diff final (la
-désactivation temporaire n'a pas fuité dans le commit), toujours
-exactement 3 scénarios SP-14f, coordonnée cohérente avec les mesures
-empiriques documentées en commentaire (même style que le funnel).
-Suite E2E ciblée 3/3 à chaque round, suite complète 69/69 (39 specs)
-au round final, vérification finale cross-stack (pytest 808/106
-skipped, vitest 753/753, tsc+build propre) déjà passée par
-l'implémenteur en avance sur la tâche finale du plan.
+Base Task 9: d3af851
+Task 9: complete (commits c656af1 + da99871, review clean au premier
+passage — ✅ spec compliant, task quality Approved, 0 finding bloquant, 1
+Minor prospectif). `shell/e2e/dataset-arcgis.spec.ts` créé, byte-for-byte
+identique au code littéral du brief (vérifié par le reviewer) — mocke
+uniquement l'API core via `page.route()`, jamais de backend réel. **Bug
+de production latent trouvé et corrigé** (commit séparé c656af1, avant
+le commit du test) : `addWidget`/`updateSelectedProps`/
+`updateSelectedVisibleWhen` dans `AppBuilderPage.tsx` utilisaient
+`setDraft(valeur calculée sur fermeture stale)` au lieu de la forme
+fonctionnelle `setDraft(d => ...)` déjà utilisée par les 8 autres setters
+du fichier — un widget lié directement à un dataset partagé existant via
+l'optgroup "Datasets partagés" perdait silencieusement la `DataSource`
+ajoutée juste avant dans le même batch React 18 (deux `setDraft`
+synchrones dans le même handler, le second écrasant le premier). Aucun
+test préexistant (unitaire ou E2E) n'exerçait ce chemin. Correctif validé
+par le reviewer sur les 5 points requis : cause confirmée, les 3
+fonctions dérivent désormais tout depuis `d` (aucune lecture de
+`draft`/`activeLayout` restante), guards internes sûrs (`getPageLayout`
+ne peut jamais crasher), couverture réelle par le nouveau test (pas
+incidente — tracé jusqu'à `DataSourceSelect.handleChange` →
+`onAdd`+`onChange` synchrones), portée strictement limitée aux 3
+fonctions fautives. 83/83 E2E (1 seul run, aucun flake), 839/839 vitest,
+build propre, 847/847 pytest + lint-imports inchangés (aucun fichier core
+touché).
 
-## SP-14f COMPLET — 12 tâches, 18 commits de tâches + 1 commit de
-## revue finale (19 au total). Rounds de fix : Task 3 (1, corruption
-## silencieuse), Task 6 (1, tooltip funnel), Task 7 (0, ajout
-## proactif divulgué), Task 8 (0, ajout proactif divulgué), Task 9
-## (1, divergence clic par défaut), Task 10 (1, régression cross-
-## fichier + test non discriminant), Task 12 (2, scénario histogramme
-## vacuously true deux fois de suite). HEAD=5461b34 avant revue finale.
+## SP-14k COMPLET — 9 tâches, 12 commits de tâches (ed74164, 8e05eb7,
+## de5aa0b, 8d7dd3a, 53e2cd0, 05e99dd[fix], 14030ff, 674faad, d3af851,
+## c656af1[fix], da99871), 2 rounds de fix (Task 5 : injection critique
+## par nom de champ non validé, corrigée et re-revue verte ; Task 9 :
+## bug de production trouvé et corrigé pendant le TDD du test, pas un
+## round de revue). 7/9 tâches approuvées au premier passage (1, 2, 3,
+## 4, 6, 7, 8), 2/9 avec un round de fix (5, 9 — dont 9 est un fix
+## proactif, pas une réponse à un finding de reviewer). Divergences
+## plan/réalité rencontrées et résolues sans bloquer : séquencement
+## Task1→Task2 avec test rouge attendu (anticipé en pré-vol) ; extension
+## de portée de Task 6 (discriminated union cassant tsc ailleurs) gérée
+## proactivement et propagée explicitement aux dispatches Tasks 7/8.
+## HEAD=da99871, prêt pour la revue finale de branche.
 
-## Revue finale de branche (opus, 1888fc1..5461b34, 18 commits) —
-## 0 Critical, 1 Important, 3 Minor, ready to merge: With fixes.
-## Cohérence cross-tâche vérifiée en profondeur (au-delà des revues
-## par tâche) : flux de données bout-en-bout core→itemClient→
-## chartOption tracé et confirmé correct (tidy rows multi-champs →
-## `statRowId` id composite → branches sankey/treemap) ; forme
-## histogramme (`bucketIndex`/`bucketStart`/`bucketEnd`/`count`)
-## confirmée identique entre core (Task 3) et chartOption (Task 6) ;
-## SQL paramétrée vérifiée sans injection ; contrainte n°1 "zéro
-## changement de comportement" tenue et vérifiée indépendamment
-## (byte-for-byte sur `statRowId` single-field, `resolveClickFilter`
-## default branch, trigger tooltip additif) ; régression Task 10
-## confirmée réellement absente du diff final (`setup.ts` absent des
-## fichiers modifiés). 1 Important trouvé, propre aux tâches
-## individuelles mais invisible à leur échelle (chacune ne voyait
-## qu'un fichier) : le contrôle "Nombre de classes" du panneau du
-## graphique (`props.bins`, ajouté Task 11) était mort — le
-## binning réel passe uniquement par `query.bins` de la source de
-## données (Task 5) ; `chartOption.ts` ne lit jamais `props.bins`.
-## Pire qu'une redondance : un auteur réglant les classes UNIQUEMENT
-## sur le panneau du graphique obtenait un histogramme cassé
-## ("NaN–NaN"). Fix (3d28b64) : contrôle mort retiré de `chart.tsx`
-## (`showBins`, `defaultProps.bins`) et du type `ChartProps.bins`
-## dans `chartOption.ts`, test associé supprimé ; contrôle
-## fonctionnel de `DataSourcePanel.tsx` non touché. Vérifié par grep
-## qu'aucun autre code ne lisait `ChartProps.bins` avant suppression.
-## Tests ciblés 45/45, suite complète 752/752 (101 fichiers), build
-## propre, E2E complet 69/69 (39 specs, y compris les 3 scénarios
-## SP-14f). Revue de vérification (opus) : suppression confirmée
-## complète et sans effet de bord sur le disque réel (pas seulement
-## le rapport), contrôle `DataSourcePanel` confirmé intact, commit
-## de fix scopé à exactement 3 fichiers (+1/−22 lignes). 3 Minor de
-## la revue finale laissés tels quels (non bloquants, cosmétiques/UX
-## secondaires) : sankey/treemap/sunburst n'exposent aucune UI pour
-## `encodings.value` (toujours inféré, dégénère si la ligne porte une
-## dimension non-niveau — touche le smoke test Task 12 dont le
-## fixture `levels` ne correspond pas exactement au `groupBy` du
-## mock, rendu quand même valide car seul le nombre de canvas est
-## vérifié) ; petite duplication `{field, value: String(params.name)}`
-## dans `resolveClickFilter` ; bornes `min`/`max` HTML5 sur les inputs
-## bins = indicatives seulement (le vrai bornage 1-100 est côté
-## serveur, Task 3, ce qui est correct). HEAD=3d28b64.
-## SP-14f READY TO MERGE — prêt pour finishing-a-development-branch.
+## Revue finale de branche (opus, 1bd8a2d..da99871, 11 commits) — 1
+## finding **Critical** + 1 **Important**, corrigés en un round de fix,
+## puis re-revue verte. **Critical trouvé** : incohérence shell↔core sur
+## le paramètre de chemin — `itemClient.ts` construisait
+## `/datasets/{arcgisItemId}/arcgis/items|aggregate` (id de la couche
+## moissonnée), alors que `_resolve_arcgis_dataset` (routes.py) traite
+## `{item_id}` comme l'id du **dataset lui-même** (résout `arcgisItemId`
+## *depuis* la config du dataset). Un item de couche moissonnée n'a pas
+## de Config `kind="dataset"` → 404 en production sur toute table/
+## indicateur lié à un dataset arcgis. Passé inaperçu car les tests core
+## utilisaient le bon id (côté core), les tests shell asserted/mockaient
+## le mauvais contrat (verrouillant le bug), et l'E2E stubait la réponse
+## core entièrement (jamais de vérification shell↔core croisée) — trouvé
+## uniquement par la revue de branche entière, invisible à l'échelle
+## d'une tâche. **Important trouvé** : `translate_aggregate_query` ne
+## validait pas les noms de champ `groupBy`/mesures avec le même
+## `_FIELD_NAME_RE` que la correction Task 5 sur `_build_where` (risque
+## moindre, même classe de défaut, incohérence de posture dans le même
+## module). Corrigé (2 commits, 8c2cba5 shell + 9f4ef1b core) : shell
+## reclé sur `source.datasetId` (`buildArcgisItemsUrl` param renommé
+## `datasetItemId` pour clarté), 3 tests shell corrigés + 1 nouveau test
+## de non-régression avec id de dataset et id de couche délibérément
+## différents, E2E `dataset-arcgis.spec.ts` reclé sur `dataset-1` au lieu
+## de `layer-1` ; core valide désormais `group_by` et `measures[].field`
+## non-null avec `_FIELD_NAME_RE` (laisse `None` passer pour les mesures
+## `count`-only). Re-revue (opus) : les 6 points de vérification requis
+## tous confirmés indépendamment (tracé bout-en-bout shell→core, 4
+## assertions de test vérifiées littéralement, cohérence des mocks E2E,
+## complétude de la validation core, autres usages d'`arcgisItemId`
+## non affectés, balayage négatif pour une deuxième instance de la même
+## classe de bug). 0 nouveau finding. Shell : build + 840/840 vitest +
+## 83/83 E2E verts. Core : 850/850 pytest + lint-imports vert.
+## **SP-14k READY TO MERGE** — HEAD=9f4ef1b, prêt pour
+## finishing-a-development-branch.

@@ -129,6 +129,32 @@ def list_layer_records(session: Session, *, tenant_id: str, q: str | None = None
     return list(session.execute(stmt).all())
 
 
+def get_feature_layer_record(
+    session: Session, *, tenant_id: str, item_id: str,
+) -> HarvestRecord | None:
+    return session.scalar(
+        select(HarvestRecord).where(
+            HarvestRecord.tenant_id == tenant_id,
+            HarvestRecord.item_id == item_id,
+            HarvestRecord.layer_kind == "feature",
+        )
+    )
+
+
+def list_feature_layer_records(session: Session, *, tenant_id: str, q: str | None = None):
+    stmt = (
+        select(HarvestRecord.item_id, Item.title, HarvestRecord.external_url)
+        .join(Item, Item.id == HarvestRecord.item_id)
+        .where(
+            HarvestRecord.tenant_id == tenant_id,
+            HarvestRecord.layer_kind == "feature",
+        )
+    )
+    if q:
+        stmt = stmt.where(Item.title.ilike(f"%{q}%"))
+    return list(session.execute(stmt).all())
+
+
 def list_due_sources(session: Session) -> list[HarvestSource]:
     now = _now()
     candidates = session.scalars(

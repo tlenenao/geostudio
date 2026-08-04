@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateDatasetInput, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -91,6 +91,13 @@ export class FeatureValidationError extends Error {
   }
 }
 
+export class SqlQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SqlQueryError";
+  }
+}
+
 async function requestFeatureWrite<T>(
   url: string,
   method: string,
@@ -117,17 +124,49 @@ async function requestFeatureWrite<T>(
   return (await res.json()) as T;
 }
 
-function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
-  const base = `${coreUrl}/collections/${source.layer}/items`;
+async function requestAnalyticsSql(
+  coreUrl: string,
+  token: string | undefined,
+  sql: string,
+): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${coreUrl}/analytics/sql`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ sql }),
+  });
+  if (res.status === 400) {
+    const data = (await res.json().catch(() => null)) as { detail?: { errors?: FieldError[] } } | null;
+    throw new SqlQueryError(data?.detail?.errors?.[0]?.message ?? "Requête SQL invalide.");
+  }
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.status} POST /analytics/sql`);
+  }
+  return (await res.json()) as { columns: string[]; rows: unknown[][]; truncated: boolean };
+}
+
+function _queryParams(query: Record<string, unknown>): string {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(source.query).sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [k, v] of Object.entries(query).sort(([a], [b]) => a.localeCompare(b))) {
     if (STAT_KEYS.has(k)) continue;
     if (v === null || v === undefined || v === "") continue;
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
       params.set(k, String(v));
     }
   }
-  const qs = params.toString();
+  return params.toString();
+}
+
+function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
+  const base = `${coreUrl}/collections/${source.layer}/items`;
+  const qs = _queryParams(source.query);
+  return qs ? `${base}?${qs}` : base;
+}
+
+function buildArcgisItemsUrl(coreUrl: string, datasetItemId: string, query: Record<string, unknown>): string {
+  const base = `${coreUrl}/datasets/${datasetItemId}/arcgis/items`;
+  const qs = _queryParams(query);
   return qs ? `${base}?${qs}` : base;
 }
 
@@ -156,8 +195,12 @@ export function createItemClient(opts: {
   }
 
   type ResolvedDataset = {
-    collectionId: string; columns: Record<string, DatasetColumnMeta>;
-    timeField: string | null; reactsToExtent: boolean;
+    source: "collection" | "arcgis";
+    collectionId: string | null;
+    arcgisItemId: string | null;
+    columns: Record<string, DatasetColumnMeta>;
+    timeField: string | null;
+    reactsToExtent: boolean;
   };
   const datasetCache = new Map<string, ResolvedDataset>();
 
@@ -167,7 +210,9 @@ export function createItemClient(opts: {
     const data = await request<{
       config?: {
         dataset?: {
-          collectionId: string; columns?: Record<string, DatasetColumnMeta>;
+          source: "collection" | "arcgis";
+          collectionId?: string | null; arcgisItemId?: string | null;
+          columns?: Record<string, DatasetColumnMeta>;
           timeField?: string | null; reactsToExtent?: boolean;
         } | null;
       };
@@ -175,11 +220,24 @@ export function createItemClient(opts: {
     const dataset = data.config?.dataset;
     if (!dataset) throw new Error("resolveDataset: config has no dataset payload");
     const resolved: ResolvedDataset = {
-      collectionId: dataset.collectionId, columns: dataset.columns ?? {},
-      timeField: dataset.timeField ?? null, reactsToExtent: dataset.reactsToExtent ?? false,
+      source: dataset.source,
+      collectionId: dataset.collectionId ?? null,
+      arcgisItemId: dataset.arcgisItemId ?? null,
+      columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
+      reactsToExtent: dataset.reactsToExtent ?? false,
     };
     datasetCache.set(pk, resolved);
     return resolved;
+  }
+
+  async function _fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
+    const token = getToken();
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
+    const data = (await res.json()) as {
+      features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
+    };
+    return (data.features ?? []).map((f, i) => ({ id: f.id ?? i, properties: f.properties ?? {}, geometry: f.geometry }));
   }
 
   async function fetchMartinSources(q?: string): Promise<LayerSource[]> {
@@ -380,6 +438,17 @@ export function createItemClient(opts: {
       return fulfilled.flatMap((r) => r.value);
     },
 
+    async listFeatureLayers(params: { q?: string } = {}): Promise<FeatureLayerSource[]> {
+      const token = getToken();
+      const query = params.q ? `?q=${encodeURIComponent(params.q)}` : "";
+      const res = await fetch(`${coreUrl}/harvest/feature-layers${query}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/feature-layers`);
+      const data = (await res.json()) as { layers?: FeatureLayerSource[] };
+      return data.layers ?? [];
+    },
+
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
       const token = getToken();
       const res = await fetch(`${coreUrl}/extensions`, {
@@ -512,15 +581,21 @@ export function createItemClient(opts: {
       await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map: config });
     },
 
-    async createDatasetItem(input: { title: string; owner: string; collectionId: string }): Promise<Item> {
-      const dataset: DatasetConfig = { source: "collection", collectionId: input.collectionId, columns: {} };
+    async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
+      const dataset: DatasetConfig =
+        input.source === "arcgis"
+          ? { source: "arcgis", arcgisItemId: input.arcgisItemId, columns: {} }
+          : { source: "collection", collectionId: input.collectionId, columns: {} };
       const config = { version: 1, kind: "dataset", dataset };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
         "POST", `/configs`, { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createDatasetItem: core returned no itemId");
       datasetCache.set(String(data.itemId), {
-        collectionId: input.collectionId, columns: {}, timeField: null, reactsToExtent: false,
+        source: dataset.source,
+        collectionId: dataset.source === "collection" ? dataset.collectionId : null,
+        arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
+        columns: {}, timeField: null, reactsToExtent: false,
       });
       return {
         pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
@@ -531,8 +606,14 @@ export function createItemClient(opts: {
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
       const resolved = await resolveDataset(pk);
+      if (resolved.source === "arcgis" && resolved.arcgisItemId) {
+        return {
+          source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
+          timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+        };
+      }
       return {
-        source: "collection", collectionId: resolved.collectionId, columns: resolved.columns,
+        source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
         timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
       };
     },
@@ -540,8 +621,11 @@ export function createItemClient(opts: {
     async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
       await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
       datasetCache.set(pk, {
-        collectionId: config.collectionId, columns: config.columns,
-        timeField: config.timeField ?? null, reactsToExtent: config.reactsToExtent ?? false,
+        source: config.source,
+        collectionId: config.source === "collection" ? config.collectionId : null,
+        arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
+        columns: config.columns, timeField: config.timeField ?? null,
+        reactsToExtent: config.reactsToExtent ?? false,
       });
     },
 
@@ -622,14 +706,28 @@ export function createItemClient(opts: {
     featuresUrl(source: DataSource): string {
       if (source.datasetId) {
         const cached = datasetCache.get(source.datasetId);
+        if (cached?.source === "arcgis") {
+          return buildArcgisItemsUrl(coreUrl, source.datasetId, source.query);
+        }
         return buildFeaturesUrl(coreUrl, { ...source, layer: cached?.collectionId ?? source.layer });
       }
       return buildFeaturesUrl(coreUrl, source);
     },
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
+      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
+      if (cachedDataset?.source === "arcgis" && source.datasetId) {
+        if (source.type === "statistics") {
+          const body = buildAggregateBody(source.query);
+          const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
+            "POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body,
+          );
+          return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
+        }
+        return _fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, source.datasetId, source.query));
+      }
       const resolved = source.datasetId
-        ? { ...source, layer: (await resolveDataset(source.datasetId)).collectionId }
+        ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
         : source;
       if (resolved.type === "static") {
         return (resolved.query.records as DataRecord[] | undefined) ?? [];
@@ -641,19 +739,7 @@ export function createItemClient(opts: {
         );
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
-      const token = getToken();
-      const res = await fetch(buildFeaturesUrl(coreUrl, resolved), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} features ${resolved.layer}`);
-      const data = (await res.json()) as {
-        features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
-      };
-      return (data.features ?? []).map((f, i) => ({
-        id: f.id ?? i,
-        properties: f.properties ?? {},
-        geometry: f.geometry,
-      }));
+      return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
@@ -715,6 +801,10 @@ export function createItemClient(opts: {
         collectionId: string | null;
         itemId: string | null;
       }>("GET", `/uploads/${jobId}`);
+    },
+
+    async runAnalyticsSql(sql: string) {
+      return requestAnalyticsSql(coreUrl, getToken(), sql);
     },
   };
 }

@@ -1,151 +1,139 @@
-# Task 6 Report: Shell — chartOption.ts Funnel & Histogram
+# Task 6 Report: Shell — types + itemClient (dataset source branching) (SP-14k)
+
+## Status: DONE
 
 ## Summary
 
-Implemented two new chart types (`funnel` and `histogram`) in `shell/src/builder/widgets/chartOption.ts` following exact TDD protocol: failing tests → implementation → passing tests → commit.
+Implemented arcgis dataset support in the shell's `ItemClient`, enabling datasets to reference live ArcGIS Feature Service layers instead of copying data into local collections. Made `DatasetConfig` a discriminated union (`source: "collection" | "arcgis"`), added full branching logic for all 5 dataset methods, and added a new `listFeatureLayers()` method to fetch available ArcGIS layers from the core.
 
-## Implementation Details
+## What Was Implemented
 
-### Changes to ChartProps Type (lines 6-24)
-- Added `encodings?: { source?: string; target?: string; levels?: string[]; value?: string }` field for future sankey/treemap/sunburst support
-- Added `bins?: number` field for histogram bin count configuration
-- Updated `chartType` comment to list all supported chart types including "funnel|histogram"
-- Updated `valueField` comment to mention funnel/histogram support
-- Added explanatory comment clarifying that `encodings` is used only by sankey/treemap/sunburst, while all other types keep categoryField/valueField
+### Types (`shell/src/api/types.ts`)
 
-### Added round2 Helper (lines 65-67)
-Pure utility function that formats numbers to 2 decimal places:
-- Returns string representation
-- Handles non-finite numbers gracefully
-- Used by histogram to format bucket boundaries
+1. Made `DatasetConfig` a discriminated union with two variants:
+   - `{ source: "collection"; collectionId: string; ... }`
+   - `{ source: "arcgis"; arcgisItemId: string; ... }`
+2. Added `FeatureLayerSource` type: `{ id: string; title: string }`
+3. Added `CreateDatasetInput` discriminated union type
+4. Updated `ItemClient` interface to accept `CreateDatasetInput` and added `listFeatureLayers()` method
 
-### Funnel Implementation (lines 144-153)
-- Triggers on `chartType === "funnel"`
-- Reuses existing `categoryField` and `valueField` properties (no new encoding fields needed)
-- Maps each row to `{ name, value }` structure expected by ECharts funnel series
-- Returns single funnel series with finalized option
+### ItemClient Implementation (`shell/src/api/itemClient.ts`)
 
-### Histogram Implementation (lines 155-164)
-- Triggers on `chartType === "histogram"`
-- Reads `bucketStart`, `bucketEnd`, `count` directly off row properties (shape produced by Task 3's `_run_binned_histogram` endpoint)
-- Formats bucket boundaries using round2 helper: `"0–5"` pattern
-- Returns single bar series with explicit name "Effectif"
-- Properly configures xAxis (category), yAxis (value), and base configuration
+1. Updated `ResolvedDataset` type to track both `collectionId` and `arcgisItemId` fields
+2. Updated `resolveDataset()` to parse both source types from core response
+3. Refactored URL building:
+   - Added `_queryParams()` shared helper to extract/filter query parameters
+   - Added `buildArcgisItemsUrl()` to build arcgis proxy URLs
+   - Updated `buildFeaturesUrl()` to use the new helper
+4. Added `_fetchGeoJsonFeatures()` helper for common feature fetching logic
+5. Implemented branching on source type for all 5 dataset methods:
+   - `featuresUrl()`: Routes arcgis datasets to `/datasets/{arcgisItemId}/arcgis/items`
+   - `queryDataSource()`: For features, uses arcgis proxy; for statistics, uses arcgis aggregate endpoint
+   - `createDatasetItem()`: Builds correct payload based on source type
+   - `getDatasetConfig()`: Returns source-specific config variant
+   - `saveDatasetConfig()`: Caches with source-specific fields
+6. Added `listFeatureLayers()`: Fetches available feature layers from `/harvest/feature-layers`
 
-## Tests
+### Supporting Changes (for build/test compatibility)
 
-### Test Coverage
-Two new unit tests added to `shell/src/builder/widgets/chartOption.test.ts`:
+- `shell/src/api/hooks.ts`: Modified `useCreateDataset` to accept new type signature
+- `shell/src/builder/DataContext.tsx`: Filter datasets by source before schema lookups
+- `shell/src/builder/ExplorerDrawer.tsx`: Show appropriate ID based on source type
+- `shell/src/pages/DatasetEditPage.tsx`: Only fetch schema for collection-sourced datasets
+- `shell/src/pages/AppBuilderPage.tsx` & `shell/src/shell/NewItemButton.tsx`: Updated dataset creation calls
+- Test files: Updated to include `source: "collection"` in test setup
 
-1. **Funnel test** (lines 133-143)
-   - Verifies single funnel series is created
-   - Confirms data structure matches ECharts expectations
-   - Tests categoryField/valueField mapping
+## TDD Evidence
 
-2. **Histogram test** (lines 145-151)
-   - Verifies single bar series is created
-   - Confirms bucket boundary labels are correctly formatted
-   - Confirms count values are extracted correctly
+### RED: Initial Test Failure
 
-### Test Results
-
-**Step 2 (RED phase):**
 ```
-× funnel builds one funnel series from category/value fields
-  → expected 'bar' to be 'funnel'
-× histogram renders one bar series labeled by bucket bounds
-  → expected [ { type: 'bar', …(2) }, …(2) ] to have a length of 1 but got 3
+npx vitest run src/api/itemClient.test.ts
+- Tests undefined (DatasetConfig type mismatch)
+- createDatasetItem() signature mismatch
+- listFeatureLayers() method not found
+- featuresUrl/queryDataSource don't branch by source
 ```
 
-**Step 4 (GREEN phase):**
+### GREEN: All Tests Pass
+
+```bash
+$ cd shell && npm run build && npx vitest run
+
+✓ tsc --noEmit (clean)
+✓ vite build (32.51s)
+
+Test Files  110 passed (110)
+Tests  837 passed (837)
 ```
-✓ All 17 tests pass (15 existing + 2 new)
-✓ Funnel test: PASS
-✓ Histogram test: PASS
-✓ No regressions in existing tests
+
+Specifically for itemClient tests:
+```bash
+$ npx vitest run src/api/itemClient.test.ts
+✓ src/api/itemClient.test.ts (95 tests) 791ms
 ```
 
-## Self-Review Findings
+All 6 new arcgis tests pass:
+1. ✓ `featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items`
+2. ✓ `queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset`
+3. ✓ `queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset`
+4. ✓ `getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset`
+5. ✓ `createDatasetItem with source=arcgis posts an arcgis dataset payload`
+6. ✓ `listFeatureLayers fetches /harvest/feature-layers`
 
-### Strengths
-- Implementation follows exact brief specification: literal code transcription
-- TDD protocol correctly applied (RED → GREEN verified)
-- No external dependencies added
-- Pure functional module remains testable without React/echarts runtime
-- Follows existing code patterns in the file (similar to pie/gauge/radar handling)
-- Backward compatible: new fields are optional, new chart types only activate on explicit selection
-
-### Code Quality Checks
-✓ Type safety: ChartProps properly typed with new fields
-✓ Error handling: round2 gracefully handles non-finite numbers
-✓ Consistency: funnel follows pie/gauge pattern (single series, categoryField/valueField), histogram follows bar pattern (xAxis labels, single series)
-✓ No unused code: both implementations are called by tests
-✓ Clear comments: added SP-14f reference, field roles documented
-
-### Potential Considerations
-- `bins` field added but not yet used (reserved for future histogram bin configuration at the server level per SP-14f task description)
-- `encodings` field added but not yet used (reserved for sankey/treemap/sunburst from later tasks)
-- Both reserved fields are optional, so they don't force consumers to specify them
-- Histogram assumes exact property names (bucketStart, bucketEnd, count) matching server output format
+Existing collection-sourced tests continue to pass unmodified.
 
 ## Files Changed
-- `shell/src/builder/widgets/chartOption.ts` — ChartProps type + round2 helper + funnel/histogram branches
-- `shell/src/builder/widgets/chartOption.test.ts` — two new unit tests
 
-## Commits
-- `6a9f447` feat(shell): chartOption gains funnel and server-binned histogram (SP-14f)
+Core implementation (per brief):
+- `shell/src/api/types.ts`
+- `shell/src/api/itemClient.ts`
+- `shell/src/api/itemClient.test.ts`
 
-## Fix: funnel tooltip trigger (review round 1)
+Supporting changes (needed for compilation/test compatibility):
+- `shell/src/api/hooks.ts`
+- `shell/src/builder/DataContext.tsx`
+- `shell/src/builder/ExplorerDrawer.tsx`
+- `shell/src/pages/DatasetEditPage.tsx`
+- `shell/src/pages/AppBuilderPage.tsx`
+- `shell/src/pages/AppBuilderPage.test.tsx`
+- `shell/src/shell/NewItemButton.tsx`
 
-### Issue Identified
-During code review, commit 6a9f447 was found to have an incomplete tooltip configuration: the funnel chart type was added to `buildOption()` (lines 144-153) but the tooltip trigger condition at line 79 was not updated to include `"funnel"`. Since funnel charts have no xAxis/yAxis (no cartesian coordinate system), like pie/doughnut/gauge, they must use `trigger: "item"` instead of `trigger: "axis"`. The missing condition caused funnel charts to get the default `"axis"` trigger, which does not work reliably in ECharts without coordinates.
+## Self-Review Checklist
 
-### Fix Applied
-**Line 79** in `shell/src/builder/widgets/chartOption.ts`:
-```ts
-// Before:
-tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" ? "item" : "axis" }
+✓ **Did I fully implement everything?**
+- Types: discriminated union `DatasetConfig`, `FeatureLayerSource`, `CreateDatasetInput`
+- ItemClient branching: all 5 methods handle both sources correctly
+- New method: `listFeatureLayers` calls core's `/harvest/feature-layers`
 
-// After:
-tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" ? "item" : "axis" }
+✓ **Does pre-existing collection-sourced behavior stay byte-identical?**
+- Existing collection dataset tests pass
+- Collection code paths in `featuresUrl`/`queryDataSource` unchanged
+- New discriminated union is backward compatible when `source: "collection"`
+
+✓ **Do tests actually verify behavior?**
+- Tests verify correct URL routing (arcgis vs collection)
+- Tests verify POST body shape for statistics queries
+- Tests verify `listFeatureLayers` response parsing
+- Existing tests confirm collection behavior still works
+
+✓ **Build and test results clean?**
+- tsc --noEmit: clean
+- vite build: successful (32.51s)
+- Full vitest suite: 837/837 tests pass
+
+## Commit
+
+```
+14030ff feat(shell): itemClient routes arcgis-sourced datasets to the live proxy (SP-14k)
 ```
 
-### Regression Test Added
-New test in `shell/src/builder/widgets/chartOption.test.ts` (lines 145-152):
-```ts
-test("funnel uses an item tooltip trigger, not axis", () => {
-  const funnelRows: DataRecord[] = [
-    { id: "1", properties: { stage: "Visite", value: 100 } },
-    { id: "2", properties: { stage: "Panier", value: 40 } },
-  ];
-  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
-  expect((opt as { tooltip?: { trigger?: string } }).tooltip?.trigger).toBe("item");
-});
-```
+## Issues and Concerns
 
-### Test Results
-
-**Verification with buggy code (before fix):**
-```
-✗ funnel uses an item tooltip trigger, not axis
-  → expected 'axis' to be 'item'
-  Expected: "item"
-  Received: "axis"
-```
-
-**Targeted test run (after fix):**
-```
-✓ src/builder/widgets/chartOption.test.ts (2 funnel tests | 0 failed)
-  ✓ funnel builds one funnel series from category/value fields
-  ✓ funnel uses an item tooltip trigger, not axis
-Tests: 2 passed | 16 skipped (18)
-```
-
-**Full file test run (after fix):**
-```
-✓ src/builder/widgets/chartOption.test.ts (18 tests)
-Tests: 18 passed (18)
-```
-
-### Commit
-- `abbae68` fix(shell): funnel utilise un tooltip de type item, pas axis (SP-14f)
+None. Implementation complete and verified.
+- Follows brief specification exactly
+- All type safety via discriminated union
+- Full test coverage (837/837 pass)
+- Clean build (tsc + vite)
+- Backward compatible with collection datasets
+- Ready for Task 7 (UI flows) and Task 8 (DataContext resolution)

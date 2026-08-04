@@ -85,3 +85,17 @@ test("resolves { $expr } props in edit mode too, unlike visibleWhen", () => {
   render(<WidgetHost item={item("probe", { label: { $expr: "1 + 1" } })} mode="edit" />);
   expect(screen.getByText("value:2")).toBeInTheDocument();
 });
+
+test("threads the breakpoint prop into the widget context", () => {
+  registerWidget({ type: "probe", label: "Probe", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: ({ ctx }) => <div>bp:{ctx.breakpoint ?? "none"}</div> });
+  render(<WidgetHost item={item("probe")} mode="runtime" breakpoint="md" />);
+  expect(screen.getByText("bp:md")).toBeInTheDocument();
+});
+
+test("omits the breakpoint from the widget context when not provided", () => {
+  registerWidget({ type: "probe", label: "Probe", defaultProps: {}, defaultSize: { w: 2, h: 2 },
+    PropsPanel: () => <div />, Component: ({ ctx }) => <div>bp:{ctx.breakpoint ?? "none"}</div> });
+  render(<WidgetHost item={item("probe")} mode="runtime" />);
+  expect(screen.getByText("bp:none")).toBeInTheDocument();
+});

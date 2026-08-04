@@ -1,182 +1,184 @@
-### Task 3: Core — server-side binned histogram (`bins`)
+### Task 3: Core — `GET /harvest/feature-layers`
 
 **Files:**
-- Modify: `core/app/analytics/aggregate.py` (`_validate_fields`, add `_run_binned_histogram`, `run_collection_aggregate`)
-- Test: `core/tests/test_analytics_aggregate.py`
+- Modify: `core/app/harvest/routes.py`
+- Test: `core/tests/test_harvest_feature_layers_endpoint.py` (new)
 
 **Interfaces:**
-- Consumes: `request.bins: int | None` (Task 1), `request.field`.
-- Produces: when `bins` is set, `run_collection_aggregate` returns rows shaped `{"bucketIndex": int, "bucketStart": float, "bucketEnd": float, "count": int}`, one per non-empty bin, ordered by `bucketIndex`. `category_key` in this mode is `"bins"` (a fixed label, not consumed by the shell for id-building since the histogram doesn't need a categorical id — see Task 4).
+- Consumes: `repo.list_feature_layer_records` (Task 2), `items_repo.get_access_facts`, `can` (both already imported in `routes.py`).
+- Produces: `GET /harvest/feature-layers?q=` → `{"layers": [{"id": str, "title": str}]}`. Consumed by the shell in Task 7.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-Append to `core/tests/test_analytics_aggregate.py`:
+Create `core/tests/test_harvest_feature_layers_endpoint.py` (mirrors `test_harvest_layers_endpoint.py` exactly, swapping raster for feature):
 
 ```python
-def test_bins_produces_equal_width_buckets(tmp_path, conn):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Nord", "2025", 2, lsn=1),
-        _row(3, "Nord", "2025", 9, lsn=1), _row(4, "Nord", "2025", 10, lsn=1),
-    ])
-    request = AggregateRequestBody(field="pop", bins=3)
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+from fastapi.testclient import TestClient
 
-    _category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
-    )
-
-    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10] (last bin absorbs the max via LEAST clamp)
-    by_index = {r["bucketIndex"]: r["count"] for r in rows}
-    assert by_index == {0: 2, 2: 2}  # pop 1,2 → bin 0 ; pop 9,10 → bin 2 (clamped) ; bin 1 empty, absent
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.harvest import repository as harvest_repo
+from app.items import repository as items_repo
+from app.main import create_app
+from app.users.repository import get_or_create_user
 
 
-def test_bins_on_a_constant_field_returns_one_bucket(tmp_path, conn):
-    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 5, lsn=1), _row(2, "Sud", "2025", 5, lsn=1)])
-    request = AggregateRequestBody(field="pop", bins=4)
-
-    _category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
-    )
-
-    assert rows == [{"bucketIndex": 0, "bucketStart": 5.0, "bucketEnd": 5.0, "count": 2}]
-
-
-def test_bins_without_field_raises(tmp_path, conn):
-    request = AggregateRequestBody(bins=5)
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
+@pytest.fixture()
+def env(monkeypatch):
+    monkeypatch.delenv("CORE_READ_ONLY_MODE", raising=False)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        from app.tenants.repository import get_or_create_default_tenant
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+            email=None, first_name="", last_name="", bootstrap_admin=True,
         )
-    assert exc.value.field == "bins"
-
-
-def test_bins_with_groupby_raises(tmp_path, conn):
-    request = AggregateRequestBody(groupBy="region", field="pop", bins=5)
-    with pytest.raises(UnknownAggregateField) as exc:
-        run_collection_aggregate(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-            table_info=TABLE_INFO, request=request,
+        regular = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="r", username="regular",
+            email=None, first_name="", last_name="",
         )
-    assert exc.value.field == "bins"
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    client = TestClient(app)
+    return app, client, Session, admin, regular
 
 
-def test_bins_out_of_bounds_raises(tmp_path, conn):
-    for bad in (0, 101):
-        request = AggregateRequestBody(field="pop", bins=bad)
-        with pytest.raises(UnknownAggregateField) as exc:
-            run_collection_aggregate(
-                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-                table_info=TABLE_INFO, request=request,
-            )
-        assert exc.value.field == "bins"
+def _as(app, user):
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
 
 
-def test_bins_narrowed_by_attribute_filter(tmp_path, conn):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 1, lsn=1), _row(2, "Sud", "2025", 9, lsn=1),
-    ])
-    request = AggregateRequestBody(field="pop", bins=2, filters={"region": "Nord"})
+class _Seed:
+    pass
 
-    _category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
-    )
 
-    assert rows == [{"bucketIndex": 0, "bucketStart": 1.0, "bucketEnd": 1.0, "count": 1}]
-```
+@pytest.fixture()
+def seed(env):
+    app, client, Session, admin, regular = env
+    seed = _Seed()
+    seed.app = app
+    seed.client = client
 
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bins -v`
-Expected: FAIL (`bins` not yet validated/implemented)
-
-- [ ] **Step 3: Add bins validation**
-
-In `_validate_fields` (edited in Task 1), add before the final `bbox` check:
-
-```python
-    if request.bins is not None:
-        if request.field is None:
-            raise UnknownAggregateField("bins", "bins requires a field")
-        if fields:
-            raise UnknownAggregateField("bins", "bins cannot combine with groupBy")
-        if not (1 <= request.bins <= 100):
-            raise UnknownAggregateField("bins", "bins must be between 1 and 100")
-```
-
-- [ ] **Step 4: Add `_run_binned_histogram` and wire it into `run_collection_aggregate`**
-
-Add next to `_pivot_multi_measures` in `core/app/analytics/aggregate.py`:
-
-```python
-def _run_binned_histogram(
-    conn, *, dedup_cte: str, where_sql: str, where_params: list, field: str, bins: int,
-) -> list[dict]:
-    field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
-    minmax_sql = f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
-    minmax_rows = _fetch_rows(conn, minmax_sql, where_params)
-    lo = minmax_rows[0]["lo"] if minmax_rows else None
-    hi = minmax_rows[0]["hi"] if minmax_rows else None
-    if lo is None or hi is None:
-        return []
-
-    not_null_clause = f"{_qi(field)} IS NOT NULL"
-    full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
-
-    if lo == hi:
-        sql = f"{dedup_cte} SELECT COUNT(*) AS __val FROM live {full_where}"
-        rows = _fetch_rows(conn, sql, where_params)
-        return [{"bucketIndex": 0, "bucketStart": lo, "bucketEnd": hi, "count": rows[0]["__val"]}]
-
-    width = (hi - lo) / bins
-    bucket_expr = f"LEAST(? - 1, CAST(FLOOR(({field_expr} - ?) / ?) AS INTEGER))"
-    sql = (
-        f"{dedup_cte} SELECT {bucket_expr} AS __bucket, COUNT(*) AS __val "
-        f"FROM live {full_where} GROUP BY __bucket ORDER BY __bucket"
-    )
-    params = [bins, lo, width, *where_params]
-    rows = _fetch_rows(conn, sql, params)
-    return [
-        {
-            "bucketIndex": int(r["__bucket"]),
-            "bucketStart": lo + r["__bucket"] * width,
-            "bucketEnd": lo + (r["__bucket"] + 1) * width,
-            "count": r["__val"],
-        }
-        for r in rows
-    ]
-```
-
-In `run_collection_aggregate`, insert right after the `where_sql, where_params = _build_where(...)` line, before the `if len(fields) > 1:` branch:
-
-```python
-    if request.bins is not None:
-        rows = _run_binned_histogram(
-            conn, dedup_cte=dedup_cte, where_sql=where_sql, where_params=where_params,
-            field=request.field, bins=request.bins,
+    with Session() as s:
+        source = harvest_repo.create_source(
+            s, tenant_id=admin.tenant_id, owner_id=admin.id, type="arcgis",
+            url="https://gis.example.com/FeatureServer", mode="reference",
+            enabled=True, interval_minutes=None,
         )
-        return "bucketIndex", rows
+
+        visible_item = items_repo.create_item(
+            s, tenant_id=admin.tenant_id, owner_id=admin.id,
+            resource_type="external", title="Bâtiments visibles",
+        )
+        harvest_repo.create_record(
+            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="a",
+            item_id=visible_item.id, collection_id=None, content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+        )
+        seed.visible_feature_item_id = visible_item.id
+
+        raster_item = items_repo.create_item(
+            s, tenant_id=admin.tenant_id, owner_id=admin.id,
+            resource_type="external", title="Ortho",
+        )
+        harvest_repo.create_record(
+            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="b",
+            item_id=raster_item.id, collection_id=None, content_hash=None,
+            tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
+        )
+        seed.raster_item_id = raster_item.id
+
+        hidden_item = items_repo.create_item(
+            s, tenant_id=admin.tenant_id, owner_id=regular.id,
+            resource_type="external", title="Couche cachée",
+        )
+        harvest_repo.create_record(
+            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="c",
+            item_id=hidden_item.id, collection_id=None, content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/1", layer_kind="feature",
+        )
+        seed.hidden_feature_item_id = hidden_item.id
+
+        s.commit()
+
+    _as(app, admin)
+    return seed
+
+
+def test_feature_layers_returns_only_feature_records_of_visible_items(seed):
+    resp = seed.client.get("/harvest/feature-layers")
+    assert resp.status_code == 200
+    layers = resp.json()["layers"]
+    ids = {layer["id"] for layer in layers}
+    assert seed.visible_feature_item_id in ids
+    assert seed.raster_item_id not in ids
+    assert seed.hidden_feature_item_id not in ids
+    layer = next(layer for layer in layers if layer["id"] == seed.visible_feature_item_id)
+    assert layer["title"] == "Bâtiments visibles"
+    assert "url" not in layer and "externalUrl" not in layer  # jamais exposé au client
+
+
+def test_feature_layers_filters_by_q(seed):
+    resp = seed.client.get("/harvest/feature-layers", params={"q": "zzz-nomatch"})
+    assert resp.status_code == 200
+    assert resp.json()["layers"] == []
 ```
 
-(`"bucketIndex"` is a real column present on every row this branch returns — unlike a fixed `"bins"` literal, this lets the shell's `statRowId` (Task 4) derive a correct, unique per-row id via the existing single-field path, with no histogram-specific case needed.)
+- [ ] **Step 2: Run to verify failure**
 
-- [ ] **Step 5: Run the tests to verify they pass**
+Run: `cd core && uv run pytest tests/test_harvest_feature_layers_endpoint.py -v`
+Expected: FAIL with 404 (route doesn't exist yet).
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k bins -v`
-Expected: PASS
+- [ ] **Step 3: Add the route**
 
-- [ ] **Step 6: Run the full core suite for non-regression**
+In `core/app/harvest/routes.py`, add after `list_layers`:
 
-Run: `cd core && uv run pytest -v`
-Expected: PASS — full suite (606+ existing + new tests from Tasks 1-3).
+```python
+@router.get("/harvest/feature-layers")
+def list_feature_layers(
+    q: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+):
+    rows = repo.list_feature_layer_records(session, tenant_id=user.tenant_id, q=q)
+    layers = []
+    for item_id, title, _external_url in rows:
+        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+            continue
+        layers.append({"id": item_id, "title": title})
+    return {"layers": layers}
+```
 
-- [ ] **Step 7: Commit**
+Note the response deliberately omits `external_url` — the shell picker only needs `id`/`title` to set `arcgisItemId`; the URL stays server-side (never exposed to the browser).
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_harvest_feature_layers_endpoint.py -v`
+Expected: both tests PASS.
+
+- [ ] **Step 5: Run the full core suite**
+
+Run: `cd core && uv run pytest`
+Expected: no regressions.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
-git commit -m "feat(core): server-side binned histogram via bins param on /aggregate (SP-14f)"
+cd core
+git add app/harvest/routes.py tests/test_harvest_feature_layers_endpoint.py
+git commit -m "feat(core): GET /harvest/feature-layers for the SP-14k dataset picker"
 ```
 
 ---

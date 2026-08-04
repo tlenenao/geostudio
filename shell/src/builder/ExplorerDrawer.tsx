@@ -82,7 +82,7 @@ export function ExplorerDrawer() {
     <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-lg">
       <div className="flex items-center justify-between border-b border-[var(--gs-color-border)] p-2">
         <h2 className="text-sm font-medium text-[var(--gs-color-text)]">
-          Entités — {dataset?.collectionId ?? target.datasetId}
+          Entités — {dataset ? (dataset.source === "collection" ? dataset.collectionId : dataset.arcgisItemId) : target.datasetId}
         </h2>
         <button type="button" aria-label="Fermer le panneau" className="text-lg text-[var(--gs-color-muted)]" onClick={close}>
           ×

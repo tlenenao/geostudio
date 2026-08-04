@@ -145,3 +145,38 @@ test("applies the analytics context's time patch to a dataset-bound source's que
   // is actually consulted and doesn't crash the query pipeline.
   await waitFor(() => expect(client.getDatasetConfig).toHaveBeenCalledWith("dataset-1"));
 });
+
+test("does not crash and leaves pkColumn undefined for an arcgis-sourced dataset", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "X" } }]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/arcgis/items.json"),
+    getDatasetConfig: vi.fn().mockResolvedValue({ source: "arcgis", arcgisItemId: "layer-1", columns: {}, timeField: null, reactsToExtent: false }),
+    getCollectionSchema: vi.fn(), // must never be called for arcgis-sourced datasets
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "arcgis-layer", datasetId: "dataset-arcgis", query: {} }];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    if (!s || s.loading) return <p>loading</p>;
+    return <p>datasetId:{s.datasetId} pkColumn:{s.pkColumn ?? "undefined"} records:{s.records.length}</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}><Probe /></DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText(/datasetId:dataset-arcgis/)).toBeInTheDocument();
+    expect(screen.getByText(/pkColumn:undefined/)).toBeInTheDocument();
+    expect(screen.getByText(/records:1/)).toBeInTheDocument();
+  });
+  expect(client.getCollectionSchema).not.toHaveBeenCalled();
+});

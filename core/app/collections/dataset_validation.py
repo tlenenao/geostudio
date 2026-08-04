@@ -32,4 +32,4 @@ def _validate_dataset_payload(session: Session, config: BuilderConfig, user: Use
         raise HTTPException(status_code=422, detail="collection not found")
 
 
-register_dataset_validator(_validate_dataset_payload)
+register_dataset_validator("collection", _validate_dataset_payload)

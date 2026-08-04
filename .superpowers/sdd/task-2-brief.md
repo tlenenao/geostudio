@@ -1,161 +1,130 @@
-### Task 2: Core — multi-field `groupBy` produces tidy rows
+### Task 2: Core — `harvest_repo.get_feature_layer_record` + `list_feature_layer_records`
 
 **Files:**
-- Modify: `core/app/analytics/aggregate.py:170-177` (`_pivot_measures`, add `_pivot_multi_measures` next to it), `core/app/analytics/aggregate.py:203-232` (`run_collection_aggregate`)
-- Test: `core/tests/test_analytics_aggregate.py`
+- Modify: `core/app/harvest/repository.py`
+- Test: `core/tests/test_harvest_repository.py`
 
 **Interfaces:**
-- Consumes: `_groupby_fields` from Task 1.
-- Produces: `run_collection_aggregate` returns `category_key: str | list[str]` — a `list[str]` (the group-by fields, in order) when `groupBy` has 2-3 fields; unchanged `str` otherwise. Rows are tidy: one dict per combination, one key per group-by field (real column name) + one key per measure label.
+- Consumes: `HarvestRecord` model (existing, `core/app/harvest/models.py`).
+- Produces: `get_feature_layer_record(session, *, tenant_id: str, item_id: str) -> HarvestRecord | None` (used by Task 1's validator and Task 5's routes). `list_feature_layer_records(session, *, tenant_id: str, q: str | None = None) -> list[Row]` where each row is `(item_id, title, external_url)` (used by Task 3's route).
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write failing tests**
 
-Append to `core/tests/test_analytics_aggregate.py`:
+Append to `core/tests/test_harvest_repository.py` (open it first to match its existing fixture style — it already has `session`/`tenant` fixtures for this module; use the same pattern as the surrounding tests for `create_record`/`list_layer_records`):
 
 ```python
-def test_two_field_groupby_produces_tidy_rows(tmp_path, conn):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2026", 12, lsn=1),
-        _row(3, "Sud", "2025", 5, lsn=1),
-    ])
-    request = AggregateRequestBody(groupBy=["region", "annee"], agg="sum", field="pop")
-
-    category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
+def test_get_feature_layer_record_returns_feature_kind_only(session, tenant):
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id="u1", type="arcgis",
+        url="https://gis.example.com/FeatureServer", mode="reference",
+        enabled=True, interval_minutes=None,
     )
-
-    assert category_key == ["region", "annee"]
-    assert sorted(rows, key=lambda r: (r["region"], r["annee"])) == [
-        {"region": "Nord", "annee": "2025", "value": 10},
-        {"region": "Nord", "annee": "2026", "value": 12},
-        {"region": "Sud", "annee": "2025", "value": 5},
-    ]
-
-
-def test_three_field_groupby_produces_tidy_rows(tmp_path, conn):
-    # Réutilise "pop" comme 3e dimension (valeurs distinctes = niveau de hiérarchie),
-    # TABLE_INFO n'a que 3 colonnes non-géométrie disponibles pour ce test.
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
-    ])
-    request = AggregateRequestBody(groupBy=["region", "annee", "pop"], agg="count")
-
-    category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
+    harvest_repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="a",
+        item_id="item-feature", collection_id=None, content_hash=None,
+        external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
     )
-
-    assert category_key == ["region", "annee", "pop"]
-    assert sorted(rows, key=lambda r: r["pop"]) == [
-        {"region": "Nord", "annee": "2025", "pop": 10, "value": 1},
-        {"region": "Nord", "annee": "2025", "pop": 20, "value": 1},
-    ]
-
-
-def test_multi_field_groupby_with_multiple_measures(tmp_path, conn):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1),
-        _row(3, "Sud", "2025", 5, lsn=1),
-    ])
-    request = AggregateRequestBody(
-        groupBy=["region", "annee"],
-        measures=[AggregateMeasure(agg="sum", field="pop", label="total"),
-                  AggregateMeasure(agg="count", label="nb")],
+    harvest_repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="b",
+        item_id="item-raster", collection_id=None, content_hash=None,
+        tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
     )
+    found = harvest_repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id="item-feature")
+    assert found is not None
+    assert found.external_url == "https://gis.example.com/FeatureServer/0"
+    assert harvest_repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id="item-raster") is None
+    assert harvest_repo.get_feature_layer_record(session, tenant_id=tenant.id, item_id="no-such-item") is None
 
-    _category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
+
+def test_list_feature_layer_records_excludes_raster_and_filters_by_q(session, tenant):
+    from app.items import repository as items_repo
+
+    source = harvest_repo.create_source(
+        session, tenant_id=tenant.id, owner_id="u1", type="arcgis",
+        url="https://gis.example.com/FeatureServer", mode="reference",
+        enabled=True, interval_minutes=None,
     )
+    feature_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id="u1", resource_type="external", title="Bâtiments",
+    )
+    harvest_repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="a",
+        item_id=feature_item.id, collection_id=None, content_hash=None,
+        external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+    )
+    raster_item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id="u1", resource_type="external", title="Ortho",
+    )
+    harvest_repo.create_record(
+        session, tenant_id=tenant.id, source_id=source.id, external_id="b",
+        item_id=raster_item.id, collection_id=None, content_hash=None,
+        tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
+    )
+    session.commit()
 
-    assert sorted(rows, key=lambda r: r["region"]) == [
-        {"region": "Nord", "annee": "2025", "total": 30, "nb": 2},
-        {"region": "Sud", "annee": "2025", "total": 5, "nb": 1},
-    ]
+    rows = harvest_repo.list_feature_layer_records(session, tenant_id=tenant.id)
+    ids = {r[0] for r in rows}
+    assert feature_item.id in ids
+    assert raster_item.id not in ids
+
+    filtered = harvest_repo.list_feature_layer_records(session, tenant_id=tenant.id, q="zzz-nomatch")
+    assert filtered == []
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+If `core/tests/test_harvest_repository.py` does not already have `session`/`tenant` fixtures with those exact names, adapt the two tests above to whatever fixture names the file already uses for an in-memory SQLite session and a seeded tenant (read the file first — do not guess).
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k "tidy_rows or multiple_measures" -v`
-Expected: FAIL (`_qi()` / `cat_expr` construction breaks on a `list` today)
+- [ ] **Step 2: Run to verify failure**
 
-- [ ] **Step 3: Add `_pivot_multi_measures` and the multi-field branch**
+Run: `cd core && uv run pytest tests/test_harvest_repository.py -v -k "feature_layer"`
+Expected: FAIL with `AttributeError: module 'app.harvest.repository' has no attribute 'get_feature_layer_record'`.
 
-Add right after `_pivot_measures` (after line 177) in `core/app/analytics/aggregate.py`:
+- [ ] **Step 3: Implement both functions**
 
-```python
-def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]) -> list[dict]:
-    out = []
-    for r in sql_rows:
-        row = {f: r[f] for f in fields}
-        for i, m in enumerate(measures):
-            row[_measure_label(m)] = r[f"m{i}"]
-        out.append(row)
-    return out
-```
-
-Replace `run_collection_aggregate` (lines 203-232) with:
+In `core/app/harvest/repository.py`, add after `list_layer_records`:
 
 ```python
-def run_collection_aggregate(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info, request: AggregateRequestBody,
-) -> tuple[str | list[str], list[dict]]:
-    fields = _groupby_fields(request)
-    category_key: str | list[str] = fields if len(fields) > 1 else (fields[0] if fields else "group")
-    _validate_fields(request, table_info)
-
-    if not _has_any_file(conn, base_uri, tenant_id, collection_id):
-        return category_key, []
-
-    dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
-    where_sql, where_params = _build_where(request, table_info)
-
-    if len(fields) > 1:
-        measures = _measures_for(request)
-        measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
-        group_cols = ", ".join(_qi(f) for f in fields)
-        sql = f"{dedup_cte} SELECT {group_cols}, {measure_cols} FROM live {where_sql} GROUP BY {group_cols}"
-        sql_rows = _fetch_rows(conn, sql, where_params)
-        return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
-
-    single_field = fields[0] if fields else None
-    if request.bucket:
-        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
-    else:
-        cat_expr = _qi(single_field) if single_field else "'Total'"
-
-    if request.split:
-        agg_sql = _agg_expr(request.agg, request.field)
-        sql = (
-            f"{dedup_cte} SELECT {cat_expr} AS __cat, {_qi(request.split)} AS __split, "
-            f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split"
+def get_feature_layer_record(
+    session: Session, *, tenant_id: str, item_id: str,
+) -> HarvestRecord | None:
+    return session.scalar(
+        select(HarvestRecord).where(
+            HarvestRecord.tenant_id == tenant_id,
+            HarvestRecord.item_id == item_id,
+            HarvestRecord.layer_kind == "feature",
         )
-        sql_rows = _fetch_rows(conn, sql, where_params)
-        return category_key, _pivot_split(sql_rows, category_key=str(category_key))
+    )
 
-    measures = _measures_for(request)
-    measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
-    sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} GROUP BY __cat"
-    sql_rows = _fetch_rows(conn, sql, where_params)
-    return category_key, _pivot_measures(sql_rows, category_key=str(category_key), measures=measures)
+
+def list_feature_layer_records(session: Session, *, tenant_id: str, q: str | None = None):
+    stmt = (
+        select(HarvestRecord.item_id, Item.title, HarvestRecord.external_url)
+        .join(Item, Item.id == HarvestRecord.item_id)
+        .where(
+            HarvestRecord.tenant_id == tenant_id,
+            HarvestRecord.layer_kind == "feature",
+        )
+    )
+    if q:
+        stmt = stmt.where(Item.title.ilike(f"%{q}%"))
+    return list(session.execute(stmt).all())
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Run to verify these tests pass, then re-run Task 1's blocked test**
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k "tidy_rows or multiple_measures" -v`
-Expected: PASS
+Run: `cd core && uv run pytest tests/test_harvest_repository.py tests/test_create_dataset_arcgis.py -v`
+Expected: all PASS now (Task 1's `test_create_dataset_arcgis.py` was blocked only on `get_feature_layer_record` existing).
 
-- [ ] **Step 5: Run the full core suite for non-regression**
+- [ ] **Step 5: Run the full core suite to catch regressions**
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -v`
-Expected: PASS — all existing single-field tests untouched (same branch, `category_key: str` as before).
+Run: `cd core && uv run pytest`
+Expected: same pass count as before this task, plus the new tests; no `postgis`-marked test count changes (still skipped without Docker).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
-git commit -m "feat(core): multi-field groupBy produces tidy rows on /aggregate (SP-14f)"
+cd core
+git add app/harvest/repository.py tests/test_harvest_repository.py tests/test_create_dataset_arcgis.py
+git commit -m "feat(core): harvest repo gains get/list_feature_layer_record (SP-14k)"
 ```
 
 ---

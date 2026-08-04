@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
+import type { Breakpoint } from "./grid";
 import type { ActionBus } from "./ActionBus";
 
 export type WidgetContext = {
@@ -12,6 +13,7 @@ export type WidgetContext = {
   bus?: ActionBus;
   widgetId?: string;
   user?: { name: string };
+  breakpoint?: Breakpoint;
 };
 
 export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {

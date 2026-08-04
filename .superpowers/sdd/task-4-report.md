@@ -1,97 +1,106 @@
-# Task 4 Report: Shell — `itemClient` passes `groupBy` arrays and `bins` through (SP-14f)
+# Task 4 Report: `core/app/harvest/live_query.py` — ArcGIS Query Translation Module
 
-## Summary
+## Status
 
-Successfully implemented client-side plumbing in `shell/src/api/itemClient.ts` to support multi-field `groupBy` arrays and `bins` parameter forwarding to the core's `/collections/{id}/aggregate` endpoint. Added `statRowId` helper function to build stable composite row IDs when `categoryKey` is a multi-field array.
+**DONE** — All 15 unit tests pass, full core suite green (834 passed, 106 skipped), no regressions.
 
-## Implementation Details
+## What Was Implemented
 
-### Files Modified
+Created `core/app/harvest/live_query.py` — a pure translation and caching module that converts generic filter/bbox/groupBy/measures vocabulary into ArcGIS REST Feature Service query parameters. No HTTP routes; consumed by Task 5's FastAPI endpoints.
 
-1. **`shell/src/api/itemClient.ts`**
-   - Updated `STAT_KEYS` (line 40) to include `"bins"`
-   - Enhanced `buildAggregateBody()` function (lines 49-75) to:
-     - Forward `query.groupBy` as a `string[]` when it's already an array (unchanged as `string` otherwise)
-     - Forward `query.bins` as a `number` in the POST body
-   - Added new `statRowId()` helper function (lines 77-82) that:
-     - Joins multi-field values with `"|"` for stable per-row ids when `categoryKey` is an array
-     - Returns unchanged single-field behavior: `String(row[categoryKey])`
-   - Updated `queryDataSource()` statistics branch (lines 639-643) to:
-     - Accept `categoryKey: string | string[]` from response
-     - Use `statRowId()` helper for building composite row IDs
+### Implemented Components
 
-2. **`shell/src/api/itemClient.test.ts`**
-   - Added 3 new test cases after line 721:
-     - `queryDataSource sends an array groupBy as-is in the aggregate request body`
-     - `queryDataSource builds a composite id when categoryKey is a multi-field array`
-     - `queryDataSource sends a bins query key as body.bins, not as a filter`
+1. **`ArcgisQueryError`** exception — custom error with `.field: str` and `.message: str` attributes
+2. **`translate_features_query()`** — filters (__gte, __lte, __in), bbox (esriGeometryEnvelope), pagination → REST params
+3. **`translate_aggregate_query()`** — groupBy + measures (count, sum, avg, min, max) → statistics params; validates agg type and field requirements
+4. **`fetch_query()`** — HTTP client wrapper with 20-second TTL cache keyed by URL + sorted params
+5. **`aggregate_response()`** — reshapes ArcGIS response features into row dictionaries with proper grouping (no grouping / single field / multi-field)
+
+Plus private helpers for WHERE clause building, SQL escaping, bbox params, and cache key generation.
 
 ## Test Results
 
-### Step 2 - Verify Failing Tests (RED)
+### Focused Test Suite (15 tests)
 
-```
-cd shell && npx vitest run src/api/itemClient.test.ts -t "groupBy|composite id|bins query"
-
-✗ queryDataSource sends an array groupBy as-is in the aggregate request body
-  → expected 'region,annee' to deeply equal [ 'region', 'annee' ]
-
-✗ queryDataSource builds a composite id when categoryKey is a multi-field array
-  → expected [ { id: '', properties: { …(3) } } ] to deeply equal [ { id: 'Nord|2025', …(1) } ]
-
-✗ queryDataSource sends a bins query key as body.bins, not as a filter
-  → expected undefined to be 5 // Object.is equality
+```bash
+cd core && uv run pytest tests/test_harvest_live_query.py -v
 ```
 
-Expected failures confirmed: 3 failed, 83 skipped.
+**Result:** 15/15 PASS ✓
 
-### Step 4 - Verify Passing Tests (GREEN)
+- `test_translate_features_query_builds_where_from_filters` ✓
+- `test_translate_features_query_no_filters_is_1_equals_1` ✓
+- `test_translate_features_query_bbox_adds_envelope_params` ✓
+- `test_translate_features_query_escapes_single_quotes` ✓
+- `test_translate_aggregate_query_count_no_groupby` ✓
+- `test_translate_aggregate_query_groupby_single_field` ✓
+- `test_translate_aggregate_query_groupby_multi_field` ✓
+- `test_translate_aggregate_query_unknown_agg_raises` ✓
+- `test_translate_aggregate_query_non_count_without_field_raises` ✓
+- `test_fetch_query_returns_parsed_json` ✓
+- `test_fetch_query_caches_within_ttl` ✓ (monkeypatched time.monotonic)
+- `test_aggregate_response_no_groupby_single_row` ✓
+- `test_aggregate_response_single_groupby_field` ✓
+- `test_aggregate_response_multi_groupby_fields` ✓
+- `test_aggregate_response_no_features_empty_rows` ✓
 
+### Full Core Suite
+
+```bash
+cd core && uv run pytest
 ```
-cd shell && npx vitest run src/api/itemClient.test.ts
 
-✓ src/api/itemClient.test.ts (86 tests) 681ms
+**Result:** 834 passed, 106 skipped — NO REGRESSIONS ✓
 
-Test Files  1 passed (1)
-Tests  86 passed (86)
+## TDD Evidence
+
+### RED Phase
+
+```bash
+cd core && uv run pytest tests/test_harvest_live_query.py -v
 ```
 
-All tests pass, including:
-- The 3 new tests for multi-field groupBy, composite IDs, and bins parameter
-- All 83 existing tests remain green (no regressions)
+**Output:**
+```
+ERROR collecting tests/test_harvest_live_query.py
+ImportError: cannot import name 'live_query' from 'app.harvest'
+```
 
-## Commit
+### GREEN Phase
 
-**SHA:** `c59950d`
-**Message:** `feat(shell): itemClient forwards multi-field groupBy and bins to /aggregate (SP-14f)`
+```bash
+cd core && uv run pytest tests/test_harvest_live_query.py -v
+============================== 15 passed in 0.16s ==============================
+```
+
+## Files Changed
+
+| Path | Type | Status |
+|------|------|--------|
+| `core/app/harvest/live_query.py` | New | Created (171 lines) |
+| `core/tests/test_harvest_live_query.py` | New | Created (171 lines) |
 
 ## Self-Review Findings
 
-### Correctness
+✓ **Completeness:** All 5 interfaces + error class implemented exactly per brief  
+✓ **Test coverage:** 15 tests cover all code paths (filters, bbox, aggregations, errors, cache TTL, response shaping)  
+✓ **SPDX header:** Present on both files  
+✓ **No HTTP routes:** Translation layer only, ready for Task 5 wiring  
+✓ **Cache behavior:** TTL validated via monkeypatched `time.monotonic()`; order-independent key (`urlencode(sorted(params))`)  
+✓ **Error handling:** `ArcgisQueryError` raised with context (field/message) for validation failures  
+✓ **No regressions:** Full suite unchanged from pre-implementation baseline  
 
-✓ **Multi-field groupBy forwarding:** `buildAggregateBody()` correctly detects array groupBy and forwards as-is via `map(String)`, maintaining single-field behavior when groupBy is a string.
+## Commit
 
-✓ **Bins parameter handling:** Added `bins` to STAT_KEYS to exclude it from filters, forwarded as `Number(query.bins)` in request body.
+```
+8d7dd3a feat(core): live_query translates filters/bbox/groupBy to ArcGIS REST (SP-14k)
+```
 
-✓ **Composite row ID generation:** `statRowId()` correctly joins array category keys with `"|"` separator (e.g., `["region", "annee"]` → `"Nord|2025"`), and single-field keys work unchanged.
+## Handoff to Task 5
 
-✓ **Type safety:** Updated response type annotation to `categoryKey: string | string[]` to reflect API contract.
-
-### Test Coverage
-
-✓ All three new tests verify distinct behaviors:
-1. Array groupBy transmitted unchanged in POST body
-2. Multi-field composite IDs built correctly with `"|"` delimiter
-3. `bins` parameter passed in body, not in URL filters
-
-✓ No regressions: All 83 existing tests pass, confirming backward compatibility.
-
-### Code Quality
-
-✓ Implementation follows existing patterns in the file (parallel to `bbox` and `bucket` handling).
-✓ Comments added to `statRowId()` explain the multi-field vs. single-field logic.
-✓ Minimal scope: Changes are focused on the specific task, no unnecessary refactoring.
-
-## Concerns
-
-None. The implementation is complete, tested, and ready for integration.
+`live_query` module is complete and ready for FastAPI route wiring. Task 5 will create `/datasets/{itemId}/arcgis/items` and `/datasets/{itemId}/arcgis/aggregate` routes that:
+1. Parse query parameters from request
+2. Call `translate_features_query()` / `translate_aggregate_query()`
+3. Pass injected `httpx.Client` to `fetch_query()`
+4. Reshape with `aggregate_response()` if needed
+5. Return response to client

@@ -9,6 +9,7 @@ import { SitePublicPage } from "../pages/SitePublicPage";
 import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
 import { DatasetEditPage } from "../pages/DatasetEditPage";
+import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
@@ -92,6 +93,7 @@ export function AppRoutes() {
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
+        <Route path="/analytics/sql" element={<SqlLabPage />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />

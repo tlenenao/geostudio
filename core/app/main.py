@@ -12,6 +12,7 @@ from app import db, observability
 from app.auth import routes as auth_routes
 from app.auth.dependency import is_read_only_mode
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
+from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.dcat import routes as dcat_routes

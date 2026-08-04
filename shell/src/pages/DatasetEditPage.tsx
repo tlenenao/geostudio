@@ -20,10 +20,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     if (configQuery.data) setDraft((d) => d ?? configQuery.data);
   }, [configQuery.data]);
 
+  const draftCollectionId = draft && draft.source === "collection" ? draft.collectionId : undefined;
   const schemaQuery = useQuery({
-    queryKey: ["collection-schema", draft?.collectionId],
-    queryFn: () => client.getCollectionSchema(draft!.collectionId),
-    enabled: Boolean(draft?.collectionId),
+    queryKey: ["collection-schema", draftCollectionId],
+    queryFn: () => client.getCollectionSchema(draftCollectionId!),
+    enabled: Boolean(draftCollectionId),
   });
 
   if (itemQuery.isLoading || configQuery.isLoading || (!draft && !configQuery.isError))

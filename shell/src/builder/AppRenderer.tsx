@@ -195,7 +195,7 @@ export function AppRenderer({
                     selectedId={selectedId}
                     onSelect={(id) => onSelect?.(id)}
                     onMoveItem={handleMove}
-                    renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} />}
+                    renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} breakpoint={bp} />}
                   />
                 </DataProvider>
               </AnalyticsContextProvider>

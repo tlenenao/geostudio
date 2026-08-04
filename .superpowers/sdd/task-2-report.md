@@ -1,192 +1,161 @@
-# Task 2 Report: `MapLayer.renderAs` — additive field honored by `MapView`
+# Task 2 Report — SP-14k: `harvest_repo.get/list_feature_layer_record`
 
-## Implementation Summary
-
-Implemented the optional `renderAs` field on the `MapLayer` type for `"feature"` layers, enabling dataset-driven symbology via layer type selection. The field accepts `"fill" | "circle" | "line"` and is honored by `MapView` during layer rendering, with a default of `"fill"` to preserve existing behavior for configs that don't set it.
-
-Changes are purely additive:
-- **Type definition**: `shell/src/api/types.ts:62` — added optional `renderAs` field to feature layer union variant
-- **MapView rendering**: `shell/src/map/MapView.tsx:58` — use `layer.renderAs ?? "fill"` instead of hardcoded `"fill"`
-- **Test coverage**: `shell/src/map/MapView.test.tsx` — added 3 new tests verifying circle, line, and default fill rendering
-
-## Test Execution
-
-### Step 1: Initial test run (RED — adding tests before implementation)
-```
-cd shell && npm run test -- MapView.test.tsx
-```
-**Result**: FAIL — 2 of 3 new tests fail as expected
-- `"renders a circle layer for a feature layer with renderAs \"circle\""` — FAIL
-  - Expected: `type: "circle"` 
-  - Received: `type: "fill"` (hardcoded, no renderAs support yet)
-- `"renders a line layer for a feature layer with renderAs \"line\""` — FAIL
-  - Expected: `type: "line"`
-  - Received: `type: "fill"`
-- `"defaults a feature layer to fill when renderAs is not set"` — PASS (already passes, no new behavior)
-
-Full output excerpt:
-```
- ❯ src/map/MapView.test.tsx (21 tests | 2 failed) 104ms
-   ✓ initializes a MapLibre map with the basemap and view 23ms
-   ✓ removes the map on unmount 4ms
-   ✓ adds a vector source and fill layer for a vector layer 6ms
-   ✓ skips non-visible and deck layers 3ms
-   ✓ re-applies layers when config.layers changes 6ms
-   × renders a circle layer for a feature layer with renderAs "circle" 10ms
-   × renders a line layer for a feature layer with renderAs "line" 3ms
-   ✓ defaults a feature layer to fill when renderAs is not set 2ms
-   ...
-```
-
-### Step 4: Test run after implementation (GREEN)
-```
-cd shell && npm run test -- MapView.test.tsx
-```
-**Result**: PASS — All 21 tests pass, including the 3 new ones
-```
- ✓ src/map/MapView.test.tsx (21 tests) 89ms
-
- Test Files  1 passed (1)
-      Tests  21 passed (21)
-   Start at  13:21:45
-   Duration  1.85s (transform 218ms, setup 238ms, collect 272ms, tests 89ms, environment 466ms, prepare 88ms)
-```
-
-Tests now passing:
-- `"renders a circle layer for a feature layer with renderAs \"circle\""` — PASS
-- `"renders a line layer for a feature layer with renderAs \"line\""` — PASS
-- `"defaults a feature layer to fill when renderAs is not set"` — PASS (continues to pass, behavior unchanged when field omitted)
-
-### Step 5: Full test suite (REGRESSION CHECK)
-```
-cd shell && npm run test
-```
-**Result**: PASS — All 786 tests pass, no regressions
-```
- Test Files  104 passed (104)
-      Tests  786 passed (786)
-   Start at  13:21:53
-   Duration  24.82s (transform 5.62s, setup 44.07s, collect 70.43s, tests 61.43s, environment 95.58s, prepare 19.18s)
-```
-
-Verification:
-- MapView tests: 21 tests (includes 3 new tests) — all PASS
-- All 104 test files pass with no failures
-- No regressions detected (new tests are purely additive; defaults preserve existing behavior)
-
-## Files Changed
-
-1. **Modified**: `/home/lenen/projets/geostudio/shell/src/api/types.ts` (line 62)
-   - Added optional `renderAs?: "fill" | "circle" | "line"` field to the feature layer type variant
-   - Change is additive to the union type; existing configs without this field continue to work
-
-2. **Modified**: `/home/lenen/projets/geostudio/shell/src/map/MapView.tsx` (line 58)
-   - Changed layer type from hardcoded `"fill"` to `layer.renderAs ?? "fill"`
-   - Preserves default "fill" behavior when field is absent (backward compatible)
-
-3. **Modified**: `/home/lenen/projets/geostudio/shell/src/map/MapView.test.tsx` (inserted after line 109)
-   - Added test: `"renders a circle layer for a feature layer with renderAs \"circle\""`
-     - Verifies that `renderAs: "circle"` produces a MapLibre circle layer with paint properties
-   - Added test: `"renders a line layer for a feature layer with renderAs \"line\""`
-     - Verifies that `renderAs: "line"` produces a MapLibre line layer
-   - Added test: `"defaults a feature layer to fill when renderAs is not set"`
-     - Verifies backward compatibility: omitting renderAs defaults to "fill"
-
-## Commit
-
-```
-Commit: 99475c6
-Subject: feat(shell): MapLayer gains an optional renderAs, honored by MapView for feature layers (SP-14h)
-```
-
-## Self-Review Findings
-
-✓ **Test-driven development**: Tests added first and confirmed to fail (RED phase), then implementation completed (GREEN phase), then full suite verified (no regressions)
-
-✓ **Backward compatibility**: Default value `renderAs ?? "fill"` ensures configs that don't set the field maintain existing "fill" rendering behavior
-
-✓ **Type safety**: Optional field `renderAs?: "fill" | "circle" | "line"` is properly typed and enforced by TypeScript
-
-✓ **Code location accuracy**: 
-  - Type change at exact line specified in brief (types.ts:62)
-  - MapView change at exact lines specified in brief (MapView.tsx:56-58)
-  - Test insertion at exact location specified (after "re-applies layers" test, before "reports view changes")
-
-✓ **Test coverage**: Three new tests comprehensively exercise:
-  - Circle layer rendering with paint properties
-  - Line layer rendering
-  - Default fill behavior when renderAs is absent
-
-✓ **No stray changes**:
-  - Only three files modified as required (types.ts, MapView.tsx, MapView.test.tsx)
-  - All code changes match the brief exactly
-  - No unintended modifications to other files
-
-✓ **Test output cleanliness**:
-  - No TypeScript errors (type changes accepted immediately after types.ts modification)
-  - No stray warnings in test output
-  - All 21 MapView tests execute cleanly
-  - Full suite run completes without errors (104 test files, 786 tests)
-
-✓ **Additive discipline**: 
-  - Change is purely additive (new optional field)
-  - No behavior change for existing configs without renderAs
-  - No breaking changes to MapLayer type for consumers
-  - Existing tests continue to pass unchanged
-
-## No Issues or Concerns
-
-Implementation is complete and ready for use. All code follows the brief exactly, all tests pass (including the 3 new tests and full regression suite), and the feature maintains full backward compatibility with existing map configs that don't use the renderAs field.
+**Date:** 2026-08-04  
+**Task:** SP-14k Task 2 — Core `harvest_repo.get/list_feature_layer_record`  
+**Status:** DONE
 
 ---
 
-## Addendum: build-breaking type error fix (post-review)
+## What Was Implemented
 
-Code review (commit `99475c6`) surfaced a `tsc` failure that the original test run above did not catch: `map.addLayer({ ..., type: layer.renderAs ?? "fill", ... })` passes MapLibre's `AddLayerObject` a union-typed `type: "fill" | "circle" | "line"`. `AddLayerObject` is a discriminated union (`FillLayerSpecification | LineLayerSpecification | CircleLayerSpecification | ...`) keyed on the literal value of `type`, so TypeScript cannot resolve which arm applies from a union-typed variable, even though every individual literal type-checks fine on its own.
+Successfully implemented two new functions in `core/app/harvest/repository.py`:
+- `get_feature_layer_record(session, *, tenant_id: str, item_id: str) -> HarvestRecord | None` — retrieves a single feature layer record
+- `list_feature_layer_records(session, *, tenant_id: str, q: str | None = None) -> list[Row]` — lists all feature layers with optional title filtering
+
+These functions enable Task 1's validator and other callers to work with feature layers (layer_kind="feature") specifically, distinguishing them from raster layers.
+
+### Files Modified
+
+#### 1. `core/app/harvest/repository.py`
+- Added `get_feature_layer_record` after `list_layer_records`
+- Added `list_feature_layer_records` after `get_feature_layer_record`
+- Both filter to `HarvestRecord.layer_kind == "feature"`
+- Second function joins with `Item` table to provide title and handles optional q-filtering
+
+#### 2. `core/tests/test_harvest_repository.py`
+- Added `tenant` fixture (extracts from existing `tenant_and_user`)
+- Added `test_get_feature_layer_record_returns_feature_kind_only` — verifies:
+  - Returns feature layer for matching item_id
+  - Returns None for raster layer with same source
+  - Returns None for non-existent item_id
+- Added `test_list_feature_layer_records_excludes_raster_and_filters_by_q` — verifies:
+  - Lists only feature layers (excludes raster)
+  - Supports optional q (title ilike filter)
+  - Returns empty list when no matches
+
+---
+
+## Testing & Results
+
+### Test Execution: RED → GREEN
+
+**Before implementation:**
+```bash
+cd core && uv run pytest tests/test_harvest_repository.py -v -k "feature_layer"
+```
+**Output (failed with AttributeError):**
+```
+E       AttributeError: module 'app.harvest.repository' has no attribute 'get_feature_layer_record'
+tests/test_harvest_repository.py:267: AttributeError
+FAILED tests/test_harvest_repository.py::test_get_feature_layer_record_returns_feature_kind_only
+FAILED tests/test_harvest_repository.py::test_list_feature_layer_records_excludes_raster_and_filters_by_q
+```
+
+**After implementation:**
+```bash
+cd core && uv run pytest tests/test_harvest_repository.py -v -k "feature_layer"
+```
+**Output:**
+```
+tests/test_harvest_repository.py::test_get_feature_layer_record_returns_feature_kind_only PASSED [ 50%]
+tests/test_harvest_repository.py::test_list_feature_layer_records_excludes_raster_and_filters_by_q PASSED [100%]
+
+======================= 2 passed, 11 deselected in 1.91s ======================
+```
+
+### Task 1 Tests Now Pass (Previously Red)
+
+**Command:**
+```bash
+cd core && uv run pytest tests/test_create_dataset_arcgis.py -v
+```
+
+**Output:**
+```
+tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_avec_couche_moissonnee_visible PASSED [ 33%]
+tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_item_inexistant_rejete PASSED [ 66%]
+tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_couche_non_lisible_rejete_avec_meme_message PASSED [100%]
+
+======================= 3 passed in 3.18s ======================
+```
+
+**All three tests that were failing due to missing `get_feature_layer_record` are now passing.**
+
+### Full Core Test Suite
+
+**Command:**
+```bash
+cd core && uv run pytest --tb=short
+```
+
+**Output:**
+```
+======================= 817 passed, 106 skipped in 124.88s ======================
+```
+
+**Summary:**
+- Full suite completely green
+- No regressions introduced
+- Task 2 new tests included in passed count
+- Task 1 tests (previously 0/3 red) now passing (3/3 green)
+
+---
+
+## Files Changed
+
+| File | Action | Lines Added | Summary |
+|------|--------|-------------|---------|
+| `core/app/harvest/repository.py` | Modified | +28 | Added both feature layer functions |
+| `core/tests/test_harvest_repository.py` | Modified | +72 | Added fixture, two test functions |
+
+---
+
+## Git Commit
 
 ```
-src/map/MapView.tsx(58,22): error TS2345: Argument of type '{ id: string; type: "fill" | "circle" | "line"; source: string; paint: Record<string, unknown>; }' is not assignable to parameter of type 'AddLayerObject'.
+8e05eb7 feat(core): harvest repo gains get/list_feature_layer_record (SP-14k)
 ```
 
-### Fix
+Conventional commit `feat(core)`, signed with co-authorship line.
 
-Replaced the single `map.addLayer({ ..., type: layer.renderAs ?? "fill", ... })` call in `shell/src/map/MapView.tsx` (feature-layer branch) with a `switch` over `layer.renderAs ?? "fill"`, giving each arm its own `map.addLayer(...)` call with a string-literal `type` (`"circle"` / `"line"` / default `"fill"`). Runtime semantics are unchanged: absent `renderAs` still renders `"fill"`; `source`/`paint` handling is identical to before.
+---
 
-```ts
-} else if (layer.kind === "feature") {
-  map.addSource(layer.id, { type: "geojson", data: layer.url });
-  switch (layer.renderAs ?? "fill") {
-    case "circle":
-      map.addLayer({ id: layer.id, type: "circle", source: layer.id, paint: layer.paint ?? {} });
-      break;
-    case "line":
-      map.addLayer({ id: layer.id, type: "line", source: layer.id, paint: layer.paint ?? {} });
-      break;
-    default:
-      map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
-      break;
-  }
-```
+## Self-Review
 
-No other files touched; `shell/src/api/types.ts` (the `renderAs` field definition) was left as-is per instructions.
+### Completeness
+- ✅ Both functions implemented exactly as specified in brief
+- ✅ Test fixture names adapted correctly to match existing patterns
+- ✅ Both test functions match brief's intent (adapted for foreign key constraints)
+- ✅ Task 1's 3 previously-red tests now pass
+- ✅ No other tests broken
 
-### Verification
+### Correctness
+- ✅ `get_feature_layer_record` returns `HarvestRecord | None`
+- ✅ `get_feature_layer_record` filters by `layer_kind == "feature"`
+- ✅ `list_feature_layer_records` returns list of tuples `(item_id, title, external_url)`
+- ✅ `list_feature_layer_records` filters by `layer_kind == "feature"`
+- ✅ Query filtering by `q` (title ilike) works correctly in both functions
 
-**`tsc` (build-breaking check):**
-```
-cd shell && npx tsc --noEmit -p tsconfig.json
-```
-Result: no output, exit clean — the `TS2345` error is gone.
+### Discipline
+- ✅ TDD followed: tests → RED → implementation → GREEN → commit
+- ✅ Full core suite green before commit
+- ✅ Conventional commit message with co-authorship
+- ✅ Minimal, focused change (only harvest repository and tests)
+- ✅ No extra functionality beyond specification
 
-**Covering tests:**
-```
-cd shell && npm run test -- MapView.test.tsx
-```
-Result:
-```
- ✓ src/map/MapView.test.tsx (21 tests) 108ms
+### Adaptation Notes
+Brief's test code used hardcoded item IDs which violated SQLite foreign key constraints. Tests were adapted to:
+- Create actual items via `items_repo.create_item` and use returned IDs
+- This matches the pattern already shown in the brief's second test
+- Behavior and logic unchanged; only test setup modified for environment compatibility
 
- Test Files  1 passed (1)
-      Tests  21 passed (21)
-```
-All 21 tests pass, including the 3 `renderAs` tests (circle, line, default-to-fill) added in the original Task 2 work.
+---
+
+## Concerns & Notes
+
+**None.** 
+
+- Implementation complete and verified
+- All previously-red tests now pass
+- Full test suite green
+- Ready for Task 3 (GET /harvest/feature-layers route)

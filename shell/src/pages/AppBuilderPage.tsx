@@ -80,19 +80,29 @@ export function AppBuilderPage({ pk }: { pk: string }) {
 
   function addWidget(type: string) {
     const def = getWidget(type);
-    if (!def || !draft || !activeLayout || !activePage) return;
-    const { x, y } = nextFreePosition(activeLayout.items);
-    const item: WidgetItem = {
-      id: crypto.randomUUID(),
-      widget: type,
-      x,
-      y,
-      w: def.defaultSize.w,
-      h: def.defaultSize.h,
-      props: { ...def.defaultProps },
-    };
-    setDraft(setPageLayout(draft, activePage, { ...activeLayout, items: [...activeLayout.items, item] }));
-    setSelectedId(item.id);
+    if (!def || !activePage) return;
+    const id = crypto.randomUUID();
+    // Functional updater (like setSources/setMessages/… below): a plain
+    // `setDraft(newValue)` here would read the `draft` closed over at render
+    // time, silently dropping any other setDraft call batched in the same
+    // event (e.g. DataSourceSelect's onAdd via DataSourcesEditContext when a
+    // newly-added widget is bound to a shared dataset in the same handler).
+    setDraft((d) => {
+      if (!d) return d;
+      const layout = getPageLayout(d, activePage);
+      const { x, y } = nextFreePosition(layout.items);
+      const item: WidgetItem = {
+        id,
+        widget: type,
+        x,
+        y,
+        w: def.defaultSize.w,
+        h: def.defaultSize.h,
+        props: { ...def.defaultProps },
+      };
+      return setPageLayout(d, activePage, { ...layout, items: [...layout.items, item] });
+    });
+    setSelectedId(id);
   }
 
   async function captureThumbnail() {
@@ -108,19 +118,31 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   }
 
   function updateSelectedProps(props: Record<string, unknown>) {
-    if (!draft || !selectedId || !activeLayout || !activePage) return;
-    setDraft(setPageLayout(draft, activePage, {
-      ...activeLayout,
-      items: activeLayout.items.map((i) => (i.id === selectedId ? { ...i, props } : i)),
-    }));
+    if (!selectedId || !activePage) return;
+    // Functional updater — see addWidget's comment: DataSourceSelect fires
+    // this (via PropsPanel's onChange) right after DataSourcesEditContext's
+    // onAdd in the same handler when binding a new shared dataset, so both
+    // setDraft calls land in one React batch.
+    setDraft((d) => {
+      if (!d) return d;
+      const layout = getPageLayout(d, activePage);
+      return setPageLayout(d, activePage, {
+        ...layout,
+        items: layout.items.map((i) => (i.id === selectedId ? { ...i, props } : i)),
+      });
+    });
   }
 
   function updateSelectedVisibleWhen(expr: string) {
-    if (!draft || !selectedId || !activeLayout || !activePage) return;
-    setDraft(setPageLayout(draft, activePage, {
-      ...activeLayout,
-      items: activeLayout.items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)),
-    }));
+    if (!selectedId || !activePage) return;
+    setDraft((d) => {
+      if (!d) return d;
+      const layout = getPageLayout(d, activePage);
+      return setPageLayout(d, activePage, {
+        ...layout,
+        items: layout.items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)),
+      });
+    });
   }
 
   const setSources = (dataSources: typeof draft.dataSources) =>
@@ -133,7 +155,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setPromotingId(id);
     try {
       const item = await createDataset.mutateAsync({
-        title: source.layer, owner: username ?? "", collectionId: source.layer,
+        title: source.layer, owner: username ?? "", source: "collection", collectionId: source.layer,
       });
       setSources(draft.dataSources.map((s) => (s.id === id ? { ...s, datasetId: item.pk } : s)));
     } catch {

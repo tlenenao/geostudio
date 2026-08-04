@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -165,6 +165,15 @@ export function useLayerSources(options?: { enabled?: boolean; q?: string }) {
   });
 }
 
+export function useFeatureLayers(options?: { enabled?: boolean; q?: string }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["feature-layers", options?.q ?? ""],
+    queryFn: () => client.listFeatureLayers({ q: options?.q }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useCreateMap() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
@@ -200,7 +209,7 @@ export function useCreateDataset() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; owner: string; collectionId: string }) => client.createDatasetItem(input),
+    mutationFn: (input: CreateDatasetInput) => client.createDatasetItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
     },
