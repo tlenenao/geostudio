@@ -36,7 +36,7 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
   // Resolve the primary-key column name for every distinct collection behind
   // those datasets, so table/map widgets can cross-filter by pk without
   // fetching a schema themselves (they only read ctx.data.pkColumn).
-  const collectionIds = [...new Set(Object.values(datasets).map((d) => d.collectionId))];
+  const collectionIds = [...new Set(Object.values(datasets).filter((d) => d.source === "collection").map((d) => d.source === "collection" ? d.collectionId : ""))].filter(Boolean);
   const schemaResults = useQueries({
     queries: collectionIds.map((id) => ({ queryKey: ["collection-schema", id], queryFn: () => client.getCollectionSchema(id) })),
   });
@@ -73,7 +73,7 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
       layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,
-      pkColumn: dataset ? pkByCollection[dataset.collectionId] : undefined,
+      pkColumn: dataset && dataset.source === "collection" ? pkByCollection[dataset.collectionId] : undefined,
     };
   });
 

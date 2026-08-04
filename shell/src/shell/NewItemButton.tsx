@@ -55,7 +55,7 @@ export function NewItemButton() {
         kind === "map"
           ? await createMap.mutateAsync({ title: clean, owner: username ?? "" })
           : kind === "dataset"
-            ? await createDataset.mutateAsync({ title: clean, owner: username ?? "", collectionId })
+            ? await createDataset.mutateAsync({ title: clean, owner: username ?? "", source: "collection", collectionId })
             : await create.mutateAsync({
                 kind,
                 title: clean,

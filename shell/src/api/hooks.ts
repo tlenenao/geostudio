@@ -200,7 +200,7 @@ export function useCreateDataset() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; owner: string; collectionId: string }) => client.createDatasetItem(input),
+    mutationFn: (input: Parameters<typeof client.createDatasetItem>[0]) => client.createDatasetItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
     },

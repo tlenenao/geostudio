@@ -338,7 +338,7 @@ test("createDatasetItem posts a dataset payload and returns a dataset Item", asy
       return HttpResponse.json({ id: "cfg-ds1", kind: "dataset", itemId: "ds-1" }, { status: 201 });
     }),
   );
-  const item = await makeClient().createDatasetItem({ title: "Parcs", owner: "alice", collectionId: "parcs" });
+  const item = await makeClient().createDatasetItem({ title: "Parcs", owner: "alice", source: "collection", collectionId: "parcs" });
   expect(body.config.kind).toBe("dataset");
   expect(body.config.dataset).toEqual({ source: "collection", collectionId: "parcs", columns: {} });
   expect(item).toMatchObject({ pk: "ds-1", resourceType: "dataset", title: "Parcs", configId: "cfg-ds1" });
@@ -443,6 +443,97 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
     id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-6", query: {},
   });
   expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
+});
+
+test("featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-arcgis-1", () =>
+      HttpResponse.json({
+        id: "cfg-arc1", itemId: "ds-arcgis-1", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-9", columns: {} } },
+      }),
+    ),
+  );
+  const client = makeClient();
+  await client.getDatasetConfig("ds-arcgis-1"); // warms the cache
+  expect(
+    client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-1", query: {} }),
+  ).toBe("https://core.test/datasets/layer-9/arcgis/items");
+});
+
+test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-arcgis-2", () =>
+      HttpResponse.json({
+        id: "cfg-arc2", itemId: "ds-arcgis-2", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-10", columns: {} } },
+      }),
+    ),
+    http.get("https://core.test/datasets/layer-10/arcgis/items", () =>
+      HttpResponse.json({ type: "FeatureCollection", features: [{ id: 1, properties: { nom: "Bât" } }] }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-2", query: {},
+  });
+  expect(records).toEqual([{ id: 1, properties: { nom: "Bât" }, geometry: undefined }]);
+});
+
+test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-arcgis-3", () =>
+      HttpResponse.json({
+        id: "cfg-arc3", itemId: "ds-arcgis-3", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-11", columns: {} } },
+      }),
+    ),
+    http.post("https://core.test/datasets/layer-11/arcgis/aggregate", () =>
+      HttpResponse.json({ categoryKey: "group", rows: [{ group: "Total", value: 4 }] }),
+    ),
+  );
+  const records = await makeClient().queryDataSource({
+    id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds-arcgis-3", query: { agg: "count" },
+  });
+  expect(records).toEqual([{ id: "Total", properties: { group: "Total", value: 4 } }]);
+});
+
+test("getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-arcgis-4", () =>
+      HttpResponse.json({
+        id: "cfg-arc4", itemId: "ds-arcgis-4", kind: "dataset",
+        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-12", columns: {} } },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-arcgis-4");
+  expect(config).toMatchObject({ source: "arcgis", arcgisItemId: "layer-12" });
+});
+
+test("createDatasetItem with source=arcgis posts an arcgis dataset payload", async () => {
+  let postBody: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      postBody = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ id: "cfg-9", kind: "dataset", itemId: "ds-9" });
+    }),
+  );
+  const item = await makeClient().createDatasetItem({
+    title: "Bâtiments (live)", owner: "alice", source: "arcgis", arcgisItemId: "layer-13",
+  });
+  expect(item.pk).toBe("ds-9");
+  const config = postBody!.config as Record<string, unknown>;
+  expect(config.dataset).toEqual({ source: "arcgis", arcgisItemId: "layer-13", columns: {} });
+});
+
+test("listFeatureLayers fetches /harvest/feature-layers", async () => {
+  server.use(
+    http.get("https://core.test/harvest/feature-layers", () =>
+      HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
+    ),
+  );
+  const layers = await makeClient().listFeatureLayers();
+  expect(layers).toEqual([{ id: "layer-1", title: "Bâtiments" }]);
 });
 
 test("getAppConfig reads the app config (kind/theme/layout)", async () => {
