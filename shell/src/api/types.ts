@@ -133,7 +133,8 @@ export interface ItemClient {
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
-  createDatasetItem(input: { title: string; owner: string; collectionId: string }): Promise<Item>;
+  createDatasetItem(input: CreateDatasetInput): Promise<Item>;
+  listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
@@ -217,13 +218,27 @@ export type DatasetColumnMeta = {
   format?: string;
 };
 
-export type DatasetConfig = {
-  source: "collection";
-  collectionId: string;
-  columns: Record<string, DatasetColumnMeta>;
-  timeField?: string | null;
-  reactsToExtent?: boolean;
-};
+export type DatasetConfig =
+  | {
+      source: "collection";
+      collectionId: string;
+      columns: Record<string, DatasetColumnMeta>;
+      timeField?: string | null;
+      reactsToExtent?: boolean;
+    }
+  | {
+      source: "arcgis";
+      arcgisItemId: string;
+      columns: Record<string, DatasetColumnMeta>;
+      timeField?: string | null;
+      reactsToExtent?: boolean;
+    };
+
+export type FeatureLayerSource = { id: string; title: string };
+
+export type CreateDatasetInput =
+  | { title: string; owner: string; source: "collection"; collectionId: string }
+  | { title: string; owner: string; source: "arcgis"; arcgisItemId: string };
 
 // Écho documenté de WcWidgetManifest (shell/src/builder/wc/manifest.ts) — même
 // forme, dupliquée ici plutôt qu'importée : api/ ne dépend jamais de builder/.

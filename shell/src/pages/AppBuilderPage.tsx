@@ -133,7 +133,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setPromotingId(id);
     try {
       const item = await createDataset.mutateAsync({
-        title: source.layer, owner: username ?? "", collectionId: source.layer,
+        title: source.layer, owner: username ?? "", source: "collection", collectionId: source.layer,
       });
       setSources(draft.dataSources.map((s) => (s.id === id ? { ...s, datasetId: item.pk } : s)));
     } catch {
