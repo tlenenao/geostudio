@@ -1,304 +1,422 @@
-## Task 5: `tabs` widget
+### Task 5: Core — `GET/POST /datasets/{itemId}/arcgis/items|aggregate`
 
 **Files:**
-- Create: `shell/src/builder/widgets/tabs.tsx`
-- Modify: `shell/src/builder/widgets/index.tsx`
-- Test: `shell/src/builder/widgets/tabs.test.tsx`
+- Modify: `core/app/harvest/routes.py`
+- Test: `core/tests/test_harvest_dataset_arcgis_routes.py` (new)
 
 **Interfaces:**
-- Consumes: `LayoutEditor` (Task 4), `GridCanvas`, `WidgetHost`,
-  `registerWidget`/`WidgetContext` (`registry.ts`, `breakpoint` from Task 1).
-- Produces: widget kind `"tabs"`, `props: { tabs: Array<{ id: string; label: string; items: WidgetItem[] }> }`,
-  registered via `registerTabsWidget()`.
+- Consumes: `live_query.translate_features_query`/`translate_aggregate_query`/`fetch_query`/`aggregate_response`/`ArcgisQueryError` (Task 4), `harvest_repo.get_feature_layer_record` (Task 2), `app.configs.repository.get_config_by_item`, `app.analytics.aggregate.AggregateRequestBody`/`AggregateMeasure`, `app.harvest.egress.build_guarded_client`/`EgressBlockedError`.
+- Produces: `GET /datasets/{item_id}/arcgis/items` → `{"type": "FeatureCollection", "features": [...], "numberMatched": int, "numberReturned": int, "links": []}`. `POST /datasets/{item_id}/arcgis/aggregate` → `{"categoryKey": str | list[str], "rows": [...]}`. Both consumed by the shell in Task 6.
+
+Deliberate scope note vs. the design doc's exact wording: `numberMatched` is computed as `offset + numberReturned` (no second "count-only" ArcGIS request) rather than a true total. No current shell consumer reads `numberMatched` (`queryDataSource` only reads `.features`) — a second remote round-trip for an unused field would violate YAGNI. `links` is always `[]` for the same reason. If a future sub-part needs real pagination totals for `arcgis` datasets, add the second request then.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `shell/src/builder/widgets/tabs.test.tsx`:
+Create `core/tests/test_harvest_dataset_arcgis_routes.py`:
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test, vi } from "vitest";
-import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
-import { registerBuiltinWidgets } from "./index";
-import type { WidgetItem } from "../../api/types";
+```python
+# SPDX-License-Identifier: Apache-2.0
+import httpx
+import pytest
+from fastapi.testclient import TestClient
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+from app import db
+from app.auth.dependency import get_current_user
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.harvest import live_query, routes as harvest_routes
+from app.harvest import repository as harvest_repo
+from app.items import repository as items_repo
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
-test("runtime: shows the first tab's content by default and switches on click", async () => {
-  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
-  const tabB: WidgetItem = { id: "b", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu B" } };
-  const Tabs = getWidget("tabs")!.Component;
-  render(
-    <Tabs
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }, { id: "t2", label: "Onglet 2", items: [tabB] }] }}
-      ctx={{ mode: "runtime" } as WidgetContext}
-    />,
-  );
-  expect(screen.getByText("Contenu A")).toBeInTheDocument();
-  expect(screen.queryByText("Contenu B")).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Onglet 2" }));
-  expect(screen.queryByText("Contenu A")).not.toBeInTheDocument();
-  expect(screen.getByText("Contenu B")).toBeInTheDocument();
-});
+SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
 
-test("edit mode renders statically without an interactive tab bar switch", () => {
-  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
-  const Tabs = getWidget("tabs")!.Component;
-  render(<Tabs props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }] }} ctx={{ mode: "edit" } as WidgetContext} />);
-  expect(screen.getByText("Onglet 1")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Onglet 1" })).not.toBeInTheDocument();
-});
 
-test("PropsPanel adds a tab, selects it, and edits its label", async () => {
-  const onChange = vi.fn();
-  const Panel = getWidget("tabs")!.PropsPanel;
-  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
-  await userEvent.click(screen.getByRole("button", { name: "Ajouter un onglet" }));
-  const tabs = onChange.mock.calls.at(-1)![0].tabs;
-  expect(tabs).toHaveLength(2);
-  expect(tabs[1].label).toBe("Onglet 2");
-});
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    live_query._cache.clear()
+    yield
+    live_query._cache.clear()
 
-test("PropsPanel refuses to remove the last remaining tab", async () => {
-  const onChange = vi.fn();
-  const Panel = getWidget("tabs")!.PropsPanel;
-  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
-  await userEvent.click(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" }));
-  expect(onChange).not.toHaveBeenCalled();
-});
 
-test("PropsPanel reorders tabs with the up/down buttons", async () => {
-  const onChange = vi.fn();
-  const Panel = getWidget("tabs")!.PropsPanel;
-  render(
-    <Panel
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
-      dataSources={[]}
-      onChange={onChange}
-    />,
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Descendre l'onglet Onglet 1" }));
-  const tabs = onChange.mock.calls.at(-1)![0].tabs as Array<{ label: string }>;
-  expect(tabs.map((t) => t.label)).toEqual(["Onglet 2", "Onglet 1"]);
-});
+def _mock_client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
 
-test("PropsPanel edits only the active tab's items, switchable via the tab selector", async () => {
-  const onChange = vi.fn();
-  const Panel = getWidget("tabs")!.PropsPanel;
-  const { rerender } = render(
-    <Panel
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
-      dataSources={[]}
-      onChange={onChange}
-    />,
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
-  let tabs = onChange.mock.calls.at(-1)![0].tabs;
-  expect(tabs[0].items).toHaveLength(1);
-  expect(tabs[1].items).toHaveLength(0);
 
-  rerender(<Panel props={{ tabs }} dataSources={[]} onChange={onChange} />);
-  await userEvent.click(screen.getByRole("button", { name: "Sélectionner l'onglet Onglet 2" }));
-  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
-  tabs = onChange.mock.calls.at(-1)![0].tabs;
-  expect(tabs[0].items).toHaveLength(1);
-  expect(tabs[1].items).toHaveLength(1);
-});
+@pytest.fixture()
+def client():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        alice = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="sub-1",
+            username="alice", email="a@example.com", first_name="Alice", last_name="Doe",
+        )
+        source = harvest_repo.create_source(
+            s, tenant_id=tenant.id, owner_id=alice.id, type="arcgis",
+            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
+            mode="reference", enabled=True, interval_minutes=None,
+        )
+        layer_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=alice.id, resource_type="external", title="Bâtiments",
+        )
+        harvest_repo.create_record(
+            s, tenant_id=tenant.id, source_id=source.id, external_id="layer-0",
+            item_id=layer_item.id, collection_id=None, content_hash=None,
+            external_url=SERVICE, layer_kind="feature",
+        )
+        s.commit()
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: alice
+
+    test_client = TestClient(app)
+    test_client.layer_item_id = layer_item.id  # type: ignore[attr-defined]
+    test_client.alice_id = alice.id  # type: ignore[attr-defined]
+    test_client.tenant_id = tenant.id  # type: ignore[attr-defined]
+    test_client.session_factory = Session  # type: ignore[attr-defined]
+    yield test_client
+    engine.dispose()
+
+
+def _create_dataset(client, arcgis_item_id: str) -> str:
+    res = client.post("/configs", json={
+        "title": "Bâtiments (live)",
+        "config": {
+            "version": 1, "kind": "dataset",
+            "dataset": {"source": "arcgis", "arcgisItemId": arcgis_item_id, "columns": {}},
+        },
+    })
+    assert res.status_code == 201, res.text
+    return res.json()["itemId"]
+
+
+def test_get_items_proxies_to_arcgis_and_reshapes_response(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url).startswith(f"{SERVICE}/query")
+        assert "where=1%3D1" in str(request.url) or "where=1=1" in str(request.url)
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "id": 1, "properties": {"nom": "X"}, "geometry": None}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/items")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["type"] == "FeatureCollection"
+    assert body["features"] == [{"type": "Feature", "id": 1, "properties": {"nom": "X"}, "geometry": None}]
+    assert body["numberReturned"] == 1
+    assert body["numberMatched"] == 1
+
+
+def test_get_items_forwards_filters_and_bbox(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"features": []})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(
+        f"/datasets/{dataset_item_id}/arcgis/items",
+        params={"statut": "actif", "bbox": "1,2,3,4", "limit": "5", "offset": "0"},
+    )
+    assert resp.status_code == 200
+    assert "statut" in seen["url"]
+    assert "geometryType=esriGeometryEnvelope" in seen["url"]
+    assert "resultRecordCount=5" in seen["url"]
+
+
+def test_get_items_unknown_dataset_item_404s(client):
+    resp = client.get("/datasets/no-such-item/arcgis/items")
+    assert resp.status_code == 404
+
+
+def test_get_items_egress_blocked_returns_502(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def raising_client():
+        from app.harvest.egress import EgressBlockedError
+
+        class _RaisingClient:
+            def get(self, *args, **kwargs):
+                raise EgressBlockedError("cible interne bloquée")
+            def close(self):
+                pass
+        return _RaisingClient()
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = raising_client
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/items")
+    assert resp.status_code == 502
+
+
+def test_post_aggregate_no_groupby_count(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "outStatistics" in str(request.url)
+        return httpx.Response(200, json={"features": [{"attributes": {"m0": 12}}]})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={"agg": "count"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["categoryKey"] == "group"
+    assert body["rows"] == [{"group": "Total", "value": 12}]
+
+
+def test_post_aggregate_groupby_and_measure(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"features": [
+            {"attributes": {"commune": "Metz", "m0": 3}},
+            {"attributes": {"commune": "Nancy", "m0": 7}},
+        ]})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "groupBy": "commune", "agg": "count",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["categoryKey"] == "commune"
+    assert body["rows"] == [{"commune": "Metz", "value": 3}, {"commune": "Nancy", "value": 7}]
+
+
+def test_post_aggregate_bucket_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "groupBy": "annee", "bucket": "month",
+    })
+    assert resp.status_code == 400
+
+
+def test_post_aggregate_split_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "groupBy": "annee", "split": "commune",
+    })
+    assert resp.status_code == 400
+
+
+def test_post_aggregate_bins_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "field": "population", "bins": 10,
+    })
+    assert resp.status_code == 400
+
+
+def test_get_items_on_collection_dataset_404s(client):
+    # Seed a real, readable collection so the dataset actually gets created
+    # (a collection-sourced dataset needs a valid collectionId to pass
+    # validation — Task 1) — only then is the arcgis-route rejection real.
+    from app.collections.models import Collection
+
+    with client.session_factory() as s:
+        s.add(Collection(
+            id="parcs", tenant_id=client.tenant_id, owner_id=client.alice_id,
+            table_name="parcs", title="Parcs", pk_column="id", is_public=True, editable=True,
+        ))
+        s.commit()
+
+    res = client.post("/configs", json={
+        "title": "Dataset collection",
+        "config": {
+            "version": 1, "kind": "dataset",
+            "dataset": {"source": "collection", "collectionId": "parcs", "columns": {}},
+        },
+    })
+    assert res.status_code == 201, res.text
+    item_id = res.json()["itemId"]
+    resp = client.get(f"/datasets/{item_id}/arcgis/items")
+    assert resp.status_code == 404
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run to verify failure**
 
-Run: `cd shell && npx vitest run src/builder/widgets/tabs.test.tsx`
-Expected: FAIL — `getWidget("tabs")` is `undefined` (kind not registered
-yet).
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_routes.py -v`
+Expected: FAIL — `AttributeError: module 'app.harvest.routes' has no attribute 'get_arcgis_http_client'` and 404s (routes don't exist).
 
-- [ ] **Step 3: Implement `registerTabsWidget`**
+- [ ] **Step 3: Add the routes**
 
-Create `shell/src/builder/widgets/tabs.tsx`:
+In `core/app/harvest/routes.py`, add these imports at the top (alongside the existing ones):
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
-import { registerWidget } from "../registry";
-import type { WidgetItem } from "../../api/types";
-import { LayoutEditor } from "../LayoutEditor";
-import { GridCanvas } from "../GridCanvas";
-import { WidgetHost } from "../WidgetHost";
+```python
+from datetime import datetime, timezone
 
-type Tab = { id: string; label: string; items: WidgetItem[] };
-type TabsProps = { tabs: Tab[] };
+from fastapi import Query, Request
 
-const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+import httpx
 
-export function registerTabsWidget(): void {
-  registerWidget({
-    type: "tabs",
-    label: "Onglets",
-    defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
-    defaultSize: { w: 6, h: 6 },
-    PropsPanel: ({ props, onChange, dataSources }) => {
-      const { tabs } = props as TabsProps;
-      const [activeId, setActiveId] = useState(tabs[0]?.id);
-      const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
-
-      function addTab() {
-        const tab = { id: crypto.randomUUID(), label: `Onglet ${tabs.length + 1}`, items: [] };
-        onChange({ tabs: [...tabs, tab] });
-        setActiveId(tab.id);
-      }
-      function renameTab(id: string, label: string) {
-        onChange({ tabs: tabs.map((t) => (t.id === id ? { ...t, label } : t)) });
-      }
-      function removeTab(id: string) {
-        if (tabs.length <= 1) return;
-        const next = tabs.filter((t) => t.id !== id);
-        onChange({ tabs: next });
-        if (activeId === id) setActiveId(next[0].id);
-      }
-      function moveTab(id: string, dir: -1 | 1) {
-        const i = tabs.findIndex((t) => t.id === id);
-        const j = i + dir;
-        if (j < 0 || j >= tabs.length) return;
-        const next = [...tabs];
-        [next[i], next[j]] = [next[j], next[i]];
-        onChange({ tabs: next });
-      }
-      function setActiveItems(items: WidgetItem[]) {
-        onChange({ tabs: tabs.map((t) => (t.id === activeId ? { ...t, items } : t)) });
-      }
-
-      if (!active) return null;
-
-      return (
-        <div className="flex flex-col gap-2 text-sm">
-          <div className="flex flex-col gap-1">
-            {tabs.map((t, i) => (
-              <div key={t.id} className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-label={`Sélectionner l'onglet ${t.label}`}
-                  className={t.id === activeId ? "font-semibold underline" : ""}
-                  onClick={() => setActiveId(t.id)}
-                >
-                  {t.label}
-                </button>
-                <input
-                  aria-label={`Nom de l'onglet ${t.label}`}
-                  className={inputCls}
-                  value={t.label}
-                  onChange={(e) => renameTab(t.id, e.target.value)}
-                />
-                <button type="button" aria-label={`Monter l'onglet ${t.label}`} disabled={i === 0} onClick={() => moveTab(t.id, -1)}>↑</button>
-                <button type="button" aria-label={`Descendre l'onglet ${t.label}`} disabled={i === tabs.length - 1} onClick={() => moveTab(t.id, 1)}>↓</button>
-                <button
-                  type="button"
-                  aria-label={`Supprimer l'onglet ${t.label}`}
-                  disabled={tabs.length <= 1}
-                  className="text-xs text-red-600 disabled:opacity-30"
-                  onClick={() => removeTab(t.id)}
-                >
-                  Supprimer
-                </button>
-              </div>
-            ))}
-            <button type="button" aria-label="Ajouter un onglet" className={inputCls} onClick={addTab}>
-              Ajouter un onglet
-            </button>
-          </div>
-          <LayoutEditor items={active.items} onChange={setActiveItems} dataSources={dataSources} breakpoint="lg" />
-        </div>
-      );
-    },
-    Component: ({ props, ctx }) => {
-      const { tabs } = props as TabsProps;
-      const [activeId, setActiveId] = useState(tabs[0]?.id);
-      const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
-
-      if (!active) {
-        return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Aucun onglet</div>;
-      }
-
-      if (ctx.mode === "edit") {
-        return (
-          <div className="flex h-full flex-col">
-            <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
-              {tabs.map((t) => (
-                <span key={t.id} className="px-2 py-1">{t.label}</span>
-              ))}
-            </div>
-            <div className="flex-1 bg-slate-50" />
-          </div>
-        );
-      }
-
-      return (
-        <div className="flex h-full flex-col">
-          <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`rounded px-2 py-1 ${t.id === active.id ? "bg-[var(--gs-color-primary)] text-white" : ""}`}
-                onClick={() => setActiveId(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="min-h-0 flex-1">
-            <GridCanvas
-              items={active.items}
-              breakpoint={ctx.breakpoint ?? "lg"}
-              editable={false}
-              selectedId={null}
-              onSelect={() => {}}
-              onMoveItem={() => {}}
-              renderItem={(item) => <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} />}
-            />
-          </div>
-        </div>
-      );
-    },
-  });
-}
+from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
+from app.configs import repository as configs_repo
+from app.harvest import live_query
+from app.harvest.egress import EgressBlockedError, build_guarded_client
 ```
 
-- [ ] **Step 4: Register it in `registerBuiltinWidgets`**
+Add module constants and the dependency factory near `get_task_deferrer`:
 
-In `shell/src/builder/widgets/index.tsx`, add the import near the other
-widget imports:
+```python
+_MAX_LIMIT = 1000
 
-```tsx
-import { registerSliderFilterWidget } from "./sliderFilter";
-import { registerTabsWidget } from "./tabs";
+
+def get_arcgis_http_client():  # overridé en test
+    return build_guarded_client()
 ```
 
-And the call at the end of `registerBuiltinWidgets()`, after
-`registerSliderFilterWidget();`:
+Add the bbox parser and dataset-resolution helper (near `_require_admin`):
 
-```tsx
-  registerSliderFilterWidget();
-  registerTabsWidget();
-}
+```python
+def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
+    if raw is None:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+    try:
+        return tuple(float(p) for p in parts)  # type: ignore[return-value]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+
+
+def _resolve_arcgis_dataset(session: Session, *, item_id: str, user: User) -> str:
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="dataset not found")
+    config = configs_repo.get_config_by_item(session, item_id)
+    if (
+        config is None or config.kind != "dataset" or config.config.dataset is None
+        or config.config.dataset.source != "arcgis"
+    ):
+        raise HTTPException(status_code=404, detail="dataset not found")
+    arcgis_item_id = config.config.dataset.arcgisItemId
+    assert arcgis_item_id is not None
+    record = repo.get_feature_layer_record(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    if record is None or record.external_url is None:
+        raise HTTPException(status_code=404, detail="arcgis layer not found")
+    layer_facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    if layer_facts is None or not can(session, user_id=user.id, action="read", item=layer_facts):
+        raise HTTPException(status_code=404, detail="arcgis layer not found")
+    return record.external_url
+
+
+def _groupby_fields(raw: str | list[str] | None) -> list[str]:
+    if not raw:
+        return []
+    return raw if isinstance(raw, list) else [raw]
+
+
+def _measure_label(m: AggregateMeasure) -> str:
+    return m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+Add the two routes at the end of the file:
 
-Run: `cd shell && npx vitest run src/builder/widgets/tabs.test.tsx`
-Expected: PASS (all 4 tests).
+```python
+@router.get("/datasets/{item_id}/arcgis/items")
+def get_dataset_arcgis_items(
+    item_id: str, request: Request,
+    limit: int = Query(100, ge=1), offset: int = Query(0, ge=0), bbox: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    limit = min(limit, _MAX_LIMIT)
+    parsed_bbox = _parse_bbox(bbox)
+    reserved = {"limit", "offset", "bbox"}
+    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+    params = live_query.translate_features_query(
+        filters=filters, bbox=parsed_bbox, limit=limit, offset=offset,
+    )
+    try:
+        raw = live_query.fetch_query(client, external_url, params)
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+    features = raw.get("features", []) if isinstance(raw, dict) else []
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "numberMatched": offset + len(features),
+        "numberReturned": len(features),
+        "timeStamp": datetime.now(timezone.utc).isoformat(),
+        "links": [],
+    }
 
-Also run the full unit suite to catch any registry/index regression:
 
-Run: `cd shell && npx vitest run`
-Expected: PASS (no failures elsewhere).
+@router.post("/datasets/{item_id}/arcgis/aggregate")
+def get_dataset_arcgis_aggregate(
+    item_id: str, body: AggregateRequestBody,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if body.bucket is not None or body.split is not None or body.bins is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="bucket/split/bins are not supported for arcgis-sourced datasets",
+        )
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+    group_by = _groupby_fields(body.groupBy)
+    measures_in = body.measures or [AggregateMeasure(field=body.field, agg=body.agg, label="value")]
+    measures = [(m.agg, m.field, _measure_label(m)) for m in measures_in]
+    try:
+        params = live_query.translate_aggregate_query(
+            group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox,
+        )
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}]},
+        )
+    try:
+        raw = live_query.fetch_query(client, external_url, params)
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+    category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
+    return {"categoryKey": category_key, "rows": rows}
+```
+
+Note the top-of-file `import httpx` line — check `core/app/harvest/routes.py` doesn't already import `httpx` under a different alias before adding; if it does, reuse it instead of adding a duplicate import.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_routes.py -v`
+Expected: all tests PASS.
+
+- [ ] **Step 5: Run the full core suite + import-linter**
+
+Run: `cd core && uv run pytest && uv run lint-imports`
+Expected: full suite green, import-linter reports no broken contracts (`app.harvest` importing `app.configs`/`app.analytics`/`app.features`-adjacent modules is allowed per the layer order).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/builder/widgets/tabs.tsx shell/src/builder/widgets/tabs.test.tsx shell/src/builder/widgets/index.tsx
-git commit -m "feat(shell): tabs container widget with a nested LayoutEditor per tab (SP-14j)"
+cd core
+git add app/harvest/routes.py tests/test_harvest_dataset_arcgis_routes.py
+git commit -m "feat(core): GET/POST /datasets/{itemId}/arcgis/items|aggregate live proxy (SP-14k)"
 ```
 
 ---
