@@ -45,3 +45,35 @@ def test_dataset_config_time_field_and_reacts_to_extent_default():
     config = BuilderConfig.model_validate(_dataset_body())
     assert config.dataset.timeField is None
     assert config.dataset.reactsToExtent is False
+
+
+def test_dataset_config_arcgis_source_valide():
+    body = {
+        "version": 1, "kind": "dataset",
+        "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "columns": {}},
+    }
+    config = BuilderConfig.model_validate(body)
+    assert config.dataset.source == "arcgis"
+    assert config.dataset.arcgisItemId == "item-1"
+    assert config.dataset.collectionId is None
+
+
+def test_dataset_config_collection_source_sans_collection_id_rejete():
+    body = {"version": 1, "kind": "dataset", "dataset": {"source": "collection", "columns": {}}}
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(body)
+
+
+def test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete():
+    body = {"version": 1, "kind": "dataset", "dataset": {"source": "arcgis", "columns": {}}}
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(body)
+
+
+def test_dataset_config_arcgis_source_avec_collection_id_rejete():
+    body = {
+        "version": 1, "kind": "dataset",
+        "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "collectionId": "parcs", "columns": {}},
+    }
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(body)

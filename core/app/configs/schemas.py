@@ -93,11 +93,25 @@ class DatasetColumnMeta(BaseModel):
 
 
 class DatasetPayload(BaseModel):
-    source: Literal["collection"]  # seul type supporté en SP-14a
-    collectionId: str
+    source: Literal["collection", "arcgis"]
+    collectionId: str | None = None    # requis si source == "collection"
+    arcgisItemId: str | None = None    # requis si source == "arcgis" (SP-14k) : item "external"
+                                        # moissonné en mode référence (SP-12d)
     columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
     timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
     reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
+
+    @model_validator(mode="after")
+    def _require_source_id(self) -> "DatasetPayload":
+        if self.source == "collection" and self.collectionId is None:
+            raise ValueError("collection source requires collectionId")
+        if self.source == "arcgis" and self.arcgisItemId is None:
+            raise ValueError("arcgis source requires arcgisItemId")
+        if self.source == "collection" and self.arcgisItemId is not None:
+            raise ValueError("collection source must not set arcgisItemId")
+        if self.source == "arcgis" and self.collectionId is not None:
+            raise ValueError("arcgis source must not set collectionId")
+        return self
 
 
 class BuilderConfig(BaseModel):
