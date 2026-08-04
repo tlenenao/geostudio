@@ -85,6 +85,21 @@ def list_layers(
     return {"layers": layers}
 
 
+@router.get("/harvest/feature-layers")
+def list_feature_layers(
+    q: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+):
+    rows = repo.list_feature_layer_records(session, tenant_id=user.tenant_id, q=q)
+    layers = []
+    for item_id, title, _external_url in rows:
+        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+            continue
+        layers.append({"id": item_id, "title": title})
+    return {"layers": layers}
+
+
 @router.get("/harvest/sources/{source_id}")
 def get_source(
     source_id: str, user: User = Depends(get_current_user), session: Session = Depends(get_session),
