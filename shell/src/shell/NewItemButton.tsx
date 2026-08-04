@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCreateItem, useCreateMap, useCreateDataset, useCollectionsAdmin } from "../api/hooks";
+import { useCreateItem, useCreateMap, useCreateDataset, useCollectionsAdmin, useFeatureLayers } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -19,12 +19,15 @@ export function NewItemButton() {
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [collectionId, setCollectionId] = useState("");
+  const [datasetSource, setDatasetSource] = useState<"collection" | "arcgis">("collection");
+  const [arcgisItemId, setArcgisItemId] = useState("");
   const { username } = useAuth();
   const navigate = useNavigate();
   const create = useCreateItem();
   const createMap = useCreateMap();
   const createDataset = useCreateDataset();
-  const collectionsQuery = useCollectionsAdmin({ enabled: open && kind === "dataset" });
+  const collectionsQuery = useCollectionsAdmin({ enabled: open && kind === "dataset" && datasetSource === "collection" });
+  const featureLayersQuery = useFeatureLayers({ enabled: open && kind === "dataset" && datasetSource === "arcgis" });
 
   // Slug auto-suivi du titre tant que l'utilisateur ne l'a pas édité lui-même.
   useEffect(() => {
@@ -39,6 +42,8 @@ export function NewItemButton() {
     setSlug("");
     setSlugTouched(false);
     setCollectionId("");
+    setDatasetSource("collection");
+    setArcgisItemId("");
     create.reset();
     createMap.reset();
     createDataset.reset();
@@ -49,13 +54,18 @@ export function NewItemButton() {
     const clean = title.trim();
     if (!clean) return;
     if (kind === "site" && !isValidSlug(slug)) return;
-    if (kind === "dataset" && !collectionId) return;
+    if (kind === "dataset" && datasetSource === "collection" && !collectionId) return;
+    if (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId) return;
     try {
       const item =
         kind === "map"
           ? await createMap.mutateAsync({ title: clean, owner: username ?? "" })
           : kind === "dataset"
-            ? await createDataset.mutateAsync({ title: clean, owner: username ?? "", source: "collection", collectionId })
+            ? await createDataset.mutateAsync(
+                datasetSource === "arcgis"
+                  ? { title: clean, owner: username ?? "", source: "arcgis", arcgisItemId }
+                  : { title: clean, owner: username ?? "", source: "collection", collectionId },
+              )
             : await create.mutateAsync({
                 kind,
                 title: clean,
@@ -112,6 +122,20 @@ export function NewItemButton() {
           )}
           {kind === "dataset" && (
             <label className="flex flex-col gap-1 text-sm">
+              Type de source
+              <select
+                aria-label="Type de source"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={datasetSource}
+                onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
+              >
+                <option value="collection">Collection</option>
+                <option value="arcgis">ArcGIS Feature Service</option>
+              </select>
+            </label>
+          )}
+          {kind === "dataset" && datasetSource === "collection" && (
+            <label className="flex flex-col gap-1 text-sm">
               Collection source
               <select
                 aria-label="Collection source"
@@ -124,6 +148,28 @@ export function NewItemButton() {
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}
               </select>
+            </label>
+          )}
+          {kind === "dataset" && datasetSource === "arcgis" && (
+            <label className="flex flex-col gap-1 text-sm">
+              Couche ArcGIS
+              <select
+                aria-label="Couche ArcGIS"
+                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={arcgisItemId}
+                onChange={(e) => setArcgisItemId(e.target.value)}
+              >
+                <option value="">Choisir…</option>
+                {(featureLayersQuery.data ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>{l.title}</option>
+                ))}
+              </select>
+              {featureLayersQuery.data?.length === 0 && (
+                <span className="text-xs text-slate-500">
+                  Aucune couche moissonnée. Configurez une source de moissonnage ArcGIS
+                  (mode référence) dans l'administration.
+                </span>
+              )}
             </label>
           )}
           <label className="flex flex-col gap-1 text-sm">
@@ -162,7 +208,8 @@ export function NewItemButton() {
               disabled={
                 create.isPending || createMap.isPending || createDataset.isPending ||
                 (kind === "site" && !isValidSlug(slug)) ||
-                (kind === "dataset" && !collectionId)
+                (kind === "dataset" && datasetSource === "collection" && !collectionId) ||
+                (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId)
               }
             >
               Créer

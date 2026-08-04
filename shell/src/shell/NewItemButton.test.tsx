@@ -282,3 +282,51 @@ test("creating a dataset posts collectionId and navigates to the dataset editor"
   await waitFor(() => expect(body?.config?.dataset?.collectionId).toBe("parcs"));
   expect(await screen.findByText("dataset-ds-9")).toBeInTheDocument();
 });
+
+test("creates an arcgis-sourced dataset from a feature-layer picker", async () => {
+  let body: any;
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [] }),
+    ),
+    http.get("https://core.test/harvest/feature-layers", () =>
+      HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
+    ),
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-ds", kind: "dataset", itemId: "ds-1" }, { status: 201 });
+    }),
+  );
+  function DatasetProbe() {
+    const { pk } = useParams();
+    return <div>dataset-{pk}</div>;
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({
+    coreUrl: "https://core.test",
+    getToken: () => "t",
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+          <Routes>
+            <Route path="/apps/:pk/edit" element={<AppBuilderProbe />} />
+            <Route path="/datasets/:pk/edit" element={<DatasetProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "dataset");
+  await userEvent.selectOptions(screen.getByLabelText("Type de source"), "arcgis");
+  await userEvent.selectOptions(await screen.findByLabelText("Couche ArcGIS"), "layer-1");
+  await userEvent.type(screen.getByLabelText("Titre"), "Bâtiments (live)");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+  await waitFor(() => expect(body?.config?.dataset?.source).toBe("arcgis"));
+  await waitFor(() => expect(body?.config?.dataset?.arcgisItemId).toBe("layer-1"));
+  expect(await screen.findByText("dataset-ds-1")).toBeInTheDocument();
+});
