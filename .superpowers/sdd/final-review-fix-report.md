@@ -1,187 +1,144 @@
-# Correction issue de revue finale — SP-14f (branche `dev`, HEAD 5461b34)
+# Rapport — corrections review finale SP-14k (source arcgis, référencement live)
 
-## Constat
+Deux findings de la review finale de branche ont été corrigés, chacun dans son
+propre commit.
 
-Le contrôle « Nombre de classes » du panneau de propriétés du widget `chart`
-(`shell/src/builder/widgets/chart.tsx`, gated par `showBins =
-chartType === "histogram"`) était mort : il écrivait `props.bins`, mais
-`chartOption.ts`'s `buildOption` ne lit jamais ce champ — le binning de
-l'histogramme est calculé côté cœur (`/collections/{id}/aggregate`) à partir
-de `query.bins`, réglé par le contrôle « Nombre de classes (source …) » du
-`DataSourcePanel`, qui est le seul chemin qui fonctionne réellement (et que
-l'E2E `analytics-context.spec.ts` couvre).
+## Finding 1 (Critical) — mismatch shell↔core sur le paramètre de chemin
 
-Un auteur réglant le nombre de classes uniquement depuis le panneau du
-graphique (le plus visible, juste à côté de « Type de graphique: Histogramme »)
-n'avait aucun effet, et s'il ne touchait jamais le panneau DataSource,
-`/aggregate` recevait une requête sans `bins`, retournant des lignes sans
-`bucketStart`/`bucketEnd`/`count` → axes `"NaN–NaN"`, barres à hauteur nulle.
+**Cause racine confirmée** : la route cœur `GET/POST
+/datasets/{item_id}/arcgis/items|aggregate` (`core/app/harvest/routes.py`,
+`_resolve_arcgis_dataset`) attend l'`item_id` **du dataset lui-même**
+(`get_config_by_item(session, item_id)` puis lecture de
+`config.dataset.arcgisItemId` pour retrouver la couche moissonnée). Le shell
+construisait cette même URL avec l'`arcgisItemId` (item de la couche
+moissonnée) au lieu de l'`item_id` du dataset — chemin garanti 404 en
+production puisqu'un item de couche moissonnée (`resource_type="external"`)
+n'a pas de `Config` de type `dataset`.
 
-## Fix appliqué
+### Changements — `shell/src/api/itemClient.ts`
 
-Suppression du contrôle mort et de tout ce qui le supportait, la source de
-vérité restant exclusivement le `DataSourcePanel` :
+- `buildArcgisItemsUrl` (ligne ~167) : paramètre renommé
+  `arcgisItemId: string` → `datasetItemId: string` (clarté seule, la fonction
+  reçoit désormais toujours l'item id du dataset).
+- `featuresUrl` (lignes ~706-715) : condition simplifiée en
+  `cached?.source === "arcgis"` (plus besoin de vérifier `arcgisItemId`) et
+  appel corrigé en `buildArcgisItemsUrl(coreUrl, source.datasetId, source.query)`.
+- `queryDataSource` (lignes ~717-728) : condition changée en
+  `cachedDataset?.source === "arcgis" && source.datasetId` (narrowing
+  TypeScript sur `source.datasetId`) ; URL d'agrégat corrigée en
+  `` `/datasets/${source.datasetId}/arcgis/aggregate` `` ; URL de features
+  corrigée en `buildArcgisItemsUrl(coreUrl, source.datasetId, source.query)`.
+- Aucun autre point du fichier touché : `ResolvedDataset.arcgisItemId`,
+  `getDatasetConfig`, `saveDatasetConfig`, `createDatasetItem`,
+  `listFeatureLayers` restent inchangés (l'`arcgisItemId` y reste pertinent
+  pour l'affichage/la config).
 
-1. `shell/src/builder/widgets/chart.tsx`
-   - Suppression du bloc JSX `{showBins && (...)}` dans `PropsPanel`.
-   - Suppression de `const showBins = chartType === "histogram";`.
-   - Suppression de `bins: 10` dans `defaultProps`.
-2. `shell/src/builder/widgets/chartOption.ts`
-   - Suppression du champ `bins?: number;` du type `ChartProps` — confirmé
-     mort par recherche : aucune lecture dans `buildOption`, et après le
-     point 1, plus aucune écriture nulle part (`grep -rn "props\.bins\|ChartProps"
-     shell/src` ne retourne plus que la déclaration/usages de type, sans
-     référence à `.bins`).
-3. `shell/src/builder/widgets/chart.test.tsx`
-   - Suppression du test `"PropsPanel shows a bin-count field for
-     histogram"` qui exerçait le contrôle retiré (assertion sur
-     `getByLabelText("Nombre de classes")`).
-   - `chartOption.test.ts` ne référençait pas `bins` — rien à changer.
-   - `DataSourcePanel.test.tsx` (contrôle « Nombre de classes (source …) »)
-     non touché — hors périmètre, c'est le chemin correct et fonctionnel.
+### Changements — `shell/src/api/itemClient.test.ts`
 
-## Résultats de vérification
+- Test `featuresUrl routes an arcgis-sourced dataset to
+  /datasets/{datasetItemId}/arcgis/items` (titre corrigé) : assertion
+  `toBe(...)` mise à jour de `/datasets/layer-9/arcgis/items` vers
+  `/datasets/ds-arcgis-1/arcgis/items`.
+- Test `queryDataSource fetches features from the arcgis proxy...` : mock
+  `http.get` déplacé de `/datasets/layer-10/arcgis/items` vers
+  `/datasets/ds-arcgis-2/arcgis/items`.
+- Test `queryDataSource posts aggregate queries to the arcgis proxy...` :
+  mock `http.post` déplacé de `/datasets/layer-11/arcgis/aggregate` vers
+  `/datasets/ds-arcgis-3/arcgis/aggregate`.
+- **Nouveau test** `featuresUrl keys the arcgis proxy URL on the dataset item
+  id, not the arcgis layer id` : dataset `ds-999` avec
+  `arcgisItemId: "totally-different-layer-id"`, assertion que l'URL générée
+  est bien keyée sur `ds-999` — régression exacte du bug corrigé.
+- Les autres tests arcgis (`getDatasetConfig`, `createDatasetItem`,
+  `listFeatureLayers`) non touchés (hors du chemin concerné).
 
-- Ciblé : `npx vitest run src/builder/widgets/chart.test.tsx
-  src/builder/widgets/chartOption.test.ts` → **2 fichiers, 45 tests, tous
-  verts**.
-- Suite unitaire complète : `npm run test` → **101 fichiers, 752 tests, tous
-  verts** (les logs d'erreur CEL affichés en stderr dans
-  `exprBindings.test.ts` sont attendus — ce test vérifie justement la
-  propagation d'erreur, pas un échec).
-- Build : `npm run build` (`tsc --noEmit && vite build`) → **compile et
-  bundle sans erreur** (seuls les avertissements pré-existants de taille de
-  chunk, sans rapport avec ce changement).
-- E2E complet : `VITE_AUTH_MODE=mock npm run e2e` → **69/69 specs vertes**,
-  incluant les trois scénarios SP-14f (« sankey, treemap et sunburst render
-  from a multi-field groupBy dataset », « a funnel click cross-filters… »,
-  « a histogram renders binned data and never cross-filters on click ») qui
-  passent sans le contrôle retiré, confirmant que le chemin `DataSourcePanel`
-  → `/aggregate` reste seul et suffisant pour l'histogramme.
+### Changements — `shell/e2e/dataset-arcgis.spec.ts`
 
-## Conclusion
+- `page.route("**/datasets/layer-1/arcgis/items*", ...)` → `**/datasets/dataset-1/arcgis/items*`.
+- `page.route("**/datasets/layer-1/arcgis/aggregate", ...)` → `**/datasets/dataset-1/arcgis/aggregate`.
+- Commentaire de la section « Runtime » mis à jour pour référencer
+  `/datasets/dataset-1/arcgis/*` (au lieu de `layer-1`).
+- Les autres occurrences de `layer-1` dans ce spec (id de couche ArcGIS lors
+  du moissonnage, `arcgisItemId` dans le payload de création du dataset) sont
+  restées inchangées — elles ne concernent pas l'URL du proxy.
 
-Le contrôle dupliqué et non fonctionnel est retiré ; le `DataSourcePanel`
-reste la source de vérité unique pour le nombre de classes de l'histogramme.
-Aucune régression détectée sur les 12 tâches de la branche SP-14f — prête
-pour merge après cette dernière correction.
+## Finding 2 (Important) — noms de champs non validés dans l'agrégat arcgis
 
----
+**Contexte** : une tâche précédente du même plan avait corrigé un finding
+Critical où les *noms* de filtres arrivaient dans la clause `where=` ArcGIS
+sans échappement (seules les *valeurs* étaient échappées), en ajoutant
+`_FIELD_NAME_RE` validé dans `_build_where`. `translate_aggregate_query`
+avait deux autres points où des noms de champs contrôlés par l'utilisateur
+atteignaient les paramètres sortants ArcGIS sans passer par cette même
+validation : `groupByFieldsForStatistics` (depuis `body.groupBy`) et
+`onStatisticField` (depuis `body.field`/`body.measures[].field`).
 
-# Correction issue de revue finale — SP-14h (branche `dev`, commit `eadbdd7`)
+### Changements — `core/app/harvest/live_query.py` (`translate_aggregate_query`)
 
-## Constat (revue whole-branch de SP-14h)
+- Chaque nom non-`None` dans la boucle `measures` est désormais validé contre
+  `_FIELD_NAME_RE` avant utilisation comme `onStatisticField` ; sinon
+  `ArcgisQueryError(field, f"invalid measure field name '{field}'")`.
+- Chaque nom dans `group_by` est validé contre `_FIELD_NAME_RE` avant d'être
+  joint dans `groupByFieldsForStatistics` ; sinon
+  `ArcgisQueryError(field_name, f"invalid groupBy field name '{field_name}'")`.
+- Aucun changement de route nécessaire : `get_dataset_arcgis_aggregate`
+  (`core/app/harvest/routes.py`) attrapait déjà `live_query.ArcgisQueryError`
+  autour de l'appel à `translate_aggregate_query` et la propage en 400.
 
-Le widget `map` du builder a reçu une symbologie pilotée par dataset
-(encodages couleur/taille + légende, SP-14h) répartie sur 4 tâches, chacune
-passée en revue individuellement. La revue finale de la branche entière a
-trouvé un bug critique et deux points mineurs, corrigés ici avant merge.
+### Tests ajoutés
 
-## 1. Critique — domaines numériques couleur/taille non fonctionnels contre le vrai cœur
+- `core/tests/test_harvest_live_query.py` :
+  `test_translate_aggregate_query_rejects_invalid_groupby_field_name`,
+  `test_translate_aggregate_query_rejects_invalid_measure_field_name`.
+- `core/tests/test_harvest_dataset_arcgis_routes.py` :
+  `test_post_aggregate_invalid_groupby_field_name_rejected` (mirroring
+  `test_post_aggregate_invalid_filter_field_name_rejected`, POST avec
+  `groupBy: "1) OR (1=1--"` → 400).
 
-**Fichier : `shell/src/builder/widgets/mapWidget.tsx`, fonction `useNumericDomain`
-(ligne 42, dans le bloc `query:`).**
+## Résultats des tests (intégraux, avant chaque commit)
 
-`useNumericDomain` (utilisée à la fois pour l'encodage couleur numérique et
-pour l'encodage taille) construisait sa requête sans `label` explicite :
-`measures: [{ field, agg: "min" }, { field, agg: "max" }]`, puis lisait
-`properties.min ?? 0` / `properties.max ?? 0`.
+### Shell
 
-Or le cœur réel (`core/app/analytics/aggregate.py`, `_measure_label`) calcule
-la clé de réponse d'une mesure **sans label explicite** comme
-`f"{m.agg}_{m.field}"` (ex. `min_montant`, `max_montant`) — jamais `min`/`max`
-tout court. Seule une mesure avec un `label` explicite dans la requête
-utilise ce libellé littéral comme clé de réponse. Contre le vrai cœur,
-`properties.min` et `properties.max` étaient donc toujours `undefined`,
-retombaient sur `0` via `?? 0`, le domaine s'effondrait à `{min: 0, max: 0}`,
-et le garde-fou `min === max` de `mapSymbology.ts` rendait alors une couleur
-constante `#dbeafe` et un rayon constant de 4px partout — avec une légende
-affichant « 0 – 0 ». Le bug était masqué par le test unitaire (faux
-`queryDataSource`) et par le test E2E (route `/aggregate` mockée) qui
-renvoyaient tous deux directement `{properties: {min, max}}` /
-`{rows: [{min, max}]}` — la forme de clé pratique mais fausse.
+- `npm run build` → OK (`tsc --noEmit && vite build`, build réussi, warnings
+  de taille de chunk préexistants et hors périmètre).
+- `npx vitest run` → **840 tests passés** (110 fichiers), 0 échec (les
+  quelques logs `stderr` visibles dans la sortie sont des chemins d'erreur
+  volontairement testés dans des tests existants, non liés à ce fix).
+- `VITE_AUTH_MODE=mock npm run e2e` → **83 tests passés** (18 specs), y
+  compris `dataset-arcgis.spec.ts` qui exerce directement le chemin corrigé
+  (création dataset arcgis → Table + Indicateur liés → runtime consomme via
+  `/datasets/dataset-1/arcgis/items` et `/datasets/dataset-1/arcgis/aggregate`).
 
-**Fix appliqué** (identique au patron déjà correct dans
-`shell/src/builder/widgets/sliderFilter.tsx` ligne 45) : ajout de
-`label: "min"` sur la mesure `agg: "min"` et `label: "max"` sur la mesure
-`agg: "max"`, dans `mapWidget.tsx` ligne 42 :
+### Cœur
 
-```ts
-query: { measures: [{ field, agg: "min", label: "min" }, { field, agg: "max", label: "max" }] },
-```
+- `uv run pytest` → **850 passés, 106 skipped** (skips = tests postgis
+  nécessitant docker, préexistants), 0 échec.
+- `uv run lint-imports` → `layered architecture KEPT`, `Contracts: 1 kept, 0
+  broken`.
 
-La lecture du résultat (`properties.min ?? 0` / `properties.max ?? 0`)
-n'a pas changé — elle devient correcte une fois les labels ajoutés, le cœur
-honorant désormais le label explicite comme clé de réponse. Aucune
-modification dans `core/`.
+Tout est vert sur les deux stacks.
 
-## 2. Mineur — scénario E2E 25 ne testait pas ce qu'il prétendait
+## Commits
 
-**Fichier : `shell/e2e/analytics-context.spec.ts`, test
-`"a map with no encodings configured issues no domain query (SP-14h)"`
-(ligne ~1811).**
+- `8c2cba5` — `fix(shell): key the arcgis live proxy URL on the dataset item id (SP-14k)`
+  (`shell/src/api/itemClient.ts`, `shell/src/api/itemClient.test.ts`,
+  `shell/e2e/dataset-arcgis.spec.ts`)
+- `9f4ef1b` — `fix(core): validate groupBy and measure field names in arcgis aggregate (SP-14k)`
+  (`core/app/harvest/live_query.py`,
+  `core/tests/test_harvest_live_query.py`,
+  `core/tests/test_harvest_dataset_arcgis_routes.py`)
 
-Le test appelait `addFeaturesSource(page, "parcelles")` mais jamais
-`promoteLastSource(page, ...)` ensuite. Sans promotion, aucun `datasetId`
-n'est lié, donc les requêtes de domaine sont `enabled: false` de toute façon
-— l'assertion `aggregateCalls === 0` passait pour la mauvaise raison
-(absence de `datasetId`, pas absence d'encodings configurés). Les scénarios
-22 à 24 du même fichier appellent bien `promoteLastSource(page, 1)` après
-`addFeaturesSource`.
+## Remarques / points de vigilance
 
-**Fix appliqué** : ajout de `await promoteLastSource(page, 1);` juste après
-`await addFeaturesSource(page, "parcelles");`, en miroir des trois autres
-scénarios — le test lie désormais un vrai `datasetId` et exerce
-véritablement « pas d'encodings configurés → zéro requête de domaine ».
-
-## 3. Mineur — branche `line-color` non couverte
-
-**Fichier : `shell/src/builder/widgets/mapSymbology.ts`, fonction
-`colorPaintProperty`** mappe `renderAs === "line"` vers `"line-color"`, mais
-aucun test de `shell/src/builder/widgets/mapSymbology.test.ts` n'exerçait un
-encodage couleur sur une géométrie ligne (seuls fill/polygone et
-circle/point étaient couverts).
-
-**Fix appliqué** : ajout d'un test dans `mapSymbology.test.ts` (juste avant
-« cycles the categorical palette past 8 distinct values ») appelant
-`buildMapPaint` avec `geometryKind: "line"` et un encodage couleur
-catégoriel, en miroir exact du test fill-color existant, et vérifiant que
-`paint["line-color"]` porte l'expression `match` attendue. Aucun changement
-de code de production nécessaire — la branche `line-color` existait déjà.
-
-## Résultats de vérification
-
-- Ciblé unitaire : `npm run test -- mapWidget.test.tsx mapSymbology.test.ts`
-  → **2 fichiers, 30 tests, tous verts** (15 + 15, incluant le nouveau test
-  line-color).
-- Ciblé E2E : `npm run e2e -- analytics-context.spec.ts -g "SP-14h"`
-  → **4/4 scénarios verts**, en particulier le scénario 25 corrigé.
-- Suite unitaire complète : `npm run test` → **104 fichiers, 793 tests, tous
-  verts** (mêmes logs d'erreur CEL attendus en stderr, non liés à ce
-  changement).
-- Build : `npm run build` (`tsc --noEmit && vite build`) → **compile et
-  bundle sans erreur** (seuls les avertissements pré-existants de taille de
-  chunk et d'import dynamique/statique mixte de `MapView.tsx`, sans rapport
-  avec ce changement).
-- E2E complet : `npm run e2e` → **76/76 specs vertes**, incluant les 4
-  scénarios SP-14h.
-
-## Commit
-
-`eadbdd7` — `fix(shell): label numeric domain measures, fix no-op E2E
-scenario, cover line-color branch (SP-14h)`.
-
-## Fichiers modifiés
-
-- `shell/src/builder/widgets/mapWidget.tsx` (fix critique, ligne 42)
-- `shell/e2e/analytics-context.spec.ts` (fix mineur 1, scénario 25)
-- `shell/src/builder/widgets/mapSymbology.test.ts` (fix mineur 2, nouveau test)
-
-## Conclusion
-
-Les trois constats de la revue finale whole-branch de SP-14h sont corrigés :
-le bug critique qui neutralisait la moitié de la fonctionnalité (couleur
-numérique + taille proportionnelle) contre le vrai cœur est résolu, le test
-E2E du scénario 25 isole désormais réellement la bonne cause, et la branche
-`line-color` de `colorPaintProperty` est couverte. Suites unitaire et E2E
-complètes vertes, build sans erreur — prêt pour merge.
+- Périmètre strictement limité aux deux findings demandés ; les findings
+  Minor listés dans la review (message 404 incohérent, croissance du cache,
+  regex ASCII-only, etc.) n'ont pas été touchés, comme prescrit.
+- Des fichiers `.superpowers/sdd/*.md` étaient déjà modifiés dans l'arbre de
+  travail avant le début de cette tâche (non liés à ces deux findings) — ils
+  n'ont pas été inclus dans les commits ci-dessus, volontairement laissés en
+  l'état pour ne pas élargir le périmètre.
+- Aucun problème ouvert identifié après vérification complète : les deux
+  fixes sont couverts par des tests unitaires ciblés et validés de bout en
+  bout par la suite E2E (en particulier `dataset-arcgis.spec.ts`, seul test
+  qui prouve que l'URL réellement construite par le shell correspond bien à
+  ce que le cœur attend).
