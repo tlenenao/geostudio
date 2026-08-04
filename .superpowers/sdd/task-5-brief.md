@@ -1,117 +1,305 @@
-### Task 5: E2E coverage
+## Task 5: `tabs` widget
 
 **Files:**
-- Create: `shell/e2e/sql-lab.spec.ts`
+- Create: `shell/src/builder/widgets/tabs.tsx`
+- Modify: `shell/src/builder/widgets/index.tsx`
+- Test: `shell/src/builder/widgets/tabs.test.tsx`
 
 **Interfaces:**
-- Consumes: `mockCore` (`shell/e2e/mocks.ts`, already exists) ; the running app's `/analytics/sql` route and "SQL Lab" nav link (Task 4) ; the `SqlLabPage` UI surface — `aria-label="Requête SQL"` textarea, `"Exécuter"` button, results `<table>`, `role="alert"` error message, history button labelled `"Recharger la requête : <sql>"` (Task 3).
-- Produces: nothing consumed by later tasks — this is the last task.
+- Consumes: `LayoutEditor` (Task 4), `GridCanvas`, `WidgetHost`,
+  `registerWidget`/`WidgetContext` (`registry.ts`, `breakpoint` from Task 1).
+- Produces: widget kind `"tabs"`, `props: { tabs: Array<{ id: string; label: string; items: WidgetItem[] }> }`,
+  registered via `registerTabsWidget()`.
 
-- [ ] **Step 1: Write the E2E spec**
+- [ ] **Step 1: Write the failing tests**
 
-Create `shell/e2e/sql-lab.spec.ts`:
+Create `shell/src/builder/widgets/tabs.test.tsx`:
 
-```ts
-import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, test, vi } from "vitest";
+import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
+import { registerBuiltinWidgets } from "./index";
+import type { WidgetItem } from "../../api/types";
 
-test("un analyste exécute une requête SQL, voit le résultat, et recharge une requête depuis l'historique", async ({ page }) => {
-  await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: false, isAnalyst: true,
-      },
-    });
-  });
+beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
 
-  let posted: unknown;
-  // Host-scoped (not "**/analytics/sql"): the shell's own client-side route
-  // to this very page is "/analytics/sql" — a path-only glob would also
-  // intercept the browser's document navigation and break rendering (same
-  // rationale as "/admin/extensions" and "/admin/collections" elsewhere in
-  // this suite, see admin-extensions.spec.ts).
-  await page.route("https://core.test/analytics/sql", async (route) => {
-    posted = await route.request().postDataJSON();
-    await route.fulfill({
-      json: { columns: ["nom", "surface"], rows: [["Parc A", 12]], truncated: false },
-    });
-  });
-
-  await page.goto("/analytics/sql");
-  await expect(page.getByRole("link", { name: "SQL Lab" })).toBeVisible();
-  await page.getByLabel("Requête SQL").fill("select nom, surface from parcs");
-  await page.getByRole("button", { name: "Exécuter" }).click();
-  await expect(page.getByRole("columnheader", { name: "nom" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "Parc A" })).toBeVisible();
-  await expect.poll(() => posted).toEqual({ sql: "select nom, surface from parcs" });
-
-  await page.getByLabel("Requête SQL").fill("");
-  await page.getByRole("button", { name: "Recharger la requête : select nom, surface from parcs" }).click();
-  await expect(page.getByLabel("Requête SQL")).toHaveValue("select nom, surface from parcs");
+test("runtime: shows the first tab's content by default and switches on click", async () => {
+  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
+  const tabB: WidgetItem = { id: "b", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu B" } };
+  const Tabs = getWidget("tabs")!.Component;
+  render(
+    <Tabs
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }, { id: "t2", label: "Onglet 2", items: [tabB] }] }}
+      ctx={{ mode: "runtime" } as WidgetContext}
+    />,
+  );
+  expect(screen.getByText("Contenu A")).toBeInTheDocument();
+  expect(screen.queryByText("Contenu B")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Onglet 2" }));
+  expect(screen.queryByText("Contenu A")).not.toBeInTheDocument();
+  expect(screen.getByText("Contenu B")).toBeInTheDocument();
 });
 
-test("une erreur SQL affiche le message du serveur et conserve le texte dans l'éditeur", async ({ page }) => {
-  await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: false, isAnalyst: true,
-      },
-    });
-  });
-  await page.route("https://core.test/analytics/sql", async (route) => {
-    await route.fulfill({
-      status: 400,
-      json: { detail: { errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }] } },
-    });
-  });
-
-  await page.goto("/analytics/sql");
-  await page.getByLabel("Requête SQL").fill("select * fro parcs");
-  await page.getByRole("button", { name: "Exécuter" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Parser Error: syntax error");
-  await expect(page.getByLabel("Requête SQL")).toHaveValue("select * fro parcs");
+test("edit mode renders statically without an interactive tab bar switch", () => {
+  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
+  const Tabs = getWidget("tabs")!.Component;
+  render(<Tabs props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }] }} ctx={{ mode: "edit" } as WidgetContext} />);
+  expect(screen.getByText("Onglet 1")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Onglet 1" })).not.toBeInTheDocument();
 });
 
-test("un utilisateur non-analyste ne voit pas le lien SQL Lab et reçoit un message d'accès refusé", async ({ page }) => {
-  await mockCore(page);
-  let sqlCalled = false;
-  await page.route("https://core.test/analytics/sql", async (route) => {
-    sqlCalled = true;
-    await route.fulfill({ json: { columns: [], rows: [], truncated: false } });
-  });
+test("PropsPanel adds a tab, selects it, and edits its label", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter un onglet" }));
+  const tabs = onChange.mock.calls.at(-1)![0].tabs;
+  expect(tabs).toHaveLength(2);
+  expect(tabs[1].label).toBe("Onglet 2");
+});
 
-  await page.goto("/analytics/sql");
-  await expect(page.getByRole("alert")).toHaveText("Accès réservé aux analystes.");
-  expect(await page.getByRole("link", { name: "SQL Lab" }).count()).toBe(0);
-  expect(sqlCalled).toBe(false);
+test("PropsPanel refuses to remove the last remaining tab", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test("PropsPanel reorders tabs with the up/down buttons", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(
+    <Panel
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Descendre l'onglet Onglet 1" }));
+  const tabs = onChange.mock.calls.at(-1)![0].tabs as Array<{ label: string }>;
+  expect(tabs.map((t) => t.label)).toEqual(["Onglet 2", "Onglet 1"]);
+});
+
+test("PropsPanel edits only the active tab's items, switchable via the tab selector", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  const { rerender } = render(
+    <Panel
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  let tabs = onChange.mock.calls.at(-1)![0].tabs;
+  expect(tabs[0].items).toHaveLength(1);
+  expect(tabs[1].items).toHaveLength(0);
+
+  rerender(<Panel props={{ tabs }} dataSources={[]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner l'onglet Onglet 2" }));
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  tabs = onChange.mock.calls.at(-1)![0].tabs;
+  expect(tabs[0].items).toHaveLength(1);
+  expect(tabs[1].items).toHaveLength(1);
 });
 ```
 
-(The third test relies on `mockCore`'s default `/me` route in `shell/e2e/mocks.ts`, which sets `isAdmin: false` and omits `isAnalyst` entirely — `meQuery.data?.isAnalyst !== true` is then `true`, matching the existing non-admin pattern in `admin-extensions.spec.ts`. No override needed, same as that spec's non-admin test.)
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 2: Run the new spec**
+Run: `cd shell && npx vitest run src/builder/widgets/tabs.test.tsx`
+Expected: FAIL — `getWidget("tabs")` is `undefined` (kind not registered
+yet).
 
-Run: `cd shell && npm run e2e -- e2e/sql-lab.spec.ts`
-Expected: PASS, 3/3 tests green. (Requires `VITE_AUTH_MODE=mock`, per this repo's standard `npm run e2e` setup — no extra env needed if `npm run e2e` already configures it, per `package.json`.)
+- [ ] **Step 3: Implement `registerTabsWidget`**
 
-- [ ] **Step 3: Run the full E2E suite to check for regressions**
+Create `shell/src/builder/widgets/tabs.tsx`:
 
-Run: `cd shell && npm run e2e`
-Expected: PASS, all 79 specs green (76 pre-existing + 3 new).
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
+import { registerWidget } from "../registry";
+import type { WidgetItem } from "../../api/types";
+import { LayoutEditor } from "../LayoutEditor";
+import { GridCanvas } from "../GridCanvas";
+import { WidgetHost } from "../WidgetHost";
 
-- [ ] **Step 4: Commit**
+type Tab = { id: string; label: string; items: WidgetItem[] };
+type TabsProps = { tabs: Tab[] };
+
+const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+
+export function registerTabsWidget(): void {
+  registerWidget({
+    type: "tabs",
+    label: "Onglets",
+    defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
+    defaultSize: { w: 6, h: 6 },
+    PropsPanel: ({ props, onChange, dataSources }) => {
+      const { tabs } = props as TabsProps;
+      const [activeId, setActiveId] = useState(tabs[0]?.id);
+      const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
+
+      function addTab() {
+        const tab = { id: crypto.randomUUID(), label: `Onglet ${tabs.length + 1}`, items: [] };
+        onChange({ tabs: [...tabs, tab] });
+        setActiveId(tab.id);
+      }
+      function renameTab(id: string, label: string) {
+        onChange({ tabs: tabs.map((t) => (t.id === id ? { ...t, label } : t)) });
+      }
+      function removeTab(id: string) {
+        if (tabs.length <= 1) return;
+        const next = tabs.filter((t) => t.id !== id);
+        onChange({ tabs: next });
+        if (activeId === id) setActiveId(next[0].id);
+      }
+      function moveTab(id: string, dir: -1 | 1) {
+        const i = tabs.findIndex((t) => t.id === id);
+        const j = i + dir;
+        if (j < 0 || j >= tabs.length) return;
+        const next = [...tabs];
+        [next[i], next[j]] = [next[j], next[i]];
+        onChange({ tabs: next });
+      }
+      function setActiveItems(items: WidgetItem[]) {
+        onChange({ tabs: tabs.map((t) => (t.id === activeId ? { ...t, items } : t)) });
+      }
+
+      if (!active) return null;
+
+      return (
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex flex-col gap-1">
+            {tabs.map((t, i) => (
+              <div key={t.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label={`Sélectionner l'onglet ${t.label}`}
+                  className={t.id === activeId ? "font-semibold underline" : ""}
+                  onClick={() => setActiveId(t.id)}
+                >
+                  {t.label}
+                </button>
+                <input
+                  aria-label={`Nom de l'onglet ${t.label}`}
+                  className={inputCls}
+                  value={t.label}
+                  onChange={(e) => renameTab(t.id, e.target.value)}
+                />
+                <button type="button" aria-label={`Monter l'onglet ${t.label}`} disabled={i === 0} onClick={() => moveTab(t.id, -1)}>↑</button>
+                <button type="button" aria-label={`Descendre l'onglet ${t.label}`} disabled={i === tabs.length - 1} onClick={() => moveTab(t.id, 1)}>↓</button>
+                <button
+                  type="button"
+                  aria-label={`Supprimer l'onglet ${t.label}`}
+                  disabled={tabs.length <= 1}
+                  className="text-xs text-red-600 disabled:opacity-30"
+                  onClick={() => removeTab(t.id)}
+                >
+                  Supprimer
+                </button>
+              </div>
+            ))}
+            <button type="button" aria-label="Ajouter un onglet" className={inputCls} onClick={addTab}>
+              Ajouter un onglet
+            </button>
+          </div>
+          <LayoutEditor items={active.items} onChange={setActiveItems} dataSources={dataSources} breakpoint="lg" />
+        </div>
+      );
+    },
+    Component: ({ props, ctx }) => {
+      const { tabs } = props as TabsProps;
+      const [activeId, setActiveId] = useState(tabs[0]?.id);
+      const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
+
+      if (!active) {
+        return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Aucun onglet</div>;
+      }
+
+      if (ctx.mode === "edit") {
+        return (
+          <div className="flex h-full flex-col">
+            <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
+              {tabs.map((t) => (
+                <span key={t.id} className="px-2 py-1">{t.label}</span>
+              ))}
+            </div>
+            <div className="flex-1 bg-slate-50" />
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex h-full flex-col">
+          <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`rounded px-2 py-1 ${t.id === active.id ? "bg-[var(--gs-color-primary)] text-white" : ""}`}
+                onClick={() => setActiveId(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1">
+            <GridCanvas
+              items={active.items}
+              breakpoint={ctx.breakpoint ?? "lg"}
+              editable={false}
+              selectedId={null}
+              onSelect={() => {}}
+              onMoveItem={() => {}}
+              renderItem={(item) => <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} />}
+            />
+          </div>
+        </div>
+      );
+    },
+  });
+}
+```
+
+- [ ] **Step 4: Register it in `registerBuiltinWidgets`**
+
+In `shell/src/builder/widgets/index.tsx`, add the import near the other
+widget imports:
+
+```tsx
+import { registerSliderFilterWidget } from "./sliderFilter";
+import { registerTabsWidget } from "./tabs";
+```
+
+And the call at the end of `registerBuiltinWidgets()`, after
+`registerSliderFilterWidget();`:
+
+```tsx
+  registerSliderFilterWidget();
+  registerTabsWidget();
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/widgets/tabs.test.tsx`
+Expected: PASS (all 4 tests).
+
+Also run the full unit suite to catch any registry/index regression:
+
+Run: `cd shell && npx vitest run`
+Expected: PASS (no failures elsewhere).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-cd shell && git add e2e/sql-lab.spec.ts
-git commit -m "test(e2e): couvre SQL Lab — exécution, erreur, historique, garde analyste (SP-14i)"
+git add shell/src/builder/widgets/tabs.tsx shell/src/builder/widgets/tabs.test.tsx shell/src/builder/widgets/index.tsx
+git commit -m "feat(shell): tabs container widget with a nested LayoutEditor per tab (SP-14j)"
 ```
 
 ---
 
-## Final check
-
-- [ ] Run `cd shell && npm test && npx tsc --noEmit && npm run e2e` once more from a clean state to confirm the whole suite (unit + E2E) is green end to end.
