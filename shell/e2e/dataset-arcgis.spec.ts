@@ -58,7 +58,7 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
     });
   });
 
-  await page.route("**/datasets/layer-1/arcgis/items*", async (route) => {
+  await page.route("**/datasets/dataset-1/arcgis/items*", async (route) => {
     await route.fulfill({
       json: {
         type: "FeatureCollection",
@@ -68,7 +68,7 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
     });
   });
 
-  await page.route("**/datasets/layer-1/arcgis/aggregate", async (route) => {
+  await page.route("**/datasets/dataset-1/arcgis/aggregate", async (route) => {
     await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: 1 }] } });
   });
 
@@ -107,7 +107,7 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
   // 3. Runtime : la table affiche les entités live, l'indicateur l'agrégat live
-  //    — tous deux via le proxy /datasets/layer-1/arcgis/*, jamais /collections/*.
+  //    — tous deux via le proxy /datasets/dataset-1/arcgis/*, jamais /collections/*.
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Bâtiment A" })).toBeVisible();
   await expect(page.getByText("1")).toBeVisible();

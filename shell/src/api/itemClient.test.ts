@@ -445,7 +445,7 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
   expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
 });
 
-test("featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items", async () => {
+test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/ds-arcgis-1", () =>
       HttpResponse.json({
@@ -458,7 +458,26 @@ test("featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/a
   await client.getDatasetConfig("ds-arcgis-1"); // warms the cache
   expect(
     client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-1", query: {} }),
-  ).toBe("https://core.test/datasets/layer-9/arcgis/items");
+  ).toBe("https://core.test/datasets/ds-arcgis-1/arcgis/items");
+});
+
+test("featuresUrl keys the arcgis proxy URL on the dataset item id, not the arcgis layer id", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-999", () =>
+      HttpResponse.json({
+        id: "cfg-arc999", itemId: "ds-999", kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "totally-different-layer-id", columns: {} },
+        },
+      }),
+    ),
+  );
+  const client = makeClient();
+  await client.getDatasetConfig("ds-999"); // warms the cache
+  expect(
+    client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-999", query: {} }),
+  ).toBe("https://core.test/datasets/ds-999/arcgis/items");
 });
 
 test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset", async () => {
@@ -469,7 +488,7 @@ test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourc
         config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-10", columns: {} } },
       }),
     ),
-    http.get("https://core.test/datasets/layer-10/arcgis/items", () =>
+    http.get("https://core.test/datasets/ds-arcgis-2/arcgis/items", () =>
       HttpResponse.json({ type: "FeatureCollection", features: [{ id: 1, properties: { nom: "Bât" } }] }),
     ),
   );
@@ -487,7 +506,7 @@ test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-
         config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-11", columns: {} } },
       }),
     ),
-    http.post("https://core.test/datasets/layer-11/arcgis/aggregate", () =>
+    http.post("https://core.test/datasets/ds-arcgis-3/arcgis/aggregate", () =>
       HttpResponse.json({ categoryKey: "group", rows: [{ group: "Total", value: 4 }] }),
     ),
   );

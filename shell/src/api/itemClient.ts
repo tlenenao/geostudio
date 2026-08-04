@@ -164,8 +164,8 @@ function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
   return qs ? `${base}?${qs}` : base;
 }
 
-function buildArcgisItemsUrl(coreUrl: string, arcgisItemId: string, query: Record<string, unknown>): string {
-  const base = `${coreUrl}/datasets/${arcgisItemId}/arcgis/items`;
+function buildArcgisItemsUrl(coreUrl: string, datasetItemId: string, query: Record<string, unknown>): string {
+  const base = `${coreUrl}/datasets/${datasetItemId}/arcgis/items`;
   const qs = _queryParams(query);
   return qs ? `${base}?${qs}` : base;
 }
@@ -706,8 +706,8 @@ export function createItemClient(opts: {
     featuresUrl(source: DataSource): string {
       if (source.datasetId) {
         const cached = datasetCache.get(source.datasetId);
-        if (cached?.source === "arcgis" && cached.arcgisItemId) {
-          return buildArcgisItemsUrl(coreUrl, cached.arcgisItemId, source.query);
+        if (cached?.source === "arcgis") {
+          return buildArcgisItemsUrl(coreUrl, source.datasetId, source.query);
         }
         return buildFeaturesUrl(coreUrl, { ...source, layer: cached?.collectionId ?? source.layer });
       }
@@ -716,15 +716,15 @@ export function createItemClient(opts: {
 
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
-      if (cachedDataset?.source === "arcgis" && cachedDataset.arcgisItemId) {
+      if (cachedDataset?.source === "arcgis" && source.datasetId) {
         if (source.type === "statistics") {
           const body = buildAggregateBody(source.query);
           const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
-            "POST", `/datasets/${cachedDataset.arcgisItemId}/arcgis/aggregate`, body,
+            "POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body,
           );
           return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
         }
-        return _fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, cachedDataset.arcgisItemId, source.query));
+        return _fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, source.datasetId, source.query));
       }
       const resolved = source.datasetId
         ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
