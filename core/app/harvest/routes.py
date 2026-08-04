@@ -236,9 +236,15 @@ def get_dataset_arcgis_items(
     reserved = {"limit", "offset", "bbox"}
     filters = {k: v for k, v in request.query_params.items() if k not in reserved}
     external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
-    params = live_query.translate_features_query(
-        filters=filters, bbox=parsed_bbox, limit=limit, offset=offset,
-    )
+    try:
+        params = live_query.translate_features_query(
+            filters=filters, bbox=parsed_bbox, limit=limit, offset=offset,
+        )
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]},
+        )
     try:
         raw = live_query.fetch_query(client, external_url, params)
     except EgressBlockedError:
