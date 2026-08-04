@@ -1,117 +1,214 @@
-### Task 6: Shell — `chartOption.ts`: `encodings`/`bins` types, funnel and histogram
+## Task 6: `modal` widget
 
 **Files:**
-- Modify: `shell/src/builder/widgets/chartOption.ts:6-20` (`ChartProps`), `shell/src/builder/widgets/chartOption.ts:127-151` (add branches before the fallback bar/line/area/scatter block)
-- Test: `shell/src/builder/widgets/chartOption.test.ts`
+- Create: `shell/src/builder/widgets/modal.tsx`
+- Modify: `shell/src/builder/widgets/index.tsx`
+- Test: `shell/src/builder/widgets/modal.test.tsx`
 
 **Interfaces:**
-- Produces: `ChartProps.encodings?: { source?: string; target?: string; levels?: string[]; value?: string }` and `ChartProps.bins?: number`. `buildOption` handles `chartType === "funnel"` (reuses `categoryField`/`valueField`) and `chartType === "histogram"` (reads `bucketStart`/`bucketEnd`/`count` off each row — the shape `_run_binned_histogram` (Task 3) produces).
+- Consumes: `LayoutEditor` (Task 4), `GridCanvas`, `WidgetHost`, `Dialog`
+  with its `wide` prop (Task 3), `useBusAction` (`ActionBusContext.tsx`,
+  pre-existing).
+- Produces: widget kind `"modal"`, `props: { title: string; items: WidgetItem[]; wide?: boolean }`,
+  `actions: ["open", "close"]`, registered via `registerModalWidget()`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `shell/src/builder/widgets/chartOption.test.ts`:
+Create `shell/src/builder/widgets/modal.test.tsx`:
 
-```ts
-const histogramRows: DataRecord[] = [
-  { id: "0", properties: { bucketIndex: 0, bucketStart: 0, bucketEnd: 5, count: 3 } },
-  { id: "2", properties: { bucketIndex: 2, bucketStart: 10, bucketEnd: 15, count: 7 } },
-];
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, test, vi } from "vitest";
+import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
+import { registerBuiltinWidgets } from "./index";
+import { ActionBus } from "../ActionBus";
+import type { AuthState } from "../../auth/useAuth";
 
-test("funnel builds one funnel series from category/value fields", () => {
-  const funnelRows: DataRecord[] = [
-    { id: "1", properties: { stage: "Visite", value: 100 } },
-    { id: "2", properties: { stage: "Panier", value: 40 } },
-  ];
-  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
-  expect(series(opt)).toHaveLength(1);
-  expect(series(opt)[0].type).toBe("funnel");
-  expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
-});
-
-test("histogram renders one bar series labeled by bucket bounds", () => {
-  const opt = buildOption({ chartType: "histogram" }, histogramRows);
-  expect(series(opt)).toHaveLength(1);
-  expect(series(opt)[0].type).toBe("bar");
-  expect(series(opt)[0].data).toEqual([3, 7]);
-  expect((opt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["0–5", "10–15"]);
-});
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `cd shell && npx vitest run src/builder/widgets/chartOption.test.ts -t "funnel|histogram"`
-Expected: FAIL (unknown chart types fall through to the default bar/line branch, wrong shape)
-
-- [ ] **Step 3: Implement**
-
-In `shell/src/builder/widgets/chartOption.ts`, replace the `ChartProps` type (lines 6-20):
-
-```ts
-export type ChartProps = {
-  dataSourceId?: string;
-  chartType?: string; // bar|line|area|scatter|pie|doughnut|radar|heatmap|gauge|boxplot|sankey|treemap|sunburst|funnel|histogram
-  categoryField?: string;
-  valueField?: string; // measure key for pie/gauge/funnel/histogram (defaults to first series)
-  stack?: boolean;
-  legend?: boolean;
-  zoom?: boolean;
-  xAxisType?: string; // category|value|time|log
-  yAxisType?: string; // value|log|category
-  yAxisFormat?: string; // any non-empty value → grouped number formatting
-  yAxisUnit?: string;
-  title?: string;
-  advancedOption?: string; // raw ECharts option JSON, deep-merged last
-  // Field-role mapping used only by sankey and treemap/sunburst — every
-  // other chart type keeps categoryField/valueField (SP-14f §3).
-  encodings?: { source?: string; target?: string; levels?: string[]; value?: string };
-  bins?: number; // histogram bin count, default 10
+const authState: AuthState = {
+  isLoading: false, isAuthenticated: true, username: "tanguy",
+  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
 };
+vi.mock("../../auth/useAuth", () => ({ useAuth: () => authState }));
+
+beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+
+test("declares open/close actions", () => {
+  expect(getWidget("modal")!.actions).toEqual(["open", "close"]);
+});
+
+test("closed by default, opens on the open action, closes on Escape", async () => {
+  const bus = new ActionBus();
+  bus.configure([{ id: "m1", from: "trigger", event: "clicked", to: "modal1", action: "open" }]);
+  const Modal = getWidget("modal")!.Component;
+  render(
+    <Modal
+      props={{ title: "Détail", items: [{ id: "c", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Corps" } }] }}
+      ctx={{ mode: "runtime", bus, widgetId: "modal1" } as WidgetContext}
+    />,
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  bus.emit("trigger", "clicked");
+  expect(await screen.findByRole("dialog", { name: "Détail" })).toBeInTheDocument();
+  expect(screen.getByText("Corps")).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("closes on the close action too", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m1", from: "opener", event: "clicked", to: "modal1", action: "open" },
+    { id: "m2", from: "closer", event: "clicked", to: "modal1", action: "close" },
+  ]);
+  const Modal = getWidget("modal")!.Component;
+  render(<Modal props={{ title: "Détail", items: [] }} ctx={{ mode: "runtime", bus, widgetId: "modal1" } as WidgetContext} />);
+  bus.emit("opener", "clicked");
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  bus.emit("closer", "clicked");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("edit mode shows a static badge and never opens", () => {
+  const Modal = getWidget("modal")!.Component;
+  render(<Modal props={{ title: "Détail", items: [] }} ctx={{ mode: "edit" } as WidgetContext} />);
+  expect(screen.getByText("Modale : Détail")).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("PropsPanel edits the title and the wide flag", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("modal")!.PropsPanel;
+  render(<Panel props={{ title: "Détail", items: [] }} dataSources={[]} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Titre de la modale"), "!");
+  expect(onChange.mock.calls.at(-1)![0].title).toBe("Détail!");
+  await userEvent.click(screen.getByLabelText("Modale large"));
+  expect(onChange.mock.calls.at(-1)![0].wide).toBe(true);
+});
 ```
 
-Add a small formatting helper right after `valueFormatter` (after line 59):
+- [ ] **Step 2: Run tests to verify they fail**
 
-```ts
-function round2(n: number): string {
-  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(n);
+Run: `cd shell && npx vitest run src/builder/widgets/modal.test.tsx`
+Expected: FAIL — `getWidget("modal")` is `undefined`.
+
+- [ ] **Step 3: Implement `registerModalWidget`**
+
+Create `shell/src/builder/widgets/modal.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
+import { registerWidget } from "../registry";
+import type { WidgetItem } from "../../api/types";
+import { useBusAction } from "../ActionBusContext";
+import { LayoutEditor } from "../LayoutEditor";
+import { GridCanvas } from "../GridCanvas";
+import { WidgetHost } from "../WidgetHost";
+import { Dialog } from "../../ui/dialog";
+
+type ModalProps = { title: string; items: WidgetItem[]; wide?: boolean };
+
+const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+
+export function registerModalWidget(): void {
+  registerWidget({
+    type: "modal",
+    label: "Modale",
+    defaultProps: { title: "Modale", items: [] },
+    defaultSize: { w: 3, h: 1 },
+    actions: ["open", "close"],
+    PropsPanel: ({ props, onChange, dataSources }) => {
+      const { title, items, wide } = props as ModalProps;
+      return (
+        <div className="flex flex-col gap-2 text-sm">
+          <label className="flex flex-col gap-1">
+            Titre
+            <input
+              aria-label="Titre de la modale"
+              className={inputCls}
+              value={title}
+              onChange={(e) => onChange({ title: e.target.value, items, wide })}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              aria-label="Modale large"
+              checked={Boolean(wide)}
+              onChange={(e) => onChange({ title, items, wide: e.target.checked })}
+            />
+            Modale large
+          </label>
+          <LayoutEditor items={items} onChange={(next) => onChange({ title, items: next, wide })} dataSources={dataSources} breakpoint="lg" />
+        </div>
+      );
+    },
+    Component: ({ props, ctx }) => {
+      const { title, items, wide } = props as ModalProps;
+      const [open, setOpen] = useState(false);
+      useBusAction(ctx.bus, ctx.widgetId, "open", () => setOpen(true));
+      useBusAction(ctx.bus, ctx.widgetId, "close", () => setOpen(false));
+
+      if (ctx.mode === "edit") {
+        return (
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+            Modale : {title}
+          </div>
+        );
+      }
+
+      return (
+        <Dialog open={open} onClose={() => setOpen(false)} title={title} wide={wide}>
+          <div className="h-64">
+            <GridCanvas
+              items={items}
+              breakpoint={ctx.breakpoint ?? "lg"}
+              editable={false}
+              selectedId={null}
+              onSelect={() => {}}
+              onMoveItem={() => {}}
+              renderItem={(item) => <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} />}
+            />
+          </div>
+        </Dialog>
+      );
+    },
+  });
 }
 ```
 
-In `buildOption`, insert two new branches right before the `// bar | line | area | scatter` fallback comment (before line 136):
+- [ ] **Step 4: Register it in `registerBuiltinWidgets`**
 
-```ts
-  if (type === "funnel") {
-    const valueKey = props.valueField || seriesKeys[0] || "";
-    return finalize(props, {
-      ...base,
-      series: [{
-        type: "funnel",
-        data: rows.map((row) => ({ name: String(row[catKey] ?? ""), value: num(row[valueKey]) })),
-      }],
-    });
-  }
+In `shell/src/builder/widgets/index.tsx`, add the import:
 
-  if (type === "histogram") {
-    const labels = rows.map((row) => `${round2(Number(row.bucketStart))}–${round2(Number(row.bucketEnd))}`);
-    const counts = rows.map((row) => num(row.count));
-    return finalize(props, {
-      ...base,
-      xAxis: { type: "category", data: labels },
-      yAxis,
-      series: [{ type: "bar", name: "Effectif", data: counts }],
-    });
-  }
+```tsx
+import { registerTabsWidget } from "./tabs";
+import { registerModalWidget } from "./modal";
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+And the call after `registerTabsWidget();`:
 
-Run: `cd shell && npx vitest run src/builder/widgets/chartOption.test.ts`
-Expected: PASS — new tests plus full existing file green.
+```tsx
+  registerTabsWidget();
+  registerModalWidget();
+}
+```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/widgets/modal.test.tsx`
+Expected: PASS (all 5 tests).
+
+Run: `cd shell && npx vitest run`
+Expected: PASS (no regressions).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/builder/widgets/chartOption.ts shell/src/builder/widgets/chartOption.test.ts
-git commit -m "feat(shell): chartOption gains funnel and server-binned histogram (SP-14f)"
+git add shell/src/builder/widgets/modal.tsx shell/src/builder/widgets/modal.test.tsx shell/src/builder/widgets/index.tsx
+git commit -m "feat(shell): modal container widget, opened/closed via the action bus (SP-14j)"
 ```
 
 ---

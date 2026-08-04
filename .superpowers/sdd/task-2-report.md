@@ -1,34 +1,26 @@
-# Task 2 Report — `sqlLabHistory.ts` Local Query History
+# Task 2 Report — `WidgetPalette` exclude filter
 
 **Date:** 2026-08-03  
-**Task:** SP-14i — Implement pure module managing browser-local SQL Lab query history  
+**Task:** SP-14j — Add `exclude?: string[]` prop to `WidgetPalette` component  
 **Status:** DONE
 
 ---
 
 ## What Was Implemented
 
-Created two files in `shell/src/lib/`:
+Modified the `WidgetPalette` component to accept an optional `exclude` prop that filters out widget types from the displayed palette. This enables nested widget editors (Task 4) to hide container widgets from their own palette.
 
-### 1. `sqlLabHistory.test.ts` — Test Suite
-- **File:** `/home/lenen/projets/geostudio/shell/src/lib/sqlLabHistory.test.ts`
-- **Tests:** 4 tests (all passing)
-  1. `readSqlHistory returns an empty list when nothing is stored` — verifies pristine state
-  2. `readSqlHistory returns an empty list when the stored value is corrupted JSON` — graceful degradation on parse failure
-  3. `appendSqlHistory prepends the newest entry and persists it` — verifies prepend ordering and persistence across calls
-  4. `appendSqlHistory caps the list at 20 entries, dropping the oldest` — verifies MAX_ENTRIES enforcement
+### Files Modified
 
-### 2. `sqlLabHistory.ts` — Implementation
-- **File:** `/home/lenen/projets/geostudio/shell/src/lib/sqlLabHistory.ts`
-- **Exports:**
-  - `type SqlHistoryEntry` — object shape with `sql`, `executedAt`, `status: "ok" | "error"`, `rowCount?: number`
-  - `readSqlHistory(): SqlHistoryEntry[]` — reads from localStorage, returns `[]` on any error
-  - `appendSqlHistory(entry: SqlHistoryEntry): SqlHistoryEntry[]` — prepends new entry, caps at 20, persists silently
-- **Key Details:**
-  - Storage key: `"geostudio.sqlLab.history"`
-  - Max entries: 20 (newest first, oldest dropped on overflow)
-  - Error handling: catches `localStorage` unavailability (private browsing, quota exceeded) silently; query execution unaffected
-  - No external imports (pure module)
+#### 1. `shell/src/builder/WidgetPalette.tsx`
+- Added `exclude?: string[]` parameter to component props (defaults to empty array)
+- Added `.filter((def) => !exclude.includes(def.type))` to filter excluded widget types before rendering
+- Type signature: `WidgetPalette({ onAdd, exclude? }: { onAdd: (type: string) => void; exclude?: string[] })`
+
+#### 2. `shell/src/builder/WidgetPalette.test.tsx`
+- Appended new test: "excludes the given widget types from the list"
+- Test verifies widgets "Image" and "Bouton" are excluded when `exclude={["image", "button"]}`
+- Test confirms "Texte" widget still renders when not in exclude list
 
 ---
 
@@ -36,38 +28,38 @@ Created two files in `shell/src/lib/`:
 
 ### Test Execution: RED → GREEN
 
-**Before implementation (test run 1):**
+**Before implementation:**
 ```
-FAIL src/lib/sqlLabHistory.test.ts
-Error: Failed to resolve import "./sqlLabHistory"
-```
-
-**After implementation (test run 2):**
-```
-✓ src/lib/sqlLabHistory.test.ts (4 tests) 10ms
- Test Files  1 passed (1)
- Tests  4 passed (4)
+✓ lists widgets and emits the type on click
+× excludes the given widget types from the list
+  → expected document not to contain Image button, but found it
 ```
 
-All 4 tests green. Test execution: 10ms. No warnings or errors.
+**After implementation:**
+```
+✓ src/builder/WidgetPalette.test.tsx (2 tests) 323ms
+
+Test Files  1 passed (1)
+Tests  2 passed (2)
+```
+
+Both tests passing. All pre-existing tests remain green.
 
 ---
 
 ## Files Changed
 
-| File | Action | Lines |
-|------|--------|-------|
-| `shell/src/lib/sqlLabHistory.test.ts` | Create | 43 |
-| `shell/src/lib/sqlLabHistory.ts` | Create | 25 |
-
-**Total:** 2 files created, 68 lines added.
+| File | Action | Change |
+|------|--------|--------|
+| `shell/src/builder/WidgetPalette.tsx` | Modified | Added `exclude` prop and filter logic |
+| `shell/src/builder/WidgetPalette.test.tsx` | Modified | Appended new test case |
 
 ---
 
 ## Git Commit
 
 ```
-55bbdfb feat(shell): sqlLabHistory — historique local des requêtes SQL Lab (SP-14i)
+0f094a7 feat(shell): WidgetPalette gains an exclude filter (SP-14j)
 ```
 
 Conventional commit `feat(shell)`, signed with co-authorship line.
@@ -77,35 +69,30 @@ Conventional commit `feat(shell)`, signed with co-authorship line.
 ## Self-Review
 
 ### Completeness
-- ✅ Test file matches brief exactly (4 tests, all scenarios covered)
-- ✅ Implementation matches brief exactly (type, constants, functions, error handling)
-- ✅ All test cases execute and pass (4/4)
-- ✅ Storage key and max entries as specified
-- ✅ Newest-first ordering verified in tests
+- ✅ Test file matches brief exactly
+- ✅ Implementation matches brief exactly
+- ✅ All tests pass (2/2)
+- ✅ Component maintains backward compatibility (exclude defaults to empty array)
 
 ### Quality
-- ✅ Clean, readable code (no unnecessary complexity)
-- ✅ SPDX headers on both files
-- ✅ Error handling is correct (silent failures don't break caller)
-- ✅ Type safety: `SqlHistoryEntry` well-formed, optional `rowCount` respected
+- ✅ Clean, minimal implementation
+- ✅ SPDX header preserved
+- ✅ Proper type safety with optional prop
+- ✅ Filter logic is correct and efficient
 
 ### Discipline
-- ✅ No imports from rest of app (pure module)
-- ✅ No extra methods or functions beyond spec
-- ✅ No localStorage direct access outside the module
 - ✅ TDD followed: test → RED → implementation → GREEN → commit
+- ✅ Small, focused change
+- ✅ No extra functionality beyond spec
+- ✅ Conventional commit message with co-authorship
 
 ### Testing
-- ✅ Tests verify real `localStorage` behavior
-- ✅ Tests cover happy path (append & read), error paths (corrupted JSON, missing data)
-- ✅ Tests cover edge case (20-entry cap with 21 appends)
-- ✅ No mocking needed; Vitest provides real `localStorage` in test environment
-- ✅ `beforeEach(localStorage.clear())` ensures test isolation
+- ✅ New test verifies exclude functionality with real widget types
+- ✅ Test confirms non-excluded widgets still render
+- ✅ Pre-existing test still passes (backward compatibility)
 
 ---
 
 ## Concerns & Notes
 
-**None.** Implementation is complete, clean, fully tested, and ready for Task 3 (which will import these exports to build the SQL Lab page).
-
-The module is intentionally silent on `localStorage` failures, allowing graceful degradation: if the browser blocks or runs out of space, the history simply doesn't persist, but the SQL Lab still executes queries normally.
+**None.** Implementation is complete, minimal, fully tested, and ready for Task 4 (LayoutEditor) which will use this to hide container widgets from nested palette.

@@ -1,112 +1,95 @@
-# Task 4 Report: Route + nav link for SQL Lab (SP-14i)
+# Task 4 report — `LayoutEditor` reusable nested widget editor (SP-14j)
 
-## Implementation Summary
+## Status
+DONE_WITH_CONCERNS (minor test-file gaps, fixed inline — see below)
 
-Successfully implemented the route `/analytics/sql` and the SQL Lab navigation link for analyst users in the GeoStudio shell. This task completes the integration of the SqlLabPage component into the main app navigation and routing system.
+## What was done
 
-## What Was Implemented
+Followed TDD exactly as prescribed by the brief:
 
-1. **Route Addition** (`shell/src/shell/routes.tsx`):
-   - Added import for `SqlLabPage` component
-   - Added new route `<Route path="/analytics/sql" element={<SqlLabPage />} />` inside the `<ProtectedLayout />` after the dataset edit route
-   - The route is protected by authentication (via `RequireAuth` wrapper on `ProtectedLayout`)
+1. Wrote `shell/src/builder/LayoutEditor.test.tsx` with the brief's 4 tests
+   verbatim, plus two additions needed to make them pass against this repo's
+   real component behavior (see "Deviations from the brief" below).
+2. Ran `npx vitest run src/builder/LayoutEditor.test.tsx` — confirmed it
+   failed because `./LayoutEditor` didn't exist yet.
+3. Implemented `shell/src/builder/LayoutEditor.tsx` exactly as given in the
+   brief. Verified every consumed signature against the real files first:
+   `WidgetPalette({onAdd, exclude})` (`shell/src/builder/WidgetPalette.tsx`),
+   `GridCanvas({items, breakpoint, editable, selectedId, onSelect, onMoveItem,
+   renderItem})` (`shell/src/builder/GridCanvas.tsx`),
+   `WidgetHost({item, mode, ...})` (`shell/src/builder/WidgetHost.tsx`),
+   `PropsPanel({item, dataSources, onChange, onVisibleWhenChange})`
+   (`shell/src/builder/PropsPanel.tsx`), and `getWidget`/`nextFreePosition`/
+   `moveItemAt` (`shell/src/builder/registry.ts`, `shell/src/builder/grid.ts`).
+   All matched the brief's code exactly — no changes needed to the component
+   itself.
+4. Re-ran the test file — all 4 tests passed.
+5. Ran the full suite (`npx vitest run`): 107 files / 816 tests passed.
+   Ran `npx tsc --noEmit`: clean. Ran `npm run build`: succeeded (pre-existing
+   chunk-size warnings only, unrelated to this change).
+6. Committed only `shell/src/builder/LayoutEditor.tsx` and
+   `shell/src/builder/LayoutEditor.test.tsx` (left unrelated working-tree
+   changes from earlier tasks/reports untouched, staged by explicit filename
+   per repo convention).
 
-2. **Navigation Link** (`shell/src/shell/AppLayout.tsx`):
-   - Added conditional SQL Lab nav link shown only when `meQuery.data?.isAnalyst === true`
-   - Placed independently from the admin block (as required)
-   - Uses consistent styling: `className="mt-2 block text-sm font-medium hover:underline"`
-   - First link in the analyst block gets `mt-2`, matching the admin block's first link styling
+Commit: `7041603` — `feat(shell): LayoutEditor composes palette+canvas+props for nested widget editing (SP-14j)`
 
-3. **Tests** (`shell/src/shell/AppLayout.test.tsx`):
-   - Added test: "shows the SQL Lab link only when the current user is an analyst"
-     - Mocks `GET /me` to return `isAnalyst: true, isAdmin: false`
-     - Verifies the SQL Lab link appears
-   - Added test: "hides the SQL Lab link for a non-analyst user"
-     - Uses default mock (non-analyst user)
-     - Verifies the link does not appear
+## Deviations from the brief (fixed, obvious)
 
-## Testing Results
+The brief's test file, run as-is, failed 2 of the 4 tests — not because of
+`LayoutEditor.tsx` itself, but because the brief's test file omitted context
+providers that this repo's existing test conventions always supply whenever
+a real item causes `WidgetHost`/`PropsPanel` to actually render the "text"
+widget:
 
-### Step 1: Initial test run (RED)
-```
-Tests  1 failed | 6 passed (7)
-FAIL: shows the SQL Lab link only when the current user is an analyst
-Error: Unable to find role="link" and name "SQL Lab"
-```
+1. **`useAuth()` requires an `AuthProvider` ancestor.** `WidgetHost` (mounted
+   by `GridCanvas` for each item) calls `useAuth()`
+   (`shell/src/builder/WidgetHost.tsx:46`), which throws outside a provider.
+   Every other test in this repo that renders `WidgetHost` with a real item
+   (`WidgetHost.test.tsx`, `AppRenderer.test.tsx`) mocks it via
+   `vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }))`. I added
+   the identical mock to `LayoutEditor.test.tsx`.
 
-### Step 2: After implementation (GREEN)
-```
-✓ src/shell/AppLayout.test.tsx (7 tests) 567ms
-  ✓ All tests passing
+2. **The "text" widget's `PropsPanel` needs an `ItemClientProvider`.** It
+   renders `DataSourceSelect`, which calls `useItems()` → `useItemClient()`,
+   which throws without an `ItemClientProvider` in the tree.
+   `shell/src/builder/PropsPanel.test.tsx` documents this exact issue and
+   solves it with a `wrapper` combining `QueryClientProvider` +
+   `ItemClientProvider`. I copied that same wrapper into
+   `LayoutEditor.test.tsx` and passed it via `{ wrapper }` to every
+   `render()` call (strictly only tests 3 and 4 — which mount an item —
+   need it, but applying it uniformly is simpler and harmless for the other
+   two).
 
-Test Files  1 passed (1)
-Tests       7 passed (7)
-```
+No production code (`LayoutEditor.tsx`) needed any change — the brief's
+implementation matched the real component signatures exactly. Only the test
+file needed these two additions, both directly modeled on established
+patterns already in this codebase (`WidgetHost.test.tsx`,
+`AppRenderer.test.tsx`, `PropsPanel.test.tsx`), so I judged this "obvious fix"
+territory rather than something to stop and ask about.
 
-### Step 3: Full unit suite (GREEN)
-```
-Test Files  106 passed (106)
-Tests       807 passed (807)
-Duration    38.95s
-```
+## Verification
 
-### Step 4: TypeScript + build (GREEN)
-```
-npm run build
-tsc --noEmit && vite build
-✓ built in 23.06s
+- `cd shell && npx vitest run src/builder/LayoutEditor.test.tsx` → 4/4 passed.
+- `cd shell && npx vitest run` → 107 files / 816 tests passed.
+- `cd shell && npx tsc --noEmit` → clean.
+- `cd shell && npm run build` → succeeded.
 
-No TypeScript errors
-Build completed successfully
-```
+## Files touched
 
-## Files Changed
+- `shell/src/builder/LayoutEditor.tsx` (new)
+- `shell/src/builder/LayoutEditor.test.tsx` (new)
 
-1. `shell/src/shell/routes.tsx` (2 insertions):
-   - Added SqlLabPage import
-   - Added `/analytics/sql` route
+## Handoff note for Tasks 5-7
 
-2. `shell/src/shell/AppLayout.tsx` (5 insertions):
-   - Added conditional analyst-only SQL Lab nav link
-
-3. `shell/src/shell/AppLayout.test.tsx` (13 insertions):
-   - Added two new tests for analyst link visibility
-
-Total: 3 files, 20 insertions
-
-## Self-Review Findings
-
-✓ **Completeness**: Route + nav link + both tests present, matches brief exactly
-✓ **Quality**: Code follows existing patterns and conventions
-  - Nav link styling matches admin links exactly
-  - Route placement follows existing pattern (protected, after dataset route)
-  - Conditional logic consistent with `isAdmin` pattern
-✓ **Discipline**: 
-  - isAdmin block untouched and unaffected
-  - No structural changes to shared files
-  - Only additive changes as specified
-  - Analyst and admin blocks are independent (no overlap)
-✓ **Testing**:
-  - RED to GREEN progression confirmed
-  - No regression (full suite green)
-  - Build green with no TypeScript errors
-  - Tests specifically verify the conditional behavior
-✓ **TDD process**: Followed exactly as prescribed
-  1. Tests first (failed)
-  2. Implementation
-  3. Tests pass
-  4. Full suite check
-  5. Build check
-  6. Commit
-
-## Issues or Concerns
-
-None. Task completed as specified, all tests pass, build succeeds, commit clean.
-
-## Related Commits
-
-- Commit: `51a7f43` - feat(shell): route /analytics/sql et lien nav SQL Lab pour les analystes (SP-14i)
-
-## Next Steps
-
-Task 5 (E2E coverage) will navigate to the `/analytics/sql` route and assert on the "SQL Lab" nav link visibility based on analyst status. The implementation is complete and ready for that task.
+`LayoutEditor` is ready to be mounted by the tabs/modal/drawer widget
+`PropsPanel`s. It excludes `tabs`/`modal`/`drawer` from its own palette
+(`NESTED_EXCLUDE` in `shell/src/builder/LayoutEditor.tsx`) to prevent
+recursive nesting, and forwards `dataSources`/`breakpoint` straight through
+to the underlying `PropsPanel`/`GridCanvas`. Any consumer mounting it inside
+a real app (builder page, already wrapped in `AuthProvider`/
+`ItemClientProvider`/`QueryClientProvider`) needs no extra wiring — the
+provider gaps above are test-only artifacts of rendering `LayoutEditor` in
+isolation, and any new test file that mounts `LayoutEditor` with a non-empty
+`items` array editing a "text"-family widget will need the same two
+providers/mock as `LayoutEditor.test.tsx`.

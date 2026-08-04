@@ -1,75 +1,101 @@
-# Task 5 report — E2E coverage for SQL Lab (SP-14i)
+# Task 5 report — `tabs` widget (SP-14j)
 
-## What was implemented
+## Status: DONE_WITH_CONCERNS
 
-Created `shell/e2e/sql-lab.spec.ts` exactly as specified in the task brief (verbatim, no
-code changes) — 3 Playwright scenarios:
+## Commit
 
-1. **Happy path**: an analyst (`isAnalyst: true`) navigates to `/analytics/sql`, sees the
-   "SQL Lab" nav link, fills the SQL editor, executes, sees the results table (columns +
-   rows), verifies the POST body sent to `https://core.test/analytics/sql`, clears the
-   editor, reloads a query from history via its labelled button, and confirms the editor
-   value is restored.
-2. **SQL error**: the mocked `/analytics/sql` route returns HTTP 400 with a structured
-   error body; the test verifies the `role="alert"` message shows the server's error text
-   and that the editor still holds the offending SQL (not cleared on failure).
-3. **Access denial**: a non-analyst user (using `mockCore`'s default `/me` route, which
-   omits `isAnalyst` entirely) navigates to `/analytics/sql`, sees the access-denied alert
-   ("Accès réservé aux analystes."), confirms the "SQL Lab" nav link is absent, and that
-   the `/analytics/sql` endpoint was never called.
+`78b1229` — `feat(shell): tabs container widget with a nested LayoutEditor per tab (SP-14j)`
 
-No application source code was touched — only the new spec file.
+Files changed:
+- `shell/src/builder/widgets/tabs.tsx` (new)
+- `shell/src/builder/widgets/tabs.test.tsx` (new)
+- `shell/src/builder/widgets/index.tsx` (import + `registerTabsWidget()` call)
 
-## What was tested and results
+## What was verified against the real repo before implementing
 
-1. **New spec only**: `npm run e2e -- e2e/sql-lab.spec.ts` → **3/3 passed** (49.7s), first
-   try, no adjustments needed to the brief's literal selectors/timing.
-2. **Full E2E suite**: `npm run e2e` → **79/79 passed** (~2.0m), confirming 76 pre-existing
-   specs + 3 new ones, no regressions.
-3. **Final whole-suite check** (per brief's "Final check" section):
-   - `npm test` → **807 tests passed across 106 files** (unit/Vitest), including the
-     pre-existing `src/lib/sqlLabHistory.test.ts` (4 tests, from Task 2).
-   - `npx tsc --noEmit` → clean, no errors.
-   - `npm run e2e` (re-run) → **79/79 passed** again, pristine.
-
-## Files changed
-
-- Created: `/home/lenen/projets/geostudio/shell/e2e/sql-lab.spec.ts` (77 lines, 3 tests)
-- Commit: `f7f7b6d` — `test(e2e): couvre SQL Lab — exécution, erreur, historique, garde analyste (SP-14i)`
-  (only this one file staged and committed; other working-tree changes under
-  `.superpowers/sdd/*` from prior tasks were left untouched, out of scope for this task)
-
-## Self-review
-
-- **Completeness**: all 3 scenarios from the brief present, matching intent (execute +
-  history reload; SQL error message + editor text preserved; non-analyst denial + no nav
-  link + no API call).
-- **Quality**: selectors use `getByRole`/`getByLabel` (accessible, robust — no CSS/test-id
-  hacks); no arbitrary `sleep`/timeouts; `expect.poll` used correctly to await the async
-  POST body rather than racing it.
-- **Discipline**: no application source code modified; only the single new spec file
-  created and committed, exactly per the brief.
-- **Testing**: full 79-spec E2E suite green twice (once right after adding the spec, once
-  again as part of the final whole-branch check), plus unit tests (807/807) and `tsc
-  --noEmit` clean.
+- `LayoutEditor` (`shell/src/builder/LayoutEditor.tsx`): signature
+  `{ items, onChange, dataSources, breakpoint }` matches the brief exactly.
+  It already excludes `"tabs"`, `"modal"`, `"drawer"` from its palette
+  (`NESTED_EXCLUDE`), so nesting containers inside containers isn't offered
+  yet — consistent with this being the first of three container tasks.
+- `GridCanvas` (`shell/src/builder/GridCanvas.tsx`): signature matches the
+  brief (`items, breakpoint, editable, selectedId, onSelect, onMoveItem,
+  renderItem`).
+- `WidgetHost` (`shell/src/builder/WidgetHost.tsx`): matches the brief's
+  props but **also accepts an optional `breakpoint` prop** that the brief's
+  `Component` didn't pass through to the nested `WidgetHost` call inside
+  `GridCanvas`'s `renderItem`.
+- `registry.ts`: `WidgetContext`, `registerWidget`, `getWidget`,
+  `_resetRegistry` all match the brief.
 
 ## Deviations from the brief's literal code
 
-**None.** The spec file is byte-for-byte the code given in the brief. It passed against
-the real running app on the first attempt with no selector or timing adjustments required.
+1. **`breakpoint` propagation to the nested `WidgetHost`.** The brief's
+   runtime `Component` passed `breakpoint` to `GridCanvas` but not to the
+   `WidgetHost` it renders per item:
+   ```tsx
+   renderItem={(item) => <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} />}
+   ```
+   `shell/src/builder/AppRenderer.tsx:198` (the top-level renderer) always
+   passes `breakpoint={bp}` to its own `WidgetHost` call — that's exactly
+   how `ctx.breakpoint` gets populated for any widget in the first place
+   (Task 1). Since a tab's items could themselves need `ctx.breakpoint`
+   (e.g. a widget reading it directly, or a future container type once
+   `NESTED_EXCLUDE` is relaxed), I added the same propagation for
+   consistency:
+   ```tsx
+   renderItem={(item) => (
+     <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} breakpoint={ctx.breakpoint} />
+   )}
+   ```
+   This is additive only — no test depends on it — so it doesn't change any
+   test outcome, just closes a latent inconsistency with the established
+   `AppRenderer` convention.
 
-## Issues or concerns
+2. **Test file needed two additions the brief omitted**, both required
+   because `tabs.test.tsx` renders real `text` widgets through `WidgetHost`
+   (directly in the runtime test, and via the nested `LayoutEditor` in the
+   PropsPanel item-editing test):
+   - `vi.mock("../../auth/useAuth", ...)` — `WidgetHost` calls `useAuth()`,
+     which throws outside an `<AuthProvider>` tree. Every other test file
+     that renders `WidgetHost` transitively (`WidgetHost.test.tsx`,
+     `LayoutEditor.test.tsx`, `AppRenderer.test.tsx`) mocks this the same
+     way; I copied the exact pattern from `LayoutEditor.test.tsx`.
+   - A `QueryClientProvider` + `ItemClientProvider` `wrapper`, applied via
+     `render(ui, { wrapper })` on the two `render()` calls that exercise a
+     selected `text` item — the `text` widget's `PropsPanel` renders
+     `DataSourceSelect`, which calls `useItems()` and needs an item client
+     in context even when the query is disabled. Copied verbatim from
+     `LayoutEditor.test.tsx`'s own wrapper/comment, which documents the
+     same need.
 
-None. Task 5 is the final task of the SP-14i plan; all prior tasks (1-4) were already
-in place on `dev` HEAD and this task's E2E coverage confirms they integrate correctly
-end-to-end.
+   Without these two additions, tests 1 and 6 from the brief failed with
+   `Cannot read properties of undefined (reading 'isLoading')` — confirmed
+   by running the brief's test file as-given first, so this was caught by
+   the TDD "run to see it fail correctly" step, not skipped over.
 
-## Fix: SPDX header
+Everything else — widget shape (`props.tabs: Array<{id,label,items}>`),
+`PropsPanel` behavior (add/rename/reorder/remove, refusing to remove the
+last tab, per-tab `LayoutEditor` for nested items), and runtime `Component`
+behavior (first tab shown by default, click-to-switch, static tab bar in
+edit mode) — was implemented exactly as specified in the brief.
 
-**Finding:** `shell/e2e/sql-lab.spec.ts` was missing the SPDX license identifier header required by the SP-14i plan's Global Constraints.
+## Verification
 
-**Fix applied:** Added `// SPDX-License-Identifier: Apache-2.0` as the first line, followed by a blank line, before the existing `import` statement.
+- `cd shell && npx vitest run src/builder/widgets/tabs.test.tsx` — confirmed
+  FAIL first (6/6 failing, `getWidget("tabs")` undefined / missing
+  provider), then confirmed PASS after implementation + test fixture fixes
+  (6/6 passing).
+- `cd shell && npx vitest run` — full suite: **108 files, 822 tests, all
+  passing**. (Some stderr noise from `exprBindings.test.ts` is expected
+  error-path logging from that pre-existing test, not a new failure.)
 
-**Test result:** `npm run e2e -- e2e/sql-lab.spec.ts` → **3/3 passed** (46.7s), all SQL Lab scenarios remain green.
+## Concerns for the reviewer
 
-**Commit:** `27428d4` — `fix(shell): ajoute l'en-tête SPDX manquant à sql-lab.spec.ts (SP-14i)`
+- The `breakpoint` propagation fix (item 1 above) is untested directly —
+  no test asserts `ctx.breakpoint` reaches a nested widget's `Component`
+  through tabs. It mirrors the `AppRenderer` convention and is safe (an
+  additional optional prop), but flagging it since it's a change beyond
+  the brief's literal code.
+- `NESTED_EXCLUDE` in `LayoutEditor.tsx` already anticipates `"modal"` and
+  `"drawer"` (Tasks 6/7) — nothing to change there for this task.
