@@ -91,6 +91,8 @@ def translate_aggregate_query(
             raise ArcgisQueryError("agg", f"unknown agg '{agg}'")
         if agg != "count" and field is None:
             raise ArcgisQueryError("field", f"agg '{agg}' requires a field")
+        if field is not None and not _FIELD_NAME_RE.match(field):
+            raise ArcgisQueryError(field, f"invalid measure field name '{field}'")
         out_statistics.append({
             "statisticType": agg,
             "onStatisticField": field or "1",
@@ -103,6 +105,9 @@ def translate_aggregate_query(
         **_bbox_params(bbox),
     }
     if group_by:
+        for field_name in group_by:
+            if not _FIELD_NAME_RE.match(field_name):
+                raise ArcgisQueryError(field_name, f"invalid groupBy field name '{field_name}'")
         params["groupByFieldsForStatistics"] = ",".join(group_by)
     return params
 

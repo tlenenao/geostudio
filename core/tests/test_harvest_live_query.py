@@ -95,6 +95,20 @@ def test_translate_aggregate_query_non_count_without_field_raises():
         )
 
 
+def test_translate_aggregate_query_rejects_invalid_groupby_field_name():
+    with pytest.raises(live_query.ArcgisQueryError):
+        live_query.translate_aggregate_query(
+            group_by=["1) OR (1=1--"], measures=[("count", None, "n")], filters={}, bbox=None,
+        )
+
+
+def test_translate_aggregate_query_rejects_invalid_measure_field_name():
+    with pytest.raises(live_query.ArcgisQueryError):
+        live_query.translate_aggregate_query(
+            group_by=[], measures=[("sum", "1) OR (1=1--", "m")], filters={}, bbox=None,
+        )
+
+
 def test_fetch_query_returns_parsed_json():
     def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url).startswith("https://gis.example.com/FeatureServer/0/query")

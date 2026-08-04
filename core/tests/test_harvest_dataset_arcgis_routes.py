@@ -198,6 +198,14 @@ def test_post_aggregate_invalid_filter_field_name_rejected(client):
     assert resp.status_code == 400
 
 
+def test_post_aggregate_invalid_groupby_field_name_rejected(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
+        "agg": "count", "groupBy": "1) OR (1=1--",
+    })
+    assert resp.status_code == 400
+
+
 def test_post_aggregate_bucket_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={
