@@ -1,139 +1,113 @@
-# Task 6 Report: Shell — types + itemClient (dataset source branching) (SP-14k)
+# Task 6 report — Shell "Enregistrer la vue" button on `AppRuntimePage`
 
-## Status: DONE
+## What was implemented
 
-## Summary
+`shell/src/pages/AppRuntimePage.tsx`:
+- New imports: `useCreateBookmark` (merged into the existing `../api/hooks`
+  import alongside `useActiveExtensions`), `useAuth`, `Button`, `Dialog`,
+  `Input`.
+- New local state: `currentAnalyticsContext` (tracks the latest
+  `AnalyticsContextState`, previously only captured inside the debounce-timer
+  closure), `saveDialogOpen`, `viewTitle`; plus `username` from `useAuth()`
+  and the `createBookmark` mutation from `useCreateBookmark()`.
+- `handleAnalyticsContextChangeAndTrack` wraps the existing
+  `handleAnalyticsContextChange` to also update `currentAnalyticsContext`,
+  without touching the existing debounced-URL-write logic.
+- `saveView()`: trims the title (no-op if empty), calls
+  `createBookmark.mutateAsync({ title, owner, appId: pk, pageId, ...currentAnalyticsContext })`,
+  closes the dialog and resets state on success; empty `catch {}` on failure
+  (see self-review below).
+- Render body: replaced the bare `<div className="h-full w-full">` wrapper
+  with a `flex flex-col` layout containing (1) a toolbar with the
+  "Enregistrer la vue" button, shown only when `query.data.interactions ===
+  "auto"`, (2) the `<AppRenderer>` (now wired to
+  `handleAnalyticsContextChangeAndTrack`), and (3) a `Dialog` with a title
+  input, an error message on `createBookmark.isError`, and
+  "Annuler"/"Enregistrer" buttons (the latter disabled while pending or the
+  title is blank).
 
-Implemented arcgis dataset support in the shell's `ItemClient`, enabling datasets to reference live ArcGIS Feature Service layers instead of copying data into local collections. Made `DatasetConfig` a discriminated union (`source: "collection" | "arcgis"`), added full branching logic for all 5 dataset methods, and added a new `listFeatureLayers()` method to fetch available ArcGIS layers from the core.
+`shell/src/pages/AppRuntimePage.test.tsx`:
+- Added `waitFor` to the `@testing-library/react` import.
+- Appended 3 tests (transcribed verbatim from the brief): button absent in
+  manual mode, button present in auto mode, and a full save flow (type dates
+  into the existing `dateRangeFilter` widget, open the dialog, type a title,
+  click "Enregistrer", assert `createBookmarkItem` was called with the
+  expected `CreateBookmarkInput` shape).
 
-## What Was Implemented
+No other files were touched (the existing `dateFilterConfig` /
+`manualDateFilterConfig` / `okItem` / `renderRuntime` fixtures were reused
+as instructed, not redefined).
 
-### Types (`shell/src/api/types.ts`)
+## Testing
 
-1. Made `DatasetConfig` a discriminated union with two variants:
-   - `{ source: "collection"; collectionId: string; ... }`
-   - `{ source: "arcgis"; arcgisItemId: string; ... }`
-2. Added `FeatureLayerSource` type: `{ id: string; title: string }`
-3. Added `CreateDatasetInput` discriminated union type
-4. Updated `ItemClient` interface to accept `CreateDatasetInput` and added `listFeatureLayers()` method
+### RED
 
-### ItemClient Implementation (`shell/src/api/itemClient.ts`)
+Command: `cd shell && npx vitest run src/pages/AppRuntimePage.test.tsx`
+(run before any implementation changes, right after appending the 3 new tests)
 
-1. Updated `ResolvedDataset` type to track both `collectionId` and `arcgisItemId` fields
-2. Updated `resolveDataset()` to parse both source types from core response
-3. Refactored URL building:
-   - Added `_queryParams()` shared helper to extract/filter query parameters
-   - Added `buildArcgisItemsUrl()` to build arcgis proxy URLs
-   - Updated `buildFeaturesUrl()` to use the new helper
-4. Added `_fetchGeoJsonFeatures()` helper for common feature fetching logic
-5. Implemented branching on source type for all 5 dataset methods:
-   - `featuresUrl()`: Routes arcgis datasets to `/datasets/{arcgisItemId}/arcgis/items`
-   - `queryDataSource()`: For features, uses arcgis proxy; for statistics, uses arcgis aggregate endpoint
-   - `createDatasetItem()`: Builds correct payload based on source type
-   - `getDatasetConfig()`: Returns source-specific config variant
-   - `saveDatasetConfig()`: Caches with source-specific fields
-6. Added `listFeatureLayers()`: Fetches available feature layers from `/harvest/feature-layers`
+Result: 2 failed / 8 passed (10 total). The "button is present" test failed
+with a `getByRole` not-found error (no such button existed yet); the "saving
+a view" test failed identically at
+`screen.getByRole("button", { name: "Enregistrer la vue" })`. The "button
+absent" test passed trivially (there was no button in either mode yet), which
+is expected and consistent with the brief.
 
-### Supporting Changes (for build/test compatibility)
+### GREEN
 
-- `shell/src/api/hooks.ts`: Modified `useCreateDataset` to accept new type signature
-- `shell/src/builder/DataContext.tsx`: Filter datasets by source before schema lookups
-- `shell/src/builder/ExplorerDrawer.tsx`: Show appropriate ID based on source type
-- `shell/src/pages/DatasetEditPage.tsx`: Only fetch schema for collection-sourced datasets
-- `shell/src/pages/AppBuilderPage.tsx` & `shell/src/shell/NewItemButton.tsx`: Updated dataset creation calls
-- Test files: Updated to include `source: "collection"` in test setup
+Command: `cd shell && npx vitest run src/pages/AppRuntimePage.test.tsx`
+(after implementation)
 
-## TDD Evidence
+Result: `Test Files 1 passed (1)` / `Tests 10 passed (10)` — all 3 new tests
+plus the 7 pre-existing tests in the file.
 
-### RED: Initial Test Failure
+### Full unit suite
 
-```
-npx vitest run src/api/itemClient.test.ts
-- Tests undefined (DatasetConfig type mismatch)
-- createDatasetItem() signature mismatch
-- listFeatureLayers() method not found
-- featuresUrl/queryDataSource don't branch by source
-```
+Command: `cd shell && npm run test`
+Result: `Test Files 110 passed (110)` / `Tests 851 passed (851)`.
+(A CEL parse-error stack trace prints to stderr during
+`src/builder/exprBindings.test.ts` — that is an intentional error-path
+assertion in a pre-existing, unrelated test, not a failure.)
 
-### GREEN: All Tests Pass
+### Build / type-check
 
-```bash
-$ cd shell && npm run build && npx vitest run
+Command: `cd shell && npm run build`
+Result: `tsc --noEmit && vite build` succeeded (no type errors — confirms
+`CreateBookmarkInput`'s shape matches the `mutateAsync` call:
+`{ title, owner, appId, pageId, timeRange, extent, crossFilter }`).
 
-✓ tsc --noEmit (clean)
-✓ vite build (32.51s)
+## Files changed
 
-Test Files  110 passed (110)
-Tests  837 passed (837)
-```
+- `shell/src/pages/AppRuntimePage.tsx`
+- `shell/src/pages/AppRuntimePage.test.tsx`
 
-Specifically for itemClient tests:
-```bash
-$ npx vitest run src/api/itemClient.test.ts
-✓ src/api/itemClient.test.ts (95 tests) 791ms
-```
+## Self-review
 
-All 6 new arcgis tests pass:
-1. ✓ `featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items`
-2. ✓ `queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset`
-3. ✓ `queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset`
-4. ✓ `getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset`
-5. ✓ `createDatasetItem with source=arcgis posts an arcgis dataset payload`
-6. ✓ `listFeatureLayers fetches /harvest/feature-layers`
+- **`createBookmark.isError` after a failed `mutateAsync`, given the empty
+  `catch {}`:** verified this is safe. React Query's `useMutation` mutation
+  function runs through the mutation's internal dispatch/reducer *before*
+  `mutateAsync`'s returned promise rejects — `isError` (and `error`) are set
+  on the mutation's state synchronously as part of that failure handling,
+  independent of whatever the caller does with the rejected promise. The
+  `catch {}` here only prevents the rejection from propagating as an unhandled
+  promise rejection inside `saveView`; it does not suppress the `isError`
+  flag, which the dialog already renders via
+  `{createBookmark.isError && <p role="alert">…</p>}`. No dedicated test for
+  the failure path was in the brief's test list, so none was added — this was
+  a targeted correctness check, not a gap to fill (YAGNI: the brief didn't
+  ask for a failure-path test, and adding one wasn't requested).
+- Confirmed the new toolbar/dialog code is a literal transcription of the
+  brief (imports, state, handlers, JSX) with only one intentional deviation:
+  `useCreateBookmark` was merged into the existing `useActiveExtensions`
+  import from `../api/hooks` instead of a separate import line, since both
+  come from the same module — functionally identical, slightly cleaner.
+- Checked that `handleAnalyticsContextChangeAndTrack` composes rather than
+  replaces `handleAnalyticsContextChange`, so the manual-mode
+  additivity guard and the debounced-URL-write/stale-closure fix (both
+  covered by pre-existing tests) are untouched. Confirmed by the full test
+  file passing, including those specific regression tests.
+- No new dependencies, no restructuring beyond what the brief specified.
 
-Existing collection-sourced tests continue to pass unmodified.
+## Issues or concerns
 
-## Files Changed
-
-Core implementation (per brief):
-- `shell/src/api/types.ts`
-- `shell/src/api/itemClient.ts`
-- `shell/src/api/itemClient.test.ts`
-
-Supporting changes (needed for compilation/test compatibility):
-- `shell/src/api/hooks.ts`
-- `shell/src/builder/DataContext.tsx`
-- `shell/src/builder/ExplorerDrawer.tsx`
-- `shell/src/pages/DatasetEditPage.tsx`
-- `shell/src/pages/AppBuilderPage.tsx`
-- `shell/src/pages/AppBuilderPage.test.tsx`
-- `shell/src/shell/NewItemButton.tsx`
-
-## Self-Review Checklist
-
-✓ **Did I fully implement everything?**
-- Types: discriminated union `DatasetConfig`, `FeatureLayerSource`, `CreateDatasetInput`
-- ItemClient branching: all 5 methods handle both sources correctly
-- New method: `listFeatureLayers` calls core's `/harvest/feature-layers`
-
-✓ **Does pre-existing collection-sourced behavior stay byte-identical?**
-- Existing collection dataset tests pass
-- Collection code paths in `featuresUrl`/`queryDataSource` unchanged
-- New discriminated union is backward compatible when `source: "collection"`
-
-✓ **Do tests actually verify behavior?**
-- Tests verify correct URL routing (arcgis vs collection)
-- Tests verify POST body shape for statistics queries
-- Tests verify `listFeatureLayers` response parsing
-- Existing tests confirm collection behavior still works
-
-✓ **Build and test results clean?**
-- tsc --noEmit: clean
-- vite build: successful (32.51s)
-- Full vitest suite: 837/837 tests pass
-
-## Commit
-
-```
-14030ff feat(shell): itemClient routes arcgis-sourced datasets to the live proxy (SP-14k)
-```
-
-## Issues and Concerns
-
-None. Implementation complete and verified.
-- Follows brief specification exactly
-- All type safety via discriminated union
-- Full test coverage (837/837 pass)
-- Clean build (tsc + vite)
-- Backward compatible with collection datasets
-- Ready for Task 7 (UI flows) and Task 8 (DataContext resolution)
+None. Implementation matches the brief exactly, all tests pass (new and
+pre-existing), full unit suite is green, and the build/type-check succeeds.

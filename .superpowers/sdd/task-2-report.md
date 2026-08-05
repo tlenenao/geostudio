@@ -1,169 +1,126 @@
-# Task 2 report — `run_analytics_query` MCP tool (SP-14l)
+# Task 2 report — Core: direct validation + REST wiring (bookmark, SP-14m)
 
-## What was implemented
+## What I implemented
 
-`core/app/mcp/tools.py` (after Task 1's `create_dataset`/`_validate_dataset`):
+- New file `core/app/configs/bookmark_validation.py`: `validate_bookmark_payload(session, config, *, user)`.
+  No-op for any `config.kind != "bookmark"`. For `kind="bookmark"`, resolves
+  `config.bookmark.appId` via `items_repo.get_access_facts` + `can(..., action="read", ...)`;
+  raises `HTTPException(422, "app not found")` if the item doesn't exist or isn't
+  readable by the caller (same message for both, to avoid leaking existence —
+  same convention as `dataset_validation.py`). If the item exists and is
+  readable, fetches it via `items_repo.get_item` and rejects (same 422/message)
+  if `resourceType` isn't `"app"` or `"dashboard"`.
+- Wired into `core/app/configs/routes.py`:
+  - New import: `from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload`,
+    placed alphabetically next to the existing dataset import.
+  - `create_config`: added `_validate_bookmark_payload(session, request.config, user=user)`
+    right after the existing `_validate_dataset_payload` call.
+  - `update_config_by_item`: added `_validate_bookmark_payload(session, config, user=user)`
+    right after the existing `_validate_dataset_payload` call.
+  - (Per the brief, `update_config` — the by-config-id PUT — was *not* touched;
+    only `create_config` and `update_config_by_item` were in scope.)
 
-- Imports added: `httpx`, `app.analytics.aggregate.{AggregateMeasure, AggregateRequestBody,
-  UnknownAggregateField, run_collection_aggregate}`, `app.features.routes as features_routes`,
-  `app.harvest.live_query`, `app.harvest.repository as harvest_repo`,
-  `app.harvest.routes as harvest_routes`, `app.harvest.egress.EgressBlockedError`.
-- Two new private helpers, placed right after `_validate_dataset`:
-  - `_resolve_dataset_payload(session, *, user, dataset_item_id) -> DatasetPayload` — read-access
-    check on the dataset item + kind/payload extraction. Reused by Task 3 (`explain_dataset`).
-  - `_resolve_arcgis_external_url(session, *, user, dataset_item_id) -> str` — independent
-    double permission check (dataset item read, then arcgis layer item read), mirroring
-    `app/harvest/routes.py::_resolve_arcgis_dataset` line for line but raising `ValueError`
-    instead of `HTTPException` (same rationale as the existing `_require_access`). Also reused
-    by Task 3.
-- The `run_analytics_query` tool itself, registered right after `create_dataset`: dispatches on
-  `payload.source` — `collection` goes through `introspect_table` + DuckDB
-  (`run_collection_aggregate`, using `features_routes.get_duckdb_connection_factory()` /
-  `get_analytics_base_uri()` called as plain functions, matching how the REST route's own
-  `Depends` resolve); `arcgis` rejects `bucket`/`split`/`bins`, resolves the external URL via the
-  new helper, and reuses `live_query.translate_aggregate_query` / `fetch_query` /
-  `aggregate_response` exactly as `POST /datasets/{id}/arcgis/aggregate` does — so the SP-14k
-  `where=` field-name validation fix in `translate_aggregate_query` is inherited automatically,
-  no new validation logic was added.
-- No `READ_ONLY_TOOLS` entry (this is a read-only tool, confirmed by
-  `test_read_only_tools_constant_matches_the_five_write_tools` still passing unchanged).
+Implementation is byte-for-byte the code given in the brief; no deviations.
 
-Two new test files, transcribed from the brief with two deviations found and fixed during TDD
-(see "Self-review findings" below):
+## What I tested and results
 
-- `core/tests/test_mcp_tools_run_analytics_query.py` (source `collection`, `@pytest.mark.postgis`)
-- `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` (source `arcgis`, SQLite/mock)
+New test file `core/tests/test_create_bookmark.py` (5 tests, exactly as specified
+in the brief):
 
-## What was tested and results
+1. `test_create_bookmark_avec_app_existante_et_lisible` — bookmark targeting an
+   app the caller owns → 201, and the created item's `resourceType` is `"bookmark"`.
+2. `test_create_bookmark_app_inexistante_rejetee` — `appId` that doesn't exist → 422 `"app not found"`.
+3. `test_create_bookmark_app_non_lisible_rejetee_avec_meme_message` — `appId`
+   pointing to another user's private app → 422 `"app not found"` (same message
+   as not-found, confirming no existence leak).
+4. `test_create_bookmark_cible_un_kind_non_app_rejetee` — `appId` pointing to a
+   `"map"` item (readable, but wrong resource type) → 422 `"app not found"`.
+5. `test_update_bookmark_app_inexistante_rejetee` — same validation exercised
+   through `PUT /configs/by-item/{id}`.
 
-Ran with `CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test` exported
-(verified working against the running `postgis-test` container).
-
-- Both new test files together: **7 passed, 0 skipped, 0 failed.**
-  - `test_mcp_tools_run_analytics_query.py` — 4 tests, all `@pytest.mark.postgis`, all ran for
-    real against Postgres/PostGIS (not skipped) — confirmed by watching them fail during RED
-    (real DB writes/reads happening) and pass during GREEN, with no "skip" lines in the pytest
-    summary.
-  - `test_mcp_tools_run_analytics_query_arcgis.py` — 3 tests, SQLite-backed, no postgis marker.
-- Step 6 regression suite (`test_mcp_tools_create.py`, `test_mcp_tools_create_form_app.py`,
-  `test_mcp_tools_query_features.py`, `test_mcp_read_only_mode.py`,
-  `test_mcp_tools_dataset_create.py`): **25 passed, 0 failed.**
-- Combined final run of all 7 new + 25 regression tests together: **32 passed**, clean
-  (`filterwarnings = ["error", ...]` is active project-wide — a stray warning would have failed
-  the run outright; none did).
-- `uv run lint-imports`: contract kept (0 broken) — the new cross-module imports
-  (`app.harvest`, `app.features.routes`, `app.analytics.aggregate`) don't violate the module
-  boundary lint.
+All 5 pass. Full core suite: `872 passed, 112 skipped` (no regressions;
+`validate_bookmark_payload` is a no-op for every other `kind`). Import-linter
+layered-architecture contract still passes: `Analyzed 125 files, 339
+dependencies... Contracts: 1 kept, 0 broken`.
 
 ## TDD Evidence
 
-**RED** — before writing the implementation (imports/helpers/tool), ran:
+**RED** — `cd core && uv run pytest tests/test_create_bookmark.py -v` (test file
+written first, before `bookmark_validation.py` existed and before the routes.py
+wiring):
 
 ```
-cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
-  uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v
+tests/test_create_bookmark.py::test_create_bookmark_avec_app_existante_et_lisible PASSED [ 20%]
+tests/test_create_bookmark.py::test_create_bookmark_app_inexistante_rejetee FAILED [ 40%]
+tests/test_create_bookmark.py::test_create_bookmark_app_non_lisible_rejetee_avec_meme_message FAILED [ 60%]
+tests/test_create_bookmark.py::test_create_bookmark_cible_un_kind_non_app_rejetee FAILED [ 80%]
+tests/test_create_bookmark.py::test_update_bookmark_app_inexistante_rejetee FAILED [100%]
+========================= 4 failed, 1 passed in 1.87s ==========================
 ```
 
-Result: **7 failed** (all 7 tests). Failure mode: `WARNING mcp.server.lowlevel.server: Tool
-'run_analytics_query' not listed, no validation will be performed` followed by
-`call_tool`/`call_tool_expecting_error` failing because the tool didn't exist yet (either an
-unhandled/unknown-tool error path, or an unexpected `isError` value) — exactly the "unknown
-tool" failure the brief predicted for Step 3.
+Failures matched exactly what the brief predicted: `POST /configs` /
+`PUT /configs/by-item/{id}` with `kind="bookmark"` returned 201/200
+unconditionally (no semantic validation wired yet), so the four
+"should-be-rejected" tests got a success status instead of 422. (The happy-path
+test passed trivially since no validation was needed to make it succeed.)
+Unrelated `procrastinate.exceptions.AppNotOpen` stack traces were logged during
+item creation in this run — pre-existing noise from the embedding-job enqueue
+path in the sqlite test setup (caught and logged elsewhere in
+`app/items/repository.py`), not introduced by this change; it appears
+identically before and after the fix, and throughout the rest of the suite.
 
-**GREEN** — after implementing the tool/helpers and fixing the two test-file issues below, same
-command:
+**GREEN** — after creating `bookmark_validation.py` and wiring `routes.py`:
 
 ```
-cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
-  uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v
-```
-
-Result:
-```
-tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_collection_source_returns_grouped_counts PASSED
-tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_unknown_group_by_field_errors PASSED
-tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_dataset_not_found_errors PASSED
-tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_collection_unreadable_by_caller_errors PASSED
-tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_source_groupby_and_measure PASSED
-tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_source_rejects_bucket PASSED
-tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_layer_unreadable_errors PASSED
-7 passed in 3.22s
+tests/test_create_bookmark.py::test_create_bookmark_avec_app_existante_et_lisible PASSED [ 20%]
+tests/test_create_bookmark.py::test_create_bookmark_app_inexistante_rejetee PASSED [ 40%]
+tests/test_create_bookmark.py::test_create_bookmark_app_non_lisible_rejetee_avec_meme_message PASSED [ 60%]
+tests/test_create_bookmark.py::test_create_bookmark_cible_un_kind_non_app_rejetee PASSED [ 80%]
+tests/test_update_bookmark_app_inexistante_rejetee PASSED [100%]
+============================== 5 passed in 1.77s ===============================
 ```
 
-Step 6 regression command and result:
-```
-cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
-  uv run pytest tests/test_mcp_tools_create.py tests/test_mcp_tools_create_form_app.py \
-  tests/test_mcp_tools_query_features.py tests/test_mcp_read_only_mode.py \
-  tests/test_mcp_tools_dataset_create.py -v
-# 25 passed in 5.89s
-```
+Full suite: `cd core && uv run pytest -q` → `872 passed, 112 skipped in 53.96s`.
 
 ## Files changed
 
-- `core/app/mcp/tools.py` — imports, `_resolve_dataset_payload`, `_resolve_arcgis_external_url`,
-  `run_analytics_query` tool.
-- `core/tests/test_mcp_tools_run_analytics_query.py` — new.
-- `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` — new (transcribed verbatim from the
-  brief, no changes needed).
+- `core/app/configs/bookmark_validation.py` (new)
+- `core/app/configs/routes.py` (import + 2 call sites)
+- `core/tests/test_create_bookmark.py` (new)
 
-Commit: `d877944` — `feat(core): mcp run_analytics_query tool (SP-14l)`.
+Commit: `c346c2d` — `feat(core): validate bookmark appId readability on create/update (SP-14m)`.
 
-## Self-review findings
+## Self-review
 
-- Implementation (`tools.py`) matches the brief's literal code exactly — no additions beyond
-  scope (no analyst-role check, no `run_sql`, `run_analytics_query` correctly omitted from
-  `READ_ONLY_TOOLS`).
-- No `HTTPException` escapes the tool body: every error path in the new helpers and the tool
-  itself raises `ValueError`, consistent with every other tool in this file.
-- `_resolve_arcgis_external_url` double-checks both the dataset item and the underlying arcgis
-  layer item read access, independently of `_resolve_dataset_payload`'s own dataset-item check —
-  exactly mirrors `app/harvest/routes.py::_resolve_arcgis_dataset`. Confirmed via
-  `test_run_analytics_query_arcgis_layer_unreadable_errors`, which registers the arcgis layer
-  item under a *different* owner (not `mock_user`) with no share, and confirms `run_analytics_query`
-  refuses it even though the dataset item itself is owned by (and thus readable to) the caller.
-- The arcgis-side injection-relevant piece (`translate_aggregate_query`'s field-name validation
-  fixed under SP-14k) is reused as-is — no new validation logic was written, per the brief.
-- Two issues found in the brief's literal test code during RED→GREEN iteration (both in
-  `test_mcp_tools_run_analytics_query.py`, the postgis-marked file — the arcgis test file needed
-  no changes):
-  1. **Double `with app_client:` per test.** The brief's tests exit and re-enter
-     `with app_client:` within a single test function. `mcp.server.streamable_http_manager.
-     StreamableHTTPSessionManager.run()` (the ASGI app's lifespan) can only run once per
-     instance — re-entering `with app_client:` a second time on the same `TestClient`/app raises
-     `RuntimeError: StreamableHTTPSessionManager .run() can only be called once per instance.`
-     This is a hard library restriction (source-code-documented), not a decision to relitigate.
-     Fix: collapsed each test's two-or-three `with app_client:` blocks into one — nothing in
-     between (`_register_incidents_collection`, `_write_partition`, the `session_factory()`
-     privacy flip) actually needs the ASGI lifespan; only the `call_tool`/`call_tool_expecting_error`
-     calls do.
-  2. **Ownership short-circuit made `test_run_analytics_query_collection_unreadable_by_caller_errors`
-     untestable as written.** The brief reused `_register_incidents_collection` (owner =
-     `mock_user`, the caller) then flipped `is_public=False` expecting the caller to lose read
-     access. But `app/sharing/authorization.py::can()` short-circuits
-     `if item.owner_id == user_id: return True` *before* checking `is_public` — so an owner's
-     read access can never be revoked by flipping `is_public`. As observed, this made the tool
-     legitimately succeed (`isError: False`, returning `{"categoryKey": "titre", "rows": []}`)
-     where the test expected an error. Fix: added `_register_incidents_collection_owned_by_other`,
-     a near-duplicate of `_register_incidents_collection` that creates the collection under a
-     *different* owner (public at creation, so `create_dataset` still succeeds for the caller),
-     so the later `is_public=False` flip genuinely revokes the caller's collection-read access
-     while the dataset item — owned by the caller — stays readable, exactly as the test's own
-     comment describes the intent.
-  Both fixes are additive/corrective only; they don't touch `tools.py` or change what's being
-  verified, they just make the tests actually exercise what they claim to.
+- Completeness: all 5 acceptance tests from the brief implemented and pass;
+  both call sites (`create_config`, `update_config_by_item`) wired exactly as
+  specified; `update_config` (by config_id) intentionally left untouched per
+  the brief's scope (bookmarks aren't reachable through that route pattern in
+  this plan).
+- Quality: matches the existing `dataset_validation.py` / `_require_access`
+  style in the same file; function name (`validate_bookmark_payload`) is the
+  exact name Task 3 needs to wrap for the MCP tool.
+- Discipline: no extra behavior added beyond the brief's literal code (e.g. no
+  extra kind checks, no extra fields validated) — YAGNI respected.
+- Testing: real HTTP requests through `TestClient` against a real (in-memory
+  sqlite) DB and real `can()`/authorization logic — no mocks. Ran import-linter
+  to confirm the new file doesn't violate the layered-architecture contract
+  (it doesn't: `app.configs` already depends on `app.items`/`app.sharing`).
+  `ruff` binary isn't installed in this environment (`uv run ruff` →
+  "No such file or directory") so no lint pass was possible; the new file
+  visually matches surrounding style (line length, import order, docstring
+  conventions).
 
 ## Issues or concerns
 
-- The two test-file deviations above are documented inline in the test file itself (as code
-  comments) and summarized here for visibility, per the instruction to flag anything that
-  required a judgment call beyond literal transcription. Both are test-infrastructure/test-logic
-  fixes, not decisions about `tools.py`'s behavior — the implementation itself required no
-  deviation from the brief.
-- Noted but out of scope: several unrelated `.superpowers/sdd/*.md` files
-  (`progress.md`, `task-1-brief.md`, `task-1-report.md`, `task-2-brief.md`) showed up as modified
-  in `git status` at the start of this task, and `task-2-report.md` already existed with content
-  from an unrelated prior SP-14k task (`harvest_repo.get/list_feature_layer_record`). None of
-  these were touched by this task's work; `task-2-report.md` is overwritten here with this task's
-  own report, and only `core/app/mcp/tools.py` plus the two new test files were staged/committed.
-- No other concerns. All tests pass, no regressions, import-linter clean, no stray warnings.
+- Several unrelated `.superpowers/sdd/*.md` files (`progress.md`,
+  `task-1-brief.md`, `task-1-report.md`, `task-2-brief.md`) and an untracked
+  `docs/superpowers/plans/2026-08-05-sp14m-bookmarks.md` showed up as
+  modified/untracked in `git status` at the start of this task. None of these
+  were touched by this task's work; only `core/app/configs/bookmark_validation.py`,
+  `core/app/configs/routes.py`, and `core/tests/test_create_bookmark.py` were
+  staged and committed. `task-2-report.md` itself already existed on disk with
+  leftover content from an unrelated prior task (SP-14l's `run_analytics_query`
+  MCP tool report) — it is overwritten here with this task's own report.
+- No other concerns. All tests pass, no regressions, import-linter clean, no
+  stray warnings.

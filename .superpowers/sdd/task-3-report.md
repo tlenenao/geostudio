@@ -1,132 +1,133 @@
-# Task 3 report — `explain_dataset` MCP tool (SP-14l)
+# Task 3 report — Core: MCP tool `create_bookmark`
 
-## What was implemented
+## What I implemented
 
-Added the `explain_dataset` MCP tool to `core/app/mcp/tools.py`, registered
-inside `register_tools`, right after `run_analytics_query`. It is read-only
-(no `READ_ONLY_TOOLS` entry needed — that set is for write-gating under demo
-mode, not applicable here).
+Added an MCP tool `create_bookmark` to `core/app/mcp/tools.py`, mirroring the
+existing `create_dataset` tool, which itself mirrors `POST /configs` with
+`kind="dataset"`. Specifically:
 
-Behavior (verbatim from the brief, transcribed without changes):
-- Resolves the dataset payload via `_resolve_dataset_payload` (Task 2 helper:
-  read-access check + kind=="dataset" check).
-- Fetches the item for its `title`.
-- Builds a `base` dict: `title`, `source`, `timeField`, `reactsToExtent`,
-  `columns` (author metadata, `DatasetColumnMeta.model_dump()` per column).
-- For `source == "collection"`: re-checks collection read access
-  (`_require_collection_read`), introspects the backing table
-  (`introspect_table` → `TableNotFound`/`UnsupportedTable` mapped to
-  `ValueError`), converts via `table_info_to_schema`, and returns
-  `fields: [{name, type}]` — no stats, no sampling, per design non-buts.
-- For `source == "arcgis"`: resolves the live external URL via
-  `_resolve_arcgis_external_url` (Task 2 helper), does a live
-  `GET {external_url}?f=json` through the egress-guarded
-  `harvest_routes.get_arcgis_http_client()` (same seam as
-  `run_analytics_query`'s arcgis path), maps `EgressBlockedError` /
-  `httpx.HTTPError` to `ValueError("arcgis service unavailable")`, and
-  extracts ArcGIS's standard layer `fields: [{name, type}]` from the
-  `alias`-bearing `fields` array in the response (alias itself is dropped —
-  brief only asks for name+type).
+- Extended the `app.configs.schemas` import to pull in `BookmarkCrossFilterEntry`,
+  `BookmarkPayload`, `BookmarkTimeRange` alongside the existing `BuilderConfig`,
+  `DatasetColumnMeta`, `DatasetPayload`.
+- Added `from app.configs.bookmark_validation import validate_bookmark_payload`
+  next to the existing dataset-validation import.
+- Extended `READ_ONLY_TOOLS` with `"create_bookmark"` (now 6 entries).
+- Added `_validate_bookmark(session, config, *, user)` right after
+  `_validate_dataset` — same pattern: calls `validate_bookmark_payload`
+  (Task 2), catches `HTTPException` and re-raises as `ValueError` (MCP tool
+  bodies have no HTTP status channel).
+- Added the `create_bookmark` tool right after `create_dataset`:
+  `create_bookmark(ctx, title, appId, pageId, timeRange=None, extent=None,
+  crossFilter=None) -> ItemRead`. Checks `is_read_only_mode()` *before*
+  opening any DB session (same as all sibling write tools), resolves the
+  actor via `_resolve_actor`, builds a `BookmarkPayload`/`BuilderConfig(kind="bookmark")`,
+  validates via `_validate_bookmark`, creates the item
+  (`resource_type="bookmark"`) and config, and writes two audit log entries
+  (`item.create`, `config.create`) with `actor_kind="agent"`.
 
-No new imports were needed: `introspect_table`, `table_info_to_schema`,
-`TableNotFound`, `UnsupportedTable`, `harvest_routes`, `EgressBlockedError`,
-`httpx`, `items_repo` were all already imported in `tools.py` from Tasks 1-2.
-No new private helpers were added — `_resolve_dataset_payload` and
-`_resolve_arcgis_external_url` were consumed as-is from Task 2.
+## Files changed
 
-## What was tested and results
+- `core/app/mcp/tools.py` — import extension, `READ_ONLY_TOOLS` extension,
+  `_validate_bookmark` helper, `create_bookmark` tool (64 lines added).
+- `core/tests/test_mcp_read_only_mode.py` — replaced
+  `test_read_only_tools_constant_matches_the_five_write_tools` with
+  `test_read_only_tools_constant_matches_the_six_write_tools` (now asserts 6
+  entries including `create_bookmark`); added
+  `test_create_bookmark_refuses_in_read_only_mode` right after
+  `test_create_dataset_refuses_in_read_only_mode`.
+- `core/tests/test_mcp_tools_bookmark_create.py` (new) — 5 tests: item/config
+  creation with `timeRange`, extent + cross-filter acceptance, audit log with
+  `actor_kind="agent"`, unreadable-app 422 without leaking existence, empty
+  `pageId` validation error.
 
-Two new test files, both transcribed verbatim from the brief:
+All three files match the brief's literal code exactly (verified via diff
+against the brief text; only the pre-created schema/validation modules from
+Tasks 1/2 were cross-checked to confirm field names — `BookmarkPayload.appId`/
+`.pageId`/`.timeRange`/`.extent`/`.crossFilter`, `BookmarkTimeRange.from_`
+aliased to `"from"`, `BookmarkCrossFilterEntry.field`/`.value`/`.originSourceId`
+— all matched what the brief assumed).
 
-1. `core/tests/test_mcp_tools_explain_dataset.py` — source `collection`,
-   marked `pytest.mark.postgis` (needs real PostGIS). **Ran for real, not
-   skipped** — confirmed by exporting
-   `CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test`
-   against the running `postgis-test` docker container before invoking
-   pytest. Both tests in this file executed and passed against the real DB.
-   - `test_explain_dataset_collection_source_returns_fields_and_metadata`
-   - `test_explain_dataset_dataset_not_found_errors`
-
-2. `core/tests/test_mcp_tools_explain_dataset_arcgis.py` — source `arcgis`,
-   SQLite fixture, mocked `httpx` transport via `monkeypatch` on
-   `harvest_routes.get_arcgis_http_client`.
-   - `test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata`
-
-All 3 tests pass. No unexpected skips, no stray warnings (re-ran with
-`-W error::DeprecationWarning`, clean). Also ran the full MCP test slice
-(`pytest tests/ -k mcp -q`) for regression safety: **69 passed, 904
-deselected**, no failures.
-
-No brief-fidelity bugs were found in this task's test code (unlike Task 2,
-which found two bugs in its own brief's test literal code). This task's
-tests use a single `with app_client:` block per test (no re-entry issue),
-and the "not found" test uses a nonexistent id rather than a caller-owned
-resource, so there was no owner-short-circuit trap to hit either.
-
-## TDD Evidence
+## TDD evidence
 
 ### RED
 
 Command:
 ```
-cd core && export CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test
-uv run pytest tests/test_mcp_tools_explain_dataset.py tests/test_mcp_tools_explain_dataset_arcgis.py -v
+cd core && uv run pytest tests/test_mcp_tools_bookmark_create.py tests/test_mcp_read_only_mode.py -v
 ```
 
-Result: 3 failed (before implementation existed). Server logs show:
-```
-WARNING  mcp.server.lowlevel.server:server.py:494 Tool 'explain_dataset' not listed, no validation will be performed
-```
-followed by `call_tool` raising `AssertionError: tool explain_dataset
-errored: ...` in all three tests — expected, since the tool didn't exist yet
-and the MCP dispatcher returns an error result for an unregistered tool
-name. (The `procrastinate.exceptions.AppNotOpen` tracebacks in the log are
-pre-existing, caught-and-logged embedding-enqueue noise from
-`create_dataset`'s item/collection creation, unrelated to this task — same
-noise appears in Task 1/2's runs.)
+Result (before implementing the tool, after writing the test files): 6 failed,
+7 passed.
+
+- `test_create_bookmark_creates_item_and_config` — FAILED (`Unknown tool: create_bookmark`, tool not registered)
+- `test_create_bookmark_accepts_extent_and_cross_filter` — FAILED (same)
+- `test_create_bookmark_writes_audit_log_with_agent_actor` — FAILED (same)
+- `test_create_bookmark_unreadable_app_errors_without_leaking_existence` — FAILED (same)
+- `test_read_only_tools_constant_matches_the_six_write_tools` — FAILED (`READ_ONLY_TOOLS` still had only 5 entries)
+- `test_create_bookmark_refuses_in_read_only_mode` — FAILED (`'Unknown tool: create_bookmark'` instead of the read-only message)
+
+(`test_create_bookmark_empty_page_id_errors` incidentally passed even before
+implementation, since `call_tool_expecting_error` only asserts a non-empty
+error string and "Unknown tool" also satisfies that — this is expected and
+harmless; it passes for the right reason after implementation too, as shown
+below.)
+
+This is the expected failure mode per the brief: "FAIL — `create_bookmark`
+tool doesn't exist yet ... the read-only-tools set test fails (still 5
+entries)."
 
 ### GREEN
 
-Command (same as above), after implementing `explain_dataset`:
+Command:
 ```
-tests/test_mcp_tools_explain_dataset.py::test_explain_dataset_collection_source_returns_fields_and_metadata PASSED
-tests/test_mcp_tools_explain_dataset.py::test_explain_dataset_dataset_not_found_errors PASSED
-tests/test_mcp_tools_explain_dataset_arcgis.py::test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata PASSED
-3 passed in 2.11s
+cd core && uv run pytest tests/test_mcp_tools_bookmark_create.py tests/test_mcp_read_only_mode.py -v
 ```
 
-## Files changed
+Result (after implementing `create_bookmark`/`_validate_bookmark`/import/
+`READ_ONLY_TOOLS` extension): **13 passed** (5 new bookmark tests + 8
+read-only-mode tests, including the updated 6-tools-set test and the new
+bookmark-refuses-in-read-only test).
 
-- `core/app/mcp/tools.py` — added `explain_dataset` tool (53 lines), no
-  other lines touched (verified via `git diff -- app/mcp/tools.py`).
-- `core/tests/test_mcp_tools_explain_dataset.py` — new file.
-- `core/tests/test_mcp_tools_explain_dataset_arcgis.py` — new file.
+Full core suite:
+```
+cd core && uv run pytest -q
+```
+Result: **878 passed, 112 skipped**, no failures, no regressions.
 
-Commit: `a1dc72a feat(core): mcp explain_dataset tool (SP-14l)`.
+## Self-review
 
-Note: several `.superpowers/sdd/*.md` files (progress.md, task-1/2/3
-brief/report) showed as modified in `git status` at the start of this
-session, before this task began — these were left untouched and NOT staged
-or committed by this task; only `core/app/mcp/tools.py` and the two new
-test files were added to the commit.
+- Completeness: all 5 new bookmark tests pass, plus both edits to
+  `test_mcp_read_only_mode.py`. Read-only gate checked before DB session
+  opened, matching `create_dataset`'s ordering exactly.
+- Quality: `create_bookmark` and `_validate_bookmark` are line-for-line what
+  the brief specified, following `create_dataset`/`_validate_dataset`
+  precedent already established in this file.
+- Discipline (YAGNI): no extra behavior added beyond the brief; didn't touch
+  unrelated tools or restructure `tools.py` (it remains a long file with ~11
+  tools now — pre-existing condition, not made meaningfully worse by one more
+  tool following the exact same pattern as its neighbors).
+- Testing: real end-to-end MCP tool calls through the FastAPI test client (no
+  mocks), same harness as `test_mcp_tools_create.py`/`test_mcp_tools_dataset_create.py`.
+  TDD followed: tests written first, confirmed RED, then implementation,
+  confirmed GREEN. Output is pristine (no warnings beyond pre-existing
+  OpenTelemetry "already instrumented" noise present across the whole test
+  suite, unrelated to this change).
+- Housekeeping: `.superpowers/sdd/progress.md` and the task-1/task-2
+  brief/report files showed as modified in `git status` at commit time (owned
+  by the orchestrator, not by this task) — deliberately excluded from the
+  commit; only `core/app/mcp/tools.py`,
+  `core/tests/test_mcp_tools_bookmark_create.py`, and
+  `core/tests/test_mcp_read_only_mode.py` were staged and committed, per the
+  brief's own `git add` list.
 
-## Self-review findings
+Note: an earlier version of this report file existed on disk from a prior
+SP-14l task-3 (`explain_dataset` MCP tool) that happened to reuse this same
+filename — it has been overwritten with this task's (SP-14m
+`create_bookmark`) report.
 
-- Completeness: all 3 new tests pass; both files present as specified.
-- Quality: no `HTTPException` escapes the tool body (both arcgis-path
-  exception branches — `EgressBlockedError`, `httpx.HTTPError` — are caught
-  and re-raised as `ValueError`, matching the rest of the file's
-  convention). No stats/sampling/extra fields added beyond `name`+`type`
-  per field, per design non-buts. Naming and structure match the existing
-  tools' style (docstring convention, `with request_scoped_session(...)`,
-  `base = {...}` then source-branch return).
-- Discipline: implementation is a byte-for-byte transcription of the
-  brief's Step 4 code block; no new private helpers, no new imports beyond
-  what already existed.
-- Testing: both test files are verbatim transcriptions from the brief;
-  ran clean, no warnings, no skips, real PostGIS DB confirmed reachable and
-  used.
+No issues found. No concerns.
 
-## Issues or concerns
+## Commit
 
-None. Task completed exactly as specified with no blockers.
+`5edaa5b` — `feat(core): mcp create_bookmark tool (SP-14m)`
+(3 files changed, 172 insertions(+), 3 deletions(-))

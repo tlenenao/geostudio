@@ -1,400 +1,177 @@
-### Task 6: Shell — types + `itemClient.ts` (dataset source branching)
+## Task 6: Shell — "Enregistrer la vue" button on `AppRuntimePage`
 
 **Files:**
-- Modify: `shell/src/api/types.ts`
-- Modify: `shell/src/api/itemClient.ts`
-- Test: `shell/src/api/itemClient.test.ts`
+- Modify: `shell/src/pages/AppRuntimePage.tsx` (add local analytics-context state, a toolbar, the save button + dialog)
+- Test: `shell/src/pages/AppRuntimePage.test.tsx` (append)
 
 **Interfaces:**
-- Produces: `DatasetConfig` becomes a discriminated union (`source: "collection" | "arcgis"`). `CreateDatasetInput` new discriminated union type. `ItemClient.createDatasetItem(input: CreateDatasetInput)`, `ItemClient.listFeatureLayers(params?: {q?: string}): Promise<FeatureLayerSource[]>` (new), `featuresUrl`/`queryDataSource` transparently route arcgis-backed sources to `/datasets/{arcgisItemId}/arcgis/items|aggregate`. Consumed by Task 7 (hooks/NewItemButton) and Task 8 (DataContext).
+- Consumes: `useCreateBookmark` (Task 4), `AnalyticsContextState` (`shell/src/builder/AnalyticsContext.tsx`), `Dialog` (`shell/src/ui/dialog.tsx`), `useAuth` (`shell/src/auth/useAuth.ts`, for `username` as the bookmark's `owner`).
+- Produces: a button labeled "Enregistrer la vue", visible only when `query.data?.interactions === "auto"`; clicking it opens a dialog (label input, "Enregistrer"/"Annuler" buttons) that calls `useCreateBookmark().mutateAsync(...)` with the page's current `AnalyticsContextState`.
 
-- [ ] **Step 1: Write the failing shell tests**
+- [ ] **Step 1: Write the failing tests**
 
-Open `shell/src/api/itemClient.test.ts`, find `makeClient()` at the top (reuse it as-is), and add these tests near the existing `featuresUrl`/`queryDataSource` dataset tests (around line 412-446):
+Append to `shell/src/pages/AppRuntimePage.test.tsx`. First extend the top-of-file mocks: add `vi.mock("../auth/useAuth", ...)` already exists (it mocks `username: "tanguy"`), and add a `createBookmarkItem` spy to the client passed into `renderRuntime`.
 
-```ts
-test("featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-1", () =>
-      HttpResponse.json({
-        id: "cfg-arc1", itemId: "ds-arcgis-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-9", columns: {} } },
-      }),
-    ),
-  );
-  const client = makeClient();
-  await client.getDatasetConfig("ds-arcgis-1"); // warms the cache
-  expect(
-    client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-1", query: {} }),
-  ).toBe("https://core.test/datasets/layer-9/arcgis/items");
+```typescript
+test("the save-view button is absent when interactions is manual", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
+  await screen.findByLabelText("Date de début");
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
 });
 
-test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-2", () =>
-      HttpResponse.json({
-        id: "cfg-arc2", itemId: "ds-arcgis-2", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-10", columns: {} } },
-      }),
-    ),
-    http.get("https://core.test/datasets/layer-10/arcgis/items", () =>
-      HttpResponse.json({ type: "FeatureCollection", features: [{ id: 1, properties: { nom: "Bât" } }] }),
-    ),
-  );
-  const records = await makeClient().queryDataSource({
-    id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-2", query: {},
+test("the save-view button is present when interactions is auto", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) });
+  expect(await screen.findByRole("button", { name: "Enregistrer la vue" })).toBeInTheDocument();
+});
+
+test("saving a view captures the current analytics context and posts a bookmark", async () => {
+  const createBookmarkItem = vi.fn().mockResolvedValue({
+    pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
+    owner: "tanguy", thumbnailUrl: null, date: "", configId: "cfg-bm-1", isPublished: false,
   });
-  expect(records).toEqual([{ id: 1, properties: { nom: "Bât" }, geometry: undefined }]);
-});
-
-test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-3", () =>
-      HttpResponse.json({
-        id: "cfg-arc3", itemId: "ds-arcgis-3", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-11", columns: {} } },
-      }),
-    ),
-    http.post("https://core.test/datasets/layer-11/arcgis/aggregate", () =>
-      HttpResponse.json({ categoryKey: "group", rows: [{ group: "Total", value: 4 }] }),
-    ),
-  );
-  const records = await makeClient().queryDataSource({
-    id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds-arcgis-3", query: { agg: "count" },
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig),
+    createBookmarkItem,
   });
-  expect(records).toEqual([{ id: "Total", properties: { group: "Total", value: 4 } }]);
-});
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+  await userEvent.type(fromInput, "2026-01-01");
+  await userEvent.type(toInput, "2026-02-01");
 
-test("getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-4", () =>
-      HttpResponse.json({
-        id: "cfg-arc4", itemId: "ds-arcgis-4", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-12", columns: {} } },
-      }),
-    ),
-  );
-  const config = await makeClient().getDatasetConfig("ds-arcgis-4");
-  expect(config).toMatchObject({ source: "arcgis", arcgisItemId: "layer-12" });
-});
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la vue" }));
+  await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
 
-test("createDatasetItem with source=arcgis posts an arcgis dataset payload", async () => {
-  let postBody: Record<string, unknown> | null = null;
-  server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
-      postBody = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({ id: "cfg-9", kind: "dataset", itemId: "ds-9" });
+  await waitFor(() =>
+    expect(createBookmarkItem).toHaveBeenCalledWith({
+      title: "Ma vue", owner: "tanguy", appId: "9", pageId: "page-1",
+      timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
     }),
   );
-  const item = await makeClient().createDatasetItem({
-    title: "Bâtiments (live)", owner: "alice", source: "arcgis", arcgisItemId: "layer-13",
-  });
-  expect(item.pk).toBe("ds-9");
-  const config = postBody!.config as Record<string, unknown>;
-  expect(config.dataset).toEqual({ source: "arcgis", arcgisItemId: "layer-13", columns: {} });
 });
+```
 
-test("listFeatureLayers fetches /harvest/feature-layers", async () => {
-  server.use(
-    http.get("https://core.test/harvest/feature-layers", () =>
-      HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
-    ),
+Note: `dateFilterConfig` (already defined in this file, `interactions: "auto"` with a `dateRangeFilter` widget on `page-1`) is the config to use — reuse it, don't redefine it.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd shell && npx vitest run src/pages/AppRuntimePage.test.tsx`
+Expected: FAIL — no such button exists yet.
+
+- [ ] **Step 3: Implement the button + dialog in `AppRuntimePage.tsx`**
+
+Add imports:
+
+```typescript
+import { useState } from "react";
+import { useAuth } from "../auth/useAuth";
+import { useCreateBookmark } from "../api/hooks";
+import { Button } from "../ui/button";
+import { Dialog } from "../ui/dialog";
+import { Input } from "../ui/input";
+```
+
+(merge the `useState` import into the existing `useEffect, useMemo, useRef, useState` import on line 10 if `useState` isn't already there — it is: line 10 already imports `useState`. Only add the new named imports listed above.)
+
+Add local state to retain the latest analytics context (currently only captured in the debounce-timer closure) and the save-dialog state, inside the component body, right after the `handleAnalyticsContextChange` function:
+
+```typescript
+  const [currentAnalyticsContext, setCurrentAnalyticsContext] = useState<AnalyticsContextState>(initialAnalyticsContext);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [viewTitle, setViewTitle] = useState("");
+  const { username } = useAuth();
+  const createBookmark = useCreateBookmark();
+
+  function handleAnalyticsContextChangeAndTrack(state: AnalyticsContextState) {
+    setCurrentAnalyticsContext(state);
+    handleAnalyticsContextChange(state);
+  }
+
+  async function saveView() {
+    const title = viewTitle.trim();
+    if (!title) return;
+    try {
+      await createBookmark.mutateAsync({
+        title, owner: username ?? "",
+        appId: pk, pageId: pageId ?? query.data?.pages?.[0]?.id ?? "",
+        ...currentAnalyticsContext,
+      });
+      setSaveDialogOpen(false);
+      setViewTitle("");
+      createBookmark.reset();
+    } catch {
+      // surfaced via createBookmark.isError
+    }
+  }
+```
+
+Replace the `onAnalyticsContextChange={handleAnalyticsContextChange}` prop on `<AppRenderer>` with `onAnalyticsContextChange={handleAnalyticsContextChangeAndTrack}`.
+
+Replace the render body (the current bare `<div className="h-full w-full">…</div>`) with a toolbar wrapper:
+
+```typescript
+  return (
+    <div className="flex h-full w-full flex-col">
+      {query.data.interactions === "auto" && (
+        <div className="flex justify-end border-b border-slate-200 p-2">
+          <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
+            Enregistrer la vue
+          </Button>
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <AppRenderer
+          config={query.data}
+          mode="runtime"
+          pageId={pageId}
+          onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
+          initialAnalyticsContext={initialAnalyticsContext}
+          onAnalyticsContextChange={handleAnalyticsContextChangeAndTrack}
+        />
+      </div>
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} title="Enregistrer la vue">
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            Nom de la vue
+            <Input aria-label="Nom de la vue" value={viewTitle} onChange={(e) => setViewTitle(e.target.value)} />
+          </label>
+          {createBookmark.isError && (
+            <p role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setSaveDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="button" size="sm" disabled={createBookmark.isPending || !viewTitle.trim()} onClick={saveView}>
+              Enregistrer
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </div>
   );
-  const layers = await makeClient().listFeatureLayers();
-  expect(layers).toEqual([{ id: "layer-1", title: "Bâtiments" }]);
-});
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: FAIL — `DatasetConfig`/`createDatasetItem` don't accept `source: "arcgis"` yet, `listFeatureLayers` doesn't exist, `featuresUrl`/`queryDataSource` don't branch.
+Run: `cd shell && npx vitest run src/pages/AppRuntimePage.test.tsx`
+Expected: PASS (all tests in the file, including the 5 pre-existing ones — `handleAnalyticsContextChangeAndTrack` calls the original `handleAnalyticsContextChange` unchanged, so the debounced-URL-write behavior is untouched)
 
-- [ ] **Step 3: Update `shell/src/api/types.ts`**
+- [ ] **Step 5: Run the full shell unit suite**
 
-Replace:
+Run: `cd shell && npm run test`
+Expected: all green.
 
-```ts
-export type DatasetConfig = {
-  source: "collection";
-  collectionId: string;
-  columns: Record<string, DatasetColumnMeta>;
-  timeField?: string | null;
-  reactsToExtent?: boolean;
-};
-```
+- [ ] **Step 6: Run the shell build (type-check)**
 
-with:
-
-```ts
-export type DatasetConfig =
-  | {
-      source: "collection";
-      collectionId: string;
-      columns: Record<string, DatasetColumnMeta>;
-      timeField?: string | null;
-      reactsToExtent?: boolean;
-    }
-  | {
-      source: "arcgis";
-      arcgisItemId: string;
-      columns: Record<string, DatasetColumnMeta>;
-      timeField?: string | null;
-      reactsToExtent?: boolean;
-    };
-
-export type FeatureLayerSource = { id: string; title: string };
-
-export type CreateDatasetInput =
-  | { title: string; owner: string; source: "collection"; collectionId: string }
-  | { title: string; owner: string; source: "arcgis"; arcgisItemId: string };
-```
-
-In the `ItemClient` interface, replace:
-
-```ts
-  createDatasetItem(input: { title: string; owner: string; collectionId: string }): Promise<Item>;
-```
-
-with:
-
-```ts
-  createDatasetItem(input: CreateDatasetInput): Promise<Item>;
-  listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
-```
-
-- [ ] **Step 4: Update `shell/src/api/itemClient.ts`**
-
-Replace the `ResolvedDataset` type and `resolveDataset` function:
-
-```ts
-  type ResolvedDataset = {
-    source: "collection"; collectionId: string; columns: Record<string, DatasetColumnMeta>;
-    timeField: string | null; reactsToExtent: boolean;
-  };
-```
-
-with:
-
-```ts
-  type ResolvedDataset = {
-    source: "collection" | "arcgis";
-    collectionId: string | null;
-    arcgisItemId: string | null;
-    columns: Record<string, DatasetColumnMeta>;
-    timeField: string | null;
-    reactsToExtent: boolean;
-  };
-```
-
-Replace the body of `resolveDataset`:
-
-```ts
-  async function resolveDataset(pk: string): Promise<ResolvedDataset> {
-    const cached = datasetCache.get(pk);
-    if (cached) return cached;
-    const data = await request<{
-      config?: {
-        dataset?: {
-          source: "collection" | "arcgis";
-          collectionId?: string | null; arcgisItemId?: string | null;
-          columns?: Record<string, DatasetColumnMeta>;
-          timeField?: string | null; reactsToExtent?: boolean;
-        } | null;
-      };
-    }>("GET", `/configs/by-item/${pk}`);
-    const dataset = data.config?.dataset;
-    if (!dataset) throw new Error("resolveDataset: config has no dataset payload");
-    const resolved: ResolvedDataset = {
-      source: dataset.source,
-      collectionId: dataset.collectionId ?? null,
-      arcgisItemId: dataset.arcgisItemId ?? null,
-      columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
-      reactsToExtent: dataset.reactsToExtent ?? false,
-    };
-    datasetCache.set(pk, resolved);
-    return resolved;
-  }
-```
-
-Replace `buildFeaturesUrl` (module-level, above `createItemClient`) with a shared query-string helper plus two URL builders:
-
-```ts
-function _queryParams(query: Record<string, unknown>): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query).sort(([a], [b]) => a.localeCompare(b))) {
-    if (STAT_KEYS.has(k)) continue;
-    if (v === null || v === undefined || v === "") continue;
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-      params.set(k, String(v));
-    }
-  }
-  return params.toString();
-}
-
-function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
-  const base = `${coreUrl}/collections/${source.layer}/items`;
-  const qs = _queryParams(source.query);
-  return qs ? `${base}?${qs}` : base;
-}
-
-function buildArcgisItemsUrl(coreUrl: string, arcgisItemId: string, query: Record<string, unknown>): string {
-  const base = `${coreUrl}/datasets/${arcgisItemId}/arcgis/items`;
-  const qs = _queryParams(query);
-  return qs ? `${base}?${qs}` : base;
-}
-```
-
-Inside `createItemClient`, add a shared feature-fetch helper next to `resolveDataset` (needs `getToken` from the enclosing closure):
-
-```ts
-  async function _fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
-    const token = getToken();
-    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
-    const data = (await res.json()) as {
-      features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
-    };
-    return (data.features ?? []).map((f, i) => ({ id: f.id ?? i, properties: f.properties ?? {}, geometry: f.geometry }));
-  }
-```
-
-Replace `featuresUrl` in the returned object:
-
-```ts
-    featuresUrl(source: DataSource): string {
-      if (source.datasetId) {
-        const cached = datasetCache.get(source.datasetId);
-        if (cached?.source === "arcgis" && cached.arcgisItemId) {
-          return buildArcgisItemsUrl(coreUrl, cached.arcgisItemId, source.query);
-        }
-        return buildFeaturesUrl(coreUrl, { ...source, layer: cached?.collectionId ?? source.layer });
-      }
-      return buildFeaturesUrl(coreUrl, source);
-    },
-```
-
-Replace `queryDataSource`:
-
-```ts
-    async queryDataSource(source: DataSource): Promise<DataRecord[]> {
-      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
-      if (cachedDataset?.source === "arcgis" && cachedDataset.arcgisItemId) {
-        if (source.type === "statistics") {
-          const body = buildAggregateBody(source.query);
-          const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
-            "POST", `/datasets/${cachedDataset.arcgisItemId}/arcgis/aggregate`, body,
-          );
-          return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
-        }
-        return _fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, cachedDataset.arcgisItemId, source.query));
-      }
-      const resolved = source.datasetId
-        ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
-        : source;
-      if (resolved.type === "static") {
-        return (resolved.query.records as DataRecord[] | undefined) ?? [];
-      }
-      if (resolved.type === "statistics") {
-        const body = buildAggregateBody(resolved.query);
-        const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
-          "POST", `/collections/${resolved.layer}/aggregate`, body,
-        );
-        return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
-      }
-      return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
-    },
-```
-
-Replace `createDatasetItem`:
-
-```ts
-    async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
-      const dataset: DatasetConfig =
-        input.source === "arcgis"
-          ? { source: "arcgis", arcgisItemId: input.arcgisItemId, columns: {} }
-          : { source: "collection", collectionId: input.collectionId, columns: {} };
-      const config = { version: 1, kind: "dataset", dataset };
-      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
-      );
-      if (!data.itemId) throw new Error("createDatasetItem: core returned no itemId");
-      datasetCache.set(String(data.itemId), {
-        source: dataset.source,
-        collectionId: dataset.source === "collection" ? dataset.collectionId : null,
-        arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
-        columns: {}, timeField: null, reactsToExtent: false,
-      });
-      return {
-        pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
-        isPublished: false,
-      };
-    },
-```
-
-Replace `getDatasetConfig`/`saveDatasetConfig`:
-
-```ts
-    async getDatasetConfig(pk: string): Promise<DatasetConfig> {
-      const resolved = await resolveDataset(pk);
-      if (resolved.source === "arcgis" && resolved.arcgisItemId) {
-        return {
-          source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
-          timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
-        };
-      }
-      return {
-        source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
-        timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
-      };
-    },
-
-    async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
-      datasetCache.set(pk, {
-        source: config.source,
-        collectionId: config.source === "collection" ? config.collectionId : null,
-        arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
-        columns: config.columns, timeField: config.timeField ?? null,
-        reactsToExtent: config.reactsToExtent ?? false,
-      });
-    },
-```
-
-Add `listFeatureLayers` near `listLayerSources`/`fetchExternalRasterSources`:
-
-```ts
-    async listFeatureLayers(params: { q?: string } = {}): Promise<FeatureLayerSource[]> {
-      const token = getToken();
-      const query = params.q ? `?q=${encodeURIComponent(params.q)}` : "";
-      const res = await fetch(`${coreUrl}/harvest/feature-layers${query}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/feature-layers`);
-      const data = (await res.json()) as { layers?: FeatureLayerSource[] };
-      return data.layers ?? [];
-    },
-```
-
-Update the import line at the top of the file to add `CreateDatasetInput` and `FeatureLayerSource` to the destructured type import from `"./types"`.
-
-- [ ] **Step 5: Run to verify tests pass**
-
-Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: all tests PASS, including the pre-existing collection-dataset ones (unaffected — same behavior, just routed through the now-shared `_queryParams`/`_fetchGeoJsonFeatures` helpers).
-
-- [ ] **Step 6: Typecheck and run the full unit suite**
-
-Run: `cd shell && npm run build && npx vitest run`
-Expected: `tsc --noEmit` clean, full Vitest suite green (398+ tests, some new).
+Run: `cd shell && npm run build`
+Expected: succeeds — `tsc --noEmit` catches any type mismatch between `CreateBookmarkInput` and the `mutateAsync` call shape.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd shell
-git add src/api/types.ts src/api/itemClient.ts src/api/itemClient.test.ts
-git commit -m "feat(shell): itemClient routes arcgis-sourced datasets to the live proxy (SP-14k)"
+git add shell/src/pages/AppRuntimePage.tsx shell/src/pages/AppRuntimePage.test.tsx
+git commit -m "feat(shell): enregistrer la vue button on AppRuntimePage (SP-14m)"
 ```
 
 ---
