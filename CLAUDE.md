@@ -159,6 +159,13 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - **SP-14l** — MCP analytique : outils `create_dataset`, `run_analytics_query`,
   `explain_dataset`, câblés sur les chemins de requête dataset déjà validés
   (SP-11b, SP-14a/k).
+- **SP-14m** — Bookmarks : `bookmark` en cinquième `BuilderConfig.kind` (pas de
+  migration), validation directe de `appId` (lisibilité + type app/dashboard)
+  sur les trois routes d'écriture REST, outil MCP `create_bookmark`, page
+  `/bookmarks` (« Mes vues ») réutilisant `CatalogPage`, bouton « Enregistrer
+  la vue » sur `AppRuntimePage` capturant le contexte analytique courant
+  (plage temporelle/emprise/cross-filter, y compris la forme `{from, to}` du
+  filtre curseur).
 
 ### À venir
 
