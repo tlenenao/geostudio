@@ -83,3 +83,85 @@ test("excludes a range cross-filter patch when this source is the origin", () =>
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
 });
+
+const linked: DatasetConfig = {
+  source: "collection", collectionId: "communes", columns: {},
+  crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "attribute", sourceField: "commune", targetField: "nom_commune" }],
+};
+
+test("translates an attribute link from another dataset's active cross-filter", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({ nom_commune: "Brive" });
+});
+
+test("ignores an attribute link when the active field doesn't match sourceField", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "autre_champ", value: "Brive", originSourceId: "src-OTHER" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({});
+});
+
+test("ignores a link that doesn't target this source's dataset", () => {
+  const elsewhere = { ...linked, crossFilterLinks: [{ targetDatasetId: "ds-999", mode: "attribute" as const, sourceField: "commune", targetField: "nom_commune" }] };
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": elsewhere })).toEqual({});
+});
+
+test("translates a spatial/bbox link into a bbox patch derived from the entry's geometry", () => {
+  const spatialLinked: DatasetConfig = {
+    ...linked,
+    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "bbox" }],
+  };
+  const polygon = { type: "Polygon", coordinates: [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]] };
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({
+    bbox: "2,48,3,49",
+  });
+});
+
+test("translates a spatial/exact link into a geomIntersects patch carrying the raw geometry", () => {
+  const spatialLinked: DatasetConfig = {
+    ...linked,
+    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "exact" }],
+  };
+  const polygon = { type: "Polygon", coordinates: [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]] };
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({
+    geomIntersects: polygon,
+  });
+});
+
+test("ignores a spatial link when the active entry has no geometry", () => {
+  const spatialLinked: DatasetConfig = {
+    ...linked,
+    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "bbox" }],
+  };
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({});
+});
+
+test("does not resolve a link declared on the same dataset as the target source (no self-link)", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
+  };
+  // dataset "ds-1" has no crossFilterLinks of its own here — this just proves the
+  // direct same-dataset path (already tested above) and the link path don't double-fire.
+  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
+});
