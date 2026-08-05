@@ -25,7 +25,7 @@
 3. [Architecture cible de fin de feuille de route](#3-architecture-cible)
 4. [Le périmètre exact du remplacement de GeoNode](#4-périmètre-du-remplacement-de-geonode)
 5. [Modèle de données du cœur v0](#5-modèle-de-données-du-cœur-v0)
-6. [Phasage SP-1 → SP-18](#6-phasage)
+6. [Phasage SP-1 → SP-20](#6-phasage)
 7. [Points d'arbitrage technique (A1–A27)](#7-points-darbitrage-technique)
 8. [Décisions d'arbitrage](#8-décisions-darbitrage)
 9. [Ce qui est explicitement différé](#9-différé)
@@ -191,7 +191,9 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-16 | Alertes & reporting : exports, rapports planifiés | 50–80 h | SP-17, SP-14 | **M12 la plateforme prévient** |
 | SP-17 | 3D & impression | 50–90 h | SP-1 | **M10 3D & print** |
 | SP-18 | Export d'apps déployables sans GeoStudio (connecté/autoporté/statique) | 80–140 h | SP-11 | **M15 apps portables** |
-| | **Total** | **≈ 995–1 730 h** | | ≈ 22–44 mois à 10–25 h/sem |
+| SP-19 | Undo/redo général du builder | 20–35 h | — | — |
+| SP-20 | Copilote IA embarqué dans le builder | 60–100 h | SP-19 (+ MCP SP-2/SP-7/SP-14l) | **M16 copilote embarqué** |
+| | **Total** | **≈ 1 075–1 865 h** | | ≈ 24–47 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
@@ -268,6 +270,28 @@ SP-11 terminé. Chantier **orthogonal à SP-Deploy**
 déploie toute la plateforme GeoStudio) : ici on exporte une app unique pour
 qu'elle tourne seule, ailleurs. Voir
 [la spec dédiée](../superpowers/specs/2026-08-05-export-apps-standalone-design.md).
+
+**Les SP-19 et SP-20 ont été ajoutés le 2026-08-05** (brainstorm copilote
+embarqué, arbitrages A32/A40 tranchés par Tanguy). **SP-20 — Copilote IA
+embarqué dans le builder** répond au gap G8 identifié le 2026-07-14 (gap
+analysis dataviz/analytics/BI/portails, §7.10) et resté ouvert sous
+l'arbitrage réservé A32 : le MCP (SP-2/SP-7/SP-14l) rend GeoStudio opérable
+par un agent *externe*, mais rien dans le shell ne permet à l'auteur d'un
+builder de piloter par prompt l'app qu'il édite. Un panneau de chat orchestre,
+en loopback réel, les outils MCP déjà existants (allowlist fermée en lecture
+contextuelle + création ciblée d'items — jamais `save_app_config` ni
+`set_sharing`) ; l'édition de la config déjà ouverte passe par un jeu fermé
+d'opérations structurées appliquées à l'état live du builder (micro-actions,
+pas de génération opaque de dashboard complet). Off par défaut
+(`CORE_LLM_PROVIDER` à configurer). En creusant son architecture est apparu un
+prérequis non couvert par la feuille de route : le builder n'a aucun
+mécanisme d'annulation, pour aucune édition. **SP-19 — Undo/redo général du
+builder** livre donc en amont une pile d'instantanés de la config, utile à
+toute édition manuelle et pas seulement au copilote ; SP-20 en dépend
+strictement, sinon indépendant de tout autre SP. Voir les specs dédiées
+[undo/redo builder](../superpowers/specs/2026-08-05-undo-redo-builder-design.md)
+et
+[copilote embarqué](../superpowers/specs/2026-08-05-copilote-embarque-design.md).
 
 ---
 
@@ -1182,6 +1206,29 @@ print professionnel.
 
 **Décision (2026-07-14) : (a).**
 
+### A32 — Copilote IA embarqué : Go/périmètre et architecture (SP-20)
+
+> Arbitrage laissé ouvert le 2026-07-14 (gap G8 du gap analysis, priorité
+> stratégique P0, décrit §7.10 : « le seul point où le builder a besoin d'une
+> brique véritablement nouvelle sans équivalent dans la feuille de route »),
+> tranché le 2026-08-05 lors du brainstorm dédié.
+
+| Question | Option retenue | Alternative écartée |
+|---|---|---|
+| Comment le copilote appelle-t-il les outils MCP existants ? | **Client MCP réel, en loopback** — le cœur appelle son propre `/mcp` en HTTP/JSON-RPC, même chemin qu'un agent externe | Réutilisation directe des fonctions Python de `mcp/tools.py` — plus rapide mais deux points d'entrée logiques vers la même capacité, risque de divergence |
+| Pont d'audience OAuth (le token REST du shell n'est pas valide pour `/mcp`, `CORE_MCP_AUDIENCE` distinct, `mcp/auth.py`) | **Le shell complète le flux OAuth 2.1+PKCE existant en silencieux** (`signinSilent`, session SSO Keycloak déjà active) | Échange de token côté serveur (RFC 8693) — exige d'activer le token-exchange Keycloak, complexité de déploiement supplémentaire pour l'auto-hébergé |
+| Fournisseur LLM | **API compatible OpenAI** (chat completions + tool calling standard), même convention enfichable que `EmbeddingProvider` (SP-7) | API native Anthropic uniquement — moins interopérable avec l'écosystème self-hosted/local (vLLM, Ollama) |
+| Cible d'une édition de la config en cours | **État live du builder, en mémoire** — le copilote agit comme la palette/le PropsPanel, l'utilisateur sauvegarde lui-même | Toujours via `get_app_config`/`save_app_config` MCP — plus fidèle au parallèle « agent externe » mais UX rugueuse (perte d'éditions non sauvegardées) |
+| Forme des éditions de config | **Jeu fermé d'opérations structurées** (`addWidget`, `updateWidgetProps`, …) réutilisant les fonctions pures déjà utilisées par l'UI manuelle | Le LLM renvoie une config JSON complète — plus flexible mais risque de config invalide/hallucinée, contraire à l'esprit « micro-actions » |
+| Périmètre d'outils v1 | **Lecture contextuelle + création ciblée d'items** (`search_catalog`, `list_items`, `explain_dataset`, `run_analytics_query`, `create_item`, `create_form_app`) ; jamais `save_app_config` ni `set_sharing` | Strictement l'item ouvert (sans création) — écarté, le copilote peut aussi composer une app neuve sur une collection existante |
+| Activation | **Off par défaut, activée par `CORE_LLM_PROVIDER`** (instance) | Toujours visible avec erreur si non configuré — expose une fonctionnalité cassée par défaut |
+
+**Décision (2026-08-05) : GO**, périmètre et architecture ci-dessus. **Dépend
+de SP-19** (undo/redo général du builder, découvert comme prérequis pendant ce
+brainstorm — sans lui, une suggestion malvenue n'est réversible qu'à la main).
+Voir la spec dédiée
+[copilote embarqué](../superpowers/specs/2026-08-05-copilote-embarque-design.md).
+
 ### A33 — Domaine personnalisé par site (SP-13)
 
 | Option | Avantages | Inconvénients |
@@ -1241,13 +1288,33 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 
 **Décision (2026-07-14) : (a)** — réévaluées sur demande réelle explicite.
 
+### A40 — Undo/redo du builder : stratégie de pile (SP-19)
+
+> Chantier découvert pendant le brainstorm du copilote embarqué (A32/SP-20) :
+> le builder n'a aujourd'hui aucun mécanisme d'annulation, pour aucune
+> édition — manuelle ou assistée. Sorti en chantier à part (SP-19,
+> prérequis de SP-20) plutôt qu'un undo scopé au seul copilote, pour
+> bénéficier à toute édition manuelle.
+
+| Question | Option retenue | Alternative écartée |
+|---|---|---|
+| Stratégie de pile | **Instantanés de la `BuilderConfig` entière** — un seul objet source de vérité (règle d'architecture n° 2), configs de taille modeste, aucune fonction inverse à écrire par type de mutation | Pile de commandes avec inverse par type d'action — plus économe en mémoire mais charge récurrente à chaque nouvelle capacité du builder |
+| Granularité des actions continues (glisser-déposer, saisie) | **Un pas par action commitée** (au relâchement/blur, pas par événement intermédiaire) | Un pas par événement bas niveau — `Ctrl+Z` deviendrait impraticable |
+
+**Décision (2026-08-05) : instantanés de config, un pas par action
+commitée.** Aucune dépendance amont ; SP-20 en dépend. Voir la spec dédiée
+[undo/redo builder](../superpowers/specs/2026-08-05-undo-redo-builder-design.md).
+
 ---
 
 ## 8. Décisions d'arbitrage
 
 > Arbitrages tranchés le **2026-07-04** (A1–A15), le **2026-07-05** (A16–A27,
-> extension SP-10/SP-11/SP-12/SP-17) et le **2026-07-09** (A28–A30 + amendements A22/A27,
-> extension SP-14/SP-16 — brainstorm Analytics Platform validé). Chaque décision
+> extension SP-10/SP-11/SP-12/SP-17), le **2026-07-09** (A28–A30 + amendements A22/A27,
+> extension SP-14/SP-16 — brainstorm Analytics Platform validé), le
+> **2026-07-14** (A31, A33–A38, extension SP-13 + Storytelling — gap analysis
+> dataviz/analytics/BI/portails) et le **2026-08-05** (A32, A40, extension
+> SP-19/SP-20 — brainstorm copilote embarqué). Chaque décision
 > est révisable *jusqu'au lancement du SP concerné*, figée ensuite (toute
 > révision passe par une mise à jour explicite de ce document).
 
@@ -1284,6 +1351,7 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 | A29 | Réactivité à l'emprise | **Opt-in par dataset** ; refetch au déplacement de carte activable en config | SP-14 |
 | A30 | Exports tabulaires | **Export sec CSV/XLSX** ; classeurs mis en forme (gabarits) différés | SP-16 |
 | A31 | Modèle de config du portail | **Sous-gabarit d'`AppConfig`** (nouveau type d'item `site`), un seul runtime | SP-13 |
+| A32 | Copilote IA embarqué | **GO** — client MCP réel en loopback, pont d'audience OAuth silencieux, provider LLM compatible OpenAI, édite l'état live du builder par opérations structurées, allowlist fermée d'outils, off par défaut | SP-20 |
 | A33 | Domaine personnalisé | **Différé** — v1 via `/sites/{slug}`, pas de domaine tiers | SP-13 |
 | A34 | Séquencement SP-13 | **Après SP-11, avant SP-12/17** ; ordre libre vis-à-vis de SP-14 | SP-13 |
 | A35 | Structure du chantier | **SP dédié (SP-13)**, pas un sous-lot de SP-9/SP-12 | SP-13 |
@@ -1291,6 +1359,7 @@ entre eux reste par ailleurs celui laissé ouvert par Q-A3 (A27).
 | A37 | Storytelling : timing | **Quick win immédiat, indépendant** de SP-13/SP-11/SP-14 | Quick win |
 | A38 | Communauté des portails | **Différée** (commentaires, follow, discussions) — hors périmètre v1 | SP-13 |
 | A39 | Moteur ETL (Go/No-Go) | **GO cœur-first** : document `Pipeline` déclaratif + canvas no-code + runtime deux étages (in-process DuckDB/CEL/pandas/dlt ; sidecar `qgis_process` GPL opt-in) + orchestration procrastinate. **NO-GO n8n au centre** (repli nommé avec Kestra/Apache Hop). Subsume le pipeline de transformations de SP-14/A28. Posture GPL = sous-processus (agrégation), cœur Apache-2.0 intact. | SP-15 |
+| A40 | Undo/redo du builder | **Pile d'instantanés de la `BuilderConfig` entière**, un pas par action commitée (pas de pile de commandes avec inverse par type) | SP-19 |
 
 **Conséquences immédiates des décisions** :
 - SP-1a démarre par le renommage `core/` (A14) et l'ajout de la génération
@@ -1380,6 +1449,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M13 Portails ouverts** (SP-13) | Portail public de marque publié, galerie de découverte, fiche dataset téléchargeable | Un visiteur anonyme parcourt un portail et télécharge un jeu de données sans jamais voir un item non publié |
 | **M14 ETL no-code** (SP-15) | Canvas `Pipeline` visuel, runtime deux étages, exécution planifiée, outils MCP | Un non-technicien câble sans code source→transformers→writer (data ET spatial) et publie une collection ; un agent MCP crée et exécute un pipeline |
 | **M15 Apps portables** (SP-18) | Export d'une app en mode Connecté, Autoporté ou Statique, artefact déployé hors GeoStudio | Une app exportée en mode Statique tourne servie par un simple serveur HTTP, sans aucune instance GeoStudio derrière ; un conteneur Autoporté démarre à froid et sert son instantané |
+| **M16 Copilote embarqué** (SP-20, dépend de SP-19) | Panneau de chat dans le builder, outils MCP orchestrés en loopback réel, micro-actions sur la config en cours d'édition | Un prompt (« ajoute un indicateur du nombre d'incidents ouverts ») fait apparaître le widget sur le canvas, annulable via l'undo général, sauvegardable normalement |
 
 ---
 
@@ -1398,8 +1468,13 @@ le 2026-07-22 (SP-15 « ETL no-code équivalent FME », arbitrage A39, jalon M14
 [étude ETL](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md)),
 puis le 2026-08-05 (SP-18 « Export d'apps déployables sans GeoStudio », jalon
 M15 — brainstorm export d'apps ; spec :
-[export d'apps](../superpowers/specs/2026-08-05-export-apps-standalone-design.md)).
-Les arbitrages A1–A31, A33–A39 sont tranchés en §8 (A32, proposition de copilote
-IA embarqué, reste ouverte — voir le gap analysis) ; toute révision d'un
-arbitrage après lancement du SP concerné passe par une mise à jour explicite
-de ce document.*
+[export d'apps](../superpowers/specs/2026-08-05-export-apps-standalone-design.md) ;
+et, le même jour, SP-19/SP-20 « Undo/redo général du builder » et « Copilote
+IA embarqué », jalon M16, arbitrages A32/A40 — brainstorm copilote embarqué ;
+specs :
+[undo/redo builder](../superpowers/specs/2026-08-05-undo-redo-builder-design.md)
+et
+[copilote embarqué](../superpowers/specs/2026-08-05-copilote-embarque-design.md)).
+Les arbitrages A1–A40 sont tranchés en §8 ; toute révision d'un arbitrage
+après lancement du SP concerné passe par une mise à jour explicite de ce
+document.*
