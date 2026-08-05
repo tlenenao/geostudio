@@ -69,3 +69,29 @@ def test_bookmark_config_round_trips_through_dump_and_validate():
     assert dumped["bookmark"]["timeRange"]["from"] == "2026-01-01"
     reloaded = BuilderConfig.model_validate(dumped)
     assert reloaded.bookmark.timeRange.from_ == "2026-01-01"
+
+
+def test_bookmark_config_cross_filter_range_shape_accepted():
+    # The built-in "Curseur" (range slider) widget calls
+    # setCrossFilter(datasetId, field, { from, to }, originSourceId) —
+    # shell/src/builder/widgets/sliderFilter.tsx:71 — so a range-shaped
+    # crossFilter value is a real, registered shape, not theoretical.
+    body = _bookmark_body(
+        crossFilter={
+            "dataset-1": {
+                "field": "population",
+                "value": {"from": "10", "to": "100"},
+                "originSourceId": "src-1",
+            },
+        },
+    )
+    config = BuilderConfig.model_validate(body)
+    entry = config.bookmark.crossFilter["dataset-1"]
+    assert entry.value.from_ == "10"
+    assert entry.value.to == "100"
+
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["bookmark"]["crossFilter"]["dataset-1"]["value"] == {"from": "10", "to": "100"}
+
+    reloaded = BuilderConfig.model_validate(dumped)
+    assert reloaded.bookmark.crossFilter["dataset-1"].value.to == "100"
