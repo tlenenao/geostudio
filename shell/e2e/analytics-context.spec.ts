@@ -1821,3 +1821,146 @@ test("a map with no encodings configured issues no domain query (SP-14h)", async
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
   expect(aggregateCalls).toBe(0);
 });
+
+// -------------------------------------------------------------------------
+// Scénario 15 (SP-14n) — cross-filter inter-datasets : un lien spatial/bbox
+// déclaré sur le dataset "Communes" vers "Incidents" fait qu'un clic sur une
+// commune (Table) filtre l'indicateur (statistics) du dataset "Incidents"
+// par le bbox de sa géométrie — sans lien direct entre les deux sources.
+//
+// Note d'implémentation (écart avec la transcription littérale du plan) :
+// « Promouvoir en dataset partagé » (AppBuilderPage.promoteSource) crée
+// TOUJOURS un nouvel item dataset (POST /configs) — il ne réutilise jamais un
+// dataset existant pour la même collection. Pré-créer "Incidents"/"Communes"
+// via le dialogue « Nouveau » AVANT de construire l'app (comme le plan
+// l'écrivait littéralement) produit donc deux datasets orphelins : l'app
+// finit par référencer deux AUTRES datasets (créés par la promotion), sans
+// aucun rapport avec ceux sur lesquels le lien a été déclaré — le lien ne se
+// résout jamais. On construit donc l'app d'abord (la promotion crée
+// dataset-1 pour "communes" et dataset-2 pour "incidents-pts", dans cet
+// ordre), on l'enregistre, puis on déclare le lien spatial/bbox sur
+// dataset-1 (Communes, l'origine du clic) vers dataset-2 (Incidents, la
+// cible) via `/datasets/dataset-1/edit` — même UI (`DatasetEditPage` +
+// `CrossFilterLinkEditor`, Task 9), juste dans le bon ordre pour que le lien
+// porte sur les datasets réellement utilisés par l'app.
+// -------------------------------------------------------------------------
+test("a spatial cross-filter link propagates a bbox from one dataset's Table click to another dataset's KPI", async ({ page }) => {
+  await mockCore(page);
+
+  let nextDatasetId = 0;
+  const savedDatasets = new Map<string, Record<string, unknown>>();
+  function titleFor(itemId: string): string {
+    const collectionId = savedDatasets.get(itemId)?.collectionId;
+    return collectionId === "incidents-pts" ? "Incidents partagés" : "Communes partagées";
+  }
+  await page.route("**/configs", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = await route.request().postDataJSON();
+    if (body.config?.kind !== "dataset") return route.fallback();
+    nextDatasetId += 1;
+    const itemId = `dataset-${nextDatasetId}`;
+    savedDatasets.set(itemId, body.config.dataset);
+    await route.fulfill({ status: 201, json: { id: `cfg-${itemId}`, kind: "dataset", itemId } });
+  });
+  await page.route("**/configs/by-item/dataset-*", async (route) => {
+    const itemId = new URL(route.request().url()).pathname.split("/").pop()!;
+    if (route.request().method() === "PUT") {
+      savedDatasets.set(itemId, (await route.request().postDataJSON()).dataset);
+      await route.fulfill({ json: { id: `cfg-${itemId}`, itemId, kind: "dataset", dataset: savedDatasets.get(itemId) } });
+      return;
+    }
+    await route.fulfill({
+      json: { id: `cfg-${itemId}`, itemId, kind: "dataset", config: { kind: "dataset", dataset: savedDatasets.get(itemId) } },
+    });
+  });
+  await page.route("**/items*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("type") !== "dataset") return route.fallback();
+    const items = [...savedDatasets.keys()].map((id) => ({
+      pk: id, resourceType: "dataset", title: titleFor(id),
+      abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: `cfg-${id}`, isPublished: false,
+    }));
+    await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 100 } });
+  });
+  await page.route("https://core.test/items/dataset-*", async (route) => {
+    const id = route.request().url().split("/").pop()!;
+    await route.fulfill({
+      json: {
+        pk: id, resourceType: "dataset", title: titleFor(id),
+        abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: `cfg-${id}`, isPublished: false, keywords: [],
+      },
+    });
+  });
+
+  await page.route("**/collections/incidents-pts/schema", async (route) => {
+    await route.fulfill({ json: { collection: "incidents-pts", pk: "id", geometry: { column: "geom", type: "Point", srid: 4326 }, fields: [{ name: "titre", type: "string" }] } });
+  });
+  await page.route("**/collections/communes/schema", async (route) => {
+    await route.fulfill({ json: { collection: "communes", pk: "id", geometry: { column: "geom", type: "Polygon", srid: 4326 }, fields: [{ name: "nom", type: "string" }] } });
+  });
+  await page.route("**/collections/communes/items*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "FeatureCollection",
+        features: [{
+          id: 1, properties: { nom: "Brive" },
+          geometry: { type: "Polygon", coordinates: [[[1.0, 45.0], [2.0, 45.0], [2.0, 46.0], [1.0, 46.0], [1.0, 45.0]]] },
+        }],
+      },
+    });
+  });
+  // L'indicateur (statistics) sur "incidents-pts" : 5 sans filtre, 2 dès que
+  // le bbox posé par le lien correspond à l'emprise de Brive.
+  await page.route("**/collections/incidents-pts/aggregate", async (route) => {
+    const body = await route.request().postDataJSON();
+    const count = body.bbox ? 2 : 5;
+    await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", value: count }] } });
+  });
+
+  // 1. App : Table sur "Communes" (source 1, promue en dataset-1), Indicateur
+  //    (statistics) sur "Incidents" (source 2, promue en dataset-2).
+  await createApp(page, "Cross-filter inter-datasets");
+  await addFeaturesSource(page, "communes");
+  await promoteLastSource(page, 1);
+  await addFeaturesSource(page, "incidents-pts");
+  await promoteLastSource(page, 2);
+  await page.getByLabel(/Type de la source/).last().selectOption("statistics");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Indicateur" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
+  // L'indicateur affiche `records.length` par défaut (agrégation "Nombre",
+  // qui compte les lignes de résultat — toujours 1 ici, une seule ligne
+  // "Total") : il faut sommer la colonne `value` que le mock d'agrégat
+  // renvoie pour observer réellement 5 puis 2.
+  await page.getByLabel("Agrégation", { exact: true }).selectOption("sum");
+  await page.getByLabel("Champ agrégé", { exact: true }).fill("value");
+
+  await page.getByLabel("Interactions automatiques (cross-filter)").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  // 2. Déclarer, sur le dataset "Communes" (dataset-1, l'origine du clic
+  //    Table), un lien spatial/bbox vers "Incidents" (dataset-2, la cible).
+  await page.goto("/datasets/dataset-1/edit");
+  await page.getByRole("button", { name: "Ajouter un lien" }).click();
+  await page.getByLabel("Dataset cible").selectOption("dataset-2");
+  await page.getByLabel("Mode du lien").selectOption("spatial");
+  await expect(page.getByLabel("Précision spatiale du lien")).toHaveValue("bbox");
+  await page.getByRole("button", { name: "Enregistrer les colonnes" }).click();
+  await expect.poll(() => savedDatasets.get("dataset-1")).toMatchObject({
+    crossFilterLinks: [{ targetDatasetId: "dataset-2", mode: "spatial", precision: "bbox" }],
+  });
+
+  // 3. Runtime : la KPI montre 5 (non filtrée) ; cliquer la ligne "Brive" de
+  //    la Table communes filtre la KPI incidents à 2 via bbox propagé.
+  await page.goto("/apps/9");
+  await expect(page.getByText("5")).toBeVisible();
+
+  const filteredReq = page.waitForRequest(
+    (r) => r.method() === "POST" && r.url().includes("/collections/incidents-pts/aggregate") && (r.postData() ?? "").includes("bbox"),
+  );
+  await page.getByRole("cell", { name: "Brive" }).click();
+  await filteredReq;
+  await expect(page.getByText("2")).toBeVisible();
+});
