@@ -156,6 +156,9 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - **SP-13** (a+b+c) — Portails & Sites : modèle site/slug + route publique
   `/sites/{slug}`, widgets de contenu (Hero/RichSection/Gallery), fiche dataset
   + téléchargement + template galerie. **Jalon M13**.
+- **SP-14l** — MCP analytique : outils `create_dataset`, `run_analytics_query`,
+  `explain_dataset`, câblés sur les chemins de requête dataset déjà validés
+  (SP-11b, SP-14a/k).
 
 ### À venir
 
