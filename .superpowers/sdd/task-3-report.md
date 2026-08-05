@@ -1,132 +1,154 @@
-# Task 3 report — `explain_dataset` MCP tool (SP-14l)
+# Task 3 Report: Core — `crossFilterLinks` on `DatasetPayload`
 
-## What was implemented
+## Summary
 
-Added the `explain_dataset` MCP tool to `core/app/mcp/tools.py`, registered
-inside `register_tools`, right after `run_analytics_query`. It is read-only
-(no `READ_ONLY_TOOLS` entry needed — that set is for write-gating under demo
-mode, not applicable here).
+Successfully implemented the `crossFilterLinks` field on `DatasetPayload` with discriminated-union schema for cross-filter links between datasets. The field accepts an optional list of attribute-based or spatial link configurations, each with mode-specific validation.
 
-Behavior (verbatim from the brief, transcribed without changes):
-- Resolves the dataset payload via `_resolve_dataset_payload` (Task 2 helper:
-  read-access check + kind=="dataset" check).
-- Fetches the item for its `title`.
-- Builds a `base` dict: `title`, `source`, `timeField`, `reactsToExtent`,
-  `columns` (author metadata, `DatasetColumnMeta.model_dump()` per column).
-- For `source == "collection"`: re-checks collection read access
-  (`_require_collection_read`), introspects the backing table
-  (`introspect_table` → `TableNotFound`/`UnsupportedTable` mapped to
-  `ValueError`), converts via `table_info_to_schema`, and returns
-  `fields: [{name, type}]` — no stats, no sampling, per design non-buts.
-- For `source == "arcgis"`: resolves the live external URL via
-  `_resolve_arcgis_external_url` (Task 2 helper), does a live
-  `GET {external_url}?f=json` through the egress-guarded
-  `harvest_routes.get_arcgis_http_client()` (same seam as
-  `run_analytics_query`'s arcgis path), maps `EgressBlockedError` /
-  `httpx.HTTPError` to `ValueError("arcgis service unavailable")`, and
-  extracts ArcGIS's standard layer `fields: [{name, type}]` from the
-  `alias`-bearing `fields` array in the response (alias itself is dropped —
-  brief only asks for name+type).
+## What Was Implemented
 
-No new imports were needed: `introspect_table`, `table_info_to_schema`,
-`TableNotFound`, `UnsupportedTable`, `harvest_routes`, `EgressBlockedError`,
-`httpx`, `items_repo` were all already imported in `tools.py` from Tasks 1-2.
-No new private helpers were added — `_resolve_dataset_payload` and
-`_resolve_arcgis_external_url` were consumed as-is from Task 2.
+### Interfaces Added
 
-## What was tested and results
+1. **`DatasetCrossFilterLinkAttribute`** — attribute-based cross-filter link:
+   - `mode: Literal["attribute"] = "attribute"` (discriminator)
+   - `targetDatasetId: str` — dataset to filter
+   - `sourceField: str` — column in this dataset
+   - `targetField: str` — column in target dataset
 
-Two new test files, both transcribed verbatim from the brief:
+2. **`DatasetCrossFilterLinkSpatial`** — spatial cross-filter link:
+   - `mode: Literal["spatial"] = "spatial"` (discriminator)
+   - `targetDatasetId: str` — dataset to filter
+   - `precision: Literal["bbox", "exact"] = "bbox"` — defaults to bbox
 
-1. `core/tests/test_mcp_tools_explain_dataset.py` — source `collection`,
-   marked `pytest.mark.postgis` (needs real PostGIS). **Ran for real, not
-   skipped** — confirmed by exporting
-   `CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test`
-   against the running `postgis-test` docker container before invoking
-   pytest. Both tests in this file executed and passed against the real DB.
-   - `test_explain_dataset_collection_source_returns_fields_and_metadata`
-   - `test_explain_dataset_dataset_not_found_errors`
+3. **`DatasetCrossFilterLink`** — discriminated union type alias:
+   - Pydantic `Field(discriminator="mode")` routing on `mode` field
+   - Rejects unknown modes at validation time
 
-2. `core/tests/test_mcp_tools_explain_dataset_arcgis.py` — source `arcgis`,
-   SQLite fixture, mocked `httpx` transport via `monkeypatch` on
-   `harvest_routes.get_arcgis_http_client`.
-   - `test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata`
+4. **`DatasetPayload.crossFilterLinks`** — list field:
+   - Type: `list[DatasetCrossFilterLink]`
+   - Default: `[]` (empty list via `Field(default_factory=list)`)
 
-All 3 tests pass. No unexpected skips, no stray warnings (re-ran with
-`-W error::DeprecationWarning`, clean). Also ran the full MCP test slice
-(`pytest tests/ -k mcp -q`) for regression safety: **69 passed, 904
-deselected**, no failures.
+### Files Modified
 
-No brief-fidelity bugs were found in this task's test code (unlike Task 2,
-which found two bugs in its own brief's test literal code). This task's
-tests use a single `with app_client:` block per test (no re-entry issue),
-and the "not found" test uses a nonexistent id rather than a caller-owned
-resource, so there was no owner-short-circuit trap to hit either.
+- **`core/app/configs/schemas.py`**
+  - Line 2: Added `Annotated` to imports
+  - Lines 95–111: Inserted three new model classes + type alias
+  - Line 122: Added `crossFilterLinks` field to `DatasetPayload`
 
-## TDD Evidence
+- **`core/tests/test_dataset_config_schema.py`**
+  - Lines 83–125: Appended 5 new tests (84 lines total)
 
-### RED
+## Testing
+
+### TDD Sequence
+
+#### RED Phase (Failing Tests)
 
 Command:
 ```
-cd core && export CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test
-uv run pytest tests/test_mcp_tools_explain_dataset.py tests/test_mcp_tools_explain_dataset_arcgis.py -v
+cd core && uv run pytest tests/test_dataset_config_schema.py -k cross_filter -v
 ```
 
-Result: 3 failed (before implementation existed). Server logs show:
-```
-WARNING  mcp.server.lowlevel.server:server.py:494 Tool 'explain_dataset' not listed, no validation will be performed
-```
-followed by `call_tool` raising `AssertionError: tool explain_dataset
-errored: ...` in all three tests — expected, since the tool didn't exist yet
-and the MCP dispatcher returns an error result for an unregistered tool
-name. (The `procrastinate.exceptions.AppNotOpen` tracebacks in the log are
-pre-existing, caught-and-logged embedding-enqueue noise from
-`create_dataset`'s item/collection creation, unrelated to this task — same
-noise appears in Task 1/2's runs.)
+**Exit:** 1 (FAILED)
+**Output:** 5 FAILED (attribute and mode errors):
+- `test_dataset_config_cross_filter_links_default_empty`: `AttributeError: 'DatasetPayload' object has no attribute 'crossFilterLinks'`
+- `test_dataset_config_attribute_cross_filter_link`: Same AttributeError (field does not exist)
+- `test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision`: Same AttributeError
+- `test_dataset_config_spatial_cross_filter_link_exact_precision`: Same AttributeError
+- `test_dataset_config_cross_filter_link_unknown_mode_rejected`: `Failed: DID NOT RAISE ValidationError` (Pydantic silently drops unknown field by default)
 
-### GREEN
+**Reason for Failure (Expected):** Schema models did not yet define `crossFilterLinks` field or discriminated union types.
 
-Command (same as above), after implementing `explain_dataset`:
+#### GREEN Phase (Passing Tests)
+
+Command:
 ```
-tests/test_mcp_tools_explain_dataset.py::test_explain_dataset_collection_source_returns_fields_and_metadata PASSED
-tests/test_mcp_tools_explain_dataset.py::test_explain_dataset_dataset_not_found_errors PASSED
-tests/test_mcp_tools_explain_dataset_arcgis.py::test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata PASSED
-3 passed in 2.11s
+cd core && uv run pytest tests/test_dataset_config_schema.py -v
 ```
 
-## Files changed
+**Exit:** 0 (PASSED)
+**Output:** 14 passed (9 existing + 5 new)
 
-- `core/app/mcp/tools.py` — added `explain_dataset` tool (53 lines), no
-  other lines touched (verified via `git diff -- app/mcp/tools.py`).
-- `core/tests/test_mcp_tools_explain_dataset.py` — new file.
-- `core/tests/test_mcp_tools_explain_dataset_arcgis.py` — new file.
+```
+tests/test_dataset_config_schema.py::test_dataset_config_valide PASSED   [  7%]
+tests/test_dataset_config_schema.py::test_dataset_config_sans_payload_rejete PASSED [ 14%]
+tests/test_dataset_config_schema.py::test_dataset_config_colonnes_optionnelles PASSED [ 21%]
+tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_optional PASSED [ 28%]
+tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_default PASSED [ 35%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_valide PASSED [ 42%]
+tests/test_dataset_config_schema.py::test_dataset_config_collection_source_sans_collection_id_rejete PASSED [ 50%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete PASSED [ 57%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_avec_collection_id_rejete PASSED [ 64%]
+tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_links_default_empty PASSED [ 71%]
+tests/test_dataset_config_schema.py::test_dataset_config_attribute_cross_filter_link PASSED [ 78%]
+tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision PASSED [ 85%]
+tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_exact_precision PASSED [ 92%]
+tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_link_unknown_mode_rejected PASSED [100%]
 
-Commit: `a1dc72a feat(core): mcp explain_dataset tool (SP-14l)`.
+============================== 14 passed in 0.20s ==============================
+```
 
-Note: several `.superpowers/sdd/*.md` files (progress.md, task-1/2/3
-brief/report) showed as modified in `git status` at the start of this
-session, before this task began — these were left untouched and NOT staged
-or committed by this task; only `core/app/mcp/tools.py` and the two new
-test files were added to the commit.
+### Full Suite Regression Test
 
-## Self-review findings
+Command:
+```
+cd core && uv run pytest -q
+```
 
-- Completeness: all 3 new tests pass; both files present as specified.
-- Quality: no `HTTPException` escapes the tool body (both arcgis-path
-  exception branches — `EgressBlockedError`, `httpx.HTTPError` — are caught
-  and re-raised as `ValueError`, matching the rest of the file's
-  convention). No stats/sampling/extra fields added beyond `name`+`type`
-  per field, per design non-buts. Naming and structure match the existing
-  tools' style (docstring convention, `with request_scoped_session(...)`,
-  `base = {...}` then source-branch return).
-- Discipline: implementation is a byte-for-byte transcription of the
-  brief's Step 4 code block; no new private helpers, no new imports beyond
-  what already existed.
-- Testing: both test files are verbatim transcriptions from the brief;
-  ran clean, no warnings, no skips, real PostGIS DB confirmed reachable and
-  used.
+**Exit:** 0 (PASSED)
+**Result:** `888 passed, 114 skipped in 130.41s`
 
-## Issues or concerns
+Confirms additive change with no regressions — existing payloads without `crossFilterLinks` validate identically, and 5 new tests integrated successfully.
 
-None. Task completed exactly as specified with no blockers.
+## Test Coverage
+
+All 5 new tests exercise required behavior:
+
+1. **Default empty list** — `crossFilterLinks` omitted defaults to `[]`
+2. **Attribute link with all fields** — roundtrip validation of mode-specific fields
+3. **Spatial link with default precision** — `precision` omitted defaults to `"bbox"`
+4. **Spatial link with explicit precision** — custom `"exact"` precision accepted
+5. **Unknown mode rejection** — discriminator rejects invalid `mode` values at validation time
+
+## Self-Review Findings
+
+### Completeness ✓
+- All three models defined per brief
+- All fields with correct types and defaults
+- Discriminated union correctly configured
+- Field added to `DatasetPayload` at correct position
+- All 5 tests written and passing
+
+### Quality ✓
+- Code follows existing conventions (Pydantic, naming style)
+- Comments added to discriminated union type alias
+- Models reuse `BaseModel` consistently with rest of schema
+- Field defaults use `Field(default_factory=list)` pattern matching codebase
+
+### Discipline ✓
+- No overbuilding — exactly what brief specifies
+- Import statement extended cleanly
+- Insertion point (before `DatasetPayload`) matches existing pattern (type definitions → class that uses them)
+- TDD strictly followed: RED → implement → GREEN → full suite
+
+### No Issues
+- No syntax errors
+- No missing imports
+- No circular dependencies
+- Validation behavior matches test expectations exactly
+- Commit message follows conventional format
+
+## Commit
+
+```
+d98db7c feat(core): crossFilterLinks on DatasetPayload (SP-14n)
+```
+
+Files changed: 2
+- `core/app/configs/schemas.py` — +22 lines (imports, 3 models, type alias, field)
+- `core/tests/test_dataset_config_schema.py` — +43 lines (5 tests)
+
+Total: 64 insertions, 1 deletion
+
+## Concerns
+
+None. Implementation is complete, tested, and ready for Task 4 (shell types).

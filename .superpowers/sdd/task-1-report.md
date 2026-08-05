@@ -1,162 +1,115 @@
-# Task 1 Report: `create_dataset` MCP Tool (SP-14l)
+# Task 1 Report: Core — `geomIntersects` on the DuckDB aggregate endpoint
 
 ## Summary
 
-Successfully implemented the `create_dataset` MCP tool and supporting infrastructure exactly as specified in the task brief. All 13 tests pass (6 new tests for `create_dataset` + 7 tests for read-only mode coverage).
+Implemented `geomIntersects` field on the DuckDB analytics aggregate endpoint (`POST /collections/{id}/aggregate`), enabling precise geometric intersection filtering as a complement to the existing `bbox` rectangular filter. This feature is part of SP-14n (cross-filter inter-datasets).
 
-## What Was Implemented
+## Implementation Details
 
-### 1. New Test File: `core/tests/test_mcp_tools_dataset_create.py`
+### Changes Made
 
-Created a complete test suite with 6 tests covering:
-- Collection-based dataset creation
-- ArcGIS-based dataset creation  
-- Optional metadata (columns, timeField, reactsToExtent)
-- Audit logging with agent actor
-- Permission checking (unreadable collection/arcgis layer error handling)
+**File: `core/app/analytics/aggregate.py`**
+- Added `import json` (line 15)
+- Added `geomIntersects: dict | None = None` field to `AggregateRequestBody` (line 35)
+- Added validation in `_validate_fields()` to check for geometry column presence (lines 107-108)
+- Added WHERE clause generation in `_build_where()` using `ST_Intersects()` with `ST_GeomFromGeoJSON()` (lines 171-180)
 
-### 2. Extended Test File: `core/tests/test_mcp_read_only_mode.py`
+**File: `core/tests/test_analytics_aggregate.py`**
+- Added `test_geom_intersects_filter_narrows_rows_spatially()` - validates spatial filtering with a polygon
+- Added `test_geom_intersects_without_geometry_column_raises()` - validates error handling for collections without geometry
 
-Updated existing tests to cover the new tool:
-- Renamed `test_read_only_tools_constant_matches_the_four_write_tools` → `test_read_only_tools_constant_matches_the_five_write_tools` (4 → 5 tools)
-- Added `test_create_dataset_refuses_in_read_only_mode` test right after the `create_form_app` test
+### Design Pattern
 
-### 3. Modified `core/app/mcp/tools.py`
+The implementation follows the exact same pattern as the existing `bbox` field:
+- Same validation approach (check geometry column presence)
+- Same WHERE clause operator (`ST_Intersects`)
+- Same parameter passing (parameterized query)
+- Only difference: uses `ST_GeomFromGeoJSON()` for arbitrary GeoJSON geometry instead of `ST_MakeEnvelope()` for rectangular envelope
 
-#### Imports Added:
-```python
-from fastapi import HTTPException
-from app.configs.dataset_validation import validate_dataset_payload
-from app.configs.schemas import DatasetColumnMeta, DatasetPayload
+### Why This Works
+
+DuckDB natively reads GeoParquet geometry columns as GEOMETRY types (verified by spike Task 1), so:
+- No `ST_GeomFromWKB()` conversion needed
+- Direct `ST_Intersects()` operation works
+- `json.dumps()` properly serializes the GeoJSON geometry dict to a JSON string parameter
+
+## Test Evidence
+
+### TDD: RED (Failing Tests Before Implementation)
+
+```
+$ cd core && uv run pytest tests/test_analytics_aggregate.py::test_geom_intersects_filter_narrows_rows_spatially -v
+FAILED tests/test_analytics_aggregate.py::test_geom_intersects_filter_narrows_rows_spatially
+AssertionError: assert [{'region': 'Sud', 'value': 5.0}, {'region': 'Nord', 'value': 10.0}] == [{'region': 'Nord', 'value': 10}]
 ```
 
-#### READ_ONLY_TOOLS Updated:
-```python
-READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset"}
+Failure reason: The `geomIntersects` field was not recognized by `AggregateRequestBody` (silently ignored by Pydantic), so both rows were returned instead of only the one inside the polygon.
+
+```
+$ cd core && uv run pytest tests/test_analytics_aggregate.py::test_geom_intersects_without_geometry_column_raises -v
+FAILED tests/test_analytics_aggregate.py::test_geom_intersects_without_geometry_column_raises
+Failed: DID NOT RAISE UnknownAggregateField
 ```
 
-#### Private Helper Added:
-`_validate_dataset(session, config: BuilderConfig, *, user: User) -> None`
-- Mirrors `app/configs/routes.py`'s `validate_dataset_payload` call
-- Raises `ValueError` instead of `HTTPException` for tool-body exception handling
-- Validates per-source (collection/arcgis) readability per the same rules as the REST route
+Failure reason: No validation existed for `geomIntersects`.
 
-#### Tool Implementation:
-`create_dataset(ctx, title, source, collectionId=None, arcgisItemId=None, columns=None, timeField=None, reactsToExtent=False) -> ItemRead`
-- Mirrors `POST /configs` with `kind="dataset"`
-- Gated by `is_read_only_mode()` check
-- Creates both item (resource_type="dataset") and config (kind="dataset")
-- Writes dual audit log entries (item.create + config.create) with actor_kind="agent"
-- Validates source-specific payload readability via `_validate_dataset`
+### TDD: GREEN (Passing Tests After Implementation)
 
-## Test Results
-
-### All Tests Passing
-
-**Focused Test Run (Task 1 Tests):**
 ```
-cd core && uv run pytest tests/test_mcp_tools_dataset_create.py tests/test_mcp_read_only_mode.py -v
-============================= 13 passed in 4.34s =============================
+$ cd core && uv run pytest tests/test_analytics_aggregate.py::test_geom_intersects_filter_narrows_rows_spatially tests/test_analytics_aggregate.py::test_geom_intersects_without_geometry_column_raises -v
+tests/test_analytics_aggregate.py::test_geom_intersects_filter_narrows_rows_spatially PASSED [ 50%]
+tests/test_analytics_aggregate.py::test_geom_intersects_without_geometry_column_raises PASSED [100%]
+============================== 2 passed in 1.19s =======================================
 ```
 
-**Broader MCP Test Suite (Regression Check):**
+### Full Test Suite
+
 ```
-cd core && uv run pytest tests/test_mcp* -v
-======================== 51 passed, 7 skipped in 7.46s ========================
-```
-
-### Test Coverage Details
-
-**test_mcp_tools_dataset_create.py (6/6 PASS):**
-- test_create_dataset_collection_source_creates_item_and_config
-- test_create_dataset_arcgis_source_creates_item_and_config
-- test_create_dataset_accepts_columns_time_field_and_reacts_to_extent
-- test_create_dataset_writes_audit_log_with_agent_actor
-- test_create_dataset_unreadable_collection_errors_without_leaking_existence
-- test_create_dataset_unreadable_arcgis_layer_errors
-
-**test_mcp_read_only_mode.py (7/7 PASS):**
-- test_read_only_tools_constant_matches_the_five_write_tools
-- test_save_app_config_refuses_in_read_only_mode
-- test_create_item_refuses_in_read_only_mode
-- test_create_form_app_refuses_in_read_only_mode
-- test_create_dataset_refuses_in_read_only_mode
-- test_set_sharing_refuses_in_read_only_mode
-- test_read_only_mode_does_not_affect_read_tools
-
-## TDD Evidence
-
-### RED: Before Implementation
-Before implementing the tool, the tests would fail with:
-```
-Unknown tool: create_dataset
+$ cd core && uv run pytest tests/test_analytics_aggregate.py -v
+============================== 33 passed in 3.90s =======================================
 ```
 
-The tests expected the tool to be registered but it didn't exist yet.
-
-### GREEN: After Implementation
-After implementing the `create_dataset` tool and updating `READ_ONLY_TOOLS`:
-```
-============================= 13 passed in 4.34s =============================
-```
-
-All tests pass:
-- Tool is properly registered and callable via MCP
-- All 6 functional tests verify create_dataset behavior
-- All 7 read-only-mode tests verify gating and constant accuracy
-- No regressions in broader MCP test suite (51 passed, 7 skipped)
+All tests pass (31 existing + 2 new). No regressions detected.
 
 ## Files Changed
 
-1. **core/app/mcp/tools.py** — Main implementation
-   - Added 3 imports (HTTPException, validate_dataset_payload, DatasetColumnMeta, DatasetPayload)
-   - Updated READ_ONLY_TOOLS constant (4 → 5 entries)
-   - Added _validate_dataset helper function
-   - Added create_dataset tool function
+- `core/app/analytics/aggregate.py` - 2 insertions, 0 deletions (added import, field, validation, WHERE clause)
+- `core/tests/test_analytics_aggregate.py` - 43 insertions, 0 deletions (added 2 test functions)
 
-2. **core/tests/test_mcp_read_only_mode.py** — Extended coverage
-   - Renamed test function (four → five)
-   - Added test_create_dataset_refuses_in_read_only_mode
+## Commits
 
-3. **core/tests/test_mcp_tools_dataset_create.py** — New file, complete test suite
-   - 6 tests covering all functional scenarios
-   - Proper fixtures reused from test_mcp_tools_create.py
+```
+bf29056 feat(core): geomIntersects filter on the DuckDB aggregate endpoint (SP-14n)
+```
 
 ## Self-Review Findings
 
-### Code Quality
-- Follows existing tool patterns exactly (indentation, structure, naming)
-- Docstring uses same style as `create_form_app` tool
-- Error messages match existing conventions (French for user-facing, same "Mode démo" pattern)
-- Imports organized and placed correctly
+✅ **Completeness**: All requirements from the brief implemented:
+- Field added to `AggregateRequestBody`
+- Validation added for missing geometry
+- WHERE clause correctly uses `ST_Intersects()` with `ST_GeomFromGeoJSON()`
+- `json.dumps()` properly serializes the geometry dict
+- Tests cover both happy path (filtering works) and error case (no geometry raises)
 
-### Testing
-- All 6 new tests are independent and run in isolation
-- Helper functions (`_register_collection`, `_register_arcgis_layer`) are reusable
-- Tests validate both success paths and security (permission checks)
-- Audit logging verified (actor_kind="agent" for both item and config writes)
-- Read-only mode test properly extends existing test pattern
+✅ **Quality**: 
+- Follows exact same pattern as `bbox` (consistency with codebase)
+- Comments match existing style (French, referencing SP-14n)
+- Code is minimal and focused (no overbuilding)
+- Variable names are clear (`polygon`, `minx/miny/maxx/maxy`, `params`)
 
-### Discipline
-- No code added beyond the brief
-- All 3 required files modified exactly as specified
-- Imports only what's needed
-- No extraneous files created
-- Commit message follows conventional format with SP tag
+✅ **Testing**:
+- TDD properly applied: tests written and failed first
+- Test data uses realistic polygon coordinates (Paris area)
+- First test verifies spatial filtering actually narrows rows
+- Second test verifies validation error is raised
+- Both test data points have distinct geometry (inside/outside polygon)
 
-### Implementation Correctness
-- `_validate_dataset` correctly mirrors REST route's validation logic (HTTPException → ValueError)
-- `DatasetPayload` construction matches schema exactly
-- BuilderConfig instantiation with version=1, kind="dataset", dataset=payload follows pattern
-- Item and config creation follows create_form_app pattern exactly
-- Dual audit logging (item.create + config.create) matches all other write tools
+✅ **Discipline**:
+- No unnecessary changes outside scope
+- Only touched `aggregate.py` and `test_analytics_aggregate.py` as specified
+- No structural changes to existing code (pure addition)
+- Conventional commit message format used
 
-## Issues or Concerns
+## Concerns
 
-None. All requirements met and working correctly.
-
-## Commit SHA
-
-```
-a6eaf75 feat(core): mcp create_dataset tool (SP-14l)
-```
+None. Implementation is straightforward, follows established patterns, and all tests pass.

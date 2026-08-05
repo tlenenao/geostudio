@@ -7,7 +7,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateHarvestSource, useCreateItem, useCreateMap, useDeleteItem, useGroups, useHarvestSources, useInstanceInfo, useItems, useMapConfig, useMe, useRunHarvestSource, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateBookmark, useCreateHarvestSource, useCreateItem, useCreateMap, useDeleteItem, useGroups, useHarvestSources, useInstanceInfo, useItems, useMapConfig, useMe, useRunHarvestSource, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -144,6 +144,21 @@ test("useCreateMap creates a map and invalidates items", async () => {
   const { result } = renderHook(() => useCreateMap(), { wrapper: makeWrapper(client) });
   await result.current.mutateAsync({ title: "C", owner: "alice" });
   expect(client.createMapItem).toHaveBeenCalledWith({ title: "C", owner: "alice" });
+});
+
+test("useCreateBookmark creates a bookmark and invalidates items", async () => {
+  const client = {
+    createBookmarkItem: vi.fn().mockResolvedValue({ pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue" }),
+  } as unknown as ItemClient;
+  const { result } = renderHook(() => useCreateBookmark(), { wrapper: makeWrapper(client) });
+  await result.current.mutateAsync({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: null, extent: null, crossFilter: {},
+  });
+  expect(client.createBookmarkItem).toHaveBeenCalledWith({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: null, extent: null, crossFilter: {},
+  });
 });
 
 test("useMapConfig loads a map config", async () => {

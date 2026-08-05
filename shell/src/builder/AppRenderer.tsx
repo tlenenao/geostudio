@@ -181,13 +181,13 @@ export function AppRenderer({
                 initialState={initialAnalyticsContext}
                 onStateChange={onAnalyticsContextChange}
               >
-                {analyticsUiEnabled && <AnalyticsContextIndicator />}
                 <ExplorerDrawer />
                 <ActionConditionBridge bus={bus} />
                 {(config.variables ?? []).map((v) => (
                   <VariableBusBridge key={v.id} variable={v} bus={bus} />
                 ))}
                 <DataProvider sources={config.dataSources}>
+                  {analyticsUiEnabled && <AnalyticsContextIndicator />}
                   <GridCanvas
                     items={activeLayout.items}
                     breakpoint={bp}

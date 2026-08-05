@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -210,6 +210,17 @@ export function useCreateDataset() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateDatasetInput) => client.createDatasetItem(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+
+export function useCreateBookmark() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateBookmarkInput) => client.createBookmarkItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
     },

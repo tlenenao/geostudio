@@ -8,6 +8,7 @@ import { derivePatch } from "../lib/analyticsPatch";
 
 type SetFilter = (sourceId: string, query: Record<string, unknown>) => void;
 
+export const DatasetsContext = createContext<Record<string, DatasetConfig>>({});
 const DataStatesContext = createContext<Record<string, DataSourceState>>({});
 const SetFilterContext = createContext<SetFilter>(() => {});
 
@@ -83,13 +84,19 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
 
   return (
     <SetFilterContext.Provider value={setFilter}>
-      <DataStatesContext.Provider value={states}>{children}</DataStatesContext.Provider>
+      <DatasetsContext.Provider value={datasets}>
+        <DataStatesContext.Provider value={states}>{children}</DataStatesContext.Provider>
+      </DatasetsContext.Provider>
     </SetFilterContext.Provider>
   );
 }
 
 export function useDataStates(): Record<string, DataSourceState> {
   return useContext(DataStatesContext);
+}
+
+export function useDatasets(): Record<string, DatasetConfig> {
+  return useContext(DatasetsContext);
 }
 
 export function useSetFilter(): SetFilter {

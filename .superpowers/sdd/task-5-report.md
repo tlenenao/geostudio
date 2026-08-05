@@ -1,186 +1,96 @@
-# Task 5 Report: Core — `GET/POST /datasets/{itemId}/arcgis/items|aggregate`
+# Task 5 Report: Shell — `bboxFromGeometry` util + `derivePatch` resolution
 
-## Status: DONE
+## What was implemented
 
-## Summary
+Exactly per brief, transcribed literally:
 
-Implemented two new FastAPI routes that enable live proxying to ArcGIS Feature Services for `arcgis`-sourced datasets. This completes the integration of live data queries through the core platform, translating client requests into ArcGIS REST API calls and reshaping responses for consumption by the shell.
+1. **`shell/src/lib/geometryBbox.ts`** (new) — `bboxFromGeometry(geometry: unknown): [number, number, number, number] | null`, a pure recursive coordinate-array walker computing an enclosing `[minX, minY, maxX, maxY]` bbox for any GeoJSON geometry (Point/LineString/Polygon/Multi*), with no turf/geojson dependency. Returns `null` for `undefined`, `null`, or any non-geometry-shaped value (missing `coordinates`).
 
-## Implementation
+2. **`shell/src/lib/geometryBbox.test.ts`** (new) — 4 tests: Point (degenerate bbox), Polygon, MultiPolygon (bbox spans both parts), and the null/undefined/non-geometry guard.
 
-### Files Modified
+3. **`shell/src/lib/analyticsPatch.ts`** (full rewrite) — `derivePatch` now has two cross-filter resolution passes:
+   - **Direct/same-dataset path** (existing behavior, unchanged in effect): resolves `ctx.crossFilter[source.datasetId]` if the entry's `originSourceId` differs from the current source — extracted into a new `applyCrossFilterValue(patch, field, value)` helper (byte-for-byte extraction of the three existing branches: array → `field__in`, range object → `field__gte`/`field__lte`, scalar → `field`).
+   - **Cross-dataset link path** (new): iterates every *other* dataset's active `ctx.crossFilter` entry, skips the current dataset (`originDatasetId === source.datasetId`), looks up whether that origin dataset declares a `crossFilterLinks` entry targeting the current dataset, and if so:
+     - `mode: "attribute"` → applies `applyCrossFilterValue(patch, link.targetField, entry.value)`, but only if `entry.field === link.sourceField`.
+     - `mode: "spatial", precision: "bbox"` → computes `bboxFromGeometry(entry.geometry)` and sets `patch.bbox` to the joined bbox string, only if `entry.geometry` is defined and a bbox was computed.
+     - `mode: "spatial", precision: "exact"` → sets `patch.geomIntersects = entry.geometry` (raw geometry, only if `entry.geometry` is defined).
 
-1. **`core/app/harvest/routes.py`**
-   - Added necessary imports: `datetime`, `timezone`, `Query`, `Request`, `httpx`, aggregation models, configs repository, live_query module, egress guarding
-   - Added module constant: `_MAX_LIMIT = 1000`
-   - Added dependency factory: `get_arcgis_http_client()` for building guarded HTTP clients (overridable in tests)
-   - Added helper functions:
-     - `_parse_bbox(raw)`: Parses and validates bbox parameter as 4 comma-separated floats
-     - `_resolve_arcgis_dataset(session, item_id, user)`: Resolves a dataset item to its ArcGIS layer URL with authorization checks
-     - `_groupby_fields(raw)`: Normalizes groupBy parameter to a list
-     - `_measure_label(m)`: Derives measure labels
-   - Added two routes:
-     - `GET /datasets/{item_id}/arcgis/items`: Queries features with filters, bbox, limit, offset
-     - `POST /datasets/{item_id}/arcgis/aggregate`: Computes aggregations with optional grouping
+4. **`shell/src/lib/analyticsPatch.test.ts`** (append) — 7 new tests covering: attribute-link translation, field mismatch → ignored, wrong `targetDatasetId` → ignored, spatial/bbox translation, spatial/exact translation, missing geometry → ignored, and the no-self-link guard (same dataset's own cross-filter isn't double-resolved through the link loop).
 
-2. **`core/tests/test_harvest_dataset_arcgis_routes.py`** (new file)
-   - Complete test suite with 10 test cases covering all route behaviors
+## Testing
 
-## Verification Results
+### TDD Evidence — geometryBbox
 
-### Step 1: Focused Test Run (RED → GREEN)
-```bash
-cd core && uv run pytest tests/test_harvest_dataset_arcgis_routes.py -v
+**RED** — `cd shell && npx vitest run src/lib/geometryBbox.test.ts`
+```
+FAIL  src/lib/geometryBbox.test.ts [ src/lib/geometryBbox.test.ts ]
+Error: Failed to resolve import "./geometryBbox" from "src/lib/geometryBbox.test.ts". Does the file exist?
+Test Files  1 failed (1)
+     Tests  no tests
+```
+Expected failure reason: module `./geometryBbox` didn't exist yet. Confirmed.
+
+**GREEN** — same command after creating `geometryBbox.ts`:
+```
+✓ src/lib/geometryBbox.test.ts (4 tests) 11ms
+Test Files  1 passed (1)
+     Tests  4 passed (4)
 ```
 
-**Before**: Routes did not exist, dependency factory missing
-**After**: All 10 tests PASSED in 8.23s
+### TDD Evidence — analyticsPatch (derivePatch)
 
+**RED** — `cd shell && npx vitest run src/lib/analyticsPatch.test.ts` (after appending the 7 new tests, before rewriting `derivePatch`):
 ```
-============================== 10 passed in 8.23s ==============================
+FAIL  src/lib/analyticsPatch.test.ts > translates a spatial/bbox link into a bbox patch derived from the entry's geometry
+AssertionError: expected {} to deeply equal { bbox: '2,48,3,49' }
+FAIL  src/lib/analyticsPatch.test.ts > translates a spatial/exact link into a geomIntersects patch carrying the raw geometry
+AssertionError: expected {} to deeply equal { geomIntersects: {...} }
+FAIL  src/lib/analyticsPatch.test.ts > translates an attribute link from another dataset's active cross-filter
+AssertionError: expected {} to deeply equal { nom_commune: 'Brive' }
+Test Files  1 failed (1)
+     Tests  3 failed | 16 passed (19)
 ```
+Expected failure reason: `derivePatch` didn't yet scan any dataset's `crossFilterLinks`, so the three "translates..." tests (which expect a non-empty patch) got `{}`. The four "ignores..." tests and the self-link guard test already passed trivially at this point (no resolution happening at all is indistinguishable from "correctly ignoring" for those cases), matching the brief's expectation that only the non-empty-patch tests fail.
 
-Test results:
-- ✓ `test_get_items_proxies_to_arcgis_and_reshapes_response`
-- ✓ `test_get_items_forwards_filters_and_bbox`
-- ✓ `test_get_items_unknown_dataset_item_404s`
-- ✓ `test_get_items_egress_blocked_returns_502`
-- ✓ `test_post_aggregate_no_groupby_count`
-- ✓ `test_post_aggregate_groupby_and_measure`
-- ✓ `test_post_aggregate_bucket_rejected`
-- ✓ `test_post_aggregate_split_rejected`
-- ✓ `test_post_aggregate_bins_rejected`
-- ✓ `test_get_items_on_collection_dataset_404s`
-
-### Step 2: Full Core Suite + Lint-Imports
-```bash
-cd core && uv run pytest && uv run lint-imports
+**GREEN** — same command after the `derivePatch` rewrite:
 ```
+✓ src/lib/analyticsPatch.test.ts (19 tests) 21ms
+Test Files  1 passed (1)
+     Tests  19 passed (19)
+```
+(12 pre-existing + 7 new = 19; all pre-existing tests unchanged and still passing, confirming `applyCrossFilterValue` is a pure extraction with no behavior change.)
 
-**Results**: PASSED
-- Full pytest: `844 passed, 106 skipped in 124.35s`
-- Import linter: `Contracts: 1 kept, 0 broken.` (layered architecture maintained)
-- No new violations introduced
+### Type check
 
-## Self-Review Checklist
+`cd shell && npx tsc --noEmit` — no output, exit clean (no type errors).
 
-✓ **Both routes fully implemented** as specified in the brief
+### Full shell unit suite
 
-✓ **bucket/split/bins genuinely return 400**: Tests verify HTTP 400 status with correct error message
+`cd shell && npm run test`:
+```
+Test Files  111 passed (111)
+     Tests  867 passed (867)
+Duration  40.68s
+```
+(Some stderr noise from an unrelated pre-existing CEL parse-error test — `exprBindings.test.ts` — is expected error-path logging, not a failure; that file shows `✓ src/builder/exprBindings.test.ts (7 tests)`.)
 
-✓ **Every outbound HTTP call goes through egress guard**: All calls via `get_arcgis_http_client()` dependency which injects guarded client built from `app.harvest.egress.build_guarded_client()`
+## Files changed
 
-✓ **Tests are behavioral, not mock-chains**: Use `httpx.MockTransport` for controlled ArcGIS service simulation; real egress-block and error scenarios tested
+- `shell/src/lib/geometryBbox.ts` (new)
+- `shell/src/lib/geometryBbox.test.ts` (new)
+- `shell/src/lib/analyticsPatch.ts` (rewritten)
+- `shell/src/lib/analyticsPatch.test.ts` (appended)
 
-✓ **No existing httpx import alias conflicts**: File had no prior httpx import
+## Self-review
 
-✓ **Authorization enforcement**: `_resolve_arcgis_dataset` checks both dataset item and referenced layer access
+- **Completeness**: all brief steps implemented as literally specified, no deviation.
+- **Quality**: `applyCrossFilterValue` extraction keeps the same three branches; new loop is a straightforward `Object.entries` scan with early `continue`s, matches existing style (comment in French per repo convention, mirroring the existing header comment).
+- **Discipline**: no extra abstractions, no scope creep beyond the brief (e.g., no transitive/multi-hop link resolution — explicitly out of scope per the brief's own comment "un seul saut (pas de chaînage transitif)").
+- **Double-fire check**: verified the "does not resolve a link declared on the same dataset as the target source" test passes — the link loop explicitly skips `originDatasetId === source.datasetId`, so the same-dataset direct path and the cross-dataset link path can't both act on `ds-1`'s own cross-filter entry.
+- **Testing**: TDD followed exactly (RED confirmed for correct reason at each step, then GREEN). tsc clean. Full suite green with no regressions (867/867).
 
-✓ **Response shape compliance**: Features include `numberMatched`, `numberReturned`, `timeStamp`, `links`; aggregate includes `categoryKey` and `rows`
+No issues or concerns found.
 
 ## Commit
 
-`53e2cd0` — `feat(core): GET/POST /datasets/{itemId}/arcgis/items|aggregate live proxy (SP-14k)`
-
-Files changed:
-- `core/app/harvest/routes.py` (modified)
-- `core/tests/test_harvest_dataset_arcgis_routes.py` (new)
-
-## Fix: field-name injection (post-review)
-
-### The finding
-
-A task review flagged a Critical: unvalidated filter field *names* (query-param
-keys on `GET /datasets/{itemId}/arcgis/items`, JSON-body keys of `body.filters`
-on `POST /datasets/{itemId}/arcgis/aggregate`) reached the outbound ArcGIS
-`where=` clause unescaped. `live_query._build_where` only escaped filter
-*values* via `_sql_lit`; the field *name* was interpolated verbatim into the
-SQL-like where string, so a query param key like `1) OR (1=1--` would land
-unescaped in the request sent to the remote ArcGIS `FeatureServer/query`
-endpoint — a confirmed, exploitable injection into an external-service
-request.
-
-### What I changed
-
-1. **`core/app/harvest/live_query.py`**
-   - Line 8: added `import re`.
-   - Line 16: added `_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")`
-     next to `_RANGE_OPS`/`_STAT_TYPES` — a strict ArcGIS/SQL-style identifier
-     pattern (letter/underscore then letters/digits/underscores only).
-   - In `_build_where` (around line 43-45): after
-     `name, suffix = _split_filter_key(raw_name)`, added a check that raises
-     `ArcgisQueryError(raw_name, f"invalid filter field name '{name}'")` when
-     `name` doesn't match `_FIELD_NAME_RE`, before any clause is built from it.
-     This is a scoped identifier-pattern fix (not a column allowlist), per the
-     reviewer's own suggestion — the arcgis connector has no local
-     schema/column list for the remote layer to allowlist against.
-   - `_build_where` is shared by both `translate_features_query` (used by the
-     `GET .../items` route) and `translate_aggregate_query` (used by the
-     `POST .../aggregate` route), so one check covers both filter-name
-     injection paths.
-
-2. **`core/app/harvest/routes.py`**
-   - In `get_dataset_arcgis_items` (around line 238-246): wrapped the
-     `live_query.translate_features_query(...)` call in a
-     `try/except live_query.ArcgisQueryError` that raises `HTTPException(400, …)`
-     with the same response shape (`{"errors": [{"field", "code": "invalid_filter", "message"}]}`)
-     already used by the aggregate route's equivalent handling. The existing
-     `try/except EgressBlockedError/httpx.HTTPError/finally` around
-     `fetch_query` was left untouched, as a separate block.
-   - `get_dataset_arcgis_aggregate` was **not modified** — see below.
-
-### Was the aggregate route already covered "for free"?
-
-Yes, confirmed by reading the code before assuming it. Lines 276-284 of
-`routes.py` (pre-existing, unchanged) already wrap
-`live_query.translate_aggregate_query(group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox)`
-in a `try/except live_query.ArcgisQueryError` that raises the same 400 shape
-(`code: "invalid_aggregate"`). Since `translate_aggregate_query` calls the
-same `_build_where` that now raises on bad field names, `body.filters` keys
-are validated through the exact same code path and the existing except clause
-catches it — no route-level change was needed for the aggregate route.
-
-### Tests added
-
-**`core/tests/test_harvest_live_query.py`** — added
-`test_translate_features_query_rejects_invalid_field_name`, asserting
-`live_query.translate_features_query(filters={"1) OR (1=1--": "x"}, ...)`
-raises `ArcgisQueryError`. Existing tests use only valid identifiers
-(`statut`, `annee`, `type`, `nom`, `commune`, with `__gte`/`__lte`/`__in`
-suffixes), confirmed unaffected.
-
-**`core/tests/test_harvest_dataset_arcgis_routes.py`** — added:
-- `test_get_items_invalid_filter_field_name_rejected`: `GET
-  /datasets/{item_id}/arcgis/items` with query param key
-  `1) OR (1=1--` returns 400.
-- `test_post_aggregate_invalid_filter_field_name_rejected`: `POST
-  /datasets/{item_id}/arcgis/aggregate` with `filters: {"1) OR (1=1--": "x"}`
-  in the JSON body returns 400 (mirrors the existing
-  `test_post_aggregate_bucket_rejected`-style tests in that file).
-
-### Verification commands and results
-
-```
-cd /home/lenen/projets/geostudio/core
-uv run pytest tests/test_harvest_live_query.py tests/test_harvest_dataset_arcgis_routes.py tests/test_create_dataset_arcgis.py -q
-```
-Result: `31 passed in 6.77s`
-
-```
-uv run pytest -q
-```
-Result: `847 passed, 106 skipped in 113.86s` — fully green (up from the
-606+87 baseline noted in CLAUDE.md, reflecting cumulative SP-14k test growth
-across tasks 1-5).
-
-```
-uv run lint-imports
-```
-Result: `Contracts: 1 kept, 0 broken.` — unaffected, as expected (no new
-cross-module imports introduced).
-
-### Scope discipline
-
-No schema-fetch/column-allowlist system was added. `groupByFieldsForStatistics`
-/ `group_by` field validation was left untouched (out of scope for this
-finding — the review explicitly excluded it). No unrelated refactoring.
+`4debf7d` — `feat(shell): resolve cross-filter links (attribute + spatial) in derivePatch (SP-14n)`

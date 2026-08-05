@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useAnalyticsContext, useClearCrossFilter, useSetExtent, useSetTimeRange, type CrossFilterValue } from "./AnalyticsContext";
+import { useDatasets } from "./DataContext";
 
 const chipCls = "flex items-center gap-1 rounded-full border border-[var(--gs-color-border)] px-2 py-1";
 
@@ -11,6 +12,7 @@ function formatCrossFilterValue(value: CrossFilterValue): string {
 
 export function AnalyticsContextIndicator() {
   const ctx = useAnalyticsContext();
+  const datasets = useDatasets();
   const setTimeRange = useSetTimeRange();
   const setExtent = useSetExtent();
   const clearCrossFilter = useClearCrossFilter();
@@ -41,9 +43,15 @@ export function AnalyticsContextIndicator() {
       )}
       {crossFilterIds.map((datasetId) => {
         const entry = ctx.crossFilter[datasetId]!;
+        const propagatesTo = (datasets[datasetId]?.crossFilterLinks ?? [])
+          .filter((link) => (link.mode === "attribute" ? link.sourceField === entry.field : entry.geometry !== undefined))
+          .map((link) => link.targetDatasetId);
         return (
           <span key={datasetId} className={chipCls}>
             {entry.field} : {formatCrossFilterValue(entry.value)}
+            {propagatesTo.length > 0 && (
+              <span className="text-[var(--gs-color-muted)]"> → {propagatesTo.join(", ")}</span>
+            )}
             <button type="button" aria-label={`Effacer le filtre ${entry.field}`} onClick={() => clearCrossFilter(datasetId)}>×</button>
           </span>
         );

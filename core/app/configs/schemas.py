@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,6 +92,25 @@ class DatasetColumnMeta(BaseModel):
                                  # interprété côté widget consommateur
 
 
+class DatasetCrossFilterLinkAttribute(BaseModel):
+    mode: Literal["attribute"] = "attribute"
+    targetDatasetId: str
+    sourceField: str
+    targetField: str
+
+
+class DatasetCrossFilterLinkSpatial(BaseModel):
+    mode: Literal["spatial"] = "spatial"
+    targetDatasetId: str
+    precision: Literal["bbox", "exact"] = "bbox"
+
+
+DatasetCrossFilterLink = Annotated[
+    DatasetCrossFilterLinkAttribute | DatasetCrossFilterLinkSpatial,
+    Field(discriminator="mode"),
+]
+
+
 class DatasetPayload(BaseModel):
     source: Literal["collection", "arcgis"]
     collectionId: str | None = None    # requis si source == "collection"
@@ -100,6 +119,7 @@ class DatasetPayload(BaseModel):
     columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
     timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
     reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
+    crossFilterLinks: list[DatasetCrossFilterLink] = Field(default_factory=list)  # SP-14n
 
     @model_validator(mode="after")
     def _require_source_id(self) -> "DatasetPayload":
@@ -114,12 +134,43 @@ class DatasetPayload(BaseModel):
         return self
 
 
+class BookmarkTimeRange(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+
+
+class BookmarkCrossFilterEntry(BaseModel):
+    field: str
+    # The shell's CrossFilterValue mirror type (AnalyticsContext.tsx) also
+    # allows a {from, to} range shape — written by the built-in "Curseur"
+    # range-slider widget (sliderFilter.tsx). Reuse BookmarkTimeRange rather
+    # than inventing a second range type.
+    value: str | list[str] | BookmarkTimeRange
+    originSourceId: str
+
+
+class BookmarkPayload(BaseModel):
+    appId: str
+    pageId: str
+    timeRange: BookmarkTimeRange | None = None
+    extent: tuple[float, float, float, float] | None = None
+    crossFilter: dict[str, BookmarkCrossFilterEntry] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _require_non_empty_page_id(self) -> "BookmarkPayload":
+        if not self.pageId.strip():
+            raise ValueError("bookmark pageId must not be empty")
+        return self
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -130,6 +181,7 @@ class BuilderConfig(BaseModel):
     variables: list[Variable] = Field(default_factory=list)
     map: MapConfig | None = None
     dataset: DatasetPayload | None = None
+    bookmark: BookmarkPayload | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
@@ -139,4 +191,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("map config requires a map")
         if self.kind == "dataset" and self.dataset is None:
             raise ValueError("dataset config requires a dataset payload")
+        if self.kind == "bookmark" and self.bookmark is None:
+            raise ValueError("bookmark config requires a bookmark payload")
         return self

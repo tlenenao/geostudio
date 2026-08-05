@@ -184,6 +184,37 @@ def test_bbox_without_geometry_column_raises():
     assert exc_info.value.field == "bbox"
 
 
+def test_geom_intersects_filter_narrows_rows_spatially(tmp_path, conn):
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", "2025", 10, lsn=1, x=2.3, y=48.8),  # dans le polygone
+        _row(2, "Sud", "2025", 5, lsn=1, x=100.0, y=50.0),  # hors polygone
+    ])
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]],
+    }
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop", geomIntersects=polygon)
+
+    _category_key, rows = run_collection_aggregate(
+        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
+        table_info=TABLE_INFO, request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 10}]
+
+
+def test_geom_intersects_without_geometry_column_raises():
+    info_no_geom = TableInfo(table_name="t", pk_column="id", geometry_column=None,
+                             geometry_type=None, srid=None, columns=[])
+    request = AggregateRequestBody(geomIntersects={"type": "Point", "coordinates": [0, 0]})
+    with pytest.raises(UnknownAggregateField) as exc_info:
+        run_collection_aggregate(
+            duckdb.connect(":memory:"), base_uri="/nonexistent", tenant_id="t1",
+            collection_id="c", table_info=info_no_geom, request=request,
+        )
+    assert exc_info.value.field == "geomIntersects"
+
+
 def test_gte_lte_filters_narrow_rows(tmp_path, conn):
     _write_partition(tmp_path, rows=[
         _row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2026", 20, lsn=1),

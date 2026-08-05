@@ -15,9 +15,9 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Documents de référence (ordre d'autorité)
 
 1. **`docs/vision/2026-07-04-feuille-de-route-geostudio.md`** — LA référence :
-   phasage SP-1→SP-17, périmètre exact du remplacement de GeoNode (= l'interface
-   `ItemClient`), modèle de données du cœur v0, **30 arbitrages tranchés (§8)**,
-   jalons M1–M12. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
+   phasage SP-1→SP-20, périmètre exact du remplacement de GeoNode (= l'interface
+   `ItemClient`), modèle de données du cœur v0, **40 arbitrages tranchés (§8)**,
+   jalons M1–M16. Un arbitrage ne se rediscute pas en session ; s'il doit changer,
    on met à jour ce document explicitement.
 2. `docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md` — pourquoi
    l'option C, décisions produit (§9).
@@ -159,16 +159,47 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - **SP-14l** — MCP analytique : outils `create_dataset`, `run_analytics_query`,
   `explain_dataset`, câblés sur les chemins de requête dataset déjà validés
   (SP-11b, SP-14a/k).
+- **SP-14m** — Bookmarks : `bookmark` en cinquième `BuilderConfig.kind` (pas de
+  migration), validation directe de `appId` (lisibilité + type app/dashboard)
+  sur les trois routes d'écriture REST, outil MCP `create_bookmark`, page
+  `/bookmarks` (« Mes vues ») réutilisant `CatalogPage`, bouton « Enregistrer
+  la vue » sur `AppRuntimePage` capturant le contexte analytique courant
+  (plage temporelle/emprise/cross-filter, y compris la forme `{from, to}` du
+  filtre curseur).
+- **SP-14n** — Cross-filter inter-datasets : `crossFilterLinks` (attribut ou
+  spatial bbox/exact) déclaré sur un dataset cible un autre dataset, pour que
+  la sélection sur un widget lié au dataset A cross-filtre aussi les widgets
+  liés au dataset B — capacité `geomIntersects`/`geom_intersects` sur les
+  deux endpoints serveur (DuckDB aggregate + OGC API Features, ce dernier non
+  câblé côté shell par choix), résolution dans `derivePatch`, capture de
+  géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
+  dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
+  visuelle** (cf. « À venir »).
 
 ### À venir
 
-- **SP-14** — Analytics UX (requête visuelle, contexte global temps×emprise,
-  cross-filter, SQL Lab). Jalon M11.
+- **SP-14** — seule reste la **requête visuelle** (Filtrer → Joindre →
+  Résumer → Trier compilant vers l'API analytique), bloquée sur SP-15 (le
+  moteur de pipeline qu'elle consommera, A39) ; toutes les autres
+  sous-parties (datasets, contexte global, cross-filter y compris
+  inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
+  livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
+  livrée.
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
-- **SP-17** — reste à cadrer (cf. feuille de route SP-1→SP-17, ordre
-  SP-12/SP-14/SP-16/SP-17 à arbitrer avant lancement).
+- **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
+  à arbitrer avant lancement).
 - Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem),
   impression (Playwright en worker).
+- **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
+  Autoporté/Statique, dépend de SP-11). Jalon M15.
+- **SP-19** — undo/redo général du builder (pile d'instantanés de config,
+  prérequis de SP-20). Aucune dépendance amont.
+- **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
+  MCP orchestrés en loopback réel, micro-actions sur la config en cours
+  d'édition). Dépend de SP-19. Jalon M16. Arbitrages A32/A40, brainstorm
+  2026-08-05 ; specs :
+  `docs/superpowers/specs/2026-08-05-undo-redo-builder-design.md` et
+  `docs/superpowers/specs/2026-08-05-copilote-embarque-design.md`.
 
 ### Suivis non bloquants ouverts
 

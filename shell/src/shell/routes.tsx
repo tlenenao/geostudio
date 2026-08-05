@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import { Routes, Route, Outlet, useNavigate, useParams } from "react-router-dom";
 import { CatalogPage } from "../pages/CatalogPage";
 import { ItemDetailPage } from "../pages/ItemDetailPage";
@@ -15,15 +16,70 @@ import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
+import { useItemClient } from "../api/ItemClientProvider";
+import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
+import type { ResourceType } from "../api/types";
+
+// Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
+// a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
+// one fetches its saved app/page/context and replays it via ?ctx=, instead
+// of navigating to an editor route like every other kind below.
+//
+// The fetch (getBookmarkConfig) can fail — e.g. the bookmark's config row was
+// deleted while the item survived, or a transient network error — and
+// CatalogPage's onOpenItem contract is a fire-and-forget callback (ItemCard
+// calls it without await/.catch()), so a rejection here would otherwise be an
+// unhandled promise rejection with no feedback to the user. Catch it and
+// surface it the same way HarvestSourcesAdminPage surfaces a failed mutation:
+// a local error flag rendered as a `role="alert"` paragraph.
+function useOpenItem() {
+  const navigate = useNavigate();
+  const client = useItemClient();
+  const [openError, setOpenError] = useState(false);
+  const onOpenItem = async (pk: string, type: ResourceType) => {
+    if (type === "bookmark") {
+      try {
+        const bookmark = await client.getBookmarkConfig(pk);
+        const ctx = encodeAnalyticsContext({
+          timeRange: bookmark.timeRange, extent: bookmark.extent, crossFilter: bookmark.crossFilter,
+        });
+        setOpenError(false);
+        navigate(`/apps/${encodeURIComponent(bookmark.appId)}/${encodeURIComponent(bookmark.pageId)}?ctx=${ctx}`);
+      } catch {
+        setOpenError(true);
+      }
+      return;
+    }
+    navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
+  };
+  return { onOpenItem, openError };
+}
 
 function CatalogRoute() {
-  const navigate = useNavigate();
+  const { onOpenItem, openError } = useOpenItem();
   return (
-    <CatalogPage
-      onOpenItem={(pk, type) =>
-        navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`)
-      }
-    />
+    <>
+      {openError && (
+        <p role="alert" className="text-sm text-red-600">
+          Échec de l'ouverture de l'élément.
+        </p>
+      )}
+      <CatalogPage onOpenItem={onOpenItem} />
+    </>
+  );
+}
+
+function BookmarksRoute() {
+  const { onOpenItem, openError } = useOpenItem();
+  return (
+    <>
+      {openError && (
+        <p role="alert" className="text-sm text-red-600">
+          Échec de l'ouverture du signet.
+        </p>
+      )}
+      <CatalogPage onOpenItem={onOpenItem} fixedType="bookmark" />
+    </>
   );
 }
 
@@ -90,6 +146,7 @@ export function AppRoutes() {
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<CatalogRoute />} />
         <Route path="/items/:pk" element={<ItemDetailRoute />} />
+        <Route path="/bookmarks" element={<BookmarksRoute />} />
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />

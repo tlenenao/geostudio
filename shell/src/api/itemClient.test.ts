@@ -359,7 +359,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
   const cfg = await makeClient().getDatasetConfig("ds-2");
   expect(cfg).toEqual({
     source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
-    timeField: null, reactsToExtent: false,
+    timeField: null, reactsToExtent: false, crossFilterLinks: [],
   });
 });
 
@@ -370,6 +370,64 @@ test("getDatasetConfig throws when the config has no dataset payload", async () 
     ),
   );
   await expect(makeClient().getDatasetConfig("ds-3")).rejects.toThrow();
+});
+
+test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      const body = (await request.json()) as { title: string; config: unknown };
+      expect(body.config).toEqual({
+        version: 1,
+        kind: "bookmark",
+        bookmark: {
+          appId: "app-1", pageId: "page-1",
+          timeRange: { from: "2026-01-01", to: "2026-02-01" },
+          extent: null, crossFilter: {},
+        },
+      });
+      return HttpResponse.json({ id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createBookmarkItem({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+  expect(item).toEqual({
+    pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
+    owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-bookmark", isPublished: false,
+  });
+});
+
+test("getBookmarkConfig reads the bookmark payload from the by-item config", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-1", () =>
+      HttpResponse.json({
+        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        config: {
+          version: 1, kind: "bookmark",
+          bookmark: {
+            appId: "app-1", pageId: "page-1",
+            timeRange: { from: "2026-01-01", to: "2026-02-01" },
+            extent: null, crossFilter: {},
+          },
+        },
+      }),
+    ),
+  );
+  const payload = await makeClient().getBookmarkConfig("bookmark-1");
+  expect(payload).toEqual({
+    appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+});
+
+test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-2", () =>
+      HttpResponse.json({ id: "cfg-x", itemId: "bookmark-2", kind: "bookmark", config: { version: 1, kind: "bookmark" } }),
+    ),
+  );
+  await expect(makeClient().getBookmarkConfig("bookmark-2")).rejects.toThrow();
 });
 
 test("saveDatasetConfig PUTs the dataset config by item", async () => {
@@ -407,6 +465,57 @@ test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", a
   );
   await makeClient().saveDatasetConfig("ds-1", { ...config, reactsToExtent: false });
   expect((putBody!.dataset as Record<string, unknown>).reactsToExtent).toBe(false);
+});
+
+test("getDatasetConfig includes crossFilterLinks from the wire response", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        config: {
+          version: 1, kind: "dataset",
+          dataset: {
+            source: "collection", collectionId: "parcs", columns: {},
+            crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" }],
+          },
+        },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" },
+  ]);
+});
+
+test("getDatasetConfig defaults crossFilterLinks to an empty array when absent from the wire", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        config: { version: 1, kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([]);
+});
+
+test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later reads", async () => {
+  let posted: unknown;
+  server.use(
+    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json(undefined, { status: 204 });
+    }),
+  );
+  await makeClient().saveDatasetConfig("ds-1", {
+    source: "collection", collectionId: "parcs", columns: {},
+    crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" }],
+  });
+  expect((posted as { dataset: { crossFilterLinks: unknown } }).dataset.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" },
+  ]);
 });
 
 test("featuresUrl resolves datasetId to the dataset's collectionId once cached", async () => {
@@ -812,6 +921,22 @@ test("queryDataSource sends a bbox query key as body.bbox, not as a filter", asy
   });
   expect(posted!.bbox).toEqual([1, 2, 3, 4]);
   expect(posted!.filters).toBeUndefined();
+});
+
+test("queryDataSource sends a geomIntersects query key as body.geomIntersects", async () => {
+  const geom = { type: "Point", coordinates: [1, 2] };
+  let posted: { geomIntersects?: unknown } | undefined;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as { geomIntersects?: unknown };
+      return HttpResponse.json({ categoryKey: "group", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "src-1", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "region", agg: "count", geomIntersects: geom },
+  });
+  expect(posted!.geomIntersects).toEqual(geom);
 });
 
 test("queryDataSource sends a bucket query key as body.bucket, not as a filter", async () => {

@@ -21,6 +21,7 @@ function Probe() {
       <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
       <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
       <button onClick={() => setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")}>set-cf-range</button>
+      <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1", { type: "Point", coordinates: [1, 2] })}>set-cf-geom</button>
       <button onClick={() => clearCrossFilter("ds1")}>clear-cf</button>
     </div>
   );
@@ -56,6 +57,18 @@ test("setCrossFilter accepts a {from,to} range value", async () => {
   render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
   await userEvent.click(screen.getByText("set-cf-range"));
   expect(screen.getByText(/"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/)).toBeInTheDocument();
+});
+
+test("setCrossFilter stores an optional geometry alongside the entry", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf-geom"));
+  expect(screen.getByText(/"geometry":\{"type":"Point","coordinates":\[1,2\]\}/)).toBeInTheDocument();
+});
+
+test("setCrossFilter without a geometry omits the field entirely (unchanged shape)", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.queryByText(/"geometry"/)).not.toBeInTheDocument();
 });
 
 test("clearCrossFilter removes the entry for that dataset", async () => {

@@ -1,407 +1,243 @@
-### Task 2: `run_analytics_query` tool
+## Task 2: Core — `geom_intersects` on the OGC API Features endpoint
 
 **Files:**
-- Modify: `core/app/mcp/tools.py`
-- Test: `core/tests/test_mcp_tools_run_analytics_query.py` (new — source `collection`, needs real PostGIS)
-- Test: `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` (new — source `arcgis`, SQLite)
+- Modify: `core/app/features/repository.py:8-17` (no new import needed, `json` already imported), `:66-99` (`_where`), `:120-124` (`select_features`)
+- Modify: `core/app/features/routes.py:5,40,91-103,124-141` (`import json`, `RESERVED_QUERY_PARAMS`, new `_parse_geom_intersects`, `list_features`)
+- Test: `core/tests/test_features_repository.py` (append, postgis-marked), `core/tests/test_features_routes_read.py` (append, no docker needed)
 
 **Interfaces:**
-- Consumes: `create_dataset` (Task 1) to build fixtures in tests.
-- Produces: MCP tool `run_analytics_query(ctx, datasetId: str, query: AggregateRequestBody) -> dict` returning `{"categoryKey": str | list[str], "rows": list[dict]}`.
-- Produces: private helper `_resolve_dataset_payload(session, *, user: User, dataset_item_id: str) -> DatasetPayload` — reused by Task 3.
-- Produces: private helper `_resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -> str` — reused by Task 3.
+- Produces: `select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None)` — `geom_intersects` is a GeoJSON dict, translated to `ST_Intersects(<geom>, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(...), 4326), <srid>))`; raises `FilterError("geom_intersects", "collection has no geometry")` when the collection has none. `GET /collections/{id}/items?geom_intersects=<url-encoded GeoJSON>` parses and forwards it the same way `bbox` already does.
 
-- [ ] **Step 1: Write the failing tests (collection source)**
+- [ ] **Step 1: Write the failing repository tests (postgis-marked)**
 
-Create `core/tests/test_mcp_tools_run_analytics_query.py`:
+Append to `core/tests/test_features_repository.py`, right after `test_pagination_and_bbox_and_filters`. Add the import at the top first:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""run_analytics_query, source "collection" (SP-14l) — mirrors POST
-/collections/{id}/aggregate: same DuckDB/GeoParquet CDC read path
-(app.analytics.aggregate.run_collection_aggregate). get_duckdb_connection_
-factory/get_analytics_base_uri are called as plain functions inside the MCP
-tool body (no FastAPI Depends there), so tests monkeypatch the
-app.features.routes module attributes directly instead of using
-app.dependency_overrides — same substitution app.dependency_overrides does
-for the REST route's own test (test_features_aggregate_routes.py), just at
-the Python-attribute level instead of the ASGI-DI level."""
-import duckdb
-import geopandas as gpd
+from dataclasses import replace
+
 import pytest
-from shapely.geometry import Point
-
-from app.features import routes as features_routes
-
-from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
-from tests.test_mcp_tools_query_features import app_client, _register_incidents_collection  # noqa: F401
-
-pytestmark = pytest.mark.postgis
-
-
-def _write_partition(base_dir, *, tenant_id, collection_id, rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-04"
-    partition_dir.mkdir(parents=True, exist_ok=True)
-    gdf = gpd.GeoDataFrame(rows, geometry="geom", crs="EPSG:4326")
-    gdf.to_parquet(partition_dir / "part-1.parquet")
-
-
-def _fake_duckdb_factory():
-    conn = duckdb.connect(":memory:")
-    conn.execute("INSTALL spatial; LOAD spatial;")
-    return conn
-
-
-@pytest.fixture(autouse=True)
-def _local_duckdb(monkeypatch, tmp_path):
-    monkeypatch.setattr(features_routes, "get_duckdb_connection_factory", lambda: _fake_duckdb_factory)
-    monkeypatch.setattr(features_routes, "get_analytics_base_uri", lambda: str(tmp_path))
-    return tmp_path
-
-
-def _create_collection_dataset(app_client, collection_id):
-    result = call_tool(app_client, "create_dataset", {
-        "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
-    })
-    return result["pk"]
-
-
-def test_run_analytics_query_collection_source_returns_grouped_counts(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-    _write_partition(_local_duckdb, tenant_id=app_client.tenant.id, collection_id=collection_id, rows=[
-        {"id": 1, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-        {"id": 2, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-        {"id": 3, "tenant_id": app_client.tenant.id, "titre": "Lampadaire cassé",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-    ])
-    with app_client:
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-        result = call_tool(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "titre"},
-        })
-
-    assert result["categoryKey"] == "titre"
-    assert sorted(result["rows"], key=lambda r: r["titre"]) == [
-        {"titre": "Lampadaire cassé", "value": 1}, {"titre": "Nid de poule", "value": 2},
-    ]
-
-
-def test_run_analytics_query_unknown_group_by_field_errors(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-    _write_partition(_local_duckdb, tenant_id=app_client.tenant.id, collection_id=collection_id, rows=[
-        {"id": 1, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-    ])
-    with app_client:
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "inconnu"},
-        })
-    assert "inconnu" in error_text
-
-
-def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb):
-    with app_client:
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": "does-not-exist", "query": {"groupBy": "titre"},
-        })
-    assert "not found" in error_text
-
-
-def test_run_analytics_query_collection_unreadable_by_caller_errors(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-    # Simulate the share being revoked after the dataset was created: flip
-    # the collection private with no share, independent of the dataset item
-    # (which stays readable — it's owned by mock_user).
-    with app_client.session_factory() as session:
-        from app.collections.models import Collection
-        session.query(Collection).filter(Collection.id == collection_id).update({"is_public": False})
-        session.commit()
-    with app_client:
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "titre"},
-        })
-    assert "not found" in error_text
+from sqlalchemy import text
 ```
 
-- [ ] **Step 2: Write the failing tests (arcgis source)**
-
-Create `core/tests/test_mcp_tools_run_analytics_query_arcgis.py`:
+Then the tests:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""run_analytics_query, source "arcgis" (SP-14l) — mirrors POST
-/datasets/{id}/arcgis/aggregate: same live_query translate/fetch/aggregate
-path, same bucket/split/bins rejection (no server-side equivalent in the
-ArcGIS statistics API). get_arcgis_http_client is called as a plain
-function inside the MCP tool body (no FastAPI Depends there), so tests
-monkeypatch app.harvest.routes directly instead of using
-app.dependency_overrides."""
-import httpx
-import pytest
-
-from app.harvest import live_query, repository as harvest_repo, routes as harvest_routes
-from app.items import repository as items_repo
-from app.users.repository import get_or_create_user
-
-from tests.test_mcp_tools_create import app_client, call_tool, call_tool_expecting_error  # noqa: F401
-
-SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
+def test_geom_intersects_filters_by_exact_polygon(info, pg_session_factory):
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[[0.5, 44.5], [1.5, 44.5], [1.5, 45.5], [0.5, 45.5], [0.5, 44.5]]],
+    }
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, geom_intersects=polygon)
+        assert [f["id"] for f in page.features] == [1]
 
 
-@pytest.fixture(autouse=True)
-def _clear_live_query_cache():
-    live_query._cache.clear()
-    yield
-    live_query._cache.clear()
-
-
-def _register_arcgis_layer(app_client, *, owner=None):
-    with app_client.session_factory() as session:
-        layer_owner = owner or app_client.mock_user
-        source = harvest_repo.create_source(
-            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id, type="arcgis",
-            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
-            mode="reference", enabled=True, interval_minutes=None,
-        )
-        layer_item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id,
-            resource_type="external", title="Bâtiments",
-        )
-        if layer_owner is app_client.mock_user:
-            items_repo.set_is_public(
-                session, tenant_id=app_client.tenant.id, item_id=layer_item.id, is_public=True,
-            )
-        harvest_repo.create_record(
-            session, tenant_id=app_client.tenant.id, source_id=source.id, external_id="layer-0",
-            item_id=layer_item.id, collection_id=None, content_hash=None,
-            external_url=SERVICE, layer_kind="feature",
-        )
-        session.commit()
-        return layer_item.id
-
-
-def _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id):
-    """Builds the dataset item/config directly (bypassing create_dataset's
-    own validation), so a test can simulate a dataset that references an
-    arcgis layer the caller can no longer read — create_dataset itself
-    would refuse to create such a dataset in the first place (Task 1),
-    so this is the only way to exercise run_analytics_query's own,
-    independent re-check of layer readability."""
-    with app_client.session_factory() as session:
-        from app.configs import repository as configs_repo
-        from app.configs.schemas import BuilderConfig, DatasetPayload
-        item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=app_client.mock_user.id,
-            resource_type="dataset", title="Bâtiments (live)",
-        )
-        config = BuilderConfig(
-            version=1, kind="dataset",
-            dataset=DatasetPayload(source="arcgis", arcgisItemId=arcgis_item_id, columns={}),
-        )
-        configs_repo.create_config(session, config, item_id=item.id, tenant_id=app_client.tenant.id)
-        session.commit()
-        return item.id
-
-
-def test_run_analytics_query_arcgis_source_groupby_and_measure(app_client, monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"features": [
-            {"attributes": {"commune": "Metz", "m0": 3}},
-            {"attributes": {"commune": "Nancy", "m0": 7}},
-        ]})
-    monkeypatch.setattr(
-        harvest_routes, "get_arcgis_http_client",
-        lambda: httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        result = call_tool(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "commune", "agg": "count"},
-        })
-
-    assert result["categoryKey"] == "commune"
-    assert result["rows"] == [{"commune": "Metz", "value": 3}, {"commune": "Nancy", "value": 7}]
-
-
-def test_run_analytics_query_arcgis_source_rejects_bucket(app_client, monkeypatch):
-    monkeypatch.setattr(
-        harvest_routes, "get_arcgis_http_client",
-        lambda: httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"features": []}))),
-    )
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "annee", "bucket": "month"},
-        })
-    assert "bucket/split/bins" in error_text
-
-
-def test_run_analytics_query_arcgis_layer_unreadable_errors(app_client):
-    with app_client.session_factory() as session:
-        other_owner = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="other-owner-raq-sub",
-            username="otherowner-raq", email=None, first_name="Other", last_name="Owner",
-        )
-        session.commit()
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client, owner=other_owner)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "commune"},
-        })
-    assert "not found" in error_text
+def test_geom_intersects_without_geometry_column_raises(info, pg_session_factory):
+    info_no_geom = replace(info, geometry_column=None)
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info_no_geom, limit=10, offset=0,
+                            geom_intersects={"type": "Point", "coordinates": [0, 0]})
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run repository tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v`
-Expected: all FAIL — `run_analytics_query` tool does not exist yet (`isError` with an "unknown tool" style message, or the `call_tool`/`call_tool_expecting_error` helper raising because the tool name isn't registered).
+Run: `cd core && uv run pytest tests/test_features_repository.py -k geom_intersects -v -m postgis`
+Expected: FAIL if docker/postgis is available (`select_features() got an unexpected keyword argument 'geom_intersects'`); SKIPPED otherwise (postgis-marked, consistent with the other 87 skipped tests — see `CLAUDE.md`). If docker isn't running in this environment, proceed to Step 3 anyway and rely on Step 4's route-level test (no docker needed) plus a later run against docker before merging.
 
-- [ ] **Step 4: Implement `run_analytics_query`**
+- [ ] **Step 3: Implement the repository layer**
 
-In `core/app/mcp/tools.py`, add to the imports:
+In `core/app/features/repository.py`, extend `_where` (currently at line 66):
 
 ```python
-import httpx
-
-from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
-from app.features import routes as features_routes
-from app.harvest import live_query
-from app.harvest import repository as harvest_repo
-from app.harvest import routes as harvest_routes
-from app.harvest.egress import EgressBlockedError
+def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
+    clauses, params = [], {}
+    if filters:
+        by_name = {c.name: c for c in _property_columns(info)}
+        for i, (raw_name, raw) in enumerate(sorted(filters.items())):
+            name, suffix = _split_filter_key(raw_name)
+            col = by_name.get(name)
+            if col is None:
+                raise FilterError(name, f"unknown filter property '{name}'")
+            if col.type == "unsupported":
+                raise FilterError(name, "property not filterable")
+            ident = quote_ident(session, name)
+            if suffix == "__in":
+                values = raw.split(",")
+                placeholders = []
+                for j, value in enumerate(values):
+                    key = f"f{i}_{j}"
+                    params[key] = _coerce(col, value)
+                    placeholders.append(f":{key}")
+                clauses.append(f"{ident} IN ({', '.join(placeholders)})")
+            elif suffix in _RANGE_OPS:
+                clauses.append(f"{ident} {_RANGE_OPS[suffix]} :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
+            else:
+                clauses.append(f"{ident} = :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
+    if bbox is not None:
+        if info.geometry_column is None:
+            raise FilterError("bbox", "collection has no geometry")
+        g = quote_ident(session, info.geometry_column)
+        clauses.append(f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)")
+        params.update({"bx0": bbox[0], "by0": bbox[1], "bx1": bbox[2],
+                       "by1": bbox[3], "bsrid": info.srid or 4326})
+    if geom_intersects is not None:
+        # SP-14n : intersection géométrique exacte (ST_Intersects), complément
+        # précis du bbox && ci-dessus (chevauchement d'enveloppes uniquement).
+        if info.geometry_column is None:
+            raise FilterError("geom_intersects", "collection has no geometry")
+        g = quote_ident(session, info.geometry_column)
+        clauses.append(
+            f"ST_Intersects({g}, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:gi), 4326), :gisrid))"
+        )
+        params.update({"gi": json.dumps(geom_intersects), "gisrid": info.srid or 4326})
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 ```
 
-Add these two private helpers, right after `_validate_dataset` (added in Task 1):
+Update `select_features` (currently at line 120):
 
 ```python
-def _resolve_dataset_payload(session, *, user: User, dataset_item_id: str) -> DatasetPayload:
-    """Read-access check on the dataset item itself, plus its kind/payload —
-    shared first step for run_analytics_query and explain_dataset (Task 3)."""
-    _require_access(session, user=user, item_id=dataset_item_id, action="read")
-    config = configs_repo.get_config_by_item(session, dataset_item_id)
-    if config is None or config.kind != "dataset" or config.config.dataset is None:
-        raise ValueError("dataset not found")
-    return config.config.dataset
-
-
-def _resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -> str:
-    """Mirrors app/harvest/routes.py's _resolve_arcgis_dataset — same
-    dataset-read-then-arcgis-layer-read double check as
-    /datasets/{id}/arcgis/aggregate — but raises ValueError instead of
-    HTTPException, same rationale as _require_access above. Re-checks
-    dataset-item read access independently of _resolve_dataset_payload's
-    own check (harmless, cheap, and keeps this a faithful, self-contained
-    mirror of the REST route's helper rather than a partial reimplementation)."""
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=dataset_item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise ValueError("dataset not found")
-    config = configs_repo.get_config_by_item(session, dataset_item_id)
-    if (
-        config is None or config.kind != "dataset" or config.config.dataset is None
-        or config.config.dataset.source != "arcgis"
-    ):
-        raise ValueError("dataset not found")
-    arcgis_item_id = config.config.dataset.arcgisItemId
-    assert arcgis_item_id is not None
-    record = harvest_repo.get_feature_layer_record(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
-    if record is None or record.external_url is None:
-        raise ValueError("arcgis layer not found")
-    layer_facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
-    if layer_facts is None or not can(session, user_id=user.id, action="read", item=layer_facts):
-        raise ValueError("arcgis layer not found")
-    return record.external_url
+def select_features(session: Session, info: TableInfo, *, limit: int, offset: int,
+                    bbox=None, geom_intersects=None, filters=None) -> FeaturePage:
+    t = quote_ident(session, info.table_name)
+    where, params = _where(session, info, bbox, geom_intersects, filters)
 ```
 
-Add the tool itself inside `register_tools`, right after `create_dataset`:
+(the rest of the function body is unchanged — only the call to `_where` gains the new argument).
+
+- [ ] **Step 4: Run repository tests again**
+
+Run: `cd core && uv run pytest tests/test_features_repository.py -v -m postgis`
+Expected: PASS if docker is available (all tests in the file, including the 2 new ones); SKIPPED as a block otherwise.
+
+- [ ] **Step 5: Write the failing route-level test (no docker needed)**
+
+Append to `core/tests/test_features_routes_read.py`. Add `import json` at the top (line 1, alongside the existing imports), and update `make_fake_repo`'s `select_features` signature to accept and record the new parameter:
 
 ```python
-    @server.tool()
-    async def run_analytics_query(ctx: Context, datasetId: str, query: AggregateRequestBody) -> dict:
-        """Run a structured aggregate query against a dataset (source
-        collection or arcgis) — mirrors POST /collections/{id}/aggregate and
-        POST /datasets/{id}/arcgis/aggregate, same query contract
-        (groupBy/split/measures/filters/bbox/bucket/bins), same permissions.
-        Never fabricates SQL (A19). SP-14l."""
-        access_token = get_access_token()
-        with request_scoped_session(session_factory) as session:
-            user = _resolve_actor(session, access_token)
-            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+def make_fake_repo(matched=3):
+    calls = {}
 
-            if payload.source == "collection":
-                assert payload.collectionId is not None
-                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
-                try:
-                    info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
-                except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
-                conn = features_routes.get_duckdb_connection_factory()()
-                try:
-                    try:
-                        category_key, rows = run_collection_aggregate(
-                            conn, base_uri=features_routes.get_analytics_base_uri(),
-                            tenant_id=col.tenant_id, collection_id=col.id,
-                            table_info=info, request=query,
-                        )
-                    except UnknownAggregateField as exc:
-                        raise ValueError(f"{exc.field}: {exc.message}")
-                finally:
-                    conn.close()
-                return {"categoryKey": category_key, "rows": rows}
+    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
+        calls.update(limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters)
+        if filters and "inconnu" in filters:
+            raise FilterError("inconnu", "unknown filter property 'inconnu'")
+        return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
 
-            assert payload.arcgisItemId is not None
-            if query.bucket is not None or query.split is not None or query.bins is not None:
-                raise ValueError("bucket/split/bins are not supported for arcgis-sourced datasets")
-            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
-            group_by = query.groupBy if isinstance(query.groupBy, list) else ([query.groupBy] if query.groupBy else [])
-            measures_in = query.measures or [AggregateMeasure(field=query.field, agg=query.agg, label="value")]
-            measures = [(m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)) for m in measures_in]
-            try:
-                params = live_query.translate_aggregate_query(
-                    group_by=group_by, measures=measures, filters=query.filters, bbox=query.bbox,
-                )
-            except live_query.ArcgisQueryError as exc:
-                raise ValueError(f"{exc.field}: {exc.message}")
-            client = harvest_routes.get_arcgis_http_client()
-            try:
-                raw = live_query.fetch_query(client, external_url, params)
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
-            finally:
-                client.close()
-            category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
-            return {"categoryKey": category_key, "rows": rows}
+    def get_feature(session, info, *, fid):
+        return FEAT if fid == "1" else None
+
+    return SimpleNamespace(select_features=select_features, get_feature=get_feature,
+                           calls=calls)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+Then add the test, right after `test_bbox_parsing`:
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v`
-Expected: all PASS.
+```python
+def test_geom_intersects_parsing(env):
+    app, client, admin, _r, repo = env
+    _register(app, client, admin)
+    geom = {"type": "Point", "coordinates": [1.0, 2.0]}
+    r = client.get("/collections/incidents/items", params={"geom_intersects": json.dumps(geom)})
+    assert r.status_code == 200
+    assert repo.calls["geom_intersects"] == geom
+    r2 = client.get("/collections/incidents/items", params={"geom_intersects": "not-json"})
+    assert r2.status_code == 400
+    assert r2.json()["detail"]["errors"][0]["code"] == "invalid_geom_intersects"
+```
 
-- [ ] **Step 6: Run the full existing MCP test suite to check for regressions**
+- [ ] **Step 6: Run route tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_create.py tests/test_mcp_tools_create_form_app.py tests/test_mcp_tools_query_features.py tests/test_mcp_read_only_mode.py tests/test_mcp_tools_dataset_create.py -v`
-Expected: all PASS (no existing tool's behavior changed).
+Run: `cd core && uv run pytest tests/test_features_routes_read.py -v`
+Expected: FAIL — `list_features` has no `geom_intersects` query parameter yet (unrecognized param is just ignored by FastAPI, so `repo.calls["geom_intersects"]` raises `KeyError`, and the malformed-JSON case returns 200 instead of 400).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Implement the route layer**
+
+In `core/app/features/routes.py`, add the import (line 5, alongside `os`):
+
+```python
+import json
+import os
+```
+
+Extend `RESERVED_QUERY_PARAMS` (line 40):
+
+```python
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f"}
+```
+
+Add `_parse_geom_intersects` right after `_parse_bbox` (around line 91):
+
+```python
+def _parse_geom_intersects(raw: str | None):
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    if not isinstance(parsed, dict) or "type" not in parsed or "coordinates" not in parsed:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    return parsed
+```
+
+Update `list_features` (around line 124):
+
+```python
+@router.get("/collections/{collection_id}/items")
+def list_features(
+    collection_id: str, request: Request,
+    limit: int = Query(100, ge=1), offset: int = Query(0, ge=0),
+    bbox: str | None = None, geom_intersects: str | None = None,
+    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    limit = min(limit, MAX_LIMIT)
+    parsed_bbox = _parse_bbox(bbox)
+    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
+    filters = _collect_filters(request)
+    try:
+        with rls(session, col.tenant_id):
+            page = repo.select_features(session, info, limit=limit, offset=offset,
+                                        bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
+                                        filters=filters or None)
+    except FilterError as exc:
+        raise _validation_error(
+            [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
+    return {
+        "type": "FeatureCollection",
+        "features": page.features,
+        "numberMatched": page.number_matched,
+        "numberReturned": page.number_returned,
+        "timeStamp": datetime.now(timezone.utc).isoformat(),
+        "links": _page_links(request, limit=limit, offset=offset, page=page),
+    }
+```
+
+- [ ] **Step 8: Run route tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_features_routes_read.py -v`
+Expected: PASS (all tests, including the new one).
+
+- [ ] **Step 9: Run the full core suite**
+
+Run: `cd core && uv run pytest -q`
+Expected: same baseline as before (606 + however many prior tasks added) plus 3 new tests (1 route-level, 2 postgis-marked — skipped without docker), no regressions.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add core/app/mcp/tools.py core/tests/test_mcp_tools_run_analytics_query.py core/tests/test_mcp_tools_run_analytics_query_arcgis.py
-git commit -m "feat(core): mcp run_analytics_query tool (SP-14l)"
+git add core/app/features/repository.py core/app/features/routes.py core/tests/test_features_repository.py core/tests/test_features_routes_read.py
+git commit -m "feat(core): geom_intersects filter on OGC API Features (SP-14n)"
 ```
 
 ---

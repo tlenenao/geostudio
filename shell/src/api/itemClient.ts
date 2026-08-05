@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateDatasetInput, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -62,6 +62,9 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   }
   const bbox = parseBboxQueryValue(query.bbox);
   if (bbox) body.bbox = bbox;
+  if (query.geomIntersects && typeof query.geomIntersects === "object") {
+    body.geomIntersects = query.geomIntersects;
+  }
   const filters: Record<string, string> = {};
   for (const [k, v] of Object.entries(query)) {
     if (STAT_KEYS.has(k)) continue;
@@ -201,6 +204,7 @@ export function createItemClient(opts: {
     columns: Record<string, DatasetColumnMeta>;
     timeField: string | null;
     reactsToExtent: boolean;
+    crossFilterLinks: CrossFilterLink[];
   };
   const datasetCache = new Map<string, ResolvedDataset>();
 
@@ -214,6 +218,7 @@ export function createItemClient(opts: {
           collectionId?: string | null; arcgisItemId?: string | null;
           columns?: Record<string, DatasetColumnMeta>;
           timeField?: string | null; reactsToExtent?: boolean;
+          crossFilterLinks?: CrossFilterLink[];
         } | null;
       };
     }>("GET", `/configs/by-item/${pk}`);
@@ -225,6 +230,7 @@ export function createItemClient(opts: {
       arcgisItemId: dataset.arcgisItemId ?? null,
       columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
       reactsToExtent: dataset.reactsToExtent ?? false,
+      crossFilterLinks: dataset.crossFilterLinks ?? [],
     };
     datasetCache.set(pk, resolved);
     return resolved;
@@ -595,7 +601,7 @@ export function createItemClient(opts: {
         source: dataset.source,
         collectionId: dataset.source === "collection" ? dataset.collectionId : null,
         arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
-        columns: {}, timeField: null, reactsToExtent: false,
+        columns: {}, timeField: null, reactsToExtent: false, crossFilterLinks: [],
       });
       return {
         pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
@@ -604,17 +610,44 @@ export function createItemClient(opts: {
       };
     },
 
+    async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {
+      const bookmark: BookmarkPayload = {
+        appId: input.appId, pageId: input.pageId,
+        timeRange: input.timeRange, extent: input.extent, crossFilter: input.crossFilter,
+      };
+      const config = { version: 1, kind: "bookmark", bookmark };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createBookmarkItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "bookmark", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getBookmarkConfig(pk: string): Promise<BookmarkPayload> {
+      const data = await request<{ config?: { bookmark?: BookmarkPayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
+      return data.config.bookmark;
+    },
+
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
       const resolved = await resolveDataset(pk);
       if (resolved.source === "arcgis" && resolved.arcgisItemId) {
         return {
           source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
           timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+          crossFilterLinks: resolved.crossFilterLinks,
         };
       }
       return {
         source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
         timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+        crossFilterLinks: resolved.crossFilterLinks,
       };
     },
 
@@ -626,6 +659,7 @@ export function createItemClient(opts: {
         arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
         columns: config.columns, timeField: config.timeField ?? null,
         reactsToExtent: config.reactsToExtent ?? false,
+        crossFilterLinks: config.crossFilterLinks ?? [],
       });
     },
 

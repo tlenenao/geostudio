@@ -74,3 +74,16 @@ test("filters the catalog by scope", async () => {
     expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"),
   );
 });
+
+test("fixedType locks the type filter and hides the selector", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} fixedType="bookmark" />, { wrapper });
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("type")).toBe("bookmark"));
+  expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+});

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as repo
+from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
@@ -73,6 +74,7 @@ def create_config(
 ) -> ConfigRead:
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, request.config, user=user)
+    _validate_bookmark_payload(session, request.config, user=user)
     try:
         item = items_repo.create_item(
             session, tenant_id=user.tenant_id, owner_id=user.id,
@@ -123,6 +125,7 @@ def update_config(
     _require_access(session, user=user, item_id=existing.itemId, action="write")
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
+    _validate_bookmark_payload(session, config, user=user)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
@@ -222,6 +225,7 @@ def update_config_by_item(
         raise HTTPException(status_code=404, detail="config not found")
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
+    _validate_bookmark_payload(session, config, user=user)
     result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")

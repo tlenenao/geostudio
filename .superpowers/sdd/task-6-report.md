@@ -1,139 +1,104 @@
-# Task 6 Report: Shell — types + itemClient (dataset source branching) (SP-14k)
+## Task 6 Report: Shell — `geomIntersects` in the aggregate request body
 
-## Status: DONE
+### What Was Implemented
 
-## Summary
+Modified `buildAggregateBody()` in `shell/src/api/itemClient.ts` (lines 65-67) to forward `query.geomIntersects` (a GeoJSON geometry object) to the request body as `body.geomIntersects`, which the server's DuckDB aggregate endpoint (Task 1) understands and uses for spatial filtering.
 
-Implemented arcgis dataset support in the shell's `ItemClient`, enabling datasets to reference live ArcGIS Feature Service layers instead of copying data into local collections. Made `DatasetConfig` a discriminated union (`source: "collection" | "arcgis"`), added full branching logic for all 5 dataset methods, and added a new `listFeatureLayers()` method to fetch available ArcGIS layers from the core.
+**Implementation Details:**
+- Added conditional check: if `query.geomIntersects` exists and is an object, forward it verbatim to the request body
+- Placed immediately after the existing `bbox` handling (line 64), before the generic filters loop
+- The object type guard (`typeof query.geomIntersects === "object"`) ensures only actual geometry objects are forwarded, excluding null/undefined
+- The generic filters loop naturally excludes `geomIntersects` because it only processes string/number/boolean values
 
-## What Was Implemented
+### Testing Evidence
 
-### Types (`shell/src/api/types.ts`)
+#### RED (Failing Test)
 
-1. Made `DatasetConfig` a discriminated union with two variants:
-   - `{ source: "collection"; collectionId: string; ... }`
-   - `{ source: "arcgis"; arcgisItemId: string; ... }`
-2. Added `FeatureLayerSource` type: `{ id: string; title: string }`
-3. Added `CreateDatasetInput` discriminated union type
-4. Updated `ItemClient` interface to accept `CreateDatasetInput` and added `listFeatureLayers()` method
+**Command:** `cd shell && npx vitest run src/api/itemClient.test.ts -t geomIntersects`
 
-### ItemClient Implementation (`shell/src/api/itemClient.ts`)
-
-1. Updated `ResolvedDataset` type to track both `collectionId` and `arcgisItemId` fields
-2. Updated `resolveDataset()` to parse both source types from core response
-3. Refactored URL building:
-   - Added `_queryParams()` shared helper to extract/filter query parameters
-   - Added `buildArcgisItemsUrl()` to build arcgis proxy URLs
-   - Updated `buildFeaturesUrl()` to use the new helper
-4. Added `_fetchGeoJsonFeatures()` helper for common feature fetching logic
-5. Implemented branching on source type for all 5 dataset methods:
-   - `featuresUrl()`: Routes arcgis datasets to `/datasets/{arcgisItemId}/arcgis/items`
-   - `queryDataSource()`: For features, uses arcgis proxy; for statistics, uses arcgis aggregate endpoint
-   - `createDatasetItem()`: Builds correct payload based on source type
-   - `getDatasetConfig()`: Returns source-specific config variant
-   - `saveDatasetConfig()`: Caches with source-specific fields
-6. Added `listFeatureLayers()`: Fetches available feature layers from `/harvest/feature-layers`
-
-### Supporting Changes (for build/test compatibility)
-
-- `shell/src/api/hooks.ts`: Modified `useCreateDataset` to accept new type signature
-- `shell/src/builder/DataContext.tsx`: Filter datasets by source before schema lookups
-- `shell/src/builder/ExplorerDrawer.tsx`: Show appropriate ID based on source type
-- `shell/src/pages/DatasetEditPage.tsx`: Only fetch schema for collection-sourced datasets
-- `shell/src/pages/AppBuilderPage.tsx` & `shell/src/shell/NewItemButton.tsx`: Updated dataset creation calls
-- Test files: Updated to include `source: "collection"` in test setup
-
-## TDD Evidence
-
-### RED: Initial Test Failure
-
+**Result:** Test failed with:
 ```
-npx vitest run src/api/itemClient.test.ts
-- Tests undefined (DatasetConfig type mismatch)
-- createDatasetItem() signature mismatch
-- listFeatureLayers() method not found
-- featuresUrl/queryDataSource don't branch by source
+AssertionError: expected undefined to deeply equal { Object (type, coordinates) }
 ```
 
-### GREEN: All Tests Pass
+**Why Expected:** `buildAggregateBody` was not yet handling `query.geomIntersects`, so the posted body did not include it.
 
-```bash
-$ cd shell && npm run build && npx vitest run
-
-✓ tsc --noEmit (clean)
-✓ vite build (32.51s)
-
-Test Files  110 passed (110)
-Tests  837 passed (837)
+**Test Added:** Append to `itemClient.test.ts` line 924:
+```typescript
+test("queryDataSource sends a geomIntersects query key as body.geomIntersects", async () => {
+  const geom = { type: "Point", coordinates: [1, 2] };
+  let posted: { geomIntersects?: unknown } | undefined;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as { geomIntersects?: unknown };
+      return HttpResponse.json({ categoryKey: "group", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "src-1", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "region", agg: "count", geomIntersects: geom },
+  });
+  expect(posted!.geomIntersects).toEqual(geom);
+});
 ```
 
-Specifically for itemClient tests:
-```bash
-$ npx vitest run src/api/itemClient.test.ts
-✓ src/api/itemClient.test.ts (95 tests) 791ms
+#### GREEN (Passing Test)
+
+**Command:** `cd shell && npx vitest run src/api/itemClient.test.ts -t geomIntersects`
+
+**Result:** Test passed:
+```
+ ✓ src/api/itemClient.test.ts (103 tests | 102 skipped) 68ms
+ ✓ queryDataSource sends a geomIntersects query key as body.geomIntersects
 ```
 
-All 6 new arcgis tests pass:
-1. ✓ `featuresUrl routes an arcgis-sourced dataset to /datasets/{arcgisItemId}/arcgis/items`
-2. ✓ `queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset`
-3. ✓ `queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset`
-4. ✓ `getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset`
-5. ✓ `createDatasetItem with source=arcgis posts an arcgis dataset payload`
-6. ✓ `listFeatureLayers fetches /harvest/feature-layers`
+**Full Test Suite:** `cd shell && npm run test`
 
-Existing collection-sourced tests continue to pass unmodified.
-
-## Files Changed
-
-Core implementation (per brief):
-- `shell/src/api/types.ts`
-- `shell/src/api/itemClient.ts`
-- `shell/src/api/itemClient.test.ts`
-
-Supporting changes (needed for compilation/test compatibility):
-- `shell/src/api/hooks.ts`
-- `shell/src/builder/DataContext.tsx`
-- `shell/src/builder/ExplorerDrawer.tsx`
-- `shell/src/pages/DatasetEditPage.tsx`
-- `shell/src/pages/AppBuilderPage.tsx`
-- `shell/src/pages/AppBuilderPage.test.tsx`
-- `shell/src/shell/NewItemButton.tsx`
-
-## Self-Review Checklist
-
-✓ **Did I fully implement everything?**
-- Types: discriminated union `DatasetConfig`, `FeatureLayerSource`, `CreateDatasetInput`
-- ItemClient branching: all 5 methods handle both sources correctly
-- New method: `listFeatureLayers` calls core's `/harvest/feature-layers`
-
-✓ **Does pre-existing collection-sourced behavior stay byte-identical?**
-- Existing collection dataset tests pass
-- Collection code paths in `featuresUrl`/`queryDataSource` unchanged
-- New discriminated union is backward compatible when `source: "collection"`
-
-✓ **Do tests actually verify behavior?**
-- Tests verify correct URL routing (arcgis vs collection)
-- Tests verify POST body shape for statistics queries
-- Tests verify `listFeatureLayers` response parsing
-- Existing tests confirm collection behavior still works
-
-✓ **Build and test results clean?**
-- tsc --noEmit: clean
-- vite build: successful (32.51s)
-- Full vitest suite: 837/837 tests pass
-
-## Commit
-
+**Result:** All tests passed:
 ```
-14030ff feat(shell): itemClient routes arcgis-sourced datasets to the live proxy (SP-14k)
+ Test Files  111 passed (111)
+      Tests  868 passed (868)
 ```
 
-## Issues and Concerns
+### Files Changed
 
-None. Implementation complete and verified.
-- Follows brief specification exactly
-- All type safety via discriminated union
-- Full test coverage (837/837 pass)
-- Clean build (tsc + vite)
-- Backward compatible with collection datasets
-- Ready for Task 7 (UI flows) and Task 8 (DataContext resolution)
+1. **shell/src/api/itemClient.ts** (lines 65-67)
+   - Added `geomIntersects` forwarding in `buildAggregateBody()`
+
+2. **shell/src/api/itemClient.test.ts** (lines 926-940)
+   - Added test case for `geomIntersects` parameter forwarding
+
+### Self-Review Findings
+
+**Completeness:** ✓ All steps from the brief completed
+- ✓ Test written and failing
+- ✓ Implementation added
+- ✓ Test passes
+- ✓ Full suite passes
+- ✓ Commit created
+
+**Quality:** ✓ Clean, idiomatic implementation
+- Implementation follows the existing pattern used for `bbox` handling
+- Type guard (`typeof ... === "object"`) prevents accidental forwarding of non-geometry values
+- Minimal change: only 3 lines added
+- No changes to STAT_KEYS or other configuration needed
+- Generic filters loop automatically excludes it (object type exclusion)
+
+**Discipline:** ✓ No overbuilding
+- Exactly what the brief specified
+- No extra features or unnecessary changes
+- Consistent with the codebase style
+
+**Testing:** ✓ Real behavior verified
+- TDD followed: RED → GREEN
+- Test captures the exact scenario: geometry object forwarded to request body
+- Integration verified with full suite
+- No regressions
+
+### Issues or Concerns
+
+None. The implementation is minimal, correct, and fully tested.
+
+---
+
+**Commit:** `1e9f120` — feat(shell): forward geomIntersects to the aggregate request body (SP-14n)
