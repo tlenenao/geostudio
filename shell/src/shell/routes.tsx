@@ -15,16 +15,38 @@ import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
+import { useItemClient } from "../api/ItemClientProvider";
+import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
+import type { ResourceType } from "../api/types";
+
+// Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
+// a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
+// one fetches its saved app/page/context and replays it via ?ctx=, instead
+// of navigating to an editor route like every other kind below.
+function useOpenItem() {
+  const navigate = useNavigate();
+  const client = useItemClient();
+  return async (pk: string, type: ResourceType) => {
+    if (type === "bookmark") {
+      const bookmark = await client.getBookmarkConfig(pk);
+      const ctx = encodeAnalyticsContext({
+        timeRange: bookmark.timeRange, extent: bookmark.extent, crossFilter: bookmark.crossFilter,
+      });
+      navigate(`/apps/${encodeURIComponent(bookmark.appId)}/${encodeURIComponent(bookmark.pageId)}?ctx=${ctx}`);
+      return;
+    }
+    navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
+  };
+}
 
 function CatalogRoute() {
-  const navigate = useNavigate();
-  return (
-    <CatalogPage
-      onOpenItem={(pk, type) =>
-        navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`)
-      }
-    />
-  );
+  const onOpenItem = useOpenItem();
+  return <CatalogPage onOpenItem={onOpenItem} />;
+}
+
+function BookmarksRoute() {
+  const onOpenItem = useOpenItem();
+  return <CatalogPage onOpenItem={onOpenItem} fixedType="bookmark" />;
 }
 
 function ItemDetailRoute() {
@@ -90,6 +112,7 @@ export function AppRoutes() {
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<CatalogRoute />} />
         <Route path="/items/:pk" element={<ItemDetailRoute />} />
+        <Route path="/bookmarks" element={<BookmarksRoute />} />
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
