@@ -359,7 +359,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
   const cfg = await makeClient().getDatasetConfig("ds-2");
   expect(cfg).toEqual({
     source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
-    timeField: null, reactsToExtent: false,
+    timeField: null, reactsToExtent: false, crossFilterLinks: [],
   });
 });
 
@@ -465,6 +465,57 @@ test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", a
   );
   await makeClient().saveDatasetConfig("ds-1", { ...config, reactsToExtent: false });
   expect((putBody!.dataset as Record<string, unknown>).reactsToExtent).toBe(false);
+});
+
+test("getDatasetConfig includes crossFilterLinks from the wire response", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        config: {
+          version: 1, kind: "dataset",
+          dataset: {
+            source: "collection", collectionId: "parcs", columns: {},
+            crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" }],
+          },
+        },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" },
+  ]);
+});
+
+test("getDatasetConfig defaults crossFilterLinks to an empty array when absent from the wire", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        config: { version: 1, kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+      }),
+    ),
+  );
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([]);
+});
+
+test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later reads", async () => {
+  let posted: unknown;
+  server.use(
+    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json(undefined, { status: 204 });
+    }),
+  );
+  await makeClient().saveDatasetConfig("ds-1", {
+    source: "collection", collectionId: "parcs", columns: {},
+    crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" }],
+  });
+  expect((posted as { dataset: { crossFilterLinks: unknown } }).dataset.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" },
+  ]);
 });
 
 test("featuresUrl resolves datasetId to the dataset's collectionId once cached", async () => {

@@ -220,6 +220,10 @@ export type DatasetColumnMeta = {
   format?: string;
 };
 
+export type CrossFilterLink =
+  | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
+  | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
+
 export type DatasetConfig =
   | {
       source: "collection";
@@ -227,6 +231,7 @@ export type DatasetConfig =
       columns: Record<string, DatasetColumnMeta>;
       timeField?: string | null;
       reactsToExtent?: boolean;
+      crossFilterLinks?: CrossFilterLink[];
     }
   | {
       source: "arcgis";
@@ -234,6 +239,7 @@ export type DatasetConfig =
       columns: Record<string, DatasetColumnMeta>;
       timeField?: string | null;
       reactsToExtent?: boolean;
+      crossFilterLinks?: CrossFilterLink[];
     };
 
 export type FeatureLayerSource = { id: string; title: string };
