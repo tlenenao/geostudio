@@ -1,242 +1,243 @@
-## Task 2: Core — direct validation + REST wiring (`POST /configs`, `PUT /configs/by-item/{id}`)
+## Task 2: Core — `geom_intersects` on the OGC API Features endpoint
 
 **Files:**
-- Create: `core/app/configs/bookmark_validation.py`
-- Modify: `core/app/configs/routes.py:1-20` (import), `:68-92` (create_config), `:211-229` (update_config_by_item)
-- Test: `core/tests/test_create_bookmark.py` (new)
+- Modify: `core/app/features/repository.py:8-17` (no new import needed, `json` already imported), `:66-99` (`_where`), `:120-124` (`select_features`)
+- Modify: `core/app/features/routes.py:5,40,91-103,124-141` (`import json`, `RESERVED_QUERY_PARAMS`, new `_parse_geom_intersects`, `list_features`)
+- Test: `core/tests/test_features_repository.py` (append, postgis-marked), `core/tests/test_features_routes_read.py` (append, no docker needed)
 
 **Interfaces:**
-- Consumes: `BuilderConfig`/`BookmarkPayload` (Task 1), `items_repo.get_access_facts`/`items_repo.get_item` (`core/app/items/repository.py:129,141`), `can()` (`core/app/sharing/authorization.py:29`).
-- Produces: `validate_bookmark_payload(session: Session, config: BuilderConfig, *, user: User) -> None` — raises `HTTPException(422, "app not found")` for both a non-existent `appId` and one the caller can't read (same message, to not leak existence — same convention as `app.collections.dataset_validation`), and for an `appId` that resolves to an item whose `resourceType` isn't `"app"`/`"dashboard"`. This is the exact name Task 3 wraps for the MCP tool.
+- Produces: `select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None)` — `geom_intersects` is a GeoJSON dict, translated to `ST_Intersects(<geom>, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(...), 4326), <srid>))`; raises `FilterError("geom_intersects", "collection has no geometry")` when the collection has none. `GET /collections/{id}/items?geom_intersects=<url-encoded GeoJSON>` parses and forwards it the same way `bbox` already does.
 
-- [ ] **Step 1: Write the failing REST tests**
+- [ ] **Step 1: Write the failing repository tests (postgis-marked)**
 
-Create `core/tests/test_create_bookmark.py`:
+Append to `core/tests/test_features_repository.py`, right after `test_pagination_and_bbox_and_filters`. Add the import at the top first:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
+from dataclasses import replace
+
 import pytest
-from fastapi.testclient import TestClient
+from sqlalchemy import text
+```
 
-from app import db
-from app.auth.dependency import get_current_user
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+Then the tests:
+
+```python
+def test_geom_intersects_filters_by_exact_polygon(info, pg_session_factory):
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[[0.5, 44.5], [1.5, 44.5], [1.5, 45.5], [0.5, 45.5], [0.5, 44.5]]],
+    }
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, geom_intersects=polygon)
+        assert [f["id"] for f in page.features] == [1]
 
 
-@pytest.fixture()
-def client():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
+def test_geom_intersects_without_geometry_column_raises(info, pg_session_factory):
+    info_no_geom = replace(info, geometry_column=None)
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info_no_geom, limit=10, offset=0,
+                            geom_intersects={"type": "Point", "coordinates": [0, 0]})
+```
 
-    with Session() as setup_session:
-        tenant = get_or_create_default_tenant(setup_session)
-        user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+- [ ] **Step 2: Run repository tests to verify they fail**
+
+Run: `cd core && uv run pytest tests/test_features_repository.py -k geom_intersects -v -m postgis`
+Expected: FAIL if docker/postgis is available (`select_features() got an unexpected keyword argument 'geom_intersects'`); SKIPPED otherwise (postgis-marked, consistent with the other 87 skipped tests — see `CLAUDE.md`). If docker isn't running in this environment, proceed to Step 3 anyway and rely on Step 4's route-level test (no docker needed) plus a later run against docker before merging.
+
+- [ ] **Step 3: Implement the repository layer**
+
+In `core/app/features/repository.py`, extend `_where` (currently at line 66):
+
+```python
+def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
+    clauses, params = [], {}
+    if filters:
+        by_name = {c.name: c for c in _property_columns(info)}
+        for i, (raw_name, raw) in enumerate(sorted(filters.items())):
+            name, suffix = _split_filter_key(raw_name)
+            col = by_name.get(name)
+            if col is None:
+                raise FilterError(name, f"unknown filter property '{name}'")
+            if col.type == "unsupported":
+                raise FilterError(name, "property not filterable")
+            ident = quote_ident(session, name)
+            if suffix == "__in":
+                values = raw.split(",")
+                placeholders = []
+                for j, value in enumerate(values):
+                    key = f"f{i}_{j}"
+                    params[key] = _coerce(col, value)
+                    placeholders.append(f":{key}")
+                clauses.append(f"{ident} IN ({', '.join(placeholders)})")
+            elif suffix in _RANGE_OPS:
+                clauses.append(f"{ident} {_RANGE_OPS[suffix]} :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
+            else:
+                clauses.append(f"{ident} = :f{i}")
+                params[f"f{i}"] = _coerce(col, raw)
+    if bbox is not None:
+        if info.geometry_column is None:
+            raise FilterError("bbox", "collection has no geometry")
+        g = quote_ident(session, info.geometry_column)
+        clauses.append(f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)")
+        params.update({"bx0": bbox[0], "by0": bbox[1], "bx1": bbox[2],
+                       "by1": bbox[3], "bsrid": info.srid or 4326})
+    if geom_intersects is not None:
+        # SP-14n : intersection géométrique exacte (ST_Intersects), complément
+        # précis du bbox && ci-dessus (chevauchement d'enveloppes uniquement).
+        if info.geometry_column is None:
+            raise FilterError("geom_intersects", "collection has no geometry")
+        g = quote_ident(session, info.geometry_column)
+        clauses.append(
+            f"ST_Intersects({g}, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:gi), 4326), :gisrid))"
         )
-        bob = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
-            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
-        )
-        setup_session.commit()
+        params.update({"gi": json.dumps(geom_intersects), "gisrid": info.srid or 4326})
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+```
 
-    app = create_app()
+Update `select_features` (currently at line 120):
 
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
+```python
+def select_features(session: Session, info: TableInfo, *, limit: int, offset: int,
+                    bbox=None, geom_intersects=None, filters=None) -> FeaturePage:
+    t = quote_ident(session, info.table_name)
+    where, params = _where(session, info, bbox, geom_intersects, filters)
+```
 
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: user
+(the rest of the function body is unchanged — only the call to `_where` gains the new argument).
 
-    test_client = TestClient(app)
-    test_client.user = user  # type: ignore[attr-defined]
-    test_client.session_factory = Session  # type: ignore[attr-defined]
-    test_client.bob = bob  # type: ignore[attr-defined]
-    yield test_client
-    engine.dispose()
+- [ ] **Step 4: Run repository tests again**
 
+Run: `cd core && uv run pytest tests/test_features_repository.py -v -m postgis`
+Expected: PASS if docker is available (all tests in the file, including the 2 new ones); SKIPPED as a block otherwise.
 
-def _app_body(title: str = "Cible") -> dict:
+- [ ] **Step 5: Write the failing route-level test (no docker needed)**
+
+Append to `core/tests/test_features_routes_read.py`. Add `import json` at the top (line 1, alongside the existing imports), and update `make_fake_repo`'s `select_features` signature to accept and record the new parameter:
+
+```python
+def make_fake_repo(matched=3):
+    calls = {}
+
+    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
+        calls.update(limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters)
+        if filters and "inconnu" in filters:
+            raise FilterError("inconnu", "unknown filter property 'inconnu'")
+        return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
+
+    def get_feature(session, info, *, fid):
+        return FEAT if fid == "1" else None
+
+    return SimpleNamespace(select_features=select_features, get_feature=get_feature,
+                           calls=calls)
+```
+
+Then add the test, right after `test_bbox_parsing`:
+
+```python
+def test_geom_intersects_parsing(env):
+    app, client, admin, _r, repo = env
+    _register(app, client, admin)
+    geom = {"type": "Point", "coordinates": [1.0, 2.0]}
+    r = client.get("/collections/incidents/items", params={"geom_intersects": json.dumps(geom)})
+    assert r.status_code == 200
+    assert repo.calls["geom_intersects"] == geom
+    r2 = client.get("/collections/incidents/items", params={"geom_intersects": "not-json"})
+    assert r2.status_code == 400
+    assert r2.json()["detail"]["errors"][0]["code"] == "invalid_geom_intersects"
+```
+
+- [ ] **Step 6: Run route tests to verify they fail**
+
+Run: `cd core && uv run pytest tests/test_features_routes_read.py -v`
+Expected: FAIL — `list_features` has no `geom_intersects` query parameter yet (unrecognized param is just ignored by FastAPI, so `repo.calls["geom_intersects"]` raises `KeyError`, and the malformed-JSON case returns 200 instead of 400).
+
+- [ ] **Step 7: Implement the route layer**
+
+In `core/app/features/routes.py`, add the import (line 5, alongside `os`):
+
+```python
+import json
+import os
+```
+
+Extend `RESERVED_QUERY_PARAMS` (line 40):
+
+```python
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f"}
+```
+
+Add `_parse_geom_intersects` right after `_parse_bbox` (around line 91):
+
+```python
+def _parse_geom_intersects(raw: str | None):
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    if not isinstance(parsed, dict) or "type" not in parsed or "coordinates" not in parsed:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    return parsed
+```
+
+Update `list_features` (around line 124):
+
+```python
+@router.get("/collections/{collection_id}/items")
+def list_features(
+    collection_id: str, request: Request,
+    limit: int = Query(100, ge=1), offset: int = Query(0, ge=0),
+    bbox: str | None = None, geom_intersects: str | None = None,
+    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    limit = min(limit, MAX_LIMIT)
+    parsed_bbox = _parse_bbox(bbox)
+    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
+    filters = _collect_filters(request)
+    try:
+        with rls(session, col.tenant_id):
+            page = repo.select_features(session, info, limit=limit, offset=offset,
+                                        bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
+                                        filters=filters or None)
+    except FilterError as exc:
+        raise _validation_error(
+            [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
     return {
-        "title": title,
-        "config": {
-            "version": 1, "kind": "app",
-            "layout": {"type": "grid", "breakpoints": {}, "items": []},
-        },
+        "type": "FeatureCollection",
+        "features": page.features,
+        "numberMatched": page.number_matched,
+        "numberReturned": page.number_returned,
+        "timeStamp": datetime.now(timezone.utc).isoformat(),
+        "links": _page_links(request, limit=limit, offset=offset, page=page),
     }
-
-
-def _bookmark_body(app_id: str, title: str = "Ma vue") -> dict:
-    return {
-        "title": title,
-        "config": {
-            "version": 1, "kind": "bookmark",
-            "bookmark": {
-                "appId": app_id, "pageId": "page-1",
-                "timeRange": {"from": "2026-01-01", "to": "2026-02-01"},
-                "extent": None, "crossFilter": {},
-            },
-        },
-    }
-
-
-def test_create_bookmark_avec_app_existante_et_lisible(client):
-    app_item_id = client.post("/configs", json=_app_body()).json()["itemId"]
-    res = client.post("/configs", json=_bookmark_body(app_item_id))
-    assert res.status_code == 201, res.text
-    item_id = res.json()["itemId"]
-    item = client.get(f"/items/{item_id}").json()
-    assert item["resourceType"] == "bookmark"
-
-
-def test_create_bookmark_app_inexistante_rejetee(client):
-    res = client.post("/configs", json=_bookmark_body("inexistante"))
-    assert res.status_code == 422
-    assert res.json()["detail"] == "app not found"
-
-
-def test_create_bookmark_app_non_lisible_rejetee_avec_meme_message(client):
-    # Bob's app is private by default (Item.is_public defaults to False) —
-    # alice (the caller) is neither its owner nor a group member.
-    with client.session_factory() as session:
-        from app.configs import repository as configs_repo
-        from app.configs.schemas import BuilderConfig
-        from app.items import repository as items_repo
-
-        bob_app = items_repo.create_item(
-            session, tenant_id=client.user.tenant_id, owner_id=client.bob.id,
-            resource_type="app", title="App de Bob",
-        )
-        configs_repo.create_config(
-            session,
-            BuilderConfig(version=1, kind="app", layout={"type": "grid", "breakpoints": {}, "items": []}),
-            bob_app.id, tenant_id=client.user.tenant_id,
-        )
-        session.commit()
-        bob_app_id = bob_app.id
-
-    res = client.post("/configs", json=_bookmark_body(bob_app_id))
-    assert res.status_code == 422
-    assert res.json()["detail"] == "app not found"
-
-
-def test_create_bookmark_cible_un_kind_non_app_rejetee(client):
-    with client.session_factory() as session:
-        from app.items import repository as items_repo
-
-        map_item = items_repo.create_item(
-            session, tenant_id=client.user.tenant_id, owner_id=client.user.id,
-            resource_type="map", title="Une carte",
-        )
-        session.commit()
-        map_item_id = map_item.id
-
-    res = client.post("/configs", json=_bookmark_body(map_item_id))
-    assert res.status_code == 422
-    assert res.json()["detail"] == "app not found"
-
-
-def test_update_bookmark_app_inexistante_rejetee(client):
-    app_item_id = client.post("/configs", json=_app_body()).json()["itemId"]
-    created = client.post("/configs", json=_bookmark_body(app_item_id))
-    item_id = created.json()["itemId"]
-    bad_config = {
-        "version": 1, "kind": "bookmark",
-        "bookmark": {"appId": "inexistante", "pageId": "page-1"},
-    }
-    res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
-    assert res.status_code == 422
-    assert res.json()["detail"] == "app not found"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 8: Run route tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_create_bookmark.py -v`
-Expected: FAIL — `POST /configs` with `kind="bookmark"` currently returns 201 unconditionally (no validation runs yet), so `test_create_bookmark_app_inexistante_rejetee` and the two "rejected" tests fail (they expect 422 but get 201).
+Run: `cd core && uv run pytest tests/test_features_routes_read.py -v`
+Expected: PASS (all tests, including the new one).
 
-- [ ] **Step 3: Implement `bookmark_validation.py`**
-
-Create `core/app/configs/bookmark_validation.py`:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Direct kind="bookmark" validation for app.configs. Unlike dataset_validation.py,
-no registry indirection is needed here: appId always refers to an app/dashboard
-item, and app.configs already imports app.items (see routes.py's _require_access),
-so there is no forbidden cross-module dependency to route around (SP-14m §3).
-"""
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
-from app.configs.schemas import BuilderConfig
-from app.items import repository as items_repo
-from app.sharing.authorization import can
-from app.users.models import User
-
-
-def validate_bookmark_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
-    if config.kind != "bookmark":
-        return
-    payload = config.bookmark
-    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
-
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.appId)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        # Same message for not-found and not-readable: don't leak app
-        # existence, same convention as app.collections.dataset_validation.
-        raise HTTPException(status_code=422, detail="app not found")
-
-    target = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=payload.appId)
-    assert target is not None  # get_access_facts just confirmed it exists
-    if target.resourceType not in ("app", "dashboard"):
-        raise HTTPException(status_code=422, detail="app not found")
-```
-
-- [ ] **Step 4: Wire it into `core/app/configs/routes.py`**
-
-Add the import next to the existing dataset one (near line 10):
-
-```python
-from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
-from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
-```
-
-In `create_config` (around line 71), add the call right after the dataset one:
-
-```python
-    _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
-    _validate_dataset_payload(session, request.config, user=user)
-    _validate_bookmark_payload(session, request.config, user=user)
-```
-
-In `update_config_by_item` (around line 224), same pattern:
-
-```python
-    _validate_extension_scope(session, config, tenant_id=user.tenant_id)
-    _validate_dataset_payload(session, config, user=user)
-    _validate_bookmark_payload(session, config, user=user)
-```
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `cd core && uv run pytest tests/test_create_bookmark.py -v`
-Expected: PASS (5 tests)
-
-- [ ] **Step 6: Run the full core suite to check for regressions**
+- [ ] **Step 9: Run the full core suite**
 
 Run: `cd core && uv run pytest -q`
-Expected: same baseline plus the 6 (Task 1) + 5 (Task 2) new tests, no regressions — `validate_bookmark_payload` is a no-op for every other `kind`, so existing `app`/`dashboard`/`map`/`site`/`dataset` configs are unaffected.
+Expected: same baseline as before (606 + however many prior tasks added) plus 3 new tests (1 route-level, 2 postgis-marked — skipped without docker), no regressions.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add core/app/configs/bookmark_validation.py core/app/configs/routes.py core/tests/test_create_bookmark.py
-git commit -m "feat(core): validate bookmark appId readability on create/update (SP-14m)"
+git add core/app/features/repository.py core/app/features/routes.py core/tests/test_features_repository.py core/tests/test_features_routes_read.py
+git commit -m "feat(core): geom_intersects filter on OGC API Features (SP-14n)"
 ```
 
 ---

@@ -1,214 +1,282 @@
-## Task 4: Shell — types, `itemClient`, hooks
+## Task 4: Shell — types (`CrossFilterLink`, `CrossFilterEntry.geometry`, `useSetCrossFilter`)
 
 **Files:**
-- Modify: `shell/src/api/types.ts:2` (`ResourceType`), insert near `:215-241` (new `Bookmark*` types + `CreateBookmarkInput`), `:103-...` (`ItemClient` interface — add `createBookmarkItem`/`getBookmarkConfig`)
-- Modify: `shell/src/api/itemClient.ts:1-2` (imports), insert near `:605-619` (`createBookmarkItem`/`getBookmarkConfig` implementations)
-- Modify: `shell/src/api/hooks.ts` (add `useCreateBookmark`, near `:208-217`)
-- Test: `shell/src/api/itemClient.test.ts` (append), `shell/src/api/hooks.test.tsx` (append, if it covers `useCreateDataset` — mirror that pattern)
+- Modify: `shell/src/api/types.ts:223-237` (`DatasetConfig`)
+- Modify: `shell/src/builder/AnalyticsContext.tsx:4-5,19,62-72` (`CrossFilterEntry`, `SetCrossFilter`, `setCrossFilter`)
+- Modify: `shell/src/api/itemClient.ts:197-231,584-599,632-655` (`ResolvedDataset`, `resolveDataset`, `createDatasetItem`, `getDatasetConfig`, `saveDatasetConfig`)
+- Test: `shell/src/builder/AnalyticsContext.test.tsx` (append), `shell/src/api/itemClient.test.ts` (append)
 
 **Interfaces:**
-- Consumes: `AnalyticsContextState` shape (`shell/src/builder/AnalyticsContext.tsx:1-13`) — `BookmarkPayload`'s `timeRange`/`extent`/`crossFilter` fields are a byte-for-byte copy of that type's fields, plus `appId`/`pageId`.
-- Produces: `CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload` (`BookmarkPayload` itself already carries `appId`/`pageId`/`timeRange`/`extent`/`crossFilter`), `client.createBookmarkItem(input): Promise<Item>`, `client.getBookmarkConfig(pk): Promise<BookmarkPayload>`, `useCreateBookmark()` mutation hook. Task 5 and Task 6 both import these.
+- Produces: `CrossFilterLink` (discriminated union, mirrors the core's `DatasetCrossFilterLink` field-for-field), `DatasetConfig.crossFilterLinks?: CrossFilterLink[]`, `CrossFilterEntry.geometry?: unknown`, `useSetCrossFilter()` returning a 5-arg setter `(datasetId, field, value, originSourceId, geometry?) => void`. Task 5 (`derivePatch`) and Task 6 (widget capture) both consume these exact names.
 
-- [ ] **Step 1: Write the failing itemClient tests**
+- [ ] **Step 1: Write the failing AnalyticsContext test**
 
-Append to `shell/src/api/itemClient.test.ts` (after the `createDatasetItem`/`getDatasetConfig` tests, following the exact same style — check an existing `createMapItem`/`createDatasetItem` test above for the `makeClient()`/`server.use(...)` harness already in this file and reuse it verbatim):
+Append to `shell/src/builder/AnalyticsContext.test.tsx`. First add a button to `Probe` that passes a geometry:
 
 ```typescript
-test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
-  server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
-      const body = (await request.json()) as { title: string; config: unknown };
-      expect(body.config).toEqual({
-        version: 1,
-        kind: "bookmark",
-        bookmark: {
-          appId: "app-1", pageId: "page-1",
-          timeRange: { from: "2026-01-01", to: "2026-02-01" },
-          extent: null, crossFilter: {},
-        },
-      });
-      return HttpResponse.json({ id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" }, { status: 201 });
-    }),
-  );
-  const item = await makeClient().createBookmarkItem({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
-  });
-  expect(item).toEqual({
-    pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
-    owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-bookmark", isPublished: false,
-  });
+      <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1", { type: "Point", coordinates: [1, 2] })}>set-cf-geom</button>
+```
+
+(insert it right after the existing `set-cf-range` button, inside the same `<div>`).
+
+Then add the test, after `test("setCrossFilter accepts a {from,to} range value", ...)`:
+
+```typescript
+test("setCrossFilter stores an optional geometry alongside the entry", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf-geom"));
+  expect(screen.getByText(/"geometry":\{"type":"Point","coordinates":\[1,2\]\}/)).toBeInTheDocument();
 });
 
-test("getBookmarkConfig reads the bookmark payload from the by-item config", async () => {
+test("setCrossFilter without a geometry omits the field entirely (unchanged shape)", async () => {
+  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.queryByText(/"geometry"/)).not.toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
+Expected: FAIL — `setCrossFilter` only accepts 4 arguments (TypeScript compile error) and never stores a `geometry` field.
+
+- [ ] **Step 3: Implement in `AnalyticsContext.tsx`**
+
+Change `CrossFilterEntry` (line 5):
+
+```typescript
+export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string; geometry?: unknown };
+```
+
+Change `SetCrossFilter` (line 19):
+
+```typescript
+type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string, geometry?: unknown) => void;
+```
+
+Change `setCrossFilter` (currently at line 62-72):
+
+```typescript
+  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId, geometry) => {
+    if (!active) return;
+    setState((prev) => {
+      const current = prev.crossFilter[datasetId];
+      const isToggleOff = Boolean(current) && current!.field === field && sameCrossFilterValue(current!.value, value);
+      const nextCrossFilter = { ...prev.crossFilter };
+      if (isToggleOff) delete nextCrossFilter[datasetId];
+      else nextCrossFilter[datasetId] = { field, value, originSourceId, geometry };
+      return { ...prev, crossFilter: nextCrossFilter };
+    });
+  }, [active]);
+```
+
+- [ ] **Step 4: Run the AnalyticsContext test to verify it passes**
+
+Run: `cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx`
+Expected: PASS (all tests in the file, including the 2 new ones — `JSON.stringify` naturally omits an `undefined` `geometry`, so the existing toggle/range tests are unaffected).
+
+- [ ] **Step 5: Add `CrossFilterLink` to `types.ts`**
+
+In `shell/src/api/types.ts`, extend `DatasetConfig` (currently lines 223-237):
+
+```typescript
+export type CrossFilterLink =
+  | { targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }
+  | { targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" };
+
+export type DatasetConfig =
+  | {
+      source: "collection";
+      collectionId: string;
+      columns: Record<string, DatasetColumnMeta>;
+      timeField?: string | null;
+      reactsToExtent?: boolean;
+      crossFilterLinks?: CrossFilterLink[];
+    }
+  | {
+      source: "arcgis";
+      arcgisItemId: string;
+      columns: Record<string, DatasetColumnMeta>;
+      timeField?: string | null;
+      reactsToExtent?: boolean;
+      crossFilterLinks?: CrossFilterLink[];
+    };
+```
+
+- [ ] **Step 6: Write the failing itemClient round-trip test**
+
+Append to `shell/src/api/itemClient.test.ts`, right after the existing `getDatasetConfig`/`saveDatasetConfig` tests (search the file for `"createDatasetItem"` or `"getDatasetConfig"` to find the neighboring tests and match their exact `server.use(...)`/`makeClient()` style):
+
+```typescript
+test("getDatasetConfig includes crossFilterLinks from the wire response", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/bookmark-1", () =>
+    http.get("https://core.test/configs/by-item/ds-1", () =>
       HttpResponse.json({
-        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
         config: {
-          version: 1, kind: "bookmark",
-          bookmark: {
-            appId: "app-1", pageId: "page-1",
-            timeRange: { from: "2026-01-01", to: "2026-02-01" },
-            extent: null, crossFilter: {},
+          version: 1, kind: "dataset",
+          dataset: {
+            source: "collection", collectionId: "parcs", columns: {},
+            crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" }],
           },
         },
       }),
     ),
   );
-  const payload = await makeClient().getBookmarkConfig("bookmark-1");
-  expect(payload).toEqual({
-    appId: "app-1", pageId: "page-1",
-    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
-  });
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" },
+  ]);
 });
 
-test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
+test("getDatasetConfig defaults crossFilterLinks to an empty array when absent from the wire", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/bookmark-2", () =>
-      HttpResponse.json({ id: "cfg-x", itemId: "bookmark-2", kind: "bookmark", config: { version: 1, kind: "bookmark" } }),
+    http.get("https://core.test/configs/by-item/ds-1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        config: { version: 1, kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+      }),
     ),
   );
-  await expect(makeClient().getBookmarkConfig("bookmark-2")).rejects.toThrow();
+  const config = await makeClient().getDatasetConfig("ds-1");
+  expect(config.crossFilterLinks).toEqual([]);
+});
+
+test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later reads", async () => {
+  let posted: unknown;
+  server.use(
+    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json(undefined, { status: 204 });
+    }),
+  );
+  await makeClient().saveDatasetConfig("ds-1", {
+    source: "collection", collectionId: "parcs", columns: {},
+    crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" }],
+  });
+  expect((posted as { dataset: { crossFilterLinks: unknown } }).dataset.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" },
+  ]);
 });
 ```
 
-(`server`/`http`/`HttpResponse` are already imported at the top of `itemClient.test.ts:2-3`, and `makeClient` is already defined at `:6` — the same harness the existing `createDatasetItem` tests use. Nothing new to import.)
-
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 7: Run tests to verify they fail**
 
 Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: FAIL — `createBookmarkItem`/`getBookmarkConfig` don't exist on the client yet (TypeScript compile error / `undefined is not a function`).
+Expected: FAIL — `getDatasetConfig` never reads/returns `crossFilterLinks` (TypeScript will also flag the `crossFilterLinks` property as unknown on the object literals used to call `saveDatasetConfig` once the type is defined, until Step 8 lands).
 
-- [ ] **Step 3: Add the types**
+- [ ] **Step 8: Implement in `itemClient.ts`**
 
-In `shell/src/api/types.ts`, extend `ResourceType` (line 2):
+Extend `ResolvedDataset` (currently lines 197-204):
 
 ```typescript
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark";
+  type ResolvedDataset = {
+    source: "collection" | "arcgis";
+    collectionId: string | null;
+    arcgisItemId: string | null;
+    columns: Record<string, DatasetColumnMeta>;
+    timeField: string | null;
+    reactsToExtent: boolean;
+    crossFilterLinks: CrossFilterLink[];
+  };
 ```
 
-Insert near the `DatasetConfig`/`CreateDatasetInput` block (after line 241, before `export type FeatureLayerSource`):
+Extend `resolveDataset` (currently lines 207-231):
 
 ```typescript
-export type BookmarkCrossFilterValue = string | string[] | { from: string; to: string };
-export type BookmarkCrossFilterEntry = { field: string; value: BookmarkCrossFilterValue; originSourceId: string };
-
-export type BookmarkPayload = {
-  appId: string;
-  pageId: string;
-  timeRange: { from: string; to: string } | null;
-  extent: [number, number, number, number] | null;
-  crossFilter: Record<string, BookmarkCrossFilterEntry>;
-};
-
-export type CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload;
-```
-
-Add to the `ItemClient` interface (after `createDatasetItem`, around line 136):
-
-```typescript
-  createDatasetItem(input: CreateDatasetInput): Promise<Item>;
-  createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
-  getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
-```
-
-- [ ] **Step 4: Implement `itemClient.ts`**
-
-Extend the type import at the top of `shell/src/api/itemClient.ts` (line 2) with `BookmarkPayload, CreateBookmarkInput`.
-
-Insert after `createDatasetItem` (after line 605, before `getDatasetConfig`):
-
-```typescript
-    async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {
-      const bookmark: BookmarkPayload = {
-        appId: input.appId, pageId: input.pageId,
-        timeRange: input.timeRange, extent: input.extent, crossFilter: input.crossFilter,
+  async function resolveDataset(pk: string): Promise<ResolvedDataset> {
+    const cached = datasetCache.get(pk);
+    if (cached) return cached;
+    const data = await request<{
+      config?: {
+        dataset?: {
+          source: "collection" | "arcgis";
+          collectionId?: string | null; arcgisItemId?: string | null;
+          columns?: Record<string, DatasetColumnMeta>;
+          timeField?: string | null; reactsToExtent?: boolean;
+          crossFilterLinks?: CrossFilterLink[];
+        } | null;
       };
-      const config = { version: 1, kind: "bookmark", bookmark };
-      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
-      );
-      if (!data.itemId) throw new Error("createBookmarkItem: core returned no itemId");
+    }>("GET", `/configs/by-item/${pk}`);
+    const dataset = data.config?.dataset;
+    if (!dataset) throw new Error("resolveDataset: config has no dataset payload");
+    const resolved: ResolvedDataset = {
+      source: dataset.source,
+      collectionId: dataset.collectionId ?? null,
+      arcgisItemId: dataset.arcgisItemId ?? null,
+      columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
+      reactsToExtent: dataset.reactsToExtent ?? false,
+      crossFilterLinks: dataset.crossFilterLinks ?? [],
+    };
+    datasetCache.set(pk, resolved);
+    return resolved;
+  }
+```
+
+Extend `createDatasetItem`'s `datasetCache.set(...)` call (currently lines 594-599):
+
+```typescript
+      datasetCache.set(String(data.itemId), {
+        source: dataset.source,
+        collectionId: dataset.source === "collection" ? dataset.collectionId : null,
+        arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
+        columns: {}, timeField: null, reactsToExtent: false, crossFilterLinks: [],
+      });
+```
+
+Extend `getDatasetConfig` (currently lines 632-644):
+
+```typescript
+    async getDatasetConfig(pk: string): Promise<DatasetConfig> {
+      const resolved = await resolveDataset(pk);
+      if (resolved.source === "arcgis" && resolved.arcgisItemId) {
+        return {
+          source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
+          timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+          crossFilterLinks: resolved.crossFilterLinks,
+        };
+      }
       return {
-        pk: String(data.itemId), resourceType: "bookmark", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
-        isPublished: false,
+        source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
+        timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+        crossFilterLinks: resolved.crossFilterLinks,
       };
     },
+```
 
-    async getBookmarkConfig(pk: string): Promise<BookmarkPayload> {
-      const data = await request<{ config?: { bookmark?: BookmarkPayload } }>(
-        "GET", `/configs/by-item/${pk}`,
-      );
-      if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
-      return data.config.bookmark;
+Extend `saveDatasetConfig` (currently lines 646-655):
+
+```typescript
+    async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
+      datasetCache.set(pk, {
+        source: config.source,
+        collectionId: config.source === "collection" ? config.collectionId : null,
+        arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
+        columns: config.columns, timeField: config.timeField ?? null,
+        reactsToExtent: config.reactsToExtent ?? false,
+        crossFilterLinks: config.crossFilterLinks ?? [],
+      });
     },
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+Add `CrossFilterLink` to the type import at the top of `itemClient.ts` (wherever `DatasetConfig`/`DatasetColumnMeta` are already imported from `./types`).
+
+- [ ] **Step 9: Run tests to verify they pass**
 
 Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: PASS
+Expected: PASS (all tests, including the 3 new ones).
 
-- [ ] **Step 6: Write the failing hook test**
-
-`hooks.test.tsx` has no dedicated test for `useCreateDataset`, but it does have one for `useCreateMap` (`shell/src/api/hooks.test.tsx:140-147`), using its own `makeWrapper(client: ItemClient)` helper (`:129-138`, distinct from the file's other `wrapper` function used by hooks that don't need a custom per-test client). Add the mirror for `useCreateBookmark` right after the `useCreateMap` test:
-
-```typescript
-test("useCreateBookmark creates a bookmark and invalidates items", async () => {
-  const client = {
-    createBookmarkItem: vi.fn().mockResolvedValue({ pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue" }),
-  } as unknown as ItemClient;
-  const { result } = renderHook(() => useCreateBookmark(), { wrapper: makeWrapper(client) });
-  await result.current.mutateAsync({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: null, extent: null, crossFilter: {},
-  });
-  expect(client.createBookmarkItem).toHaveBeenCalledWith({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: null, extent: null, crossFilter: {},
-  });
-});
-```
-
-Add `useCreateBookmark` to this file's import from `./hooks` (line 10).
-
-- [ ] **Step 7: Implement `useCreateBookmark`**
-
-In `shell/src/api/hooks.ts`, add after `useCreateDataset` (after line 217):
-
-```typescript
-export function useCreateBookmark() {
-  const client = useItemClientInternal();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateBookmarkInput) => client.createBookmarkItem(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-    },
-  });
-}
-```
-
-Add `CreateBookmarkInput` to this file's type import from `./types`.
-
-- [ ] **Step 8: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/api/itemClient.test.ts src/api/hooks.test.tsx`
-Expected: PASS
-
-- [ ] **Step 9: Run the full shell unit suite**
+- [ ] **Step 10: Run the full shell unit suite**
 
 Run: `cd shell && npm run test`
-Expected: 398+ tests, all green (no regressions — every change so far is additive: a new `ResourceType` member, new types, new interface methods, new client methods, new hook).
+Expected: all green, no regressions — every change is additive (new optional field, new optional callback parameter with a default of `undefined`).
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/hooks.ts shell/src/api/itemClient.test.ts shell/src/api/hooks.test.tsx
-git commit -m "feat(shell): bookmark item client + hook (SP-14m)"
+git add shell/src/api/types.ts shell/src/builder/AnalyticsContext.tsx shell/src/api/itemClient.ts shell/src/builder/AnalyticsContext.test.tsx shell/src/api/itemClient.test.ts
+git commit -m "feat(shell): CrossFilterLink type, cross-filter geometry, dataset round-trip (SP-14n)"
 ```
 
 ---

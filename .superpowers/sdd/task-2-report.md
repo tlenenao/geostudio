@@ -1,126 +1,141 @@
-# Task 2 report — Core: direct validation + REST wiring (bookmark, SP-14m)
+# Task 2 report — Core: `geom_intersects` on the OGC API Features endpoint (SP-14n)
 
 ## What I implemented
 
-- New file `core/app/configs/bookmark_validation.py`: `validate_bookmark_payload(session, config, *, user)`.
-  No-op for any `config.kind != "bookmark"`. For `kind="bookmark"`, resolves
-  `config.bookmark.appId` via `items_repo.get_access_facts` + `can(..., action="read", ...)`;
-  raises `HTTPException(422, "app not found")` if the item doesn't exist or isn't
-  readable by the caller (same message for both, to avoid leaking existence —
-  same convention as `dataset_validation.py`). If the item exists and is
-  readable, fetches it via `items_repo.get_item` and rejects (same 422/message)
-  if `resourceType` isn't `"app"` or `"dashboard"`.
-- Wired into `core/app/configs/routes.py`:
-  - New import: `from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload`,
-    placed alphabetically next to the existing dataset import.
-  - `create_config`: added `_validate_bookmark_payload(session, request.config, user=user)`
-    right after the existing `_validate_dataset_payload` call.
-  - `update_config_by_item`: added `_validate_bookmark_payload(session, config, user=user)`
-    right after the existing `_validate_dataset_payload` call.
-  - (Per the brief, `update_config` — the by-config-id PUT — was *not* touched;
-    only `create_config` and `update_config_by_item` were in scope.)
+- `core/app/features/repository.py`:
+  - `_where(session, info, bbox, geom_intersects, filters)` gained a new
+    `geom_intersects` parameter (positional, inserted between `bbox` and
+    `filters`). When `geom_intersects` is not `None`: raises
+    `FilterError("geom_intersects", "collection has no geometry")` if
+    `info.geometry_column is None`; otherwise appends an
+    `ST_Intersects(<geom_col>, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:gi), 4326), :gisrid))`
+    clause, with `gi` = `json.dumps(geom_intersects)` and `gisrid` =
+    `info.srid or 4326` — same CRS-transform pattern already used for `bbox`.
+  - `select_features(...)` gained a `geom_intersects=None` keyword parameter,
+    forwarded to `_where`.
+  - No new import needed (`json` was already imported at the top of the file).
+- `core/app/features/routes.py`:
+  - `import json` added alongside `os`.
+  - `RESERVED_QUERY_PARAMS` extended with `"geom_intersects"`.
+  - New `_parse_geom_intersects(raw)` helper (placed right after
+    `_parse_bbox`): returns `None` for `raw is None`; on `json.loads` failure
+    or when the parsed value isn't a dict with both `"type"` and
+    `"coordinates"` keys, raises a 400 via `_validation_error` with
+    `code: "invalid_geom_intersects"`.
+  - `list_features` gained a `geom_intersects: str | None = None` query
+    parameter, parses it via `_parse_geom_intersects`, and forwards the
+    parsed dict to `repo.select_features(..., geom_intersects=parsed_geom_intersects, ...)`.
+- Verified all other internal callers of `select_features`
+  (`app/stac/routes.py` x2, `app/mcp/tools.py`) pass `bbox`/`filters` as
+  keyword arguments, so adding the new keyword-only `geom_intersects=None`
+  parameter is fully backward compatible — no other call site needed changes.
 
-Implementation is byte-for-byte the code given in the brief; no deviations.
+Implementation matches the brief's literal code exactly; no deviations.
 
 ## What I tested and results
 
-New test file `core/tests/test_create_bookmark.py` (5 tests, exactly as specified
-in the brief):
+**Docker/postgis availability**: Docker was running with a dedicated
+`postgis-test` container (`postgis/postgis:16-3.5` on `127.0.0.1:5433`,
+matching the `CORE_TEST_DATABASE_URL` convention used elsewhere in this repo,
+e.g. `scripts/measure_cdc_consumer_throughput.py` and
+`tests/test_cdc_consumer_postgis.py`). I set
+`CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test`
+and the postgis-marked tests **ran for real** (not skipped) against a live
+PostGIS instance, both at RED and GREEN.
 
-1. `test_create_bookmark_avec_app_existante_et_lisible` — bookmark targeting an
-   app the caller owns → 201, and the created item's `resourceType` is `"bookmark"`.
-2. `test_create_bookmark_app_inexistante_rejetee` — `appId` that doesn't exist → 422 `"app not found"`.
-3. `test_create_bookmark_app_non_lisible_rejetee_avec_meme_message` — `appId`
-   pointing to another user's private app → 422 `"app not found"` (same message
-   as not-found, confirming no existence leak).
-4. `test_create_bookmark_cible_un_kind_non_app_rejetee` — `appId` pointing to a
-   `"map"` item (readable, but wrong resource type) → 422 `"app not found"`.
-5. `test_update_bookmark_app_inexistante_rejetee` — same validation exercised
-   through `PUT /configs/by-item/{id}`.
-
-All 5 pass. Full core suite: `872 passed, 112 skipped` (no regressions;
-`validate_bookmark_payload` is a no-op for every other `kind`). Import-linter
-layered-architecture contract still passes: `Analyzed 125 files, 339
-dependencies... Contracts: 1 kept, 0 broken`.
+- `core/tests/test_features_repository.py -m postgis`: 16/16 passed with the
+  DB URL set (14 pre-existing + 2 new), including
+  `test_geom_intersects_filters_by_exact_polygon` and
+  `test_geom_intersects_without_geometry_column_raises`.
+- `core/tests/test_features_routes_read.py` (no docker needed, in-memory
+  sqlite + fake repo): 7/7 passed, including the new
+  `test_geom_intersects_parsing`.
+- Full suite with `CORE_TEST_DATABASE_URL` set: `997 passed` (0 failed, 0
+  skipped) in ~154s.
+- Full suite without the DB URL (baseline/CI-like run, matching what most
+  environments will see): `883 passed, 114 skipped` in ~95s — consistent with
+  the repo's documented baseline (previously 606+87 skipped; grown by prior
+  SP-14n tasks and this task's 2 new postgis tests).
 
 ## TDD Evidence
 
-**RED** — `cd core && uv run pytest tests/test_create_bookmark.py -v` (test file
-written first, before `bookmark_validation.py` existed and before the routes.py
-wiring):
+**RED — repository layer** (with real PostGIS via `CORE_TEST_DATABASE_URL`):
 
 ```
-tests/test_create_bookmark.py::test_create_bookmark_avec_app_existante_et_lisible PASSED [ 20%]
-tests/test_create_bookmark.py::test_create_bookmark_app_inexistante_rejetee FAILED [ 40%]
-tests/test_create_bookmark.py::test_create_bookmark_app_non_lisible_rejetee_avec_meme_message FAILED [ 60%]
-tests/test_create_bookmark.py::test_create_bookmark_cible_un_kind_non_app_rejetee FAILED [ 80%]
-tests/test_create_bookmark.py::test_update_bookmark_app_inexistante_rejetee FAILED [100%]
-========================= 4 failed, 1 passed in 1.87s ==========================
+$ CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
+  uv run pytest tests/test_features_repository.py -k geom_intersects -v -m postgis
+tests/test_features_repository.py::test_geom_intersects_filters_by_exact_polygon FAILED
+tests/test_features_repository.py::test_geom_intersects_without_geometry_column_raises FAILED
+E  TypeError: select_features() got an unexpected keyword argument 'geom_intersects'
+2 failed, 14 deselected in 0.71s
 ```
 
-Failures matched exactly what the brief predicted: `POST /configs` /
-`PUT /configs/by-item/{id}` with `kind="bookmark"` returned 201/200
-unconditionally (no semantic validation wired yet), so the four
-"should-be-rejected" tests got a success status instead of 422. (The happy-path
-test passed trivially since no validation was needed to make it succeed.)
-Unrelated `procrastinate.exceptions.AppNotOpen` stack traces were logged during
-item creation in this run — pre-existing noise from the embedding-job enqueue
-path in the sqlite test setup (caught and logged elsewhere in
-`app/items/repository.py`), not introduced by this change; it appears
-identically before and after the fix, and throughout the rest of the suite.
+Exactly the failure the brief predicted. (Without the DB URL set, the same
+run SKIPs both tests with reason `CORE_TEST_DATABASE_URL non défini — test
+postgis skippé`, confirming the postgis-marker gating works as documented —
+but docker/postgis being available here meant I could actually exercise
+these as true RED failures, not just skips.)
 
-**GREEN** — after creating `bookmark_validation.py` and wiring `routes.py`:
+**RED — route layer** (no docker needed):
 
 ```
-tests/test_create_bookmark.py::test_create_bookmark_avec_app_existante_et_lisible PASSED [ 20%]
-tests/test_create_bookmark.py::test_create_bookmark_app_inexistante_rejetee PASSED [ 40%]
-tests/test_create_bookmark.py::test_create_bookmark_app_non_lisible_rejetee_avec_meme_message PASSED [ 60%]
-tests/test_create_bookmark.py::test_create_bookmark_cible_un_kind_non_app_rejetee PASSED [ 80%]
-tests/test_update_bookmark_app_inexistante_rejetee PASSED [100%]
-============================== 5 passed in 1.77s ===============================
+$ uv run pytest tests/test_features_routes_read.py -v
+tests/test_features_routes_read.py::test_geom_intersects_parsing FAILED
+E  AssertionError: assert None == {'type': 'Point', 'coordinates': [1.0, 2.0]}
+1 failed, 6 passed in 5.85s
 ```
 
-Full suite: `cd core && uv run pytest -q` → `872 passed, 112 skipped in 53.96s`.
+`repo.calls["geom_intersects"]` was `None` because the unrecognized query
+param was silently ignored by FastAPI (not yet declared on `list_features`),
+exactly as predicted.
+
+**GREEN — repository layer**:
+
+```
+$ CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
+  uv run pytest tests/test_features_repository.py -v -m postgis
+16 passed in 1.51s
+```
+
+**GREEN — route layer**:
+
+```
+$ uv run pytest tests/test_features_routes_read.py -v
+7 passed in 4.69s
+```
 
 ## Files changed
 
-- `core/app/configs/bookmark_validation.py` (new)
-- `core/app/configs/routes.py` (import + 2 call sites)
-- `core/tests/test_create_bookmark.py` (new)
+- `core/app/features/repository.py` — `_where` + `select_features` gain `geom_intersects`.
+- `core/app/features/routes.py` — `import json`, `RESERVED_QUERY_PARAMS`, `_parse_geom_intersects`, `list_features`.
+- `core/tests/test_features_repository.py` — `from dataclasses import replace` import + 2 new postgis-marked tests.
+- `core/tests/test_features_routes_read.py` — `import json`, `make_fake_repo`'s `select_features` signature updated, 1 new test.
 
-Commit: `c346c2d` — `feat(core): validate bookmark appId readability on create/update (SP-14m)`.
+Commit: see below.
 
 ## Self-review
 
-- Completeness: all 5 acceptance tests from the brief implemented and pass;
-  both call sites (`create_config`, `update_config_by_item`) wired exactly as
-  specified; `update_config` (by config_id) intentionally left untouched per
-  the brief's scope (bookmarks aren't reachable through that route pattern in
-  this plan).
-- Quality: matches the existing `dataset_validation.py` / `_require_access`
-  style in the same file; function name (`validate_bookmark_payload`) is the
-  exact name Task 3 needs to wrap for the MCP tool.
-- Discipline: no extra behavior added beyond the brief's literal code (e.g. no
-  extra kind checks, no extra fields validated) — YAGNI respected.
-- Testing: real HTTP requests through `TestClient` against a real (in-memory
-  sqlite) DB and real `can()`/authorization logic — no mocks. Ran import-linter
-  to confirm the new file doesn't violate the layered-architecture contract
-  (it doesn't: `app.configs` already depends on `app.items`/`app.sharing`).
-  `ruff` binary isn't installed in this environment (`uv run ruff` →
-  "No such file or directory") so no lint pass was possible; the new file
-  visually matches surrounding style (line length, import order, docstring
-  conventions).
+- **Completeness**: both new repository tests and the route test pass; the
+  "no geometry column" edge case (`FilterError`) is covered; malformed-JSON
+  and well-formed-but-not-a-geometry-dict cases both return 400
+  `invalid_geom_intersects` at the route layer.
+- **Quality**: code is byte-for-byte what the brief specified, matching the
+  existing `bbox` pattern in both files (same CRS-transform idiom, same
+  `_validation_error` helper, same French inline comment style for the
+  SP-14n rationale).
+- **Discipline**: no scope creep — only the 4 target files touched, exactly
+  the interfaces specified (`geom_intersects` as a plain keyword arg with
+  `None` default, inserted in the same position as in the brief).
+- **Testing**: real HTTP requests through `TestClient` for the route test;
+  real SQL against live PostGIS (not mocked) for the repository tests —
+  actually exercised (not skipped) since docker was available. No stray
+  warnings introduced (the pre-existing `procrastinate.exceptions.AppNotOpen`
+  log noise during collection creation in the sqlite route tests is
+  unrelated pre-existing behavior in `app/collections/repository.py`'s
+  embedding-enqueue path, present before this change too).
 
 ## Issues or concerns
 
-- Several unrelated `.superpowers/sdd/*.md` files (`progress.md`,
-  `task-1-brief.md`, `task-1-report.md`, `task-2-brief.md`) and an untracked
-  `docs/superpowers/plans/2026-08-05-sp14m-bookmarks.md` showed up as
-  modified/untracked in `git status` at the start of this task. None of these
-  were touched by this task's work; only `core/app/configs/bookmark_validation.py`,
-  `core/app/configs/routes.py`, and `core/tests/test_create_bookmark.py` were
-  staged and committed. `task-2-report.md` itself already existed on disk with
-  leftover content from an unrelated prior task (SP-14l's `run_analytics_query`
-  MCP tool report) — it is overwritten here with this task's own report.
-- No other concerns. All tests pass, no regressions, import-linter clean, no
-  stray warnings.
+None. Docker/postgis was available and both new postgis-marked tests were
+verified to actually pass against a real database, not merely skip — a
+stronger verification than the brief's minimum bar.
