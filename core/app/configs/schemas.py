@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -165,12 +165,56 @@ class BookmarkPayload(BaseModel):
         return self
 
 
+class PipelineNode(BaseModel):
+    id: str
+    kind: Literal["reader", "transform", "writer"]
+    op: str
+    x: int = 0
+    y: int = 0                    # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
+                                   # canvas (SP-15b) — posé maintenant pour ne pas migrer
+                                   # le schéma plus tard (design SP-15a §4.1)
+    params: dict[str, Any] = Field(default_factory=dict)
+    title: str | None = None
+
+
+class PipelineEdge(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    from_: str = Field(alias="from")
+    to: str
+    when: str | None = None       # CEL, routage conditionnel — accepté mais non
+                                   # interprété par le compilateur avant Phase 3/4
+
+
+class PipelinePayload(BaseModel):
+    nodes: list[PipelineNode] = Field(default_factory=list)
+    edges: list[PipelineEdge] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_graph(self) -> "PipelinePayload":
+        ids = [n.id for n in self.nodes]
+        if len(ids) != len(set(ids)):
+            raise ValueError("pipeline node ids must be unique")
+        id_set = set(ids)
+        for edge in self.edges:
+            if edge.from_ not in id_set:
+                raise ValueError(f"edge references unknown node '{edge.from_}'")
+            if edge.to not in id_set:
+                raise ValueError(f"edge references unknown node '{edge.to}'")
+        if not any(n.kind == "reader" for n in self.nodes):
+            raise ValueError("pipeline requires at least one reader node")
+        if not any(n.kind == "writer" for n in self.nodes):
+            raise ValueError("pipeline requires at least one writer node")
+        return self
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -182,6 +226,7 @@ class BuilderConfig(BaseModel):
     map: MapConfig | None = None
     dataset: DatasetPayload | None = None
     bookmark: BookmarkPayload | None = None
+    pipeline: PipelinePayload | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
@@ -193,4 +238,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("dataset config requires a dataset payload")
         if self.kind == "bookmark" and self.bookmark is None:
             raise ValueError("bookmark config requires a bookmark payload")
+        if self.kind == "pipeline" and self.pipeline is None:
+            raise ValueError("pipeline config requires a pipeline payload")
         return self
