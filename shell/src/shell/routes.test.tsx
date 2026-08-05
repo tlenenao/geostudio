@@ -151,3 +151,23 @@ test("opening a bookmark navigates to its app+page+ctx URL, not an editor", asyn
   await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
   expect(await screen.findByText(/^app-runtime-42-page-1$/)).toBeInTheDocument();
 });
+
+test("a failed bookmark config fetch surfaces an error instead of silently doing nothing", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        ],
+        total: 1, page: 1, pageSize: 12,
+      }),
+    ),
+    http.get("https://core.test/configs/by-item/bm-1", () => new HttpResponse(null, { status: 500 })),
+  );
+  wrap(<AppRoutes />, "/bookmarks");
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/échec de l.ouverture/i);
+  // No navigation happened: we're still on the bookmarks catalog, not the app runtime.
+  expect(screen.getByText("Ma vue")).toBeInTheDocument();
+  expect(screen.queryByText(/^app-runtime-/)).not.toBeInTheDocument();
+});
