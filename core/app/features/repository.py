@@ -63,7 +63,7 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
-def _where(session: Session, info: TableInfo, bbox, filters):
+def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
     clauses, params = [], {}
     if filters:
         by_name = {c.name: c for c in _property_columns(info)}
@@ -96,6 +96,16 @@ def _where(session: Session, info: TableInfo, bbox, filters):
         clauses.append(f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)")
         params.update({"bx0": bbox[0], "by0": bbox[1], "bx1": bbox[2],
                        "by1": bbox[3], "bsrid": info.srid or 4326})
+    if geom_intersects is not None:
+        # SP-14n : intersection géométrique exacte (ST_Intersects), complément
+        # précis du bbox && ci-dessus (chevauchement d'enveloppes uniquement).
+        if info.geometry_column is None:
+            raise FilterError("geom_intersects", "collection has no geometry")
+        g = quote_ident(session, info.geometry_column)
+        clauses.append(
+            f"ST_Intersects({g}, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:gi), 4326), :gisrid))"
+        )
+        params.update({"gi": json.dumps(geom_intersects), "gisrid": info.srid or 4326})
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
@@ -118,9 +128,9 @@ def _row_to_feature(info: TableInfo, row) -> dict:
 
 
 def select_features(session: Session, info: TableInfo, *, limit: int, offset: int,
-                    bbox=None, filters=None) -> FeaturePage:
+                    bbox=None, geom_intersects=None, filters=None) -> FeaturePage:
     t = quote_ident(session, info.table_name)
-    where, params = _where(session, info, bbox, filters)
+    where, params = _where(session, info, bbox, geom_intersects, filters)
     matched = session.execute(
         text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
     rows = session.execute(text(
