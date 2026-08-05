@@ -62,6 +62,9 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   }
   const bbox = parseBboxQueryValue(query.bbox);
   if (bbox) body.bbox = bbox;
+  if (query.geomIntersects && typeof query.geomIntersects === "object") {
+    body.geomIntersects = query.geomIntersects;
+  }
   const filters: Record<string, string> = {};
   for (const [k, v] of Object.entries(query)) {
     if (STAT_KEYS.has(k)) continue;
