@@ -2,7 +2,7 @@
 export const EXTENT_DEBOUNCE_MS = 500;
 
 export type CrossFilterValue = string | string[] | { from: string; to: string };
-export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string };
+export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string; geometry?: unknown };
 
 export type AnalyticsContextState = {
   timeRange: { from: string; to: string } | null;
@@ -16,7 +16,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 type SetTimeRange = (range: { from: string; to: string } | null) => void;
 type SetExtent = (bbox: [number, number, number, number] | null) => void;
-type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string) => void;
+type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string, geometry?: unknown) => void;
 type ClearCrossFilter = (datasetId: string) => void;
 
 const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
@@ -59,14 +59,14 @@ export function AnalyticsContextProvider({
     }, EXTENT_DEBOUNCE_MS);
   }, [active]);
 
-  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId) => {
+  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId, geometry) => {
     if (!active) return;
     setState((prev) => {
       const current = prev.crossFilter[datasetId];
       const isToggleOff = Boolean(current) && current!.field === field && sameCrossFilterValue(current!.value, value);
       const nextCrossFilter = { ...prev.crossFilter };
       if (isToggleOff) delete nextCrossFilter[datasetId];
-      else nextCrossFilter[datasetId] = { field, value, originSourceId };
+      else nextCrossFilter[datasetId] = { field, value, originSourceId, geometry };
       return { ...prev, crossFilter: nextCrossFilter };
     });
   }, [active]);

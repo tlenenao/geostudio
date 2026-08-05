@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -201,6 +201,7 @@ export function createItemClient(opts: {
     columns: Record<string, DatasetColumnMeta>;
     timeField: string | null;
     reactsToExtent: boolean;
+    crossFilterLinks: CrossFilterLink[];
   };
   const datasetCache = new Map<string, ResolvedDataset>();
 
@@ -214,6 +215,7 @@ export function createItemClient(opts: {
           collectionId?: string | null; arcgisItemId?: string | null;
           columns?: Record<string, DatasetColumnMeta>;
           timeField?: string | null; reactsToExtent?: boolean;
+          crossFilterLinks?: CrossFilterLink[];
         } | null;
       };
     }>("GET", `/configs/by-item/${pk}`);
@@ -225,6 +227,7 @@ export function createItemClient(opts: {
       arcgisItemId: dataset.arcgisItemId ?? null,
       columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
       reactsToExtent: dataset.reactsToExtent ?? false,
+      crossFilterLinks: dataset.crossFilterLinks ?? [],
     };
     datasetCache.set(pk, resolved);
     return resolved;
@@ -595,7 +598,7 @@ export function createItemClient(opts: {
         source: dataset.source,
         collectionId: dataset.source === "collection" ? dataset.collectionId : null,
         arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
-        columns: {}, timeField: null, reactsToExtent: false,
+        columns: {}, timeField: null, reactsToExtent: false, crossFilterLinks: [],
       });
       return {
         pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
@@ -635,11 +638,13 @@ export function createItemClient(opts: {
         return {
           source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
           timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+          crossFilterLinks: resolved.crossFilterLinks,
         };
       }
       return {
         source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
         timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+        crossFilterLinks: resolved.crossFilterLinks,
       };
     },
 
@@ -651,6 +656,7 @@ export function createItemClient(opts: {
         arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
         columns: config.columns, timeField: config.timeField ?? null,
         reactsToExtent: config.reactsToExtent ?? false,
+        crossFilterLinks: config.crossFilterLinks ?? [],
       });
     },
 
