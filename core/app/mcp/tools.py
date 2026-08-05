@@ -479,6 +479,59 @@ def register_tools(server: FastMCP, session_factory) -> None:
             return {"categoryKey": category_key, "rows": rows}
 
     @server.tool()
+    async def explain_dataset(ctx: Context, datasetId: str) -> dict:
+        """Describe a dataset's queryable fields before calling
+        run_analytics_query — author metadata (columns/timeField/
+        reactsToExtent) plus introspected field name+type, so an agent
+        doesn't have to guess a groupBy/measure field name. No stats, no
+        sampling. SP-14l."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=datasetId)
+            assert item is not None
+            base = {
+                "title": item.title,
+                "source": payload.source,
+                "timeField": payload.timeField,
+                "reactsToExtent": payload.reactsToExtent,
+                "columns": {k: v.model_dump() for k, v in payload.columns.items()},
+            }
+
+            if payload.source == "collection":
+                assert payload.collectionId is not None
+                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                try:
+                    info = introspect_table(session, col.table_name)
+                except TableNotFound:
+                    raise ValueError("collection backing table not found")
+                except UnsupportedTable as exc:
+                    raise ValueError(exc.reason)
+                schema = table_info_to_schema(info)
+                fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
+                return {**base, "fields": fields}
+
+            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
+            client = harvest_routes.get_arcgis_http_client()
+            try:
+                response = client.get(f"{external_url}?f=json")
+                response.raise_for_status()
+            except EgressBlockedError:
+                raise ValueError("arcgis service unavailable")
+            except httpx.HTTPError:
+                raise ValueError("arcgis service unavailable")
+            finally:
+                client.close()
+            data = response.json()
+            raw_fields = data.get("fields") if isinstance(data, dict) else None
+            fields = [
+                {"name": f.get("name"), "type": f.get("type")}
+                for f in (raw_fields or []) if isinstance(f, dict)
+            ]
+            return {**base, "fields": fields}
+
+    @server.tool()
     async def get_sharing(ctx: Context, itemId: str) -> Sharing:
         """Get an item's sharing settings — mirrors GET /items/{id}/sharing."""
         access_token = get_access_token()
