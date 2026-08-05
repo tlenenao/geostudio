@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import db, observability
 from app.auth import routes as auth_routes
-from app.auth.dependency import is_read_only_mode
+from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
@@ -25,6 +25,7 @@ from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
+from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
@@ -93,6 +94,8 @@ def create_app() -> FastAPI:
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
     app.include_router(harvest_routes.router)
+    if is_etl_enabled():
+        app.include_router(pipelines_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
