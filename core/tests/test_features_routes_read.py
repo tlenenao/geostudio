@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -31,8 +32,8 @@ def fake_introspector(session, table_name):
 def make_fake_repo(matched=3):
     calls = {}
 
-    def select_features(session, info, *, limit, offset, bbox=None, filters=None):
-        calls.update(limit=limit, offset=offset, bbox=bbox, filters=filters)
+    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
+        calls.update(limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters)
         if filters and "inconnu" in filters:
             raise FilterError("inconnu", "unknown filter property 'inconnu'")
         return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
@@ -123,6 +124,18 @@ def test_bbox_parsing(env):
     client.get("/collections/incidents/items?bbox=0.5,44.5,1.5,45.5")
     assert repo.calls["bbox"] == (0.5, 44.5, 1.5, 45.5)
     assert client.get("/collections/incidents/items?bbox=zzz").status_code == 400
+
+
+def test_geom_intersects_parsing(env):
+    app, client, admin, _r, repo = env
+    _register(app, client, admin)
+    geom = {"type": "Point", "coordinates": [1.0, 2.0]}
+    r = client.get("/collections/incidents/items", params={"geom_intersects": json.dumps(geom)})
+    assert r.status_code == 200
+    assert repo.calls["geom_intersects"] == geom
+    r2 = client.get("/collections/incidents/items", params={"geom_intersects": "not-json"})
+    assert r2.status_code == 400
+    assert r2.json()["detail"]["errors"][0]["code"] == "invalid_geom_intersects"
 
 
 def test_single_feature_and_404(env):

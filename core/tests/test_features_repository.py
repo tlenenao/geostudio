@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from dataclasses import replace
+
 import pytest
 from sqlalchemy import text
 
@@ -106,6 +108,24 @@ def test_pagination_and_bbox_and_filters(info, pg_session_factory):
         assert [f["id"] for f in page.features] == [1]
         page = select_features(session, info, limit=10, offset=0, filters={"nb": "2"})
         assert [f["id"] for f in page.features] == [2]
+
+
+def test_geom_intersects_filters_by_exact_polygon(info, pg_session_factory):
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[[0.5, 44.5], [1.5, 44.5], [1.5, 45.5], [0.5, 45.5], [0.5, 44.5]]],
+    }
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        page = select_features(session, info, limit=10, offset=0, geom_intersects=polygon)
+        assert [f["id"] for f in page.features] == [1]
+
+
+def test_geom_intersects_without_geometry_column_raises(info, pg_session_factory):
+    info_no_geom = replace(info, geometry_column=None)
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info_no_geom, limit=10, offset=0,
+                            geom_intersects={"type": "Point", "coordinates": [0, 0]})
 
 
 def test_filter_errors(info, pg_session_factory):

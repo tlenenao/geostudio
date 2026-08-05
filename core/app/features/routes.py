@@ -2,6 +2,7 @@
 """Routes OGC API Features (Part 1 lecture, Part 4 écriture).
 Le repository et le scope RLS sont injectables : les tests SQLite substituent
 un fake et un scope nul ; le vrai chemin est PostGIS-only."""
+import json
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -37,7 +38,7 @@ _sql_queries_counter = _meter.create_counter(
 class SqlQueryBody(BaseModel):
     sql: str
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "f"}
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f"}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
@@ -102,6 +103,22 @@ def _parse_bbox(raw: str | None):
               "message": "bbox must be minx,miny,maxx,maxy"}])
 
 
+def _parse_geom_intersects(raw: str | None):
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    if not isinstance(parsed, dict) or "type" not in parsed or "coordinates" not in parsed:
+        raise _validation_error(
+            [{"field": "geom_intersects", "code": "invalid_geom_intersects",
+              "message": "geom_intersects must be a GeoJSON geometry encoded as JSON"}])
+    return parsed
+
+
 def _collect_filters(request: Request) -> dict[str, str]:
     return {k: v for k, v in request.query_params.items()
             if k not in RESERVED_QUERY_PARAMS}
@@ -125,7 +142,7 @@ def _page_links(request: Request, *, limit: int, offset: int, page) -> list[dict
 def list_features(
     collection_id: str, request: Request,
     limit: int = Query(100, ge=1), offset: int = Query(0, ge=0),
-    bbox: str | None = None,
+    bbox: str | None = None, geom_intersects: str | None = None,
     user=Depends(get_current_user_optional), session: Session = Depends(get_session),
     introspect=Depends(get_introspector), repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
@@ -134,11 +151,13 @@ def list_features(
     info = introspect(session, col.table_name)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
+    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     try:
         with rls(session, col.tenant_id):
             page = repo.select_features(session, info, limit=limit, offset=offset,
-                                        bbox=parsed_bbox, filters=filters or None)
+                                        bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
+                                        filters=filters or None)
     except FilterError as exc:
         raise _validation_error(
             [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
