@@ -12,6 +12,7 @@ vrai GeoParquet sur MinIO) que DuckDB lit la colonne géométrie d'un
 GeoParquet directement comme un type GEOMETRY natif — ST_GeomFromWKB(...)
 n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
+import json
 from typing import Literal
 
 from pydantic import BaseModel
@@ -31,6 +32,7 @@ class AggregateRequestBody(BaseModel):
     measures: list[AggregateMeasure] | None = None
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
+    geomIntersects: dict | None = None
     bucket: Literal["day", "week", "month"] | None = None
     bins: int | None = None
 
@@ -102,6 +104,8 @@ def _validate_fields(request: AggregateRequestBody, table_info) -> None:
         check(field_name, f"filters.{raw_name}")
     if request.bbox is not None and not table_info.geometry_column:
         raise UnknownAggregateField("bbox", "collection has no geometry")
+    if request.geomIntersects is not None and not table_info.geometry_column:
+        raise UnknownAggregateField("geomIntersects", "collection has no geometry")
 
     if request.bins is not None:
         if request.field is None:
@@ -164,6 +168,16 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
             f"ST_MakeEnvelope(?, ?, ?, ?))"
         )
         params.extend([minx, miny, maxx, maxy])
+    if request.geomIntersects is not None:
+        # SP-14n : intersection géométrique exacte, complément précis du bbox
+        # ci-dessus (rectangle). Même colonne, même opérateur ST_Intersects —
+        # seule la forme du second argument change (GeoJSON arbitraire, pas
+        # une enveloppe rectangulaire).
+        clauses.append(
+            f"ST_Intersects({_qi(table_info.geometry_column)}, "
+            f"ST_GeomFromGeoJSON(?))"
+        )
+        params.append(json.dumps(request.geomIntersects))
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 
 
