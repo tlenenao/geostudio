@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { AnalyticsContextProvider, useSetCrossFilter, useSetExtent, useSetTimeRange } from "./AnalyticsContext";
 import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
+import type { DatasetConfig } from "../api/types";
+import { DatasetsContext } from "./DataContext";
 
 function Controls() {
   const setTimeRange = useSetTimeRange();
@@ -80,4 +82,31 @@ test("formats an array cross-filter value as a comma-joined list and a range as 
   );
   await userEvent.click(screen.getByText("set-range"));
   expect(screen.getByText(/score : 10 → 50/)).toBeInTheDocument();
+});
+
+test("shows the dataset(s) a cross-filter propagates to via a declared link", async () => {
+  const datasets: Record<string, DatasetConfig> = {
+    ds1: {
+      source: "collection", collectionId: "communes", columns: {},
+      crossFilterLinks: [{ targetDatasetId: "ds2", mode: "attribute", sourceField: "region", targetField: "region" }],
+    },
+  };
+  render(
+    <DatasetsContext.Provider value={datasets}>
+      <AnalyticsContextProvider interactions="auto">
+        <Controls />
+        <AnalyticsContextIndicator />
+      </AnalyticsContextProvider>
+    </DatasetsContext.Provider>,
+  );
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText(/region : Nord/)).toBeInTheDocument();
+  expect(screen.getByText(/→ ds2/)).toBeInTheDocument();
+});
+
+test("shows no propagation arrow when the dataset declares no matching link", async () => {
+  renderIndicator();
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText(/region : Nord/)).toBeInTheDocument();
+  expect(screen.queryByText(/→/)).not.toBeInTheDocument();
 });
