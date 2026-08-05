@@ -1,338 +1,287 @@
-### Task 1: Core — `DatasetPayload` gains `source: "arcgis"` + validator registry becomes per-source
+### Task 1: `create_dataset` tool
 
 **Files:**
-- Modify: `core/app/configs/schemas.py`
-- Modify: `core/app/configs/dataset_validation.py`
-- Modify: `core/app/collections/dataset_validation.py`
-- Create: `core/app/harvest/dataset_validation.py`
-- Modify: `core/app/main.py`
-- Test: `core/tests/test_dataset_config_schema.py`
-- Test: `core/tests/test_create_dataset_arcgis.py` (new)
+- Modify: `core/app/mcp/tools.py`
+- Modify: `core/tests/test_mcp_read_only_mode.py` (extend the existing generic read-only-mode coverage — this file already asserts `READ_ONLY_TOOLS` equals an exact set of 4 tool names; adding a 5th tool without updating it would break that test)
+- Test: `core/tests/test_mcp_tools_dataset_create.py` (new)
 
 **Interfaces:**
-- Produces: `DatasetPayload.source: Literal["collection", "arcgis"]`, `DatasetPayload.arcgisItemId: str | None`, `DatasetPayload.collectionId: str | None` (now optional). `register_dataset_validator(source: str, validator) -> None` (signature changed — now keyed by source). Later tasks (4, 5) call `harvest_repo.get_feature_layer_record` which Task 2 produces; this task only needs it to exist as an import target once Task 2 lands, so Task 1 must run its own tests against a `HarvestRecord` created directly via `harvest_repo.create_record` (already available) rather than via the not-yet-written `get_feature_layer_record`.
+- Produces: MCP tool `create_dataset(ctx, title: str, source: Literal["collection","arcgis"], collectionId: str | None = None, arcgisItemId: str | None = None, columns: dict[str, DatasetColumnMeta] | None = None, timeField: str | None = None, reactsToExtent: bool = False) -> ItemRead`.
+- Produces: private helper `_validate_dataset(session, config: BuilderConfig, *, user: User) -> None` (raises `ValueError`), reused by no other task.
+- `"create_dataset"` added to `READ_ONLY_TOOLS`.
 
-- [ ] **Step 1: Write failing pydantic-level tests for the extended `DatasetPayload`**
+- [ ] **Step 1: Write the failing tests**
 
-Append to `core/tests/test_dataset_config_schema.py`:
-
-```python
-def test_dataset_config_arcgis_source_valide():
-    body = {
-        "version": 1, "kind": "dataset",
-        "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "columns": {}},
-    }
-    config = BuilderConfig.model_validate(body)
-    assert config.dataset.source == "arcgis"
-    assert config.dataset.arcgisItemId == "item-1"
-    assert config.dataset.collectionId is None
-
-
-def test_dataset_config_collection_source_sans_collection_id_rejete():
-    body = {"version": 1, "kind": "dataset", "dataset": {"source": "collection", "columns": {}}}
-    with pytest.raises(ValidationError):
-        BuilderConfig.model_validate(body)
-
-
-def test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete():
-    body = {"version": 1, "kind": "dataset", "dataset": {"source": "arcgis", "columns": {}}}
-    with pytest.raises(ValidationError):
-        BuilderConfig.model_validate(body)
-
-
-def test_dataset_config_arcgis_source_avec_collection_id_rejete():
-    body = {
-        "version": 1, "kind": "dataset",
-        "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "collectionId": "parcs", "columns": {}},
-    }
-    with pytest.raises(ValidationError):
-        BuilderConfig.model_validate(body)
-```
-
-- [ ] **Step 2: Run to verify failure**
-
-Run: `cd core && uv run pytest tests/test_dataset_config_schema.py -v`
-Expected: the 4 new tests FAIL (`source` doesn't accept `"arcgis"` yet, `collectionId` is still required unconditionally).
-
-- [ ] **Step 3: Extend `DatasetPayload` in `core/app/configs/schemas.py`**
-
-Replace:
-
-```python
-class DatasetPayload(BaseModel):
-    source: Literal["collection"]  # seul type supporté en SP-14a
-    collectionId: str
-    columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
-    timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
-    reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
-```
-
-with:
-
-```python
-class DatasetPayload(BaseModel):
-    source: Literal["collection", "arcgis"]
-    collectionId: str | None = None    # requis si source == "collection"
-    arcgisItemId: str | None = None    # requis si source == "arcgis" (SP-14k) : item "external"
-                                        # moissonné en mode référence (SP-12d)
-    columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
-    timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
-    reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
-
-    @model_validator(mode="after")
-    def _require_source_id(self) -> "DatasetPayload":
-        if self.source == "collection" and self.collectionId is None:
-            raise ValueError("collection source requires collectionId")
-        if self.source == "arcgis" and self.arcgisItemId is None:
-            raise ValueError("arcgis source requires arcgisItemId")
-        if self.source == "collection" and self.arcgisItemId is not None:
-            raise ValueError("collection source must not set arcgisItemId")
-        if self.source == "arcgis" and self.collectionId is not None:
-            raise ValueError("arcgis source must not set collectionId")
-        return self
-```
-
-`model_validator` is already imported at the top of the file (used by `BuilderConfig._require_kind_payload`).
-
-- [ ] **Step 4: Run to verify pydantic tests pass**
-
-Run: `cd core && uv run pytest tests/test_dataset_config_schema.py -v`
-Expected: all tests PASS, including the 8 pre-existing ones (unaffected — they all use `source: "collection"` with `collectionId` set).
-
-- [ ] **Step 5: Make the validator registry per-source**
-
-Replace the full content of `core/app/configs/dataset_validation.py`:
+Create `core/tests/test_mcp_tools_dataset_create.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Registry hook so app.configs can validate kind="dataset" payloads without
-importing app.collections or app.harvest (forbidden by the layered-architecture
-contract: both sit above app.configs). Validators are registered per
-`DatasetPayload.source` by the modules that own each source's semantics
-(app.collections for "collection", app.harvest for "arcgis" — SP-14k);
-app.main wires both imports together at startup.
-"""
-from collections.abc import Callable
+"""create_dataset (SP-14l) — mirrors POST /configs with kind="dataset":
+same DatasetPayload construction, same per-source readability validation
+(app.configs.dataset_validation) as the REST route. SQLite is enough here —
+neither source variant needs real PostGIS introspection at creation time,
+only catalog metadata (Collection row / harvested "external" item row)."""
+from sqlalchemy import select
 
-from sqlalchemy.orm import Session
-
-from app.configs.schemas import BuilderConfig
-from app.users.models import User
-
-DatasetValidator = Callable[[Session, BuilderConfig, User], None]
-
-_validators: dict[str, DatasetValidator] = {}
-
-
-def register_dataset_validator(source: str, validator: DatasetValidator) -> None:
-    _validators[source] = validator
-
-
-def validate_dataset_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
-    if config.kind != "dataset":
-        return
-    payload = config.dataset
-    assert payload is not None
-    validator = _validators.get(payload.source)
-    assert validator is not None, f"no dataset validator registered for source={payload.source!r}"
-    validator(session, config, user)
-```
-
-- [ ] **Step 6: Update the `"collection"` registration site**
-
-In `core/app/collections/dataset_validation.py`, change the last line:
-
-```python
-register_dataset_validator(_validate_dataset_payload)
-```
-
-to:
-
-```python
-register_dataset_validator("collection", _validate_dataset_payload)
-```
-
-- [ ] **Step 7: Run the existing collection-dataset tests to verify nothing broke**
-
-Run: `cd core && uv run pytest tests/test_create_dataset.py -v`
-Expected: all 4 pre-existing tests still PASS (registry now keyed by `"collection"`, same validator).
-
-- [ ] **Step 8: Add the `"arcgis"` validator**
-
-Create `core/app/harvest/dataset_validation.py`:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Registers the kind="dataset" validator for source="arcgis" payloads
-(SP-14k). Same registry indirection as app.collections.dataset_validation
-(see app.configs.dataset_validation for why) — app.main imports this module
-for its side effect, alongside app.collections's registration."""
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
-from app.configs.dataset_validation import register_dataset_validator
-from app.configs.schemas import BuilderConfig
+from app.audit.models import AuditLog
+from app.collections import repository as collections_repo
+from app.configs import repository as configs_repo
 from app.harvest import repository as harvest_repo
 from app.items import repository as items_repo
-from app.sharing.authorization import can
-from app.users.models import User
-
-
-def _validate_arcgis_dataset_payload(session: Session, config: BuilderConfig, user: User) -> None:
-    payload = config.dataset
-    assert payload is not None
-    assert payload.arcgisItemId is not None
-    record = harvest_repo.get_feature_layer_record(
-        session, tenant_id=user.tenant_id, item_id=payload.arcgisItemId,
-    )
-    if record is None or record.external_url is None:
-        raise HTTPException(status_code=422, detail="arcgis layer not found")
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.arcgisItemId)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        # Même message que la branche introuvable : ne pas révéler l'existence de l'item.
-        raise HTTPException(status_code=422, detail="arcgis layer not found")
-
-
-register_dataset_validator("arcgis", _validate_arcgis_dataset_payload)
-```
-
-This imports `harvest_repo.get_feature_layer_record`, written in Task 2. It's fine for this file to exist before that function does — nothing calls `_validate_arcgis_dataset_payload` until Task 1's own new test (Step 10) exercises it, by which point Task 2 must already be merged. **Do Task 2 before running Step 10's test** (or write `get_feature_layer_record` inline now and let Task 2 be a no-op re-verification — the plan assumes Task 2 runs first; if executing strictly in order, come back to Step 10 after Task 2).
-
-- [ ] **Step 9: Wire the import in `app/main.py`**
-
-In `core/app/main.py`, next to:
-
-```python
-from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
-```
-
-add:
-
-```python
-from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
-```
-
-- [ ] **Step 10: Write the HTTP-level test for the arcgis dataset validator**
-
-Create `core/tests/test_create_dataset_arcgis.py` (mirrors `test_create_dataset.py`):
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-import pytest
-from fastapi.testclient import TestClient
-
-from app import db
-from app.auth.dependency import get_current_user
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.harvest import repository as harvest_repo
-from app.items import repository as items_repo
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
+from tests.test_mcp_tools_create import app_client, call_tool, call_tool_expecting_error  # noqa: F401
 
-@pytest.fixture()
-def client():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
 
-    with Session() as setup_session:
-        tenant = get_or_create_default_tenant(setup_session)
-        alice = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+def _register_collection(app_client, *, public=True, owner=None):
+    with app_client.session_factory() as session:
+        col = collections_repo.create_collection(
+            session, tenant_id=app_client.tenant.id, owner_id=(owner or app_client.mock_user).id,
+            table_name="incidents", title="Incidents", description="", is_public=public,
+            pk_column="id", geometry_column="geom", geometry_type="Point", srid=4326,
         )
-        bob = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
-            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
-        )
+        session.commit()
+        return col.id
+
+
+def _register_arcgis_layer(app_client, *, public=True, owner=None):
+    with app_client.session_factory() as session:
+        layer_owner = owner or app_client.mock_user
         source = harvest_repo.create_source(
-            setup_session, tenant_id=tenant.id, owner_id=alice.id, type="arcgis",
-            url="https://gis.example.com/FeatureServer", mode="reference",
-            enabled=True, interval_minutes=None,
+            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id, type="arcgis",
+            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
+            mode="reference", enabled=True, interval_minutes=None,
         )
-        visible_item = items_repo.create_item(
-            setup_session, tenant_id=tenant.id, owner_id=alice.id,
+        layer_item = items_repo.create_item(
+            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id,
             resource_type="external", title="Bâtiments",
         )
+        if public:
+            items_repo.set_is_public(
+                session, tenant_id=app_client.tenant.id, item_id=layer_item.id, is_public=True,
+            )
         harvest_repo.create_record(
-            setup_session, tenant_id=tenant.id, source_id=source.id, external_id="layer-0",
-            item_id=visible_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+            session, tenant_id=app_client.tenant.id, source_id=source.id, external_id="layer-0",
+            item_id=layer_item.id, collection_id=None, content_hash=None,
+            external_url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0",
+            layer_kind="feature",
         )
-        hidden_item = items_repo.create_item(
-            setup_session, tenant_id=tenant.id, owner_id=bob.id,
-            resource_type="external", title="Couche privée de Bob",
+        session.commit()
+        return layer_item.id
+
+
+def test_create_dataset_collection_source_creates_item_and_config(app_client):
+    with app_client:
+        collection_id = _register_collection(app_client)
+        result = call_tool(app_client, "create_dataset", {
+            "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
+        })
+
+    assert result["resourceType"] == "dataset"
+    with app_client.session_factory() as session:
+        config = configs_repo.get_config_by_item(session, result["pk"])
+        assert config.kind == "dataset"
+        assert config.config.dataset.source == "collection"
+        assert config.config.dataset.collectionId == collection_id
+
+
+def test_create_dataset_arcgis_source_creates_item_and_config(app_client):
+    with app_client:
+        arcgis_item_id = _register_arcgis_layer(app_client)
+        result = call_tool(app_client, "create_dataset", {
+            "title": "Bâtiments (live)", "source": "arcgis", "arcgisItemId": arcgis_item_id,
+        })
+
+    assert result["resourceType"] == "dataset"
+    with app_client.session_factory() as session:
+        config = configs_repo.get_config_by_item(session, result["pk"])
+        assert config.config.dataset.source == "arcgis"
+        assert config.config.dataset.arcgisItemId == arcgis_item_id
+
+
+def test_create_dataset_accepts_columns_time_field_and_reacts_to_extent(app_client):
+    with app_client:
+        collection_id = _register_collection(app_client)
+        result = call_tool(app_client, "create_dataset", {
+            "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
+            "columns": {"titre": {"label": "Titre", "description": None, "format": None}},
+            "timeField": "created_at", "reactsToExtent": True,
+        })
+
+    with app_client.session_factory() as session:
+        config = configs_repo.get_config_by_item(session, result["pk"])
+        assert config.config.dataset.columns["titre"].label == "Titre"
+        assert config.config.dataset.timeField == "created_at"
+        assert config.config.dataset.reactsToExtent is True
+
+
+def test_create_dataset_writes_audit_log_with_agent_actor(app_client):
+    with app_client:
+        collection_id = _register_collection(app_client)
+        call_tool(app_client, "create_dataset", {
+            "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
+        })
+
+    with app_client.session_factory() as session:
+        rows = list(session.scalars(select(AuditLog)))
+        actions = {r.action for r in rows}
+        assert "item.create" in actions
+        assert "config.create" in actions
+        assert all(r.actor_kind == "agent" for r in rows)
+
+
+def test_create_dataset_unreadable_collection_errors_without_leaking_existence(app_client):
+    with app_client.session_factory() as session:
+        other_owner = get_or_create_user(
+            session, tenant_id=app_client.tenant.id, oidc_sub="other-owner-cd-sub",
+            username="otherowner-cd", email=None, first_name="Other", last_name="Owner",
         )
-        harvest_repo.create_record(
-            setup_session, tenant_id=tenant.id, source_id=source.id, external_id="layer-1",
-            item_id=hidden_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/1", layer_kind="feature",
+        session.commit()
+    with app_client:
+        collection_id = _register_collection(app_client, public=False, owner=other_owner)
+        error_text = call_tool_expecting_error(app_client, "create_dataset", {
+            "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
+        })
+    assert "not found" in error_text
+
+
+def test_create_dataset_unreadable_arcgis_layer_errors(app_client):
+    with app_client.session_factory() as session:
+        other_owner = get_or_create_user(
+            session, tenant_id=app_client.tenant.id, oidc_sub="other-owner-cd2-sub",
+            username="otherowner-cd2", email=None, first_name="Other", last_name="Owner",
         )
-        setup_session.commit()
-
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: alice
-
-    test_client = TestClient(app)
-    test_client.visible_item_id = visible_item.id  # type: ignore[attr-defined]
-    test_client.hidden_item_id = hidden_item.id  # type: ignore[attr-defined]
-    yield test_client
-    engine.dispose()
-
-
-def _dataset_body(arcgis_item_id: str, title: str = "Bâtiments (live)") -> dict:
-    return {
-        "title": title,
-        "config": {
-            "version": 1, "kind": "dataset",
-            "dataset": {"source": "arcgis", "arcgisItemId": arcgis_item_id, "columns": {}},
-        },
-    }
-
-
-def test_create_dataset_arcgis_avec_couche_moissonnee_visible(client):
-    res = client.post("/configs", json=_dataset_body(client.visible_item_id))
-    assert res.status_code == 201, res.text
-    item = client.get(f"/items/{res.json()['itemId']}").json()
-    assert item["resourceType"] == "dataset"
-
-
-def test_create_dataset_arcgis_item_inexistant_rejete(client):
-    res = client.post("/configs", json=_dataset_body("no-such-item"))
-    assert res.status_code == 422
-    assert res.json()["detail"] == "arcgis layer not found"
-
-
-def test_create_dataset_arcgis_couche_non_lisible_rejete_avec_meme_message(client):
-    # visible_item appartient à alice, hidden_item à bob (non public, non
-    # partagé) : alice ne doit pas pouvoir distinguer "inexistant" de "pas à
-    # elle" dans le message d'erreur.
-    res = client.post("/configs", json=_dataset_body(client.hidden_item_id))
-    assert res.status_code == 422
-    assert res.json()["detail"] == "arcgis layer not found"
+        session.commit()
+    with app_client:
+        arcgis_item_id = _register_arcgis_layer(app_client, public=False, owner=other_owner)
+        error_text = call_tool_expecting_error(app_client, "create_dataset", {
+            "title": "Bâtiments (live)", "source": "arcgis", "arcgisItemId": arcgis_item_id,
+        })
+    assert "not found" in error_text
 ```
 
-- [ ] **Step 11: Run to verify it fails on the missing repo function**
+Extend `core/tests/test_mcp_read_only_mode.py`:
 
-Run: `cd core && uv run pytest tests/test_create_dataset_arcgis.py -v`
-Expected: FAIL with `AttributeError: module 'app.harvest.repository' has no attribute 'get_feature_layer_record'` — this is expected; Task 2 adds it.
+```python
+def test_read_only_tools_constant_matches_the_five_write_tools():
+    assert READ_ONLY_TOOLS == {
+        "save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset",
+    }
+```
 
-- [ ] **Step 12: Commit (test will go green once Task 2 lands)**
+Replace the old `test_read_only_tools_constant_matches_the_four_write_tools` with the function above (same file, same fixtures — just the one function body and its name change), and add this new test right after `test_create_form_app_refuses_in_read_only_mode`:
+
+```python
+def test_create_dataset_refuses_in_read_only_mode(app_client, monkeypatch):
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client, "create_dataset",
+            {"title": "X", "source": "collection", "collectionId": "does-not-exist"},
+        )
+    assert READ_ONLY_MESSAGE in error_text
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd core && uv run pytest tests/test_mcp_tools_dataset_create.py tests/test_mcp_read_only_mode.py -v`
+Expected: `test_mcp_tools_dataset_create.py` fails with something like `AssertionError: tool create_dataset errored: ... Unknown tool: create_dataset` (or a `ValueError`/`KeyError` from FastMCP about an unregistered tool name). `test_read_only_tools_constant_matches_the_five_write_tools` fails because `READ_ONLY_TOOLS` still has 4 entries. `test_create_dataset_refuses_in_read_only_mode` fails the same "unknown tool" way.
+
+- [ ] **Step 3: Implement `create_dataset`**
+
+In `core/app/mcp/tools.py`, add to the imports at the top:
+
+```python
+from fastapi import HTTPException
+
+from app.configs.dataset_validation import validate_dataset_payload
+from app.configs.schemas import DatasetColumnMeta, DatasetPayload
+```
+
+(`BuilderConfig`, `Literal`, `items_repo`, `configs_repo`, `write_audit`, `is_read_only_mode` are already imported.)
+
+Change the `READ_ONLY_TOOLS` line to:
+
+```python
+READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset"}
+```
+
+Add this private helper right after `_validate_extension_scope` (same file, module level, before `_parse_bbox_tuple`):
+
+```python
+def _validate_dataset(session, config: BuilderConfig, *, user: User) -> None:
+    """Mirrors app/configs/routes.py's call to validate_dataset_payload — same
+    per-source (collection/arcgis) readability check the REST route runs on
+    POST /configs and PUT /configs/{by-item} — but raises ValueError instead
+    of HTTPException, same rationale as _require_access above. Without this
+    call, create_dataset could create a dataset pointing at a collection or
+    arcgis layer invisible to the caller."""
+    try:
+        validate_dataset_payload(session, config, user=user)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+```
+
+Add the tool itself inside `register_tools`, right after `create_form_app` and before `get_sharing`:
+
+```python
+    @server.tool()
+    async def create_dataset(
+        ctx: Context,
+        title: str,
+        source: Literal["collection", "arcgis"],
+        collectionId: str | None = None,
+        arcgisItemId: str | None = None,
+        columns: dict[str, DatasetColumnMeta] | None = None,
+        timeField: str | None = None,
+        reactsToExtent: bool = False,
+    ) -> ItemRead:
+        """Create a shared dataset (source collection or arcgis) — mirrors
+        POST /configs with kind="dataset" (the path
+        itemClient.ts::createDatasetItem uses). SP-14l."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = DatasetPayload(
+                source=source, collectionId=collectionId, arcgisItemId=arcgisItemId,
+                columns=columns or {}, timeField=timeField, reactsToExtent=reactsToExtent,
+            )
+            config = BuilderConfig(version=1, kind="dataset", dataset=payload)
+            _validate_dataset(session, config, user=user)
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type="dataset", title=title,
+            )
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": title},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"title": title, "kind": "dataset"},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None
+            return result
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_mcp_tools_dataset_create.py tests/test_mcp_read_only_mode.py -v`
+Expected: all PASS.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-cd core
-git add app/configs/schemas.py app/configs/dataset_validation.py \
-  app/collections/dataset_validation.py app/harvest/dataset_validation.py app/main.py \
-  tests/test_dataset_config_schema.py tests/test_create_dataset_arcgis.py
-git commit -m "feat(core): DatasetPayload gains source=arcgis, per-source validator registry (SP-14k)"
+git add core/app/mcp/tools.py core/tests/test_mcp_tools_dataset_create.py core/tests/test_mcp_read_only_mode.py
+git commit -m "feat(core): mcp create_dataset tool (SP-14l)"
 ```
 
 ---

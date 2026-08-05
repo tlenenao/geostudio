@@ -1,161 +1,169 @@
-# Task 2 Report — SP-14k: `harvest_repo.get/list_feature_layer_record`
+# Task 2 report — `run_analytics_query` MCP tool (SP-14l)
 
-**Date:** 2026-08-04  
-**Task:** SP-14k Task 2 — Core `harvest_repo.get/list_feature_layer_record`  
-**Status:** DONE
+## What was implemented
 
----
+`core/app/mcp/tools.py` (after Task 1's `create_dataset`/`_validate_dataset`):
 
-## What Was Implemented
+- Imports added: `httpx`, `app.analytics.aggregate.{AggregateMeasure, AggregateRequestBody,
+  UnknownAggregateField, run_collection_aggregate}`, `app.features.routes as features_routes`,
+  `app.harvest.live_query`, `app.harvest.repository as harvest_repo`,
+  `app.harvest.routes as harvest_routes`, `app.harvest.egress.EgressBlockedError`.
+- Two new private helpers, placed right after `_validate_dataset`:
+  - `_resolve_dataset_payload(session, *, user, dataset_item_id) -> DatasetPayload` — read-access
+    check on the dataset item + kind/payload extraction. Reused by Task 3 (`explain_dataset`).
+  - `_resolve_arcgis_external_url(session, *, user, dataset_item_id) -> str` — independent
+    double permission check (dataset item read, then arcgis layer item read), mirroring
+    `app/harvest/routes.py::_resolve_arcgis_dataset` line for line but raising `ValueError`
+    instead of `HTTPException` (same rationale as the existing `_require_access`). Also reused
+    by Task 3.
+- The `run_analytics_query` tool itself, registered right after `create_dataset`: dispatches on
+  `payload.source` — `collection` goes through `introspect_table` + DuckDB
+  (`run_collection_aggregate`, using `features_routes.get_duckdb_connection_factory()` /
+  `get_analytics_base_uri()` called as plain functions, matching how the REST route's own
+  `Depends` resolve); `arcgis` rejects `bucket`/`split`/`bins`, resolves the external URL via the
+  new helper, and reuses `live_query.translate_aggregate_query` / `fetch_query` /
+  `aggregate_response` exactly as `POST /datasets/{id}/arcgis/aggregate` does — so the SP-14k
+  `where=` field-name validation fix in `translate_aggregate_query` is inherited automatically,
+  no new validation logic was added.
+- No `READ_ONLY_TOOLS` entry (this is a read-only tool, confirmed by
+  `test_read_only_tools_constant_matches_the_five_write_tools` still passing unchanged).
 
-Successfully implemented two new functions in `core/app/harvest/repository.py`:
-- `get_feature_layer_record(session, *, tenant_id: str, item_id: str) -> HarvestRecord | None` — retrieves a single feature layer record
-- `list_feature_layer_records(session, *, tenant_id: str, q: str | None = None) -> list[Row]` — lists all feature layers with optional title filtering
+Two new test files, transcribed from the brief with two deviations found and fixed during TDD
+(see "Self-review findings" below):
 
-These functions enable Task 1's validator and other callers to work with feature layers (layer_kind="feature") specifically, distinguishing them from raster layers.
+- `core/tests/test_mcp_tools_run_analytics_query.py` (source `collection`, `@pytest.mark.postgis`)
+- `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` (source `arcgis`, SQLite/mock)
 
-### Files Modified
+## What was tested and results
 
-#### 1. `core/app/harvest/repository.py`
-- Added `get_feature_layer_record` after `list_layer_records`
-- Added `list_feature_layer_records` after `get_feature_layer_record`
-- Both filter to `HarvestRecord.layer_kind == "feature"`
-- Second function joins with `Item` table to provide title and handles optional q-filtering
+Ran with `CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test` exported
+(verified working against the running `postgis-test` container).
 
-#### 2. `core/tests/test_harvest_repository.py`
-- Added `tenant` fixture (extracts from existing `tenant_and_user`)
-- Added `test_get_feature_layer_record_returns_feature_kind_only` — verifies:
-  - Returns feature layer for matching item_id
-  - Returns None for raster layer with same source
-  - Returns None for non-existent item_id
-- Added `test_list_feature_layer_records_excludes_raster_and_filters_by_q` — verifies:
-  - Lists only feature layers (excludes raster)
-  - Supports optional q (title ilike filter)
-  - Returns empty list when no matches
+- Both new test files together: **7 passed, 0 skipped, 0 failed.**
+  - `test_mcp_tools_run_analytics_query.py` — 4 tests, all `@pytest.mark.postgis`, all ran for
+    real against Postgres/PostGIS (not skipped) — confirmed by watching them fail during RED
+    (real DB writes/reads happening) and pass during GREEN, with no "skip" lines in the pytest
+    summary.
+  - `test_mcp_tools_run_analytics_query_arcgis.py` — 3 tests, SQLite-backed, no postgis marker.
+- Step 6 regression suite (`test_mcp_tools_create.py`, `test_mcp_tools_create_form_app.py`,
+  `test_mcp_tools_query_features.py`, `test_mcp_read_only_mode.py`,
+  `test_mcp_tools_dataset_create.py`): **25 passed, 0 failed.**
+- Combined final run of all 7 new + 25 regression tests together: **32 passed**, clean
+  (`filterwarnings = ["error", ...]` is active project-wide — a stray warning would have failed
+  the run outright; none did).
+- `uv run lint-imports`: contract kept (0 broken) — the new cross-module imports
+  (`app.harvest`, `app.features.routes`, `app.analytics.aggregate`) don't violate the module
+  boundary lint.
 
----
+## TDD Evidence
 
-## Testing & Results
-
-### Test Execution: RED → GREEN
-
-**Before implementation:**
-```bash
-cd core && uv run pytest tests/test_harvest_repository.py -v -k "feature_layer"
-```
-**Output (failed with AttributeError):**
-```
-E       AttributeError: module 'app.harvest.repository' has no attribute 'get_feature_layer_record'
-tests/test_harvest_repository.py:267: AttributeError
-FAILED tests/test_harvest_repository.py::test_get_feature_layer_record_returns_feature_kind_only
-FAILED tests/test_harvest_repository.py::test_list_feature_layer_records_excludes_raster_and_filters_by_q
-```
-
-**After implementation:**
-```bash
-cd core && uv run pytest tests/test_harvest_repository.py -v -k "feature_layer"
-```
-**Output:**
-```
-tests/test_harvest_repository.py::test_get_feature_layer_record_returns_feature_kind_only PASSED [ 50%]
-tests/test_harvest_repository.py::test_list_feature_layer_records_excludes_raster_and_filters_by_q PASSED [100%]
-
-======================= 2 passed, 11 deselected in 1.91s ======================
-```
-
-### Task 1 Tests Now Pass (Previously Red)
-
-**Command:**
-```bash
-cd core && uv run pytest tests/test_create_dataset_arcgis.py -v
-```
-
-**Output:**
-```
-tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_avec_couche_moissonnee_visible PASSED [ 33%]
-tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_item_inexistant_rejete PASSED [ 66%]
-tests/test_create_dataset_arcgis.py::test_create_dataset_arcgis_couche_non_lisible_rejete_avec_meme_message PASSED [100%]
-
-======================= 3 passed in 3.18s ======================
-```
-
-**All three tests that were failing due to missing `get_feature_layer_record` are now passing.**
-
-### Full Core Test Suite
-
-**Command:**
-```bash
-cd core && uv run pytest --tb=short
-```
-
-**Output:**
-```
-======================= 817 passed, 106 skipped in 124.88s ======================
-```
-
-**Summary:**
-- Full suite completely green
-- No regressions introduced
-- Task 2 new tests included in passed count
-- Task 1 tests (previously 0/3 red) now passing (3/3 green)
-
----
-
-## Files Changed
-
-| File | Action | Lines Added | Summary |
-|------|--------|-------------|---------|
-| `core/app/harvest/repository.py` | Modified | +28 | Added both feature layer functions |
-| `core/tests/test_harvest_repository.py` | Modified | +72 | Added fixture, two test functions |
-
----
-
-## Git Commit
+**RED** — before writing the implementation (imports/helpers/tool), ran:
 
 ```
-8e05eb7 feat(core): harvest repo gains get/list_feature_layer_record (SP-14k)
+cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
+  uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v
 ```
 
-Conventional commit `feat(core)`, signed with co-authorship line.
+Result: **7 failed** (all 7 tests). Failure mode: `WARNING mcp.server.lowlevel.server: Tool
+'run_analytics_query' not listed, no validation will be performed` followed by
+`call_tool`/`call_tool_expecting_error` failing because the tool didn't exist yet (either an
+unhandled/unknown-tool error path, or an unexpected `isError` value) — exactly the "unknown
+tool" failure the brief predicted for Step 3.
 
----
+**GREEN** — after implementing the tool/helpers and fixing the two test-file issues below, same
+command:
 
-## Self-Review
+```
+cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
+  uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v
+```
 
-### Completeness
-- ✅ Both functions implemented exactly as specified in brief
-- ✅ Test fixture names adapted correctly to match existing patterns
-- ✅ Both test functions match brief's intent (adapted for foreign key constraints)
-- ✅ Task 1's 3 previously-red tests now pass
-- ✅ No other tests broken
+Result:
+```
+tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_collection_source_returns_grouped_counts PASSED
+tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_unknown_group_by_field_errors PASSED
+tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_dataset_not_found_errors PASSED
+tests/test_mcp_tools_run_analytics_query.py::test_run_analytics_query_collection_unreadable_by_caller_errors PASSED
+tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_source_groupby_and_measure PASSED
+tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_source_rejects_bucket PASSED
+tests/test_mcp_tools_run_analytics_query_arcgis.py::test_run_analytics_query_arcgis_layer_unreadable_errors PASSED
+7 passed in 3.22s
+```
 
-### Correctness
-- ✅ `get_feature_layer_record` returns `HarvestRecord | None`
-- ✅ `get_feature_layer_record` filters by `layer_kind == "feature"`
-- ✅ `list_feature_layer_records` returns list of tuples `(item_id, title, external_url)`
-- ✅ `list_feature_layer_records` filters by `layer_kind == "feature"`
-- ✅ Query filtering by `q` (title ilike) works correctly in both functions
+Step 6 regression command and result:
+```
+cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
+  uv run pytest tests/test_mcp_tools_create.py tests/test_mcp_tools_create_form_app.py \
+  tests/test_mcp_tools_query_features.py tests/test_mcp_read_only_mode.py \
+  tests/test_mcp_tools_dataset_create.py -v
+# 25 passed in 5.89s
+```
 
-### Discipline
-- ✅ TDD followed: tests → RED → implementation → GREEN → commit
-- ✅ Full core suite green before commit
-- ✅ Conventional commit message with co-authorship
-- ✅ Minimal, focused change (only harvest repository and tests)
-- ✅ No extra functionality beyond specification
+## Files changed
 
-### Adaptation Notes
-Brief's test code used hardcoded item IDs which violated SQLite foreign key constraints. Tests were adapted to:
-- Create actual items via `items_repo.create_item` and use returned IDs
-- This matches the pattern already shown in the brief's second test
-- Behavior and logic unchanged; only test setup modified for environment compatibility
+- `core/app/mcp/tools.py` — imports, `_resolve_dataset_payload`, `_resolve_arcgis_external_url`,
+  `run_analytics_query` tool.
+- `core/tests/test_mcp_tools_run_analytics_query.py` — new.
+- `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` — new (transcribed verbatim from the
+  brief, no changes needed).
 
----
+Commit: `d877944` — `feat(core): mcp run_analytics_query tool (SP-14l)`.
 
-## Concerns & Notes
+## Self-review findings
 
-**None.** 
+- Implementation (`tools.py`) matches the brief's literal code exactly — no additions beyond
+  scope (no analyst-role check, no `run_sql`, `run_analytics_query` correctly omitted from
+  `READ_ONLY_TOOLS`).
+- No `HTTPException` escapes the tool body: every error path in the new helpers and the tool
+  itself raises `ValueError`, consistent with every other tool in this file.
+- `_resolve_arcgis_external_url` double-checks both the dataset item and the underlying arcgis
+  layer item read access, independently of `_resolve_dataset_payload`'s own dataset-item check —
+  exactly mirrors `app/harvest/routes.py::_resolve_arcgis_dataset`. Confirmed via
+  `test_run_analytics_query_arcgis_layer_unreadable_errors`, which registers the arcgis layer
+  item under a *different* owner (not `mock_user`) with no share, and confirms `run_analytics_query`
+  refuses it even though the dataset item itself is owned by (and thus readable to) the caller.
+- The arcgis-side injection-relevant piece (`translate_aggregate_query`'s field-name validation
+  fixed under SP-14k) is reused as-is — no new validation logic was written, per the brief.
+- Two issues found in the brief's literal test code during RED→GREEN iteration (both in
+  `test_mcp_tools_run_analytics_query.py`, the postgis-marked file — the arcgis test file needed
+  no changes):
+  1. **Double `with app_client:` per test.** The brief's tests exit and re-enter
+     `with app_client:` within a single test function. `mcp.server.streamable_http_manager.
+     StreamableHTTPSessionManager.run()` (the ASGI app's lifespan) can only run once per
+     instance — re-entering `with app_client:` a second time on the same `TestClient`/app raises
+     `RuntimeError: StreamableHTTPSessionManager .run() can only be called once per instance.`
+     This is a hard library restriction (source-code-documented), not a decision to relitigate.
+     Fix: collapsed each test's two-or-three `with app_client:` blocks into one — nothing in
+     between (`_register_incidents_collection`, `_write_partition`, the `session_factory()`
+     privacy flip) actually needs the ASGI lifespan; only the `call_tool`/`call_tool_expecting_error`
+     calls do.
+  2. **Ownership short-circuit made `test_run_analytics_query_collection_unreadable_by_caller_errors`
+     untestable as written.** The brief reused `_register_incidents_collection` (owner =
+     `mock_user`, the caller) then flipped `is_public=False` expecting the caller to lose read
+     access. But `app/sharing/authorization.py::can()` short-circuits
+     `if item.owner_id == user_id: return True` *before* checking `is_public` — so an owner's
+     read access can never be revoked by flipping `is_public`. As observed, this made the tool
+     legitimately succeed (`isError: False`, returning `{"categoryKey": "titre", "rows": []}`)
+     where the test expected an error. Fix: added `_register_incidents_collection_owned_by_other`,
+     a near-duplicate of `_register_incidents_collection` that creates the collection under a
+     *different* owner (public at creation, so `create_dataset` still succeeds for the caller),
+     so the later `is_public=False` flip genuinely revokes the caller's collection-read access
+     while the dataset item — owned by the caller — stays readable, exactly as the test's own
+     comment describes the intent.
+  Both fixes are additive/corrective only; they don't touch `tools.py` or change what's being
+  verified, they just make the tests actually exercise what they claim to.
 
-- Implementation complete and verified
-- All previously-red tests now pass
-- Full test suite green
-- Ready for Task 3 (GET /harvest/feature-layers route)
+## Issues or concerns
+
+- The two test-file deviations above are documented inline in the test file itself (as code
+  comments) and summarized here for visibility, per the instruction to flag anything that
+  required a judgment call beyond literal transcription. Both are test-infrastructure/test-logic
+  fixes, not decisions about `tools.py`'s behavior — the implementation itself required no
+  deviation from the brief.
+- Noted but out of scope: several unrelated `.superpowers/sdd/*.md` files
+  (`progress.md`, `task-1-brief.md`, `task-1-report.md`, `task-2-brief.md`) showed up as modified
+  in `git status` at the start of this task, and `task-2-report.md` already existed with content
+  from an unrelated prior SP-14k task (`harvest_repo.get/list_feature_layer_record`). None of
+  these were touched by this task's work; `task-2-report.md` is overwritten here with this task's
+  own report, and only `core/app/mcp/tools.py` plus the two new test files were staged/committed.
+- No other concerns. All tests pass, no regressions, import-linter clean, no stray warnings.
