@@ -242,6 +242,10 @@ export type CreateDatasetInput =
   | { title: string; owner: string; source: "collection"; collectionId: string }
   | { title: string; owner: string; source: "arcgis"; arcgisItemId: string };
 
+// Écho documenté de AnalyticsContextState (shell/src/builder/AnalyticsContext.tsx)
+// — même forme, dupliquée ici plutôt qu'importée : api/ ne dépend jamais de
+// builder/. Si AnalyticsContextState change de forme, répercuter le
+// changement ici aussi.
 export type BookmarkCrossFilterValue = string | string[] | { from: string; to: string };
 export type BookmarkCrossFilterEntry = { field: string; value: BookmarkCrossFilterValue; originSourceId: string };
 
@@ -250,7 +254,7 @@ export type BookmarkPayload = {
   pageId: string;
   timeRange: { from: string; to: string } | null;
   extent: [number, number, number, number] | null;
-  crossFilter: Record<string, BookmarkCrossFilterEntry>;
+  crossFilter: Record<string, BookmarkCrossFilterEntry | undefined>;
 };
 
 export type CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload;
