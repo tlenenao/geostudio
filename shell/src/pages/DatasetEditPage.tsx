@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useDatasetConfig, useItem, useSaveDataset, useUpdateItem } from "../api/hooks";
+import { useDatasetConfig, useItem, useItems, useSaveDataset, useUpdateItem } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
-import type { DatasetColumnMeta, DatasetConfig } from "../api/types";
+import type { CrossFilterLink, DatasetColumnMeta, DatasetConfig } from "../api/types";
 import { mergeDatasetSchema } from "../lib/datasetSchema";
 import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/button";
+import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
@@ -26,6 +27,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     queryFn: () => client.getCollectionSchema(draftCollectionId!),
     enabled: Boolean(draftCollectionId),
   });
+  const otherDatasetsQuery = useItems({ type: "dataset", pageSize: 100 });
 
   if (itemQuery.isLoading || configQuery.isLoading || (!draft && !configQuery.isError))
     return <p role="status">Chargement…</p>;
@@ -38,6 +40,31 @@ export function DatasetEditPage({ pk }: { pk: string }) {
 
   function setColumn(name: string, patch: DatasetColumnMeta) {
     setDraft((d) => (d ? { ...d, columns: { ...d.columns, [name]: { ...d.columns[name], ...patch } } } : d));
+  }
+
+  const targetOptions = (otherDatasetsQuery.data?.items ?? [])
+    .filter((d) => d.pk !== pk)
+    .map((d) => ({ pk: d.pk, title: d.title }));
+
+  function addCrossFilterLink() {
+    setDraft((d) =>
+      d ? { ...d, crossFilterLinks: [...(d.crossFilterLinks ?? []), { targetDatasetId: "", mode: "attribute" as const, sourceField: "", targetField: "" }] } : d,
+    );
+  }
+  function updateCrossFilterLink(index: number, next: CrossFilterLink) {
+    setDraft((d) => {
+      if (!d) return d;
+      const links = [...(d.crossFilterLinks ?? [])];
+      links[index] = next;
+      return { ...d, crossFilterLinks: links };
+    });
+  }
+  function removeCrossFilterLink(index: number) {
+    setDraft((d) => {
+      if (!d) return d;
+      const links = (d.crossFilterLinks ?? []).filter((_, i) => i !== index);
+      return { ...d, crossFilterLinks: links };
+    });
   }
 
   const merged = schemaQuery.data ? mergeDatasetSchema(schemaQuery.data, draft.columns) : [];
@@ -111,6 +138,22 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           />
           Réagir au déplacement de la carte
         </label>
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-xs font-medium text-slate-500">Liens cross-filter</p>
+          {(draft.crossFilterLinks ?? []).map((link, i) => (
+            <CrossFilterLinkEditor
+              key={i}
+              link={link}
+              sourceFields={merged.map((f) => f.name)}
+              targetOptions={targetOptions}
+              onChange={(next) => updateCrossFilterLink(i, next)}
+              onRemove={() => removeCrossFilterLink(i)}
+            />
+          ))}
+          <button type="button" className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100" onClick={addCrossFilterLink}>
+            Ajouter un lien
+          </button>
+        </div>
       </div>
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
         Enregistrer les colonnes

@@ -96,3 +96,55 @@ test("time field defaults to the empty option (no temporal context)", async () =
   expect(screen.getByLabelText("Colonne temporelle")).toHaveValue("");
   expect(screen.getByLabelText("Réagir au déplacement de la carte")).not.toBeChecked();
 });
+
+test("adding a cross-filter link and saving includes it in the saved payload", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+    updateItem: vi.fn().mockResolvedValue(item),
+    listItems: vi.fn().mockResolvedValue({
+      items: [{ pk: "ds-2", resourceType: "dataset", title: "Incidents", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
+      total: 1, page: 1, pageSize: 100,
+    }),
+  });
+
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter un lien" }));
+  await userEvent.selectOptions(screen.getByLabelText("Dataset cible"), "ds-2");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
+  const [, savedConfig] = saveDatasetConfig.mock.calls[0];
+  expect(savedConfig.crossFilterLinks).toEqual([
+    { targetDatasetId: "ds-2", mode: "attribute", sourceField: "", targetField: "" },
+  ]);
+});
+
+test("removing a cross-filter link drops it from the draft before saving", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue({
+      ...datasetConfig,
+      crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute" as const, sourceField: "nom", targetField: "nom" }],
+    }),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+    updateItem: vi.fn().mockResolvedValue(item),
+    listItems: vi.fn().mockResolvedValue({
+      items: [{ pk: "ds-2", resourceType: "dataset", title: "Incidents", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
+      total: 1, page: 1, pageSize: 100,
+    }),
+  });
+
+  await screen.findByLabelText("Libellé de nom");
+  await userEvent.click(await screen.findByRole("button", { name: "Supprimer le lien" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
+  const [, savedConfig] = saveDatasetConfig.mock.calls[0];
+  expect(savedConfig.crossFilterLinks).toEqual([]);
+});
