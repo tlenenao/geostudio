@@ -114,17 +114,21 @@ class DatasetPayload(BaseModel):
         return self
 
 
-class BookmarkCrossFilterEntry(BaseModel):
-    field: str
-    value: str | list[str]
-    originSourceId: str
-
-
 class BookmarkTimeRange(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     from_: str = Field(alias="from")
     to: str
+
+
+class BookmarkCrossFilterEntry(BaseModel):
+    field: str
+    # The shell's CrossFilterValue mirror type (AnalyticsContext.tsx) also
+    # allows a {from, to} range shape — written by the built-in "Curseur"
+    # range-slider widget (sliderFilter.tsx). Reuse BookmarkTimeRange rather
+    # than inventing a second range type.
+    value: str | list[str] | BookmarkTimeRange
+    originSourceId: str
 
 
 class BookmarkPayload(BaseModel):
