@@ -9,9 +9,14 @@ import { Button } from "../ui/button";
 
 const PAGE_SIZE = 12;
 
-export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string, type: ResourceType) => void }) {
+export function CatalogPage({
+  onOpenItem, fixedType,
+}: {
+  onOpenItem: (pk: string, type: ResourceType) => void;
+  fixedType?: ResourceType;
+}) {
   const [q, setQ] = useState("");
-  const [type, setType] = useState<ResourceType | "">("");
+  const [type, setType] = useState<ResourceType | "">(fixedType ?? "");
   const [scope, setScope] = useState<ItemScope>("all");
   const [page, setPage] = useState(1);
   const me = useMe();
@@ -47,23 +52,25 @@ export function CatalogPage({ onOpenItem }: { onOpenItem: (pk: string, type: Res
             }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Type
-          <select
-            aria-label="Type"
-            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
-            value={type}
-            onChange={(e) => {
-              setType(e.target.value as ResourceType | "");
-              setPage(1);
-            }}
-          >
-            <option value="">Tous</option>
-            <option value="app">App</option>
-            <option value="dashboard">Dashboard</option>
-            <option value="map">Map</option>
-          </select>
-        </label>
+        {!fixedType && (
+          <label className="flex flex-col gap-1 text-sm">
+            Type
+            <select
+              aria-label="Type"
+              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              value={type}
+              onChange={(e) => {
+                setType(e.target.value as ResourceType | "");
+                setPage(1);
+              }}
+            >
+              <option value="">Tous</option>
+              <option value="app">App</option>
+              <option value="dashboard">Dashboard</option>
+              <option value="map">Map</option>
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm">
           Portée
           <select

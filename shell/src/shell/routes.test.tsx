@@ -108,3 +108,46 @@ test("protected routes still require authentication", () => {
   expect(screen.queryByRole("button", { name: /ouvrir/i })).not.toBeInTheDocument();
   authState.isAuthenticated = true;
 });
+
+test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({
+        items: [
+          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        ],
+        total: 1, page: 1, pageSize: 12,
+      });
+    }),
+  );
+  wrap(<AppRoutes />, "/bookmarks");
+  await screen.findByText("Ma vue");
+  expect(new URL(lastUrl).searchParams.get("type")).toBe("bookmark");
+});
+
+test("opening a bookmark navigates to its app+page+ctx URL, not an editor", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        ],
+        total: 1, page: 1, pageSize: 12,
+      }),
+    ),
+    http.get("https://core.test/configs/by-item/bm-1", () =>
+      HttpResponse.json({
+        id: "cfg-bm-1", itemId: "bm-1", kind: "bookmark",
+        config: {
+          version: 1, kind: "bookmark",
+          bookmark: { appId: "42", pageId: "page-1", timeRange: null, extent: null, crossFilter: {} },
+        },
+      }),
+    ),
+  );
+  wrap(<AppRoutes />, "/bookmarks");
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText(/^app-runtime-42-page-1$/)).toBeInTheDocument();
+});
