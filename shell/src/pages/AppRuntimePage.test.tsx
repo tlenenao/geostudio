@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
 import { expect, test, vi } from "vitest";
@@ -241,4 +241,41 @@ test("writes the analytics context back to the ctx URL param, debounced, with re
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("the save-view button is absent when interactions is manual", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig) });
+  await screen.findByLabelText("Date de début");
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
+});
+
+test("the save-view button is present when interactions is auto", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) });
+  expect(await screen.findByRole("button", { name: "Enregistrer la vue" })).toBeInTheDocument();
+});
+
+test("saving a view captures the current analytics context and posts a bookmark", async () => {
+  const createBookmarkItem = vi.fn().mockResolvedValue({
+    pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
+    owner: "tanguy", thumbnailUrl: null, date: "", configId: "cfg-bm-1", isPublished: false,
+  });
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig),
+    createBookmarkItem,
+  });
+  const fromInput = await screen.findByLabelText("Date de début");
+  const toInput = await screen.findByLabelText("Date de fin");
+  await userEvent.type(fromInput, "2026-01-01");
+  await userEvent.type(toInput, "2026-02-01");
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la vue" }));
+  await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() =>
+    expect(createBookmarkItem).toHaveBeenCalledWith({
+      title: "Ma vue", owner: "tanguy", appId: "9", pageId: "page-1",
+      timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+    }),
+  );
 });

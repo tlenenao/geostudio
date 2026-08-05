@@ -8,8 +8,12 @@ import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
 import { registerCounterWcExampleWidget } from "../builder/examples/counterWidgetWc";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useActiveExtensions } from "../api/hooks";
+import { useActiveExtensions, useCreateBookmark } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
+import { useAuth } from "../auth/useAuth";
+import { Button } from "../ui/button";
+import { Dialog } from "../ui/dialog";
+import { Input } from "../ui/input";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -54,6 +58,34 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     }, EXTENT_DEBOUNCE_MS);
   }
 
+  const [currentAnalyticsContext, setCurrentAnalyticsContext] = useState<AnalyticsContextState>(initialAnalyticsContext);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [viewTitle, setViewTitle] = useState("");
+  const { username } = useAuth();
+  const createBookmark = useCreateBookmark();
+
+  function handleAnalyticsContextChangeAndTrack(state: AnalyticsContextState) {
+    setCurrentAnalyticsContext(state);
+    handleAnalyticsContextChange(state);
+  }
+
+  async function saveView() {
+    const title = viewTitle.trim();
+    if (!title) return;
+    try {
+      await createBookmark.mutateAsync({
+        title, owner: username ?? "",
+        appId: pk, pageId: pageId ?? query.data?.pages?.[0]?.id ?? "",
+        ...currentAnalyticsContext,
+      });
+      setSaveDialogOpen(false);
+      setViewTitle("");
+      createBookmark.reset();
+    } catch {
+      // surfaced via createBookmark.isError
+    }
+  }
+
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
 
@@ -73,15 +105,43 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
   }
   return (
-    <div className="h-full w-full">
-      <AppRenderer
-        config={query.data}
-        mode="runtime"
-        pageId={pageId}
-        onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
-        initialAnalyticsContext={initialAnalyticsContext}
-        onAnalyticsContextChange={handleAnalyticsContextChange}
-      />
+    <div className="flex h-full w-full flex-col">
+      {query.data.interactions === "auto" && (
+        <div className="flex justify-end border-b border-slate-200 p-2">
+          <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
+            Enregistrer la vue
+          </Button>
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <AppRenderer
+          config={query.data}
+          mode="runtime"
+          pageId={pageId}
+          onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
+          initialAnalyticsContext={initialAnalyticsContext}
+          onAnalyticsContextChange={handleAnalyticsContextChangeAndTrack}
+        />
+      </div>
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} title="Enregistrer la vue">
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            Nom de la vue
+            <Input aria-label="Nom de la vue" value={viewTitle} onChange={(e) => setViewTitle(e.target.value)} />
+          </label>
+          {createBookmark.isError && (
+            <p role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setSaveDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="button" size="sm" disabled={createBookmark.isPending || !viewTitle.trim()} onClick={saveView}>
+              Enregistrer
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
