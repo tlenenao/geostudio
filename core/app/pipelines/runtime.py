@@ -245,9 +245,28 @@ def preview_pipeline(
     try:
         ordered, view_by_node = _prepare(conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri)
         _execute_transform_chain(conn, ordered, payload.edges, view_by_node, stop_at=up_to)
-        rows = conn.execute(f"SELECT * FROM {_qi(view_by_node[up_to])} LIMIT {int(limit)}").fetchall()
+        view_name = view_by_node[up_to]
+        # Même conversion que _write_collection : DuckDB renvoie "geometry" en
+        # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
+        # décoder — on convertit en GeoJSON ici, au point de sortie de la
+        # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
+        # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
+        input_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description}
+        has_geometry = "geometry" in input_cols
+        select_list = (
+            "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
+        )
+        rows = conn.execute(f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}").fetchall()
         cols = [d[0] for d in conn.description]
-        return [dict(zip(cols, r)) for r in rows]
+        result = [dict(zip(cols, r)) for r in rows]
+        if has_geometry:
+            # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
+            # décode en objet pour que la réponse HTTP porte une géométrie
+            # GeoJSON réelle, pas une chaîne-dans-une-chaîne.
+            for row in result:
+                if row.get("geometry") is not None:
+                    row["geometry"] = json.loads(row["geometry"])
+        return result
     finally:
         conn.close()
 
@@ -300,19 +319,37 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
 def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
-    rows = conn.execute(f"SELECT * FROM {_qi(input_view)}").fetchall()
+    # Même conversion que _write_collection/preview_pipeline : la géométrie
+    # brute (WKB bytes) casse json.dumps (geojson) et n'a aucun sens en
+    # cellule CSV — on la convertit en chaîne GeoJSON ici, au point de
+    # sortie de l'export.
+    input_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description}
+    has_geometry = "geometry" in input_cols
+    select_list = (
+        "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
+    )
+    rows = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}").fetchall()
     columns = [d[0] for d in conn.description]
     if p.format == "csv":
+        # La colonne "geometry" contient désormais une chaîne GeoJSON : une
+        # valeur de cellule CSV utile, pas de traitement supplémentaire requis.
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(columns)
         writer.writerows(rows)
         body = buf.getvalue().encode("utf-8")
     else:
-        features = [
-            {"type": "Feature", "properties": dict(zip(columns, row)), "geometry": None}
-            for row in rows
-        ]
+        features = []
+        for row in rows:
+            properties = dict(zip(columns, row))
+            # La géométrie ne doit apparaître qu'au niveau "geometry" du
+            # Feature, jamais dupliquée dans "properties" (même contrat que
+            # _write_collection).
+            geometry = None
+            if has_geometry:
+                geometry_json = properties.pop("geometry", None)
+                geometry = json.loads(geometry_json) if geometry_json is not None else None
+            features.append({"type": "Feature", "properties": properties, "geometry": geometry})
         body = json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
     s3_client.put_object(Bucket=exports_bucket, Key=p.key, Body=body)
     return NodeStat(node.id, node.op, len(rows))

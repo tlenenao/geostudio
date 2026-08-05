@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import csv
 import dataclasses
+import io
+import json
 
 import geopandas as gpd
 import pytest
@@ -56,6 +59,18 @@ class _FakeCollections:
     """Stand-in that lets Task 8's tests exercise the reader/transform chain
     without a real collections table — the reader/transform half of the
     runtime only needs table_info + base_uri, never a live Collection row."""
+
+
+class _FakeS3:
+    """Stand-in pour boto3 S3 client : capture les put_object() de
+    writer.export sans dépendance à un vrai bucket — même esprit que
+    _FakeCollections pour le côté lecture."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def put_object(self, *, Bucket, Key, Body):
+        self.calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
 
 
 def test_preview_filter_and_derive(tmp_path, monkeypatch):
@@ -121,6 +136,123 @@ def test_preview_rejects_writer_node_as_up_to(tmp_path, monkeypatch):
             endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
             base_uri=str(tmp_path),
         )
+
+
+def test_preview_pipeline_serializes_geometry(tmp_path, monkeypatch):
+    # Régression finding 1 (revue finale SP-15a) : preview_pipeline renvoyait
+    # la géométrie en WKB (bytes) — jsonable_encoder (route FastAPI) plantait
+    # en UnicodeDecodeError dessus. json.dumps(rows) ci-dessous prouve ce que
+    # la vraie route HTTP ferait sans planter.
+    _write_partition(tmp_path, rows=[
+        _row(1, "Nord", 10, x=3.0, y=44.0), _row(2, "Sud", 5, x=4.0, y=43.0),
+    ])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="r1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=50,
+    )
+    by_id = {r["id"]: r for r in rows}
+    assert by_id[1]["geometry"] == {"type": "Point", "coordinates": [3.0, 44.0]}
+    assert by_id[2]["geometry"] == {"type": "Point", "coordinates": [4.0, 43.0]}
+    json.dumps(rows)  # ne doit pas lever (bytes non sérialisables pré-fix)
+
+
+def test_write_export_geojson_serializes_geometry(tmp_path, monkeypatch):
+    # Régression finding 2 (revue finale SP-15a) : writer.export en geojson
+    # plantait sur json.dumps(bytes) et, indépendamment, posait toujours
+    # "geometry": None en dur dans chaque feature.
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.5, y=45.5)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export",
+             "params": {"format": "geojson", "key": "out.geojson"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    })
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None, payload=payload, tenant_id="t1", user=None,
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), s3_client=fake_s3, exports_bucket="exports",
+    )
+
+    assert any(stat.op == "writer.export" and stat.rowCount == 1 for stat in stats)
+    assert len(fake_s3.calls) == 1
+    body = fake_s3.calls[0]["Body"]
+    parsed = json.loads(body)  # ne doit pas lever (bytes non sérialisables pré-fix)
+    assert parsed["type"] == "FeatureCollection"
+    [feature] = parsed["features"]
+    assert feature["geometry"] == {"type": "Point", "coordinates": [1.5, 45.5]}
+    assert "geometry" not in feature["properties"]  # pas dupliquée dans properties
+    assert feature["properties"]["region"] == "Nord"
+
+
+def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
+    # Régression finding 2 (revue finale SP-15a), branche csv : la colonne
+    # geometry contenait le repr Python des bytes WKB (b'\x01...'), inutile
+    # en cellule CSV — doit désormais contenir une chaîne GeoJSON exploitable.
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.5, y=45.5)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export",
+             "params": {"format": "csv", "key": "out.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    })
+    fake_s3 = _FakeS3()
+
+    runtime.run_pipeline(
+        None, payload=payload, tenant_id="t1", user=None,
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), s3_client=fake_s3, exports_bucket="exports",
+    )
+
+    body = fake_s3.calls[0]["Body"].decode("utf-8")
+    assert "b'\\x" not in body  # pas le repr Python des bytes WKB
+    reader = csv.reader(io.StringIO(body))
+    header = next(reader)
+    data_row = next(reader)
+    geometry_cell = data_row[header.index("geometry")]
+    parsed_geometry = json.loads(geometry_cell)  # doit être une chaîne GeoJSON valide
+    assert parsed_geometry == {"type": "Point", "coordinates": [1.5, 45.5]}
 
 
 @pytest.mark.postgis
