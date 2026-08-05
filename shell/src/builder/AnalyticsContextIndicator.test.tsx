@@ -110,3 +110,23 @@ test("shows no propagation arrow when the dataset declares no matching link", as
   expect(screen.getByText(/region : Nord/)).toBeInTheDocument();
   expect(screen.queryByText(/→/)).not.toBeInTheDocument();
 });
+
+test("shows no propagation arrow when the declared link's mode does not match the active filter", async () => {
+  const datasets: Record<string, DatasetConfig> = {
+    ds1: {
+      source: "collection", collectionId: "communes", columns: {},
+      crossFilterLinks: [{ targetDatasetId: "ds2", mode: "attribute", sourceField: "other-field", targetField: "region" }],
+    },
+  };
+  render(
+    <DatasetsContext.Provider value={datasets}>
+      <AnalyticsContextProvider interactions="auto">
+        <Controls />
+        <AnalyticsContextIndicator />
+      </AnalyticsContextProvider>
+    </DatasetsContext.Provider>,
+  );
+  await userEvent.click(screen.getByText("set-cf"));
+  expect(screen.getByText(/region : Nord/)).toBeInTheDocument();
+  expect(screen.queryByText(/→/)).not.toBeInTheDocument();
+});
