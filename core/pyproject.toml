@@ -75,6 +75,7 @@ layers = [
     "app.mcp",
     "app.public",
     "app.harvest",
+    "app.pipelines",
     "app.ingestion",
     "app.dcat",
     "app.stac",
@@ -100,4 +101,5 @@ ignore_imports = [
     "app.db -> app.ingestion.models",
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
+    "app.db -> app.pipelines.models",
 ]
