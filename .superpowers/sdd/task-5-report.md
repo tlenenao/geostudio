@@ -1,186 +1,183 @@
-# Task 5 Report: Core — `GET/POST /datasets/{itemId}/arcgis/items|aggregate`
+# Task 5 report — Shell: `CatalogPage` reuse (`/bookmarks`) + bookmark-aware open navigation
 
-## Status: DONE
+## What I implemented
 
-## Summary
+1. **`shell/src/pages/CatalogPage.tsx`** — added an optional `fixedType?: ResourceType` prop.
+   - `type` state now initializes to `fixedType ?? ""`.
+   - The "Type" selector `<label>` is now wrapped in `{!fixedType && (...)}`, hiding it entirely
+     when `fixedType` is set, while the underlying `useItems` query still filters on `type` (via
+     the state initializer), so the list is locked to that type without an escape hatch in the UI.
+   - `onOpenItem`'s contract is unchanged.
 
-Implemented two new FastAPI routes that enable live proxying to ArcGIS Feature Services for `arcgis`-sourced datasets. This completes the integration of live data queries through the core platform, translating client requests into ArcGIS REST API calls and reshaping responses for consumption by the shell.
+2. **`shell/src/shell/routes.tsx`**:
+   - Added imports: `useItemClient` (`../api/ItemClientProvider`), `encodeAnalyticsContext`
+     (`../lib/analyticsContextUrl`), `type { ResourceType }` (`../api/types`).
+   - Extracted the old inline open-navigation ternary out of `CatalogRoute` into a new shared
+     `useOpenItem()` hook, placed right after the imports (before `CatalogRoute`). Its non-bookmark
+     branch (`navigate(type === "map" ? ... : ...)`) is byte-identical to the code it replaced.
+   - Added a `bookmark`-specific branch: fetches `client.getBookmarkConfig(pk)`, encodes
+     `{ timeRange, extent, crossFilter }` via `encodeAnalyticsContext`, and navigates to
+     `/apps/{appId}/{pageId}?ctx={ctx}` (URL-encoding `appId`/`pageId`) instead of an editor route.
+   - `CatalogRoute` now just calls `useOpenItem()` and passes it straight through.
+   - Added `BookmarksRoute`, using the same `useOpenItem()` and passing `fixedType="bookmark"`.
+   - Registered `<Route path="/bookmarks" element={<BookmarksRoute />} />` inside
+     `ProtectedLayout`, right after `/items/:pk`.
 
-## Implementation
+## What I tested and results
 
-### Files Modified
+- `shell/src/pages/CatalogPage.test.tsx`: appended "fixedType locks the type filter and hides the
+  selector" (asserts the `/items` request has `type=bookmark` and the `Type` selector is absent).
+- `shell/src/shell/routes.test.tsx`: appended two tests —
+  - "renders the bookmarks catalog at /bookmarks, filtered to type=bookmark"
+  - "opening a bookmark navigates to its app+page+ctx URL, not an editor" (mocks
+    `GET /configs/by-item/bm-1` returning a bookmark config, clicks "Ouvrir", asserts the mocked
+    `AppRuntimePage` renders `app-runtime-42-page-1`).
 
-1. **`core/app/harvest/routes.py`**
-   - Added necessary imports: `datetime`, `timezone`, `Query`, `Request`, `httpx`, aggregation models, configs repository, live_query module, egress guarding
-   - Added module constant: `_MAX_LIMIT = 1000`
-   - Added dependency factory: `get_arcgis_http_client()` for building guarded HTTP clients (overridable in tests)
-   - Added helper functions:
-     - `_parse_bbox(raw)`: Parses and validates bbox parameter as 4 comma-separated floats
-     - `_resolve_arcgis_dataset(session, item_id, user)`: Resolves a dataset item to its ArcGIS layer URL with authorization checks
-     - `_groupby_fields(raw)`: Normalizes groupBy parameter to a list
-     - `_measure_label(m)`: Derives measure labels
-   - Added two routes:
-     - `GET /datasets/{item_id}/arcgis/items`: Queries features with filters, bbox, limit, offset
-     - `POST /datasets/{item_id}/arcgis/aggregate`: Computes aggregations with optional grouping
+All new tests pass. Full unit suite: **110 files / 847 tests passed**. `npx tsc --noEmit`: clean,
+no errors.
 
-2. **`core/tests/test_harvest_dataset_arcgis_routes.py`** (new file)
-   - Complete test suite with 10 test cases covering all route behaviors
+## TDD Evidence
 
-## Verification Results
+**RED** — `cd shell && npx vitest run src/pages/CatalogPage.test.tsx src/shell/routes.test.tsx`
+(run before implementation, only tests appended):
+```
+FAIL src/pages/CatalogPage.test.tsx > fixedType locks the type filter and hides the selector
+  - Expected: "bookmark"
+  + Received: null
 
-### Step 1: Focused Test Run (RED → GREEN)
-```bash
-cd core && uv run pytest tests/test_harvest_dataset_arcgis_routes.py -v
+FAIL src/shell/routes.test.tsx > renders the bookmarks catalog at /bookmarks, filtered to type=bookmark
+  TestingLibraryElementError: Unable to find an element with the text: Ma vue.
+
+FAIL src/shell/routes.test.tsx > opening a bookmark navigates to its app+page+ctx URL, not an editor
+  TestingLibraryElementError: Unable to find role="button" and name `/ouvrir/i`
+
+ Test Files  2 failed (2)
+      Tests  3 failed | 10 passed (13)
+```
+Expected and matches the brief: no `fixedType` prop yet, no `/bookmarks` route yet.
+
+**GREEN** — after implementing `CatalogPage.tsx` and `routes.tsx`:
+```
+$ npx vitest run src/pages/CatalogPage.test.tsx
+ ✓ src/pages/CatalogPage.test.tsx (4 tests) 291ms
+
+$ npx vitest run src/shell/routes.test.tsx
+ ✓ src/shell/routes.test.tsx (9 tests) 352ms
+```
+The pre-existing "navigates from catalog to app builder on open (app item)" test passed unchanged
+(confirmed it's part of the 9 green tests, no modification needed — the non-bookmark branch of
+`useOpenItem` is byte-identical to the old inline ternary).
+
+Full suite: `npm run test` → `Test Files 110 passed (110)`, `Tests 847 passed (847)`.
+
+## Files changed
+
+- `shell/src/pages/CatalogPage.tsx`
+- `shell/src/shell/routes.tsx`
+- `shell/src/pages/CatalogPage.test.tsx`
+- `shell/src/shell/routes.test.tsx`
+
+Commit: `04dc6a4 feat(shell): /bookmarks catalog + bookmark-aware open navigation (SP-14m)`
+
+## Self-review findings
+
+- Checked that `client.getBookmarkConfig` (Task 4) and `BookmarkPayload` type already existed and
+  matched what the brief assumes (`shell/src/api/itemClient.ts:624-628`, hitting
+  `GET /configs/by-item/{pk}`) — no drift found.
+- Checked `useItemClient` export shape in `shell/src/api/ItemClientProvider.tsx` (file is `.tsx`,
+  not `.ts` as the brief's file reference implied) — import path `../api/ItemClientProvider`
+  resolves fine either way (no extension in the import), no issue.
+- Confirmed `CatalogPage`'s `onOpenItem` external contract (`(pk, type) => void`) is unchanged —
+  `useOpenItem()`'s return value is `async (pk, type) => Promise<void>`, which is call-compatible
+  since callers (e.g. `ItemCard`'s `onOpen`) don't await it.
+- No other call sites of `CatalogPage` or the old inline ternary in `routes.tsx` needed updates
+  (verified via grep — only `CatalogRoute` used it).
+- Left `.superpowers/sdd/` files (task-1..4 briefs/reports, progress.md — modified by concurrent
+  parallel tasks) unstaged, per the brief's explicit `git add` file list.
+
+## Issues or concerns
+
+None. Implementation matches the brief exactly; no deviations were needed.
+
+---
+
+## Post-review fix: unhandled rejection on failed bookmark-config fetch
+
+**Finding (code review on commit `04dc6a4`):** `useOpenItem()`'s bookmark branch called
+`await client.getBookmarkConfig(pk)` with no try/catch. `ItemCard.tsx`'s only caller invokes
+`onOpen(item.pk, item.resourceType)` synchronously, without `await` or `.catch()`. A rejection
+(deleted config row while the item survived, transient network error) was therefore an unhandled
+promise rejection: no navigation, no error surfaced, clicking "Ouvrir" silently did nothing.
+
+**Convention check:** searched the shell for a global toast/notification system — none exists.
+The established idiom for surfacing a failed async action outside a form/dialog is local
+component state + a `role="alert"` paragraph styled `text-sm text-red-600` (see
+`HarvestSourcesAdminPage.tsx`: `deleteSource.isError && <p role="alert" ...>Échec de la
+suppression.</p>`). Matched that pattern rather than inventing a new mechanism.
+
+**Fix:** `useOpenItem()` now wraps the bookmark fetch/navigate in try/catch, tracks a local
+`openError` boolean (`useState`), and returns `{ onOpenItem, openError }`. `CatalogRoute` and
+`BookmarksRoute` each render a `role="alert"` message (`Échec de l'ouverture de l'élément.` /
+`Échec de l'ouverture du signet.`) when `openError` is true, alongside the unchanged `CatalogPage`.
+No navigation happens on failure; the user stays on the catalog/bookmarks page with a visible error
+instead of a silent no-op.
+
+**Regression test** — appended to `shell/src/shell/routes.test.tsx`:
+"a failed bookmark config fetch surfaces an error instead of silently doing nothing" — mocks
+`GET https://core.test/configs/by-item/bm-1` to return a 500, clicks "Ouvrir" on the bookmarks
+catalog, and asserts: a `role="alert"` appears with the expected text, the catalog item ("Ma vue")
+is still shown, and no `app-runtime-*` text appears (i.e. no navigation occurred).
+
+**TDD evidence for the fix:**
+
+RED — temporarily removed the try/catch (kept the test as-is) and ran
+`npx vitest run src/shell/routes.test.tsx -t "failed bookmark config fetch"`:
+```
+FAIL  src/shell/routes.test.tsx > a failed bookmark config fetch surfaces an error instead of silently doing nothing
+ ❯ src/shell/routes.test.tsx:169:23
+   expect(await screen.findByRole("alert")).toHaveTextContent(...)
+   (timed out waiting for the alert — it never appears without the catch)
+
+⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯
+Error: Request failed: 500 GET /configs/by-item/bm-1
+ ❯ request src/api/itemClient.ts:191:13
+ ❯ Object.getBookmarkConfig src/api/itemClient.ts:625:20
+ ❯ onOpenItem src/shell/routes.tsx:41:24
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+```
+This reproduces exactly the unhandled-promise-rejection failure mode the review flagged.
+
+GREEN — restored the try/catch, reran the full file:
+```
+$ npx vitest run src/shell/routes.test.tsx src/pages/CatalogPage.test.tsx
+ ✓ src/pages/CatalogPage.test.tsx (4 tests) 301ms
+ ✓ src/shell/routes.test.tsx (10 tests) 422ms
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
 ```
 
-**Before**: Routes did not exist, dependency factory missing
-**After**: All 10 tests PASSED in 8.23s
-
+**Full suite + build after the fix:**
 ```
-============================== 10 passed in 8.23s ==============================
+$ npm run test
+ Test Files  110 passed (110)
+      Tests  848 passed (848)
+
+$ npm run build
+> tsc --noEmit && vite build
+✓ 2720 modules transformed.
+✓ built in 11.48s
 ```
+(Chunk-size warnings in the build output are pre-existing and unrelated to this change.)
 
-Test results:
-- ✓ `test_get_items_proxies_to_arcgis_and_reshapes_response`
-- ✓ `test_get_items_forwards_filters_and_bbox`
-- ✓ `test_get_items_unknown_dataset_item_404s`
-- ✓ `test_get_items_egress_blocked_returns_502`
-- ✓ `test_post_aggregate_no_groupby_count`
-- ✓ `test_post_aggregate_groupby_and_measure`
-- ✓ `test_post_aggregate_bucket_rejected`
-- ✓ `test_post_aggregate_split_rejected`
-- ✓ `test_post_aggregate_bins_rejected`
-- ✓ `test_get_items_on_collection_dataset_404s`
+**Files changed (fix):**
+- `shell/src/shell/routes.tsx`
+- `shell/src/shell/routes.test.tsx`
 
-### Step 2: Full Core Suite + Lint-Imports
-```bash
-cd core && uv run pytest && uv run lint-imports
-```
+**Commit:** `29929aa fix(shell): surface a failed bookmark-config fetch instead of silently doing nothing`
 
-**Results**: PASSED
-- Full pytest: `844 passed, 106 skipped in 124.35s`
-- Import linter: `Contracts: 1 kept, 0 broken.` (layered architecture maintained)
-- No new violations introduced
-
-## Self-Review Checklist
-
-✓ **Both routes fully implemented** as specified in the brief
-
-✓ **bucket/split/bins genuinely return 400**: Tests verify HTTP 400 status with correct error message
-
-✓ **Every outbound HTTP call goes through egress guard**: All calls via `get_arcgis_http_client()` dependency which injects guarded client built from `app.harvest.egress.build_guarded_client()`
-
-✓ **Tests are behavioral, not mock-chains**: Use `httpx.MockTransport` for controlled ArcGIS service simulation; real egress-block and error scenarios tested
-
-✓ **No existing httpx import alias conflicts**: File had no prior httpx import
-
-✓ **Authorization enforcement**: `_resolve_arcgis_dataset` checks both dataset item and referenced layer access
-
-✓ **Response shape compliance**: Features include `numberMatched`, `numberReturned`, `timeStamp`, `links`; aggregate includes `categoryKey` and `rows`
-
-## Commit
-
-`53e2cd0` — `feat(core): GET/POST /datasets/{itemId}/arcgis/items|aggregate live proxy (SP-14k)`
-
-Files changed:
-- `core/app/harvest/routes.py` (modified)
-- `core/tests/test_harvest_dataset_arcgis_routes.py` (new)
-
-## Fix: field-name injection (post-review)
-
-### The finding
-
-A task review flagged a Critical: unvalidated filter field *names* (query-param
-keys on `GET /datasets/{itemId}/arcgis/items`, JSON-body keys of `body.filters`
-on `POST /datasets/{itemId}/arcgis/aggregate`) reached the outbound ArcGIS
-`where=` clause unescaped. `live_query._build_where` only escaped filter
-*values* via `_sql_lit`; the field *name* was interpolated verbatim into the
-SQL-like where string, so a query param key like `1) OR (1=1--` would land
-unescaped in the request sent to the remote ArcGIS `FeatureServer/query`
-endpoint — a confirmed, exploitable injection into an external-service
-request.
-
-### What I changed
-
-1. **`core/app/harvest/live_query.py`**
-   - Line 8: added `import re`.
-   - Line 16: added `_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")`
-     next to `_RANGE_OPS`/`_STAT_TYPES` — a strict ArcGIS/SQL-style identifier
-     pattern (letter/underscore then letters/digits/underscores only).
-   - In `_build_where` (around line 43-45): after
-     `name, suffix = _split_filter_key(raw_name)`, added a check that raises
-     `ArcgisQueryError(raw_name, f"invalid filter field name '{name}'")` when
-     `name` doesn't match `_FIELD_NAME_RE`, before any clause is built from it.
-     This is a scoped identifier-pattern fix (not a column allowlist), per the
-     reviewer's own suggestion — the arcgis connector has no local
-     schema/column list for the remote layer to allowlist against.
-   - `_build_where` is shared by both `translate_features_query` (used by the
-     `GET .../items` route) and `translate_aggregate_query` (used by the
-     `POST .../aggregate` route), so one check covers both filter-name
-     injection paths.
-
-2. **`core/app/harvest/routes.py`**
-   - In `get_dataset_arcgis_items` (around line 238-246): wrapped the
-     `live_query.translate_features_query(...)` call in a
-     `try/except live_query.ArcgisQueryError` that raises `HTTPException(400, …)`
-     with the same response shape (`{"errors": [{"field", "code": "invalid_filter", "message"}]}`)
-     already used by the aggregate route's equivalent handling. The existing
-     `try/except EgressBlockedError/httpx.HTTPError/finally` around
-     `fetch_query` was left untouched, as a separate block.
-   - `get_dataset_arcgis_aggregate` was **not modified** — see below.
-
-### Was the aggregate route already covered "for free"?
-
-Yes, confirmed by reading the code before assuming it. Lines 276-284 of
-`routes.py` (pre-existing, unchanged) already wrap
-`live_query.translate_aggregate_query(group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox)`
-in a `try/except live_query.ArcgisQueryError` that raises the same 400 shape
-(`code: "invalid_aggregate"`). Since `translate_aggregate_query` calls the
-same `_build_where` that now raises on bad field names, `body.filters` keys
-are validated through the exact same code path and the existing except clause
-catches it — no route-level change was needed for the aggregate route.
-
-### Tests added
-
-**`core/tests/test_harvest_live_query.py`** — added
-`test_translate_features_query_rejects_invalid_field_name`, asserting
-`live_query.translate_features_query(filters={"1) OR (1=1--": "x"}, ...)`
-raises `ArcgisQueryError`. Existing tests use only valid identifiers
-(`statut`, `annee`, `type`, `nom`, `commune`, with `__gte`/`__lte`/`__in`
-suffixes), confirmed unaffected.
-
-**`core/tests/test_harvest_dataset_arcgis_routes.py`** — added:
-- `test_get_items_invalid_filter_field_name_rejected`: `GET
-  /datasets/{item_id}/arcgis/items` with query param key
-  `1) OR (1=1--` returns 400.
-- `test_post_aggregate_invalid_filter_field_name_rejected`: `POST
-  /datasets/{item_id}/arcgis/aggregate` with `filters: {"1) OR (1=1--": "x"}`
-  in the JSON body returns 400 (mirrors the existing
-  `test_post_aggregate_bucket_rejected`-style tests in that file).
-
-### Verification commands and results
-
-```
-cd /home/lenen/projets/geostudio/core
-uv run pytest tests/test_harvest_live_query.py tests/test_harvest_dataset_arcgis_routes.py tests/test_create_dataset_arcgis.py -q
-```
-Result: `31 passed in 6.77s`
-
-```
-uv run pytest -q
-```
-Result: `847 passed, 106 skipped in 113.86s` — fully green (up from the
-606+87 baseline noted in CLAUDE.md, reflecting cumulative SP-14k test growth
-across tasks 1-5).
-
-```
-uv run lint-imports
-```
-Result: `Contracts: 1 kept, 0 broken.` — unaffected, as expected (no new
-cross-module imports introduced).
-
-### Scope discipline
-
-No schema-fetch/column-allowlist system was added. `groupByFieldsForStatistics`
-/ `group_by` field validation was left untouched (out of scope for this
-finding — the review explicitly excluded it). No unrelated refactoring.
+**Concerns:** none. The fix is scoped to `useOpenItem()` and its two callers; `ItemDetailPage`'s
+separate `onOpenEditor` navigation (which never routes bookmarks — bookmarks have no editor) was
+left untouched as out of scope for this finding.

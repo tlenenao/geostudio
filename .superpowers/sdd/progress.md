@@ -1,128 +1,199 @@
-# SP-14l — MCP analytique — Progress Ledger
+# SP-14m — Bookmarks (vues analytiques enregistrées) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-04-sp14l-mcp-analytique.md
+Plan: docs/superpowers/plans/2026-08-05-sp14m-bookmarks.md
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@4f95f43 (ledger SP-14k committé en amont par hygiène de dépôt ;
-SP-14k lui-même READY TO MERGE mais pas encore intégré à `main`).
+Base globale: dev@1e95253 (HEAD au lancement de cette sous-partie).
 
-Note : ce fichier remplace le ledger SP-14k (complet, READY TO MERGE, HEAD=9f4ef1b
-puis commit de ledger 4f95f43) — même fichier scratch réutilisé par convention du
-dépôt ; contenu SP-14k préservé dans l'historique git (commit 4f95f43).
+Note : ce fichier remplace le ledger SP-14l (complet, READY TO MERGE, HEAD=f8bc295) —
+même fichier scratch réutilisé par convention du dépôt ; contenu SP-14l préservé
+dans l'historique git (commit f8bc295 et son ledger).
 
 ## Pré-vol
 
-Scan des 4 tâches (1: `create_dataset` — mirror `POST /configs` kind=dataset ;
-2: `run_analytics_query` — mirror `POST /collections/{id}/aggregate` +
-`POST /datasets/{id}/arcgis/aggregate` ; 3: `explain_dataset` — description de
-champs sans stats ni échantillonnage ; 4: vérification complète + doc) contre
-les contraintes globales (exactement 3 outils, pas de `run_sql`, pas de requête
-visuelle, pas de per-field stats dans `explain_dataset` ; `run_analytics_query`
-= accès lecture dataset seul, pas de rôle analyste ; `create_dataset` gated par
-`is_read_only_mode()` + `READ_ONLY_TOOLS` ; exceptions domaine → `ValueError`
-jamais `HTTPException` ; helpers privés réimplémentés en miroir, jamais
-cross-importés ; docs FR / code EN ; commits conventionnels ; suite complète +
-lint-imports verts en fin de tâche) :
+Scan des 7 tâches (1: schéma Pydantic `BookmarkPayload` ; 2: validation directe
++ câblage REST `POST /configs` / `PUT /configs/by-item/{id}` ; 3: outil MCP
+`create_bookmark` ; 4: shell — types/itemClient/hooks ; 5: `/bookmarks` via
+réutilisation `CatalogPage` + navigation d'ouverture consciente des bookmarks ;
+6: bouton "Enregistrer la vue" sur `AppRuntimePage` ; 7: E2E sauvegarde/liste/
+réouverture) contre les Contraintes Globales (pas de migration Alembic — colonnes
+`String` déjà libres ; additif seul, aucune config `kind="bookmark"` dans les
+fixtures actuelles ; docs FR / code EN ; commits conventionnels ; TDD systématique ;
+hors périmètre : cross-filter cross-dataset, query builder visuel, flux d'édition
+de bookmark, snapshot de données, outil MCP `list_bookmarks` dédié, validation
+pageId/fraîcheur du contexte) :
 
-Aucune lacune ni contradiction trouvée. Le plan fournit du code complet et
-littéral pour chaque tâche (imports, helpers privés, corps d'outil MCP, tests
-unitaires — deux variantes source `collection`/`arcgis` par outil de lecture) —
-transcription + tests, pas de conception à faire, même style que SP-14k.
-Dépendances d'interface notées : Task 2 consomme `create_dataset` (Task 1)
-pour construire ses fixtures et réutilise le voisinage de `_validate_dataset`
-(nouveaux helpers `_resolve_dataset_payload`/`_resolve_arcgis_external_url`) ;
-Task 3 consomme les deux helpers de Task 2. Task 4 est vérification seule
-(suite complète, lint-imports, smoke-test comptage d'outils à 15, mise à jour
-`CLAUDE.md` — jugement à porter sur le retrait ou non de la ligne SP-14
-"À venir" en comparant à la feuille de route, la requête visuelle restant
-bloquée sur SP-15/16 donc SP-14 dans son ensemble n'est pas complet).
+Aucune contradiction trouvée. Code littéral complet fourni pour chaque tâche
+(imports, helpers, corps de composants, tests) — transcription + intégration,
+même style que SP-14l. Task 5's `useOpenItem` factorise un ternaire existant en
+un seul point (pas une duplication — extraction, le plan le note explicitement
+comme "byte-identical" au comportement non-bookmark préexistant). Aucun test
+n'asserte rien de vide. Dépendances d'interface : Task 2 consomme Task 1 ;
+Task 3 consomme Task 1+2 ; Task 4 consomme rien (nouveau) mais Task 5/6 en
+dépendent ; Task 5 consomme Task 4 ; Task 6 consomme Task 4 ; Task 7 (E2E)
+consomme Tasks 4-6 bout en bout.
 
 Poursuite sans confirmation utilisateur (scan de contradictions clean).
 
 ## Tasks
 
-Base Task 1: 4f95f43
-Task 1: complete (commit a6eaf75, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 1 Minor cosmétique déjà
-présent tel quel dans le texte littéral du plan). `create_dataset` : mirror
-fidèle de `POST /configs` kind=dataset, `_validate_dataset` réutilise
-`validate_dataset_payload` inchangé (HTTPException→ValueError), gate
-`is_read_only_mode()` posé avant toute session DB, `READ_ONLY_TOOLS` étendu à
-5 entrées. Absence de `_validate_extension_scope` vérifiée inerte pour les
-configs dataset (pas de layout/pages) par le reviewer — conforme au design,
-pas un écart. 13/13 tests (6 nouveaux + 7 read-only mode), aucune régression.
+Base Task 1: 1e95253
+Task 1: complete (commit a461604, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 3 Minor négligeables —
+fidélité du rapport de l'implémenteur, pas du code : message de commit et
+comptes de lignes inexacts dans le rapport, vérifiés indépendamment par le
+reviewer contre `git log`/le diff réel). `BookmarkPayload`/`BookmarkTimeRange`/
+`BookmarkCrossFilterEntry` ajoutés, `BuilderConfig.kind` étend le literal,
+`_require_kind_payload` étendu — mirror fidèle du pattern `DatasetPayload`
+existant. 6/6 tests nouveaux, 867 passed + 112 skipped en suite complète
+(0 régression).
 
-Base Task 2: a6eaf75
-Task 2: complete (commit d877944, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor cosmétiques).
-`run_analytics_query` : miroir ligne-à-ligne des deux routes REST existantes
-(`POST /collections/{id}/aggregate` et `POST /datasets/{id}/arcgis/aggregate`),
-double vérification indépendante dataset+couche pour arcgis
-(`_resolve_arcgis_external_url`, vérifiée par le reviewer contre
-`_resolve_arcgis_dataset`), rejet explicite bucket/split/bins côté arcgis,
-`translate_aggregate_query` réutilisé intact (fix injection SP-14k hérité
-sans modification). Absent de `READ_ONLY_TOOLS` (outil lecture seule,
-confirmé). 2 bugs trouvés et corrigés par l'implémenteur dans le code de
-test **littéral du plan** (pas dans `tools.py`) : double `with app_client:`
-(contrainte dure de la lib MCP, un seul run par instance) et un test de
-révocation d'accès rendu inopérant par le short-circuit propriétaire de
-`can()` (collection possédée par l'appelant plutôt qu'un tiers) — les deux
-corrections vérifiées indépendamment par le reviewer comme un renforcement
-des tests, pas un affaiblissement, aucune ligne pré-existante de `tools.py`
-touchée. 7/7 tests nouveaux (4 postgis réels + 3 SQLite) + 25/25 régression,
-lint-imports vert.
+Base Task 2: a461604
+Task 2: complete (commit c346c2d, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor — couverture
+"dashboard" du tuple accepté non testée par le texte littéral du plan, et une
+petite optimisation possible get_access_facts+get_item→get_item seul, ni l'un
+ni l'autre bloquant). `bookmark_validation.py` créé, mirror volontaire du
+style `dataset_validation.py` (même message 422 "app not found" pour
+inexistant/illisible/mauvais type, pas de leak d'existence) — câblé
+uniquement dans `create_config`/`update_config_by_item`, `update_config`
+(par config-id) explicitement hors périmètre et vérifié absent par le
+reviewer via lecture directe de routes.py. 5/5 tests nouveaux, 872 passed +
+112 skipped en suite complète (0 régression), lint-imports vert.
 
-Base Task 3: d877944
-Task 3: complete (commit a1dc72a, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables).
-`explain_dataset` : réutilise intact `_resolve_dataset_payload`/
-`_resolve_arcgis_external_url` (Task 2, double vérification permission
-préservée), `introspect_table`/`table_info_to_schema` côté collection
-(même chemin que `create_form_app`), `harvest_routes.get_arcgis_http_client()`
-guardé côté arcgis (pas d'appel httpx nu). Aucune stat/échantillonnage par
-champ (vérifié champ par champ par le reviewer — seuls `name`/`type`
-retournés, `alias`/`required`/`maxLength` explicitement écartés). Absent de
-`READ_ONLY_TOOLS` (lecture seule). 3/3 tests nouveaux (1 postgis réel + 2
-SQLite), 69/69 suite MCP complète.
+Base Task 3: c346c2d
+Task 3: complete (commit 5edaa5b, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
+assertion faible pageId vide plan-mandated, croissance continue de
+tools.py suivant le précédent établi). `create_bookmark` MCP : mirror fidèle
+de `create_dataset` (gate `is_read_only_mode()` avant toute session, acteur
+via `_resolve_actor`, `_validate_bookmark` délègue à `validate_bookmark_payload`
+(Task 2) inchangé plutôt que de le réimplémenter — vérifié par lecture directe
+par le reviewer —, deux `write_audit` agent, refus avant création d'item
+orphelin). `READ_ONLY_TOOLS` étendu à 6 entrées. 13/13 tests (5 nouveaux +
+8 read-only mode), 878 passed + 112 skipped en suite complète (0 régression).
 
-Base Task 4: a1dc72a
-Task 4: complete (commit f8bc295, vérification seule — aucun code applicatif
-touché). Suite complète 973/973 verte (0 skip inattendu sur les 13 fichiers
-`test_mcp_tools_*`), lint-imports vert (1 kept, 0 broken). **Écart de plan
-trouvé et résolu sans bloquer** : le smoke-test de comptage d'outils
-(Step 3) attendait 15 (12 existants + 3 nouveaux) mais retourne 14 — vérifié
-indépendamment par le contrôleur (`git show 90f6e16:core/app/mcp/tools.py`
-+ ré-exécution directe du smoke-test) : la base pré-existante réelle est 11
-outils, pas 12 — simple erreur arithmétique du texte du plan, aucun outil
-manquant ni dupliqué (les 3 nouveaux + les 11 existants = 14, tous corrects).
-CLAUDE.md mis à jour : ligne SP-14l ajoutée à "### Fait" ; ligne SP-14
-"### À venir" volontairement laissée telle quelle (requête visuelle non
-livrée, bloquée sur SP-15) — SP-14 dans son ensemble reste incomplet.
+Base Task 4: 5edaa5b (bascule core→shell)
+Task 4: complete (commits 4677132 puis e1cc4d6, 1 round de fix). Review round 1
+: ❌ Important trouvé — `BookmarkPayload.crossFilter` (`Record<string,
+BookmarkCrossFilterEntry>`) ne correspondait pas à `AnalyticsContextState.
+crossFilter` (`Record<string, CrossFilterEntry | undefined>`), le `| undefined`
+manquant violant l'exigence explicite du brief ("byte-for-byte mirror... so no
+client-side translation is ever needed"). Vérifié indépendamment par le
+contrôleur en lisant les deux fichiers avant de dispatcher le fix — traité
+comme une coquille du texte du plan (comme le comptage d'outils SP-14l), pas
+un choix de design mandaté à faire trancher par l'humain, car corriger va
+dans le sens de l'intention explicite du plan, pas contre elle. Fix : type
+élargi + commentaire d'écho documenté ajouté (convention `WcWidgetManifest`).
+Re-review round 2 : ✅ spec compliant, task quality Approved, 0 finding —
+correction vérifiée caractère pour caractère contre `AnalyticsContext.tsx`
+directement dans le diff. 4/4 tests nouveaux (121/121 focus, 844/844 suite
+complète, build/tsc propre), 0 régression.
 
-## SP-14l COMPLET — 4 tâches, 4 commits de tâches (a6eaf75, d877944,
-## a1dc72a, f8bc295), 0 round de fix sur les tâches individuelles (3/3
-## outils approuvés au premier passage). Seul écart rencontré : une erreur
-## arithmétique du texte du plan (Step 3 de Task 4, 12→11 outils pré-
-## existants), vérifiée indépendamment et résolue sans toucher au code.
-## HEAD=f8bc295, prêt pour la revue finale de branche.
+Base Task 5: e1cc4d6
+Task 5: complete (commits 04dc6a4 puis 29929aa, 1 round de fix). Review round 1
+: ❌ Important trouvé — `useOpenItem()` branche bookmark faisait `await
+client.getBookmarkConfig(pk)` sans try/catch, et le seul appelant (`ItemCard`)
+n'attend ni ne catch la promesse retournée → rejet non géré, "Ouvrir" ne
+faisait silencieusement rien en cas d'échec (config supprimée, réseau). Jugé
+comme une lacune que le plan a laissée ouverte, pas un choix de design
+mandaté — fix dispatché sans arbitrage humain. Fix : try/catch ajouté,
+convention `role="alert"` existante réutilisée (repérée dans
+`HarvestSourcesAdminPage.tsx`, pas inventée), `useOpenItem()` retourne
+maintenant `{ onOpenItem, openError }` — absorbé avant `CatalogPage` donc son
+contrat externe `(pk, type) => void` reste inchangé (vérifié par le reviewer).
+Re-review round 2 : ✅ spec compliant, task quality Approved, 0 finding
+bloquant, 2 Minor (reset d'`openError` asymétrique sur la branche non-bookmark,
+warning setState-on-unmount possible si navigation pendant le fetch — ni l'un
+ni l'autre bloquant). Extraction `useOpenItem()` branche non-bookmark
+confirmée byte-identique (test préexistant "app builder on open" intact,
+vérifié absent de tout hunk du diff). 5 tests nouveaux (14/14 focus, 848/848
+suite complète), build/tsc propre.
 
-## Revue finale de branche (opus, 4f95f43..f8bc295, 6 commits) — 0 finding
-## Critical, 0 Important, 3 Minor (concaténation de chaîne au lieu de
-## `params={"f":"json"}` dans `explain_dataset` — conforme au texte du plan
-## tel quel, pas un écart implémenteur ; lacune de couverture croisée
-## create_dataset→run_analytics_query côté arcgis, couverte de façon
-## transitive par le test explain_dataset ; redondance documentée du
-## double check dataset-read côté arcgis). Vérifications spécifiques :
-## pas d'escalade de privilège par enchaînement d'outils (accès toujours
-## réévalué sur l'appelant, jamais sur le propriétaire du dataset) ;
-## `tenant_id` fileté de façon cohérente sur les trois outils ; le point
-## d'injection SP-14k (`translate_aggregate_query`) reste l'unique endroit
-## où des noms de champ arcgis atteignent une clause `where=`, `explain_dataset`
-## n'a pas de surface équivalente (GET sans nom de champ utilisateur) ;
-## les deux outils de lecture appellent `_resolve_dataset_payload`/
-## `_resolve_arcgis_external_url` de façon identique. Deux divergences
-## comportementales par rapport aux routes REST relevées, toutes deux dans
-## le sens de la sécurité (MCP authentifie toujours ; MCP vérifie l'accès
-## avant de rejeter bucket/split/bins, la route REST fait l'inverse et
-## fuiterait un 400 avant le check de lecture) — non des défauts.
-## **SP-14l READY TO MERGE** — HEAD=f8bc295, prêt pour
-## finishing-a-development-branch.
+Base Task 6: 29929aa
+Task 6: complete (commit 1e4c507, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 3 Minor négligeables —
+chemin d'échec `isError` non testé directement, `createBookmark.reset()`
+mort sur le chemin succès, style de commit déjà établi dans la série). Bouton
+"Enregistrer la vue" affiché seulement si `interactions === "auto"`, dialog
++ `useCreateBookmark().mutateAsync` avec `title`/`owner`/`appId`/`pageId` +
+contexte analytique courant étalé. Deux risques nommés vérifiés
+indépendamment par le reviewer : `createBookmark.isError` bien positionné par
+react-query indépendamment du `catch {}` vide du composant (le catch évite
+juste un warning unhandled-rejection) ; `handleAnalyticsContextChange`
+original inchangé, appelé tel quel depuis le nouveau wrapper (pas
+d'interférence avec le debounce d'écriture URL). 3 tests nouveaux, 851/851
+suite complète, build/tsc propre.
+
+Base Task 7: 1e4c507
+Task 7: complete (commit 57e54e4, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor héritées du
+texte littéral du brief, pas introduites par l'implémenteur — titre du test 1
+mentionnant "cross-filter" alors que seul le time-range est exercé (aucune
+assertion sur `crossFilter` dans le body posté), et un override `**/items*`
+redondant dans le test 2 avec le comportement déjà par défaut de `mocks.ts`
+pour `scope=mine`. Trois écarts du texte littéral du plan trouvés et vérifiés
+indépendamment par le reviewer contre le code applicatif réel (pas des
+lacunes masquées) : pas de bouton "Ajouter un widget" (les boutons de palette
+sont directement cliquables, confirmé dans `WidgetPalette.tsx` + grep vide +
+`analytics-context.spec.ts` existant qui fait pareil) ; ajout d'un widget
+Table nécessaire aux assertions sur les cellules du brief lui-même (le widget
+Plage de dates ne rend aucune cellule) ; clic "Enregistrer" scopé au dialog
+(`role="dialog"` + `aria-label={title}` confirmé dans `dialog.tsx`) pour lever
+une ambiguïté de mode strict réelle entre le bouton déclencheur et le bouton
+de soumission. 2/2 tests E2E nouveaux (stables sur 3 exécutions), 85/85 suite
+E2E complète, 851/851 suite unitaire, build propre.
+
+## SP-14m COMPLET — 7 tâches, 10 commits de tâches (a461604, c346c2d, 5edaa5b,
+## 4677132, e1cc4d6[fix], 04dc6a4, 29929aa[fix], 1e4c507, 57e54e4 — 9 listés,
+## 2 rounds de fix sur 7 tâches (Task 4 : type crossFilter désaligné de
+## AnalyticsContextState ; Task 5 : rejet de promesse non géré à l'ouverture
+## d'un bookmark cassé). Les deux fix ont été dispatchés sans arbitrage
+## humain — dans les deux cas la lacune trouvée n'était pas un choix de
+## design mandaté par le texte du plan, corriger allait dans le sens de
+## l'intention explicite du plan (mirror byte-for-byte ; pas de UX
+## silencieusement cassée), pas contre elle. Minors non bloquants à
+## transmettre à la revue finale de branche : Task 2 (dashboard non testé,
+## double requête access+item), Task 3 (assertion faible pageId vide,
+## croissance de tools.py), Task 5 (reset openError asymétrique, warning
+## setState-on-unmount potentiel), Task 6 (chemin d'échec isError non testé
+## directement, reset() mort), Task 7 (titre de test trompeur sur
+## "cross-filter" non exercé, override redondant dans mocks.ts). HEAD=57e54e4,
+## prêt pour la revue finale de branche.
+
+## Revue finale de branche round 1 (opus, 1e95253..57e54e4, 9 commits) — 2
+## Important trouvés et vérifiés indépendamment par le contrôleur avant tout
+## fix (pas de confiance aveugle dans le rapport du reviewer) :
+## 1. `BookmarkCrossFilterEntry.value` (str | list[str]) rejetait la forme
+##    `{from, to}` réellement produite par le widget curseur natif
+##    (`sliderFilter.tsx:71`) — un bookmark avec cross-filter de plage actif
+##    échouait en 422 à l'enregistrement. Confirmé en lisant `sliderFilter.tsx`
+##    et `AnalyticsContext.tsx` directement.
+## 2. Asymétrie de validation : `PUT /configs/{config_id}` (par config-id)
+##    validait les datasets mais pas les bookmarks, contrairement aux deux
+##    autres endpoints d'écriture bookmark — confirmé en lisant `routes.py`
+##    directement (dataset_validation présente, bookmark absente).
+## Ni l'un ni l'autre n'était un choix de design mandaté par le plan (aucune
+## clause ne justifie ces lacunes) — fixes dispatchés en parallèle sans
+## arbitrage humain : 7b3baae (forme range du crossFilter, réutilise
+## `BookmarkTimeRange` existant plutôt qu'un nouveau type) + fe183cf
+## (validation ajoutée sur `update_config`), côté core ; c1b4e46 côté E2E pour
+## exercer réellement un cross-filter curseur (deux sources sur la même
+## collection, `derivePatch()` n'appliquant un cross-filter qu'aux sources
+## différentes de `originSourceId`) et prouver la restauration après
+## réouverture. 880/880 core (+2 tests), 851/851 shell unitaire, 85/85 E2E
+## (1 flake transitoire pré-existant sur `publication.spec.ts`, non lié,
+## confirmé disparu sur re-run complet indépendant du contrôleur), build
+## propre.
+
+## Revue finale de branche round 2 (opus, 1e95253..c1b4e46, 12 commits) —
+## les deux fixes vérifiés directement dans le diff (ordre de déclaration
+## BookmarkTimeRange avant BookmarkCrossFilterEntry correct, pas de
+## sur-validation introduite sur update_config — early-return préservé pour
+## les kinds non-bookmark, pas d'ambiguïté d'union Pydantic), aucune
+## régression introduite, 0 Critical, 0 Important. Minors reportés confirmés
+## non bloquants par le reviewer (branche "dashboard" non testée, asymétrie
+## openError, reset() mort, croissance tools.py).
+
+## **SP-14m READY TO MERGE** — HEAD=c1b4e46, 12 commits, 2 rounds de fix sur
+## 7 tâches + 1 round de fix sur la revue finale de branche (2 findings),
+## prêt pour finishing-a-development-branch.

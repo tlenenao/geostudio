@@ -1,407 +1,242 @@
-### Task 2: `run_analytics_query` tool
+## Task 2: Core — direct validation + REST wiring (`POST /configs`, `PUT /configs/by-item/{id}`)
 
 **Files:**
-- Modify: `core/app/mcp/tools.py`
-- Test: `core/tests/test_mcp_tools_run_analytics_query.py` (new — source `collection`, needs real PostGIS)
-- Test: `core/tests/test_mcp_tools_run_analytics_query_arcgis.py` (new — source `arcgis`, SQLite)
+- Create: `core/app/configs/bookmark_validation.py`
+- Modify: `core/app/configs/routes.py:1-20` (import), `:68-92` (create_config), `:211-229` (update_config_by_item)
+- Test: `core/tests/test_create_bookmark.py` (new)
 
 **Interfaces:**
-- Consumes: `create_dataset` (Task 1) to build fixtures in tests.
-- Produces: MCP tool `run_analytics_query(ctx, datasetId: str, query: AggregateRequestBody) -> dict` returning `{"categoryKey": str | list[str], "rows": list[dict]}`.
-- Produces: private helper `_resolve_dataset_payload(session, *, user: User, dataset_item_id: str) -> DatasetPayload` — reused by Task 3.
-- Produces: private helper `_resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -> str` — reused by Task 3.
+- Consumes: `BuilderConfig`/`BookmarkPayload` (Task 1), `items_repo.get_access_facts`/`items_repo.get_item` (`core/app/items/repository.py:129,141`), `can()` (`core/app/sharing/authorization.py:29`).
+- Produces: `validate_bookmark_payload(session: Session, config: BuilderConfig, *, user: User) -> None` — raises `HTTPException(422, "app not found")` for both a non-existent `appId` and one the caller can't read (same message, to not leak existence — same convention as `app.collections.dataset_validation`), and for an `appId` that resolves to an item whose `resourceType` isn't `"app"`/`"dashboard"`. This is the exact name Task 3 wraps for the MCP tool.
 
-- [ ] **Step 1: Write the failing tests (collection source)**
+- [ ] **Step 1: Write the failing REST tests**
 
-Create `core/tests/test_mcp_tools_run_analytics_query.py`:
+Create `core/tests/test_create_bookmark.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""run_analytics_query, source "collection" (SP-14l) — mirrors POST
-/collections/{id}/aggregate: same DuckDB/GeoParquet CDC read path
-(app.analytics.aggregate.run_collection_aggregate). get_duckdb_connection_
-factory/get_analytics_base_uri are called as plain functions inside the MCP
-tool body (no FastAPI Depends there), so tests monkeypatch the
-app.features.routes module attributes directly instead of using
-app.dependency_overrides — same substitution app.dependency_overrides does
-for the REST route's own test (test_features_aggregate_routes.py), just at
-the Python-attribute level instead of the ASGI-DI level."""
-import duckdb
-import geopandas as gpd
 import pytest
-from shapely.geometry import Point
+from fastapi.testclient import TestClient
 
-from app.features import routes as features_routes
-
-from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
-from tests.test_mcp_tools_query_features import app_client, _register_incidents_collection  # noqa: F401
-
-pytestmark = pytest.mark.postgis
-
-
-def _write_partition(base_dir, *, tenant_id, collection_id, rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-04"
-    partition_dir.mkdir(parents=True, exist_ok=True)
-    gdf = gpd.GeoDataFrame(rows, geometry="geom", crs="EPSG:4326")
-    gdf.to_parquet(partition_dir / "part-1.parquet")
-
-
-def _fake_duckdb_factory():
-    conn = duckdb.connect(":memory:")
-    conn.execute("INSTALL spatial; LOAD spatial;")
-    return conn
-
-
-@pytest.fixture(autouse=True)
-def _local_duckdb(monkeypatch, tmp_path):
-    monkeypatch.setattr(features_routes, "get_duckdb_connection_factory", lambda: _fake_duckdb_factory)
-    monkeypatch.setattr(features_routes, "get_analytics_base_uri", lambda: str(tmp_path))
-    return tmp_path
-
-
-def _create_collection_dataset(app_client, collection_id):
-    result = call_tool(app_client, "create_dataset", {
-        "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
-    })
-    return result["pk"]
-
-
-def test_run_analytics_query_collection_source_returns_grouped_counts(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-    _write_partition(_local_duckdb, tenant_id=app_client.tenant.id, collection_id=collection_id, rows=[
-        {"id": 1, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-        {"id": 2, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-        {"id": 3, "tenant_id": app_client.tenant.id, "titre": "Lampadaire cassé",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-    ])
-    with app_client:
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-        result = call_tool(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "titre"},
-        })
-
-    assert result["categoryKey"] == "titre"
-    assert sorted(result["rows"], key=lambda r: r["titre"]) == [
-        {"titre": "Lampadaire cassé", "value": 1}, {"titre": "Nid de poule", "value": 2},
-    ]
-
-
-def test_run_analytics_query_unknown_group_by_field_errors(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-    _write_partition(_local_duckdb, tenant_id=app_client.tenant.id, collection_id=collection_id, rows=[
-        {"id": 1, "tenant_id": app_client.tenant.id, "titre": "Nid de poule",
-         "_op": "insert", "_lsn": 1, "_ts": 1.0, "geom": Point(2.3, 48.8)},
-    ])
-    with app_client:
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "inconnu"},
-        })
-    assert "inconnu" in error_text
-
-
-def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb):
-    with app_client:
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": "does-not-exist", "query": {"groupBy": "titre"},
-        })
-    assert "not found" in error_text
-
-
-def test_run_analytics_query_collection_unreadable_by_caller_errors(app_client, _local_duckdb):
-    with app_client:
-        collection_id = _register_incidents_collection(app_client)
-        dataset_item_id = _create_collection_dataset(app_client, collection_id)
-    # Simulate the share being revoked after the dataset was created: flip
-    # the collection private with no share, independent of the dataset item
-    # (which stays readable — it's owned by mock_user).
-    with app_client.session_factory() as session:
-        from app.collections.models import Collection
-        session.query(Collection).filter(Collection.id == collection_id).update({"is_public": False})
-        session.commit()
-    with app_client:
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "titre"},
-        })
-    assert "not found" in error_text
-```
-
-- [ ] **Step 2: Write the failing tests (arcgis source)**
-
-Create `core/tests/test_mcp_tools_run_analytics_query_arcgis.py`:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""run_analytics_query, source "arcgis" (SP-14l) — mirrors POST
-/datasets/{id}/arcgis/aggregate: same live_query translate/fetch/aggregate
-path, same bucket/split/bins rejection (no server-side equivalent in the
-ArcGIS statistics API). get_arcgis_http_client is called as a plain
-function inside the MCP tool body (no FastAPI Depends there), so tests
-monkeypatch app.harvest.routes directly instead of using
-app.dependency_overrides."""
-import httpx
-import pytest
-
-from app.harvest import live_query, repository as harvest_repo, routes as harvest_routes
-from app.items import repository as items_repo
+from app import db
+from app.auth.dependency import get_current_user
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-from tests.test_mcp_tools_create import app_client, call_tool, call_tool_expecting_error  # noqa: F401
 
-SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
+@pytest.fixture()
+def client():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
 
-
-@pytest.fixture(autouse=True)
-def _clear_live_query_cache():
-    live_query._cache.clear()
-    yield
-    live_query._cache.clear()
-
-
-def _register_arcgis_layer(app_client, *, owner=None):
-    with app_client.session_factory() as session:
-        layer_owner = owner or app_client.mock_user
-        source = harvest_repo.create_source(
-            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id, type="arcgis",
-            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
-            mode="reference", enabled=True, interval_minutes=None,
+    with Session() as setup_session:
+        tenant = get_or_create_default_tenant(setup_session)
+        user = get_or_create_user(
+            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
+            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
         )
-        layer_item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=layer_owner.id,
-            resource_type="external", title="Bâtiments",
+        bob = get_or_create_user(
+            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
+            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
         )
-        if layer_owner is app_client.mock_user:
-            items_repo.set_is_public(
-                session, tenant_id=app_client.tenant.id, item_id=layer_item.id, is_public=True,
-            )
-        harvest_repo.create_record(
-            session, tenant_id=app_client.tenant.id, source_id=source.id, external_id="layer-0",
-            item_id=layer_item.id, collection_id=None, content_hash=None,
-            external_url=SERVICE, layer_kind="feature",
-        )
-        session.commit()
-        return layer_item.id
+        setup_session.commit()
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    test_client = TestClient(app)
+    test_client.user = user  # type: ignore[attr-defined]
+    test_client.session_factory = Session  # type: ignore[attr-defined]
+    test_client.bob = bob  # type: ignore[attr-defined]
+    yield test_client
+    engine.dispose()
 
 
-def _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id):
-    """Builds the dataset item/config directly (bypassing create_dataset's
-    own validation), so a test can simulate a dataset that references an
-    arcgis layer the caller can no longer read — create_dataset itself
-    would refuse to create such a dataset in the first place (Task 1),
-    so this is the only way to exercise run_analytics_query's own,
-    independent re-check of layer readability."""
-    with app_client.session_factory() as session:
+def _app_body(title: str = "Cible") -> dict:
+    return {
+        "title": title,
+        "config": {
+            "version": 1, "kind": "app",
+            "layout": {"type": "grid", "breakpoints": {}, "items": []},
+        },
+    }
+
+
+def _bookmark_body(app_id: str, title: str = "Ma vue") -> dict:
+    return {
+        "title": title,
+        "config": {
+            "version": 1, "kind": "bookmark",
+            "bookmark": {
+                "appId": app_id, "pageId": "page-1",
+                "timeRange": {"from": "2026-01-01", "to": "2026-02-01"},
+                "extent": None, "crossFilter": {},
+            },
+        },
+    }
+
+
+def test_create_bookmark_avec_app_existante_et_lisible(client):
+    app_item_id = client.post("/configs", json=_app_body()).json()["itemId"]
+    res = client.post("/configs", json=_bookmark_body(app_item_id))
+    assert res.status_code == 201, res.text
+    item_id = res.json()["itemId"]
+    item = client.get(f"/items/{item_id}").json()
+    assert item["resourceType"] == "bookmark"
+
+
+def test_create_bookmark_app_inexistante_rejetee(client):
+    res = client.post("/configs", json=_bookmark_body("inexistante"))
+    assert res.status_code == 422
+    assert res.json()["detail"] == "app not found"
+
+
+def test_create_bookmark_app_non_lisible_rejetee_avec_meme_message(client):
+    # Bob's app is private by default (Item.is_public defaults to False) —
+    # alice (the caller) is neither its owner nor a group member.
+    with client.session_factory() as session:
         from app.configs import repository as configs_repo
-        from app.configs.schemas import BuilderConfig, DatasetPayload
-        item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=app_client.mock_user.id,
-            resource_type="dataset", title="Bâtiments (live)",
+        from app.configs.schemas import BuilderConfig
+        from app.items import repository as items_repo
+
+        bob_app = items_repo.create_item(
+            session, tenant_id=client.user.tenant_id, owner_id=client.bob.id,
+            resource_type="app", title="App de Bob",
         )
-        config = BuilderConfig(
-            version=1, kind="dataset",
-            dataset=DatasetPayload(source="arcgis", arcgisItemId=arcgis_item_id, columns={}),
-        )
-        configs_repo.create_config(session, config, item_id=item.id, tenant_id=app_client.tenant.id)
-        session.commit()
-        return item.id
-
-
-def test_run_analytics_query_arcgis_source_groupby_and_measure(app_client, monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"features": [
-            {"attributes": {"commune": "Metz", "m0": 3}},
-            {"attributes": {"commune": "Nancy", "m0": 7}},
-        ]})
-    monkeypatch.setattr(
-        harvest_routes, "get_arcgis_http_client",
-        lambda: httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        result = call_tool(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "commune", "agg": "count"},
-        })
-
-    assert result["categoryKey"] == "commune"
-    assert result["rows"] == [{"commune": "Metz", "value": 3}, {"commune": "Nancy", "value": 7}]
-
-
-def test_run_analytics_query_arcgis_source_rejects_bucket(app_client, monkeypatch):
-    monkeypatch.setattr(
-        harvest_routes, "get_arcgis_http_client",
-        lambda: httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"features": []}))),
-    )
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "annee", "bucket": "month"},
-        })
-    assert "bucket/split/bins" in error_text
-
-
-def test_run_analytics_query_arcgis_layer_unreadable_errors(app_client):
-    with app_client.session_factory() as session:
-        other_owner = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="other-owner-raq-sub",
-            username="otherowner-raq", email=None, first_name="Other", last_name="Owner",
+        configs_repo.create_config(
+            session,
+            BuilderConfig(version=1, kind="app", layout={"type": "grid", "breakpoints": {}, "items": []}),
+            bob_app.id, tenant_id=client.user.tenant_id,
         )
         session.commit()
-    with app_client:
-        arcgis_item_id = _register_arcgis_layer(app_client, owner=other_owner)
-        dataset_item_id = _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id)
-        error_text = call_tool_expecting_error(app_client, "run_analytics_query", {
-            "datasetId": dataset_item_id, "query": {"groupBy": "commune"},
-        })
-    assert "not found" in error_text
+        bob_app_id = bob_app.id
+
+    res = client.post("/configs", json=_bookmark_body(bob_app_id))
+    assert res.status_code == 422
+    assert res.json()["detail"] == "app not found"
+
+
+def test_create_bookmark_cible_un_kind_non_app_rejetee(client):
+    with client.session_factory() as session:
+        from app.items import repository as items_repo
+
+        map_item = items_repo.create_item(
+            session, tenant_id=client.user.tenant_id, owner_id=client.user.id,
+            resource_type="map", title="Une carte",
+        )
+        session.commit()
+        map_item_id = map_item.id
+
+    res = client.post("/configs", json=_bookmark_body(map_item_id))
+    assert res.status_code == 422
+    assert res.json()["detail"] == "app not found"
+
+
+def test_update_bookmark_app_inexistante_rejetee(client):
+    app_item_id = client.post("/configs", json=_app_body()).json()["itemId"]
+    created = client.post("/configs", json=_bookmark_body(app_item_id))
+    item_id = created.json()["itemId"]
+    bad_config = {
+        "version": 1, "kind": "bookmark",
+        "bookmark": {"appId": "inexistante", "pageId": "page-1"},
+    }
+    res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
+    assert res.status_code == 422
+    assert res.json()["detail"] == "app not found"
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v`
-Expected: all FAIL — `run_analytics_query` tool does not exist yet (`isError` with an "unknown tool" style message, or the `call_tool`/`call_tool_expecting_error` helper raising because the tool name isn't registered).
+Run: `cd core && uv run pytest tests/test_create_bookmark.py -v`
+Expected: FAIL — `POST /configs` with `kind="bookmark"` currently returns 201 unconditionally (no validation runs yet), so `test_create_bookmark_app_inexistante_rejetee` and the two "rejected" tests fail (they expect 422 but get 201).
 
-- [ ] **Step 4: Implement `run_analytics_query`**
+- [ ] **Step 3: Implement `bookmark_validation.py`**
 
-In `core/app/mcp/tools.py`, add to the imports:
-
-```python
-import httpx
-
-from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
-from app.features import routes as features_routes
-from app.harvest import live_query
-from app.harvest import repository as harvest_repo
-from app.harvest import routes as harvest_routes
-from app.harvest.egress import EgressBlockedError
-```
-
-Add these two private helpers, right after `_validate_dataset` (added in Task 1):
+Create `core/app/configs/bookmark_validation.py`:
 
 ```python
-def _resolve_dataset_payload(session, *, user: User, dataset_item_id: str) -> DatasetPayload:
-    """Read-access check on the dataset item itself, plus its kind/payload —
-    shared first step for run_analytics_query and explain_dataset (Task 3)."""
-    _require_access(session, user=user, item_id=dataset_item_id, action="read")
-    config = configs_repo.get_config_by_item(session, dataset_item_id)
-    if config is None or config.kind != "dataset" or config.config.dataset is None:
-        raise ValueError("dataset not found")
-    return config.config.dataset
+# SPDX-License-Identifier: Apache-2.0
+"""Direct kind="bookmark" validation for app.configs. Unlike dataset_validation.py,
+no registry indirection is needed here: appId always refers to an app/dashboard
+item, and app.configs already imports app.items (see routes.py's _require_access),
+so there is no forbidden cross-module dependency to route around (SP-14m §3).
+"""
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.configs.schemas import BuilderConfig
+from app.items import repository as items_repo
+from app.sharing.authorization import can
+from app.users.models import User
 
 
-def _resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -> str:
-    """Mirrors app/harvest/routes.py's _resolve_arcgis_dataset — same
-    dataset-read-then-arcgis-layer-read double check as
-    /datasets/{id}/arcgis/aggregate — but raises ValueError instead of
-    HTTPException, same rationale as _require_access above. Re-checks
-    dataset-item read access independently of _resolve_dataset_payload's
-    own check (harmless, cheap, and keeps this a faithful, self-contained
-    mirror of the REST route's helper rather than a partial reimplementation)."""
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=dataset_item_id)
+def validate_bookmark_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
+    if config.kind != "bookmark":
+        return
+    payload = config.bookmark
+    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
+
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.appId)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise ValueError("dataset not found")
-    config = configs_repo.get_config_by_item(session, dataset_item_id)
-    if (
-        config is None or config.kind != "dataset" or config.config.dataset is None
-        or config.config.dataset.source != "arcgis"
-    ):
-        raise ValueError("dataset not found")
-    arcgis_item_id = config.config.dataset.arcgisItemId
-    assert arcgis_item_id is not None
-    record = harvest_repo.get_feature_layer_record(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
-    if record is None or record.external_url is None:
-        raise ValueError("arcgis layer not found")
-    layer_facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
-    if layer_facts is None or not can(session, user_id=user.id, action="read", item=layer_facts):
-        raise ValueError("arcgis layer not found")
-    return record.external_url
+        # Same message for not-found and not-readable: don't leak app
+        # existence, same convention as app.collections.dataset_validation.
+        raise HTTPException(status_code=422, detail="app not found")
+
+    target = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=payload.appId)
+    assert target is not None  # get_access_facts just confirmed it exists
+    if target.resourceType not in ("app", "dashboard"):
+        raise HTTPException(status_code=422, detail="app not found")
 ```
 
-Add the tool itself inside `register_tools`, right after `create_dataset`:
+- [ ] **Step 4: Wire it into `core/app/configs/routes.py`**
+
+Add the import next to the existing dataset one (near line 10):
 
 ```python
-    @server.tool()
-    async def run_analytics_query(ctx: Context, datasetId: str, query: AggregateRequestBody) -> dict:
-        """Run a structured aggregate query against a dataset (source
-        collection or arcgis) — mirrors POST /collections/{id}/aggregate and
-        POST /datasets/{id}/arcgis/aggregate, same query contract
-        (groupBy/split/measures/filters/bbox/bucket/bins), same permissions.
-        Never fabricates SQL (A19). SP-14l."""
-        access_token = get_access_token()
-        with request_scoped_session(session_factory) as session:
-            user = _resolve_actor(session, access_token)
-            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
+from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+```
 
-            if payload.source == "collection":
-                assert payload.collectionId is not None
-                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
-                try:
-                    info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
-                except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
-                conn = features_routes.get_duckdb_connection_factory()()
-                try:
-                    try:
-                        category_key, rows = run_collection_aggregate(
-                            conn, base_uri=features_routes.get_analytics_base_uri(),
-                            tenant_id=col.tenant_id, collection_id=col.id,
-                            table_info=info, request=query,
-                        )
-                    except UnknownAggregateField as exc:
-                        raise ValueError(f"{exc.field}: {exc.message}")
-                finally:
-                    conn.close()
-                return {"categoryKey": category_key, "rows": rows}
+In `create_config` (around line 71), add the call right after the dataset one:
 
-            assert payload.arcgisItemId is not None
-            if query.bucket is not None or query.split is not None or query.bins is not None:
-                raise ValueError("bucket/split/bins are not supported for arcgis-sourced datasets")
-            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
-            group_by = query.groupBy if isinstance(query.groupBy, list) else ([query.groupBy] if query.groupBy else [])
-            measures_in = query.measures or [AggregateMeasure(field=query.field, agg=query.agg, label="value")]
-            measures = [(m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)) for m in measures_in]
-            try:
-                params = live_query.translate_aggregate_query(
-                    group_by=group_by, measures=measures, filters=query.filters, bbox=query.bbox,
-                )
-            except live_query.ArcgisQueryError as exc:
-                raise ValueError(f"{exc.field}: {exc.message}")
-            client = harvest_routes.get_arcgis_http_client()
-            try:
-                raw = live_query.fetch_query(client, external_url, params)
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
-            finally:
-                client.close()
-            category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
-            return {"categoryKey": category_key, "rows": rows}
+```python
+    _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
+    _validate_dataset_payload(session, request.config, user=user)
+    _validate_bookmark_payload(session, request.config, user=user)
+```
+
+In `update_config_by_item` (around line 224), same pattern:
+
+```python
+    _validate_extension_scope(session, config, tenant_id=user.tenant_id)
+    _validate_dataset_payload(session, config, user=user)
+    _validate_bookmark_payload(session, config, user=user)
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_run_analytics_query.py tests/test_mcp_tools_run_analytics_query_arcgis.py -v`
-Expected: all PASS.
+Run: `cd core && uv run pytest tests/test_create_bookmark.py -v`
+Expected: PASS (5 tests)
 
-- [ ] **Step 6: Run the full existing MCP test suite to check for regressions**
+- [ ] **Step 6: Run the full core suite to check for regressions**
 
-Run: `cd core && uv run pytest tests/test_mcp_tools_create.py tests/test_mcp_tools_create_form_app.py tests/test_mcp_tools_query_features.py tests/test_mcp_read_only_mode.py tests/test_mcp_tools_dataset_create.py -v`
-Expected: all PASS (no existing tool's behavior changed).
+Run: `cd core && uv run pytest -q`
+Expected: same baseline plus the 6 (Task 1) + 5 (Task 2) new tests, no regressions — `validate_bookmark_payload` is a no-op for every other `kind`, so existing `app`/`dashboard`/`map`/`site`/`dataset` configs are unaffected.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/mcp/tools.py core/tests/test_mcp_tools_run_analytics_query.py core/tests/test_mcp_tools_run_analytics_query_arcgis.py
-git commit -m "feat(core): mcp run_analytics_query tool (SP-14l)"
+git add core/app/configs/bookmark_validation.py core/app/configs/routes.py core/tests/test_create_bookmark.py
+git commit -m "feat(core): validate bookmark appId readability on create/update (SP-14m)"
 ```
 
 ---

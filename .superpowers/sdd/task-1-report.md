@@ -1,162 +1,109 @@
-# Task 1 Report: `create_dataset` MCP Tool (SP-14l)
+# Task 1 Report: Core — `BookmarkPayload` schema (Pydantic)
 
 ## Summary
 
-Successfully implemented the `create_dataset` MCP tool and supporting infrastructure exactly as specified in the task brief. All 13 tests pass (6 new tests for `create_dataset` + 7 tests for read-only mode coverage).
+Implemented the complete bookmark configuration schema in Pydantic, adding three new model classes and extending `BuilderConfig` to support the `"bookmark"` kind. All specifications from the task brief were implemented exactly as specified.
 
 ## What Was Implemented
 
-### 1. New Test File: `core/tests/test_mcp_tools_dataset_create.py`
+### 1. Three new Pydantic model classes (in `core/app/configs/schemas.py`):
 
-Created a complete test suite with 6 tests covering:
-- Collection-based dataset creation
-- ArcGIS-based dataset creation  
-- Optional metadata (columns, timeField, reactsToExtent)
-- Audit logging with agent actor
-- Permission checking (unreadable collection/arcgis layer error handling)
+- **`BookmarkCrossFilterEntry`**: Represents a single cross-filter entry with field, value(s), and origin source ID
+- **`BookmarkTimeRange`**: Represents a time range with `from_` and `to` fields (using Pydantic `alias` to map JSON `"from"` to Python `from_`)
+- **`BookmarkPayload`**: Main bookmark payload with appId, pageId, optional timeRange, extent, and crossFilter dict
 
-### 2. Extended Test File: `core/tests/test_mcp_read_only_mode.py`
+### 2. Extended `BuilderConfig`:
 
-Updated existing tests to cover the new tool:
-- Renamed `test_read_only_tools_constant_matches_the_four_write_tools` → `test_read_only_tools_constant_matches_the_five_write_tools` (4 → 5 tools)
-- Added `test_create_dataset_refuses_in_read_only_mode` test right after the `create_form_app` test
-
-### 3. Modified `core/app/mcp/tools.py`
-
-#### Imports Added:
-```python
-from fastapi import HTTPException
-from app.configs.dataset_validation import validate_dataset_payload
-from app.configs.schemas import DatasetColumnMeta, DatasetPayload
-```
-
-#### READ_ONLY_TOOLS Updated:
-```python
-READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset"}
-```
-
-#### Private Helper Added:
-`_validate_dataset(session, config: BuilderConfig, *, user: User) -> None`
-- Mirrors `app/configs/routes.py`'s `validate_dataset_payload` call
-- Raises `ValueError` instead of `HTTPException` for tool-body exception handling
-- Validates per-source (collection/arcgis) readability per the same rules as the REST route
-
-#### Tool Implementation:
-`create_dataset(ctx, title, source, collectionId=None, arcgisItemId=None, columns=None, timeField=None, reactsToExtent=False) -> ItemRead`
-- Mirrors `POST /configs` with `kind="dataset"`
-- Gated by `is_read_only_mode()` check
-- Creates both item (resource_type="dataset") and config (kind="dataset")
-- Writes dual audit log entries (item.create + config.create) with actor_kind="agent"
-- Validates source-specific payload readability via `_validate_dataset`
+- Added `"bookmark"` to the `kind` Literal type
+- Added `bookmark: BookmarkPayload | None = None` field
+- Extended `_require_kind_payload` validator to validate that when `kind == "bookmark"`, the `bookmark` payload is present
 
 ## Test Results
 
-### All Tests Passing
+### TDD Red → Green
 
-**Focused Test Run (Task 1 Tests):**
-```
-cd core && uv run pytest tests/test_mcp_tools_dataset_create.py tests/test_mcp_read_only_mode.py -v
-============================= 13 passed in 4.34s =============================
-```
-
-**Broader MCP Test Suite (Regression Check):**
-```
-cd core && uv run pytest tests/test_mcp* -v
-======================== 51 passed, 7 skipped in 7.46s ========================
-```
-
-### Test Coverage Details
-
-**test_mcp_tools_dataset_create.py (6/6 PASS):**
-- test_create_dataset_collection_source_creates_item_and_config
-- test_create_dataset_arcgis_source_creates_item_and_config
-- test_create_dataset_accepts_columns_time_field_and_reacts_to_extent
-- test_create_dataset_writes_audit_log_with_agent_actor
-- test_create_dataset_unreadable_collection_errors_without_leaking_existence
-- test_create_dataset_unreadable_arcgis_layer_errors
-
-**test_mcp_read_only_mode.py (7/7 PASS):**
-- test_read_only_tools_constant_matches_the_five_write_tools
-- test_save_app_config_refuses_in_read_only_mode
-- test_create_item_refuses_in_read_only_mode
-- test_create_form_app_refuses_in_read_only_mode
-- test_create_dataset_refuses_in_read_only_mode
-- test_set_sharing_refuses_in_read_only_mode
-- test_read_only_mode_does_not_affect_read_tools
-
-## TDD Evidence
-
-### RED: Before Implementation
-Before implementing the tool, the tests would fail with:
-```
-Unknown tool: create_dataset
+**RED (before implementation):**
+```bash
+$ cd core && uv run pytest tests/test_bookmark_config_schema.py -v
+FAILED tests/test_bookmark_config_schema.py::test_bookmark_config_valide
+FAILED tests/test_bookmark_config_schema.py::test_bookmark_config_time_range_extent_cross_filter_optionnels
+FAILED tests/test_bookmark_config_schema.py::test_bookmark_config_round_trips_through_dump_and_validate
+PASSED tests/test_bookmark_config_schema.py::test_bookmark_config_sans_payload_rejete
+PASSED tests/test_bookmark_config_schema.py::test_bookmark_config_page_id_vide_rejete
+PASSED tests/test_bookmark_config_schema.py::test_bookmark_config_page_id_blanc_rejete
+3 failed, 3 passed
 ```
 
-The tests expected the tool to be registered but it didn't exist yet.
+Root cause: `kind` literal did not accept `"bookmark"`.
 
-### GREEN: After Implementation
-After implementing the `create_dataset` tool and updating `READ_ONLY_TOOLS`:
-```
-============================= 13 passed in 4.34s =============================
+**GREEN (after implementation):**
+```bash
+$ cd core && uv run pytest tests/test_bookmark_config_schema.py -v
+tests/test_bookmark_config_schema.py::test_bookmark_config_valide PASSED
+tests/test_bookmark_config_schema.py::test_bookmark_config_sans_payload_rejete PASSED
+tests/test_bookmark_config_schema.py::test_bookmark_config_time_range_extent_cross_filter_optionnels PASSED
+tests/test_bookmark_config_schema.py::test_bookmark_config_page_id_vide_rejete PASSED
+tests/test_bookmark_config_schema.py::test_bookmark_config_page_id_blanc_rejete PASSED
+tests/test_bookmark_config_schema.py::test_bookmark_config_round_trips_through_dump_and_validate PASSED
+6 passed in 0.10s
 ```
 
-All tests pass:
-- Tool is properly registered and callable via MCP
-- All 6 functional tests verify create_dataset behavior
-- All 7 read-only-mode tests verify gating and constant accuracy
-- No regressions in broader MCP test suite (51 passed, 7 skipped)
+### Full Test Suite
+
+Before: 861 passed, 112 skipped
+After: 867 passed, 112 skipped (+6 tests)
+
+No regressions detected. The 6-test increase corresponds exactly to the 6 new tests added.
 
 ## Files Changed
 
-1. **core/app/mcp/tools.py** — Main implementation
-   - Added 3 imports (HTTPException, validate_dataset_payload, DatasetColumnMeta, DatasetPayload)
-   - Updated READ_ONLY_TOOLS constant (4 → 5 entries)
-   - Added _validate_dataset helper function
-   - Added create_dataset tool function
+1. **`core/app/configs/schemas.py`** (modified)
+   - Added 3 new Pydantic model classes (29 lines)
+   - Updated `BuilderConfig` (added `"bookmark"` to kind literal, added bookmark field, extended validator)
+   - Total: +47 insertions in this file
 
-2. **core/tests/test_mcp_read_only_mode.py** — Extended coverage
-   - Renamed test function (four → five)
-   - Added test_create_dataset_refuses_in_read_only_mode
+2. **`core/tests/test_bookmark_config_schema.py`** (new file)
+   - Complete test suite with 6 tests
+   - Tests: valid bookmark config, missing payload rejection, optional fields, empty/whitespace pageId validation, round-trip serialization
+   - Total: 55 lines
 
-3. **core/tests/test_mcp_tools_dataset_create.py** — New file, complete test suite
-   - 6 tests covering all functional scenarios
-   - Proper fixtures reused from test_mcp_tools_create.py
+## Test Coverage
+
+The test suite comprehensively validates:
+
+1. **Valid bookmark config**: Full payload with all fields populated
+2. **Required payload validation**: Rejects `kind: "bookmark"` without `bookmark` payload
+3. **Optional fields**: timeRange, extent, and crossFilter are truly optional (default to None and {})
+4. **Page ID validation**: Empty string and whitespace-only strings are rejected via custom validator
+5. **Serialization round-trip**: Full dump → reload cycle with Pydantic aliases works correctly
 
 ## Self-Review Findings
 
-### Code Quality
-- Follows existing tool patterns exactly (indentation, structure, naming)
-- Docstring uses same style as `create_form_app` tool
-- Error messages match existing conventions (French for user-facing, same "Mode démo" pattern)
-- Imports organized and placed correctly
+✅ **Completeness**: All requirements from the brief implemented exactly as specified
+✅ **Code Quality**: Follows existing patterns in the codebase (identical style to `DatasetPayload`)
+✅ **Discipline**: No overbuilding; only added what was requested
+✅ **Testing**: TDD followed; tests written before implementation; comprehensive coverage of happy path and edge cases
+✅ **No Regressions**: Full test suite passes without issues
 
-### Testing
-- All 6 new tests are independent and run in isolation
-- Helper functions (`_register_collection`, `_register_arcgis_layer`) are reusable
-- Tests validate both success paths and security (permission checks)
-- Audit logging verified (actor_kind="agent" for both item and config writes)
-- Read-only mode test properly extends existing test pattern
-
-### Discipline
-- No code added beyond the brief
-- All 3 required files modified exactly as specified
-- Imports only what's needed
-- No extraneous files created
-- Commit message follows conventional format with SP tag
-
-### Implementation Correctness
-- `_validate_dataset` correctly mirrors REST route's validation logic (HTTPException → ValueError)
-- `DatasetPayload` construction matches schema exactly
-- BuilderConfig instantiation with version=1, kind="dataset", dataset=payload follows pattern
-- Item and config creation follows create_form_app pattern exactly
-- Dual audit logging (item.create + config.create) matches all other write tools
-
-## Issues or Concerns
-
-None. All requirements met and working correctly.
-
-## Commit SHA
+## Commit
 
 ```
-a6eaf75 feat(core): mcp create_dataset tool (SP-14l)
+commit a461604
+Author: Tanguy
+Date: 2026-08-05
+
+feat(core): bookmark config schema (SP-14m)
+
+- Added BookmarkCrossFilterEntry, BookmarkTimeRange, BookmarkPayload models
+- Extended BuilderConfig to support "bookmark" kind
+- Added comprehensive test suite (6 tests)
+- All tests passing, no regressions
+
+Files:
+  core/app/configs/schemas.py (modified, +47 lines)
+  core/tests/test_bookmark_config_schema.py (new, 55 lines)
 ```
+
+## Status
+
+✅ **DONE** — All requirements met, tests passing, no concerns.

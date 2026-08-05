@@ -1,65 +1,215 @@
-### Task 4: Full verification
+## Task 4: Shell — types, `itemClient`, hooks
 
-**Files:** none modified — verification only.
+**Files:**
+- Modify: `shell/src/api/types.ts:2` (`ResourceType`), insert near `:215-241` (new `Bookmark*` types + `CreateBookmarkInput`), `:103-...` (`ItemClient` interface — add `createBookmarkItem`/`getBookmarkConfig`)
+- Modify: `shell/src/api/itemClient.ts:1-2` (imports), insert near `:605-619` (`createBookmarkItem`/`getBookmarkConfig` implementations)
+- Modify: `shell/src/api/hooks.ts` (add `useCreateBookmark`, near `:208-217`)
+- Test: `shell/src/api/itemClient.test.ts` (append), `shell/src/api/hooks.test.tsx` (append, if it covers `useCreateDataset` — mirror that pattern)
 
-**Interfaces:** none (terminal task).
+**Interfaces:**
+- Consumes: `AnalyticsContextState` shape (`shell/src/builder/AnalyticsContext.tsx:1-13`) — `BookmarkPayload`'s `timeRange`/`extent`/`crossFilter` fields are a byte-for-byte copy of that type's fields, plus `appId`/`pageId`.
+- Produces: `CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload` (`BookmarkPayload` itself already carries `appId`/`pageId`/`timeRange`/`extent`/`crossFilter`), `client.createBookmarkItem(input): Promise<Item>`, `client.getBookmarkConfig(pk): Promise<BookmarkPayload>`, `useCreateBookmark()` mutation hook. Task 5 and Task 6 both import these.
 
-- [ ] **Step 1: Run the full core test suite**
+- [ ] **Step 1: Write the failing itemClient tests**
 
-Run: `cd core && uv run pytest -v`
-Expected: every test PASSES or is explicitly `SKIPPED` for a documented reason (`postgis: nécessite un PostGIS réel` when `CORE_TEST_DATABASE_URL` is unset). If any of the new `test_mcp_tools_*` files show as skipped in an environment where `CORE_TEST_DATABASE_URL` **is** set, stop — that means the `postgis` marker was misapplied (a file that doesn't actually need PostGIS shouldn't carry it, or one that does isn't getting picked up) and needs fixing before this task can be marked done.
+Append to `shell/src/api/itemClient.test.ts` (after the `createDatasetItem`/`getDatasetConfig` tests, following the exact same style — check an existing `createMapItem`/`createDatasetItem` test above for the `makeClient()`/`server.use(...)` harness already in this file and reuse it verbatim):
 
-- [ ] **Step 2: Run import-linter to confirm no layering violation**
+```typescript
+test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      const body = (await request.json()) as { title: string; config: unknown };
+      expect(body.config).toEqual({
+        version: 1,
+        kind: "bookmark",
+        bookmark: {
+          appId: "app-1", pageId: "page-1",
+          timeRange: { from: "2026-01-01", to: "2026-02-01" },
+          extent: null, crossFilter: {},
+        },
+      });
+      return HttpResponse.json({ id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createBookmarkItem({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+  expect(item).toEqual({
+    pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
+    owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-bookmark", isPublished: false,
+  });
+});
 
-Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.` — confirms `app.mcp`'s new imports (`app.features.routes`, `app.harvest.routes`, `app.harvest.live_query`, `app.harvest.repository`, `app.harvest.egress`, `app.configs.dataset_validation`) all sit in layers below `app.mcp`, per the existing `[tool.importlinter]` contract in `core/pyproject.toml` (already verified during planning — this step is the executable confirmation).
+test("getBookmarkConfig reads the bookmark payload from the by-item config", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-1", () =>
+      HttpResponse.json({
+        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        config: {
+          version: 1, kind: "bookmark",
+          bookmark: {
+            appId: "app-1", pageId: "page-1",
+            timeRange: { from: "2026-01-01", to: "2026-02-01" },
+            extent: null, crossFilter: {},
+          },
+        },
+      }),
+    ),
+  );
+  const payload = await makeClient().getBookmarkConfig("bookmark-1");
+  expect(payload).toEqual({
+    appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+});
 
-- [ ] **Step 3: Smoke-test tool registration count**
-
-Run:
-```bash
-cd core && uv run python3 -c "
-from app.mcp.server import create_mcp_server
-import asyncio
-
-async def main():
-    server = create_mcp_server('http://localhost:8200', lambda: None)
-    tools = await server.list_tools()
-    names = sorted(t.name for t in tools)
-    print(names)
-    assert {'create_dataset', 'run_analytics_query', 'explain_dataset'} <= set(names)
-    assert len(names) == 15
-
-asyncio.run(main())
-"
+test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-2", () =>
+      HttpResponse.json({ id: "cfg-x", itemId: "bookmark-2", kind: "bookmark", config: { version: 1, kind: "bookmark" } }),
+    ),
+  );
+  await expect(makeClient().getBookmarkConfig("bookmark-2")).rejects.toThrow();
+});
 ```
-Expected: prints a sorted list of 15 tool names including the 3 new ones (12 existing + `create_dataset` + `run_analytics_query` + `explain_dataset`), no assertion error. (`session_factory=lambda: None` is safe here — `list_tools()` only reads the registered tool metadata, it never opens a session.)
 
-- [ ] **Step 4: Update CLAUDE.md's roadmap section**
+(`server`/`http`/`HttpResponse` are already imported at the top of `itemClient.test.ts:2-3`, and `makeClient` is already defined at `:6` — the same harness the existing `createDatasetItem` tests use. Nothing new to import.)
 
-Modify `CLAUDE.md`, in the "### À venir" section under "Feuille de route (état d'avancement)": move the SP-14l line from implied/future into the "### Fait" section, following the exact style of the SP-14k entry already there (`- **SP-14k** — ... **A22 complet...**.` pattern). Add, right after the `SP-13` bullet and before the existing `SP-14` planning note is removed:
+- [ ] **Step 2: Run tests to verify they fail**
 
-```markdown
-- **SP-14l** — MCP analytique : outils `create_dataset`, `run_analytics_query`,
-  `explain_dataset`, câblés sur les chemins de requête dataset déjà validés
-  (SP-11b, SP-14a/k).
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
+Expected: FAIL — `createBookmarkItem`/`getBookmarkConfig` don't exist on the client yet (TypeScript compile error / `undefined is not a function`).
+
+- [ ] **Step 3: Add the types**
+
+In `shell/src/api/types.ts`, extend `ResourceType` (line 2):
+
+```typescript
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark";
 ```
 
-Remove the now-stale `- **SP-14** — Analytics UX (...). Jalon M11.` line from `### À venir` only if this was the last outstanding SP-14 sub-part — check `docs/vision/2026-07-04-feuille-de-route-geostudio.md` §SP-14 "Contenu" against what's shipped (datasets partagés ✅ SP-14a, contexte analytique ✅ SP-14b, widgets analytiques ✅ SP-14c–j, SQL Lab ✅ SP-14i, source arcgis ✅ SP-14k, MCP ✅ SP-14l) — **requête visuelle is still missing** (blocked on SP-15, per the design doc's non-buts), so SP-14 as a whole is **not** complete yet. Leave the `### À venir` line as-is; do not mark jalon M11 reached.
+Insert near the `DatasetConfig`/`CreateDatasetInput` block (after line 241, before `export type FeatureLayerSource`):
 
-- [ ] **Step 5: Commit**
+```typescript
+export type BookmarkCrossFilterValue = string | string[] | { from: string; to: string };
+export type BookmarkCrossFilterEntry = { field: string; value: BookmarkCrossFilterValue; originSourceId: string };
+
+export type BookmarkPayload = {
+  appId: string;
+  pageId: string;
+  timeRange: { from: string; to: string } | null;
+  extent: [number, number, number, number] | null;
+  crossFilter: Record<string, BookmarkCrossFilterEntry>;
+};
+
+export type CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload;
+```
+
+Add to the `ItemClient` interface (after `createDatasetItem`, around line 136):
+
+```typescript
+  createDatasetItem(input: CreateDatasetInput): Promise<Item>;
+  createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
+  getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
+```
+
+- [ ] **Step 4: Implement `itemClient.ts`**
+
+Extend the type import at the top of `shell/src/api/itemClient.ts` (line 2) with `BookmarkPayload, CreateBookmarkInput`.
+
+Insert after `createDatasetItem` (after line 605, before `getDatasetConfig`):
+
+```typescript
+    async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {
+      const bookmark: BookmarkPayload = {
+        appId: input.appId, pageId: input.pageId,
+        timeRange: input.timeRange, extent: input.extent, crossFilter: input.crossFilter,
+      };
+      const config = { version: 1, kind: "bookmark", bookmark };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createBookmarkItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "bookmark", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getBookmarkConfig(pk: string): Promise<BookmarkPayload> {
+      const data = await request<{ config?: { bookmark?: BookmarkPayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
+      return data.config.bookmark;
+    },
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
+Expected: PASS
+
+- [ ] **Step 6: Write the failing hook test**
+
+`hooks.test.tsx` has no dedicated test for `useCreateDataset`, but it does have one for `useCreateMap` (`shell/src/api/hooks.test.tsx:140-147`), using its own `makeWrapper(client: ItemClient)` helper (`:129-138`, distinct from the file's other `wrapper` function used by hooks that don't need a custom per-test client). Add the mirror for `useCreateBookmark` right after the `useCreateMap` test:
+
+```typescript
+test("useCreateBookmark creates a bookmark and invalidates items", async () => {
+  const client = {
+    createBookmarkItem: vi.fn().mockResolvedValue({ pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue" }),
+  } as unknown as ItemClient;
+  const { result } = renderHook(() => useCreateBookmark(), { wrapper: makeWrapper(client) });
+  await result.current.mutateAsync({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: null, extent: null, crossFilter: {},
+  });
+  expect(client.createBookmarkItem).toHaveBeenCalledWith({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: null, extent: null, crossFilter: {},
+  });
+});
+```
+
+Add `useCreateBookmark` to this file's import from `./hooks` (line 10).
+
+- [ ] **Step 7: Implement `useCreateBookmark`**
+
+In `shell/src/api/hooks.ts`, add after `useCreateDataset` (after line 217):
+
+```typescript
+export function useCreateBookmark() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateBookmarkInput) => client.createBookmarkItem(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+```
+
+Add `CreateBookmarkInput` to this file's type import from `./types`.
+
+- [ ] **Step 8: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts src/api/hooks.test.tsx`
+Expected: PASS
+
+- [ ] **Step 9: Run the full shell unit suite**
+
+Run: `cd shell && npm run test`
+Expected: 398+ tests, all green (no regressions — every change so far is additive: a new `ResourceType` member, new types, new interface methods, new client methods, new hook).
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add CLAUDE.md
-git commit -m "docs: SP-14l livré — mcp analytique (create_dataset, run_analytics_query, explain_dataset)"
+git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/hooks.ts shell/src/api/itemClient.test.ts shell/src/api/hooks.test.tsx
+git commit -m "feat(shell): bookmark item client + hook (SP-14m)"
 ```
 
 ---
 
-## Self-Review
-
-**Spec coverage:** §2 `create_dataset` → Task 1. §3 `run_analytics_query` → Task 2. §4 `explain_dataset` → Task 3. §5 (mirroring, not extraction) → followed throughout (every helper reimplements route logic rather than importing private `_`-prefixed names; only non-underscored "factory" functions — `get_duckdb_connection_factory`, `get_analytics_base_uri`, `get_arcgis_http_client` — are called via module reference). §6 (permissions: dataset read ≠ data read, re-checked independently) → covered by `_resolve_arcgis_external_url`'s independent check + the `test_run_analytics_query_collection_unreadable_by_caller_errors`/`test_run_analytics_query_arcgis_layer_unreadable_errors` tests. §7 (no audit on reads) → `run_analytics_query`/`explain_dataset` write no audit rows, matching `aggregate_features`/`query_features`. §8 risks table → each row maps to a test or an explicit design choice already reflected in the code above.
-
-**Placeholder scan:** no TBD/TODO; every step shows complete code; no "similar to Task N" references (Task 3's tests are fully written out despite structural similarity to Task 2's, since the exact assertions/fixtures differ).
-
-**Type consistency:** `DatasetPayload`/`DatasetColumnMeta` used identically across Tasks 1–3 (as defined in `app.configs.schemas`, unmodified). `_resolve_dataset_payload` (Task 2) and `_resolve_arcgis_external_url` (Task 2) signatures match their Task 3 call sites exactly. `run_analytics_query`'s return shape (`{"categoryKey", "rows"}`) matches what Task 2's tests assert. `explain_dataset`'s return shape matches what Task 3's tests assert.
