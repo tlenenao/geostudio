@@ -14,10 +14,14 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
+from app.configs.bookmark_validation import validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
 from app.configs.repository import ConfigRead
-from app.configs.schemas import BuilderConfig, DatasetColumnMeta, DatasetPayload
+from app.configs.schemas import (
+    BookmarkCrossFilterEntry, BookmarkPayload, BookmarkTimeRange, BuilderConfig,
+    DatasetColumnMeta, DatasetPayload,
+)
 from app.db import request_scoped_session
 from app.features import routes as features_routes
 from app.features.repository import FilterError, select_features
@@ -36,7 +40,10 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
 
-READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset"}
+READ_ONLY_TOOLS = {
+    "save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset",
+    "create_bookmark",
+}
 
 
 def _resolve_actor(session, access_token) -> User:
@@ -103,6 +110,15 @@ def _validate_dataset(session, config: BuilderConfig, *, user: User) -> None:
     arcgis layer invisible to the caller."""
     try:
         validate_dataset_payload(session, config, user=user)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+
+
+def _validate_bookmark(session, config: BuilderConfig, *, user: User) -> None:
+    """Mirrors _validate_dataset above — same rationale (ValueError instead
+    of HTTPException, no HTTP status channel in an MCP tool body)."""
+    try:
+        validate_bookmark_payload(session, config, user=user)
     except HTTPException as exc:
         raise ValueError(exc.detail) from exc
 
@@ -416,6 +432,50 @@ def register_tools(server: FastMCP, session_factory) -> None:
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
             assert result is not None
+            return result
+
+    @server.tool()
+    async def create_bookmark(
+        ctx: Context,
+        title: str,
+        appId: str,
+        pageId: str,
+        timeRange: BookmarkTimeRange | None = None,
+        extent: tuple[float, float, float, float] | None = None,
+        crossFilter: dict[str, BookmarkCrossFilterEntry] | None = None,
+    ) -> ItemRead:
+        """Save a named analytics view (time range/extent/cross-filter) on an
+        app page — mirrors POST /configs with kind="bookmark". SP-14m."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = BookmarkPayload(
+                appId=appId, pageId=pageId, timeRange=timeRange,
+                extent=extent, crossFilter=crossFilter or {},
+            )
+            config = BuilderConfig(version=1, kind="bookmark", bookmark=payload)
+            _validate_bookmark(session, config, user=user)
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type="bookmark", title=title,
+            )
+            config_result = configs_repo.create_config(
+                session, config, item.id, tenant_id=user.tenant_id
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": title},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"title": title, "kind": "bookmark"},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None  # just created it, in the same transaction
             return result
 
     @server.tool()
