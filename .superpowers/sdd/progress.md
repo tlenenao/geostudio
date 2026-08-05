@@ -1,199 +1,264 @@
-# SP-14m — Bookmarks (vues analytiques enregistrées) — Progress Ledger
+# SP-14n — Cross-filter inter-datasets — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-05-sp14m-bookmarks.md
+Plan: docs/superpowers/plans/2026-08-05-sp14n-cross-filter-inter-datasets.md
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@1e95253 (HEAD au lancement de cette sous-partie).
+Base globale: dev@c5e4db1 (HEAD au lancement de cette sous-partie ; SP-14m ledger
+committé en amont par hygiène de dépôt).
 
-Note : ce fichier remplace le ledger SP-14l (complet, READY TO MERGE, HEAD=f8bc295) —
-même fichier scratch réutilisé par convention du dépôt ; contenu SP-14l préservé
-dans l'historique git (commit f8bc295 et son ledger).
+Note : ce fichier remplace le ledger SP-14m (complet, READY TO MERGE, HEAD=c1b4e46)
+— même fichier scratch réutilisé par convention du dépôt ; contenu SP-14m préservé
+dans l'historique git (commit c5e4db1).
 
 ## Pré-vol
 
-Scan des 7 tâches (1: schéma Pydantic `BookmarkPayload` ; 2: validation directe
-+ câblage REST `POST /configs` / `PUT /configs/by-item/{id}` ; 3: outil MCP
-`create_bookmark` ; 4: shell — types/itemClient/hooks ; 5: `/bookmarks` via
-réutilisation `CatalogPage` + navigation d'ouverture consciente des bookmarks ;
-6: bouton "Enregistrer la vue" sur `AppRuntimePage` ; 7: E2E sauvegarde/liste/
-réouverture) contre les Contraintes Globales (pas de migration Alembic — colonnes
-`String` déjà libres ; additif seul, aucune config `kind="bookmark"` dans les
-fixtures actuelles ; docs FR / code EN ; commits conventionnels ; TDD systématique ;
-hors périmètre : cross-filter cross-dataset, query builder visuel, flux d'édition
-de bookmark, snapshot de données, outil MCP `list_bookmarks` dédié, validation
-pageId/fraîcheur du contexte) :
+Scan des 10 tâches (1: `geomIntersects` DuckDB aggregate ; 2: `geom_intersects`
+OGC API Features ; 3: `crossFilterLinks` sur `DatasetPayload` (core) ; 4: types
+shell (`CrossFilterLink`, `CrossFilterEntry.geometry`, `useSetCrossFilter`) ;
+5: `bboxFromGeometry` + résolution `derivePatch` ; 6: `geomIntersects` dans le
+corps de requête aggregate (shell) ; 7: capture de géométrie au clic
+(Carte/Liste/Table) ; 8: `useDatasets()` + indicateur montre les liens
+propagés ; 9: `CrossFilterLinkEditor` + câblage `DatasetEditPage` ; 10: E2E
+scénario cross-filter inter-datasets) contre les Contraintes Globales
+(additif seul — `crossFilterLinks` absent par défaut partout, aucun dataset
+existant n'en a ; TDD systématique ; commits conventionnels petits ; docs FR /
+code EN ; hors périmètre : query builder visuel, chaînage transitif A→B→C,
+réciprocité automatique, résolution de collision au-delà de "dernier résolu
+gagne", persistance de la géométrie cross-filter en URL/bookmark ; le patch
+`geomIntersects` ne doit atteindre le serveur QUE via le chemin
+aggregate/statistics, jamais `_queryParams`/`buildFeaturesUrl` — précédent
+`bbox` déjà tranché en SP-14b, ne pas rouvrir) :
 
 Aucune contradiction trouvée. Code littéral complet fourni pour chaque tâche
-(imports, helpers, corps de composants, tests) — transcription + intégration,
-même style que SP-14l. Task 5's `useOpenItem` factorise un ternaire existant en
-un seul point (pas une duplication — extraction, le plan le note explicitement
-comme "byte-identical" au comportement non-bookmark préexistant). Aucun test
-n'asserte rien de vide. Dépendances d'interface : Task 2 consomme Task 1 ;
-Task 3 consomme Task 1+2 ; Task 4 consomme rien (nouveau) mais Task 5/6 en
-dépendent ; Task 5 consomme Task 4 ; Task 6 consomme Task 4 ; Task 7 (E2E)
-consomme Tasks 4-6 bout en bout.
+(imports, helpers, corps de fonctions/composants, tests) — transcription +
+intégration, même style que SP-14l/SP-14m. Dépendances d'interface : Task 2
+indépendante de Task 1 (core, deux endpoints distincts, même capacité) ; Task 3
+indépendante de 1/2 (schéma Pydantic seul) ; Task 4 consomme Task 3 (mirror
+field-for-field du schéma core) ; Task 5 consomme Task 4 (`CrossFilterLink`,
+`CrossFilterEntry.geometry`) ; Task 6 consomme Task 5 (`query.geomIntersects`
+produit par `derivePatch`) et Task 1 (capacité serveur) ; Task 7 consomme
+Task 4 (5e paramètre `geometry` de `useSetCrossFilter`) ; Task 8 consomme
+Task 4 (`DatasetConfig.crossFilterLinks`) ; Task 9 consomme Task 3/4 (types
++ round-trip) ; Task 10 (E2E) consomme Tasks 4-9 bout en bout, exerce
+uniquement le chemin spatial/bbox (le chemin spatial/exact + Task 2 restent
+non exercés en E2E, conforme à la note explicite de la tâche 10 sur le
+périmètre de ce plan).
 
 Poursuite sans confirmation utilisateur (scan de contradictions clean).
 
 ## Tasks
 
-Base Task 1: 1e95253
-Task 1: complete (commit a461604, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 3 Minor négligeables —
-fidélité du rapport de l'implémenteur, pas du code : message de commit et
-comptes de lignes inexacts dans le rapport, vérifiés indépendamment par le
-reviewer contre `git log`/le diff réel). `BookmarkPayload`/`BookmarkTimeRange`/
-`BookmarkCrossFilterEntry` ajoutés, `BuilderConfig.kind` étend le literal,
-`_require_kind_payload` étendu — mirror fidèle du pattern `DatasetPayload`
-existant. 6/6 tests nouveaux, 867 passed + 112 skipped en suite complète
-(0 régression).
-
-Base Task 2: a461604
-Task 2: complete (commit c346c2d, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor — couverture
-"dashboard" du tuple accepté non testée par le texte littéral du plan, et une
-petite optimisation possible get_access_facts+get_item→get_item seul, ni l'un
-ni l'autre bloquant). `bookmark_validation.py` créé, mirror volontaire du
-style `dataset_validation.py` (même message 422 "app not found" pour
-inexistant/illisible/mauvais type, pas de leak d'existence) — câblé
-uniquement dans `create_config`/`update_config_by_item`, `update_config`
-(par config-id) explicitement hors périmètre et vérifié absent par le
-reviewer via lecture directe de routes.py. 5/5 tests nouveaux, 872 passed +
-112 skipped en suite complète (0 régression), lint-imports vert.
-
-Base Task 3: c346c2d
-Task 3: complete (commit 5edaa5b, review clean au premier passage — ✅ spec
+Base Task 1: c5e4db1
+Task 1: complete (commit bf29056, review clean au premier passage — ✅ spec
 compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
-assertion faible pageId vide plan-mandated, croissance continue de
-tools.py suivant le précédent établi). `create_bookmark` MCP : mirror fidèle
-de `create_dataset` (gate `is_read_only_mode()` avant toute session, acteur
-via `_resolve_actor`, `_validate_bookmark` délègue à `validate_bookmark_payload`
-(Task 2) inchangé plutôt que de le réimplémenter — vérifié par lecture directe
-par le reviewer —, deux `write_audit` agent, refus avant création d'item
-orphelin). `READ_ONLY_TOOLS` étendu à 6 entrées. 13/13 tests (5 nouveaux +
-8 read-only mode), 878 passed + 112 skipped en suite complète (0 régression).
+validation peu profonde du GeoJSON malformé héritée du même niveau que
+`bbox`, duplication de 7 lignes entre les deux blocs WHERE mandatée par le
+plan et trop petite pour justifier une abstraction). `geomIntersects` sur
+`AggregateRequestBody` : mirror fidèle de `bbox` (validation, clause
+`ST_Intersects(..., ST_GeomFromGeoJSON(?))` paramétrée, pas d'injection SQL).
+Reviewer a vérifié indépendamment que `AggregateRequestBody` est bien le type
+de corps consommé par les trois points d'entrée (`features/routes.py`,
+`harvest/routes.py`, `mcp/tools.py`) — additif partout sans câblage
+supplémentaire nécessaire. 2/2 tests nouveaux, 33/33 tests du fichier
+aggregate (0 régression).
 
-Base Task 4: 5edaa5b (bascule core→shell)
-Task 4: complete (commits 4677132 puis e1cc4d6, 1 round de fix). Review round 1
-: ❌ Important trouvé — `BookmarkPayload.crossFilter` (`Record<string,
-BookmarkCrossFilterEntry>`) ne correspondait pas à `AnalyticsContextState.
-crossFilter` (`Record<string, CrossFilterEntry | undefined>`), le `| undefined`
-manquant violant l'exigence explicite du brief ("byte-for-byte mirror... so no
-client-side translation is ever needed"). Vérifié indépendamment par le
-contrôleur en lisant les deux fichiers avant de dispatcher le fix — traité
-comme une coquille du texte du plan (comme le comptage d'outils SP-14l), pas
-un choix de design mandaté à faire trancher par l'humain, car corriger va
-dans le sens de l'intention explicite du plan, pas contre elle. Fix : type
-élargi + commentaire d'écho documenté ajouté (convention `WcWidgetManifest`).
-Re-review round 2 : ✅ spec compliant, task quality Approved, 0 finding —
-correction vérifiée caractère pour caractère contre `AnalyticsContext.tsx`
-directement dans le diff. 4/4 tests nouveaux (121/121 focus, 844/844 suite
-complète, build/tsc propre), 0 régression.
+Base Task 2: bf29056
+Task 2: complete (commit 7aebb6d, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
+`GeometryCollection` rejeté par le check de forme `type`/`coordinates` (même
+niveau de rigueur que `bbox`, pas une régression), type GeoJSON non validé en
+profondeur (erreur DB 500 possible plutôt que 400 propre, pattern déjà présent
+sur `_parse_bbox`). `geom_intersects` sur `select_features`/`_where` (mirror
+`bbox`, paramètre lié `:gi`/`:gisrid`, pas d'injection) + route
+`_parse_geom_intersects` (mirror `_parse_bbox`, code `invalid_geom_intersects`)
++ `RESERVED_QUERY_PARAMS` étendu. Reviewer a vérifié indépendamment que la
+signature keyword-only de `select_features` rend l'ajout non cassant pour les
+3 autres call sites (`stac/routes.py`, `mcp/tools.py`). Docker/postgis
+disponible dans cet environnement : tests postgis-marqués réellement exécutés
+(pas skippés) — 16/16 repo + 7/7 route, 997 passed suite complète avec DB
+configurée (0 régression).
 
-Base Task 5: e1cc4d6
-Task 5: complete (commits 04dc6a4 puis 29929aa, 1 round de fix). Review round 1
-: ❌ Important trouvé — `useOpenItem()` branche bookmark faisait `await
-client.getBookmarkConfig(pk)` sans try/catch, et le seul appelant (`ItemCard`)
-n'attend ni ne catch la promesse retournée → rejet non géré, "Ouvrir" ne
-faisait silencieusement rien en cas d'échec (config supprimée, réseau). Jugé
-comme une lacune que le plan a laissée ouverte, pas un choix de design
-mandaté — fix dispatché sans arbitrage humain. Fix : try/catch ajouté,
-convention `role="alert"` existante réutilisée (repérée dans
-`HarvestSourcesAdminPage.tsx`, pas inventée), `useOpenItem()` retourne
-maintenant `{ onOpenItem, openError }` — absorbé avant `CatalogPage` donc son
-contrat externe `(pk, type) => void` reste inchangé (vérifié par le reviewer).
-Re-review round 2 : ✅ spec compliant, task quality Approved, 0 finding
-bloquant, 2 Minor (reset d'`openError` asymétrique sur la branche non-bookmark,
-warning setState-on-unmount possible si navigation pendant le fetch — ni l'un
-ni l'autre bloquant). Extraction `useOpenItem()` branche non-bookmark
-confirmée byte-identique (test préexistant "app builder on open" intact,
-vérifié absent de tout hunk du diff). 5 tests nouveaux (14/14 focus, 848/848
-suite complète), build/tsc propre.
+Base Task 3: 7aebb6d
+Task 3: complete (commit d98db7c, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
+alias de type `DatasetCrossFilterLink` sans commentaire dédié, pas de test de
+champ requis manquant dans une branche de l'union). `DatasetCrossFilterLinkAttribute`/
+`DatasetCrossFilterLinkSpatial` + union discriminée sur `mode` + `crossFilterLinks`
+sur `DatasetPayload` — noms/types/défauts vérifiés caractère pour caractère par
+le reviewer contre le brief (load-bearing pour Task 4 shell qui les mirror).
+Discriminateur réellement exercé (pas juste déclaré) : test "unknown mode"
+prouve un vrai `ValidationError` Pydantic. 5/5 tests nouveaux, 888 passed +
+114 skipped suite complète (0 régression).
 
-Base Task 6: 29929aa
-Task 6: complete (commit 1e4c507, review clean au premier passage — ✅ spec
+Base Task 4: d98db7c
+Task 4: complete (commit 7e1bde4, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 1 Minor confirmé non
+problématique — 1 test préexistant (`itemClient.test.ts` `toEqual` sur
+`getDatasetConfig`) étendu avec `crossFilterLinks: []`, vérifié indépendamment
+par le reviewer comme inévitable (code littéral du brief renvoie
+inconditionnellement le champ) et non-affaiblissant (étend, ne dilue pas).
+`CrossFilterLink` (union discriminée mirror fidèle du schéma core Task 3),
+`CrossFilterEntry.geometry?`, `useSetCrossFilter` 5e paramètre optionnel,
+`crossFilterLinks` par défaut `[]` sur les 4 points d'accès itemClient —
+vérifiés caractère pour caractère contre le brief. `tsc --noEmit` propre.
+856/856 tests suite complète (0 régression).
+
+Base Task 5: 7e1bde4
+Task 5: complete (commit 4debf7d, review clean au premier passage — ✅ spec
 compliant, task quality Approved, 0 finding bloquant, 3 Minor négligeables —
-chemin d'échec `isError` non testé directement, `createBookmark.reset()`
-mort sur le chemin succès, style de commit déjà établi dans la série). Bouton
-"Enregistrer la vue" affiché seulement si `interactions === "auto"`, dialog
-+ `useCreateBookmark().mutateAsync` avec `title`/`owner`/`appId`/`pageId` +
-contexte analytique courant étalé. Deux risques nommés vérifiés
-indépendamment par le reviewer : `createBookmark.isError` bien positionné par
-react-query indépendamment du `catch {}` vide du composant (le catch évite
-juste un warning unhandled-rejection) ; `handleAnalyticsContextChange`
-original inchangé, appelé tel quel depuis le nouveau wrapper (pas
-d'interférence avec le debounce d'écriture URL). 3 tests nouveaux, 851/851
-suite complète, build/tsc propre.
+coverage manquante sur `coordinates: []`/leaves non-numériques dans
+`bboxFromGeometry` (comportement sûr vérifié par trace), branche
+attribute/spatial reposant implicitement sur l'union à 2 membres plutôt qu'un
+`else if` explicite, pas de test dédié à la collision "dernier résolu gagne").
+Tâche la plus dense en logique du plan (double boucle : résolution
+same-dataset préexistante + nouvelle résolution cross-dataset) — reviewer a
+tracé le code ligne par ligne pour confirmer les 3 garde-fous (pas de
+double-fire self-link, `field === sourceField` pour attribute, `geometry !==
+undefined` pour spatial) et l'absence de propagation transitive (un seul
+saut). `applyCrossFilterValue` confirmé extraction verbatim (0 dérive de
+comportement). `bboxFromGeometry` (nouveau, pur, pas de dépendance turf).
+23 tests nouveaux (4 geometryBbox + 19 analyticsPatch), 867/867 suite
+complète, tsc propre (0 régression).
 
-Base Task 7: 1e4c507
-Task 7: complete (commit 57e54e4, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor héritées du
-texte littéral du brief, pas introduites par l'implémenteur — titre du test 1
-mentionnant "cross-filter" alors que seul le time-range est exercé (aucune
-assertion sur `crossFilter` dans le body posté), et un override `**/items*`
-redondant dans le test 2 avec le comportement déjà par défaut de `mocks.ts`
-pour `scope=mine`. Trois écarts du texte littéral du plan trouvés et vérifiés
-indépendamment par le reviewer contre le code applicatif réel (pas des
-lacunes masquées) : pas de bouton "Ajouter un widget" (les boutons de palette
-sont directement cliquables, confirmé dans `WidgetPalette.tsx` + grep vide +
-`analytics-context.spec.ts` existant qui fait pareil) ; ajout d'un widget
-Table nécessaire aux assertions sur les cellules du brief lui-même (le widget
-Plage de dates ne rend aucune cellule) ; clic "Enregistrer" scopé au dialog
-(`role="dialog"` + `aria-label={title}` confirmé dans `dialog.tsx`) pour lever
-une ambiguïté de mode strict réelle entre le bouton déclencheur et le bouton
-de soumission. 2/2 tests E2E nouveaux (stables sur 3 exécutions), 85/85 suite
-E2E complète, 851/851 suite unitaire, build propre.
+Base Task 6: 4debf7d
+Task 6: complete (commit 1e9f120, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 1 Minor cosmétique —
+le `&&` de garde court-circuite avant le `typeof`, donc `null` est exclu par
+la vérification de vérité pas par `typeof`, comportement correct mais fragile
+si le `&&` était retiré un jour ; non bloquant). `buildAggregateBody` transmet
+`query.geomIntersects` tel quel dans `body.geomIntersects`. Reviewer a
+vérifié que seul `buildAggregateBody` est touché — `_queryParams`,
+`buildFeaturesUrl`, `STAT_KEYS` absents du diff (précédent `bbox` SP-14b non
+rouvert). 1 test nouveau (msw réel), 868/868 suite complète (0 régression).
 
-## SP-14m COMPLET — 7 tâches, 10 commits de tâches (a461604, c346c2d, 5edaa5b,
-## 4677132, e1cc4d6[fix], 04dc6a4, 29929aa[fix], 1e4c507, 57e54e4 — 9 listés,
-## 2 rounds de fix sur 7 tâches (Task 4 : type crossFilter désaligné de
-## AnalyticsContextState ; Task 5 : rejet de promesse non géré à l'ouverture
-## d'un bookmark cassé). Les deux fix ont été dispatchés sans arbitrage
-## humain — dans les deux cas la lacune trouvée n'était pas un choix de
-## design mandaté par le texte du plan, corriger allait dans le sens de
-## l'intention explicite du plan (mirror byte-for-byte ; pas de UX
-## silencieusement cassée), pas contre elle. Minors non bloquants à
-## transmettre à la revue finale de branche : Task 2 (dashboard non testé,
-## double requête access+item), Task 3 (assertion faible pageId vide,
-## croissance de tools.py), Task 5 (reset openError asymétrique, warning
-## setState-on-unmount potentiel), Task 6 (chemin d'échec isError non testé
-## directement, reset() mort), Task 7 (titre de test trompeur sur
-## "cross-filter" non exercé, override redondant dans mocks.ts). HEAD=57e54e4,
-## prêt pour la revue finale de branche.
+Base Task 7: 1e9f120
+Task 7: complete (commit 02cafa0, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 1 Minor préexistant —
+`selectRecord` liste/table byte-for-byte identiques hors JSX environnant,
+duplication antérieure à cette tâche, pas introduite ici). Les 3 sites d'appel
+(`mapWidget.tsx` `onFeatureClick`, `data.tsx` liste + table `selectRecord`)
+transmettent `.geometry` en 5e argument. `chart.tsx`/`pivot.tsx` confirmés
+absents du diff. Tests distinguant réellement présence (`geom={...}`) et
+absence (`geom=null`) de géométrie, pas juste re-vérification du clic.
+869/869 suite complète (0 régression).
 
-## Revue finale de branche round 1 (opus, 1e95253..57e54e4, 9 commits) — 2
-## Important trouvés et vérifiés indépendamment par le contrôleur avant tout
-## fix (pas de confiance aveugle dans le rapport du reviewer) :
-## 1. `BookmarkCrossFilterEntry.value` (str | list[str]) rejetait la forme
-##    `{from, to}` réellement produite par le widget curseur natif
-##    (`sliderFilter.tsx:71`) — un bookmark avec cross-filter de plage actif
-##    échouait en 422 à l'enregistrement. Confirmé en lisant `sliderFilter.tsx`
-##    et `AnalyticsContext.tsx` directement.
-## 2. Asymétrie de validation : `PUT /configs/{config_id}` (par config-id)
-##    validait les datasets mais pas les bookmarks, contrairement aux deux
-##    autres endpoints d'écriture bookmark — confirmé en lisant `routes.py`
-##    directement (dataset_validation présente, bookmark absente).
-## Ni l'un ni l'autre n'était un choix de design mandaté par le plan (aucune
-## clause ne justifie ces lacunes) — fixes dispatchés en parallèle sans
-## arbitrage humain : 7b3baae (forme range du crossFilter, réutilise
-## `BookmarkTimeRange` existant plutôt qu'un nouveau type) + fe183cf
-## (validation ajoutée sur `update_config`), côté core ; c1b4e46 côté E2E pour
-## exercer réellement un cross-filter curseur (deux sources sur la même
-## collection, `derivePatch()` n'appliquant un cross-filter qu'aux sources
-## différentes de `originSourceId`) et prouver la restauration après
-## réouverture. 880/880 core (+2 tests), 851/851 shell unitaire, 85/85 E2E
-## (1 flake transitoire pré-existant sur `publication.spec.ts`, non lié,
-## confirmé disparu sur re-run complet indépendant du contrôleur), build
-## propre.
+Base Task 8: 02cafa0
+Task 8: complete (commits 0576311 puis 95696b3, 1 round de fix). Review round 1
+: ❌ Important trouvé, étiqueté plan-mandated — le test négatif fourni
+verbatim par le brief (`renderIndicator()` sans `DatasetsContext.Provider`)
+ne prouvait que "aucun dataset configuré → pas de flèche", pas le vrai risque
+de régression (dataset configuré avec un lien `crossFilterLinks` dont le mode
+ne correspond pas au filtre actif → pas de flèche). Jugé comme une lacune de
+couverture de test, pas un choix de design mandaté — fix dispatché sans
+arbitrage humain (purement additif, ne contredit aucune contrainte globale).
+Fix : nouveau test avec un vrai `DatasetsContext.Provider` + lien
+`sourceField` non correspondant, vérifié par le fixeur en retirant
+temporairement le prédicat `.filter()` pour confirmer que le test échoue bien
+sans lui. Re-review round 2 : ✅ spec compliant, task quality Approved, 0
+finding bloquant, 1 Minor cosmétique (nom du test dit "mode" alors que c'est
+`sourceField` qui diffère — sémantique du test correcte malgré le nom).
+`useDatasets()` mirror fidèle de `useDataStates()` ; déplacement de
+`AnalyticsContextIndicator` dans l'arbre React confirmé neutre pour le DOM
+(`DataProvider` ne rend aucun élément) ; E2E scénarios 8/9 confirmés verts par
+l'implémenteur (25/25 `analytics-context.spec.ts`). 872/872 suite complète
+unitaire (0 régression).
 
-## Revue finale de branche round 2 (opus, 1e95253..c1b4e46, 12 commits) —
-## les deux fixes vérifiés directement dans le diff (ordre de déclaration
-## BookmarkTimeRange avant BookmarkCrossFilterEntry correct, pas de
-## sur-validation introduite sur update_config — early-return préservé pour
-## les kinds non-bookmark, pas d'ambiguïté d'union Pydantic), aucune
-## régression introduite, 0 Critical, 0 Important. Minors reportés confirmés
-## non bloquants par le reviewer (branche "dashboard" non testée, asymétrie
-## openError, reset() mort, croissance tools.py).
+Base Task 9: 95696b3
+Task 9: complete (commit cc9f424, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 2 Minor plan-mandated
+négligeables — `key={i}` sur liste réordonnable/supprimable et duplication du
+pattern query-key `["collection-schema", ...]` entre `DatasetEditPage` et
+`CrossFilterLinkEditor`, tous deux verbatim dans le code littéral du brief,
+pas introduits par l'implémenteur). Implémenteur a corrigé deux défauts
+réels du code littéral du brief pendant la transcription, vérifiés
+indépendamment par le reviewer contre le fichier brief lui-même : (1) violation
+Rules-of-Hooks — le brief plaçait `useItems(...)` après les guards de retour
+anticipé de `DatasetEditPage`, l'implémenteur l'a remonté à côté de
+`schemaQuery` (0 delta de comportement observable) ; (2) fixture de test
+`CollectionSchemaField` incomplète (`required` manquant, `tsc` en échec) —
+complétée. `CrossFilterLinkEditor` (nouveau composant) + câblage
+`DatasetEditPage` (rendu par lien + bouton "Ajouter un lien" + inclusion dans
+le payload de sauvegarde). Tous les aria-labels/textes de bouton
+load-bearing pour l'E2E de Task 10 vérifiés verbatim contre le diff. 11 tests
+nouveaux (6 + 5), 880/880 suite complète (0 régression), tsc propre.
 
-## **SP-14m READY TO MERGE** — HEAD=c1b4e46, 12 commits, 2 rounds de fix sur
-## 7 tâches + 1 round de fix sur la revue finale de branche (2 findings),
-## prêt pour finishing-a-development-branch.
+Base Task 10: cc9f424
+Task 10: complete (commit 3012192, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding bloquant, 1 Minor — le fait que
+`AppBuilderPage.promoteSource` crée toujours un nouveau dataset (jamais de
+réutilisation) n'est documenté nulle part hors du fichier E2E, note pour un
+futur travail sur `promoteSource`, hors périmètre de cette tâche). Deux
+déviations structurelles (pas cosmétiques) explicitement signalées par
+l'implémenteur et tracées à la main par le reviewer contre le code de
+production réel (pas de confiance sur "les tests passent") : (1) ajout des
+étapes de config du widget Indicateur (Agrégation=Somme, Champ agrégé=value)
+— sans cela le widget affiche `records.length` (toujours 1) et n'observe
+jamais le changement 5→2, confirmé contre `indicator.tsx` ; (2) réordonnancement
+de la création des datasets après la promotion dans le app-builder plutôt
+qu'avant — `promoteSource` crée toujours un nouveau dataset item, jamais de
+réutilisation (confirmé contre `AppBuilderPage.tsx`), donc l'ordre littéral du
+brief aurait déclaré le lien sur des datasets orphelins jamais interrogés par
+l'app. Reviewer a tracé le flux d'id complet (Table→dataset-1/communes,
+Indicateur→dataset-2/incidents-pts, lien authored sur dataset-1→dataset-2) et
+vérifié contre `analyticsPatch.ts` (Task 5) que la direction du lien
+correspond exactement à la sémantique de résolution réelle — pas une
+coïncidence de chaînes d'id. Scénario stable sur 3 exécutions isolées + 2
+exécutions du fichier complet (26 tests) + suite E2E complète 86/86 (0
+régression). Diff pur ajout, aucun scénario existant modifié.
+
+## SP-14n COMPLET — 10 tâches, 13 commits de tâches (bf29056, 7aebb6d,
+## d98db7c, 7e1bde4, 4debf7d, 1e9f120, 02cafa0, 0576311, 95696b3[fix],
+## cc9f424, 3012192 — 11 listés, 1 round de fix sur 10 tâches (Task 8 :
+## test négatif du brief ne couvrant pas le vrai risque de régression du
+## mode-gating). Le fix a été dispatché sans arbitrage humain — lacune de
+## couverture de test, pas un choix de design mandaté, correction purement
+## additive n'entrant en conflit avec aucune Contrainte Globale. Task 9 et
+## Task 10 ont chacune eu des déviations du code littéral du brief
+## (Rules-of-Hooks + fixture de test pour Task 9 ; réordonnancement E2E +
+## config widget pour Task 10), toutes vérifiées indépendamment par les
+## reviewers comme des corrections légitimes de vraies lacunes du brief,
+## jamais du scope creep, jamais des passes accidentels. Minors non bloquants
+## à transmettre à la revue finale de branche : Task 1 (validation GeoJSON
+## peu profonde, duplication bbox/geomIntersects mandatée), Task 2
+## (GeometryCollection rejeté, type GeoJSON non validé en profondeur), Task 3
+## (alias de type sans commentaire, pas de test de champ requis manquant),
+## Task 4 (aucun — tout Approved sans réserve), Task 5 (coverage
+## coordinates vides, branche implicite sur union à 2 membres, pas de test
+## de collision "dernier gagne"), Task 6 (garde `&&`/`typeof` fragile si
+## retirée), Task 7 (duplication liste/table préexistante), Task 8 (nom de
+## test imprécis "mode" vs "field"), Task 9 (key={i}, duplication query-key
+## collection-schema — toutes deux plan-mandated), Task 10 (comportement de
+## `promoteSource` non documenté hors du fichier E2E). HEAD=3012192, prêt
+## pour la revue finale de branche.
+
+## Revue finale de branche (opus, c5e4db1..3012192, 11 commits) — 0 Critical,
+## 0 Important, 4 Minor. Vérifications transversales que les revues par tâche
+## ne pouvaient pas voir : chaîne clic→SQL tracée bout en bout (click→
+## setCrossFilter→derivePatch→buildAggregateBody→AggregateRequestBody) ;
+## absence de propagation transitive/réciprocité garantie structurellement
+## (la boucle lit `crossFilterLinks` des datasets à filtre actif direct
+## seulement, n'écrit jamais dans `ctx.crossFilter`) ; paramétrage SQL
+## confirmé sur les deux endpoints (DuckDB + PostGIS, pas d'injection) ;
+## `_queryParams` confirmé droppant silencieusement `geomIntersects` (objet)
+## donc le scope "aggregate seul" tient sans garde supplémentaire ; 244 tests
+## (190 shell + 54 core sur les fichiers touchés) verts, tsc propre.
+## 4 Minor : (1) l'indicateur affiche une flèche de propagation pour un lien
+## spatial/exact même quand la cible n'est consommée que par des widgets
+## carte/liste/table — `geomIntersects` n'atteint le serveur que par le
+## chemin aggregate (scope ratifié du plan), donc l'UX suggère une
+## propagation qui ne se produit pas, silencieusement ; (2) collision de clé
+## `bbox` entre l'emprise carte (`reactsToExtent`) et un lien spatial/bbox
+## actif — un dataset cible des deux verrait son bbox figé par le filtre tant
+## qu'il est actif, interaction SP-14b×SP-14n invisible dans un seul diff de
+## tâche ; (3) validation structurelle de `geomIntersects` incohérente entre
+## les deux endpoints core (OGC rejette proprement en 400, aggregate laisse
+## remonter une erreur DuckDB probable 500) ; (4) `geomIntersects` absent de
+## `STAT_KEYS` (exclusion accidentelle par type plutôt qu'intentionnelle par
+## clé, actuellement sans effet). Les 4 sont Minor, aucun ne bloque le merge.
+## Signalés à l'humain pour arbitrage sur suite à donner (documentation
+## "Suivis non bloquants" vs. correctif), pas de fix dispatché — aucun
+## Critical/Important à cette étape.
+
+## **SP-14n READY TO MERGE** — HEAD=3012192, 11 commits (10 tâches + 1 fix sur
+## Task 8), 1 round de fix sur 10 tâches, revue finale de branche clean au
+## premier passage (0 Critical, 0 Important), prêt pour
+## finishing-a-development-branch.

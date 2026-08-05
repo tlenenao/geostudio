@@ -1,133 +1,154 @@
-# Task 3 report — Core: MCP tool `create_bookmark`
+# Task 3 Report: Core — `crossFilterLinks` on `DatasetPayload`
 
-## What I implemented
+## Summary
 
-Added an MCP tool `create_bookmark` to `core/app/mcp/tools.py`, mirroring the
-existing `create_dataset` tool, which itself mirrors `POST /configs` with
-`kind="dataset"`. Specifically:
+Successfully implemented the `crossFilterLinks` field on `DatasetPayload` with discriminated-union schema for cross-filter links between datasets. The field accepts an optional list of attribute-based or spatial link configurations, each with mode-specific validation.
 
-- Extended the `app.configs.schemas` import to pull in `BookmarkCrossFilterEntry`,
-  `BookmarkPayload`, `BookmarkTimeRange` alongside the existing `BuilderConfig`,
-  `DatasetColumnMeta`, `DatasetPayload`.
-- Added `from app.configs.bookmark_validation import validate_bookmark_payload`
-  next to the existing dataset-validation import.
-- Extended `READ_ONLY_TOOLS` with `"create_bookmark"` (now 6 entries).
-- Added `_validate_bookmark(session, config, *, user)` right after
-  `_validate_dataset` — same pattern: calls `validate_bookmark_payload`
-  (Task 2), catches `HTTPException` and re-raises as `ValueError` (MCP tool
-  bodies have no HTTP status channel).
-- Added the `create_bookmark` tool right after `create_dataset`:
-  `create_bookmark(ctx, title, appId, pageId, timeRange=None, extent=None,
-  crossFilter=None) -> ItemRead`. Checks `is_read_only_mode()` *before*
-  opening any DB session (same as all sibling write tools), resolves the
-  actor via `_resolve_actor`, builds a `BookmarkPayload`/`BuilderConfig(kind="bookmark")`,
-  validates via `_validate_bookmark`, creates the item
-  (`resource_type="bookmark"`) and config, and writes two audit log entries
-  (`item.create`, `config.create`) with `actor_kind="agent"`.
+## What Was Implemented
 
-## Files changed
+### Interfaces Added
 
-- `core/app/mcp/tools.py` — import extension, `READ_ONLY_TOOLS` extension,
-  `_validate_bookmark` helper, `create_bookmark` tool (64 lines added).
-- `core/tests/test_mcp_read_only_mode.py` — replaced
-  `test_read_only_tools_constant_matches_the_five_write_tools` with
-  `test_read_only_tools_constant_matches_the_six_write_tools` (now asserts 6
-  entries including `create_bookmark`); added
-  `test_create_bookmark_refuses_in_read_only_mode` right after
-  `test_create_dataset_refuses_in_read_only_mode`.
-- `core/tests/test_mcp_tools_bookmark_create.py` (new) — 5 tests: item/config
-  creation with `timeRange`, extent + cross-filter acceptance, audit log with
-  `actor_kind="agent"`, unreadable-app 422 without leaking existence, empty
-  `pageId` validation error.
+1. **`DatasetCrossFilterLinkAttribute`** — attribute-based cross-filter link:
+   - `mode: Literal["attribute"] = "attribute"` (discriminator)
+   - `targetDatasetId: str` — dataset to filter
+   - `sourceField: str` — column in this dataset
+   - `targetField: str` — column in target dataset
 
-All three files match the brief's literal code exactly (verified via diff
-against the brief text; only the pre-created schema/validation modules from
-Tasks 1/2 were cross-checked to confirm field names — `BookmarkPayload.appId`/
-`.pageId`/`.timeRange`/`.extent`/`.crossFilter`, `BookmarkTimeRange.from_`
-aliased to `"from"`, `BookmarkCrossFilterEntry.field`/`.value`/`.originSourceId`
-— all matched what the brief assumed).
+2. **`DatasetCrossFilterLinkSpatial`** — spatial cross-filter link:
+   - `mode: Literal["spatial"] = "spatial"` (discriminator)
+   - `targetDatasetId: str` — dataset to filter
+   - `precision: Literal["bbox", "exact"] = "bbox"` — defaults to bbox
 
-## TDD evidence
+3. **`DatasetCrossFilterLink`** — discriminated union type alias:
+   - Pydantic `Field(discriminator="mode")` routing on `mode` field
+   - Rejects unknown modes at validation time
 
-### RED
+4. **`DatasetPayload.crossFilterLinks`** — list field:
+   - Type: `list[DatasetCrossFilterLink]`
+   - Default: `[]` (empty list via `Field(default_factory=list)`)
+
+### Files Modified
+
+- **`core/app/configs/schemas.py`**
+  - Line 2: Added `Annotated` to imports
+  - Lines 95–111: Inserted three new model classes + type alias
+  - Line 122: Added `crossFilterLinks` field to `DatasetPayload`
+
+- **`core/tests/test_dataset_config_schema.py`**
+  - Lines 83–125: Appended 5 new tests (84 lines total)
+
+## Testing
+
+### TDD Sequence
+
+#### RED Phase (Failing Tests)
 
 Command:
 ```
-cd core && uv run pytest tests/test_mcp_tools_bookmark_create.py tests/test_mcp_read_only_mode.py -v
+cd core && uv run pytest tests/test_dataset_config_schema.py -k cross_filter -v
 ```
 
-Result (before implementing the tool, after writing the test files): 6 failed,
-7 passed.
+**Exit:** 1 (FAILED)
+**Output:** 5 FAILED (attribute and mode errors):
+- `test_dataset_config_cross_filter_links_default_empty`: `AttributeError: 'DatasetPayload' object has no attribute 'crossFilterLinks'`
+- `test_dataset_config_attribute_cross_filter_link`: Same AttributeError (field does not exist)
+- `test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision`: Same AttributeError
+- `test_dataset_config_spatial_cross_filter_link_exact_precision`: Same AttributeError
+- `test_dataset_config_cross_filter_link_unknown_mode_rejected`: `Failed: DID NOT RAISE ValidationError` (Pydantic silently drops unknown field by default)
 
-- `test_create_bookmark_creates_item_and_config` — FAILED (`Unknown tool: create_bookmark`, tool not registered)
-- `test_create_bookmark_accepts_extent_and_cross_filter` — FAILED (same)
-- `test_create_bookmark_writes_audit_log_with_agent_actor` — FAILED (same)
-- `test_create_bookmark_unreadable_app_errors_without_leaking_existence` — FAILED (same)
-- `test_read_only_tools_constant_matches_the_six_write_tools` — FAILED (`READ_ONLY_TOOLS` still had only 5 entries)
-- `test_create_bookmark_refuses_in_read_only_mode` — FAILED (`'Unknown tool: create_bookmark'` instead of the read-only message)
+**Reason for Failure (Expected):** Schema models did not yet define `crossFilterLinks` field or discriminated union types.
 
-(`test_create_bookmark_empty_page_id_errors` incidentally passed even before
-implementation, since `call_tool_expecting_error` only asserts a non-empty
-error string and "Unknown tool" also satisfies that — this is expected and
-harmless; it passes for the right reason after implementation too, as shown
-below.)
-
-This is the expected failure mode per the brief: "FAIL — `create_bookmark`
-tool doesn't exist yet ... the read-only-tools set test fails (still 5
-entries)."
-
-### GREEN
+#### GREEN Phase (Passing Tests)
 
 Command:
 ```
-cd core && uv run pytest tests/test_mcp_tools_bookmark_create.py tests/test_mcp_read_only_mode.py -v
+cd core && uv run pytest tests/test_dataset_config_schema.py -v
 ```
 
-Result (after implementing `create_bookmark`/`_validate_bookmark`/import/
-`READ_ONLY_TOOLS` extension): **13 passed** (5 new bookmark tests + 8
-read-only-mode tests, including the updated 6-tools-set test and the new
-bookmark-refuses-in-read-only test).
+**Exit:** 0 (PASSED)
+**Output:** 14 passed (9 existing + 5 new)
 
-Full core suite:
+```
+tests/test_dataset_config_schema.py::test_dataset_config_valide PASSED   [  7%]
+tests/test_dataset_config_schema.py::test_dataset_config_sans_payload_rejete PASSED [ 14%]
+tests/test_dataset_config_schema.py::test_dataset_config_colonnes_optionnelles PASSED [ 21%]
+tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_optional PASSED [ 28%]
+tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_default PASSED [ 35%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_valide PASSED [ 42%]
+tests/test_dataset_config_schema.py::test_dataset_config_collection_source_sans_collection_id_rejete PASSED [ 50%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete PASSED [ 57%]
+tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_avec_collection_id_rejete PASSED [ 64%]
+tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_links_default_empty PASSED [ 71%]
+tests/test_dataset_config_schema.py::test_dataset_config_attribute_cross_filter_link PASSED [ 78%]
+tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision PASSED [ 85%]
+tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_exact_precision PASSED [ 92%]
+tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_link_unknown_mode_rejected PASSED [100%]
+
+============================== 14 passed in 0.20s ==============================
+```
+
+### Full Suite Regression Test
+
+Command:
 ```
 cd core && uv run pytest -q
 ```
-Result: **878 passed, 112 skipped**, no failures, no regressions.
 
-## Self-review
+**Exit:** 0 (PASSED)
+**Result:** `888 passed, 114 skipped in 130.41s`
 
-- Completeness: all 5 new bookmark tests pass, plus both edits to
-  `test_mcp_read_only_mode.py`. Read-only gate checked before DB session
-  opened, matching `create_dataset`'s ordering exactly.
-- Quality: `create_bookmark` and `_validate_bookmark` are line-for-line what
-  the brief specified, following `create_dataset`/`_validate_dataset`
-  precedent already established in this file.
-- Discipline (YAGNI): no extra behavior added beyond the brief; didn't touch
-  unrelated tools or restructure `tools.py` (it remains a long file with ~11
-  tools now — pre-existing condition, not made meaningfully worse by one more
-  tool following the exact same pattern as its neighbors).
-- Testing: real end-to-end MCP tool calls through the FastAPI test client (no
-  mocks), same harness as `test_mcp_tools_create.py`/`test_mcp_tools_dataset_create.py`.
-  TDD followed: tests written first, confirmed RED, then implementation,
-  confirmed GREEN. Output is pristine (no warnings beyond pre-existing
-  OpenTelemetry "already instrumented" noise present across the whole test
-  suite, unrelated to this change).
-- Housekeeping: `.superpowers/sdd/progress.md` and the task-1/task-2
-  brief/report files showed as modified in `git status` at commit time (owned
-  by the orchestrator, not by this task) — deliberately excluded from the
-  commit; only `core/app/mcp/tools.py`,
-  `core/tests/test_mcp_tools_bookmark_create.py`, and
-  `core/tests/test_mcp_read_only_mode.py` were staged and committed, per the
-  brief's own `git add` list.
+Confirms additive change with no regressions — existing payloads without `crossFilterLinks` validate identically, and 5 new tests integrated successfully.
 
-Note: an earlier version of this report file existed on disk from a prior
-SP-14l task-3 (`explain_dataset` MCP tool) that happened to reuse this same
-filename — it has been overwritten with this task's (SP-14m
-`create_bookmark`) report.
+## Test Coverage
 
-No issues found. No concerns.
+All 5 new tests exercise required behavior:
+
+1. **Default empty list** — `crossFilterLinks` omitted defaults to `[]`
+2. **Attribute link with all fields** — roundtrip validation of mode-specific fields
+3. **Spatial link with default precision** — `precision` omitted defaults to `"bbox"`
+4. **Spatial link with explicit precision** — custom `"exact"` precision accepted
+5. **Unknown mode rejection** — discriminator rejects invalid `mode` values at validation time
+
+## Self-Review Findings
+
+### Completeness ✓
+- All three models defined per brief
+- All fields with correct types and defaults
+- Discriminated union correctly configured
+- Field added to `DatasetPayload` at correct position
+- All 5 tests written and passing
+
+### Quality ✓
+- Code follows existing conventions (Pydantic, naming style)
+- Comments added to discriminated union type alias
+- Models reuse `BaseModel` consistently with rest of schema
+- Field defaults use `Field(default_factory=list)` pattern matching codebase
+
+### Discipline ✓
+- No overbuilding — exactly what brief specifies
+- Import statement extended cleanly
+- Insertion point (before `DatasetPayload`) matches existing pattern (type definitions → class that uses them)
+- TDD strictly followed: RED → implement → GREEN → full suite
+
+### No Issues
+- No syntax errors
+- No missing imports
+- No circular dependencies
+- Validation behavior matches test expectations exactly
+- Commit message follows conventional format
 
 ## Commit
 
-`5edaa5b` — `feat(core): mcp create_bookmark tool (SP-14m)`
-(3 files changed, 172 insertions(+), 3 deletions(-))
+```
+d98db7c feat(core): crossFilterLinks on DatasetPayload (SP-14n)
+```
+
+Files changed: 2
+- `core/app/configs/schemas.py` — +22 lines (imports, 3 models, type alias, field)
+- `core/tests/test_dataset_config_schema.py` — +43 lines (5 tests)
+
+Total: 64 insertions, 1 deletion
+
+## Concerns
+
+None. Implementation is complete, tested, and ready for Task 4 (shell types).
