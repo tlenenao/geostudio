@@ -109,8 +109,10 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     return payload["result"]
 
 
-def test_read_only_tools_constant_matches_the_four_write_tools():
-    assert READ_ONLY_TOOLS == {"save_app_config", "create_item", "create_form_app", "set_sharing"}
+def test_read_only_tools_constant_matches_the_five_write_tools():
+    assert READ_ONLY_TOOLS == {
+        "save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset",
+    }
 
 
 def test_save_app_config_refuses_in_read_only_mode(app_client, monkeypatch):
@@ -138,6 +140,16 @@ def test_create_form_app_refuses_in_read_only_mode(app_client, monkeypatch):
     with app_client:
         error_text = call_tool_expecting_error(
             app_client, "create_form_app", {"collectionId": "does-not-exist"},
+        )
+    assert READ_ONLY_MESSAGE in error_text
+
+
+def test_create_dataset_refuses_in_read_only_mode(app_client, monkeypatch):
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client, "create_dataset",
+            {"title": "X", "source": "collection", "collectionId": "does-not-exist"},
         )
     assert READ_ONLY_MESSAGE in error_text
 

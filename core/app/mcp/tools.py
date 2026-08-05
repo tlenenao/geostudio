@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Literal
 
+import httpx
+from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
+from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs, is_read_only_mode
 from app.collections import repository as collections_repo
@@ -11,12 +14,18 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
+from app.configs.dataset_validation import validate_dataset_payload
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
 from app.configs.repository import ConfigRead
-from app.configs.schemas import BuilderConfig
+from app.configs.schemas import BuilderConfig, DatasetColumnMeta, DatasetPayload
 from app.db import request_scoped_session
+from app.features import routes as features_routes
 from app.features.repository import FilterError, select_features
 from app.features.rls import rls_scope
+from app.harvest import live_query
+from app.harvest import repository as harvest_repo
+from app.harvest import routes as harvest_routes
+from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
 from app.mcp import form_app
@@ -27,7 +36,7 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
 
-READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing"}
+READ_ONLY_TOOLS = {"save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset"}
 
 
 def _resolve_actor(session, access_token) -> User:
@@ -83,6 +92,57 @@ def _validate_extension_scope(session, config: BuilderConfig, *, tenant_id: str)
         validate_extension_permissions(session, config, tenant_id=tenant_id)
     except ExtensionPermissionError as err:
         raise ValueError(str(err)) from err
+
+
+def _validate_dataset(session, config: BuilderConfig, *, user: User) -> None:
+    """Mirrors app/configs/routes.py's call to validate_dataset_payload — same
+    per-source (collection/arcgis) readability check the REST route runs on
+    POST /configs and PUT /configs/{by-item} — but raises ValueError instead
+    of HTTPException, same rationale as _require_access above. Without this
+    call, create_dataset could create a dataset pointing at a collection or
+    arcgis layer invisible to the caller."""
+    try:
+        validate_dataset_payload(session, config, user=user)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+
+
+def _resolve_dataset_payload(session, *, user: User, dataset_item_id: str) -> DatasetPayload:
+    """Read-access check on the dataset item itself, plus its kind/payload —
+    shared first step for run_analytics_query and explain_dataset (Task 3)."""
+    _require_access(session, user=user, item_id=dataset_item_id, action="read")
+    config = configs_repo.get_config_by_item(session, dataset_item_id)
+    if config is None or config.kind != "dataset" or config.config.dataset is None:
+        raise ValueError("dataset not found")
+    return config.config.dataset
+
+
+def _resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -> str:
+    """Mirrors app/harvest/routes.py's _resolve_arcgis_dataset — same
+    dataset-read-then-arcgis-layer-read double check as
+    /datasets/{id}/arcgis/aggregate — but raises ValueError instead of
+    HTTPException, same rationale as _require_access above. Re-checks
+    dataset-item read access independently of _resolve_dataset_payload's
+    own check (harmless, cheap, and keeps this a faithful, self-contained
+    mirror of the REST route's helper rather than a partial reimplementation)."""
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=dataset_item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise ValueError("dataset not found")
+    config = configs_repo.get_config_by_item(session, dataset_item_id)
+    if (
+        config is None or config.kind != "dataset" or config.config.dataset is None
+        or config.config.dataset.source != "arcgis"
+    ):
+        raise ValueError("dataset not found")
+    arcgis_item_id = config.config.dataset.arcgisItemId
+    assert arcgis_item_id is not None
+    record = harvest_repo.get_feature_layer_record(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    if record is None or record.external_url is None:
+        raise ValueError("arcgis layer not found")
+    layer_facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    if layer_facts is None or not can(session, user_id=user.id, action="read", item=layer_facts):
+        raise ValueError("arcgis layer not found")
+    return record.external_url
 
 
 def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
@@ -311,6 +371,165 @@ def register_tools(server: FastMCP, session_factory) -> None:
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
             assert result is not None
             return result
+
+    @server.tool()
+    async def create_dataset(
+        ctx: Context,
+        title: str,
+        source: Literal["collection", "arcgis"],
+        collectionId: str | None = None,
+        arcgisItemId: str | None = None,
+        columns: dict[str, DatasetColumnMeta] | None = None,
+        timeField: str | None = None,
+        reactsToExtent: bool = False,
+    ) -> ItemRead:
+        """Create a shared dataset (source collection or arcgis) — mirrors
+        POST /configs with kind="dataset" (the path
+        itemClient.ts::createDatasetItem uses). SP-14l."""
+        if is_read_only_mode():
+            raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = DatasetPayload(
+                source=source, collectionId=collectionId, arcgisItemId=arcgisItemId,
+                columns=columns or {}, timeField=timeField, reactsToExtent=reactsToExtent,
+            )
+            config = BuilderConfig(version=1, kind="dataset", dataset=payload)
+            _validate_dataset(session, config, user=user)
+            item = items_repo.create_item(
+                session, tenant_id=user.tenant_id, owner_id=user.id,
+                resource_type="dataset", title=title,
+            )
+            config_result = configs_repo.create_config(
+                session, config, item_id=item.id, tenant_id=user.tenant_id
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="item.create", object_type="item", object_id=item.id,
+                payload={"title": title},
+            )
+            write_audit(
+                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                action="config.create", object_type="config", object_id=config_result.id,
+                payload={"title": title, "kind": "dataset"},
+            )
+            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            assert result is not None
+            return result
+
+    @server.tool()
+    async def run_analytics_query(ctx: Context, datasetId: str, query: AggregateRequestBody) -> dict:
+        """Run a structured aggregate query against a dataset (source
+        collection or arcgis) — mirrors POST /collections/{id}/aggregate and
+        POST /datasets/{id}/arcgis/aggregate, same query contract
+        (groupBy/split/measures/filters/bbox/bucket/bins), same permissions.
+        Never fabricates SQL (A19). SP-14l."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+
+            if payload.source == "collection":
+                assert payload.collectionId is not None
+                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                try:
+                    info = introspect_table(session, col.table_name)
+                except TableNotFound:
+                    raise ValueError("collection backing table not found")
+                except UnsupportedTable as exc:
+                    raise ValueError(exc.reason)
+                conn = features_routes.get_duckdb_connection_factory()()
+                try:
+                    try:
+                        category_key, rows = run_collection_aggregate(
+                            conn, base_uri=features_routes.get_analytics_base_uri(),
+                            tenant_id=col.tenant_id, collection_id=col.id,
+                            table_info=info, request=query,
+                        )
+                    except UnknownAggregateField as exc:
+                        raise ValueError(f"{exc.field}: {exc.message}")
+                finally:
+                    conn.close()
+                return {"categoryKey": category_key, "rows": rows}
+
+            assert payload.arcgisItemId is not None
+            if query.bucket is not None or query.split is not None or query.bins is not None:
+                raise ValueError("bucket/split/bins are not supported for arcgis-sourced datasets")
+            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
+            group_by = query.groupBy if isinstance(query.groupBy, list) else ([query.groupBy] if query.groupBy else [])
+            measures_in = query.measures or [AggregateMeasure(field=query.field, agg=query.agg, label="value")]
+            measures = [(m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)) for m in measures_in]
+            try:
+                params = live_query.translate_aggregate_query(
+                    group_by=group_by, measures=measures, filters=query.filters, bbox=query.bbox,
+                )
+            except live_query.ArcgisQueryError as exc:
+                raise ValueError(f"{exc.field}: {exc.message}")
+            client = harvest_routes.get_arcgis_http_client()
+            try:
+                raw = live_query.fetch_query(client, external_url, params)
+            except EgressBlockedError:
+                raise ValueError("arcgis service unavailable")
+            except httpx.HTTPError:
+                raise ValueError("arcgis service unavailable")
+            finally:
+                client.close()
+            category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
+            return {"categoryKey": category_key, "rows": rows}
+
+    @server.tool()
+    async def explain_dataset(ctx: Context, datasetId: str) -> dict:
+        """Describe a dataset's queryable fields before calling
+        run_analytics_query — author metadata (columns/timeField/
+        reactsToExtent) plus introspected field name+type, so an agent
+        doesn't have to guess a groupBy/measure field name. No stats, no
+        sampling. SP-14l."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=datasetId)
+            assert item is not None
+            base = {
+                "title": item.title,
+                "source": payload.source,
+                "timeField": payload.timeField,
+                "reactsToExtent": payload.reactsToExtent,
+                "columns": {k: v.model_dump() for k, v in payload.columns.items()},
+            }
+
+            if payload.source == "collection":
+                assert payload.collectionId is not None
+                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                try:
+                    info = introspect_table(session, col.table_name)
+                except TableNotFound:
+                    raise ValueError("collection backing table not found")
+                except UnsupportedTable as exc:
+                    raise ValueError(exc.reason)
+                schema = table_info_to_schema(info)
+                fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
+                return {**base, "fields": fields}
+
+            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
+            client = harvest_routes.get_arcgis_http_client()
+            try:
+                response = client.get(f"{external_url}?f=json")
+                response.raise_for_status()
+            except EgressBlockedError:
+                raise ValueError("arcgis service unavailable")
+            except httpx.HTTPError:
+                raise ValueError("arcgis service unavailable")
+            finally:
+                client.close()
+            data = response.json()
+            raw_fields = data.get("fields") if isinstance(data, dict) else None
+            fields = [
+                {"name": f.get("name"), "type": f.get("type")}
+                for f in (raw_fields or []) if isinstance(f, dict)
+            ]
+            return {**base, "fields": fields}
 
     @server.tool()
     async def get_sharing(ctx: Context, itemId: str) -> Sharing:

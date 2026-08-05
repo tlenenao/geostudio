@@ -1,184 +1,198 @@
-### Task 3: Core — `GET /harvest/feature-layers`
+### Task 3: `explain_dataset` tool
 
 **Files:**
-- Modify: `core/app/harvest/routes.py`
-- Test: `core/tests/test_harvest_feature_layers_endpoint.py` (new)
+- Modify: `core/app/mcp/tools.py`
+- Test: `core/tests/test_mcp_tools_explain_dataset.py` (new — source `collection`, needs real PostGIS)
+- Test: `core/tests/test_mcp_tools_explain_dataset_arcgis.py` (new — source `arcgis`, SQLite)
 
 **Interfaces:**
-- Consumes: `repo.list_feature_layer_records` (Task 2), `items_repo.get_access_facts`, `can` (both already imported in `routes.py`).
-- Produces: `GET /harvest/feature-layers?q=` → `{"layers": [{"id": str, "title": str}]}`. Consumed by the shell in Task 7.
+- Consumes: `_resolve_dataset_payload`, `_resolve_arcgis_external_url` (Task 2).
+- Consumes: `create_dataset` (Task 1) to build fixtures in tests.
+- Produces: MCP tool `explain_dataset(ctx, datasetId: str) -> dict` returning `{"title": str, "source": "collection"|"arcgis", "timeField": str|None, "reactsToExtent": bool, "columns": dict, "fields": list[{"name": str, "type": str}]}`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests (collection source)**
 
-Create `core/tests/test_harvest_feature_layers_endpoint.py` (mirrors `test_harvest_layers_endpoint.py` exactly, swapping raster for feature):
+Create `core/tests/test_mcp_tools_explain_dataset.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
+"""explain_dataset, source "collection" (SP-14l) — introspected field
+name+type (via app.collections.schema_json.table_info_to_schema, the same
+helper create_form_app already uses) plus author metadata as stored on the
+DatasetPayload. No stats, no sampling (design §1 non-buts)."""
 import pytest
-from fastapi.testclient import TestClient
 
-from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.harvest import repository as harvest_repo
-from app.items import repository as items_repo
-from app.main import create_app
-from app.users.repository import get_or_create_user
+from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
+from tests.test_mcp_tools_query_features import app_client, _register_incidents_collection  # noqa: F401
+
+pytestmark = pytest.mark.postgis
 
 
-@pytest.fixture()
-def env(monkeypatch):
-    monkeypatch.delenv("CORE_READ_ONLY_MODE", raising=False)
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        from app.tenants.repository import get_or_create_default_tenant
-        tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
-        )
-        regular = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-            email=None, first_name="", last_name="",
-        )
-        s.commit()
-    app = create_app()
+def test_explain_dataset_collection_source_returns_fields_and_metadata(app_client):
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        create_result = call_tool(app_client, "create_dataset", {
+            "title": "Incidents (dataset)", "source": "collection", "collectionId": collection_id,
+            "columns": {"titre": {"label": "Titre de l'incident", "description": None, "format": None}},
+            "timeField": None, "reactsToExtent": True,
+        })
+        result = call_tool(app_client, "explain_dataset", {"datasetId": create_result["pk"]})
 
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    client = TestClient(app)
-    return app, client, Session, admin, regular
+    assert result["title"] == "Incidents (dataset)"
+    assert result["source"] == "collection"
+    assert result["reactsToExtent"] is True
+    assert result["columns"]["titre"]["label"] == "Titre de l'incident"
+    field_names = {f["name"] for f in result["fields"]}
+    assert "titre" in field_names
 
 
-def _as(app, user):
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_current_user_optional] = lambda: user
-
-
-class _Seed:
-    pass
-
-
-@pytest.fixture()
-def seed(env):
-    app, client, Session, admin, regular = env
-    seed = _Seed()
-    seed.app = app
-    seed.client = client
-
-    with Session() as s:
-        source = harvest_repo.create_source(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id, type="arcgis",
-            url="https://gis.example.com/FeatureServer", mode="reference",
-            enabled=True, interval_minutes=None,
-        )
-
-        visible_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Bâtiments visibles",
-        )
-        harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="a",
-            item_id=visible_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
-        )
-        seed.visible_feature_item_id = visible_item.id
-
-        raster_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Ortho",
-        )
-        harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="b",
-            item_id=raster_item.id, collection_id=None, content_hash=None,
-            tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
-        )
-        seed.raster_item_id = raster_item.id
-
-        hidden_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=regular.id,
-            resource_type="external", title="Couche cachée",
-        )
-        harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="c",
-            item_id=hidden_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/1", layer_kind="feature",
-        )
-        seed.hidden_feature_item_id = hidden_item.id
-
-        s.commit()
-
-    _as(app, admin)
-    return seed
-
-
-def test_feature_layers_returns_only_feature_records_of_visible_items(seed):
-    resp = seed.client.get("/harvest/feature-layers")
-    assert resp.status_code == 200
-    layers = resp.json()["layers"]
-    ids = {layer["id"] for layer in layers}
-    assert seed.visible_feature_item_id in ids
-    assert seed.raster_item_id not in ids
-    assert seed.hidden_feature_item_id not in ids
-    layer = next(layer for layer in layers if layer["id"] == seed.visible_feature_item_id)
-    assert layer["title"] == "Bâtiments visibles"
-    assert "url" not in layer and "externalUrl" not in layer  # jamais exposé au client
-
-
-def test_feature_layers_filters_by_q(seed):
-    resp = seed.client.get("/harvest/feature-layers", params={"q": "zzz-nomatch"})
-    assert resp.status_code == 200
-    assert resp.json()["layers"] == []
+def test_explain_dataset_dataset_not_found_errors(app_client):
+    with app_client:
+        error_text = call_tool_expecting_error(app_client, "explain_dataset", {"datasetId": "does-not-exist"})
+    assert "not found" in error_text
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 2: Write the failing tests (arcgis source)**
 
-Run: `cd core && uv run pytest tests/test_harvest_feature_layers_endpoint.py -v`
-Expected: FAIL with 404 (route doesn't exist yet).
-
-- [ ] **Step 3: Add the route**
-
-In `core/app/harvest/routes.py`, add after `list_layers`:
+Create `core/tests/test_mcp_tools_explain_dataset_arcgis.py`:
 
 ```python
-@router.get("/harvest/feature-layers")
-def list_feature_layers(
-    q: str | None = None,
-    user: User = Depends(get_current_user), session: Session = Depends(get_session),
-):
-    rows = repo.list_feature_layer_records(session, tenant_id=user.tenant_id, q=q)
-    layers = []
-    for item_id, title, _external_url in rows:
-        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-            continue
-        layers.append({"id": item_id, "title": title})
-    return {"layers": layers}
+# SPDX-License-Identifier: Apache-2.0
+"""explain_dataset, source "arcgis" (SP-14l) — a live GET {external_url}
+?f=json through the egress-guarded client (same client seam as
+run_analytics_query's arcgis path), extracting ArcGIS's standard layer
+`fields: [{name, type, alias}]`."""
+import httpx
+import pytest
+
+from app.harvest import repository as harvest_repo, routes as harvest_routes
+from app.items import repository as items_repo
+
+from tests.test_mcp_tools_create import app_client, call_tool, call_tool_expecting_error  # noqa: F401
+
+SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
+
+
+def _register_arcgis_layer(app_client):
+    with app_client.session_factory() as session:
+        source = harvest_repo.create_source(
+            session, tenant_id=app_client.tenant.id, owner_id=app_client.mock_user.id, type="arcgis",
+            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
+            mode="reference", enabled=True, interval_minutes=None,
+        )
+        layer_item = items_repo.create_item(
+            session, tenant_id=app_client.tenant.id, owner_id=app_client.mock_user.id,
+            resource_type="external", title="Bâtiments",
+        )
+        harvest_repo.create_record(
+            session, tenant_id=app_client.tenant.id, source_id=source.id, external_id="layer-0",
+            item_id=layer_item.id, collection_id=None, content_hash=None,
+            external_url=SERVICE, layer_kind="feature",
+        )
+        session.commit()
+        return layer_item.id
+
+
+def test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata(app_client, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == f"{SERVICE}?f=json"
+        return httpx.Response(200, json={
+            "name": "Bâtiments",
+            "fields": [
+                {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID"},
+                {"name": "commune", "type": "esriFieldTypeString", "alias": "Commune"},
+            ],
+        })
+    monkeypatch.setattr(
+        harvest_routes, "get_arcgis_http_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with app_client:
+        arcgis_item_id = _register_arcgis_layer(app_client)
+        create_result = call_tool(app_client, "create_dataset", {
+            "title": "Bâtiments (live)", "source": "arcgis", "arcgisItemId": arcgis_item_id,
+        })
+        result = call_tool(app_client, "explain_dataset", {"datasetId": create_result["pk"]})
+
+    assert result["source"] == "arcgis"
+    assert {"name": "commune", "type": "esriFieldTypeString"} in result["fields"]
 ```
 
-Note the response deliberately omits `external_url` — the shell picker only needs `id`/`title` to set `arcgisItemId`; the URL stays server-side (never exposed to the browser).
+- [ ] **Step 3: Run tests to verify they fail**
 
-- [ ] **Step 4: Run to verify it passes**
+Run: `cd core && uv run pytest tests/test_mcp_tools_explain_dataset.py tests/test_mcp_tools_explain_dataset_arcgis.py -v`
+Expected: all FAIL — `explain_dataset` tool does not exist yet.
 
-Run: `cd core && uv run pytest tests/test_harvest_feature_layers_endpoint.py -v`
-Expected: both tests PASS.
+- [ ] **Step 4: Implement `explain_dataset`**
 
-- [ ] **Step 5: Run the full core suite**
+In `core/app/mcp/tools.py`, add the tool inside `register_tools`, right after `run_analytics_query`:
 
-Run: `cd core && uv run pytest`
-Expected: no regressions.
+```python
+    @server.tool()
+    async def explain_dataset(ctx: Context, datasetId: str) -> dict:
+        """Describe a dataset's queryable fields before calling
+        run_analytics_query — author metadata (columns/timeField/
+        reactsToExtent) plus introspected field name+type, so an agent
+        doesn't have to guess a groupBy/measure field name. No stats, no
+        sampling. SP-14l."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            payload = _resolve_dataset_payload(session, user=user, dataset_item_id=datasetId)
+            item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=datasetId)
+            assert item is not None
+            base = {
+                "title": item.title,
+                "source": payload.source,
+                "timeField": payload.timeField,
+                "reactsToExtent": payload.reactsToExtent,
+                "columns": {k: v.model_dump() for k, v in payload.columns.items()},
+            }
+
+            if payload.source == "collection":
+                assert payload.collectionId is not None
+                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                try:
+                    info = introspect_table(session, col.table_name)
+                except TableNotFound:
+                    raise ValueError("collection backing table not found")
+                except UnsupportedTable as exc:
+                    raise ValueError(exc.reason)
+                schema = table_info_to_schema(info)
+                fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
+                return {**base, "fields": fields}
+
+            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
+            client = harvest_routes.get_arcgis_http_client()
+            try:
+                response = client.get(f"{external_url}?f=json")
+                response.raise_for_status()
+            except EgressBlockedError:
+                raise ValueError("arcgis service unavailable")
+            except httpx.HTTPError:
+                raise ValueError("arcgis service unavailable")
+            finally:
+                client.close()
+            data = response.json()
+            raw_fields = data.get("fields") if isinstance(data, dict) else None
+            fields = [
+                {"name": f.get("name"), "type": f.get("type")}
+                for f in (raw_fields or []) if isinstance(f, dict)
+            ]
+            return {**base, "fields": fields}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_mcp_tools_explain_dataset.py tests/test_mcp_tools_explain_dataset_arcgis.py -v`
+Expected: all PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd core
-git add app/harvest/routes.py tests/test_harvest_feature_layers_endpoint.py
-git commit -m "feat(core): GET /harvest/feature-layers for the SP-14k dataset picker"
+git add core/app/mcp/tools.py core/tests/test_mcp_tools_explain_dataset.py core/tests/test_mcp_tools_explain_dataset_arcgis.py
+git commit -m "feat(core): mcp explain_dataset tool (SP-14l)"
 ```
 
 ---
