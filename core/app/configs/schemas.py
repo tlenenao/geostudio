@@ -114,12 +114,39 @@ class DatasetPayload(BaseModel):
         return self
 
 
+class BookmarkCrossFilterEntry(BaseModel):
+    field: str
+    value: str | list[str]
+    originSourceId: str
+
+
+class BookmarkTimeRange(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+
+
+class BookmarkPayload(BaseModel):
+    appId: str
+    pageId: str
+    timeRange: BookmarkTimeRange | None = None
+    extent: tuple[float, float, float, float] | None = None
+    crossFilter: dict[str, BookmarkCrossFilterEntry] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _require_non_empty_page_id(self) -> "BookmarkPayload":
+        if not self.pageId.strip():
+            raise ValueError("bookmark pageId must not be empty")
+        return self
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -130,6 +157,7 @@ class BuilderConfig(BaseModel):
     variables: list[Variable] = Field(default_factory=list)
     map: MapConfig | None = None
     dataset: DatasetPayload | None = None
+    bookmark: BookmarkPayload | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
@@ -139,4 +167,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("map config requires a map")
         if self.kind == "dataset" and self.dataset is None:
             raise ValueError("dataset config requires a dataset payload")
+        if self.kind == "bookmark" and self.bookmark is None:
+            raise ValueError("bookmark config requires a bookmark payload")
         return self
