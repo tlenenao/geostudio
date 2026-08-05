@@ -210,7 +210,7 @@ test("table PropsPanel adds a calculated column without disturbing existing plai
 function CrossFilterProbe({ datasetId }: { datasetId: string }) {
   const ctx = useAnalyticsContext();
   const entry = ctx.crossFilter[datasetId];
-  return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+  return <p>cf:{entry ? `${entry.field}=${entry.value};geom=${JSON.stringify(entry.geometry ?? null)}` : "none"}</p>;
 }
 
 test("table row click sets the cross-filter by pkColumn when dataset-bound and interactions is auto", async () => {
@@ -223,7 +223,24 @@ test("table row click sets the cross-filter by pkColumn when dataset-bound and i
     </AnalyticsContextProvider>,
   );
   await userEvent.click(screen.getByText("Parc A").closest("tr")!);
-  expect(await screen.findByText("cf:id=1")).toBeInTheDocument();
+  expect(await screen.findByText("cf:id=1;geom=null")).toBeInTheDocument();
+});
+
+test("table row click forwards the record's geometry to the cross-filter entry when present", async () => {
+  const Table = getWidget("table")!.Component;
+  const data = {
+    loading: false, error: false,
+    records: [{ id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [5, 6] } }],
+    datasetId: "dataset-1", pkColumn: "id",
+  };
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Table props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
+      <CrossFilterProbe datasetId="dataset-1" />
+    </AnalyticsContextProvider>,
+  );
+  await userEvent.click(screen.getByText("Parc A").closest("tr")!);
+  expect(await screen.findByText('cf:id=1;geom={"type":"Point","coordinates":[5,6]}')).toBeInTheDocument();
 });
 
 test("list item click does not set a cross-filter when the source isn't dataset-bound", async () => {

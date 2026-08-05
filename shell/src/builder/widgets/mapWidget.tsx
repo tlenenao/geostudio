@@ -183,7 +183,7 @@ export function registerMapWidget(): void {
                 ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", record);
                 const datasetId = ctx.data?.datasetId;
                 const pkColumn = ctx.data?.pkColumn;
-                if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""));
+                if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(record.id), String(props.dataSourceId ?? ""), record.geometry);
               }}
             />
           </Suspense>

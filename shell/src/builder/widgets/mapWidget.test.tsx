@@ -170,7 +170,7 @@ test("map sets a cross-filter by pkColumn on feature click when dataset-bound", 
   function CrossFilterProbe() {
     const ctx = useAnalyticsContext();
     const entry = ctx.crossFilter["dataset-1"];
-    return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
+    return <p>cf:{entry ? `${entry.field}=${entry.value};geom=${JSON.stringify(entry.geometry ?? null)}` : "none"}</p>;
   }
   const Map = getWidget("map")!.Component;
   const data = { loading: false, error: false, records: [], datasetId: "dataset-1", pkColumn: "id" };
@@ -181,7 +181,7 @@ test("map sets a cross-filter by pkColumn on feature click when dataset-bound", 
     </AnalyticsContextProvider>,
   ));
   await userEvent.click(await screen.findByTestId("feature"));
-  expect(await screen.findByText("cf:id=1")).toBeInTheDocument();
+  expect(await screen.findByText('cf:id=1;geom={"type":"Point","coordinates":[5,6]}')).toBeInTheDocument();
 });
 
 test("shows an explorer menu when bound to a dataset and interactions are auto", async () => {
