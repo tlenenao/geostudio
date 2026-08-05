@@ -1,356 +1,65 @@
-### Task 4: Core — `app/harvest/live_query.py` (pure translation + cache, no HTTP routes yet)
+### Task 4: Full verification
 
-**Files:**
-- Create: `core/app/harvest/live_query.py`
-- Test: `core/tests/test_harvest_live_query.py` (new)
+**Files:** none modified — verification only.
 
-**Interfaces:**
-- Produces (consumed by Task 5):
-  - `class ArcgisQueryError(Exception)` with `.field: str`, `.message: str`.
-  - `translate_features_query(*, filters: dict[str, str], bbox: tuple[float,float,float,float] | None, limit: int, offset: int) -> dict[str, str]`
-  - `translate_aggregate_query(*, group_by: list[str], measures: list[tuple[str, str | None, str]], filters: dict[str, str], bbox: tuple[float,float,float,float] | None) -> dict[str, str]` — `measures` is `(agg, field, label)` triples; raises `ArcgisQueryError` for an unknown `agg` or a non-`count` agg with no field.
-  - `fetch_query(client: httpx.Client, external_url: str, params: dict[str, str]) -> dict` — TTL-cached (20s), keyed by `external_url` + sorted params.
-  - `aggregate_response(raw: dict, *, group_by: list[str], measures: list[tuple[str, str | None, str]]) -> tuple[str | list[str], list[dict]]`
+**Interfaces:** none (terminal task).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [ ] **Step 1: Run the full core test suite**
 
-Create `core/tests/test_harvest_live_query.py`:
+Run: `cd core && uv run pytest -v`
+Expected: every test PASSES or is explicitly `SKIPPED` for a documented reason (`postgis: nécessite un PostGIS réel` when `CORE_TEST_DATABASE_URL` is unset). If any of the new `test_mcp_tools_*` files show as skipped in an environment where `CORE_TEST_DATABASE_URL` **is** set, stop — that means the `postgis` marker was misapplied (a file that doesn't actually need PostGIS shouldn't carry it, or one that does isn't getting picked up) and needs fixing before this task can be marked done.
 
-```python
-# SPDX-License-Identifier: Apache-2.0
-import httpx
-import pytest
+- [ ] **Step 2: Run import-linter to confirm no layering violation**
 
-from app.harvest import live_query
+Run: `cd core && uv run lint-imports`
+Expected: `Contracts: 1 kept, 0 broken.` — confirms `app.mcp`'s new imports (`app.features.routes`, `app.harvest.routes`, `app.harvest.live_query`, `app.harvest.repository`, `app.harvest.egress`, `app.configs.dataset_validation`) all sit in layers below `app.mcp`, per the existing `[tool.importlinter]` contract in `core/pyproject.toml` (already verified during planning — this step is the executable confirmation).
 
+- [ ] **Step 3: Smoke-test tool registration count**
 
-@pytest.fixture(autouse=True)
-def _clear_cache():
-    live_query._cache.clear()
-    yield
-    live_query._cache.clear()
+Run:
+```bash
+cd core && uv run python3 -c "
+from app.mcp.server import create_mcp_server
+import asyncio
 
+async def main():
+    server = create_mcp_server('http://localhost:8200', lambda: None)
+    tools = await server.list_tools()
+    names = sorted(t.name for t in tools)
+    print(names)
+    assert {'create_dataset', 'run_analytics_query', 'explain_dataset'} <= set(names)
+    assert len(names) == 15
 
-def test_translate_features_query_builds_where_from_filters():
-    params = live_query.translate_features_query(
-        filters={"statut": "actif", "annee__gte": "2020", "annee__lte": "2024", "type__in": "a,b"},
-        bbox=None, limit=50, offset=10,
-    )
-    assert "statut = 'actif'" in params["where"]
-    assert "annee >= '2020'" in params["where"]
-    assert "annee <= '2024'" in params["where"]
-    assert "type IN ('a', 'b')" in params["where"]
-    assert params["resultRecordCount"] == "50"
-    assert params["resultOffset"] == "10"
-    assert params["f"] == "geojson"
-    assert params["outFields"] == "*"
-    assert "geometry" not in params
+asyncio.run(main())
+"
+```
+Expected: prints a sorted list of 15 tool names including the 3 new ones (12 existing + `create_dataset` + `run_analytics_query` + `explain_dataset`), no assertion error. (`session_factory=lambda: None` is safe here — `list_tools()` only reads the registered tool metadata, it never opens a session.)
 
+- [ ] **Step 4: Update CLAUDE.md's roadmap section**
 
-def test_translate_features_query_no_filters_is_1_equals_1():
-    params = live_query.translate_features_query(filters={}, bbox=None, limit=100, offset=0)
-    assert params["where"] == "1=1"
+Modify `CLAUDE.md`, in the "### À venir" section under "Feuille de route (état d'avancement)": move the SP-14l line from implied/future into the "### Fait" section, following the exact style of the SP-14k entry already there (`- **SP-14k** — ... **A22 complet...**.` pattern). Add, right after the `SP-13` bullet and before the existing `SP-14` planning note is removed:
 
-
-def test_translate_features_query_bbox_adds_envelope_params():
-    params = live_query.translate_features_query(
-        filters={}, bbox=(1.0, 2.0, 3.0, 4.0), limit=100, offset=0,
-    )
-    assert params["geometry"] == "1.0,2.0,3.0,4.0"
-    assert params["geometryType"] == "esriGeometryEnvelope"
-    assert params["inSR"] == "4326"
-    assert params["spatialRel"] == "esriSpatialRelIntersects"
-
-
-def test_translate_features_query_escapes_single_quotes():
-    params = live_query.translate_features_query(
-        filters={"nom": "l'école"}, bbox=None, limit=10, offset=0,
-    )
-    assert "l''école" in params["where"]
-
-
-def test_translate_aggregate_query_count_no_groupby():
-    params = live_query.translate_aggregate_query(
-        group_by=[], measures=[("count", None, "total")], filters={}, bbox=None,
-    )
-    assert params["f"] == "json"
-    assert "groupByFieldsForStatistics" not in params
-    stats = params["outStatistics"]
-    assert '"statisticType": "count"' in stats or "'statisticType': 'count'" in stats or "statisticType" in stats
-
-
-def test_translate_aggregate_query_groupby_single_field():
-    params = live_query.translate_aggregate_query(
-        group_by=["commune"], measures=[("sum", "population", "total_pop")], filters={}, bbox=None,
-    )
-    assert params["groupByFieldsForStatistics"] == "commune"
-
-
-def test_translate_aggregate_query_groupby_multi_field():
-    params = live_query.translate_aggregate_query(
-        group_by=["commune", "annee"], measures=[("count", None, "n")], filters={}, bbox=None,
-    )
-    assert params["groupByFieldsForStatistics"] == "commune,annee"
-
-
-def test_translate_aggregate_query_unknown_agg_raises():
-    with pytest.raises(live_query.ArcgisQueryError):
-        live_query.translate_aggregate_query(
-            group_by=[], measures=[("median", "x", "m")], filters={}, bbox=None,
-        )
-
-
-def test_translate_aggregate_query_non_count_without_field_raises():
-    with pytest.raises(live_query.ArcgisQueryError):
-        live_query.translate_aggregate_query(
-            group_by=[], measures=[("sum", None, "m")], filters={}, bbox=None,
-        )
-
-
-def test_fetch_query_returns_parsed_json():
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert str(request.url).startswith("https://gis.example.com/FeatureServer/0/query")
-        return httpx.Response(200, json={"features": [{"attributes": {"a": 1}}]})
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    data = live_query.fetch_query(client, "https://gis.example.com/FeatureServer/0", {"where": "1=1"})
-    assert data == {"features": [{"attributes": {"a": 1}}]}
-
-
-def test_fetch_query_caches_within_ttl(monkeypatch):
-    calls = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        return httpx.Response(200, json={"features": []})
-
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    clock = {"t": 1000.0}
-    monkeypatch.setattr(live_query.time, "monotonic", lambda: clock["t"])
-
-    live_query.fetch_query(client, "https://gis.example.com/FeatureServer/0", {"where": "1=1"})
-    live_query.fetch_query(client, "https://gis.example.com/FeatureServer/0", {"where": "1=1"})
-    assert calls["n"] == 1  # deuxième appel servi par le cache
-
-    clock["t"] += live_query._CACHE_TTL_SECONDS + 1
-    live_query.fetch_query(client, "https://gis.example.com/FeatureServer/0", {"where": "1=1"})
-    assert calls["n"] == 2  # TTL expiré, nouvel appel réseau
-
-
-def test_aggregate_response_no_groupby_single_row():
-    raw = {"features": [{"attributes": {"m0": 42}}]}
-    key, rows = live_query.aggregate_response(raw, group_by=[], measures=[("count", None, "total")])
-    assert key == "group"
-    assert rows == [{"group": "Total", "total": 42}]
-
-
-def test_aggregate_response_single_groupby_field():
-    raw = {"features": [
-        {"attributes": {"commune": "Metz", "m0": 3}},
-        {"attributes": {"commune": "Nancy", "m0": 7}},
-    ]}
-    key, rows = live_query.aggregate_response(
-        raw, group_by=["commune"], measures=[("count", None, "n")],
-    )
-    assert key == "commune"
-    assert rows == [{"commune": "Metz", "n": 3}, {"commune": "Nancy", "n": 7}]
-
-
-def test_aggregate_response_multi_groupby_fields():
-    raw = {"features": [{"attributes": {"commune": "Metz", "annee": 2020, "m0": 3}}]}
-    key, rows = live_query.aggregate_response(
-        raw, group_by=["commune", "annee"], measures=[("count", None, "n")],
-    )
-    assert key == ["commune", "annee"]
-    assert rows == [{"commune": "Metz", "annee": 2020, "n": 3}]
-
-
-def test_aggregate_response_no_features_empty_rows():
-    key, rows = live_query.aggregate_response({"features": []}, group_by=[], measures=[("count", None, "n")])
-    assert key == "group"
-    assert rows == []
+```markdown
+- **SP-14l** — MCP analytique : outils `create_dataset`, `run_analytics_query`,
+  `explain_dataset`, câblés sur les chemins de requête dataset déjà validés
+  (SP-11b, SP-14a/k).
 ```
 
-- [ ] **Step 2: Run to verify failure**
+Remove the now-stale `- **SP-14** — Analytics UX (...). Jalon M11.` line from `### À venir` only if this was the last outstanding SP-14 sub-part — check `docs/vision/2026-07-04-feuille-de-route-geostudio.md` §SP-14 "Contenu" against what's shipped (datasets partagés ✅ SP-14a, contexte analytique ✅ SP-14b, widgets analytiques ✅ SP-14c–j, SQL Lab ✅ SP-14i, source arcgis ✅ SP-14k, MCP ✅ SP-14l) — **requête visuelle is still missing** (blocked on SP-15, per the design doc's non-buts), so SP-14 as a whole is **not** complete yet. Leave the `### À venir` line as-is; do not mark jalon M11 reached.
 
-Run: `cd core && uv run pytest tests/test_harvest_live_query.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.harvest.live_query'`.
-
-- [ ] **Step 3: Implement `core/app/harvest/live_query.py`**
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Traduction de requêtes génériques (filtres __gte/__lte/__in, bbox,
-pagination, groupBy/mesures) vers l'API REST ArcGIS Feature Service, pour un
-dataset source="arcgis" (SP-14k) — lecture live, sans copie locale. Les
-requêtes sortantes utilisent le client HTTP injecté par la route appelante
-(gardé par le même egress guard que le moissonnage, SP-12d, egress.py)."""
-import json
-import time
-from urllib.parse import urlencode
-
-import httpx
-
-_CACHE_TTL_SECONDS = 20.0
-_RANGE_OPS = {"__gte": ">=", "__lte": "<="}
-_STAT_TYPES = {"count", "sum", "avg", "min", "max"}
-
-_cache: dict[str, tuple[float, dict]] = {}
-
-
-class ArcgisQueryError(Exception):
-    def __init__(self, field: str, message: str):
-        self.field = field
-        self.message = message
-        super().__init__(message)
-
-
-def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
-    if raw_name.endswith("__in"):
-        return raw_name[: -len("__in")], "__in"
-    for suffix in _RANGE_OPS:
-        if raw_name.endswith(suffix):
-            return raw_name[: -len(suffix)], suffix
-    return raw_name, None
-
-
-def _sql_lit(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-
-
-def _build_where(filters: dict[str, str]) -> str:
-    clauses = []
-    for raw_name, value in sorted(filters.items()):
-        name, suffix = _split_filter_key(raw_name)
-        if suffix == "__in":
-            values = value.split(",")
-            clauses.append(f"{name} IN ({', '.join(_sql_lit(v) for v in values)})")
-        elif suffix in _RANGE_OPS:
-            clauses.append(f"{name} {_RANGE_OPS[suffix]} {_sql_lit(value)}")
-        else:
-            clauses.append(f"{name} = {_sql_lit(value)}")
-    return " AND ".join(clauses) if clauses else "1=1"
-
-
-def _bbox_params(bbox: tuple[float, float, float, float] | None) -> dict[str, str]:
-    if bbox is None:
-        return {}
-    minx, miny, maxx, maxy = bbox
-    return {
-        "geometry": f"{minx},{miny},{maxx},{maxy}",
-        "geometryType": "esriGeometryEnvelope",
-        "inSR": "4326",
-        "spatialRel": "esriSpatialRelIntersects",
-    }
-
-
-def translate_features_query(
-    *, filters: dict[str, str], bbox: tuple[float, float, float, float] | None,
-    limit: int, offset: int,
-) -> dict[str, str]:
-    return {
-        "where": _build_where(filters),
-        "outFields": "*",
-        "f": "geojson",
-        "resultRecordCount": str(limit),
-        "resultOffset": str(offset),
-        **_bbox_params(bbox),
-    }
-
-
-def translate_aggregate_query(
-    *, group_by: list[str], measures: list[tuple[str, str | None, str]],
-    filters: dict[str, str], bbox: tuple[float, float, float, float] | None,
-) -> dict[str, str]:
-    out_statistics = []
-    for i, (agg, field, _label) in enumerate(measures):
-        if agg not in _STAT_TYPES:
-            raise ArcgisQueryError("agg", f"unknown agg '{agg}'")
-        if agg != "count" and field is None:
-            raise ArcgisQueryError("field", f"agg '{agg}' requires a field")
-        out_statistics.append({
-            "statisticType": agg,
-            "onStatisticField": field or "1",
-            "outStatisticFieldName": f"m{i}",
-        })
-    params: dict[str, str] = {
-        "where": _build_where(filters),
-        "outStatistics": json.dumps(out_statistics),
-        "f": "json",
-        **_bbox_params(bbox),
-    }
-    if group_by:
-        params["groupByFieldsForStatistics"] = ",".join(group_by)
-    return params
-
-
-def _cache_key(external_url: str, params: dict[str, str]) -> str:
-    return f"{external_url}?{urlencode(sorted(params.items()))}"
-
-
-def fetch_query(client: httpx.Client, external_url: str, params: dict[str, str]) -> dict:
-    key = _cache_key(external_url, params)
-    cached = _cache.get(key)
-    if cached is not None:
-        expires_at, value = cached
-        if time.monotonic() < expires_at:
-            return value
-        del _cache[key]
-    response = client.get(f"{external_url}/query", params=params)
-    response.raise_for_status()
-    data = response.json()
-    _cache[key] = (time.monotonic() + _CACHE_TTL_SECONDS, data)
-    return data
-
-
-def aggregate_response(
-    raw: dict, *, group_by: list[str], measures: list[tuple[str, str | None, str]],
-) -> tuple[str | list[str], list[dict]]:
-    features = raw.get("features", [])
-    if not group_by:
-        if not features:
-            return "group", []
-        attrs = features[0].get("attributes", {})
-        row = {"group": "Total"}
-        for i, (_agg, _field, label) in enumerate(measures):
-            row[label] = attrs.get(f"m{i}")
-        return "group", [row]
-    if len(group_by) == 1:
-        field = group_by[0]
-        rows = []
-        for feat in features:
-            attrs = feat.get("attributes", {})
-            row: dict = {field: str(attrs.get(field))}
-            for i, (_agg, _field, label) in enumerate(measures):
-                row[label] = attrs.get(f"m{i}")
-            rows.append(row)
-        return field, rows
-    rows = []
-    for feat in features:
-        attrs = feat.get("attributes", {})
-        row = {f: attrs.get(f) for f in group_by}
-        for i, (_agg, _field, label) in enumerate(measures):
-            row[label] = attrs.get(f"m{i}")
-        rows.append(row)
-    return group_by, rows
-```
-
-- [ ] **Step 4: Run to verify all tests pass**
-
-Run: `cd core && uv run pytest tests/test_harvest_live_query.py -v`
-Expected: all PASS.
-
-- [ ] **Step 5: Run the full core suite**
-
-Run: `cd core && uv run pytest`
-Expected: no regressions.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-cd core
-git add app/harvest/live_query.py tests/test_harvest_live_query.py
-git commit -m "feat(core): live_query translates filters/bbox/groupBy to ArcGIS REST (SP-14k)"
+git add CLAUDE.md
+git commit -m "docs: SP-14l livré — mcp analytique (create_dataset, run_analytics_query, explain_dataset)"
 ```
 
 ---
 
+## Self-Review
+
+**Spec coverage:** §2 `create_dataset` → Task 1. §3 `run_analytics_query` → Task 2. §4 `explain_dataset` → Task 3. §5 (mirroring, not extraction) → followed throughout (every helper reimplements route logic rather than importing private `_`-prefixed names; only non-underscored "factory" functions — `get_duckdb_connection_factory`, `get_analytics_base_uri`, `get_arcgis_http_client` — are called via module reference). §6 (permissions: dataset read ≠ data read, re-checked independently) → covered by `_resolve_arcgis_external_url`'s independent check + the `test_run_analytics_query_collection_unreadable_by_caller_errors`/`test_run_analytics_query_arcgis_layer_unreadable_errors` tests. §7 (no audit on reads) → `run_analytics_query`/`explain_dataset` write no audit rows, matching `aggregate_features`/`query_features`. §8 risks table → each row maps to a test or an explicit design choice already reflected in the code above.
+
+**Placeholder scan:** no TBD/TODO; every step shows complete code; no "similar to Task N" references (Task 3's tests are fully written out despite structural similarity to Task 2's, since the exact assertions/fixtures differ).
+
+**Type consistency:** `DatasetPayload`/`DatasetColumnMeta` used identically across Tasks 1–3 (as defined in `app.configs.schemas`, unmodified). `_resolve_dataset_payload` (Task 2) and `_resolve_arcgis_external_url` (Task 2) signatures match their Task 3 call sites exactly. `run_analytics_query`'s return shape (`{"categoryKey", "rows"}`) matches what Task 2's tests assert. `explain_dataset`'s return shape matches what Task 3's tests assert.
