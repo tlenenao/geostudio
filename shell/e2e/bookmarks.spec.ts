@@ -23,19 +23,34 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   });
   await page.route("**/collections/events/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }] },
+      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }, { name: "score", type: "number" }] },
     });
   });
+  // "score" (numérique) porte le cross-filter : le curseur ("Curseur" widget)
+  // le filtre par plage (score__gte/score__lte), en plus de la plage
+  // temporelle sur "date" déjà exercée par ce test.
   await page.route("**/collections/events/items*", async (route) => {
     const url = new URL(route.request().url());
     const gte = url.searchParams.get("date__gte");
     const lte = url.searchParams.get("date__lte");
+    const scoreGte = url.searchParams.get("score__gte");
+    const scoreLte = url.searchParams.get("score__lte");
     const all = [
-      { id: 1, properties: { nom: "Ancien", date: "2020-05-01" } },
-      { id: 2, properties: { nom: "Récent", date: "2026-06-01" } },
+      { id: 1, properties: { nom: "Ancien", date: "2020-05-01", score: 10 } },
+      { id: 2, properties: { nom: "Récent", date: "2026-06-01", score: 90 } },
     ];
-    const features = gte && lte ? all.filter((f) => f.properties.date >= gte && f.properties.date <= lte) : all;
+    const features = all.filter((f) => {
+      if (gte && f.properties.date < gte) return false;
+      if (lte && f.properties.date > lte) return false;
+      if (scoreGte && f.properties.score < Number(scoreGte)) return false;
+      if (scoreLte && f.properties.score > Number(scoreLte)) return false;
+      return true;
+    });
     await route.fulfill({ json: { type: "FeatureCollection", features } });
+  });
+  // Bornes min/max du curseur (requête statistics du widget sliderFilter).
+  await page.route("**/collections/events/aggregate", async (route) => {
+    await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", min: 10, max: 90 }] } });
   });
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
@@ -77,25 +92,59 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   await dialog.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
+  // Deux sources sur "events", promues chacune en dataset partagé (même
+  // datasetId "dataset-1" côté mock, cf. le commentaire de
+  // analytics-context.spec.ts) : le curseur origine le cross-filter depuis la
+  // première, la table le lit sur la seconde. derivePatch()
+  // (lib/analyticsPatch.ts) n'applique un cross-filter qu'aux sources dont
+  // l'id diffère de son originSourceId — lier curseur et table à la même
+  // source ne l'exercerait donc jamais.
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  await page.getByLabel(/Collection de la source/).fill("events");
-  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).click();
-  await expect(page.getByText("Dataset partagé actif")).toBeVisible();
+  await page.getByLabel(/Collection de la source/).last().fill("events");
+  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).last().click();
+  await expect(page.getByText("Dataset partagé actif")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Ajouter une source" }).click();
+  await page.getByLabel(/Collection de la source/).last().fill("events");
+  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).last().click();
+  await expect(page.getByText("Dataset partagé actif")).toHaveCount(2);
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
 
   await page.getByRole("button", { name: /Plage de dates/ }).click();
-  await page.getByRole("button", { name: "Table" }).click();
+
+  await page.getByRole("button", { name: "Curseur" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
+  await page.getByLabel("Champ du curseur").fill("score");
+  await page.getByLabel("Libellé du curseur").fill("Score");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
-  // 1. Ouvrir le runtime, poser une plage temporelle.
+  // 1. Ouvrir le runtime, poser un cross-filter (curseur) puis une plage
+  // temporelle.
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Ancien" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Récent" })).toBeVisible();
+
+  const minInput = page.getByLabel("Borne minimale");
+  await expect(minInput).toHaveValue("10");
+  const crossFilteredReq = page.waitForRequest((r) => r.url().includes("/collections/events/items") && r.url().includes("score__gte=50"));
+  await minInput.evaluate((el: HTMLInputElement) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    setter.call(el, "50");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await crossFilteredReq;
+  await expect(page.getByRole("cell", { name: "Ancien" })).toBeHidden();
+  await expect(page.getByRole("cell", { name: "Récent" })).toBeVisible();
+
   await page.getByLabel("Date de début").fill("2026-01-01");
   await page.getByLabel("Date de fin").fill("2026-12-31");
   await expect(page.getByRole("cell", { name: "Ancien" })).toBeHidden();
+  await expect(page.getByRole("cell", { name: "Récent" })).toBeVisible();
 
   // 2. Enregistrer la vue.
   await page.getByRole("button", { name: "Enregistrer la vue" }).click();
@@ -105,7 +154,11 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   await expect.poll(() => bookmarkCreated).toBe(true);
   expect(bookmarkConfigBody).toMatchObject({
     kind: "bookmark",
-    bookmark: { appId: "9", pageId: expect.any(String), timeRange: { from: "2026-01-01", to: "2026-12-31" } },
+    bookmark: {
+      appId: "9", pageId: expect.any(String),
+      timeRange: { from: "2026-01-01", to: "2026-12-31" },
+      crossFilter: { "dataset-1": { field: "score", value: { from: "50", to: "90" }, originSourceId: expect.any(String) } },
+    },
   });
 
   // 3. La vue apparaît dans /bookmarks.
@@ -133,11 +186,15 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   await page.goto("/bookmarks");
   await expect(page.getByText("Récents 2026")).toBeVisible();
 
-  // 4. L'ouvrir restaure exactement le même contexte.
+  // 4. L'ouvrir restaure exactement le même contexte — plage temporelle et
+  // cross-filter, pas seulement la première.
+  const reopenedReq = page.waitForRequest((r) => r.url().includes("/collections/events/items") && r.url().includes("score__gte=50") && r.url().includes("date__gte=2026-01-01"));
   await page.getByRole("button", { name: "Ouvrir" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/.*\?ctx=/);
+  await reopenedReq;
   await expect(page.getByRole("cell", { name: "Récent" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Ancien" })).toBeHidden();
+  await expect(page.getByText("Score (50 – 90)")).toBeVisible();
 });
 
 test("a non-shared view is invisible to a second user of the same tenant", async ({ page }) => {
