@@ -25,7 +25,7 @@
 3. [Architecture cible de fin de feuille de route](#3-architecture-cible)
 4. [Le périmètre exact du remplacement de GeoNode](#4-périmètre-du-remplacement-de-geonode)
 5. [Modèle de données du cœur v0](#5-modèle-de-données-du-cœur-v0)
-6. [Phasage SP-1 → SP-17](#6-phasage)
+6. [Phasage SP-1 → SP-18](#6-phasage)
 7. [Points d'arbitrage technique (A1–A27)](#7-points-darbitrage-technique)
 8. [Décisions d'arbitrage](#8-décisions-darbitrage)
 9. [Ce qui est explicitement différé](#9-différé)
@@ -190,7 +190,8 @@ Vue d'ensemble (effort en heures ; calendrier ≈ effort ÷ capacité × 1,5–2
 | SP-15 | ETL no-code « équivalent FME » : document `Pipeline`, canvas, runtime deux étages | 150–260 h | SP-11 | **M14 ETL no-code** |
 | SP-16 | Alertes & reporting : exports, rapports planifiés | 50–80 h | SP-17, SP-14 | **M12 la plateforme prévient** |
 | SP-17 | 3D & impression | 50–90 h | SP-1 | **M10 3D & print** |
-| | **Total** | **≈ 915–1 590 h** | | ≈ 20–40 mois à 10–25 h/sem |
+| SP-18 | Export d'apps déployables sans GeoStudio (connecté/autoporté/statique) | 80–140 h | SP-11 | **M15 apps portables** |
+| | **Total** | **≈ 995–1 730 h** | | ≈ 22–44 mois à 10–25 h/sem |
 
 L'ordre SP-3→SP-6 est inversable (ingestion avant formulaires) si un utilisateur
 réel l'exige (question Q2 du comparatif, toujours ouverte). SP-2 est
@@ -248,6 +249,25 @@ centre.** Dépend de SP-11 (runtime DuckDB) ; s'exécute en 4 phases livrables
 n°1 est le canvas de graphe ; le runtime réutilise massivement l'existant
 (SP-6/SP-11). Voir
 [l'étude de faisabilité](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md).
+
+**Le SP-18 a été ajouté le 2026-08-05** (brainstorm export d'apps) : chantier
+**Export d'apps déployables sans GeoStudio**, qui répond à un besoin resté
+hors périmètre jusqu'ici — faire vivre une app construite dans le builder
+**ailleurs qu'sur l'instance GeoStudio qui l'a produite**, sans dépendre en
+permanence de son cœur. Trois modes d'indépendance croissante partagent un
+même mécanisme d'export (`ItemClient` alternatif par mode, cf. règle
+d'architecture n°1) : **Connecté** (bundle statique, données lues en direct
+sur le cœur d'origine, items publics seulement), **Autoporté** (conteneur
+avec mini-serveur read-only servant un instantané GeoParquet/DuckDB, sans
+Postgres/Keycloak/MinIO — réutilise le moteur analytique de SP-11) et
+**Statique** (données figées en JSON, zéro backend, déployable sur tout
+hébergeur statique). Dépend de SP-11 pour le mode Autoporté (moteur DuckDB/
+GeoParquet) ; indépendant de SP-12/SP-14/SP-16/SP-17, peut s'exécuter dès
+SP-11 terminé. Chantier **orthogonal à SP-Deploy**
+(`docs/superpowers/specs/2026-07-23-sp-deploy-strategies-design.md`, qui
+déploie toute la plateforme GeoStudio) : ici on exporte une app unique pour
+qu'elle tourne seule, ailleurs. Voir
+[la spec dédiée](../superpowers/specs/2026-08-05-export-apps-standalone-design.md).
 
 ---
 
@@ -1359,6 +1379,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | **M12 La plateforme prévient** (SP-16) | Alertes, rapports planifiés diffusés, exports secs | Rapport PDF hebdo reçu par email ; alerte de seuil déclenchée et journalisée < 5 min ; export XLSX permissionné |
 | **M13 Portails ouverts** (SP-13) | Portail public de marque publié, galerie de découverte, fiche dataset téléchargeable | Un visiteur anonyme parcourt un portail et télécharge un jeu de données sans jamais voir un item non publié |
 | **M14 ETL no-code** (SP-15) | Canvas `Pipeline` visuel, runtime deux étages, exécution planifiée, outils MCP | Un non-technicien câble sans code source→transformers→writer (data ET spatial) et publie une collection ; un agent MCP crée et exécute un pipeline |
+| **M15 Apps portables** (SP-18) | Export d'une app en mode Connecté, Autoporté ou Statique, artefact déployé hors GeoStudio | Une app exportée en mode Statique tourne servie par un simple serveur HTTP, sans aucune instance GeoStudio derrière ; un conteneur Autoporté démarre à froid et sert son instantané |
 
 ---
 
@@ -1374,7 +1395,10 @@ et
 [SP-13](../superpowers/specs/2026-07-14-sp13-portails-sites-design.md)), puis
 le 2026-07-22 (SP-15 « ETL no-code équivalent FME », arbitrage A39, jalon M14 —
 étude de faisabilité, Go cœur-first tranché par Tanguy ; spec :
-[étude ETL](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md)).
+[étude ETL](../superpowers/specs/2026-07-22-etude-faisabilite-etl-fme-nocode-design.md)),
+puis le 2026-08-05 (SP-18 « Export d'apps déployables sans GeoStudio », jalon
+M15 — brainstorm export d'apps ; spec :
+[export d'apps](../superpowers/specs/2026-08-05-export-apps-standalone-design.md)).
 Les arbitrages A1–A31, A33–A39 sont tranchés en §8 (A32, proposition de copilote
 IA embarqué, reste ouverte — voir le gap analysis) ; toute révision d'un
 arbitrage après lancement du SP concerné passe par une mise à jour explicite

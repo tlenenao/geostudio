@@ -1,12 +1,11 @@
-# Export d'apps déployables sans GeoStudio
+# Export d'apps déployables sans GeoStudio (SP-18)
 
 > Spec issue du brainstorm du 2026-08-05. Objectif : permettre de **créer une
 > app dans le builder GeoStudio puis l'exporter** sous une forme qui tourne
 > **hors d'une instance GeoStudio en marche**, selon trois modes
-> d'indépendance croissante. Ce chantier n'a pas encore de numéro SP ni de
-> case dans la feuille de route — à intégrer explicitement dans
-> `docs/vision/2026-07-04-feuille-de-route-geostudio.md` une fois la spec
-> validée.
+> d'indépendance croissante. Inscrit comme **SP-18** dans la feuille de route
+> (`docs/vision/2026-07-04-feuille-de-route-geostudio.md`, jalon **M15 apps
+> portables**), dépend de SP-11, indépendant de SP-12/SP-14/SP-16/SP-17.
 
 ## 1. Contexte & motivation
 
@@ -160,7 +159,5 @@ asséré :
   (`core/app/features`, `core/app/analytics`) packagé séparément, ou service
   neuf dédié à l'export — impact sur la dette de maintenance à trancher au
   moment du plan.
-- Faut-il un numéro SP et une place dans la feuille de route
-  (`docs/vision/2026-07-04-feuille-de-route-geostudio.md`) avant le plan
-  d'implémentation, ou ce chantier reste-t-il documenté seul jusqu'à
-  priorisation explicite ?
+- Position exacte de SP-18 dans le calendrier réel (aucun autre SP n'en
+  dépend ; peut être planifié dès SP-11 clos, à trancher au moment du plan).
