@@ -125,6 +125,7 @@ def update_config(
     _require_access(session, user=user, item_id=existing.itemId, action="write")
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
+    _validate_bookmark_payload(session, config, user=user)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
