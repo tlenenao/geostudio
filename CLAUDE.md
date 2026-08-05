@@ -166,11 +166,25 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   la vue » sur `AppRuntimePage` capturant le contexte analytique courant
   (plage temporelle/emprise/cross-filter, y compris la forme `{from, to}` du
   filtre curseur).
+- **SP-14n** — Cross-filter inter-datasets : `crossFilterLinks` (attribut ou
+  spatial bbox/exact) déclaré sur un dataset cible un autre dataset, pour que
+  la sélection sur un widget lié au dataset A cross-filtre aussi les widgets
+  liés au dataset B — capacité `geomIntersects`/`geom_intersects` sur les
+  deux endpoints serveur (DuckDB aggregate + OGC API Features, ce dernier non
+  câblé côté shell par choix), résolution dans `derivePatch`, capture de
+  géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
+  dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
+  visuelle** (cf. « À venir »).
 
 ### À venir
 
-- **SP-14** — reste de l'Analytics UX au-delà de SP-14l/m (déjà livrés) : les
-  sous-parties requête visuelle/widgets/SQL Lab restantes. Jalon M11.
+- **SP-14** — seule reste la **requête visuelle** (Filtrer → Joindre →
+  Résumer → Trier compilant vers l'API analytique), bloquée sur SP-15 (le
+  moteur de pipeline qu'elle consommera, A39) ; toutes les autres
+  sous-parties (datasets, contexte global, cross-filter y compris
+  inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
+  livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
+  livrée.
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).
