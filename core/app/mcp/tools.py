@@ -679,8 +679,12 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 config = configs_repo.get_config_by_item(session, pipelineId)
                 if config is None or config.config.kind != "pipeline":
                     raise ValueError("pipeline not found")
+                facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+                    raise ValueError("pipeline not found")
                 item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=pipelineId)
-                assert item is not None
+                if item is None:
+                    raise ValueError("pipeline not found")
                 payload = config.config.pipeline
                 assert payload is not None
                 return {
