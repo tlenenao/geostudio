@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -134,6 +134,8 @@ export interface ItemClient {
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
   createDatasetItem(input: CreateDatasetInput): Promise<Item>;
+  createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
+  getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
@@ -239,6 +241,19 @@ export type FeatureLayerSource = { id: string; title: string };
 export type CreateDatasetInput =
   | { title: string; owner: string; source: "collection"; collectionId: string }
   | { title: string; owner: string; source: "arcgis"; arcgisItemId: string };
+
+export type BookmarkCrossFilterValue = string | string[] | { from: string; to: string };
+export type BookmarkCrossFilterEntry = { field: string; value: BookmarkCrossFilterValue; originSourceId: string };
+
+export type BookmarkPayload = {
+  appId: string;
+  pageId: string;
+  timeRange: { from: string; to: string } | null;
+  extent: [number, number, number, number] | null;
+  crossFilter: Record<string, BookmarkCrossFilterEntry>;
+};
+
+export type CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload;
 
 // Écho documenté de WcWidgetManifest (shell/src/builder/wc/manifest.ts) — même
 // forme, dupliquée ici plutôt qu'importée : api/ ne dépend jamais de builder/.
