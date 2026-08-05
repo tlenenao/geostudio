@@ -55,7 +55,7 @@ export function registerDataWidgets(): void {
         ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
         const datasetId = ctx.data?.datasetId;
         const pkColumn = ctx.data?.pkColumn;
-        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""));
+        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""), r.geometry);
       }
 
       return (
@@ -188,7 +188,7 @@ export function registerDataWidgets(): void {
         ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
         const datasetId = ctx.data?.datasetId;
         const pkColumn = ctx.data?.pkColumn;
-        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""));
+        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""), r.geometry);
       }
 
       return (
