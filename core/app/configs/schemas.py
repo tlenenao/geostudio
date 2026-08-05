@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,6 +92,25 @@ class DatasetColumnMeta(BaseModel):
                                  # interprété côté widget consommateur
 
 
+class DatasetCrossFilterLinkAttribute(BaseModel):
+    mode: Literal["attribute"] = "attribute"
+    targetDatasetId: str
+    sourceField: str
+    targetField: str
+
+
+class DatasetCrossFilterLinkSpatial(BaseModel):
+    mode: Literal["spatial"] = "spatial"
+    targetDatasetId: str
+    precision: Literal["bbox", "exact"] = "bbox"
+
+
+DatasetCrossFilterLink = Annotated[
+    DatasetCrossFilterLinkAttribute | DatasetCrossFilterLinkSpatial,
+    Field(discriminator="mode"),
+]
+
+
 class DatasetPayload(BaseModel):
     source: Literal["collection", "arcgis"]
     collectionId: str | None = None    # requis si source == "collection"
@@ -100,6 +119,7 @@ class DatasetPayload(BaseModel):
     columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
     timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
     reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
+    crossFilterLinks: list[DatasetCrossFilterLink] = Field(default_factory=list)  # SP-14n
 
     @model_validator(mode="after")
     def _require_source_id(self) -> "DatasetPayload":
