@@ -136,3 +136,19 @@ def test_update_bookmark_app_inexistante_rejetee(client):
     res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
     assert res.status_code == 422
     assert res.json()["detail"] == "app not found"
+
+
+def test_update_bookmark_by_config_id_app_inexistante_rejetee(client):
+    # Same guard as test_update_bookmark_app_inexistante_rejetee, but via
+    # PUT /configs/{config_id} (by config id, not by item) — the endpoint
+    # that was missing the _validate_bookmark_payload wiring.
+    app_item_id = client.post("/configs", json=_app_body()).json()["itemId"]
+    created = client.post("/configs", json=_bookmark_body(app_item_id))
+    config_id = created.json()["id"]
+    bad_config = {
+        "version": 1, "kind": "bookmark",
+        "bookmark": {"appId": "inexistante", "pageId": "page-1"},
+    }
+    res = client.put(f"/configs/{config_id}", json=bad_config)
+    assert res.status_code == 422
+    assert res.json()["detail"] == "app not found"
