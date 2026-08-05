@@ -8,7 +8,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
 from app.audit.writer import write_audit
-from app.auth.dependency import admin_subs, is_read_only_mode
+from app.auth.dependency import admin_subs, is_etl_enabled, is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -17,10 +17,11 @@ from app.configs import repository as configs_repo
 from app.configs.bookmark_validation import validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
+from app.configs.pipeline_validation import validate_pipeline_payload
 from app.configs.repository import ConfigRead
 from app.configs.schemas import (
     BookmarkCrossFilterEntry, BookmarkPayload, BookmarkTimeRange, BuilderConfig,
-    DatasetColumnMeta, DatasetPayload,
+    DatasetColumnMeta, DatasetPayload, PipelineEdge, PipelineNode, PipelinePayload,
 )
 from app.db import request_scoped_session
 from app.features import routes as features_routes
@@ -33,6 +34,8 @@ from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
 from app.mcp import form_app
+from app.pipelines import repository as pipelines_repo
+from app.pipelines.jobs import run_pipeline_task
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import Sharing
@@ -119,6 +122,18 @@ def _validate_bookmark(session, config: BuilderConfig, *, user: User) -> None:
     of HTTPException, no HTTP status channel in an MCP tool body)."""
     try:
         validate_bookmark_payload(session, config, user=user)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+
+
+def _validate_pipeline(session, config: BuilderConfig, *, user: User) -> None:
+    """Mirrors _validate_dataset/_validate_bookmark above — same rationale
+    (ValueError instead of HTTPException, no HTTP status channel in an MCP
+    tool body). validate_pipeline_payload (app.configs.pipeline_validation)
+    raises HTTPException for graph/topology/per-node errors, same as its
+    dataset/bookmark counterparts."""
+    try:
+        validate_pipeline_payload(session, config, user=user)
     except HTTPException as exc:
         raise ValueError(exc.detail) from exc
 
@@ -590,6 +605,96 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 for f in (raw_fields or []) if isinstance(f, dict)
             ]
             return {**base, "fields": fields}
+
+    if is_etl_enabled():
+        @server.tool()
+        async def create_pipeline(
+            ctx: Context, title: str, nodes: list[PipelineNode], edges: list[PipelineEdge],
+        ) -> ItemRead:
+            """Create a Pipeline (reader/transform/writer graph) — mirrors
+            POST /configs with kind="pipeline". Only registered when
+            CORE_ETL_ENABLED is on. SP-15a."""
+            if is_read_only_mode():
+                raise ValueError("Mode démo : lecture seule, écritures désactivées.")
+            access_token = get_access_token()
+            with request_scoped_session(session_factory) as session:
+                user = _resolve_actor(session, access_token)
+                payload = PipelinePayload(nodes=nodes, edges=edges)
+                config = BuilderConfig(version=1, kind="pipeline", pipeline=payload)
+                _validate_pipeline(session, config, user=user)
+                item = items_repo.create_item(
+                    session, tenant_id=user.tenant_id, owner_id=user.id,
+                    resource_type="pipeline", title=title,
+                )
+                config_result = configs_repo.create_config(
+                    session, config, item_id=item.id, tenant_id=user.tenant_id
+                )
+                write_audit(
+                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                    action="item.create", object_type="item", object_id=item.id,
+                    payload={"title": title},
+                )
+                write_audit(
+                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                    action="config.create", object_type="config", object_id=config_result.id,
+                    payload={"title": title, "kind": "pipeline"},
+                )
+                result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+                assert result is not None
+                return result
+
+        @server.tool()
+        async def run_pipeline(ctx: Context, pipelineId: str) -> dict:
+            """Defer a run of a Pipeline — mirrors POST /pipelines/{id}/run.
+            Only registered when CORE_ETL_ENABLED is on. SP-15a."""
+            access_token = get_access_token()
+            with request_scoped_session(session_factory) as session:
+                user = _resolve_actor(session, access_token)
+                config = configs_repo.get_config_by_item(session, pipelineId)
+                if config is None or config.config.kind != "pipeline":
+                    raise ValueError("pipeline not found")
+                facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                if facts is None or not can(session, user_id=user.id, action="write", item=facts):
+                    raise ValueError("pipeline not found")
+                run = pipelines_repo.create_run(
+                    session, tenant_id=user.tenant_id, pipeline_item_id=pipelineId,
+                )
+                write_audit(
+                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
+                    action="pipeline.run", object_type="pipeline_run", object_id=run.id,
+                    payload={"pipelineItemId": pipelineId},
+                )
+                session.commit()
+                run_pipeline_task.defer(run_id=run.id, tenant_id=user.tenant_id)
+                return {"runId": run.id}
+
+        @server.tool()
+        async def explain_pipeline(ctx: Context, pipelineId: str) -> dict:
+            """Describe a Pipeline's graph (nodes/ops/edges) without running
+            it — mirrors explain_dataset's shape. Only registered when
+            CORE_ETL_ENABLED is on. SP-15a."""
+            access_token = get_access_token()
+            with request_scoped_session(session_factory) as session:
+                user = _resolve_actor(session, access_token)
+                config = configs_repo.get_config_by_item(session, pipelineId)
+                if config is None or config.config.kind != "pipeline":
+                    raise ValueError("pipeline not found")
+                facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+                    raise ValueError("pipeline not found")
+                item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                if item is None:
+                    raise ValueError("pipeline not found")
+                payload = config.config.pipeline
+                assert payload is not None
+                return {
+                    "title": item.title,
+                    "nodes": [
+                        {"id": n.id, "kind": n.kind, "op": n.op, "title": n.title}
+                        for n in payload.nodes
+                    ],
+                    "edges": [{"from": e.from_, "to": e.to} for e in payload.edges],
+                }
 
     @server.tool()
     async def get_sharing(ctx: Context, itemId: str) -> Sharing:

@@ -23,6 +23,15 @@ def is_read_only_mode() -> bool:
     return os.environ.get("CORE_READ_ONLY_MODE", "false").lower() == "true"
 
 
+def is_etl_enabled() -> bool:
+    """CORE_ETL_ENABLED (SP-15a) — capacité instance-wide optionnelle, même
+    convention que is_read_only_mode : lue à chaque appel, sans cache, pour
+    que les tests basculent via monkeypatch sans recréer l'app. Défaut
+    false : une instance qui monte en version ne voit rien de nouveau tant
+    qu'elle n'a pas explicitement activé la capacité (cf. design SP-15a §3)."""
+    return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par

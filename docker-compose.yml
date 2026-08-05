@@ -162,7 +162,7 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
