@@ -5,10 +5,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, is_etl_enabled
 from app.configs import repository as repo
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
@@ -66,15 +67,22 @@ def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant
         raise HTTPException(status_code=400, detail=str(err)) from err
 
 
+def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
+    if config.kind == "pipeline" and not is_etl_enabled():
+        raise HTTPException(status_code=403, detail="ETL capability disabled on this instance")
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    _require_etl_enabled_for_pipeline(request.config)
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, request.config, user=user)
     _validate_bookmark_payload(session, request.config, user=user)
+    _validate_pipeline_payload(session, request.config, user=user)
     try:
         item = items_repo.create_item(
             session, tenant_id=user.tenant_id, owner_id=user.id,
@@ -123,9 +131,11 @@ def update_config(
     if existing is None or existing.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
+    _require_etl_enabled_for_pipeline(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
+    _validate_pipeline_payload(session, config, user=user)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
@@ -223,9 +233,11 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_etl_enabled_for_pipeline(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
+    _validate_pipeline_payload(session, config, user=user)
     result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
