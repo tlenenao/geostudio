@@ -923,6 +923,22 @@ test("queryDataSource sends a bbox query key as body.bbox, not as a filter", asy
   expect(posted!.filters).toBeUndefined();
 });
 
+test("queryDataSource sends a geomIntersects query key as body.geomIntersects", async () => {
+  const geom = { type: "Point", coordinates: [1, 2] };
+  let posted: { geomIntersects?: unknown } | undefined;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as { geomIntersects?: unknown };
+      return HttpResponse.json({ categoryKey: "group", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "src-1", type: "statistics", service: "core", layer: "villes",
+    query: { groupBy: "region", agg: "count", geomIntersects: geom },
+  });
+  expect(posted!.geomIntersects).toEqual(geom);
+});
+
 test("queryDataSource sends a bucket query key as body.bucket, not as a filter", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
