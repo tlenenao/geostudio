@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateDatasetInput, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -602,6 +602,31 @@ export function createItemClient(opts: {
         owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
         isPublished: false,
       };
+    },
+
+    async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {
+      const bookmark: BookmarkPayload = {
+        appId: input.appId, pageId: input.pageId,
+        timeRange: input.timeRange, extent: input.extent, crossFilter: input.crossFilter,
+      };
+      const config = { version: 1, kind: "bookmark", bookmark };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createBookmarkItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "bookmark", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getBookmarkConfig(pk: string): Promise<BookmarkPayload> {
+      const data = await request<{ config?: { bookmark?: BookmarkPayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
+      return data.config.bookmark;
     },
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {

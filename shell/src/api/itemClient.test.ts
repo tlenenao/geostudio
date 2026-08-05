@@ -372,6 +372,64 @@ test("getDatasetConfig throws when the config has no dataset payload", async () 
   await expect(makeClient().getDatasetConfig("ds-3")).rejects.toThrow();
 });
 
+test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      const body = (await request.json()) as { title: string; config: unknown };
+      expect(body.config).toEqual({
+        version: 1,
+        kind: "bookmark",
+        bookmark: {
+          appId: "app-1", pageId: "page-1",
+          timeRange: { from: "2026-01-01", to: "2026-02-01" },
+          extent: null, crossFilter: {},
+        },
+      });
+      return HttpResponse.json({ id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" }, { status: 201 });
+    }),
+  );
+  const item = await makeClient().createBookmarkItem({
+    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+  expect(item).toEqual({
+    pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
+    owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-bookmark", isPublished: false,
+  });
+});
+
+test("getBookmarkConfig reads the bookmark payload from the by-item config", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-1", () =>
+      HttpResponse.json({
+        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        config: {
+          version: 1, kind: "bookmark",
+          bookmark: {
+            appId: "app-1", pageId: "page-1",
+            timeRange: { from: "2026-01-01", to: "2026-02-01" },
+            extent: null, crossFilter: {},
+          },
+        },
+      }),
+    ),
+  );
+  const payload = await makeClient().getBookmarkConfig("bookmark-1");
+  expect(payload).toEqual({
+    appId: "app-1", pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+  });
+});
+
+test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/bookmark-2", () =>
+      HttpResponse.json({ id: "cfg-x", itemId: "bookmark-2", kind: "bookmark", config: { version: 1, kind: "bookmark" } }),
+    ),
+  );
+  await expect(makeClient().getBookmarkConfig("bookmark-2")).rejects.toThrow();
+});
+
 test("saveDatasetConfig PUTs the dataset config by item", async () => {
   let method = ""; let body: any;
   server.use(
