@@ -848,6 +848,125 @@ def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, 
         )
 
 
+def test_materialize_qgis_output_renames_non_geometry_named_column(tmp_path):
+    """Regression for final review Finding 1: the geometry column DuckDB/GDAL
+    write to a GPKG is NOT guaranteed to be named "geometry" — DuckDB's own
+    COPY ... TO ... WITH (FORMAT GDAL, DRIVER 'GPKG', ...) already names it
+    "geom" (verified directly below), exactly the situation
+    _execute_qgis_transform must survive when the sidecar's qgis_process
+    writes out.gpkg. _materialize_qgis_output must expose it as "geometry"
+    regardless, same guarantee _materialize_reader already gives readers."""
+    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn.execute("CREATE TEMP TABLE src AS SELECT 1 AS id, ST_Point(3.0, 4.0) AS geometry")
+    out_path = str(tmp_path / "out.gpkg")
+    conn.execute(
+        f"COPY (SELECT * FROM src) TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
+    )
+    # Sanity check on the fixture itself: confirms the premise of Finding 1 —
+    # the round-tripped file really has no "geometry"-named column, only
+    # "geom", before _materialize_qgis_output ever touches it.
+    raw_cols = {d[0] for d in conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description}
+    assert "geom" in raw_cols and "geometry" not in raw_cols
+
+    runtime._materialize_qgis_output(
+        conn, out_path=out_path, view_name="materialized", algorithm_id="native:centroids",
+    )
+    cols = {d[0] for d in conn.execute("SELECT * FROM materialized LIMIT 0").description}
+    assert "geometry" in cols
+    assert "geom" not in cols
+    row = conn.execute("SELECT id, ST_AsText(geometry) FROM materialized").fetchone()
+    assert row == (1, "POINT (3 4)")
+
+
+def test_materialize_qgis_output_raises_clean_error_without_geometry_column(tmp_path):
+    """A sidecar output with no geometry-typed column at all (degenerate case:
+    an algorithm whose OUTPUT isn't a vector layer) must surface as a clear
+    PipelineRuntimeError, never a silent KeyError/empty result — Finding 1
+    explicitly rules out weakening this constraint."""
+    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    out_path = tmp_path / "no_geom.csv"
+    out_path.write_text("id,label\n1,a\n")
+    out_path = str(out_path)
+    with pytest.raises(runtime.PipelineRuntimeError, match="aucune colonne géométrie"):
+        runtime._materialize_qgis_output(
+            conn, out_path=out_path, view_name="materialized", algorithm_id="native:centroids",
+        )
+
+
+class _FakeQgisWorkerResponse:
+    """Stand-in pour httpx.Response : capture juste status_code/.json()/.text,
+    même esprit que _FakeS3 plus haut — pas de vrai sidecar HTTP nécessaire
+    pour exercer les chemins d'erreur de _execute_qgis_transform."""
+
+    def __init__(self, status_code: int, json_body: dict | None = None, text: str = ""):
+        self.status_code = status_code
+        self._json_body = json_body
+        self.text = text
+
+    def json(self):
+        if self._json_body is None:
+            raise json.JSONDecodeError("no json body", "", 0)
+        return self._json_body
+
+
+def _make_qgis_input_connection():
+    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn.execute("CREATE TEMP TABLE input_view AS SELECT 1 AS id, ST_Point(1.0, 2.0) AS geometry")
+    return conn
+
+
+def test_execute_qgis_transform_cleans_scratch_dir_on_sidecar_error(tmp_path, monkeypatch):
+    """Regression for final review Finding 2: shutil.rmtree used to run only
+    on the success path — a non-200 sidecar response raised before ever
+    reaching cleanup, leaving in.gpkg behind in the shared scratch volume
+    forever. The try/finally must remove scratch_dir even when the sidecar
+    itself reports an error."""
+    from app.configs.schemas import PipelineNode
+
+    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        runtime.httpx, "post",
+        lambda *a, **k: _FakeQgisWorkerResponse(502, json_body={"error": "qgis_process a échoué"}),
+    )
+    conn = _make_qgis_input_connection()
+    node = PipelineNode(
+        id="t1", kind="transform", op="transform.qgis",
+        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+    )
+    with pytest.raises(runtime.PipelineRuntimeError, match="qgis_process a échoué"):
+        runtime._execute_qgis_transform(
+            conn, node, input_view="input_view", input_srid=4326,
+            qgis_worker_url="http://fake-qgis-worker", qgis_worker_timeout_seconds=5,
+            scratch_run_id="run1",
+        )
+    assert not (tmp_path / "run1" / "t1").exists()
+
+
+def test_execute_qgis_transform_raises_clean_error_on_non_json_error_body(tmp_path, monkeypatch):
+    """Regression for final review Finding 4: a non-200 response whose body
+    isn't valid JSON (e.g. a proxy/gateway error page) must still surface as
+    a clean PipelineRuntimeError carrying response.text, never crash the run
+    on the .json() call itself with an unhandled JSONDecodeError."""
+    from app.configs.schemas import PipelineNode
+
+    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        runtime.httpx, "post",
+        lambda *a, **k: _FakeQgisWorkerResponse(502, json_body=None, text="<html>Bad Gateway</html>"),
+    )
+    conn = _make_qgis_input_connection()
+    node = PipelineNode(
+        id="t1", kind="transform", op="transform.qgis",
+        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+    )
+    with pytest.raises(runtime.PipelineRuntimeError, match="Bad Gateway"):
+        runtime._execute_qgis_transform(
+            conn, node, input_view="input_view", input_srid=4326,
+            qgis_worker_url="http://fake-qgis-worker", qgis_worker_timeout_seconds=5,
+            scratch_run_id="run2",
+        )
+
+
 @pytest.mark.qgis
 def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
     """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
