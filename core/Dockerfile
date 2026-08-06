@@ -21,7 +21,7 @@ RUN uv pip install --system --no-cache -r pyproject.toml
 # à égress restreint/air-gapped. Aucun USER switch dans cette image : le
 # process de build et le process runtime tournent sous le même utilisateur,
 # donc le même répertoire d'extensions (~/.duckdb/extensions) est réutilisé.
-RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial')"
+RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); c.execute('INSTALL h3 FROM community')"
 
 COPY app ./app
 COPY alembic ./alembic
