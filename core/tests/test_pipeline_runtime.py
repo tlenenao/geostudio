@@ -325,3 +325,170 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
             "DROP TABLE villes_propres; "
             "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
         ))
+
+
+def _table_info_srid(collection_id: str, srid: int) -> TableInfo:
+    return dataclasses.replace(TABLE_INFO, table_name=collection_id, srid=srid)
+
+
+def test_preview_buffer_then_reproject(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+            {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
+            {"id": "t2", "kind": "transform", "op": "transform.reproject", "params": {"targetCrs": "EPSG:3857"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "geojson", "key": "o.geojson"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
+            {"id": "e3", "from": "t2", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t2",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=50,
+    )
+    assert len(rows) == 1
+    assert rows[0]["geometry"]["type"] == "Polygon"
+
+
+def test_preview_h3_aggregate_requires_4326_reproject_first(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 3857),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+            {"id": "t1", "kind": "transform", "op": "transform.h3Aggregate",
+             "params": {"resolution": 9, "metrics": {"n": "COUNT(*)"}}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+
+    with pytest.raises(runtime.PipelineRuntimeError, match="EPSG:4326"):
+        runtime.preview_pipeline(
+            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+
+
+def test_preview_count_within_across_two_readers(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="incidents", rows=[
+        _row(1, "Nord", 1, x=3.0001, y=45.0), _row(2, "Sud", 1, x=10.0, y=10.0),
+    ])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+            {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
+            {"id": "t2", "kind": "transform", "op": "transform.countWithin",
+             "params": {"withCollectionId": "incidents", "countColumn": "n"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
+            {"id": "e3", "from": "t2", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t2",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert len(rows) == 1
+    assert rows[0]["n"] == 1  # only the nearby incident falls in the 500m buffer
+
+
+def test_preview_intersection_crs_mismatch_raises(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="communes", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    srids = {"ecoles": 4326, "communes": 3857}
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, srids[collection_id]),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+            {"id": "t1", "kind": "transform", "op": "transform.intersection",
+             "params": {"withCollectionId": "communes"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+
+    with pytest.raises(runtime.PipelineRuntimeError, match="transform.reproject"):
+        runtime.preview_pipeline(
+            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+
+
+def test_h3_aggregate_metrics_expression_is_bounded(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+            {"id": "t1", "kind": "transform", "op": "transform.h3Aggregate",
+             # "(SELECT 1)" seul ne référence AUCUNE table (collect_table_refs
+             # le laisserait passer) — l'expression doit référencer une vraie
+             # table/vue pour exercer la garde ; "node_r1" est le nom de vue
+             # que _prepare a matérialisé pour le reader r1 à ce stade.
+             "params": {"resolution": 9, "metrics": {"n": "(SELECT count(*) FROM node_r1)"}}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+
+    with pytest.raises(Exception, match="must not reference a table"):
+        runtime.preview_pipeline(
+            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )

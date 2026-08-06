@@ -42,11 +42,18 @@ from app.features.validation import validate_feature
 from app.pipelines import compiler
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
-    ReaderCollectionParams, TransformAggregateParams, TransformDeriveParams,
-    TransformFilterParams, TransformJoinParams, WriterCollectionParams, WriterExportParams,
+    ReaderCollectionParams, TransformAggregateParams, TransformCountWithinParams,
+    TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
+    TransformIntersectionParams, TransformJoinParams, WriterCollectionParams, WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
+
+_JOIN_PARAM_MODELS: dict[str, type] = {
+    "transform.join": TransformJoinParams,
+    "transform.intersection": TransformIntersectionParams,
+    "transform.countWithin": TransformCountWithinParams,
+}
 
 
 def _qi(name: str) -> str:
@@ -156,16 +163,23 @@ def _validate_node_exprs(conn: duckdb.DuckDBPyConnection, node: PipelineNode) ->
         p = TransformAggregateParams.model_validate(node.params)
         for metric_expr in p.metrics.values():
             validate_bounded_expr(conn, metric_expr)
+    elif node.op == "transform.h3Aggregate":
+        p = TransformH3AggregateParams.model_validate(node.params)
+        for metric_expr in p.metrics.values():
+            validate_bounded_expr(conn, metric_expr)
 
 
 def _prepare(
     conn, session: Session, payload: PipelinePayload, *, tenant_id: str, user: User, base_uri: str,
-) -> tuple[list[PipelineNode], dict[str, str]]:
+) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
-    chaque transform.join), puis verrouille. Retourne (ordre topologique,
-    view_name par node.id) — writer nodes n'ont pas encore de vue."""
+    chaque transform.join/intersection/countWithin), puis verrouille.
+    Retourne (ordre topologique, view_name par node.id, srid par node.id
+    pour les readers, srid par node.id pour la vue __join des 3 op
+    binaires) — writer nodes n'ont pas encore de vue."""
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}
+    srid_by_node: dict[str, int] = {}
 
     for node in ordered:
         if node.kind != "reader":
@@ -181,11 +195,14 @@ def _prepare(
             collection_id=p.collectionId, table_info=table_info,
         )
         view_by_node[node.id] = view_name
+        srid_by_node[node.id] = table_info.srid or 4326
 
+    join_srid_by_node: dict[str, int] = {}
     for node in ordered:
-        if node.op != "transform.join":
+        model = _JOIN_PARAM_MODELS.get(node.op)
+        if model is None:
             continue
-        p = TransformJoinParams.model_validate(node.params)
+        p = model.model_validate(node.params)
         table_name = _require_readable_collection_id(
             session, tenant_id=tenant_id, user=user, collection_id=p.withCollectionId,
         )
@@ -195,13 +212,16 @@ def _prepare(
             conn, view_name=join_view, base_uri=base_uri, tenant_id=tenant_id,
             collection_id=p.withCollectionId, table_info=table_info,
         )
+        join_srid_by_node[node.id] = table_info.srid or 4326
 
     _lock_down(conn)
-    return ordered, view_by_node
+    return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
 def _execute_transform_chain(
-    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str], *, stop_at: str | None = None,
+    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
+    srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
+    *, stop_at: str | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     for node in ordered:
@@ -215,12 +235,23 @@ def _execute_transform_chain(
         pred_id = compiler.predecessor_id(node.id, edges)
         assert pred_id is not None
         input_view = view_by_node[pred_id]
-        join_view = f"node_{node.id}__join" if node.op == "transform.join" else None
+        input_srid = srid_by_node[pred_id]
+        join_view = f"node_{node.id}__join" if node.op in _JOIN_PARAM_MODELS else None
+        join_srid = join_srid_by_node.get(node.id)
         _validate_node_exprs(conn, node)
-        sql = compiler.compile_transform_sql(node.op, node.params, input_view=input_view, join_view=join_view)
+        try:
+            output_srid = compiler.transform_output_srid(
+                node.op, node.params, input_srid=input_srid, join_srid=join_srid,
+            )
+        except ValueError as exc:
+            raise PipelineRuntimeError(str(exc)) from exc
+        sql = compiler.compile_transform_sql(
+            node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
+        )
         view_name = f"node_{node.id}"
         conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name
+        srid_by_node[node.id] = output_srid
         stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
         if stop_at == node.id:
             return stats
@@ -243,8 +274,12 @@ def preview_pipeline(
 
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
-        ordered, view_by_node = _prepare(conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri)
-        _execute_transform_chain(conn, ordered, payload.edges, view_by_node, stop_at=up_to)
+        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+        )
+        _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node, stop_at=up_to,
+        )
         view_name = view_by_node[up_to]
         # Même conversion que _write_collection : DuckDB renvoie "geometry" en
         # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
@@ -362,8 +397,12 @@ def run_pipeline(
 ) -> list[NodeStat]:
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
-        ordered, view_by_node = _prepare(conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri)
-        stats = _execute_transform_chain(conn, ordered, payload.edges, view_by_node)
+        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+        )
+        stats = _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+        )
         for node in ordered:
             if node.kind != "writer":
                 continue
