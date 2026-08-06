@@ -94,6 +94,8 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 base_uri=_analytics_base_uri(),
                 s3_client=_s3_client_from_env(),
                 exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+                qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
+                qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
             )
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_succeeded(
