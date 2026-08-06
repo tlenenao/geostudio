@@ -601,7 +601,7 @@ def test_writer_dataset_updates_existing_dataset_preserving_metadata(pg_engine, 
         )
         existing_config = configs_repo.create_config(
             s, BuilderConfig(kind="dataset", dataset=DatasetPayload(
-                source="collection", collectionId="villes_out", timeField="createdAt",
+                source="collection", collectionId="villes_out_old", timeField="createdAt",
             )),
             item_id=existing_item.id, tenant_id=tenant.id,
         )
@@ -625,6 +625,8 @@ def test_writer_dataset_updates_existing_dataset_preserving_metadata(pg_engine, 
         s.commit()
 
         updated = configs_repo.get_config(s, existing_config.id)
+        # Seeded as "villes_out_old"; only a real update_config() call in the
+        # writer's update branch can refresh it to "villes_out".
         assert updated.config.dataset.collectionId == "villes_out"
         assert updated.config.dataset.timeField == "createdAt"  # preserved, not regenerated
 
