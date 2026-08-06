@@ -27,6 +27,7 @@ import csv
 import io
 import json
 import os
+import shutil
 import uuid
 
 import duckdb
@@ -225,6 +226,41 @@ def _prepare(
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
+# Racine du volume scratch partagé avec le sidecar qgis-worker (design SP-15d
+# §4). Module-level plutôt qu'en dur dans _execute_qgis_transform : les tests
+# qui exercent le dispatch HTTP (sans sidecar réel) le redirigent vers un
+# tmp_path via monkeypatch, /scratch lui-même n'étant accessible en écriture
+# qu'à l'intérieur des conteneurs (etl-scratch), jamais dans l'environnement
+# d'exécution des tests.
+_QGIS_SCRATCH_ROOT = "/scratch"
+
+
+def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_id: str) -> None:
+    """Matérialise le GPKG produit par le sidecar en TEMP TABLE, colonne
+    géométrie renommée en "geometry" quel que soit son nom réel dans le
+    fichier — GDAL/QGIS écrit couramment "geom", jamais garanti "geometry"
+    (vérifié empiriquement : DuckDB's COPY ... TO ... FORMAT GDAL DRIVER GPKG
+    nomme déjà sa propre colonne géométrie "geom" par défaut). Détection par
+    TYPE DuckDB (GEOMETRY), jamais par nom — même garantie que
+    _materialize_reader fournit déjà pour les readers (cf. en-tête du
+    module). Un ST_Read sans aucune colonne de type GEOMETRY (algorithme dont
+    la sortie n'est pas une couche vecteur) lève une PipelineRuntimeError
+    propre, jamais un KeyError/IndexError silencieux."""
+    probe_cols = conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
+    geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
+    if not geom_cols:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte aucune colonne géométrie"
+        )
+    # Une seule colonne géométrie attendue (même contrat qu'une collection) :
+    # en cas de pluralité inattendue, la première suffit à ne jamais perdre
+    # la géométrie silencieusement — cas non rencontré dans l'allowlist SP-15d.
+    geom_col = geom_cols[0]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
+    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')")
+
+
 def _execute_qgis_transform(
     conn, node: PipelineNode, *, input_view: str, input_srid: int,
     qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
@@ -234,44 +270,56 @@ def _execute_qgis_transform(
             "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
         )
     p = TransformQgisParams.model_validate(node.params)
-    scratch_dir = f"/scratch/{scratch_run_id}/{node.id}"
+    scratch_dir = f"{_QGIS_SCRATCH_ROOT}/{scratch_run_id}/{node.id}"
     in_path = f"{scratch_dir}/in.gpkg"
     out_path = f"{scratch_dir}/out.gpkg"
     os.makedirs(scratch_dir, exist_ok=True)
     # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
     # geographic SRS" (vérifié en design §2) et qgis_process interprète les
     # géométries dans un CRS inconnu.
-    conn.execute(
-        f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
-        f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
-    )
     try:
-        response = httpx.post(
-            f"{qgis_worker_url}/run",
-            json={
-                "algorithmId": p.algorithmId,
-                "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
-            },
-            timeout=qgis_worker_timeout_seconds,
+        conn.execute(
+            f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
+            f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
         )
-    except httpx.TimeoutException as exc:
-        raise PipelineRuntimeError(
-            f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise PipelineRuntimeError(
-            f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
-        ) from exc
-    if response.status_code != 200:
-        detail = response.json().get("error", response.text)
-        raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
-    view_name = f"node_{node.id}"
-    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM ST_Read('{out_path}')")
-    # Best-effort : ne bloque jamais le run si le nettoyage échoue (design
-    # §12, risque accepté — un scratch non nettoyé après un CRASH, pas après
-    # un succès, reste un problème d'exploitation mineur).
-    import shutil
-    shutil.rmtree(scratch_dir, ignore_errors=True)
+        try:
+            response = httpx.post(
+                f"{qgis_worker_url}/run",
+                json={
+                    "algorithmId": p.algorithmId,
+                    "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
+                },
+                timeout=qgis_worker_timeout_seconds,
+            )
+        except httpx.TimeoutException as exc:
+            raise PipelineRuntimeError(
+                f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PipelineRuntimeError(
+                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+            ) from exc
+        if response.status_code != 200:
+            # Défense en profondeur : le sidecar (server.py _respond) émet
+            # toujours du JSON, même pour ses propres 400 (Finding 3), mais un
+            # intermédiaire (proxy, gateway) pourrait renvoyer un corps non-JSON
+            # — .json() ne doit jamais lui-même faire planter le run.
+            try:
+                detail = response.json().get("error", response.text)
+            except ValueError:
+                detail = response.text
+            raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
+        view_name = f"node_{node.id}"
+        _materialize_qgis_output(
+            conn, out_path=out_path, view_name=view_name, algorithm_id=p.algorithmId,
+        )
+    finally:
+        # Best-effort : ne bloque jamais le run (ni ne masque une erreur déjà
+        # en cours de propagation) si le nettoyage échoue (design §12, risque
+        # accepté — un scratch non nettoyé après un CRASH reste un problème
+        # d'exploitation mineur). Couvre désormais TOUS les chemins de sortie
+        # (succès, erreur sidecar, exception locale), pas seulement le succès.
+        shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def _execute_transform_chain(

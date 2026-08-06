@@ -29,9 +29,13 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
             return
         length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length))
-        algorithm_id = body["algorithmId"]
-        inputs = body["inputs"]
+        try:
+            body = json.loads(self.rfile.read(length))
+            algorithm_id = body["algorithmId"]
+            inputs = body["inputs"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            self._respond(400, {"error": f"requête invalide : {exc}"})
+            return
 
         if algorithm_id not in _ALLOWLIST:
             self._respond(403, {"error": f"algorithme non autorisé : {algorithm_id}"})
