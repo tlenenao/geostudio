@@ -105,3 +105,18 @@ def test_list_runs_route_rejects_unknown_pipeline(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/pipelines/does-not-exist/runs")
     assert response.status_code == 404
+
+
+def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/pipelines/ops/qgis-algorithms")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 50
+    assert "native:centroids" in body
+    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
+
+
+def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=False)
+    assert client.get("/pipelines/ops/qgis-algorithms").status_code == 404
