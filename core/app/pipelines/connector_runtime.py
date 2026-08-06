@@ -34,7 +34,7 @@ from dlt.sources.helpers.rest_client.paginators import (
 from sqlalchemy.orm import Session
 
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
-from app.pipelines.egress import build_guarded_session
+from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import ReaderConnectorPostgresParams, ReaderConnectorRestParams
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
@@ -120,6 +120,25 @@ def _build_paginator(paginator: str, config: dict):
     raise ConnectorRuntimeError(f"unknown paginator '{paginator}'")
 
 
+def _find_egress_blocked_cause(exc: BaseException) -> EgressBlockedError | None:
+    # dlt (et, dans une moindre mesure, DuckDB) enveloppe toute exception
+    # levée pendant l'extraction dans ses propres types
+    # (ResourceExtractionError, PipelineStepFailed...), chaînés via
+    # `__cause__`/`__context__` — vérifié empiriquement sur le cas OAuth2
+    # (cf. test_materialize_rest_connector_oauth2_token_exchange_goes_...),
+    # jamais laissé tel quel par dlt. On déroule la chaîne pour retrouver
+    # l'EgressBlockedError d'origine, quelle que soit sa profondeur, plutôt
+    # que de supposer un seul niveau d'enveloppe.
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, EgressBlockedError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
 def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None:
     scratch_dir = tempfile.mkdtemp(prefix=f"sp15f-{node_id}-")
     db_path = f"{scratch_dir}/extract.duckdb"
@@ -130,22 +149,52 @@ def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None
             dataset_name="pipeline_dataset",
             pipelines_dir=f"{scratch_dir}/dlt-home",
         )
-        pipeline.run(resource)
-        conn.execute(f"ATTACH '{db_path}' AS dlt_extract (READ_ONLY)")
         try:
-            cols = [
-                d[0] for d in conn.execute(
-                    "SELECT * FROM dlt_extract.pipeline_dataset.records LIMIT 0"
-                ).description
-                if d[0] not in {"_dlt_id", "_dlt_load_id"}
-            ]
-            select_list = ", ".join(_qi(c) for c in cols)
-            conn.execute(
-                f"CREATE TEMP TABLE {_qi(view_name)} AS "
-                f"SELECT {select_list} FROM dlt_extract.pipeline_dataset.records"
-            )
-        finally:
-            conn.execute("DETACH dlt_extract")
+            pipeline.run(resource)
+            conn.execute(f"ATTACH '{db_path}' AS dlt_extract (READ_ONLY)")
+            try:
+                cols = [
+                    d[0] for d in conn.execute(
+                        "SELECT * FROM dlt_extract.pipeline_dataset.records LIMIT 0"
+                    ).description
+                    if d[0] not in {"_dlt_id", "_dlt_load_id"}
+                ]
+                select_list = ", ".join(_qi(c) for c in cols)
+                conn.execute(
+                    f"CREATE TEMP TABLE {_qi(view_name)} AS "
+                    f"SELECT {select_list} FROM dlt_extract.pipeline_dataset.records"
+                )
+            finally:
+                conn.execute("DETACH dlt_extract")
+        except ConnectorRuntimeError:
+            # Ne devrait pas se produire aujourd'hui (rien dans ce bloc ne
+            # lève ConnectorRuntimeError directement), mais si un jour un
+            # appel interne en levait une, elle doit ressortir telle quelle
+            # plutôt que d'être ré-enveloppée une seconde fois.
+            raise
+        except Exception as exc:
+            # Toute autre défaillance EN COURS d'extraction (pas au
+            # pré-flight, déjà couvert par les levées explicites plus haut
+            # dans ce module) : la garde SSRF bloquant l'URL de DONNÉES (pas
+            # seulement l'URL de jeton OAuth2, déjà couverte), une erreur
+            # HTTP distante, une connexion/requête Postgres en échec, une
+            # réponse JSON malformée... Traduite ici en ConnectorRuntimeError
+            # pour que runtime.py._prepare() (qui ne traduit que ce type)
+            # produise le même traitement propre 400/actionnable qu'un rejet
+            # pré-flight, plutôt que de laisser fuiter un type dlt brut
+            # jusqu'à un 500 générique (routes.py) ou un
+            # "erreur interne : ..." opaque (jobs.py).
+            egress_cause = _find_egress_blocked_cause(exc)
+            if egress_cause is not None:
+                raise ConnectorRuntimeError(f"egress blocked: {egress_cause}") from exc
+            # Message borné et non-fuyant : vérifié empiriquement (pas
+            # supposé) qu'un échec de connexion/requête psycopg via
+            # SQLAlchemy ne fait jamais apparaître le mot de passe du DSN
+            # dans str(exc), que ce soit un refus de connexion ("Connection
+            # refused") ou un échec d'authentification ("password
+            # authentication failed") — aucune des deux formes n'inclut le
+            # DSN complet ni le mot de passe.
+            raise ConnectorRuntimeError(f"reader.connector extraction failed: {exc}") from exc
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
