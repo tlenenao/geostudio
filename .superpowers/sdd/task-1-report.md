@@ -1,103 +1,125 @@
-# Task 1 Report: Encryption primitive — `core/app/secrets/crypto.py`
+# Task 1 Report: Op Catalog Entries for Reader Connectors
 
 ## Summary
 
-Task 1 complete. Implemented the encryption primitive module (`app.secrets.crypto`) providing AES-256-GCM encryption/decryption for connector secrets, with master key loading from environment variable. All 6 tests pass, layering contract held, commit created.
+Successfully implemented Task 1 of SP-15f: added two new Pipeline reader operation types (`reader.connector.rest` and `reader.connector.postgres`) to the op catalog module `core/app/pipelines/ops/schemas.py`.
 
-## What Was Implemented
+## Implementation Details
 
-1. **`core/app/secrets/__init__.py`** — Package marker with SPDX header
-2. **`core/app/secrets/crypto.py`** — AES-256-GCM encryption primitive with three functions:
-   - `load_master_key() -> bytes` — reads `CORE_SECRETS_MASTER_KEY` from environment, validates as 32-byte base64-encoded key; raises `KeyError` if missing, `RuntimeError` if malformed or wrong size
-   - `encrypt(payload: dict) -> tuple[bytes, bytes]` — encrypts dict to JSON, returns (ciphertext, nonce) pair with random 12-byte nonce
-   - `decrypt(ciphertext: bytes, nonce: bytes) -> dict` — decrypts ciphertext using matching nonce, returns original dict; raises `InvalidTag` if tampered or wrong key
-3. **`core/pyproject.toml`** — Two changes:
-   - Added `cryptography>=42.0` as direct dependency (was already present transitively via `pyjwt[crypto]`)
-   - Added `"app.secrets"` to import-linter layers list (between `"app.pipelines"` and `"app.ingestion"`)
-4. **`core/tests/test_secrets_crypto.py`** — 6 comprehensive test cases covering encrypt/decrypt round-trip, tampered ciphertext rejection, wrong-key rejection, and key validation (missing, malformed base64, wrong length)
+### What Was Implemented
 
-## TDD Evidence
+**Two new Pydantic models added to `core/app/pipelines/ops/schemas.py`:**
 
-### RED Phase (Before Implementation)
+1. **`ReaderConnectorRestParams`**
+   - Validates REST API endpoints with required `baseUrl` field (enforced http/https via regex pattern)
+   - Optional fields: `path` (default ""), `method` (GET/POST, default GET), `query`, `headers`, `recordsPath`, `paginator`, `paginatorConfig`, `secretName`
+   - Paginator types validated via Literal: "none", "page_number", "cursor", "offset"
+   - References optional authentication secret (SP-15e) for api_key, bearer_token, basic_auth, or oauth2_client_credentials
+
+2. **`ReaderConnectorPostgresParams`**
+   - Validates remote PostgreSQL queries with required `secretName` and `query` fields
+   - `secretName` references a postgres_dsn secret (SP-15e)
+   - `query` not validated for SELECT-only at schema level (validation deferred to runtime)
+
+**Updated catalogs:**
+- `OP_KINDS`: added entries for both ops as "reader" kind
+- `OP_PARAMS`: registered both model classes with their respective op keys
+
+### Test-Driven Development Evidence
+
+**RED phase (tests failing before implementation):**
+```bash
+cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
+# Result: 7 tests failing
+# - test_all_seventeen_ops_are_registered (KeyError/AssertionError)
+# - test_reader_connector_ops_are_kind_reader (KeyError)
+# - test_reader_connector_rest_minimal_params (ValueError: unknown op)
+# - test_reader_connector_rest_rejects_non_http_base_url (ValueError: unknown op)
+# - test_reader_connector_rest_full_params (ValueError: unknown op)
+# - test_reader_connector_rest_rejects_unknown_paginator (ValueError: unknown op)
+# - test_reader_connector_postgres_requires_secret_name_and_query (ValueError: unknown op)
+# - test_reader_connector_ops_appear_in_catalog (ValueError: unknown op)
 ```
-$ cd core && uv run pytest tests/test_secrets_crypto.py -v
-...
-ERROR tests/test_secrets_crypto.py
-ModuleNotFoundError: No module named 'app.secrets'
-```
-Test collection failed as expected before module creation.
 
-### GREEN Phase (After Implementation)
+**GREEN phase (all tests passing after implementation):**
+```bash
+cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
+# Result: 49 passed in 0.14s
 ```
-$ cd core && uv run pytest tests/test_secrets_crypto.py -v
-============================= test session starts ==============================
-tests/test_secrets_crypto.py::test_encrypt_decrypt_round_trip PASSED     [ 16%]
-tests/test_secrets_crypto.py::test_decrypt_rejects_tampered_ciphertext PASSED [ 33%]
-tests/test_secrets_crypto.py::test_decrypt_rejects_wrong_key PASSED      [ 50%]
-tests/test_secrets_crypto.py::test_load_master_key_missing_raises PASSED [ 66%]
-tests/test_secrets_crypto.py::test_load_master_key_malformed_base64_raises PASSED [ 83%]
-tests/test_secrets_crypto.py::test_load_master_key_wrong_length_raises PASSED [100%]
 
-============================== 6 passed in 0.05s ===============================
+**Regression test suite (full pipelines):**
+```bash
+cd core && uv run pytest tests/test_pipeline_*.py tests/test_mcp_tools_pipeline.py -v
+# Result: 143 passed, 10 skipped in 6.77s
+# (Also updated test_pipeline_routes.py::test_get_pipelines_ops_returns_all_seventeen to reflect new op count)
 ```
-All 6 tests pass.
 
 ## Files Changed
 
-- **Created:** `core/app/secrets/__init__.py`
-- **Created:** `core/app/secrets/crypto.py`
-- **Created:** `core/tests/test_secrets_crypto.py`
-- **Modified:** `core/pyproject.toml` (dependencies + import-linter layers)
-- **Modified:** `core/uv.lock` (auto-generated, no cryptography version change)
+1. **`core/app/pipelines/ops/schemas.py`**
+   - Added `ReaderConnectorRestParams` class (40 lines)
+   - Added `ReaderConnectorPostgresParams` class (7 lines)
+   - Extended `OP_KINDS` dict with 2 new entries
+   - Extended `OP_PARAMS` dict with 2 new entries
 
-## Layering Contract Verification
+2. **`core/tests/test_pipeline_ops_schemas.py`**
+   - Renamed test: `test_all_fifteen_ops_are_registered` → `test_all_seventeen_ops_are_registered`
+   - Updated expected ops set to include both new connector reader ops
+   - Added 7 new test functions covering:
+     - Op kind registration
+     - Minimal parameter defaults
+     - URL validation (http/https only)
+     - Full parameter configuration
+     - Paginator type validation
+     - PostgreSQL required fields validation
+     - Catalog exposure
 
-```
-$ cd core && uv run lint-imports
-...
-Contracts: 1 kept, 0 broken.
-```
-Import-linter contract verified clean. No cross-module imports in `crypto.py`; only stdlib (`base64`, `json`, `os`) and external (`cryptography`). Layer insertion `"app.secrets"` is syntactically valid.
+3. **`core/tests/test_pipeline_routes.py`**
+   - Renamed test: `test_get_pipelines_ops_returns_all_fifteen` → `test_get_pipelines_ops_returns_all_seventeen`
+   - Updated expected ops count (15→17) and set to include new connector readers
 
-## Self-Review Against Brief
+## Self-Review Findings
 
-✅ **Step 1:** Test file content matches brief exactly (lines 21–73)  
-✅ **Step 2:** Tests fail with expected `ModuleNotFoundError` before implementation  
-✅ **Step 3:** `cryptography>=42.0` added correctly after `pyjwt[crypto]>=2.8`, with full comment  
-✅ **Step 4:** `"app.secrets"` inserted in layers list between `"app.pipelines"` and `"app.ingestion"`  
-✅ **Step 5:** Module implementation matches brief exactly:
-  - `__init__.py` is single SPDX header line
-  - `crypto.py` docstring, constants, three functions, all verbatim  
-  - No extra scope, no modifications
-✅ **Step 6:** Layering contract holds (1 kept, 0 broken)  
-✅ **Step 7:** All 6 tests pass  
-✅ **Step 8:** Commit message exact: `"feat(core): secrets module — AES-GCM encryption primitive"`  
+✅ **Implementation matches brief exactly:**
+- Pydantic field definitions match verbatim from brief
+- `OP_KINDS` and `OP_PARAMS` dicts contain all 17 ops in specified order
+- Docstrings in French match brief specifications
 
-## Code Quality
+✅ **TDD properly executed:**
+- Tests written first (failing)
+- Implementation added (passing)
+- Regression tests run and passing
+- Test names and descriptions accurate
 
-- **Encryption:** AES-256-GCM per spec, AESGCM from `cryptography.hazmat.primitives.ciphers.aead`, random 12-byte nonce per operation
-- **Key Management:** Strict validation — 32-byte requirement, base64 decode with `validate=True`, fail-fast on missing/malformed key, never logged (docstring warning in place)
-- **JSON Roundtrip:** Plaintext serialized as JSON UTF-8, decrypted plaintext parsed back to dict
-- **Error Handling:** `KeyError` for missing env var (not caught), `RuntimeError` for malformed key with clear message, `InvalidTag` from cryptography library for tampered ciphertext or wrong key
-- **Test Coverage:** All three public functions covered; error paths (missing key, malformed base64, wrong length, tampering, wrong key) all tested
-- **Documentation:** Docstrings in French per CLAUDE.md, referencing SP-15e design doc
+✅ **Code organization maintained:**
+- No file restructuring
+- Models added after `TransformQgisParams` as specified
+- Dicts remain in consistent alphabetical/category order
+- No unrelated changes
 
-## Issues or Concerns
+✅ **All test assertions pass:**
+- URL pattern validation (http/https)
+- Required field validation
+- Literal type validation for paginator
+- Catalog JSON schema generation
+- Kind classification ("reader")
 
-None. Task is complete and correct per brief:
-- No ambiguities encountered
-- No dependencies on other tasks (crypto.py is standalone)
-- All steps followed verbatim
-- All verification gates passed
-- Ready for Task 2 and beyond
+✅ **No warnings or errors:**
+- Clean pytest output
+- No deprecation warnings
+- No linting issues
 
-## Commit
+## Concerns
 
-- **SHA:** `2b3f202`
-- **Message:** `feat(core): secrets module — AES-GCM encryption primitive`
-- **Date:** 2026-08-06
+None. Implementation is clean, follows the exact specification, and all tests pass including the broader regression suite. The two new ops are now discoverable through:
+- `parse_op_params()` function
+- `ops_catalog()` function
+- Direct dictionary access via `OP_PARAMS` and `OP_KINDS`
 
----
+## Commit Information
 
-**Status:** DONE  
-**Report written:** 2026-08-06
+- **Commit SHA:** 7f3e7e2
+- **Branch:** dev
+- **Message:** feat(core): pipelines — reader.connector.rest/postgres op catalog entries
+- **Files changed:** 3 (schemas.py, test_pipeline_ops_schemas.py, test_pipeline_routes.py)
+- **Lines added/modified:** 106 insertions, 3 deletions
