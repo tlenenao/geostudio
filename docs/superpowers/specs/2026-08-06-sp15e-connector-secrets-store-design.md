@@ -12,18 +12,30 @@
 > sous-plan. En le préparant, il est apparu que `reader.connector` a besoin
 > d'authentifier des sources externes (API REST à clé, Postgres distant), et
 > qu'**aucun mécanisme de stockage de secret n'existe dans le dépôt** — les
-> deux connecteurs de moissonnage existants (ArcGIS SP-12d, CKAN SP-12g) ont
-> délibérément évité le problème en se limitant aux services publics. Un
-> lecteur Postgres ne peut pas suivre cette même échappatoire (pas de notion
-> réaliste de « Postgres public »). D'où la décision de scinder :
+> connecteurs de moissonnage existants (ArcGIS SP-12d, WMS/WFS/WMTS SP-12e,
+> CSW SP-12f, CKAN SP-12g) ont tous délibérément évité le problème en se
+> limitant aux services publics (« pas de token/OAuth distant », `CLAUDE.md`
+> « Suivis non bloquants »). Un lecteur Postgres ne peut pas suivre cette même
+> échappatoire (pas de notion réaliste de « Postgres public »). D'où la
+> décision de scinder :
 > - **SP-15e (ce document)** : coffre de secrets générique, chiffré au repos,
->   sans lien avec les pipelines — brique autonome et démontrable seule.
+>   **sans lien exclusif avec les pipelines** — brique autonome et démontrable
+>   seule, **conçue dès le départ comme un service partagé pour deux familles
+>   de consommateurs** (précision apportée après relecture) : le futur
+>   `reader.connector` (SP-15f) **et** les connecteurs de moissonnage SP-12
+>   existants (ArcGIS FS, WFS/WMS/WMTS, CSW, CKAN) — cf. §3.1 pour la
+>   contrainte de couches import-linter que cela impose.
 > - **SP-15f (à venir)** : `reader.connector` dlt (REST + Postgres),
 >   consommant ce coffre par référence de nom.
+> - **Lever la restriction « services publics uniquement » des connecteurs
+>   SP-12** est du travail **séparément cadré**, non construit ici — ce
+>   sous-plan garantit seulement que la forme du coffre ne bloque pas cette
+>   évolution plus tard (cf. non-buts §1, §3.1).
 >
 > Références : feuille de route (§SP-15, A39) · `CLAUDE.md` (règles d'archi
 > #1-4, **`tenant_id` et `audit_log` sur toute table/écriture dès la première
-> migration**, une seule porte `can()`) ·
+> migration**, une seule porte `can()`, « Suivis non bloquants » — restriction
+> services publics des connecteurs ArcGIS/WMS-WFS-WMTS/CSW/CKAN) ·
 > [`2026-08-05-sp15a-pipeline-socle-design.md`](2026-08-05-sp15a-pipeline-socle-design.md)
 > (`CORE_ETL_ENABLED`, patron de capacité instance-wide admin-gated — repris
 > ici pour le gate admin-only) ·
@@ -33,18 +45,33 @@
 > (les deux mentions « SP-15e à venir » qui ont initié ce sous-plan) ·
 > `core/app/harvest/egress.py` (garde SSRF SP-12d, réutilisable telle quelle
 > par SP-15f — hors périmètre de ce document, qui ne construit aucun appel
-> réseau sortant) · SP-3b (rôle admin).
+> réseau sortant) · `core/pyproject.toml:74-93` (contrat `layers` import-linter
+> — `app.harvest` listé **au-dessus** de `app.pipelines`, cf. §3.1) · SP-3b
+> (rôle admin).
 
 ## 1. Objectif & non-buts
 
 **Objectif.** Un nouveau module `core/app/secrets/` qui stocke des
-identifiants externes (clé d'API REST, jeton bearer, couple utilisateur/mot
-de passe, DSN Postgres) **chiffrés au repos**, référencés par un nom
-lisible, sans jamais les exposer en lecture après création. Brique
-générique — aucun consommateur n'existe encore ; SP-15f sera le premier.
+identifiants externes (clé d'API REST en header ou en query param, jeton
+bearer, couple utilisateur/mot de passe, identifiants OAuth2
+client-credentials, DSN Postgres) **chiffrés au repos**, référencés par un
+nom lisible, sans jamais les exposer en lecture après création. Brique
+générique et **volontairement transverse** : deux familles de consommateurs
+anticipées (aucune des deux construite dans ce sous-plan) — le futur
+`reader.connector` (SP-15f) et les connecteurs de moissonnage SP-12
+existants (ArcGIS Feature Service, WFS/WMS/WMTS, CSW, CKAN), qui pourront un
+jour lever leur restriction « services publics uniquement » en s'appuyant
+sur ce coffre au lieu d'en inventer un second. C'est pour cette raison que
+§3.1 fixe la position du module dans le contrat de couches import-linter
+plutôt que de la laisser implicite.
 
 **Non-buts explicites** (reportés, cf. brainstorm) :
 - **L'op `reader.connector` elle-même** — SP-15f.
+- **La levée effective de la restriction « services publics uniquement »
+  des connecteurs SP-12** (ArcGIS FS, WFS/WMS/WMTS, CSW, CKAN) — travail
+  séparément cadré, futur, non construit ici. Ce sous-plan ne fait que
+  s'assurer que la forme du coffre (kinds §4, position de couche §3.1) ne
+  bloque pas cette évolution le jour où elle sera priorisée.
 - **Rotation en tant qu'opération de première classe** (`PUT`, historique de
   versions) — v0 est *supprimer puis recréer*.
 - **Partage/délégation granulaire (`can()` par secret)** — v0 est admin-only
@@ -88,6 +115,50 @@ si le contexte change.
 
 ## 3. Modèle de données
 
+### 3.1 Position dans le contrat de couches import-linter
+
+`core/pyproject.toml:74-93` (contrat `layers`, root `app`) ordonne
+aujourd'hui, du haut (peut importer tout ce qui suit) vers le bas (ne peut
+rien importer au-dessus) : `app.main`, `app.mcp`, `app.public`,
+**`app.harvest`**, **`app.pipelines`**, `app.ingestion`, `app.dcat`,
+`app.stac`, `app.features`, `app.collections`, `app.configs`,
+`app.extensions`, `app.items`, `app.sharing`, `app.auth`, `app.audit`,
+`app.users`, `app.tenants`.
+
+**`app.harvest` est au-dessus de `app.pipelines`** dans ce contrat — un
+détail qui aurait pu passer inaperçu si `app.secrets` avait été positionné
+« à côté » de `app.pipelines` sans vérification : `app.pipelines` ne peut
+pas importer `app.harvest` (ni l'inverse ne serait un problème, mais ce
+n'est pas le sens dont ce module a besoin). Pour que **les deux** familles
+de consommateurs anticipées (§1) puissent importer `app.secrets`,
+celui-ci doit être positionné **strictement en dessous des deux** :
+
+```
+app.main
+app.mcp
+app.public
+app.harvest
+app.pipelines
+app.secrets        # NOUVEAU — inséré ici, sous harvest ET pipelines
+app.ingestion
+app.dcat
+...
+app.audit           # app.secrets pose des lignes audit_log → doit rester au-dessus
+app.users
+app.tenants
+```
+
+`app.secrets` a aussi besoin d'écrire dans `app.audit` (§3.3) — d'où sa
+position juste au-dessus de `app.audit`/`app.users`/`app.tenants`, sans
+descendre plus bas que nécessaire. Aucun module entre `app.pipelines` et
+`app.audit` (`app.ingestion`, `app.dcat`, `app.stac`, `app.features`,
+`app.collections`, `app.configs`, `app.extensions`, `app.items`,
+`app.sharing`, `app.auth`) n'a besoin d'importer `app.secrets` dans ce
+sous-plan ; rien ne les empêche de le faire plus tard, la position choisie
+ne leur ferme pas la porte.
+
+### 3.2 Table `connector_secrets`
+
 Nouvelle table `connector_secrets` (nouvelle migration Alembic) :
 
 ```python
@@ -96,7 +167,7 @@ class ConnectorSecret(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # str(uuid4()), patron du dépôt
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String, nullable=False)          # référencé par SP-15f
+    name: Mapped[str] = mapped_column(String, nullable=False)          # référencé par SP-15f et, plus tard, les connecteurs SP-12
     kind: Mapped[str] = mapped_column(String, nullable=False)          # cf. §4
     ciphertext: Mapped[bytes] = mapped_column(nullable=False)
     nonce: Mapped[bytes] = mapped_column(nullable=False)
@@ -108,6 +179,8 @@ class ConnectorSecret(Base):
 ```
 
 (`id`/`tenant_id`/`created_by` en `str`, `_now()` = `datetime.now(timezone.utc)` — même patron exact que `core/app/pipelines/models.py:PipelineRun`, pas de type `UUID` natif ni de `func.now()` côté serveur.)
+
+### 3.3 Audit
 
 `tenant_id` + `audit_log` sur toute écriture (règle non négociable) : chaque
 `create_secret`/`delete_secret` pose une ligne `audit_log` (`action=
@@ -141,8 +214,15 @@ def decrypt(ciphertext: bytes, nonce: bytes) -> dict[str, str]:
 
 ```python
 class ApiKeyPayload(BaseModel):
+    """`location="query"` couvre les services à jeton en paramètre d'URL
+    (ex. `?token=...` d'un ArcGIS Feature Service déjà authentifié en amont,
+    clé GeoServer sur un WFS) ; `location="header"` couvre le cas générique
+    (`X-API-Key`, etc.). Un seul `kind` pour les deux formes plutôt que deux
+    kinds séparés — la différence est un simple champ de placement, pas une
+    nature de credential différente."""
     kind: Literal["api_key"] = "api_key"
-    header: str
+    location: Literal["header", "query"]
+    key: str        # nom du header ou du paramètre de requête
     value: str
 
 class BearerTokenPayload(BaseModel):
@@ -150,26 +230,48 @@ class BearerTokenPayload(BaseModel):
     token: str
 
 class BasicAuthPayload(BaseModel):
+    """Couvre aussi un WFS/WMS/WMTS/CSW gaté par HTTP Basic Auth, et le flux
+    ArcGIS Enterprise `generateToken` (nom d'utilisateur/mot de passe) si un
+    connecteur choisit de faire l'échange de jeton lui-même — le coffre ne
+    porte que le matériel brut, jamais la logique d'échange."""
     kind: Literal["basic_auth"] = "basic_auth"
     username: str
     password: str
+
+class OAuth2ClientCredentialsPayload(BaseModel):
+    """Flux OAuth2 client-credentials — couvre notamment l'« app login »
+    ArcGIS Online (`https://www.arcgis.com/sharing/rest/oauth2/token`) ainsi
+    que toute API tierce (géocodage, météo — cas d'usage #8 de l'étude de
+    faisabilité) gatée par ce flux standard. Le coffre stocke les
+    identifiants client, jamais le jeton d'accès obtenu (à courte durée de
+    vie, à la charge du connecteur consommateur de le renouveler)."""
+    kind: Literal["oauth2_client_credentials"] = "oauth2_client_credentials"
+    tokenUrl: str
+    clientId: str
+    clientSecret: str
 
 class PostgresDsnPayload(BaseModel):
     kind: Literal["postgres_dsn"] = "postgres_dsn"
     dsn: str
 
 SecretPayload = Annotated[
-    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload | PostgresDsnPayload,
+    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload | PostgresDsnPayload,
     Field(discriminator="kind"),
 ]
 ```
 
-Additif par construction : un nouveau `kind` (ex. OAuth2 client-credentials)
-est une nouvelle variante Pydantic, aucune migration requise pour les lignes
-existantes.
+Additif par construction : un nouveau `kind` (ex. un flux d'auth encore plus
+spécifique) est une nouvelle variante Pydantic, aucune migration requise
+pour les lignes existantes. C'est délibérément le mécanisme d'extension
+retenu plutôt que d'essayer d'anticiper aujourd'hui toutes les formes
+d'authentification que les connecteurs SP-12/SP-15f voudront un jour —
+`api_key`/`bearer_token`/`basic_auth`/`oauth2_client_credentials`/
+`postgres_dsn` couvrent les cas identifiés en brainstorm (REST générique,
+Postgres, ArcGIS FS, WFS/WMS/WMTS/CSW), pas une liste close.
 
 Le `kind` apparaît deux fois par construction, pas par redondance accidentelle
-: la colonne `connector_secrets.kind` (§3) permet de filtrer/afficher sans
+: la colonne `connector_secrets.kind` (§3.2) permet de filtrer/afficher sans
 déchiffrer (ex. `GET /secrets`, §6) ; le champ `kind` du payload (ici) est
 le discriminant qui permet à Pydantic de parser le JSON déchiffré dans la
 bonne variante. Les deux doivent rester synchronisés à l'écriture
@@ -232,7 +334,14 @@ strictement humain, via la route REST §6.
   chiffré altéré ou mauvaise clé (échec du tag d'authentification GCM).
 - **Repository** : create/list/delete ; isolation tenant (le tenant A ne
   peut ni lister ni supprimer un secret du tenant B — même forme que les
-  tests d'isolation tenant existants sur collections/items).
+  tests d'isolation tenant existants sur collections/items) ; un
+  aller-retour create→`get_secret_payload` par `kind` (les cinq variantes
+  §4, dont les deux placements `header`/`query` de `api_key`) confirme que
+  le discriminant Pydantic retrouve la bonne variante après déchiffrement.
+- **Frontière de couches** : test import-linter existant (`core` CI) étendu
+  pour couvrir `app.secrets` — confirme qu'`app.harvest` et `app.pipelines`
+  peuvent tous deux l'importer et qu'il ne peut importer aucun des deux
+  (§3.1), sans attendre qu'un vrai import cassé le révèle en review.
 - **Routes** : 403 non-admin sur les trois routes ; **assertion explicite
   qu'aucune valeur/payload/ciphertext n'apparaît dans un corps de réponse**
   (scan du JSON de réponse) ; ligne `audit_log` posée sur create/delete sans
@@ -245,15 +354,18 @@ strictement humain, via la route REST §6.
 ## 9. Compatibilité & risques
 
 - **Nouvelle migration Alembic** (table `connector_secrets`), **nouveau
-  module** (`core/app/secrets/`, frontière import-linter propre — SP-15f en
-  dépendra, jamais l'inverse), **nouvelle variable d'environnement requise**
-  (`CORE_SECRETS_MASTER_KEY`) une fois le module câblé dans `app.main`.
-  Aucun changement de route/comportement existant.
+  module** (`core/app/secrets/`, positionné sous `app.harvest` **et**
+  `app.pipelines` dans le contrat de couches import-linter, §3.1 — les deux
+  pourront en dépendre, jamais l'inverse), **nouvelle variable
+  d'environnement requise** (`CORE_SECRETS_MASTER_KEY`) une fois le module
+  câblé dans `app.main`. Aucun changement de route/comportement existant
+  (les connecteurs SP-12 restent « services publics uniquement » tant que
+  leur extension n'est pas construite — non-but §1).
 
 | Risque | Mitigation |
 |---|---|
 | `CORE_SECRETS_MASTER_KEY` fuite (dump d'env, mauvaise config de logs) | Compromission totale des secrets de tous les tenants — même surface que tout schéma à clé unique (comparatif §2) ; mitigé en gardant la clé hors `audit_log`/messages d'erreur/spans OTel, jamais loguée nulle part |
 | Clé maître perdue (non sauvegardée) | Tous les secrets deviennent définitivement indéchiffrables — note de runbook opérationnel : sauvegarder la clé avec la même rigueur que les sauvegardes DB |
 | Gate admin-only bloque un auteur non-admin ayant besoin d'un nouveau credential | Friction acceptée en v0 — même division du travail que `CORE_ETL_ENABLED` ; à revisiter si l'usage réel montre un goulot d'étranglement |
-| Un `kind` a besoin d'un champ supplémentaire plus tard (ex. flux OAuth2 client-credentials) | Union discriminée additive — nouveau kind = nouvelle variante Pydantic, aucune migration requise pour les lignes existantes |
+| Un `kind` a besoin d'un champ supplémentaire plus tard (ex. un flux SAML/mTLS non anticipé aujourd'hui) | Union discriminée additive — nouveau kind = nouvelle variante Pydantic, aucune migration requise pour les lignes existantes |
 | Contexte de déploiement change (hébergement multi-tenant à grande échelle) et l'option C (KMS) redevient pertinente | Documentée ici comme piste d'évolution explicite, non construite — pas un mur à contourner plus tard |
