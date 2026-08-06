@@ -78,6 +78,12 @@ def _build_auth(payload: SecretPayload | None):
         return HttpBasicAuth(payload.username, payload.password)
     return OAuth2ClientCredentials(
         access_token_url=payload.tokenUrl, client_id=payload.clientId, client_secret=payload.clientSecret,
+        # `session=` est indispensable ici : sans lui, dlt retombe sur son
+        # propre `requests.session` par défaut (non gardé) pour l'échange de
+        # jeton dans `obtain_token()` — seul des 4 kinds de secret REST à
+        # faire sa propre requête plutôt que d'ajouter des en-têtes/paramètres
+        # à la session déjà gardée passée à `RESTClient` (design SP-15f §5.1).
+        session=build_guarded_session(),
     )
 
 
