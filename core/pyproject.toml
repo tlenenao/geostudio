@@ -110,4 +110,5 @@ ignore_imports = [
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
     "app.db -> app.pipelines.models",
+    "app.db -> app.secrets.models",
 ]
