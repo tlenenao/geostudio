@@ -17,6 +17,12 @@ dependencies = [
                              # de tout le reste du cœur.
     "alembic>=1.13",
     "pyjwt[crypto]>=2.8",
+    "cryptography>=42.0",  # SP-15e : chiffrement applicatif AES-GCM du
+                           # coffre de secrets ; déjà présent transitivement
+                           # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
+                           # déclaré ici en dépendance directe pour ne pas
+                           # dépendre d'une extra tierce pour un import de
+                           # production.
     "boto3>=1.34",
     "python-multipart>=0.0.9",
     "mcp>=1.12",
@@ -77,6 +83,7 @@ layers = [
     "app.public",
     "app.harvest",
     "app.pipelines",
+    "app.secrets",
     "app.ingestion",
     "app.dcat",
     "app.stac",
