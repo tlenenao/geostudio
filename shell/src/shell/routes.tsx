@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Routes, Route, Outlet, useNavigate, useParams } from "react-router-dom";
+import { Routes, Route, Outlet, useNavigate, useParams, useLocation } from "react-router-dom";
 import { CatalogPage } from "../pages/CatalogPage";
 import { ItemDetailPage } from "../pages/ItemDetailPage";
 import { MapEditorPage } from "../pages/MapEditorPage";
@@ -10,6 +10,7 @@ import { SitePublicPage } from "../pages/SitePublicPage";
 import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
 import { DatasetEditPage } from "../pages/DatasetEditPage";
+import { PipelineBuilderPage } from "../pages/PipelineBuilderPage";
 import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
@@ -48,6 +49,10 @@ function useOpenItem() {
       } catch {
         setOpenError(true);
       }
+      return;
+    }
+    if (type === "pipeline") {
+      navigate(`/pipelines/${pk}/edit`);
       return;
     }
     navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
@@ -90,7 +95,12 @@ function ItemDetailRoute() {
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) => navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`)}
+      onOpenEditor={(type) => navigate(
+        type === "map" ? `/maps/${pk}` :
+        type === "dataset" ? `/datasets/${pk}/edit` :
+        type === "pipeline" ? `/pipelines/${pk}/edit` :
+        `/apps/${pk}/edit`
+      )}
     />
   );
 }
@@ -108,6 +118,17 @@ function AppBuilderRoute() {
 function DatasetEditRoute() {
   const { pk } = useParams();
   return <DatasetEditPage pk={pk!} />;
+}
+
+function PipelineNewRoute() {
+  const location = useLocation();
+  const title = (location.state as { title?: string } | null)?.title;
+  return <PipelineBuilderPage pk={null} initialTitle={title} />;
+}
+
+function PipelineEditRoute() {
+  const { pk } = useParams();
+  return <PipelineBuilderPage pk={pk!} />;
 }
 
 function AppRuntimeRoute() {
@@ -150,6 +171,8 @@ export function AppRoutes() {
         <Route path="/maps/:pk" element={<MapEditorRoute />} />
         <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
+        <Route path="/pipelines/new" element={<PipelineNewRoute />} />
+        <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
         <Route path="/analytics/sql" element={<SqlLabPage />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
