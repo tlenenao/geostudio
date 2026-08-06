@@ -817,3 +817,82 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
             "DROP TABLE communes_incidents; "
             "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
         ))
+
+
+def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, monkeypatch):
+    """No QGIS_WORKER_URL configured (profile 'etl' not enabled) must fail
+    the run cleanly, never crash on a connection error."""
+    from app.configs.schemas import PipelinePayload
+
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid))
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 1, x=2.35, y=48.85)])
+
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "t1", "kind": "transform", "op": "transform.qgis",
+             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+    with pytest.raises(runtime.PipelineRuntimeError, match="QGIS_WORKER_URL"):
+        runtime.preview_pipeline(
+            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+
+
+@pytest.mark.qgis
+def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
+    """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
+    preview: real sidecar round-trip, real DuckDB COPY/ST_Read (design §6).
+    Requires /scratch to be the SAME directory the qgis-worker container in
+    Task 4 Step 5 has bind-mounted at /scratch — this test writes via
+    DuckDB's COPY (inside this Python process, on the host), the sidecar
+    reads the identical path from inside its container."""
+    from shapely.geometry import Polygon
+
+    from app.configs.schemas import PipelinePayload
+
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    polygons_info = dataclasses.replace(
+        TABLE_INFO, table_name="polygons", geometry_type="Polygon",
+        columns=[ColumnInfo(name="region", type="string", required=True)],
+    )
+    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: polygons_info)
+
+    _write_partition(tmp_path, collection_id="polygons", rows=[
+        {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
+         "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])},
+        {"id": 2, "region": "b", "_op": "insert", "_lsn": 1, "_ts": 1.0,
+         "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)])},
+    ])
+
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons"}},
+            {"id": "t1", "kind": "transform", "op": "transform.qgis",
+             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
+    )
+    assert len(rows) == 2
+    centroids = sorted(
+        (row["geometry"]["coordinates"][0], row["geometry"]["coordinates"][1]) for row in rows
+    )
+    assert centroids == [(1.0, 1.0), (11.0, 11.0)]

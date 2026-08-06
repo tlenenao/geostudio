@@ -26,8 +26,11 @@ compris) n'ait jamais à connaître le nom d'origine — cf. Task 8 note."""
 import csv
 import io
 import json
+import os
+import uuid
 
 import duckdb
+import httpx
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import _dedup_cte, _has_any_file
@@ -47,8 +50,8 @@ from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams, TransformAggregateParams, TransformCountWithinParams,
     TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, WriterCollectionParams,
-    WriterDatasetParams, WriterExportParams,
+    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
+    WriterCollectionParams, WriterDatasetParams, WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
@@ -222,12 +225,63 @@ def _prepare(
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
+def _execute_qgis_transform(
+    conn, node: PipelineNode, *, input_view: str, input_srid: int,
+    qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
+) -> None:
+    if not qgis_worker_url:
+        raise PipelineRuntimeError(
+            "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
+        )
+    p = TransformQgisParams.model_validate(node.params)
+    scratch_dir = f"/scratch/{scratch_run_id}/{node.id}"
+    in_path = f"{scratch_dir}/in.gpkg"
+    out_path = f"{scratch_dir}/out.gpkg"
+    os.makedirs(scratch_dir, exist_ok=True)
+    # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
+    # geographic SRS" (vérifié en design §2) et qgis_process interprète les
+    # géométries dans un CRS inconnu.
+    conn.execute(
+        f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
+        f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
+    )
+    try:
+        response = httpx.post(
+            f"{qgis_worker_url}/run",
+            json={
+                "algorithmId": p.algorithmId,
+                "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
+            },
+            timeout=qgis_worker_timeout_seconds,
+        )
+    except httpx.TimeoutException as exc:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+        ) from exc
+    if response.status_code != 200:
+        detail = response.json().get("error", response.text)
+        raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
+    view_name = f"node_{node.id}"
+    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM ST_Read('{out_path}')")
+    # Best-effort : ne bloque jamais le run si le nettoyage échoue (design
+    # §12, risque accepté — un scratch non nettoyé après un CRASH, pas après
+    # un succès, reste un problème d'exploitation mineur).
+    import shutil
+    shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
 def _execute_transform_chain(
     conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
     srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
-    *, stop_at: str | None = None,
+    *, stop_at: str | None = None, qgis_worker_url: str = "",
+    qgis_worker_timeout_seconds: int = 600,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
+    scratch_run_id = uuid.uuid4().hex
     for node in ordered:
         if node.kind == "reader":
             stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id])))
@@ -249,11 +303,19 @@ def _execute_transform_chain(
             )
         except ValueError as exc:
             raise PipelineRuntimeError(str(exc)) from exc
-        sql = compiler.compile_transform_sql(
-            node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
-        )
         view_name = f"node_{node.id}"
-        conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
+        if node.op == "transform.qgis":
+            _execute_qgis_transform(
+                conn, node, input_view=input_view, input_srid=input_srid,
+                qgis_worker_url=qgis_worker_url,
+                qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+                scratch_run_id=scratch_run_id,
+            )
+        else:
+            sql = compiler.compile_transform_sql(
+                node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
+            )
+            conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
         stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
@@ -269,6 +331,7 @@ def _view_row_count(conn, view_name: str) -> int:
 def preview_pipeline(
     *, session: Session | None, payload: PipelinePayload, tenant_id: str, user: User | None,
     up_to: str, endpoint_url: str, access_key: str, secret_key: str, base_uri: str, limit: int = 50,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
 ) -> list[dict]:
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
@@ -282,7 +345,9 @@ def preview_pipeline(
             conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
         )
         _execute_transform_chain(
-            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node, stop_at=up_to,
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            stop_at=up_to, qgis_worker_url=qgis_worker_url,
+            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
         )
         view_name = view_by_node[up_to]
         # Même conversion que _write_collection : DuckDB renvoie "geometry" en
@@ -466,6 +531,7 @@ def run_pipeline(
     session: Session, *, payload: PipelinePayload, tenant_id: str, user: User,
     endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
     s3_client=None, exports_bucket: str | None = None,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
 ) -> list[NodeStat]:
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
@@ -474,6 +540,7 @@ def run_pipeline(
         )
         stats = _execute_transform_chain(
             conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
         )
         for node in ordered:
             if node.kind != "writer":
