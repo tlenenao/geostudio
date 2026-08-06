@@ -1589,3 +1589,97 @@ test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
   );
   await expect(makeClient().runAnalyticsSql("select 1")).rejects.toThrow(/403/);
 });
+
+test("createPipelineItem posts a pipeline payload and returns a pipeline Item", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-p1", kind: "pipeline", itemId: "p-1" }, { status: 201 });
+    }),
+  );
+  const payload = {
+    nodes: [
+      { id: "r1", kind: "reader" as const, op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" } },
+      { id: "w1", kind: "writer" as const, op: "writer.collection", x: 200, y: 0, params: { collectionId: "villes_propres" } },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const item = await makeClient().createPipelineItem({ title: "Nettoyer villes", owner: "alice", pipeline: payload });
+  expect(body.config).toEqual({ version: 1, kind: "pipeline", pipeline: payload });
+  expect(item).toMatchObject({ pk: "p-1", resourceType: "pipeline", title: "Nettoyer villes", configId: "cfg-p1" });
+});
+
+test("getPipelineConfig reads the pipeline payload from the by-item config", async () => {
+  const payload = {
+    nodes: [{ id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" } }],
+    edges: [],
+  };
+  server.use(
+    http.get("https://core.test/configs/by-item/p-2", () =>
+      HttpResponse.json({ id: "cfg-p2", itemId: "p-2", kind: "pipeline", config: { kind: "pipeline", pipeline: payload } }),
+    ),
+  );
+  const cfg = await makeClient().getPipelineConfig("p-2");
+  expect(cfg).toEqual(payload);
+});
+
+test("getPipelineConfig throws when the config has no pipeline payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/p-3", () =>
+      HttpResponse.json({ id: "cfg-p3", itemId: "p-3", kind: "app", config: { kind: "app" } }),
+    ),
+  );
+  await expect(makeClient().getPipelineConfig("p-3")).rejects.toThrow();
+});
+
+test("savePipelineConfig PUTs the pipeline payload wrapped in a kind=pipeline envelope", async () => {
+  let method = "";
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/p-4", async ({ request }) => {
+      method = request.method;
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  const payload = { nodes: [], edges: [] };
+  await makeClient().savePipelineConfig("p-4", payload);
+  expect(method).toBe("PUT");
+  expect(body).toEqual({ version: 1, kind: "pipeline", pipeline: payload });
+});
+
+test("getPipelineOps returns the op catalogue as-is", async () => {
+  const catalog = { "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } } };
+  server.use(http.get("https://core.test/pipelines/ops", () => HttpResponse.json(catalog)));
+  const result = await makeClient().getPipelineOps();
+  expect(result).toEqual(catalog);
+});
+
+test("runPipeline posts with no body and returns the runId", async () => {
+  server.use(
+    http.post("https://core.test/pipelines/p-5/run", () => HttpResponse.json({ runId: "run-1" }, { status: 202 })),
+  );
+  const result = await makeClient().runPipeline("p-5");
+  expect(result).toEqual({ runId: "run-1" });
+});
+
+test("getPipelineRuns returns the run history", async () => {
+  const runs = [{ id: "run-1", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:05Z", error: null, nodeStats: {} }];
+  server.use(http.get("https://core.test/pipelines/p-6/runs", () => HttpResponse.json(runs)));
+  const result = await makeClient().getPipelineRuns("p-6");
+  expect(result).toEqual(runs);
+});
+
+test("previewPipeline posts upTo as a query param and returns the row list", async () => {
+  let url = "";
+  server.use(
+    http.post("https://core.test/pipelines/p-7/preview", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json([{ id: 1, pop: 1200 }]);
+    }),
+  );
+  const rows = await makeClient().previewPipeline("p-7", "r1");
+  expect(url).toContain("upTo=r1");
+  expect(rows).toEqual([{ id: 1, pop: 1200 }]);
+});
