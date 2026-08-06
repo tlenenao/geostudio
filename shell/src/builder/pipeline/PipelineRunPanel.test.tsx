@@ -54,3 +54,12 @@ test("a failed run shows its error message", async () => {
   });
   await waitFor(() => expect(screen.getByText("collection introuvable")).toBeInTheDocument());
 });
+
+test("if runPipeline itself fails, the button re-enables and shows an error instead of staying stuck", async () => {
+  renderPanel({
+    runPipeline: vi.fn().mockRejectedValue(new Error("réseau indisponible")),
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Exécuter" })).toBeEnabled());
+  expect(screen.getByRole("alert")).toHaveTextContent("réseau indisponible");
+});

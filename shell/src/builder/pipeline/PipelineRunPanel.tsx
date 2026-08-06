@@ -15,6 +15,7 @@ export function PipelineRunPanel({ pipelineId }: { pipelineId: string }) {
   const client = useItemClient();
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   async function loadRuns() {
     setRuns(await client.getPipelineRuns(pipelineId));
@@ -40,8 +41,15 @@ export function PipelineRunPanel({ pipelineId }: { pipelineId: string }) {
 
   async function onRun() {
     setRunning(true);
-    await client.runPipeline(pipelineId);
-    await poll();
+    setRunError(null);
+    try {
+      await client.runPipeline(pipelineId);
+      await poll();
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Échec du lancement du pipeline.");
+    } finally {
+      setRunning(false);
+    }
   }
 
   return (
@@ -49,6 +57,7 @@ export function PipelineRunPanel({ pipelineId }: { pipelineId: string }) {
       <Button size="sm" onClick={onRun} disabled={running}>
         {running ? "Exécution…" : "Exécuter"}
       </Button>
+      {runError && <p role="alert" className="text-red-600 text-xs">{runError}</p>}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
           <li key={run.id} className="border-t border-slate-200 pt-1">
