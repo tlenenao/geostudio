@@ -118,3 +118,76 @@ def test_unknown_op_is_rejected(env):
     response = env.post("/configs", json=body)
     assert response.status_code == 422
     assert "unknown op" in response.json()["detail"]
+
+
+def _pipeline_body_op(op: str, params: dict) -> dict:
+    return {
+        "title": "P",
+        "config": {
+            "version": 1,
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}},
+                    {"id": "t1", "kind": "transform", "op": op, "params": params},
+                    {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "writable"}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+            },
+        },
+    }
+
+
+def test_transform_intersection_with_collection_missing_is_rejected(env):
+    response = env.post("/configs", json=_pipeline_body_op(
+        "transform.intersection", {"withCollectionId": "does-not-exist"},
+    ))
+    assert response.status_code == 422
+    assert "not found" in response.json()["detail"]
+
+
+def test_transform_count_within_with_collection_readable_saves(env):
+    response = env.post("/configs", json=_pipeline_body_op(
+        "transform.countWithin", {"withCollectionId": "readable"},
+    ))
+    assert response.status_code == 201
+
+
+def test_writer_dataset_collection_not_editable_is_rejected(env):
+    body = {
+        "title": "P",
+        "config": {
+            "version": 1,
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}},
+                    {"id": "w1", "kind": "writer", "op": "writer.dataset",
+                     "params": {"collectionId": "locked", "title": "D"}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        },
+    }
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+
+
+def test_writer_dataset_collection_writable_saves(env):
+    body = {
+        "title": "P",
+        "config": {
+            "version": 1,
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}},
+                    {"id": "w1", "kind": "writer", "op": "writer.dataset",
+                     "params": {"collectionId": "writable", "title": "D"}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        },
+    }
+    response = env.post("/configs", json=body)
+    assert response.status_code == 201
