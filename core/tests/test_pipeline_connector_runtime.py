@@ -13,6 +13,12 @@ from app.users.repository import get_or_create_user
 
 TEST_MASTER_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
+# Capturée à l'import du module, AVANT que l'autouse fixture `_no_ssrf_guard`
+# ne monkeypatch `pipelines_egress.assert_egress_allowed` — permet à un test
+# isolé de réactiver la VRAIE garde (cf.
+# test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guard).
+_REAL_ASSERT_EGRESS_ALLOWED = pipelines_egress.assert_egress_allowed
+
 
 @pytest.fixture()
 def session(monkeypatch):
@@ -168,6 +174,49 @@ def test_materialize_rest_connector_missing_secret_raises(conn, session, tenant,
         connector_runtime.materialize_rest_connector(
             conn, session=session, tenant_id=tenant.id, node_id="r8", params=params, view_name="node_r8",
         )
+
+
+def test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guard(
+    monkeypatch, conn, session, tenant, user, httpserver,
+):
+    # Cette table réactive la VRAIE garde pour ce seul test : l'autouse
+    # fixture `_no_ssrf_guard` neutralise `assert_egress_allowed` pour tout
+    # ce fichier (les autres tests exercent le connecteur, pas la garde), ce
+    # qui masquerait justement le trou SSRF qu'on veut couvrir ici.
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", _REAL_ASSERT_EGRESS_ALLOWED)
+    _create_secret(
+        session, tenant, user, name="my-oauth2", kind="oauth2_client_credentials",
+        payload={
+            "kind": "oauth2_client_credentials",
+            # Cible loopback interdite par la vraie garde — aucune connexion
+            # réelle n'est censée être tentée, la garde doit bloquer avant.
+            "tokenUrl": "http://127.0.0.1:1/oauth/token",
+            "clientId": "cid",
+            "clientSecret": "csecret",
+        },
+    )
+    httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
+    params = ReaderConnectorRestParams(
+        baseUrl=httpserver.url_for("/"), path="items", secretName="my-oauth2",
+    )
+    # dlt exécute le générateur `_records` (donc le premier appel à
+    # `auth.__call__` → `obtain_token()`) à l'intérieur de son propre pipeline
+    # d'extraction, et enveloppe toute exception levée là dans
+    # `ResourceExtractionError` puis `PipelineStepFailed` (chaîné via
+    # `__cause__`) plutôt que de la laisser remonter telle quelle — vérifié
+    # empiriquement, pas dans la doc dlt. Le test doit donc chercher
+    # `EgressBlockedError` dans la chaîne de causes, pas au premier niveau.
+    with pytest.raises(Exception) as excinfo:
+        connector_runtime.materialize_rest_connector(
+            conn, session=session, tenant_id=tenant.id, node_id="r10", params=params, view_name="node_r10",
+        )
+    exc = excinfo.value
+    while exc is not None and not isinstance(exc, pipelines_egress.EgressBlockedError):
+        exc = exc.__cause__
+    assert isinstance(exc, pipelines_egress.EgressBlockedError), (
+        f"expected EgressBlockedError somewhere in the cause chain of {excinfo.value!r}"
+    )
+    assert "127.0.0.1" in str(exc)
 
 
 def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, tenant, httpserver):
