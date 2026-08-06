@@ -52,6 +52,7 @@ def core_table_names() -> frozenset[str]:
     from app.ingestion import models as ingestion_models  # noqa: F401
     from app.items import models as items_models  # noqa: F401
     from app.pipelines import models as pipelines_models  # noqa: F401
+    from app.secrets import models as secrets_models  # noqa: F401
     from app.sharing import models as sharing_models  # noqa: F401
     from app.tenants import models as tenants_models  # noqa: F401
     from app.users import models as users_models  # noqa: F401

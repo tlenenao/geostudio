@@ -1,191 +1,185 @@
-## Task 2: `BuilderConfig` gains `kind="pipeline"`
+## Task 2: Payload schemas — `core/app/secrets/schemas.py`
 
 **Files:**
-- Modify: `core/app/configs/schemas.py`
-- Test: `core/tests/test_pipeline_config_schema.py`
+- Create: `core/app/secrets/schemas.py`
+- Test: `core/tests/test_secrets_schemas.py`
 
 **Interfaces:**
-- Consumes: nothing new from Task 1.
-- Produces: `PipelineNode`, `PipelineEdge`, `PipelinePayload` in
-  `app.configs.schemas`, `BuilderConfig.kind` literal gains `"pipeline"`,
-  `BuilderConfig.pipeline: PipelinePayload | None`. Consumed by every later
-  task (`config.pipeline`, `node.id`/`node.kind`/`node.op`/`node.params`,
-  `edge.from_`/`edge.to`).
+- Produces: `app.secrets.schemas.SecretPayload` (discriminated union type
+  alias over `ApiKeyPayload | BearerTokenPayload | BasicAuthPayload |
+  OAuth2ClientCredentialsPayload | PostgresDsnPayload`), `SecretCreate`
+  (`BaseModel`, fields `name: str`, `payload: SecretPayload`),
+  `SECRET_PAYLOAD_ADAPTER` (`TypeAdapter[SecretPayload]`). Consumed by Task
+  4 (`repository.get_secret_payload`) and Task 5 (`routes.py`'s request
+  body and `kind` derivation).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_pipeline_config_schema.py`:
+Create `core/tests/test_secrets_schemas.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 from pydantic import ValidationError
 
-from app.configs.schemas import BuilderConfig
+from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SecretCreate
 
 
-def _pipeline_body() -> dict:
-    return {
-        "version": 1,
-        "kind": "pipeline",
-        "pipeline": {
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection",
-                 "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_propres"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+def test_api_key_header_placement_round_trips():
+    body = SecretCreate.model_validate({
+        "name": "geoserver-key",
+        "payload": {"kind": "api_key", "location": "header", "key": "X-API-Key", "value": "abc"},
+    })
+    assert body.payload.location == "header"
+    assert body.payload.key == "X-API-Key"
+
+
+def test_api_key_query_placement_round_trips():
+    # ArcGIS Feature Service / WFS-style token-in-query-param auth (spec §4).
+    body = SecretCreate.model_validate({
+        "name": "arcgis-fs-token",
+        "payload": {"kind": "api_key", "location": "query", "key": "token", "value": "abc123"},
+    })
+    assert body.payload.location == "query"
+
+
+def test_bearer_token_round_trips():
+    body = SecretCreate.model_validate({
+        "name": "weather-api", "payload": {"kind": "bearer_token", "token": "tok"},
+    })
+    assert body.payload.token == "tok"
+
+
+def test_basic_auth_round_trips():
+    body = SecretCreate.model_validate({
+        "name": "wfs-basic",
+        "payload": {"kind": "basic_auth", "username": "u", "password": "p"},
+    })
+    assert body.payload.username == "u"
+
+
+def test_oauth2_client_credentials_round_trips():
+    # ArcGIS Online app-login shape (spec §4).
+    body = SecretCreate.model_validate({
+        "name": "arcgis-online-app",
+        "payload": {
+            "kind": "oauth2_client_credentials",
+            "tokenUrl": "https://www.arcgis.com/sharing/rest/oauth2/token",
+            "clientId": "cid", "clientSecret": "csecret",
         },
-    }
+    })
+    assert body.payload.clientId == "cid"
 
 
-def test_pipeline_config_valide():
-    config = BuilderConfig.model_validate(_pipeline_body())
-    assert config.kind == "pipeline"
-    assert config.pipeline.nodes[0].op == "reader.collection"
-    assert config.pipeline.edges[0].from_ == "r1"
+def test_postgres_dsn_round_trips():
+    body = SecretCreate.model_validate({
+        "name": "warehouse-pg", "payload": {"kind": "postgres_dsn", "dsn": "postgresql://u:p@host/db"},
+    })
+    assert body.payload.dsn == "postgresql://u:p@host/db"
 
 
-def test_pipeline_config_sans_payload_rejete():
+def test_unknown_kind_rejected():
     with pytest.raises(ValidationError):
-        BuilderConfig.model_validate({"version": 1, "kind": "pipeline"})
+        SecretCreate.model_validate({"name": "x", "payload": {"kind": "ssh_key", "value": "y"}})
 
 
-def test_pipeline_config_ids_dupliques_rejetes():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"][1]["id"] = "r1"
-    with pytest.raises(ValidationError, match="unique"):
-        BuilderConfig.model_validate(body)
+def test_api_key_requires_location():
+    with pytest.raises(ValidationError):
+        SecretCreate.model_validate({
+            "name": "x", "payload": {"kind": "api_key", "key": "k", "value": "v"},
+        })
 
 
-def test_pipeline_config_edge_vers_noeud_inconnu_rejetee():
-    body = _pipeline_body()
-    body["pipeline"]["edges"][0]["to"] = "does-not-exist"
-    with pytest.raises(ValidationError, match="unknown node"):
-        BuilderConfig.model_validate(body)
-
-
-def test_pipeline_config_sans_reader_rejete():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"] = [body["pipeline"]["nodes"][1]]
-    body["pipeline"]["edges"] = []
-    with pytest.raises(ValidationError, match="reader"):
-        BuilderConfig.model_validate(body)
-
-
-def test_pipeline_config_sans_writer_rejete():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"] = [body["pipeline"]["nodes"][0]]
-    body["pipeline"]["edges"] = []
-    with pytest.raises(ValidationError, match="writer"):
-        BuilderConfig.model_validate(body)
-
-
-def test_pipeline_config_x_y_when_acceptes_mais_inertes():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"][0]["x"] = 100
-    body["pipeline"]["nodes"][0]["y"] = 40
-    body["pipeline"]["edges"][0]["when"] = "true"
-    config = BuilderConfig.model_validate(body)
-    assert config.pipeline.nodes[0].x == 100
-    assert config.pipeline.edges[0].when == "true"
+def test_secret_payload_adapter_decodes_decrypted_dict():
+    # This is exactly what repository.get_secret_payload does after
+    # crypto.decrypt() returns a plain dict (Task 4).
+    payload = SECRET_PAYLOAD_ADAPTER.validate_python({"kind": "bearer_token", "token": "tok"})
+    assert payload.token == "tok"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_schema.py -v`
-Expected: FAIL — `pydantic_core._pydantic_core.ValidationError: ... Input should be 'app', 'dashboard', 'map', 'site', 'dataset' or 'bookmark'` (kind literal doesn't yet accept "pipeline")
+Run: `cd core && uv run pytest tests/test_secrets_schemas.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.secrets.schemas'`.
 
-- [ ] **Step 3: Add the schemas**
+- [ ] **Step 3: Implement `schemas.py`**
 
-In `core/app/configs/schemas.py`, change the import line at the top:
+Create `core/app/secrets/schemas.py`:
 
 ```python
-from typing import Annotated, Any, Literal
+# SPDX-License-Identifier: Apache-2.0
+"""Payload chiffré des secrets connecteurs (design SP-15e §4). Union
+discriminée par `kind`, additive par construction : ajouter un kind =
+ajouter une variante Pydantic, aucune migration requise pour les lignes
+existantes."""
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, TypeAdapter
+
+
+class ApiKeyPayload(BaseModel):
+    """`location="query"` couvre les jetons en paramètre d'URL (ex.
+    `?token=...` d'un ArcGIS Feature Service, clé GeoServer sur un WFS) ;
+    `location="header"` couvre le cas générique (`X-API-Key`, etc.)."""
+    kind: Literal["api_key"] = "api_key"
+    location: Literal["header", "query"]
+    key: str
+    value: str
+
+
+class BearerTokenPayload(BaseModel):
+    kind: Literal["bearer_token"] = "bearer_token"
+    token: str
+
+
+class BasicAuthPayload(BaseModel):
+    """Couvre aussi un WFS/WMS/WMTS/CSW gaté par HTTP Basic Auth, et le flux
+    ArcGIS Enterprise `generateToken` si un connecteur choisit de faire
+    l'échange de jeton lui-même — le coffre ne porte que le matériel brut."""
+    kind: Literal["basic_auth"] = "basic_auth"
+    username: str
+    password: str
+
+
+class OAuth2ClientCredentialsPayload(BaseModel):
+    """Flux OAuth2 client-credentials — couvre notamment l'« app login »
+    ArcGIS Online et toute API tierce gatée par ce flux standard. Le coffre
+    stocke les identifiants client, jamais le jeton d'accès obtenu."""
+    kind: Literal["oauth2_client_credentials"] = "oauth2_client_credentials"
+    tokenUrl: str
+    clientId: str
+    clientSecret: str
+
+
+class PostgresDsnPayload(BaseModel):
+    kind: Literal["postgres_dsn"] = "postgres_dsn"
+    dsn: str
+
+
+SecretPayload = Annotated[
+    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload | PostgresDsnPayload,
+    Field(discriminator="kind"),
+]
+
+SECRET_PAYLOAD_ADAPTER: TypeAdapter = TypeAdapter(SecretPayload)
+
+
+class SecretCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    payload: SecretPayload
 ```
 
-Then add, right after `BookmarkPayload` (after line 165, before `class BuilderConfig`):
+- [ ] **Step 4: Run tests to verify they pass**
 
-```python
-class PipelineNode(BaseModel):
-    id: str
-    kind: Literal["reader", "transform", "writer"]
-    op: str
-    x: int = 0
-    y: int = 0                    # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
-                                   # canvas (SP-15b) — posé maintenant pour ne pas migrer
-                                   # le schéma plus tard (design SP-15a §4.1)
-    params: dict[str, Any] = Field(default_factory=dict)
-    title: str | None = None
+Run: `cd core && uv run pytest tests/test_secrets_schemas.py -v`
+Expected: 9 passed.
 
-
-class PipelineEdge(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    from_: str = Field(alias="from")
-    to: str
-    when: str | None = None       # CEL, routage conditionnel — accepté mais non
-                                   # interprété par le compilateur avant Phase 3/4
-
-
-class PipelinePayload(BaseModel):
-    nodes: list[PipelineNode] = Field(default_factory=list)
-    edges: list[PipelineEdge] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _validate_graph(self) -> "PipelinePayload":
-        ids = [n.id for n in self.nodes]
-        if len(ids) != len(set(ids)):
-            raise ValueError("pipeline node ids must be unique")
-        id_set = set(ids)
-        for edge in self.edges:
-            if edge.from_ not in id_set:
-                raise ValueError(f"edge references unknown node '{edge.from_}'")
-            if edge.to not in id_set:
-                raise ValueError(f"edge references unknown node '{edge.to}'")
-        if not any(n.kind == "reader" for n in self.nodes):
-            raise ValueError("pipeline requires at least one reader node")
-        if not any(n.kind == "writer" for n in self.nodes):
-            raise ValueError("pipeline requires at least one writer node")
-        return self
-```
-
-Then in `BuilderConfig`, change the `kind` literal:
-
-```python
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline"]
-```
-
-Add the payload field right after `bookmark: BookmarkPayload | None = None`:
-
-```python
-    pipeline: PipelinePayload | None = None
-```
-
-And add a branch to `_require_kind_payload`, right after the bookmark check:
-
-```python
-        if self.kind == "pipeline" and self.pipeline is None:
-            raise ValueError("pipeline config requires a pipeline payload")
-```
-
-- [ ] **Step 4: Run to verify it passes**
-
-Run: `cd core && uv run pytest tests/test_pipeline_config_schema.py -v`
-Expected: PASS (7 tests green)
-
-- [ ] **Step 5: Run the full configs test suite to check no regression**
-
-Run: `cd core && uv run pytest tests/test_dataset_config_schema.py tests/test_configs_models.py -v`
-Expected: PASS (unchanged)
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/configs/schemas.py core/tests/test_pipeline_config_schema.py
-git commit -m "feat(core): add BuilderConfig kind=pipeline (PipelinePayload/Node/Edge)"
+git add core/app/secrets/schemas.py core/tests/test_secrets_schemas.py
+git commit -m "feat(core): secrets module — discriminated payload schemas"
 ```
 
 ---

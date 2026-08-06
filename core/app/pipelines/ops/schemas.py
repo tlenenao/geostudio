@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Catalogue des 8 opérations de données pures livrées en Phase 1 (SP-15a) —
-la fourchette 6-8 op de l'étude de faisabilité §5. Chaque op porte un
-manifeste de params typé (Pydantic), publié en JSON Schema par
-GET /pipelines/ops pour que SP-15b réutilise le mécanisme
-WcWidgetManifest/generatedPropsPanel (SP-8a) sans redesign (design §5).
+"""Catalogue des opérations du Pipeline : 8 op de données pures livrées en
+Phase 1 (SP-15a — la fourchette 6-8 op de l'étude de faisabilité §5), + 5 op
+de transformation spatiale étage 1 et 1 writer (`writer.dataset`) livrés en
+Phase 3 étage 1 (SP-15c). Chaque op porte un manifeste de params typé
+(Pydantic), publié en JSON Schema par GET /pipelines/ops pour que SP-15b
+réutilise le mécanisme WcWidgetManifest/generatedPropsPanel (SP-8a) sans
+redesign (design SP-15a §5).
 
-filter.expr/derive.expr/aggregate.metrics[*] sont des chaînes SQL DuckDB
-bornées, PAS du CEL (correction du design §5.1 — aucun moteur CEL ne
-tourne côté serveur) : elles ne sont validées syntaxiquement qu'à
-l'exécution (app.pipelines.expr_validation), jamais ici — ce module ne
-valide que la FORME des params, pas la sémantique des expressions."""
-from typing import Literal
+filter.expr/derive.expr/aggregate.metrics[*]/h3Aggregate.metrics[*] sont des
+chaînes SQL DuckDB bornées, PAS du CEL (correction du design SP-15a §5.1 —
+aucun moteur CEL ne tourne côté serveur) : elles ne sont validées
+syntaxiquement qu'à l'exécution (app.pipelines.expr_validation), jamais ici
+— ce module ne valide que la FORME des params, pas la sémantique des
+expressions."""
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ReaderCollectionParams(BaseModel):
@@ -52,6 +55,78 @@ class WriterExportParams(BaseModel):
     key: str
 
 
+class TransformBufferParams(BaseModel):
+    distance: float
+    unit: Literal["meters", "native"] = "meters"
+
+
+class TransformReprojectParams(BaseModel):
+    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+
+
+class TransformIntersectionParams(BaseModel):
+    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    how: Literal["inner", "left"] = "inner"
+    outputGeometry: Literal["left", "intersection"] = "left"
+
+
+class TransformCountWithinParams(BaseModel):
+    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    countColumn: str = "count"
+    predicate: Literal["intersects", "contains"] = "intersects"
+
+
+class TransformH3AggregateParams(BaseModel):
+    resolution: int = Field(..., ge=0, le=15)
+    metrics: dict[str, str]
+
+
+class WriterDatasetParams(BaseModel):
+    collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    datasetId: str | None = None    # pk d'un item BuilderConfig(kind="dataset") existant
+    title: str | None = None        # requis si datasetId est None
+
+    @model_validator(mode="after")
+    def _require_title_for_new_dataset(self) -> "WriterDatasetParams":
+        if self.datasetId is None and not (self.title and self.title.strip()):
+            raise ValueError("title is required when datasetId is not provided")
+        return self
+
+
+class TransformQgisParams(BaseModel):
+    """Op générique pour tout algorithme QGIS Processing de l'allowlist
+    gelée (app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS, design SP-15d
+    §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT — le runtime les
+    injecte (chemins scratch, design §6). `outputSrid` doit être renseigné
+    explicitement quand l'algorithme change le CRS (ex. gdal:warpreproject
+    via son propre param TARGET_CRS) ; laissé à None, le SRID de sortie est
+    supposé identique à l'entrée — vrai pour la quasi-totalité des 50 op de
+    l'allowlist, faux pour un algorithme de reprojection. Aucune conversion
+    automatique d'unité : un DISTANCE/TOLERANCE d'un algorithme QGIS est
+    dans les unités du CRS natif de la couche d'entrée, jamais auto-converti
+    en mètres (vérifié empiriquement en design, §2)."""
+    algorithmId: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
+
+    @model_validator(mode="after")
+    def _check_allowlisted_and_required_params(self) -> "TransformQgisParams":
+        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+
+        schema = QGIS_ALGORITHMS.get(self.algorithmId)
+        if schema is None:
+            raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
+        required = {
+            name for name, p in schema["parameters"].items() if not p["optional"]
+        } - {"INPUT", "OUTPUT"}
+        missing = required - self.params.keys()
+        if missing:
+            raise ValueError(
+                f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}"
+            )
+        return self
+
+
 OP_KINDS: dict[str, str] = {
     "reader.collection": "reader",
     "transform.filter": "transform",
@@ -59,8 +134,15 @@ OP_KINDS: dict[str, str] = {
     "transform.derive": "transform",
     "transform.aggregate": "transform",
     "transform.join": "transform",
+    "transform.buffer": "transform",
+    "transform.reproject": "transform",
+    "transform.intersection": "transform",
+    "transform.countWithin": "transform",
+    "transform.h3Aggregate": "transform",
+    "transform.qgis": "transform",
     "writer.collection": "writer",
     "writer.export": "writer",
+    "writer.dataset": "writer",
 }
 
 OP_PARAMS: dict[str, type[BaseModel]] = {
@@ -70,8 +152,15 @@ OP_PARAMS: dict[str, type[BaseModel]] = {
     "transform.derive": TransformDeriveParams,
     "transform.aggregate": TransformAggregateParams,
     "transform.join": TransformJoinParams,
+    "transform.buffer": TransformBufferParams,
+    "transform.reproject": TransformReprojectParams,
+    "transform.intersection": TransformIntersectionParams,
+    "transform.countWithin": TransformCountWithinParams,
+    "transform.h3Aggregate": TransformH3AggregateParams,
+    "transform.qgis": TransformQgisParams,
     "writer.collection": WriterCollectionParams,
     "writer.export": WriterExportParams,
+    "writer.dataset": WriterDatasetParams,
 }
 
 

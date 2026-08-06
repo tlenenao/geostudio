@@ -43,15 +43,18 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.post("/pipelines/does-not-exist/run").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_eight(monkeypatch):
+def test_get_pipelines_ops_returns_all_fifteen(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
+    # Phase 1 ops (8) + Phase 3c1 spatial transforms (5) + writer.dataset (1) + transform.qgis (1) = 15 total
     assert set(body) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
-        "writer.collection", "writer.export",
+        "transform.buffer", "transform.reproject", "transform.intersection",
+        "transform.countWithin", "transform.h3Aggregate", "transform.qgis",
+        "writer.collection", "writer.export", "writer.dataset",
     }
 
 
@@ -102,3 +105,18 @@ def test_list_runs_route_rejects_unknown_pipeline(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/pipelines/does-not-exist/runs")
     assert response.status_code == 404
+
+
+def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/pipelines/ops/qgis-algorithms")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 50
+    assert "native:centroids" in body
+    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
+
+
+def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=False)
+    assert client.get("/pipelines/ops/qgis-algorithms").status_code == 404

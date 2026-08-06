@@ -6,6 +6,7 @@ volumes:
   pg-data:
   minio-data:
   keycloak-data:
+  etl-scratch:
 
 services:
 
@@ -122,6 +123,7 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
+      CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -173,8 +175,28 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
+      QGIS_WORKER_URL: http://qgis-worker:8000
+      QGIS_WORKER_TIMEOUT_SECONDS: "600"
+    volumes:
+      - etl-scratch:/scratch
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
+    restart: unless-stopped
+
+  # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
+  # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un
+  # `docker compose up` par défaut ne le démarre pas, même porte que
+  # CORE_ETL_ENABLED. Aucune credential DB, aucun accès réseau externe —
+  # ne voit que le volume scratch partagé avec `worker` (garde
+  # anti-confused-deputy, patron SP-6a).
+  qgis-worker:
+    build: ./deploy/qgis-worker
+    profiles: ["etl"]
+    environment:
+      QT_QPA_PLATFORM: offscreen
+    volumes:
+      - etl-scratch:/scratch
+    networks: [gis-net]
     restart: unless-stopped
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage

@@ -17,6 +17,12 @@ dependencies = [
                              # de tout le reste du cœur.
     "alembic>=1.13",
     "pyjwt[crypto]>=2.8",
+    "cryptography>=42.0",  # SP-15e : chiffrement applicatif AES-GCM du
+                           # coffre de secrets ; déjà présent transitivement
+                           # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
+                           # déclaré ici en dépendance directe pour ne pas
+                           # dépendre d'une extra tierce pour un import de
+                           # production.
     "boto3>=1.34",
     "python-multipart>=0.0.9",
     "mcp>=1.12",
@@ -62,6 +68,7 @@ filterwarnings = [
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
+    "qgis: nécessite un sidecar qgis-worker réel (CORE_TEST_QGIS_WORKER_URL) ; skippé sinon",
 ]
 
 [tool.importlinter]
@@ -76,6 +83,7 @@ layers = [
     "app.public",
     "app.harvest",
     "app.pipelines",
+    "app.secrets",
     "app.ingestion",
     "app.dcat",
     "app.stac",
@@ -102,4 +110,5 @@ ignore_imports = [
     "app.db -> app.extensions.models",
     "app.db -> app.harvest.models",
     "app.db -> app.pipelines.models",
+    "app.db -> app.secrets.models",
 ]

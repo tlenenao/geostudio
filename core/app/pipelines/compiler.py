@@ -9,8 +9,10 @@ module ne touche jamais une connexion DuckDB, il ne fait que construire des
 chaînes de caractères, testable en pur."""
 from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
-    TransformAggregateParams, TransformDeriveParams, TransformFilterParams,
-    TransformJoinParams, TransformSelectParams,
+    TransformAggregateParams, TransformBufferParams, TransformCountWithinParams,
+    TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
+    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
+    TransformReprojectParams, TransformSelectParams,
 )
 
 
@@ -55,6 +57,7 @@ def predecessor_id(node_id: str, edges: list[PipelineEdge]) -> str | None:
 
 def compile_transform_sql(
     op: str, params: dict, *, input_view: str, join_view: str | None = None,
+    input_srid: int | None = None,
 ) -> str:
     if op == "transform.filter":
         p = TransformFilterParams.model_validate(params)
@@ -89,4 +92,102 @@ def compile_transform_sql(
             f"USING ({_qi(p.on)})"
         )
 
+    if op == "transform.buffer":
+        p = TransformBufferParams.model_validate(params)
+        if p.unit == "native":
+            return (
+                f"SELECT * EXCLUDE (geometry), ST_Buffer(geometry, {p.distance}) AS geometry "
+                f"FROM {_qi(input_view)}"
+            )
+        assert input_srid is not None, "transform.buffer(unit='meters') requires input_srid"
+        # always_xy=true est obligatoire ici : cf. plan Global Constraints
+        # (sans lui, ST_Transform applique l'ordre d'axe EPSG (lat,lng) pour
+        # EPSG:4326 et intervertit x/y silencieusement — vérifié contre un
+        # DuckDB réel).
+        src = f"'EPSG:{input_srid}'"
+        return (
+            f"SELECT * EXCLUDE (geometry), "
+            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), {p.distance}), "
+            f"'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+        )
+
+    if op == "transform.reproject":
+        p = TransformReprojectParams.model_validate(params)
+        assert input_srid is not None, "transform.reproject requires input_srid"
+        return (
+            f"SELECT * EXCLUDE (geometry), "
+            f"ST_Transform(geometry, 'EPSG:{input_srid}', '{p.targetCrs}', true) AS geometry "
+            f"FROM {_qi(input_view)}"
+        )
+
+    if op == "transform.intersection":
+        p = TransformIntersectionParams.model_validate(params)
+        assert join_view is not None, "transform.intersection requires join_view"
+        join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
+        geom_expr = "t.geometry" if p.outputGeometry == "left" else "ST_Intersection(t.geometry, o.geometry)"
+        return (
+            f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
+            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o ON ST_Intersects(t.geometry, o.geometry)"
+        )
+
+    if op == "transform.countWithin":
+        p = TransformCountWithinParams.model_validate(params)
+        assert join_view is not None, "transform.countWithin requires join_view"
+        if p.predicate == "intersects":
+            predicate_expr = "ST_Intersects(t.geometry, o.geometry)"
+        else:  # contains
+            predicate_expr = "ST_Contains(o.geometry, t.geometry)"
+        return (
+            f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {_qi(p.countColumn)} "
+            f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
+            f"ON {predicate_expr} GROUP BY ALL"
+        )
+
+    if op == "transform.h3Aggregate":
+        p = TransformH3AggregateParams.model_validate(params)
+        h3_expr = (
+            f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), ST_X(ST_Centroid(geometry)), {p.resolution})"
+        )
+        select_parts = [
+            f"{h3_expr} AS h3Cell",
+            f"ST_GeomFromText(h3_cell_to_boundary_wkt({h3_expr})) AS geometry",
+        ]
+        metric_cols = ", ".join(f"({expr}) AS {_qi(name)}" for name, expr in p.metrics.items())
+        if metric_cols:
+            select_parts.append(metric_cols)
+        return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)} GROUP BY h3Cell"
+
     raise ValueError(f"'{op}' is not a transform op")
+
+
+def transform_output_srid(
+    op: str, params: dict, *, input_srid: int, join_srid: int | None = None,
+) -> int:
+    """SRID de sortie d'un nœud transform, calculé sans connexion DuckDB
+    (pur, comme compile_transform_sql). Lève ValueError si les deux entrées
+    d'une op spatiale binaire ne partagent pas le même CRS — design §2/§3.3/
+    §3.4/§3.5 : aucune réconciliation implicite, jamais un résultat spatial
+    silencieusement faux. runtime.py convertit ce ValueError en
+    PipelineRuntimeError avant de le laisser remonter."""
+    if op == "transform.reproject":
+        p = TransformReprojectParams.model_validate(params)
+        return int(p.targetCrs.rsplit(":", 1)[1])
+    if op in ("transform.intersection", "transform.countWithin"):
+        assert join_srid is not None, f"{op} requires join_srid"
+        if input_srid != join_srid:
+            raise ValueError(
+                f"'{op}': input CRS (EPSG:{input_srid}) and joined collection CRS "
+                f"(EPSG:{join_srid}) differ — insert transform.reproject first"
+            )
+        return input_srid
+    if op == "transform.h3Aggregate":
+        if input_srid != 4326:
+            raise ValueError(
+                f"'transform.h3Aggregate' requires EPSG:4326 input (got EPSG:{input_srid}) "
+                "— insert transform.reproject first"
+            )
+        return 4326
+    if op == "transform.qgis":
+        p = TransformQgisParams.model_validate(params)
+        return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
+    return input_srid

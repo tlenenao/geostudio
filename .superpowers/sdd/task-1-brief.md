@@ -1,157 +1,236 @@
-## Task 1: `CORE_ETL_ENABLED` capability flag
+## Task 1: Encryption primitive — `core/app/secrets/crypto.py`
 
 **Files:**
-- Modify: `core/app/auth/dependency.py`
-- Modify: `core/app/instance/routes.py`
-- Modify: `.env.example`
-- Modify: `core/tests/test_read_only_mode.py` (two exact-dict assertions break once `/instance` gains a key)
-- Test: `core/tests/test_etl_enabled_flag.py`
+- Create: `core/app/secrets/__init__.py`
+- Create: `core/app/secrets/crypto.py`
+- Modify: `core/pyproject.toml` (add `cryptography` dependency, insert
+  `app.secrets` into the import-linter `layers` list)
+- Test: `core/tests/test_secrets_crypto.py`
 
 **Interfaces:**
-- Produces: `is_etl_enabled() -> bool` in `app.auth.dependency`, imported by
-  every later task that needs to gate a surface (Tasks 4, 9 doc-only, 10, 11).
-  `GET /instance` response gains `"etlEnabled": bool`.
+- Produces: `app.secrets.crypto.load_master_key() -> bytes`,
+  `encrypt(payload: dict) -> tuple[bytes, bytes]`,
+  `decrypt(ciphertext: bytes, nonce: bytes) -> dict`. Consumed by Task 4
+  (`repository.get_secret_payload`), Task 5 (`routes.create_secret_route`,
+  and `app.main.create_app()`'s eager boot check).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_etl_enabled_flag.py`:
+Create `core/tests/test_secrets_crypto.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
+import base64
+
 import pytest
-from fastapi.testclient import TestClient
+from cryptography.exceptions import InvalidTag
 
-from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_etl_enabled
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.secrets import crypto
+
+TEST_KEY_B64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
 
-def test_is_etl_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_ETL_ENABLED", raising=False)
-    assert is_etl_enabled() is False
+def test_encrypt_decrypt_round_trip(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"kind": "bearer_token", "token": "s3cr3t"})
+    assert crypto.decrypt(ciphertext, nonce) == {"kind": "bearer_token", "token": "s3cr3t"}
 
 
-def test_is_etl_enabled_reads_env_var(monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    assert is_etl_enabled() is True
-    monkeypatch.setenv("CORE_ETL_ENABLED", "false")
-    assert is_etl_enabled() is False
+def test_decrypt_rejects_tampered_ciphertext(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"token": "s3cr3t"})
+    tampered = bytes([ciphertext[0] ^ 0xFF]) + ciphertext[1:]
+    with pytest.raises(InvalidTag):
+        crypto.decrypt(tampered, nonce)
 
 
-@pytest.fixture()
-def env():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
-        )
-        s.commit()
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_current_user_optional] = lambda: admin
-    return TestClient(app)
+def test_decrypt_rejects_wrong_key(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"token": "s3cr3t"})
+    other_key = base64.b64encode(bytes(range(1, 33))).decode()
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", other_key)
+    with pytest.raises(InvalidTag):
+        crypto.decrypt(ciphertext, nonce)
 
 
-def test_instance_reports_etl_disabled_by_default(env):
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": False}
+def test_load_master_key_missing_raises(monkeypatch):
+    monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
+    with pytest.raises(KeyError):
+        crypto.load_master_key()
 
 
-def test_instance_reports_etl_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": True}
+def test_load_master_key_malformed_base64_raises(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "not-valid-base64!!")
+    with pytest.raises(RuntimeError, match="valid base64"):
+        crypto.load_master_key()
+
+
+def test_load_master_key_wrong_length_raises(monkeypatch):
+    short_key = base64.b64encode(b"short").decode()
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", short_key)
+    with pytest.raises(RuntimeError, match="32 bytes"):
+        crypto.load_master_key()
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_etl_enabled_flag.py -v`
-Expected: FAIL — `ImportError: cannot import name 'is_etl_enabled'`
+Run: `cd core && uv run pytest tests/test_secrets_crypto.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.secrets'`.
 
-- [ ] **Step 3: Implement `is_etl_enabled()`**
+- [ ] **Step 3: Add the `cryptography` dependency**
 
-In `core/app/auth/dependency.py`, add right after `is_read_only_mode` (after line 23):
+Modify `core/pyproject.toml` — in the `dependencies = [...]` list, add right
+after `"pyjwt[crypto]>=2.8",`:
 
-```python
-def is_etl_enabled() -> bool:
-    """CORE_ETL_ENABLED (SP-15a) — capacité instance-wide optionnelle, même
-    convention que is_read_only_mode : lue à chaque appel, sans cache, pour
-    que les tests basculent via monkeypatch sans recréer l'app. Défaut
-    false : une instance qui monte en version ne voit rien de nouveau tant
-    qu'elle n'a pas explicitement activé la capacité (cf. design SP-15a §3)."""
-    return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
+```toml
+    "cryptography>=42.0",  # SP-15e : chiffrement applicatif AES-GCM du
+                           # coffre de secrets ; déjà présent transitivement
+                           # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
+                           # déclaré ici en dépendance directe pour ne pas
+                           # dépendre d'une extra tierce pour un import de
+                           # production.
 ```
 
-- [ ] **Step 4: Wire it into `GET /instance`**
+Run: `cd core && uv sync`
+Expected: resolves without changing the locked `cryptography` version (it
+was already present transitively at 49.0.0 — this just makes it a direct
+dependency).
 
-Replace the full contents of `core/app/instance/routes.py`:
+- [ ] **Step 4: Insert `app.secrets` into the import-linter layers list**
+
+Modify `core/pyproject.toml` — in the `[[tool.importlinter.contracts]]`
+block, change:
+
+```toml
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.public",
+    "app.harvest",
+    "app.pipelines",
+    "app.ingestion",
+    "app.dcat",
+    "app.stac",
+    "app.features",
+    "app.collections",
+    "app.configs",
+    "app.extensions",
+    "app.items",
+    "app.sharing",
+    "app.auth",
+    "app.audit",
+    "app.users",
+    "app.tenants",
+]
+```
+
+to:
+
+```toml
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.public",
+    "app.harvest",
+    "app.pipelines",
+    "app.secrets",
+    "app.ingestion",
+    "app.dcat",
+    "app.stac",
+    "app.features",
+    "app.collections",
+    "app.configs",
+    "app.extensions",
+    "app.items",
+    "app.sharing",
+    "app.auth",
+    "app.audit",
+    "app.users",
+    "app.tenants",
+]
+```
+
+(`app.secrets` sits directly below both `app.harvest` and `app.pipelines` —
+its two anticipated future consumer families — and above `app.audit`,
+which Task 5's `routes.py` needs to import.)
+
+- [ ] **Step 5: Create the module and implement `crypto.py`**
+
+Create `core/app/secrets/__init__.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter
-
-from app.auth.dependency import is_etl_enabled, is_read_only_mode
-
-router = APIRouter()
-
-
-@router.get("/instance")
-def get_instance_info() -> dict:
-    return {"readOnly": is_read_only_mode(), "etlEnabled": is_etl_enabled()}
 ```
 
-- [ ] **Step 5: Fix the two existing exact-dict assertions**
-
-In `core/tests/test_read_only_mode.py`, update:
+Create `core/app/secrets/crypto.py`:
 
 ```python
-def test_instance_defaults_to_read_write(env):
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": False}
+# SPDX-License-Identifier: Apache-2.0
+"""Chiffrement applicatif AES-256-GCM des secrets connecteurs (design
+SP-15e §2/§4 —
+docs/superpowers/specs/2026-08-06-sp15e-connector-secrets-store-design.md).
+La clé maître ne doit JAMAIS être loguée, incluse dans un message d'erreur,
+un span OTel ou une entrée audit_log."""
+import base64
+import json
+import os
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+_NONCE_SIZE_BYTES = 12
+_KEY_SIZE_BYTES = 32
 
 
-def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
-    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json() == {"readOnly": True, "etlEnabled": False}
+def load_master_key() -> bytes:
+    """Lit CORE_SECRETS_MASTER_KEY (32 octets encodés base64). Lève
+    `KeyError` si absente, `RuntimeError` si mal formée — échec rapide,
+    jamais un défaut silencieux (design §4)."""
+    raw = os.environ["CORE_SECRETS_MASTER_KEY"]
+    try:
+        key = base64.b64decode(raw, validate=True)
+    except Exception as exc:
+        raise RuntimeError("CORE_SECRETS_MASTER_KEY must be valid base64") from exc
+    if len(key) != _KEY_SIZE_BYTES:
+        raise RuntimeError(
+            f"CORE_SECRETS_MASTER_KEY must decode to {_KEY_SIZE_BYTES} bytes, got {len(key)}"
+        )
+    return key
+
+
+def encrypt(payload: dict) -> tuple[bytes, bytes]:
+    key = load_master_key()
+    nonce = os.urandom(_NONCE_SIZE_BYTES)
+    plaintext = json.dumps(payload).encode("utf-8")
+    ciphertext = AESGCM(key).encrypt(nonce, plaintext, None)
+    return ciphertext, nonce
+
+
+def decrypt(ciphertext: bytes, nonce: bytes) -> dict:
+    key = load_master_key()
+    plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
+    return json.loads(plaintext)
 ```
 
-- [ ] **Step 6: Add `.env.example` entry**
+- [ ] **Step 6: Verify the layering contract holds**
 
-In `.env.example`, right after the `CORE_READ_ONLY_MODE=false` line, add:
+Run: `cd core && uv run lint-imports`
+Expected: `Contracts: 1 kept, 0 broken.` — `crypto.py` imports nothing from
+any other `app.*` module, so this can't yet fail; this step just confirms
+the layers-list edit itself is syntactically valid and doesn't break the
+existing contract before any real cross-module import is added in later
+tasks.
 
-```
-CORE_ETL_ENABLED=false
-```
+- [ ] **Step 7: Run tests to verify they pass**
 
-- [ ] **Step 7: Run all affected tests**
-
-Run: `cd core && uv run pytest tests/test_etl_enabled_flag.py tests/test_read_only_mode.py -v`
-Expected: PASS (all tests green)
+Run: `cd core && uv run pytest tests/test_secrets_crypto.py -v`
+Expected: 6 passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add core/app/auth/dependency.py core/app/instance/routes.py .env.example \
-  core/tests/test_read_only_mode.py core/tests/test_etl_enabled_flag.py
-git commit -m "feat(core): add CORE_ETL_ENABLED instance-wide capability flag"
+git add core/app/secrets/__init__.py core/app/secrets/crypto.py \
+  core/pyproject.toml core/tests/test_secrets_crypto.py core/uv.lock
+git commit -m "feat(core): secrets module — AES-GCM encryption primitive"
 ```
 
 ---

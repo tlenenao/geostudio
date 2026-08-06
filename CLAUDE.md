@@ -175,20 +175,69 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
   dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
   visuelle** (cf. « À venir »).
-- **SP-15a** — Pipeline : socle headless + capacité optionnelle : nouveau
-  document déclaratif `Pipeline` (`BuilderConfig.kind="pipeline"`), catalogue
-  de 8 opérations data-only (`reader.collection`, `transform.filter/select/
-  derive/aggregate/join`, `writer.collection/export`), runtime d'exécution
-  DuckDB nœud par nœud sans fusion (topologie linéaire+join seulement, DAG à
-  embranchements différé), job procrastinate sur une nouvelle file `etl`,
-  capacité instance-wide `CORE_ETL_ENABLED` (défaut `false`) qui coupe toute
-  la surface REST+MCP. Auteur MCP/REST uniquement — pas de canvas visuel
-  (différé SP-15b+). Réutilise verbatim la connexion DuckDB éphémère + le CTE
-  de dédoublonnage CDC GeoParquet (SP-11b), le chemin d'écriture OGC Features
-  (SP-3), le patron de file procrastinate (SP-6a/SP-12c). **A39 : Phase 1
-  (socle headless) du moteur ETL cœur-first livrée** — canvas, spatial +
-  sidecar `qgis_process`, automatisation/déclencheurs restent SP-15b+ (non
-  planifié).
+- **SP-15** (a, c, d, e) — Pipeline no-code « équivalent FME » (A39) :
+  - **SP-15a** — socle headless : nouveau document déclaratif `Pipeline`
+    (`BuilderConfig.kind="pipeline"`), catalogue de 8 opérations data-only
+    (`reader.collection`, `transform.filter/select/derive/aggregate/join`,
+    `writer.collection/export`), runtime d'exécution DuckDB nœud par nœud
+    sans fusion (topologie linéaire+join seulement, DAG à embranchements
+    différé), job procrastinate sur une nouvelle file `etl`, capacité
+    instance-wide `CORE_ETL_ENABLED` (défaut `false`) qui coupe toute la
+    surface REST+MCP. Réutilise verbatim la connexion DuckDB éphémère + le
+    CTE de dédoublonnage CDC GeoParquet (SP-11b), le chemin d'écriture OGC
+    Features (SP-3), le patron de file procrastinate (SP-6a/SP-12c). Un
+    canvas shell existe (`PipelineCanvas`/`PipelinePalette`/
+    `PipelineNodeInspector`/`PipelinePreviewPanel`/`PipelineRunPanel`,
+    `PipelineBuilderPage`) couvrant l'édition de cette topologie
+    linéaire+join.
+  - **SP-15c** — étage 1 spatial + `writer.dataset` : 5 op spatiales
+    (`transform.buffer/reproject/intersection/countWithin/h3Aggregate`,
+    extension DuckDB `h3`), `writer.dataset` (crée/mets à jour un dataset
+    analytique SP-14 depuis un pipeline), les 3 nouvelles op référençant
+    une collection validées en écriture/lecture à la sauvegarde de config,
+    5 entrées ajoutées au menu d'insertion du canvas.
+  - **SP-15d** — étage 2 spatial (« long tail géo ») : op générique
+    `transform.qgis` invoquant un algorithme QGIS Processing (allowlist
+    gelée de 50 ids, `core/app/pipelines/ops/qgis_algorithms.json`, générée
+    hors-ligne contre `qgis/qgis:release-3_34` — jamais `:latest`) via un
+    sidecar `qgis-worker` isolé (stdlib `http.server`, aucune credential
+    DB/accès réseau externe, profil compose `etl`, même porte que
+    `CORE_ETL_ENABLED`) ; `runtime.py` matérialise la relation DuckDB amont
+    en GeoPackage CRS-tagué (`SRS` explicite obligatoire), appelle le
+    sidecar en HTTP, recharge le résultat via `ST_Read` en aliasant la
+    colonne géométrie par **type** (jamais par nom — GDAL/QGIS ne la nomme
+    pas forcément `geometry`). Auteur MCP/REST uniquement, pas de
+    changement canvas. **Point ouvert non bloquant** : les 5 tests
+    `@pytest.mark.qgis` (conteneur sidecar réel + `/scratch` inscriptible)
+    n'ont jamais tourné pour de vrai à ce jour (contrainte d'environnement
+    de la session de livraison, `sudo` interactif indisponible) — à
+    exécuter avant d'activer `transform.qgis` en production ; le reste
+    (param model, allowlist, SRID, wiring routes/compose, gestion d'erreur)
+    est vérifié statiquement et par tests réels non-sidecar.
+  - **SP-15e** — coffre de secrets pour connecteurs externes : nouveau
+    module `core/app/secrets/` (chiffrement applicatif AES-256-GCM,
+    `cryptography`'s `AESGCM`, clé maître `CORE_SECRETS_MASTER_KEY` requise
+    au boot — échec rapide si absente/mal formée, jamais un défaut
+    silencieux), union Pydantic discriminée `SecretPayload` sur 5 formes
+    (clé API en-tête/query, jeton bearer, basic auth, OAuth2
+    client-credentials, DSN Postgres — additive par construction, un
+    nouveau kind = une nouvelle variante Pydantic, aucune migration),
+    table `connector_secrets` tenant-scopée (unique `(tenant_id, name)`),
+    trois routes REST (`POST`/`GET`/`DELETE /secrets`) admin-only auditées
+    ne renvoyant jamais de valeur déchiffrée/ciphertext/nonce — pas de
+    rotation, suppression+recréation seulement. Positionné dans le
+    contrat de couches import-linter strictement **sous** `app.harvest`
+    ET `app.pipelines`, ses deux futurs consommateurs anticipés (SP-12
+    connecteurs de moissonnage, SP-15 pipelines) — ce plan rend le coffre
+    *capable* de les servir sans construire ni l'un ni l'autre ; aucun
+    outil MCP, aucun kind `BuilderConfig`, aucun changement canvas.
+    Exposition MCP des *noms* de secrets (métadonnées seules) différée à
+    SP-15f (non planifiée).
+  - **A39 : Phases 1+2 (socle headless + étage 1+2 spatial) livrées**, plus
+    SP-15e (coffre de secrets, prérequis pour de futurs connecteurs
+    authentifiés) — canvas visuel du graphe complet (branchements DAG au-delà
+    de linéaire+join), automatisation/déclencheurs et câblage effectif d'un
+    connecteur authentifié via le coffre restent non planifiés.
 
 ### À venir
 
@@ -200,12 +249,15 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
   livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
   livrée.
-- **SP-15** — reste : canvas visuel du graphe `Pipeline`, opérations
-  spatiales (buffer, countWithin, intersection, agrégation H3) + sidecar
-  `qgis_process` (GPL, opt-in, profil compose `etl`), automatisation/
-  déclencheurs au-delà de la planification simple. Phases 2–4, non
-  planifiées (SP-15b+ à écrire). Jalon M14 non atteint (seule la Phase 1 est
-  livrée).
+- **SP-15** — reste : canvas visuel du graphe `Pipeline` au-delà de la
+  topologie linéaire+join actuelle (branchements DAG), automatisation/
+  déclencheurs au-delà de la planification simple, vérification réelle des
+  5 tests `@pytest.mark.qgis` de SP-15d (sidecar + `/scratch` réels, non
+  exécutée à ce jour), câblage effectif d'un `reader.connector`/connecteur
+  authentifié consommant le coffre SP-15e (le coffre lui-même est livré,
+  aucun consommateur construit). SP-15f (exposition MCP des noms de
+  secrets) non planifiée. Jalon M14 non atteint (socle + étage 1+2 spatial
+  + coffre de secrets livrés, DAG/automatisation/consommateurs restent).
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).

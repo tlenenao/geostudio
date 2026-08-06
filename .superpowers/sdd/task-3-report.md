@@ -1,87 +1,96 @@
-# Task 3 Report: Pipeline Op Catalogue (8 data-only ops)
+# Task 3 report — Data model + migration (`connector_secrets`)
 
-## Summary
-Successfully completed Task 3 of the SP-15a plan. Created the Phase 1 pipeline op catalogue with 8 data-only operations, passing all tests.
+## What I implemented
 
-## Files Created
-- `core/app/pipelines/__init__.py` (empty module, license header only)
-- `core/app/pipelines/ops/__init__.py` (empty module, license header only)
-- `core/app/pipelines/ops/schemas.py` (8 Pydantic param classes + 3 exported functions)
-- `core/tests/test_pipeline_ops_schemas.py` (comprehensive test suite)
+- `core/app/secrets/models.py` — SQLAlchemy model `ConnectorSecret` mapped to
+  table `connector_secrets`: `id` (PK), `tenant_id` (FK `tenants.id`), `name`,
+  `kind`, `ciphertext` (`LargeBinary`), `nonce` (`LargeBinary`), `created_by`
+  (FK `users.id`), `created_at`/`updated_at` (`DateTime`, UTC defaults via
+  `_now()`), unique constraint `uq_connector_secrets_tenant_name` on
+  `(tenant_id, name)`.
+- `core/alembic/versions/0019_connector_secrets.py` — migration creating the
+  `connector_secrets` table, `down_revision = "0018"` (confirmed `0018` is
+  the current head), mirrors the model schema, `downgrade()` drops the table.
+- `core/app/db.py` — registered `from app.secrets import models as
+  secrets_models  # noqa: F401` in `core_table_names()`, inserted
+  alphabetically between `app.pipelines` and `app.sharing`, exactly as the
+  brief specified.
+- `core/pyproject.toml` — added `"app.db -> app.secrets.models",` to the
+  `ignore_imports` list in the `[[tool.importlinter.contracts]]` block,
+  mirroring the 10 existing per-module exemptions.
+- `core/tests/test_secrets_models.py` — the exact 3-test file from the brief
+  (table registration, row round-trip, unique-per-tenant constraint).
 
-## Implementation
+Transcribed verbatim from the brief; no design decisions made.
 
-### Op Catalogue Structure
-Created `core/app/pipelines/ops/schemas.py` with:
+## TDD evidence
 
-1. **8 Pydantic param classes**:
-   - `ReaderCollectionParams` — (collectionId: str)
-   - `TransformFilterParams` — (expr: str)
-   - `TransformSelectParams` — (columns: dict[str, str | None] with default empty)
-   - `TransformDeriveParams` — (column: str, expr: str)
-   - `TransformAggregateParams` — (groupBy: list, metrics: dict with defaults)
-   - `TransformJoinParams` — (withCollectionId: str, on: str, how: Literal["inner", "left"] default="inner")
-   - `WriterCollectionParams` — (collectionId: str)
-   - `WriterExportParams` — (format: Literal["geojson", "csv"], key: str)
+**RED** — before creating `models.py`:
+```
+$ cd core && uv run pytest tests/test_secrets_models.py -v
+...
+ImportError while importing test module '.../tests/test_secrets_models.py'.
+E   ModuleNotFoundError: No module named 'app.secrets.models'
+Interrupted: 1 error during collection
+```
+Matches the brief's expected failure exactly.
 
-2. **OP_KINDS registry**: Maps op names to phase (reader/transform/writer)
-
-3. **OP_PARAMS registry**: Maps op names to their Pydantic model class
-
-4. **parse_op_params(op: str, params: dict) -> BaseModel**: Validates and instantiates params, raises ValueError for unknown ops
-
-5. **ops_catalog() -> dict[str, dict]**: Exports JSON Schema for all ops, includes kind and paramsSchema
-
-### Design Decisions
-- Expressions (filter.expr, derive.expr, aggregate.metrics) are intentionally stored as strings — semantic validation happens later in `app.pipelines.expr_validation`, not here
-- This module only validates the FORM of parameters, not their semantics
-- JSON Schema export ready for UI consumption via GET /pipelines/ops (SP-15b)
-
-## Testing
-
-### Test Run
-```bash
-cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
+**GREEN** — after implementing `models.py`, `db.py`, `pyproject.toml`, and the
+migration:
+```
+$ cd core && uv run pytest tests/test_secrets_models.py -v
+tests/test_secrets_models.py::test_connector_secrets_table_is_registered PASSED [ 33%]
+tests/test_secrets_models.py::test_connector_secret_row_round_trip PASSED [ 66%]
+tests/test_secrets_models.py::test_connector_secret_unique_name_per_tenant PASSED [100%]
+3 passed in 0.16s
 ```
 
-**Result: 15 tests PASSED**
-
-- test_all_eight_phase1_ops_are_registered: PASSED
-- test_op_kind_matches (8 parametrized): ALL PASSED
-  - reader.collection → "reader"
-  - transform.filter → "transform"
-  - transform.select → "transform"
-  - transform.derive → "transform"
-  - transform.aggregate → "transform"
-  - transform.join → "transform"
-  - writer.collection → "writer"
-  - writer.export → "writer"
-- test_parse_op_params_reader_collection: PASSED
-- test_parse_op_params_missing_required_field_raises: PASSED (ValidationError on missing required field)
-- test_parse_op_params_unknown_op_raises: PASSED (ValueError with "unknown op" message)
-- test_transform_join_defaults_how_to_inner: PASSED (default value tested)
-- test_writer_export_requires_format_and_key: PASSED (both fields required)
-- test_ops_catalog_exposes_json_schema_per_op: PASSED (JSON schema present for all ops)
-
-## Commit
-
+**Import-linter**:
 ```
-commit 3c5c0e3
-feat(core): add Phase 1 pipeline op catalogue (8 data-only ops)
-
-4 files changed, 158 insertions(+)
-- core/app/pipelines/__init__.py
-- core/app/pipelines/ops/__init__.py
-- core/app/pipelines/ops/schemas.py
-- core/tests/test_pipeline_ops_schemas.py
+$ cd core && uv run lint-imports
+Analyzed 142 files, 401 dependencies.
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
 ```
 
-## Verification
-- All code transcribed verbatim from brief — no deviations
-- All tests pass on first run after implementation
-- Package structure follows existing conventions
-- SPDX headers correct on all Python files
-- No syntax errors, no missing imports
+**Full suite regression check** (not required by the brief, ran as extra
+diligence):
+```
+$ cd core && uv run pytest -q
+1051 passed, 127 skipped in 68.23s
+```
+No regressions; skip count matches the usual postgis/qgis-marked baseline.
 
-## Status
-**DONE** — Task 3 complete, ready for Task 4 (pipeline execution engine)
+## Files changed
+
+- `core/app/secrets/models.py` (new)
+- `core/alembic/versions/0019_connector_secrets.py` (new)
+- `core/app/db.py` (modified — 1 line added)
+- `core/pyproject.toml` (modified — 1 line added)
+- `core/tests/test_secrets_models.py` (new)
+
+Commit: `58e4276` — `feat(core): secrets module — connector_secrets table + migration`
+(5 files changed, 127 insertions(+))
+
+## Self-review findings
+
+- Content matches the brief verbatim in all four code files — diffed
+  mentally against the brief's fenced blocks, no deviations.
+- `db.py` insertion point confirmed correct before editing: read the
+  surrounding `core_table_names()` function first, found `pipelines_models`
+  and `sharing_models` exactly where the brief said, inserted between them.
+- `0018` confirmed as the actual alembic head (`down_revision = "0018"` in
+  `0018_pipeline_runs.py`) before writing `0019`'s `down_revision`.
+- Nothing else touched: `git status --short core/` before commit showed only
+  the 5 intended files; `git add` listed them explicitly (no `-A`/`.`).
+- No destructive git commands used; untouched `.superpowers/sdd/*` working-
+  tree modifications (pre-existing, unrelated to this task) were left alone
+  per instructions.
+- Scope discipline: no other model, migration, or module touched; Task 4/5
+  concerns (repository, routes, admin gate) not started.
+
+## Issues or concerns
+
+None. All steps in the brief completed exactly as specified, tests pass
+cleanly (3/3 target tests, 1051/1051 non-skipped in the full suite), and
+`lint-imports` is clean.

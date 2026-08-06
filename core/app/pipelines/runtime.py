@@ -26,27 +26,42 @@ compris) n'ait jamais à connaître le nom d'origine — cf. Task 8 note."""
 import csv
 import io
 import json
+import os
+import shutil
+import uuid
 
 import duckdb
+import httpx
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
+from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
-from app.configs.schemas import PipelineNode, PipelinePayload
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
+from app.items import repository as items_repo
 from app.pipelines import compiler
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
-    ReaderCollectionParams, TransformAggregateParams, TransformDeriveParams,
-    TransformFilterParams, TransformJoinParams, WriterCollectionParams, WriterExportParams,
+    ReaderCollectionParams, TransformAggregateParams, TransformCountWithinParams,
+    TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
+    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
+    WriterCollectionParams, WriterDatasetParams, WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
+
+_JOIN_PARAM_MODELS: dict[str, type] = {
+    "transform.join": TransformJoinParams,
+    "transform.intersection": TransformIntersectionParams,
+    "transform.countWithin": TransformCountWithinParams,
+}
 
 
 def _qi(name: str) -> str:
@@ -156,16 +171,23 @@ def _validate_node_exprs(conn: duckdb.DuckDBPyConnection, node: PipelineNode) ->
         p = TransformAggregateParams.model_validate(node.params)
         for metric_expr in p.metrics.values():
             validate_bounded_expr(conn, metric_expr)
+    elif node.op == "transform.h3Aggregate":
+        p = TransformH3AggregateParams.model_validate(node.params)
+        for metric_expr in p.metrics.values():
+            validate_bounded_expr(conn, metric_expr)
 
 
 def _prepare(
     conn, session: Session, payload: PipelinePayload, *, tenant_id: str, user: User, base_uri: str,
-) -> tuple[list[PipelineNode], dict[str, str]]:
+) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
-    chaque transform.join), puis verrouille. Retourne (ordre topologique,
-    view_name par node.id) — writer nodes n'ont pas encore de vue."""
+    chaque transform.join/intersection/countWithin), puis verrouille.
+    Retourne (ordre topologique, view_name par node.id, srid par node.id
+    pour les readers, srid par node.id pour la vue __join des 3 op
+    binaires) — writer nodes n'ont pas encore de vue."""
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}
+    srid_by_node: dict[str, int] = {}
 
     for node in ordered:
         if node.kind != "reader":
@@ -181,11 +203,14 @@ def _prepare(
             collection_id=p.collectionId, table_info=table_info,
         )
         view_by_node[node.id] = view_name
+        srid_by_node[node.id] = table_info.srid or 4326
 
+    join_srid_by_node: dict[str, int] = {}
     for node in ordered:
-        if node.op != "transform.join":
+        model = _JOIN_PARAM_MODELS.get(node.op)
+        if model is None:
             continue
-        p = TransformJoinParams.model_validate(node.params)
+        p = model.model_validate(node.params)
         table_name = _require_readable_collection_id(
             session, tenant_id=tenant_id, user=user, collection_id=p.withCollectionId,
         )
@@ -195,15 +220,116 @@ def _prepare(
             conn, view_name=join_view, base_uri=base_uri, tenant_id=tenant_id,
             collection_id=p.withCollectionId, table_info=table_info,
         )
+        join_srid_by_node[node.id] = table_info.srid or 4326
 
     _lock_down(conn)
-    return ordered, view_by_node
+    return ordered, view_by_node, srid_by_node, join_srid_by_node
+
+
+# Racine du volume scratch partagé avec le sidecar qgis-worker (design SP-15d
+# §4). Module-level plutôt qu'en dur dans _execute_qgis_transform : les tests
+# qui exercent le dispatch HTTP (sans sidecar réel) le redirigent vers un
+# tmp_path via monkeypatch, /scratch lui-même n'étant accessible en écriture
+# qu'à l'intérieur des conteneurs (etl-scratch), jamais dans l'environnement
+# d'exécution des tests.
+_QGIS_SCRATCH_ROOT = "/scratch"
+
+
+def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_id: str) -> None:
+    """Matérialise le GPKG produit par le sidecar en TEMP TABLE, colonne
+    géométrie renommée en "geometry" quel que soit son nom réel dans le
+    fichier — GDAL/QGIS écrit couramment "geom", jamais garanti "geometry"
+    (vérifié empiriquement : DuckDB's COPY ... TO ... FORMAT GDAL DRIVER GPKG
+    nomme déjà sa propre colonne géométrie "geom" par défaut). Détection par
+    TYPE DuckDB (GEOMETRY), jamais par nom — même garantie que
+    _materialize_reader fournit déjà pour les readers (cf. en-tête du
+    module). Un ST_Read sans aucune colonne de type GEOMETRY (algorithme dont
+    la sortie n'est pas une couche vecteur) lève une PipelineRuntimeError
+    propre, jamais un KeyError/IndexError silencieux."""
+    probe_cols = conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
+    geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
+    if not geom_cols:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte aucune colonne géométrie"
+        )
+    # Une seule colonne géométrie attendue (même contrat qu'une collection) :
+    # en cas de pluralité inattendue, la première suffit à ne jamais perdre
+    # la géométrie silencieusement — cas non rencontré dans l'allowlist SP-15d.
+    geom_col = geom_cols[0]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
+    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')")
+
+
+def _execute_qgis_transform(
+    conn, node: PipelineNode, *, input_view: str, input_srid: int,
+    qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
+) -> None:
+    if not qgis_worker_url:
+        raise PipelineRuntimeError(
+            "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
+        )
+    p = TransformQgisParams.model_validate(node.params)
+    scratch_dir = f"{_QGIS_SCRATCH_ROOT}/{scratch_run_id}/{node.id}"
+    in_path = f"{scratch_dir}/in.gpkg"
+    out_path = f"{scratch_dir}/out.gpkg"
+    os.makedirs(scratch_dir, exist_ok=True)
+    # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
+    # geographic SRS" (vérifié en design §2) et qgis_process interprète les
+    # géométries dans un CRS inconnu.
+    try:
+        conn.execute(
+            f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
+            f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
+        )
+        try:
+            response = httpx.post(
+                f"{qgis_worker_url}/run",
+                json={
+                    "algorithmId": p.algorithmId,
+                    "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
+                },
+                timeout=qgis_worker_timeout_seconds,
+            )
+        except httpx.TimeoutException as exc:
+            raise PipelineRuntimeError(
+                f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PipelineRuntimeError(
+                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+            ) from exc
+        if response.status_code != 200:
+            # Défense en profondeur : le sidecar (server.py _respond) émet
+            # toujours du JSON, même pour ses propres 400 (Finding 3), mais un
+            # intermédiaire (proxy, gateway) pourrait renvoyer un corps non-JSON
+            # — .json() ne doit jamais lui-même faire planter le run.
+            try:
+                detail = response.json().get("error", response.text)
+            except ValueError:
+                detail = response.text
+            raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
+        view_name = f"node_{node.id}"
+        _materialize_qgis_output(
+            conn, out_path=out_path, view_name=view_name, algorithm_id=p.algorithmId,
+        )
+    finally:
+        # Best-effort : ne bloque jamais le run (ni ne masque une erreur déjà
+        # en cours de propagation) si le nettoyage échoue (design §12, risque
+        # accepté — un scratch non nettoyé après un CRASH reste un problème
+        # d'exploitation mineur). Couvre désormais TOUS les chemins de sortie
+        # (succès, erreur sidecar, exception locale), pas seulement le succès.
+        shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def _execute_transform_chain(
-    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str], *, stop_at: str | None = None,
+    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
+    srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
+    *, stop_at: str | None = None, qgis_worker_url: str = "",
+    qgis_worker_timeout_seconds: int = 600,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
+    scratch_run_id = uuid.uuid4().hex
     for node in ordered:
         if node.kind == "reader":
             stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id])))
@@ -215,12 +341,31 @@ def _execute_transform_chain(
         pred_id = compiler.predecessor_id(node.id, edges)
         assert pred_id is not None
         input_view = view_by_node[pred_id]
-        join_view = f"node_{node.id}__join" if node.op == "transform.join" else None
+        input_srid = srid_by_node[pred_id]
+        join_view = f"node_{node.id}__join" if node.op in _JOIN_PARAM_MODELS else None
+        join_srid = join_srid_by_node.get(node.id)
         _validate_node_exprs(conn, node)
-        sql = compiler.compile_transform_sql(node.op, node.params, input_view=input_view, join_view=join_view)
+        try:
+            output_srid = compiler.transform_output_srid(
+                node.op, node.params, input_srid=input_srid, join_srid=join_srid,
+            )
+        except ValueError as exc:
+            raise PipelineRuntimeError(str(exc)) from exc
         view_name = f"node_{node.id}"
-        conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
+        if node.op == "transform.qgis":
+            _execute_qgis_transform(
+                conn, node, input_view=input_view, input_srid=input_srid,
+                qgis_worker_url=qgis_worker_url,
+                qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+                scratch_run_id=scratch_run_id,
+            )
+        else:
+            sql = compiler.compile_transform_sql(
+                node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
+            )
+            conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name
+        srid_by_node[node.id] = output_srid
         stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
         if stop_at == node.id:
             return stats
@@ -234,6 +379,7 @@ def _view_row_count(conn, view_name: str) -> int:
 def preview_pipeline(
     *, session: Session | None, payload: PipelinePayload, tenant_id: str, user: User | None,
     up_to: str, endpoint_url: str, access_key: str, secret_key: str, base_uri: str, limit: int = 50,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
 ) -> list[dict]:
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
@@ -243,8 +389,14 @@ def preview_pipeline(
 
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
-        ordered, view_by_node = _prepare(conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri)
-        _execute_transform_chain(conn, ordered, payload.edges, view_by_node, stop_at=up_to)
+        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+        )
+        _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            stop_at=up_to, qgis_worker_url=qgis_worker_url,
+            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+        )
         view_name = view_by_node[up_to]
         # Même conversion que _write_collection : DuckDB renvoie "geometry" en
         # WKB (bytes), que jsonable_encoder (route FastAPI) ne sait pas
@@ -316,6 +468,74 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
     return NodeStat(node.id, node.op, count)
 
 
+def _write_dataset(
+    session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User,
+) -> NodeStat:
+    p = WriterDatasetParams.model_validate(node.params)
+    # Réutilise _write_collection TEL QUEL (même chemin d'écriture OGC
+    # Features) : writer.dataset n'introduit aucune primitive d'écriture, il
+    # catalogue seulement le résultat comme item "dataset" ensuite (design
+    # §4 point 1). Le node synthétique porte le même id que node.id : c'est
+    # ainsi que _write_collection retrouve la bonne entrée de view_by_node
+    # (posée par l'appelant, run_pipeline, avant le dispatch).
+    collection_node = PipelineNode(
+        id=node.id, kind="writer", op="writer.collection", params={"collectionId": p.collectionId},
+    )
+    write_stat = _write_collection(
+        session, conn, node=collection_node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+    )
+
+    if p.datasetId is not None:
+        facts = items_repo.get_access_facts(session, tenant_id=tenant_id, item_id=p.datasetId)
+        if facts is None or not can(session, user_id=user.id, action="write", item=facts):
+            raise PipelineRuntimeError(f"dataset '{p.datasetId}' is not writable")
+        existing = configs_repo.get_config_by_item(session, p.datasetId)
+        if existing is None or existing.config.kind != "dataset":
+            raise PipelineRuntimeError(f"dataset '{p.datasetId}' not found")
+        current = existing.config.dataset
+        assert current is not None
+        # Reconstruit un DatasetPayload frais (pas model_copy sur lui-même) :
+        # source/collectionId changent, tout le reste (columns, timeField,
+        # reactsToExtent, crossFilterLinks) est copié tel quel, jamais
+        # régénéré par le run (design §4).
+        updated_dataset = DatasetPayload(
+            source="collection", collectionId=p.collectionId,
+            columns=current.columns, timeField=current.timeField,
+            reactsToExtent=current.reactsToExtent, crossFilterLinks=current.crossFilterLinks,
+        )
+        # model_copy (pas de re-validation) est sûr ici : seul le champ
+        # "dataset" change, et il porte déjà un DatasetPayload fraîchement
+        # validé par son propre constructeur ci-dessus ; le reste de
+        # existing.config a déjà été validé lors de sa sauvegarde d'origine.
+        updated_config = existing.config.model_copy(update={"dataset": updated_dataset})
+        configs_repo.update_config(session, existing.id, updated_config, tenant_id=tenant_id)
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="config.update", object_type="config", object_id=existing.id,
+            payload={"pipelineNodeId": node.id},
+        )
+    else:
+        assert p.title is not None  # enforced by WriterDatasetParams' model_validator
+        item = items_repo.create_item(
+            session, tenant_id=tenant_id, owner_id=user.id, resource_type="dataset", title=p.title,
+        )
+        new_config = BuilderConfig(
+            kind="dataset", dataset=DatasetPayload(source="collection", collectionId=p.collectionId),
+        )
+        config_result = configs_repo.create_config(session, new_config, item_id=item.id, tenant_id=tenant_id)
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="item.create", object_type="item", object_id=item.id,
+            payload={"title": p.title},
+        )
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="config.create", object_type="config", object_id=config_result.id,
+            payload={"title": p.title, "kind": "dataset"},
+        )
+    return NodeStat(node.id, node.op, write_stat.rowCount)
+
+
 def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
@@ -359,11 +579,17 @@ def run_pipeline(
     session: Session, *, payload: PipelinePayload, tenant_id: str, user: User,
     endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
     s3_client=None, exports_bucket: str | None = None,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
 ) -> list[NodeStat]:
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
-        ordered, view_by_node = _prepare(conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri)
-        stats = _execute_transform_chain(conn, ordered, payload.edges, view_by_node)
+        ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
+            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+        )
+        stats = _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+        )
         for node in ordered:
             if node.kind != "writer":
                 continue
@@ -377,6 +603,10 @@ def run_pipeline(
             elif node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
                 stats.append(_write_export(conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node))
+            elif node.op == "writer.dataset":
+                stats.append(_write_dataset(
+                    session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+                ))
         return stats
     finally:
         conn.close()

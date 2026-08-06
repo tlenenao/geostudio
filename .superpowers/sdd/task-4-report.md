@@ -1,80 +1,104 @@
-# Task 4 report — Structural graph validation + CORE_ETL_ENABLED guard (SP-15a)
+# Task 4 Report — Repository (`core/app/secrets/repository.py`)
 
-Note: this file previously held a stale report from a different plan's task 4
-(SP-14n shell types). Overwritten with this task's report (SP-15a plan,
-"Pipeline: socle headless", task 4 of 11).
+## What was implemented
 
-## Commit
+Created `core/app/secrets/repository.py`, the CRUD + decrypt-on-demand
+repository layer over `ConnectorSecret` (Task 3), tying together Task 1's
+`crypto.encrypt`/`decrypt` and Task 2's `SECRET_PAYLOAD_ADAPTER`/`SecretPayload`.
 
-- `a44c3b8` — `feat(core): validate pipeline graph structure at save time, gate on CORE_ETL_ENABLED`
-  - `core/app/configs/pipeline_validation.py` (new)
-  - `core/app/configs/routes.py` (modified: import, `_require_etl_enabled_for_pipeline` helper, three call-site insertions in `create_config`, `update_config`, `update_config_by_item`)
-  - `core/tests/test_pipeline_config_validation.py` (new)
+Functions, exact signatures per brief (load-bearing for Task 5 and future
+SP-15f):
 
-Staged only these three files exactly per the brief's Step 7 (confirmed via
-`git status` before commit — unrelated pre-existing dirty files under
-`.superpowers/sdd/` and untracked `docs/superpowers/...` files were left
-untouched).
+- `get_secret(session, *, tenant_id, secret_id) -> ConnectorSecret | None`
+- `get_secret_by_name(session, *, tenant_id, name) -> ConnectorSecret | None`
+- `create_secret(session, *, tenant_id, created_by, name, kind, ciphertext, nonce) -> ConnectorSecret`
+- `list_secrets(session, *, tenant_id) -> list[ConnectorSecret]`
+- `delete_secret(session, secret) -> None`
+- `get_secret_payload(session, *, tenant_id, name) -> SecretPayload | None`
+  (fetches by name, decrypts via `crypto.decrypt`, validates via
+  `SECRET_PAYLOAD_ADAPTER.validate_python`, returns `None` if no row)
 
-## TDD steps followed
+All tenant-scoped queries filter by `tenant_id` (cross-tenant lookups
+correctly return `None`/empty list). `create_secret` generates the id
+(`uuid.uuid4().hex`) since the model has no server-side default.
 
-1. Wrote `core/tests/test_pipeline_config_validation.py` verbatim from the brief.
-2. Ran `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
-   → FAILED as expected: collection error,
-   `ImportError: cannot import name 'pipeline_validation' from 'app.configs'`
-   (same root cause as the brief's expected `ModuleNotFoundError`).
-3. Before implementing, read the real current `core/app/configs/routes.py`,
-   `dataset_validation.py`, `bookmark_validation.py`, and `schemas.py` to
-   confirm the brief's assumed structure matched reality. It matched exactly
-   — no adaptation needed (`is_etl_enabled()` already existed in
-   `app/auth/dependency.py` from Task 1; `PipelineNode`/`PipelineEdge`/
-   `PipelinePayload` already existed in `schemas.py` from Task 2).
-4. Implemented `core/app/configs/pipeline_validation.py` verbatim from the
-   brief: `_node_validators` registry dict, `register_pipeline_node_validator`,
-   `_check_linear_topology` (incoming-edge count per node), `_check_acyclic`
-   (DFS 3-color white/gray/black cycle detection), `validate_pipeline_payload`
-   (acyclic check first, then linear-topology check, then per-node validator
-   dispatch raising 422 on unknown op).
-5. Wired `core/app/configs/routes.py`: added `is_etl_enabled` to the existing
-   auth import, added the `_validate_pipeline_payload` import right after the
-   dataset one, added `_require_etl_enabled_for_pipeline` right after
-   `_validate_extension_scope`, and inserted the guard + validator calls at
-   all three write points (`create_config`, `update_config`,
-   `update_config_by_item`) — guard placed FIRST in each sequence per the
-   brief's explicit final-ordering instruction (cheapest check, fail fast),
-   overriding an earlier draft ordering shown in the brief's own prose.
-6. Ran `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
-   → PASSED, 5/5:
-   - `test_valid_linear_pipeline_saves`
-   - `test_disabled_capability_refuses_pipeline_creation`
-   - `test_disabled_capability_does_not_affect_other_kinds`
-   - `test_cyclic_graph_rejected`
-   - `test_node_with_two_incoming_edges_rejected`
-7. Regression check, exact brief command:
-   `cd core && uv run pytest tests/test_configs_extension_permissions.py tests/test_create_dataset.py tests/test_read_only_mode.py -v`
-   → PASSED, 22/22, unchanged.
-8. Extra safety net beyond the brief's ask, run anyway before committing:
-   `cd core && uv run pytest -q` (full core suite)
-   → 919 passed, 114 skipped (postgis-marked, require docker — pre-existing/expected).
-9. Committed exactly the three named files with the exact message given in
-   the brief.
+Transcribed verbatim from the brief — confirmed via `diff` against the
+brief's code block (only difference: the brief's trailing markdown fence
+marker, not code content).
 
-## Concerns
+## TDD evidence
 
-None. The brief's assumed code (routes.py structure/import ordering,
-dataset_validation.py's registry pattern, schemas.py's pipeline models,
-`is_etl_enabled()`) all matched the real repository state exactly, so the
-brief's code was used verbatim as instructed with no deviation.
+### RED
 
-One thing worth flagging for whoever does Task 5: `validate_pipeline_payload`
-raises `HTTPException(422, "unknown op '<op>'")` for any node whose `op` has
-no registered validator. Right now (before Task 5 registers the real op
-validators) that means *any* pipeline node using a real op other than the two
-faked in this task's test fixture will 422 in production — this is expected
-and intentional per the brief (Task 5 registers `reader.collection`,
-`writer.collection`, `transform.filter`, etc. via
-`register_pipeline_node_validator`, imported for side effect by `app.main`).
-Not a defect, just noting the current window where pipeline configs cannot
-actually be saved end-to-end until Task 5 lands.
+Wrote `core/tests/test_secrets_repository.py` exactly per brief (12 test
+cases: 5 CRUD/isolation + 6 parametrized round-trip-per-kind + 1
+missing-name case). Ran before implementing `repository.py`:
 
-## Status: DONE
+```
+$ cd core && uv run pytest tests/test_secrets_repository.py -v
+...
+ERROR collecting tests/test_secrets_repository.py
+ImportError: cannot import name 'repository' from 'app.secrets'
+Interrupted: 1 error during collection
+1 error in 0.10s
+```
+
+Matches expected failure mode from the brief (`ModuleNotFoundError`/
+`ImportError` for the not-yet-created module).
+
+### GREEN
+
+After creating `repository.py`:
+
+```
+$ cd core && uv run pytest tests/test_secrets_repository.py -v
+tests/test_secrets_repository.py::test_create_and_get_secret_by_name PASSED
+tests/test_secrets_repository.py::test_create_secret_duplicate_name_per_tenant_raises PASSED
+tests/test_secrets_repository.py::test_list_secrets_scoped_to_tenant PASSED
+tests/test_secrets_repository.py::test_get_secret_cross_tenant_returns_none PASSED
+tests/test_secrets_repository.py::test_delete_secret_removes_row PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload0] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload1] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload2] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload3] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload4] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_round_trip_for_every_kind[raw_payload5] PASSED
+tests/test_secrets_repository.py::test_get_secret_payload_missing_name_returns_none PASSED
+
+============================== 12 passed in 0.29s ==============================
+```
+
+12/12 passed, pristine (no warnings, no skips).
+
+## Files changed
+
+- Created: `core/app/secrets/repository.py`
+- Created: `core/tests/test_secrets_repository.py`
+
+Commit: `55d4da4` — `feat(core): secrets module — repository (CRUD +
+decrypt-on-demand)`
+
+## Self-review
+
+- **Completeness**: all 5 brief steps done (write tests, verify RED,
+  implement, verify GREEN, commit).
+- **Quality**: `repository.py` content verified byte-for-byte identical
+  to the brief's code block via `diff` (only delta is the brief's
+  trailing markdown fence, not code). Function signatures match exactly
+  as specified — no renames, no reordering, no added/removed parameters.
+- **Discipline**: exactly the 2 files the brief asked for; nothing
+  extra. No changes to Task 1-3 files.
+- **Testing**: 12/12 passed, pristine output, matches the brief's
+  expected count and breakdown exactly.
+- **Git hygiene**: only `git add` on the two named files, no broad adds.
+  Left the pre-existing modified `.superpowers/sdd/*` files (present in
+  git status before I started) untouched, per the task's explicit
+  instruction not to touch unrelated files or run resetting git
+  commands.
+
+## Issues or concerns
+
+None. No blockers encountered; the brief's file contents matched the
+actual state of Task 1-3's modules (`crypto.py`, `schemas.py`,
+`models.py`) exactly, so this was a clean transcription task with no
+surprises.
