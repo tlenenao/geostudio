@@ -20,18 +20,13 @@ export function hasIncomingEdge(edges: PipelineEdge[], nodeId: string): boolean 
   return edges.some((e) => e.to === nodeId);
 }
 
-// Miroir client de app/configs/pipeline_validation.py::_check_acyclic
-// (SP-15a) — mêmes couleurs DFS, mais posée la question "ce candidat
-// créerait-il un cycle ?" avant de l'ajouter, pour la garde de connexion
-// interactive du canvas (Task 6).
-export function wouldCreateCycle(
-  nodes: PipelineNode[],
-  edges: PipelineEdge[],
-  candidate: { from: string; to: string },
-): boolean {
+// Détection de cycle interne (DFS trois couleurs) — factorisée pour être
+// réutilisée par wouldCreateCycle (candidat hypothétique, Task 3) et
+// validatePipelineGraphLocally (graphe déjà construit, validation.ts),
+// qui dupliquaient auparavant le même DFS.
+export function hasCycle(nodes: PipelineNode[], edges: { from: string; to: string }[]): boolean {
   const adjacency = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
   for (const e of edges) adjacency.get(e.from)?.push(e.to);
-  adjacency.get(candidate.from)?.push(candidate.to);
 
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>(nodes.map((n) => [n.id, WHITE]));
@@ -47,6 +42,18 @@ export function wouldCreateCycle(
   }
 
   return nodes.some((n) => color.get(n.id) === WHITE && visit(n.id));
+}
+
+// Miroir client de app/configs/pipeline_validation.py::_check_acyclic
+// (SP-15a) — mêmes couleurs DFS, mais posée la question "ce candidat
+// créerait-il un cycle ?" avant de l'ajouter, pour la garde de connexion
+// interactive du canvas (Task 6).
+export function wouldCreateCycle(
+  nodes: PipelineNode[],
+  edges: PipelineEdge[],
+  candidate: { from: string; to: string },
+): boolean {
+  return hasCycle(nodes, [...edges, candidate]);
 }
 
 // Insertion d'un nœud "sur" une arête existante (SP-15b, clic sur le bouton
