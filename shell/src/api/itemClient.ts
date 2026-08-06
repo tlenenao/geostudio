@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -633,6 +633,49 @@ export function createItemClient(opts: {
       );
       if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
       return data.config.bookmark;
+    },
+
+    async createPipelineItem(input: { title: string; owner: string; pipeline: PipelinePayload }): Promise<Item> {
+      const config = { version: 1, kind: "pipeline", pipeline: input.pipeline };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createPipelineItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "pipeline", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getPipelineConfig(pk: string): Promise<PipelinePayload> {
+      const data = await request<{ config?: { pipeline?: PipelinePayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.pipeline) throw new Error("getPipelineConfig: config has no pipeline payload");
+      return data.config.pipeline;
+    },
+
+    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "pipeline", pipeline: payload });
+    },
+
+    async getPipelineOps(): Promise<PipelineOpsCatalog> {
+      return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
+    },
+
+    async runPipeline(pk: string): Promise<{ runId: string }> {
+      return request<{ runId: string }>("POST", `/pipelines/${pk}/run`);
+    },
+
+    async getPipelineRuns(pk: string): Promise<PipelineRun[]> {
+      return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs`);
+    },
+
+    async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {
+      return request<Record<string, unknown>[]>(
+        "POST", `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+      );
     },
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
