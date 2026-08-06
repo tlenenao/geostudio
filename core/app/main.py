@@ -27,6 +27,8 @@ from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.secrets import crypto as secrets_crypto
+from app.secrets import routes as secrets_routes
 from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
@@ -36,6 +38,7 @@ _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 
 def create_app() -> FastAPI:
     observability.setup()
+    secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
@@ -82,6 +85,7 @@ def create_app() -> FastAPI:
 
     app.include_router(configs_routes.router)
     app.include_router(extensions_routes.router)
+    app.include_router(secrets_routes.router)
     app.include_router(instance_routes.router)
     app.include_router(items_routes.router)
     app.include_router(auth_routes.router)

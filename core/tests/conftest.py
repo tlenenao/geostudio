@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
-(pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle."""
+(pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle
+et la clé de test fixe du coffre de secrets (SP-15e, ci-dessous)."""
 import os
 from pathlib import Path
 
@@ -8,6 +9,16 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from app.db import make_session_factory
+
+# Valeur fixe, committée, dev/test uniquement — create_app() (SP-15e)
+# valide CORE_SECRETS_MASTER_KEY de façon eager ; sans ce défaut, TOUT test
+# appelant create_app() (le pattern `env()` répété dans tout le dépôt)
+# échouerait à la collecte. setdefault() : un test qui monkeypatch.setenv()
+# explicitement (ex. test_secrets_crypto.py) reste maître de sa propre
+# valeur.
+os.environ.setdefault(
+    "CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+)
 
 
 @pytest.fixture(scope="session")
