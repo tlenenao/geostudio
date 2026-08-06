@@ -9,6 +9,10 @@ dependencies = [
     "sqlalchemy>=2.0",
     "pydantic>=2.7",
     "httpx>=0.27",
+    "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
+                       # RESTClient utilise `requests`, pas httpx (que le reste
+                       # du dépôt utilise déjà) ; déclaré ici en dépendance
+                       # directe plutôt que de compter sur la transitive de dlt.
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;
