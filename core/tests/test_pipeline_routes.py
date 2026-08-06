@@ -43,17 +43,17 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.post("/pipelines/does-not-exist/run").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_eight(monkeypatch):
+def test_get_pipelines_ops_returns_all_fifteen(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
-    # Phase 1 ops (8) + Phase 3c1 spatial transforms (5) + writer.dataset (1) = 14 total
+    # Phase 1 ops (8) + Phase 3c1 spatial transforms (5) + writer.dataset (1) + transform.qgis (1) = 15 total
     assert set(body) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
         "transform.buffer", "transform.reproject", "transform.intersection",
-        "transform.countWithin", "transform.h3Aggregate",
+        "transform.countWithin", "transform.h3Aggregate", "transform.qgis",
         "writer.collection", "writer.export", "writer.dataset",
     }
 

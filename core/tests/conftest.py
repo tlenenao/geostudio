@@ -31,6 +31,22 @@ def pg_engine():
     engine.dispose()
 
 
+@pytest.fixture(scope="session")
+def qgis_worker_url():
+    url = os.environ.get("CORE_TEST_QGIS_WORKER_URL")
+    if not url:
+        pytest.skip("CORE_TEST_QGIS_WORKER_URL non défini — test qgis skippé")
+    return url
+
+
+@pytest.fixture(scope="session")
+def qgis_scratch_dir():
+    path = os.environ.get("CORE_TEST_QGIS_SCRATCH_DIR")
+    if not path:
+        pytest.skip("CORE_TEST_QGIS_SCRATCH_DIR non défini — test qgis skippé")
+    return Path(path)
+
+
 @pytest.fixture()
 def pg_session_factory(pg_engine):
     return make_session_factory(pg_engine)
