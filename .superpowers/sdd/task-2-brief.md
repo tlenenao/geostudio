@@ -1,185 +1,234 @@
-## Task 2: Payload schemas — `core/app/secrets/schemas.py`
+## Task 2: SSRF egress guard for `app.pipelines` — `app/pipelines/egress.py`
 
 **Files:**
-- Create: `core/app/secrets/schemas.py`
-- Test: `core/tests/test_secrets_schemas.py`
+- Create: `core/app/pipelines/egress.py`
+- Modify: `core/pyproject.toml` (add `requests` dependency)
+- Test: `core/tests/test_pipeline_egress.py`
 
 **Interfaces:**
-- Produces: `app.secrets.schemas.SecretPayload` (discriminated union type
-  alias over `ApiKeyPayload | BearerTokenPayload | BasicAuthPayload |
-  OAuth2ClientCredentialsPayload | PostgresDsnPayload`), `SecretCreate`
-  (`BaseModel`, fields `name: str`, `payload: SecretPayload`),
-  `SECRET_PAYLOAD_ADAPTER` (`TypeAdapter[SecretPayload]`). Consumed by Task
-  4 (`repository.get_secret_payload`) and Task 5 (`routes.py`'s request
-  body and `kind` derivation).
+- Produces: `app.pipelines.egress.EgressBlockedError`,
+  `assert_egress_allowed(url: str) -> None`,
+  `build_guarded_session() -> requests.Session`. Consumed by Task 3
+  (`connector_runtime.materialize_rest_connector` passes the guarded
+  session to dlt's `RESTClient`).
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Add the `requests` dependency**
 
-Create `core/tests/test_secrets_schemas.py`:
+Modify `core/pyproject.toml` — in `dependencies = [...]`, add after
+`"httpx>=0.27",`:
+
+```toml
+    "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
+                       # RESTClient utilise `requests`, pas httpx (que le reste
+                       # du dépôt utilise déjà) ; déclaré ici en dépendance
+                       # directe plutôt que de compter sur la transitive de dlt.
+```
+
+Run: `cd core && uv sync`
+Expected: resolves; `requests` becomes a direct dependency (it was almost
+certainly already present transitively via other packages, but wasn't
+importable as a guaranteed direct dependency before this).
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `core/tests/test_pipeline_egress.py` (mirrors
+`core/tests/test_harvest_egress.py` exactly, adapted from `httpx` to
+`requests`):
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
+import socket
+
 import pytest
-from pydantic import ValidationError
+import requests
 
-from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SecretCreate
-
-
-def test_api_key_header_placement_round_trips():
-    body = SecretCreate.model_validate({
-        "name": "geoserver-key",
-        "payload": {"kind": "api_key", "location": "header", "key": "X-API-Key", "value": "abc"},
-    })
-    assert body.payload.location == "header"
-    assert body.payload.key == "X-API-Key"
+from app.pipelines.egress import (
+    EgressBlockedError,
+    assert_egress_allowed,
+    build_guarded_session,
+)
 
 
-def test_api_key_query_placement_round_trips():
-    # ArcGIS Feature Service / WFS-style token-in-query-param auth (spec §4).
-    body = SecretCreate.model_validate({
-        "name": "arcgis-fs-token",
-        "payload": {"kind": "api_key", "location": "query", "key": "token", "value": "abc123"},
-    })
-    assert body.payload.location == "query"
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/x",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.5/x",
+        "http://192.168.1.1/x",
+        "http://[::1]/x",
+        "http://[fc00::1]/x",
+        "http://0.0.0.0/x",
+    ],
+)
+def test_assert_blocks_internal_ip_literals_without_dns(url):
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed(url)
 
 
-def test_bearer_token_round_trips():
-    body = SecretCreate.model_validate({
-        "name": "weather-api", "payload": {"kind": "bearer_token", "token": "tok"},
-    })
-    assert body.payload.token == "tok"
+def test_assert_allows_public_ip_literal():
+    assert_egress_allowed("https://93.184.216.34/x") is None
 
 
-def test_basic_auth_round_trips():
-    body = SecretCreate.model_validate({
-        "name": "wfs-basic",
-        "payload": {"kind": "basic_auth", "username": "u", "password": "p"},
-    })
-    assert body.payload.username == "u"
+def test_assert_blocks_non_http_scheme():
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("file:///etc/passwd")
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("ftp://example.com/x")
 
 
-def test_oauth2_client_credentials_round_trips():
-    # ArcGIS Online app-login shape (spec §4).
-    body = SecretCreate.model_validate({
-        "name": "arcgis-online-app",
-        "payload": {
-            "kind": "oauth2_client_credentials",
-            "tokenUrl": "https://www.arcgis.com/sharing/rest/oauth2/token",
-            "clientId": "cid", "clientSecret": "csecret",
-        },
-    })
-    assert body.payload.clientId == "cid"
+def test_assert_blocks_hostname_resolving_to_internal(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("https://evil.example.com/x")
 
 
-def test_postgres_dsn_round_trips():
-    body = SecretCreate.model_validate({
-        "name": "warehouse-pg", "payload": {"kind": "postgres_dsn", "dsn": "postgresql://u:p@host/db"},
-    })
-    assert body.payload.dsn == "postgresql://u:p@host/db"
+def test_assert_allows_hostname_resolving_to_public(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    assert_egress_allowed("https://public.example.com/x") is None
 
 
-def test_unknown_kind_rejected():
-    with pytest.raises(ValidationError):
-        SecretCreate.model_validate({"name": "x", "payload": {"kind": "ssh_key", "value": "y"}})
+def test_allowlist_restricts_otherwise_allowed_public_host(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "other.example.com")
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("https://public.example.com/x")
+    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "public.example.com,other.example.com")
+    assert_egress_allowed("https://public.example.com/x") is None
 
 
-def test_api_key_requires_location():
-    with pytest.raises(ValidationError):
-        SecretCreate.model_validate({
-            "name": "x", "payload": {"kind": "api_key", "key": "k", "value": "v"},
-        })
+def test_guarded_session_blocks_before_connection():
+    # 127.0.0.1:9 (discard) : la garde doit lever AVANT toute tentative de
+    # connexion réseau — donc EgressBlockedError, jamais un ConnectionError.
+    session = build_guarded_session()
+    with pytest.raises(EgressBlockedError):
+        session.get("http://127.0.0.1:9/x", timeout=1.0)
 
 
-def test_secret_payload_adapter_decodes_decrypted_dict():
-    # This is exactly what repository.get_secret_payload does after
-    # crypto.decrypt() returns a plain dict (Task 4).
-    payload = SECRET_PAYLOAD_ADAPTER.validate_python({"kind": "bearer_token", "token": "tok"})
-    assert payload.token == "tok"
+def test_guarded_session_is_a_real_requests_session():
+    session = build_guarded_session()
+    assert isinstance(session, requests.Session)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_secrets_schemas.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.secrets.schemas'`.
+Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.pipelines.egress'`.
 
-- [ ] **Step 3: Implement `schemas.py`**
+- [ ] **Step 4: Implement `egress.py`**
 
-Create `core/app/secrets/schemas.py`:
+Create `core/app/pipelines/egress.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Payload chiffré des secrets connecteurs (design SP-15e §4). Union
-discriminée par `kind`, additive par construction : ajouter un kind =
-ajouter une variante Pydantic, aucune migration requise pour les lignes
-existantes."""
-from typing import Annotated, Literal
+"""Garde d'egress SSRF pour reader.connector.rest (design SP-15f §5.1) —
+duplication délibérée de app.harvest.egress : app.pipelines est positionné
+SOUS app.harvest dans le contrat de couches import-linter
+(core/pyproject.toml [[tool.importlinter.contracts]]), donc ne peut pas
+l'importer. Point d'application différent de l'original : dlt.sources.rest_api
+utilise `requests`, pas `httpx` — copier le transport httpx de
+app.harvest.egress ne garderait rien en pratique."""
+import ipaddress
+import logging
+import os
+import socket
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter
+import requests
 
+logger = logging.getLogger(__name__)
 
-class ApiKeyPayload(BaseModel):
-    """`location="query"` couvre les jetons en paramètre d'URL (ex.
-    `?token=...` d'un ArcGIS Feature Service, clé GeoServer sur un WFS) ;
-    `location="header"` couvre le cas générique (`X-API-Key`, etc.)."""
-    kind: Literal["api_key"] = "api_key"
-    location: Literal["header", "query"]
-    key: str
-    value: str
-
-
-class BearerTokenPayload(BaseModel):
-    kind: Literal["bearer_token"] = "bearer_token"
-    token: str
-
-
-class BasicAuthPayload(BaseModel):
-    """Couvre aussi un WFS/WMS/WMTS/CSW gaté par HTTP Basic Auth, et le flux
-    ArcGIS Enterprise `generateToken` si un connecteur choisit de faire
-    l'échange de jeton lui-même — le coffre ne porte que le matériel brut."""
-    kind: Literal["basic_auth"] = "basic_auth"
-    username: str
-    password: str
+# Variable dédiée, distincte de CORE_HARVEST_EGRESS_ALLOWLIST (app.harvest) :
+# même logique de duplication que la garde elle-même, plutôt que de partager
+# un état de configuration à travers la frontière de couches.
+_ALLOWLIST_ENV = "CORE_PIPELINES_EGRESS_ALLOWLIST"
 
 
-class OAuth2ClientCredentialsPayload(BaseModel):
-    """Flux OAuth2 client-credentials — couvre notamment l'« app login »
-    ArcGIS Online et toute API tierce gatée par ce flux standard. Le coffre
-    stocke les identifiants client, jamais le jeton d'accès obtenu."""
-    kind: Literal["oauth2_client_credentials"] = "oauth2_client_credentials"
-    tokenUrl: str
-    clientId: str
-    clientSecret: str
+class EgressBlockedError(Exception):
+    """Cible réseau interdite (plage interne ou hors allowlist)."""
 
 
-class PostgresDsnPayload(BaseModel):
-    kind: Literal["postgres_dsn"] = "postgres_dsn"
-    dsn: str
+def _allowlist() -> set[str]:
+    raw = os.environ.get(_ALLOWLIST_ENV, "")
+    return {h.strip() for h in raw.split(",") if h.strip()}
 
 
-SecretPayload = Annotated[
-    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
-    | OAuth2ClientCredentialsPayload | PostgresDsnPayload,
-    Field(discriminator="kind"),
-]
+def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
-SECRET_PAYLOAD_ADAPTER: TypeAdapter = TypeAdapter(SecretPayload)
+
+def assert_egress_allowed(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
+
+    try:
+        addresses = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except socket.gaierror as exc:
+            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
+        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
+
+    for ip in addresses:
+        if _is_internal(ip):
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+
+    allowlist = _allowlist()
+    if allowlist and host not in allowlist:
+        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
 
 
-class SecretCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    payload: SecretPayload
+class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+    def send(self, request, **kwargs):
+        assert_egress_allowed(request.url)
+        return super().send(request, **kwargs)
+
+
+def build_guarded_session() -> requests.Session:
+    session = requests.Session()
+    adapter = _GuardedHTTPAdapter()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_secrets_schemas.py -v`
-Expected: 9 passed.
+Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
+Expected: 8 passed.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Verify the layering contract still holds**
+
+Run: `cd core && uv run lint-imports`
+Expected: `Contracts: 1 kept, 0 broken.` — `egress.py` imports nothing from
+any other `app.*` module, so this only confirms nothing else broke.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/secrets/schemas.py core/tests/test_secrets_schemas.py
-git commit -m "feat(core): secrets module — discriminated payload schemas"
+git add core/app/pipelines/egress.py core/pyproject.toml core/uv.lock core/tests/test_pipeline_egress.py
+git commit -m "feat(core): pipelines — SSRF egress guard for reader.connector.rest"
 ```
 
 ---

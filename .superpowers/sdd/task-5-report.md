@@ -1,266 +1,220 @@
-# Task 5 report — Routes + admin gate + audit + `app.main` wiring
+# Task 5 report — Wire reader.connector.rest/postgres into runtime dispatch
 
-## What was implemented
+## Summary
 
-- `core/tests/conftest.py` — added a fixed, committed, dev/test-only
-  `CORE_SECRETS_MASTER_KEY` default via `os.environ.setdefault(...)`,
-  right after the imports, with the docstring update from the brief.
-  `setdefault` (not `setenv`) so tests that explicitly monkeypatch the var
-  (e.g. `test_secrets_crypto.py`) remain in control of their own value.
-- `core/app/secrets/routes.py` (new) — `POST /secrets`, `GET /secrets`,
-  `DELETE /secrets/{id}`, all admin-gated via a locally-defined
-  `_require_admin(user)` helper (not extracted to a shared module, per
-  the codebase's existing per-module duplication convention). Create
-  checks name uniqueness (409 on conflict) before encrypting via
-  `crypto.encrypt`. Delete looks up the secret tenant-scoped first (404
-  if absent, which also naturally covers cross-tenant reads since the
-  repository query filters on `tenant_id`) then deletes. Both mutating
-  routes call `write_audit(...)` with `action="secret.create"` /
-  `"secret.delete"` and a payload containing only `name`/`kind` — never
-  the secret value, ciphertext, or nonce. The response model
-  `ConnectorSecretOut` only exposes `id`/`name`/`kind`/`createdAt`/
-  `updatedAt`.
-- `core/app/main.py`:
-  - import block: `from app.secrets import crypto as secrets_crypto` and
-    `from app.secrets import routes as secrets_routes`, inserted between
-    the `public_routes` and `schemas_router` imports (alphabetical
-    position matched what was actually on disk).
-  - `create_app()`: `secrets_crypto.load_master_key()` added as the very
-    first statement after `observability.setup()`, before any DB/engine
-    work — fails fast (`KeyError`/`RuntimeError`) if
-    `CORE_SECRETS_MASTER_KEY` is absent or malformed.
-  - router mount: `app.include_router(secrets_routes.router)` added
-    immediately after `app.include_router(extensions_routes.router)`.
-- `core/tests/test_secrets_routes.py` (new) — the 12 tests from the
-  brief, transcribed verbatim.
+Implemented exactly as briefed: `core/app/pipelines/runtime.py`'s `_prepare()`
+reader-materialization loop now dispatches on `node.op` (`reader.collection`,
+`reader.connector.rest`, `reader.connector.postgres`, else raises
+`PipelineRuntimeError(f"unknown reader op '{node.op}'")`), translating
+`connector_runtime.ConnectorRuntimeError` → `PipelineRuntimeError` at each of
+the two new branches — the same translation pattern already used for
+`compiler.transform_output_srid`'s `ValueError` in
+`_execute_transform_chain`.
+
+This is the terminal task of the SP-15f plan (reader.connector dlt REST +
+Postgres). Commit: `7341d35`.
+
+## Pre-flight: confirming the brief's snapshot
+
+Read the current `core/app/pipelines/runtime.py` before touching anything.
+Its imports and `_prepare()` body matched the brief's "before" block
+verbatim — no other task had touched this file since the plan was written.
+Proceeded without asking.
+
+## Deviations from the brief (both are test-code bugs in the brief, found
+independently, not implementation choices)
+
+1. **Import style**: merged `from app.pipelines import connector_runtime`
+   into the existing `from app.pipelines import compiler` line
+   (`from app.pipelines import compiler, connector_runtime`) instead of a
+   separate import statement. Functionally identical; avoids a duplicate
+   `from app.pipelines import ...` line. Everything else in the import block
+   matches the brief exactly (alphabetized `ops.schemas` import list).
+
+2. **Test 2 (`test_preview_reader_connector_missing_secret_raises_...`)**:
+   the brief's exact test code builds a `PipelinePayload` with only a reader
+   node and no writer, and empty edges. `app/configs/schemas.py`'s
+   `PipelinePayload._validate_graph` (pre-existing, unrelated to SP-15f) has
+   always required at least one writer node — this raises a pydantic
+   `ValidationError` *before* `runtime.preview_pipeline` is ever called,
+   regardless of Task 5's implementation. Verified this independently by
+   running the brief's literal test code first (see RED evidence below) —
+   the traceback showed the payload itself failing to construct, not
+   `_prepare()`. Fixed by adding a `w1` writer node (`writer.export`) wired
+   by an edge from `r1`; the writer is never reached because
+   `preview_pipeline(up_to="r1")` stops the execution chain at `r1`, and
+   `_prepare()` (which processes all reader nodes up front, including the
+   one with the missing secret) raises before any writer node is touched.
+   Test intent (missing-secret → `PipelineRuntimeError` matching "not found")
+   is unchanged.
+
+3. **Test 3 (`test_run_pipeline_reader_connector_rest_never_leaks_secret_value`)**:
+   the brief's exact test code passes `created_by="u1"` (a literal string) to
+   `secrets_repo.create_secret`. `connector_secrets.created_by` is a real FK
+   to `users.id` (`app/secrets/models.py`); under SQLite with
+   `PRAGMA foreign_keys=ON` this raises `sqlalchemy.exc.IntegrityError`. This
+   exact defect is already documented and fixed in Task 3/4's own test file
+   (`core/tests/test_pipeline_connector_runtime.py`'s `user` fixture docstring:
+   *"contrairement au brief initial qui passait une chaîne littérale 'u1',
+   il faut un utilisateur réel"*) — applied the identical fix here: create a
+   real user via `get_or_create_user(...)` and pass `author.id`. Also has the
+   same missing-writer-node issue as (2); fixed the same way (added `w1`
+   writer + edge, never reached since `up_to="r1"`).
+
+No other code paths were touched. `app/pipelines/connector_runtime.py`
+(Tasks 3/4) was read to confirm signatures
+(`materialize_rest_connector(conn, *, session, tenant_id, node_id, params,
+view_name)`, `materialize_postgres_connector(...)` same shape,
+`ConnectorRuntimeError`) — matched what Task 5's dispatch code assumes,
+no changes needed there.
 
 ## TDD evidence
 
-**RED** — `cd core && uv run pytest tests/test_secrets_routes.py -v`
-before `routes.py`/`main.py` changes: 9 failed, 3 passed. Failures were
-exactly as predicted by the brief: every HTTP-hitting test got a 404 (no
-`/secrets` route mounted yet — three of those manifested as
-`JSONDecodeError` on `.json()` of a plain-text 404 body rather than an
-assertion failure, but all traced to the same missing-route cause), and
-`test_create_app_fails_fast_without_master_key` failed with
-`Failed: DID NOT RAISE KeyError` (no eager check in `create_app()` yet).
-The 3 tests that passed were tests not dependent on route wiring or the
-eager check reaching an assertion in this particular way — consistent
-with the brief's expectation.
-
-**GREEN** — `cd core && uv run pytest tests/test_secrets_routes.py -v`
-after implementing `routes.py` and wiring `main.py`:
+### RED
 
 ```
-tests/test_secrets_routes.py::test_create_requires_admin PASSED
-tests/test_secrets_routes.py::test_list_requires_admin PASSED
-tests/test_secrets_routes.py::test_delete_requires_admin PASSED
-tests/test_secrets_routes.py::test_create_and_list PASSED
-tests/test_secrets_routes.py::test_create_response_never_leaks_secret_value PASSED
-tests/test_secrets_routes.py::test_list_response_never_leaks_secret_value PASSED
-tests/test_secrets_routes.py::test_create_duplicate_name_conflicts PASSED
-tests/test_secrets_routes.py::test_delete_removes_secret PASSED
-tests/test_secrets_routes.py::test_delete_missing_returns_404 PASSED
-tests/test_secrets_routes.py::test_delete_cross_tenant_returns_404 PASSED
-tests/test_secrets_routes.py::test_mutations_are_audited PASSED
-tests/test_secrets_routes.py::test_create_app_fails_fast_without_master_key PASSED
-
-12 passed in 2.34s
+cd core && uv run pytest tests/test_pipeline_runtime.py -k reader_connector -v
+```
+All 3 failed as expected, for the expected reason (before any test-code
+fixes were applied, confirming the brief's own claim):
+```
+FAILED test_preview_reader_connector_rest_feeds_downstream_filter
+  pydantic_core._pydantic_core.ValidationError: 1 validation error for ReaderCollectionParams
+  (app/pipelines/runtime.py:195 — hard-coded ReaderCollectionParams.model_validate)
+FAILED test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error
+  (initially: pydantic ValidationError on PipelinePayload itself — "pipeline requires at
+  least one writer node" — a brief test-code bug found independently, fixed per
+  deviation #2 above; after the fix, still RED for the right reason pre-wiring:
+  ReaderCollectionParams.model_validate ValidationError)
+FAILED test_run_pipeline_reader_connector_rest_never_leaks_secret_value
+  (initially: sqlite3.IntegrityError FK constraint on created_by="u1" — a brief
+  test-code bug found independently, fixed per deviation #3 above; after the fix,
+  still RED for the right reason pre-wiring)
 ```
 
-## Layering contract
+```
+cd core && uv run pytest tests/test_pipeline_config_validation.py -k reader_connector -v
+```
+Result: **1 passed** — independently confirmed the brief's claim that this
+regression test needs no code change to `config_validation.py`, rather than
+assuming it.
 
-`cd core && uv run lint-imports`:
+### GREEN
 
 ```
-Analyzed 144 files, 414 dependencies.
+cd core && uv run pytest tests/test_pipeline_runtime.py -v
+```
+```
+18 passed, 7 skipped in 3.44s
+```
+(7 skipped = pre-existing postgis-marked / qgis end-to-end tests that need
+docker/sidecar, unrelated to this task.) All 3 new `reader_connector` tests
+pass.
+
+```
+cd core && uv run pytest tests/test_pipeline_config_validation.py -v
+```
+```
+6 passed in 2.16s
+```
+
+## Lint-imports
+
+```
+cd core && uv run lint-imports
+```
+```
+Analyzed 146 files, 420 dependencies.
 layered architecture KEPT
 Contracts: 1 kept, 0 broken.
 ```
+Matches brief's expectation exactly.
 
-## Full suite run
-
-`cd core && uv run pytest -q`:
+## Full core suite (with live Postgres, postgis-marked tests executing)
 
 ```
-1075 passed, 127 skipped in 68.98s (0:01:08)
+cd core && CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" uv run pytest -v
 ```
-
-`--collect-only` confirms 1202 total tests collected (1075 + 127 = 1202,
-internally consistent, no errors). Skip count (127) exactly matches the
-task's stated baseline skip count, confirming no accidental skip-status
-changes anywhere in the repo. Zero failures, zero errors.
-
-Note on the pass count: the task instructions estimated "roughly 1063
-passed" (baseline 1051 + this task's 12 new tests) as the expected
-number. The actual full-suite run shows 1075 passed — 12 more than that
-estimate. I could not find a "1051 passed" figure recorded in
-`task-4-report.md` (it only reports the scoped 12/12 for
-`test_secrets_repository.py`), so the 1051 baseline in the task
-instructions appears to be an approximation from elsewhere rather than a
-number I can directly diff against. What I *can* confirm directly: (a)
-`git status` shows only the four files this task was supposed to touch
-changed under `core/`, so no other test file was added or modified by
-this task; (b) the skip count (127) is unchanged; (c) there are zero
-failures and zero errors. I'm treating this as expected drift (the
-instructions explicitly allow for "some drift is fine") rather than a
-regression, since there's no mechanism by which this task's changes
-could have caused 12 previously-failing-or-absent tests to start
-passing — the only behavior change introduced is the eager
-`load_master_key()` call and the new `/secrets` routes, both scoped to
-this feature.
+```
+1237 passed, 5 skipped in 93.52s (0:01:33)
+```
+Zero FAILED/ERROR lines (`grep -E "FAILED|ERROR"` on the full log — no
+matches). The 5 skips are the pre-existing, already-documented
+`@pytest.mark.qgis` sidecar tests (`test_execute_qgis_transform_computes_centroids`,
+`test_transform_qgis_end_to_end_dissolve_then_write`,
+`test_qgis_worker_sidecar.py`'s 3 tests) — carried over from SP-15d, unrelated
+to this task, still pending a real sidecar+`/scratch` environment per
+CLAUDE.md's tracked open item.
 
 ## Files changed
 
-- `core/tests/conftest.py` (modified)
-- `core/app/secrets/routes.py` (new)
-- `core/app/main.py` (modified)
-- `core/tests/test_secrets_routes.py` (new)
+- `core/app/pipelines/runtime.py` — dispatch wiring (+54/-15 net incl. new
+  branches), imports updated.
+- `core/tests/test_pipeline_runtime.py` — 3 new tests (+108 lines, with the
+  fixes described in Deviations 2/3 above).
+- `core/tests/test_pipeline_config_validation.py` — 1 new regression test
+  (+15 lines, verbatim from brief, no fix needed).
 
-## Self-review findings
+Commit: `7341d35` — "feat(core): pipelines — wire reader.connector.rest/postgres
+into runtime dispatch"
 
-- **Completeness**: all 9 brief steps executed in order, including the
-  full-suite run (step 8).
-- **Quality**: `routes.py`, the `main.py` edits, and the `conftest.py`
-  edit were transcribed verbatim from the brief — diffed by eye against
-  the brief's code blocks before and after writing. No extra routes, no
-  extra scope. `_require_admin` is a local, non-exported helper — not
-  extracted to a shared module (matches the codebase's existing
-  per-module duplication convention, per the brief and the task
-  instructions).
-- **Discipline**: confirmed via `grep` that `routes.py` defines exactly
-  three routes — `POST /secrets`, `GET /secrets`, `DELETE
-  /secrets/{secret_id}` — no `GET /secrets/{id}`, no `PUT`/`PATCH`
-  route. Rotation is delete+recreate only, per the plan's non-goals.
-- **Testing**: 12/12 new tests pass, pristine output (no warnings beyond
-  a pre-existing benign "Attempting to instrument while already
-  instrumented" OTel warning present across the whole suite, unrelated
-  to this change). Full suite: 1075 passed, 127 skipped, 0 failed, 0
-  errors. `lint-imports`: `Contracts: 1 kept, 0 broken.`
-- Verified only the 4 intended files were staged before commit (`git
-  status` before `git add`) — the unrelated `.superpowers/sdd/*` working
-  tree modifications flagged in the task instructions as "not your
-  concern" were left untouched and unstaged.
+## Self-review
 
-## Issues or concerns
+- **`reader.collection` unchanged behavior**: yes — the `if node.op ==
+  "reader.collection":` branch is byte-for-byte the same logic as before
+  (same calls to `_require_readable_collection_id`, `_table_info_for_collection`,
+  `_materialize_reader`, same srid fallback), just re-indented under the
+  dispatch. All pre-existing `reader.collection`-based tests in
+  `test_pipeline_runtime.py` and the full suite still pass unchanged.
+- **`ConnectorRuntimeError` → `PipelineRuntimeError` translation**: yes, for
+  both new branches, via `try/except connector_runtime.ConnectorRuntimeError
+  as exc: raise PipelineRuntimeError(str(exc)) from exc` — verified live by
+  `test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error`
+  (asserts `pytest.raises(runtime.PipelineRuntimeError, match="not found")`
+  around a `reader.connector.postgres` node whose secret doesn't exist —
+  `connector_runtime._resolve_secret` raises `ConnectorRuntimeError(f"secret
+  '{secret_name}' not found")`, correctly re-raised and matched).
+- **Unrecognized `node.op` for a reader node**: yes — the `else:` branch
+  raises `PipelineRuntimeError(f"unknown reader op '{node.op}'")`, matching
+  the brief exactly. Not separately unit-tested by the brief (no test case
+  requested for this branch specifically), but it's a straightforward
+  one-line fallback identical in shape to the pattern already exercised
+  elsewhere in this file.
+- **Secret-leak test meaningful**: yes — it round-trips a real encrypted
+  secret through `app.secrets.crypto.encrypt`/the `connector_secrets` table,
+  configures `httpserver` to require the exact `Authorization: Bearer
+  s3cr3t-leak-check` header (so the test fails outright if the auth header
+  is missing or wrong — not vacuous), then asserts the plaintext token
+  string never appears anywhere in the returned preview rows
+  (`assert "s3cr3t-leak-check" not in str(rows)`). This is a real assertion
+  against the actual row payload, not a tautology.
+- **`srid_by_node[node.id] = 4326` harmless for connector reads**: confirmed
+  by inspecting `app/pipelines/compiler.py` — every spatial transform SQL
+  (`transform.buffer/reproject/intersection/countWithin/h3Aggregate`)
+  references a `geometry` column by name directly in the generated SQL
+  (e.g. `ST_Buffer(geometry, ...)`, `ST_Intersects(t.geometry, o.geometry)`).
+  A connector-materialized view has no `geometry` column (dlt/REST/Postgres
+  rows carry no geometry in v0), so DuckDB raises a clean binder error
+  ("column geometry not found" or similar) at `conn.execute()` the moment a
+  spatial transform is chained directly after a connector reader — never a
+  silently-wrong SRID being applied to nonexistent geometry.
+- **Full suite clean**: yes, `1237 passed, 5 skipped`, zero regressions; the
+  5 skips are pre-existing and already tracked as an open item in CLAUDE.md
+  (qgis sidecar tests never run for real).
+- **Test output pristine**: yes for the target files
+  (`test_pipeline_runtime.py`, `test_pipeline_config_validation.py`) and for
+  the full suite — no warnings beyond a pre-existing, unrelated
+  `ResourceWarning: unclosed database` noise line that appears in the RED
+  run only (an artifact of `sqlite3` connection teardown timing in a failing
+  test, not present in the GREEN run's output for these files).
 
-None. This is the terminal task of the SP-15e plan; no further wiring
-is expected from this task (SP-15f, out of scope, will be the next
-consumer — of `repository.get_secret_payload` only).
+## Concerns
 
-## Final Review Fix
-
-Applied both findings from the final whole-branch review of SP-15e
-(commits 2b3f202..f8fbab5 on `dev`). Commit `d958d9b`.
-
-### Finding 1 (Important) — `CORE_SECRETS_MASTER_KEY` unwired
-
-`core/app/main.py`'s `create_app()` calls
-`secrets_crypto.load_master_key()` eagerly (right after
-`observability.setup()`, before any DB work), which reads
-`os.environ["CORE_SECRETS_MASTER_KEY"]` and raises `KeyError` if unset —
-this would crash-loop the `core` container on the documented `docker
-compose up -d` path, since the var was neither documented in
-`.env.example` nor wired into `docker-compose.yml`.
-
-Fixes:
-- `.env.example` — added a new `─── Cœur : coffre de secrets
-  connecteurs (SP-15e) ───` section (right after the
-  `CORE_READ_ONLY_MODE`/`CORE_ETL_ENABLED` block), documenting that the
-  value must be a base64-encoded 32-byte AES-256 key, with the
-  generation hint `openssl rand -base64 32`, and an explicit warning
-  not to commit a real key. Left the value blank (no dummy key
-  committed).
-- `docker-compose.yml` — added `CORE_SECRETS_MASTER_KEY:
-  ${CORE_SECRETS_MASTER_KEY}` to the `core` service's `environment:`
-  block (no `:-default` fallback, matching the `MINIO_USER`/
-  `MINIO_PASSWORD` passthrough style for required-no-default vars —
-  the crypto module is meant to fail fast, not silently default).
-- `docker-compose.prod.yml` — **not touched**, per instructions.
-  Verified by inspection that the prod overlay's `core.environment`
-  block only overrides `CORE_AUTH_MODE`/`CORE_OIDC_ISSUER`/
-  `CORE_OIDC_JWKS_URL`/`CORE_BASE_URL` and does NOT re-declare
-  `CORE_READ_ONLY_MODE` or `CORE_MCP_AUDIENCE` — yet those vars are
-  still in effect in prod, confirming docker compose merges
-  `environment:` maps between base and override files. Confirmed this
-  concretely for the new var too: ran `docker compose -f
-  docker-compose.yml -f docker-compose.prod.yml --env-file
-  <copy-of-.env.example> config`, parsed the merged YAML, and verified
-  `CORE_SECRETS_MASTER_KEY` is present in the merged `core` service's
-  `environment` map. No prod-file change needed.
-- **Validation**: `docker compose --env-file <copy-of-.env.example>
-  config --quiet` (base file alone) exits 0, no YAML/interpolation
-  errors. Same for the base+prod overlay combination. Docker was
-  available in this environment (`docker compose version` → v5.1.3),
-  so this was a real validation run, not a by-eye check.
-
-### Finding 2 (Minor) — duplicate-secret race → 500 instead of 409
-
-`core/app/secrets/routes.py`'s `create_secret_route` did a
-check-then-insert (`repo.get_secret_by_name` pre-check, then
-`repo.create_secret`) with a race window: two concurrent requests for
-the same name can both pass the pre-check before either commits: the
-second `repo.create_secret` then raises an unhandled
-`sqlalchemy.exc.IntegrityError` from the
-`uq_connector_secrets_tenant_name` constraint, surfacing as a bare 500.
-
-Fix: wrapped the `repo.create_secret(...)` call in a
-`try`/`except IntegrityError: raise HTTPException(409, detail="secret
-name already exists")` — same detail string as the existing pre-check's
-409, for a consistent client-facing error. Kept the pre-check in place
-(still a useful fast-path avoiding a wasted round-trip in the common
-case).
-
-Matched the existing precedent in `core/app/features/routes.py`
-(`create_feature`, `except IntegrityError: raise HTTPException(409,
-...)`) — that route also does **not** call `session.rollback()`
-explicitly inside the `except` block. Verified why that's correct and
-sufficient here too: `app/db.py`'s `request_scoped_session` (the
-generator wrapping the whole request's session) already does
-`except Exception: session.rollback(); raise` around the entire
-request. Since the route re-raises `HTTPException` out of its own
-`except IntegrityError` block, that exception propagates up through
-`request_scoped_session`, which performs the rollback. No manual
-`session.rollback()` needed in the route itself — adding one would
-just be redundant with the existing wrapper, which is presumably why
-the `features/routes.py` precedent doesn't do it either.
-
-### Tests
-
-- `core/tests/test_secrets_routes.py::test_create_duplicate_name_conflicts`
-  (existing) — still passes, still exercises the pre-check's 409 path
-  (unchanged, single sequential request).
-- Added `test_create_concurrent_duplicate_race_returns_409` — simulates
-  the actual race by monkeypatching `secrets_routes.repo.get_secret_by_name`
-  to always return `None` (i.e. as it would report for both racing
-  requests, since neither has committed yet when the other's pre-check
-  runs), then issues two sequential `POST /secrets` calls with the same
-  name through the real route/session stack. The pre-check is bypassed
-  by the patch, so the second call falls through to the real
-  `repo.create_secret`, which hits the actual
-  `uq_connector_secrets_tenant_name` DB constraint (SQLite, in-memory,
-  same schema as Alembic). Asserts the second response is 409 with the
-  same `detail` as the pre-check path — this exercises the new `except
-  IntegrityError` branch for real, not just in theory.
-- `uv run pytest tests/test_secrets_routes.py -v` → **13/13 passed**
-  (12 pre-existing + 1 new).
-- `uv run pytest -q` (full suite) → **1076 passed, 127 skipped, 0
-  failed** (was 1075 passed before the new test was added; no
-  regressions elsewhere).
-- `uv run lint-imports` → `Contracts: 1 kept, 0 broken.` (unaffected,
-  as expected — no new cross-module imports).
-
-### Files touched
-
-- `.env.example`
-- `docker-compose.yml`
-- `core/app/secrets/routes.py`
-- `core/tests/test_secrets_routes.py`
-
-### Concerns
-
-None. Both findings are fixed and verified end-to-end (compose config
-validation with docker actually available, and a real race-path test
-rather than a theoretical one). `docker-compose.prod.yml` intentionally
-left untouched, with the merge behavior verified concretely rather than
-assumed.
+None blocking. Two independently-found bugs in the brief's exact test code
+(missing writer node breaking `PipelinePayload` construction; literal
+`created_by="u1"` violating a real FK) were fixed using the same fix already
+established in the prior task's test file for the FK issue, and a minimal,
+intent-preserving addition (an unreached writer node) for the missing-writer
+issue. Both are documented inline in the test file as comments explaining
+why the extra node exists / why a real user is created, so a future reader
+won't mistake them for arbitrary embellishment.

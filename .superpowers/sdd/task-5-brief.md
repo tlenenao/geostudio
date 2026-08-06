@@ -1,364 +1,254 @@
-## Task 5: Routes + admin gate + audit + `app.main` wiring
+## Task 5: Wire into the runtime — `_prepare()` dispatch, end-to-end tests
 
 **Files:**
-- Create: `core/app/secrets/routes.py`
-- Modify: `core/app/main.py` (mount router, eager boot-time key check)
-- Modify: `core/tests/conftest.py` (fixed test master key default)
-- Test: `core/tests/test_secrets_routes.py`
+- Modify: `core/app/pipelines/runtime.py`
+- Test: `core/tests/test_pipeline_runtime.py`
+- Test: `core/tests/test_pipeline_config_validation.py` (one new regression test, no code change to `config_validation.py`)
 
 **Interfaces:**
-- Consumes: `repository.*` (Task 4), `crypto.encrypt`/`load_master_key`
-  (Task 1), `SecretCreate` (Task 2), `ConnectorSecret` (Task 3).
-- Produces: `app.secrets.routes.router` (FastAPI `APIRouter`, mounted in
-  `app.main.create_app()`). Terminal task of this plan — SP-15f (out of
-  scope) will be the next consumer, of `repository.get_secret_payload`
-  only, not of anything in this file.
+- Consumes: `app.pipelines.connector_runtime.materialize_rest_connector`,
+  `materialize_postgres_connector`, `ConnectorRuntimeError` (Tasks 3/4);
+  `ReaderConnectorRestParams`, `ReaderConnectorPostgresParams` (Task 1).
+- Produces: no new public interface — `_prepare()`'s reader-materialization
+  loop now dispatches on `node.op` instead of assuming `reader.collection`.
+  This is the terminal task of the plan.
 
-- [ ] **Step 1: Add the fixed test master key default to `conftest.py`**
+- [ ] **Step 1: Write the failing tests**
 
-Modify `core/tests/conftest.py` — change the docstring and add the
-`setdefault` call, right after the imports:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
-(pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle
-et la clé de test fixe du coffre de secrets (SP-15e, ci-dessous)."""
-import os
-from pathlib import Path
-
-import pytest
-from sqlalchemy import create_engine, text
-
-from app.db import make_session_factory
-
-# Valeur fixe, committée, dev/test uniquement — create_app() (SP-15e)
-# valide CORE_SECRETS_MASTER_KEY de façon eager ; sans ce défaut, TOUT test
-# appelant create_app() (le pattern `env()` répété dans tout le dépôt)
-# échouerait à la collecte. setdefault() : un test qui monkeypatch.setenv()
-# explicitement (ex. test_secrets_crypto.py) reste maître de sa propre
-# valeur.
-os.environ.setdefault(
-    "CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-)
-```
-
-(Everything below this point in `conftest.py` — the `pg_engine` fixture
-onward — is unchanged.)
-
-- [ ] **Step 2: Write the failing tests**
-
-Create `core/tests/test_secrets_routes.py`:
+Append to `core/tests/test_pipeline_runtime.py`:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-import uuid
+def test_preview_reader_connector_rest_feeds_downstream_filter(tmp_path, monkeypatch, httpserver):
+    from app.pipelines import egress as pipelines_egress
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+    httpserver.expect_request("/items").respond_with_json(
+        [{"id": 1, "pop": 10}, {"id": 2, "pop": 5}, {"id": 3, "pop": 20}]
+    )
+    payload_nodes = [
+        {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
+         "params": {"baseUrl": httpserver.url_for("/"), "path": "items"}},
+        {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "pop > 8"}},
+        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+    ]
+    edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
-from app import db
-from app.audit.models import AuditLog
-from app.auth.dependency import get_current_user, get_current_user_optional
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.main import create_app
-from app.tenants.models import Tenant
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
-
-BEARER_BODY = {
-    "name": "weather-api",
-    "payload": {"kind": "bearer_token", "token": "s3cr3t-token-value"},
-}
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=50,
+    )
+    by_id = {r["id"]: r for r in rows}
+    assert set(by_id) == {1, 3}  # pop=5 filtered out
 
 
-@pytest.fixture()
-def env():
+def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(tmp_path):
+    payload_nodes = [
+        {"id": "r1", "kind": "reader", "op": "reader.connector.postgres",
+         "params": {"secretName": "does-not-exist", "query": "SELECT 1"}},
+    ]
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": []})
+
+    from app.db import init_db, make_engine, make_session_factory
+    from app.tenants.repository import get_or_create_default_tenant
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
-        s.commit()
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    client = TestClient(app)
-    return app, client, Session, admin, regular
+    with Session() as session:
+        tenant = get_or_create_default_tenant(session)
+        with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
+            runtime.preview_pipeline(
+                session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
+                endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+                base_uri=str(tmp_path), limit=50,
+            )
 
 
-def _as(app, user):
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_current_user_optional] = lambda: user
+def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, monkeypatch, httpserver):
+    from app.pipelines import egress as pipelines_egress
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+    from app.db import init_db, make_engine, make_session_factory
+    from app.secrets import repository as secrets_repo
+    from app.secrets.crypto import encrypt
+    from app.tenants.repository import get_or_create_default_tenant
 
-
-def test_create_requires_admin(env):
-    app, client, _, _admin, regular = env
-    _as(app, regular)
-    assert client.post("/secrets", json=BEARER_BODY).status_code == 403
-
-
-def test_list_requires_admin(env):
-    app, client, _, _admin, regular = env
-    _as(app, regular)
-    assert client.get("/secrets").status_code == 403
-
-
-def test_delete_requires_admin(env):
-    app, client, _, admin, regular = env
-    _as(app, admin)
-    created = client.post("/secrets", json=BEARER_BODY).json()
-    _as(app, regular)
-    assert client.delete(f"/secrets/{created['id']}").status_code == 403
-
-
-def test_create_and_list(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    r = client.post("/secrets", json=BEARER_BODY)
-    assert r.status_code == 201
-    body = r.json()
-    assert body["name"] == "weather-api"
-    assert body["kind"] == "bearer_token"
-    assert set(body) == {"id", "name", "kind", "createdAt", "updatedAt"}
-    listed = client.get("/secrets").json()
-    assert [s["name"] for s in listed] == ["weather-api"]
-
-
-def test_create_response_never_leaks_secret_value(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    r = client.post("/secrets", json=BEARER_BODY)
-    assert "s3cr3t-token-value" not in r.text
-
-
-def test_list_response_never_leaks_secret_value(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    client.post("/secrets", json=BEARER_BODY)
-    r = client.get("/secrets")
-    assert "s3cr3t-token-value" not in r.text
-
-
-def test_create_duplicate_name_conflicts(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    client.post("/secrets", json=BEARER_BODY)
-    r = client.post("/secrets", json=BEARER_BODY)
-    assert r.status_code == 409
-
-
-def test_delete_removes_secret(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    created = client.post("/secrets", json=BEARER_BODY).json()
-    assert client.delete(f"/secrets/{created['id']}").status_code == 204
-    assert client.get("/secrets").json() == []
-
-
-def test_delete_missing_returns_404(env):
-    app, client, _, admin, _regular = env
-    _as(app, admin)
-    assert client.delete("/secrets/does-not-exist").status_code == 404
-
-
-def test_delete_cross_tenant_returns_404(env):
-    app, client, Session, admin, _regular = env
-    _as(app, admin)
-    created = client.post("/secrets", json=BEARER_BODY).json()
-
-    with Session() as s:
-        other_tenant = Tenant(id=uuid.uuid4().hex, slug="other", name="Other")
-        s.add(other_tenant)
-        s.flush()
-        other_admin = get_or_create_user(
-            s, tenant_id=other_tenant.id, oidc_sub="oa", username="other-admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as session:
+        monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+        tenant = get_or_create_default_tenant(session)
+        ciphertext, nonce = encrypt({"kind": "bearer_token", "token": "s3cr3t-leak-check"})
+        secrets_repo.create_secret(
+            session, tenant_id=tenant.id, created_by="u1", name="my-bearer", kind="bearer_token",
+            ciphertext=ciphertext, nonce=nonce,
         )
-        s.commit()
+        session.commit()
 
-    _as(app, other_admin)
-    assert client.delete(f"/secrets/{created['id']}").status_code == 404
+        httpserver.expect_request(
+            "/items", headers={"Authorization": "Bearer s3cr3t-leak-check"},
+        ).respond_with_json([{"id": 1, "name": "a"}])
+        payload_nodes = [
+            {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
+             "params": {"baseUrl": httpserver.url_for("/"), "path": "items", "secretName": "my-bearer"}},
+        ]
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": []})
 
-
-def test_mutations_are_audited(env):
-    app, client, Session, admin, _regular = env
-    _as(app, admin)
-    created = client.post("/secrets", json=BEARER_BODY).json()
-    client.delete(f"/secrets/{created['id']}")
-
-    with Session() as s:
-        actions = list(s.scalars(select(AuditLog.action)))
-        payloads = list(s.scalars(select(AuditLog.payload)))
-    assert actions == ["secret.create", "secret.delete"]
-    assert all("s3cr3t-token-value" not in str(p) for p in payloads)
-
-
-def test_create_app_fails_fast_without_master_key(monkeypatch):
-    monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
-    with pytest.raises(KeyError):
-        create_app()
+        rows = runtime.preview_pipeline(
+            session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path), limit=50,
+        )
+        assert "s3cr3t-leak-check" not in str(rows)
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
-
-Run: `cd core && uv run pytest tests/test_secrets_routes.py -v`
-Expected: FAIL — every HTTP-hitting test gets a 404 (no `/secrets` route
-mounted yet); `test_create_app_fails_fast_without_master_key` fails with
-`Failed: DID NOT RAISE <class 'KeyError'>` (the eager check doesn't exist
-in `create_app()` yet).
-
-- [ ] **Step 4: Implement `routes.py`**
-
-Create `core/app/secrets/routes.py`:
+Append to `core/tests/test_pipeline_config_validation.py`:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Routes REST du coffre de secrets (design SP-15e §6) — admin-only, ne
-retourne jamais une valeur déchiffrée, un ciphertext ou un nonce."""
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
-from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
-from app.db import get_session
-from app.secrets import crypto
-from app.secrets import repository as repo
-from app.secrets.models import ConnectorSecret
-from app.secrets.schemas import SecretCreate
-from app.users.models import User
-
-router = APIRouter()
-
-
-def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
-
-
-class ConnectorSecretOut(BaseModel):
-    id: str
-    name: str
-    kind: str
-    createdAt: str
-    updatedAt: str
-
-
-def _to_response(secret: ConnectorSecret) -> ConnectorSecretOut:
-    return ConnectorSecretOut(
-        id=secret.id, name=secret.name, kind=secret.kind,
-        createdAt=secret.created_at.isoformat(), updatedAt=secret.updated_at.isoformat(),
-    )
-
-
-@router.post("/secrets", status_code=201)
-def create_secret_route(
-    body: SecretCreate,
-    user: User = Depends(get_current_user), session: Session = Depends(get_session),
-) -> ConnectorSecretOut:
-    _require_admin(user)
-    if repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=body.name):
-        raise HTTPException(status_code=409, detail="secret name already exists")
-    ciphertext, nonce = crypto.encrypt(body.payload.model_dump())
-    secret = repo.create_secret(
-        session, tenant_id=user.tenant_id, created_by=user.id, name=body.name,
-        kind=body.payload.kind, ciphertext=ciphertext, nonce=nonce,
-    )
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="secret.create", object_type="secret", object_id=secret.id,
-                payload={"name": secret.name, "kind": secret.kind})
-    return _to_response(secret)
-
-
-@router.get("/secrets")
-def list_secrets_route(
-    user: User = Depends(get_current_user), session: Session = Depends(get_session),
-) -> list[ConnectorSecretOut]:
-    _require_admin(user)
-    return [_to_response(s) for s in repo.list_secrets(session, tenant_id=user.tenant_id)]
-
-
-@router.delete("/secrets/{secret_id}", status_code=204)
-def delete_secret_route(
-    secret_id: str,
-    user: User = Depends(get_current_user), session: Session = Depends(get_session),
-) -> None:
-    _require_admin(user)
-    secret = repo.get_secret(session, tenant_id=user.tenant_id, secret_id=secret_id)
-    if secret is None:
-        raise HTTPException(status_code=404, detail="secret not found")
-    name, kind = secret.name, secret.kind
-    repo.delete_secret(session, secret)
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="secret.delete", object_type="secret", object_id=secret_id,
-                payload={"name": name, "kind": kind})
+def test_reader_connector_node_saves_without_secret_or_query_check(env):
+    # Design §6 : seule la FORME des params est vérifiée à la sauvegarde —
+    # ni l'existence de "does-not-exist" comme secret, ni la validité SQL de
+    # "not even sql" sont vérifiées ici (elles échoueraient proprement à
+    # l'EXÉCUTION, cf. test_pipeline_runtime.py). Une sauvegarde réussie ici
+    # n'est pas un bug.
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["nodes"].append({
+        "id": "r2", "kind": "reader", "op": "reader.connector.postgres",
+        "params": {"secretName": "does-not-exist", "query": "not even sql"},
+    })
+    response = env.post("/configs", json=body)
+    assert response.status_code == 201
 ```
 
-- [ ] **Step 5: Wire `app.main`**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Modify `core/app/main.py` — add to the import block, between the existing
-`from app.public import routes as public_routes` line and `from
-app.schemas_routes import router as schemas_router` (alphabetical position
-in that block):
+Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k reader_connector -v`
+Expected: FAIL — `pydantic.ValidationError`/`PipelineRuntimeError: unknown reader op 'reader.connector.rest'`
+(the `_prepare()` loop still hard-codes `ReaderCollectionParams.model_validate(node.params)` for every reader node).
+
+Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py -k reader_connector -v`
+Expected: this one already passes (config_validation.py needs no change) —
+confirms the "no code change needed" claim from Global Constraints instead
+of silently assuming it.
+
+- [ ] **Step 3: Wire the dispatch into `_prepare()`**
+
+Modify `core/app/pipelines/runtime.py` — add to the imports, after the
+existing `from app.pipelines.ops.schemas import (...)` block:
 
 ```python
-from app.public import routes as public_routes
-from app.secrets import crypto as secrets_crypto
-from app.secrets import routes as secrets_routes
-from app.schemas_routes import router as schemas_router
+from app.pipelines import connector_runtime
+from app.pipelines.ops.schemas import (
+    ReaderCollectionParams, ReaderConnectorPostgresParams, ReaderConnectorRestParams,
+    TransformAggregateParams, TransformCountWithinParams, TransformDeriveParams,
+    TransformFilterParams, TransformH3AggregateParams, TransformIntersectionParams,
+    TransformJoinParams, TransformQgisParams, WriterCollectionParams, WriterDatasetParams,
+    WriterExportParams,
+)
 ```
 
-In `create_app()`, right after `observability.setup()`, add the eager
-boot-time check (before anything touches the DB — a misconfigured key
-should fail before the app does any other work):
+Replace the reader-materialization loop inside `_prepare()` (currently):
 
 ```python
-def create_app() -> FastAPI:
-    observability.setup()
-    secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
-    database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    for node in ordered:
+        if node.kind != "reader":
+            continue
+        p = ReaderCollectionParams.model_validate(node.params)
+        table_name = _require_readable_collection_id(
+            session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
+        )
+        table_info = _table_info_for_collection(session, table_name)
+        view_name = f"node_{node.id}"
+        _materialize_reader(
+            conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
+            collection_id=p.collectionId, table_info=table_info,
+        )
+        view_by_node[node.id] = view_name
+        srid_by_node[node.id] = table_info.srid or 4326
 ```
 
-In the `app.include_router(...)` block, add right after
-`app.include_router(extensions_routes.router)`:
+with:
 
 ```python
-    app.include_router(secrets_routes.router)
+    for node in ordered:
+        if node.kind != "reader":
+            continue
+        view_name = f"node_{node.id}"
+        if node.op == "reader.collection":
+            p = ReaderCollectionParams.model_validate(node.params)
+            table_name = _require_readable_collection_id(
+                session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
+            )
+            table_info = _table_info_for_collection(session, table_name)
+            _materialize_reader(
+                conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
+                collection_id=p.collectionId, table_info=table_info,
+            )
+            srid_by_node[node.id] = table_info.srid or 4326
+        elif node.op == "reader.connector.rest":
+            p = ReaderConnectorRestParams.model_validate(node.params)
+            try:
+                connector_runtime.materialize_rest_connector(
+                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
+                    params=p, view_name=view_name,
+                )
+            except connector_runtime.ConnectorRuntimeError as exc:
+                raise PipelineRuntimeError(str(exc)) from exc
+            srid_by_node[node.id] = 4326
+        elif node.op == "reader.connector.postgres":
+            p = ReaderConnectorPostgresParams.model_validate(node.params)
+            try:
+                connector_runtime.materialize_postgres_connector(
+                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
+                    params=p, view_name=view_name,
+                )
+            except connector_runtime.ConnectorRuntimeError as exc:
+                raise PipelineRuntimeError(str(exc)) from exc
+            srid_by_node[node.id] = 4326
+        else:
+            raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
+        view_by_node[node.id] = view_name
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+(`srid_by_node[node.id] = 4326` for both connector ops is a harmless
+default — design §3.2/non-goals: connector output carries no geometry
+column in v0, so this value is never actually consulted by a spatial
+transform; a pipeline author who chains a spatial op directly after a
+connector reader gets a clean DuckDB error about the missing geometry
+column, not a wrong-SRID bug.)
 
-Run: `cd core && uv run pytest tests/test_secrets_routes.py -v`
-Expected: 12 passed.
+- [ ] **Step 4: Run tests to verify they pass**
 
-- [ ] **Step 7: Verify the layering contract still holds**
+Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -v`
+Expected: all pass, including the 3 new `reader_connector` tests.
+
+Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
+Expected: all pass.
+
+- [ ] **Step 5: Verify the layering contract still holds**
 
 Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.` (`routes.py` imports `app.audit`,
-`app.auth`, `app.users`, `app.db` — all below `app.secrets`'s position in
-the layers list, per the Global Constraints check done in Task 1.)
+Expected: `Contracts: 1 kept, 0 broken.` — `runtime.py` now imports
+`app.pipelines.connector_runtime` (same layer, always allowed) and
+transitively `app.secrets`/`app.analytics` (already-legal directions,
+confirmed in Global Constraints); `app.pipelines.egress` still imports
+nothing from `app.harvest`.
 
-- [ ] **Step 8: Run the full existing test suite to confirm no regression**
+- [ ] **Step 6: Run the full core test suite to confirm no regression**
 
 Run: `cd core && uv run pytest -v`
-Expected: all pre-existing tests still pass — the `CORE_SECRETS_MASTER_KEY`
-default added in Step 1 is exactly what keeps every other test file's
-`create_app()` call (or equivalent) working unchanged.
+Expected: all pre-existing tests still pass — this plan is additive only
+(2 new op catalog entries, 1 new guard module, 1 new connector-runtime
+module, 1 dispatch branch in an existing loop; no route, MCP tool, or
+existing op's behavior changed).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/secrets/routes.py core/app/main.py core/tests/conftest.py \
-  core/tests/test_secrets_routes.py
-git commit -m "feat(core): secrets module — REST routes, admin gate, audit, app wiring"
+git add core/app/pipelines/runtime.py core/tests/test_pipeline_runtime.py \
+  core/tests/test_pipeline_config_validation.py
+git commit -m "feat(core): pipelines — wire reader.connector.rest/postgres into runtime dispatch"
 ```

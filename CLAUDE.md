@@ -232,12 +232,33 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     *capable* de les servir sans construire ni l'un ni l'autre ; aucun
     outil MCP, aucun kind `BuilderConfig`, aucun changement canvas.
     Exposition MCP des *noms* de secrets (métadonnées seules) différée à
-    SP-15f (non planifiée).
+    un futur incrément (non planifié, non numéroté).
+  - **SP-15f** — `reader.connector.rest`/`reader.connector.postgres` : deux
+    nouveaux ops de lecture dans le pipeline no-code, premiers consommateurs
+    réels du coffre SP-15e (authentification **par nom** de secret, résolue
+    à l'exécution seulement, jamais à la sauvegarde). Matérialisation par un
+    vrai pipeline `dlt` (extraction/normalisation/inférence de schéma) vers
+    un fichier DuckDB scratch, `ATTACH`é en lecture seule puis sélectionné
+    en `TEMP TABLE` (convention nœud-par-nœud identique aux autres readers).
+    Garde SSRF **dupliquée** pour `requests` (`core/app/pipelines/egress.py`,
+    variable `CORE_PIPELINES_EGRESS_ALLOWLIST` distincte de
+    `CORE_HARVEST_EGRESS_ALLOWLIST`) — dlt's REST client utilise `requests`,
+    pas `httpx`, et `app.pipelines` est sous `app.harvest` dans le contrat de
+    couches, donc ne peut pas réutiliser sa garde. Requête Postgres libre
+    bornée SELECT-only **à l'exécution seulement**, en réutilisant
+    `app.analytics.sql_sandbox`. Aucun canvas, aucun outil MCP — les deux
+    ops apparaissent automatiquement dans `ops_catalog()`. Deux Important
+    trouvés et corrigés en revue (tous deux des surfaces où l'auth/l'échec
+    contournait la garde SSRF : l'échange de jeton OAuth2 client-credentials
+    utilisait la session non gardée de dlt ; les échecs survenant *pendant*
+    l'extraction dlt elle-même, y compris un blocage SSRF sur l'URL de
+    données, n'étaient pas traduits en erreur propre et ressortaient en 500
+    opaque) — 0 Critical/Important non résolu au merge.
   - **A39 : Phases 1+2 (socle headless + étage 1+2 spatial) livrées**, plus
-    SP-15e (coffre de secrets, prérequis pour de futurs connecteurs
-    authentifiés) — canvas visuel du graphe complet (branchements DAG au-delà
-    de linéaire+join), automatisation/déclencheurs et câblage effectif d'un
-    connecteur authentifié via le coffre restent non planifiés.
+    SP-15e (coffre de secrets) et SP-15f (premier consommateur réel du
+    coffre) — canvas visuel du graphe complet (branchements DAG au-delà de
+    linéaire+join) et automatisation/déclencheurs au-delà de la
+    planification simple restent non planifiés.
 
 ### À venir
 
@@ -253,11 +274,10 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   topologie linéaire+join actuelle (branchements DAG), automatisation/
   déclencheurs au-delà de la planification simple, vérification réelle des
   5 tests `@pytest.mark.qgis` de SP-15d (sidecar + `/scratch` réels, non
-  exécutée à ce jour), câblage effectif d'un `reader.connector`/connecteur
-  authentifié consommant le coffre SP-15e (le coffre lui-même est livré,
-  aucun consommateur construit). SP-15f (exposition MCP des noms de
-  secrets) non planifiée. Jalon M14 non atteint (socle + étage 1+2 spatial
-  + coffre de secrets livrés, DAG/automatisation/consommateurs restent).
+  exécutée à ce jour). Exposition MCP des noms de secrets (métadonnées
+  seules) non planifiée, non numérotée. Jalon M14 non atteint (socle +
+  étage 1+2 spatial + coffre de secrets + premier connecteur authentifié
+  livrés, DAG/automatisation restent).
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).

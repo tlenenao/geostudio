@@ -1,92 +1,103 @@
-# Task 2 Report: Payload schemas — `core/app/secrets/schemas.py`
+# Task 2 report — SSRF egress guard for `app.pipelines`
 
-**Date:** 2026-08-06  
-**Session:** Task 2 of 5 (SP-15e)
+## What was implemented
 
-## Implementation Summary
+- `core/pyproject.toml`: added `"requests>=2.31"` as a direct dependency
+  (comment explains why: dlt's `RESTClient` uses `requests`, not `httpx`;
+  declared directly rather than relying on dlt's transitive pin). `uv sync`
+  resolved cleanly — `requests` was already present transitively, this just
+  makes it a guaranteed direct import.
+- `core/tests/test_pipeline_egress.py` (new): 14 test cases across 8 test
+  functions (one parametrized over 7 URLs), mirroring
+  `core/tests/test_harvest_egress.py` adapted from `httpx` to `requests`.
+- `core/app/pipelines/egress.py` (new): `EgressBlockedError`,
+  `assert_egress_allowed(url)`, `build_guarded_session() -> requests.Session`.
+  Deliberate duplicate of `app.harvest.egress`'s SSRF logic (blocks loopback/
+  private/link-local/reserved/multicast/unspecified IPs, resolves hostnames
+  via `socket.getaddrinfo`, non-http(s) schemes rejected, optional allowlist
+  via `CORE_PIPELINES_EGRESS_ALLOWLIST` env var — distinct env var from
+  `app.harvest`'s `CORE_HARVEST_EGRESS_ALLOWLIST`), but enforced via a
+  `requests.adapters.HTTPAdapter` subclass (`_GuardedHTTPAdapter.send`) mounted
+  on both `http://` and `https://` schemes, instead of an `httpx` transport.
+  Duplication is intentional: `app.pipelines` sits below `app.harvest` in the
+  import-linter layered-architecture contract and cannot import from it.
 
-Task 2 successfully implemented the Pydantic discriminated-union payload schemas for the secrets module, following the brief's specification verbatim. Two files were created:
+Both files' content matches the brief's Step 2 and Step 4 code blocks
+verbatim (no deviation).
 
-1. **`core/tests/test_secrets_schemas.py`** (test file, 9 tests)
-2. **`core/app/secrets/schemas.py`** (implementation)
+## TDD evidence
 
-## TDD Evidence
+**RED** — `cd core && uv run pytest tests/test_pipeline_egress.py -v`:
 
-### RED: Failing Tests (Step 2)
 ```
-ERROR collecting tests/test_secrets_schemas.py
-ModuleNotFoundError: No module named 'app.secrets.schemas'
+ERROR collecting tests/test_pipeline_egress.py
+ModuleNotFoundError: No module named 'app.pipelines.egress'
+Interrupted: 1 error during collection
+1 error in 0.16s
 ```
 
-All 9 tests failed at import as expected — the module did not exist.
+**GREEN** — same command after implementing `egress.py`:
 
-### GREEN: Passing Tests (Step 4)
 ```
-============================= test session starts ==============================
-tests/test_secrets_schemas.py::test_api_key_header_placement_round_trips PASSED [ 11%]
-tests/test_secrets_schemas.py::test_api_key_query_placement_round_trips PASSED [ 22%]
-tests/test_secrets_schemas.py::test_bearer_token_round_trips PASSED       [ 33%]
-tests/test_secrets_schemas.py::test_basic_auth_round_trips PASSED         [ 44%]
-tests/test_secrets_schemas.py::test_oauth2_client_credentials_round_trips PASSED [ 55%]
-tests/test_secrets_schemas.py::test_postgres_dsn_round_trips PASSED       [ 66%]
-tests/test_secrets_schemas.py::test_unknown_kind_rejected PASSED          [ 77%]
-tests/test_secrets_schemas.py::test_api_key_requires_location PASSED      [ 88%]
-tests/test_secrets_schemas.py::test_secret_payload_adapter_decodes_decrypted_dict PASSED [100%]
-
-============================== 9 passed in 0.11s ===============================
+collected 14 items
+tests/test_pipeline_egress.py::test_assert_blocks_internal_ip_literals_without_dns[...] PASSED (x7)
+tests/test_pipeline_egress.py::test_assert_allows_public_ip_literal PASSED
+tests/test_pipeline_egress.py::test_assert_blocks_non_http_scheme PASSED
+tests/test_pipeline_egress.py::test_assert_blocks_hostname_resolving_to_internal PASSED
+tests/test_pipeline_egress.py::test_assert_allows_hostname_resolving_to_public PASSED
+tests/test_pipeline_egress.py::test_allowlist_restricts_otherwise_allowed_public_host PASSED
+tests/test_pipeline_egress.py::test_guarded_session_blocks_before_connection PASSED
+tests/test_pipeline_egress.py::test_guarded_session_is_a_real_requests_session PASSED
+14 passed in 0.07s
 ```
 
-All 9 tests pass cleanly.
+Note: the brief's Step 5 said "Expected: 8 passed" — that undercounts the
+parametrized test's 7 cases (7 params + 7 other test functions = 14 items
+collected/passed). This is a brief arithmetic slip, not a code defect; the
+test file content matches the brief exactly and all 14 cases pass.
 
-## Files Changed
+Also ran the full core test suite as an extra safety check (not requested by
+the brief, but cheap): `cd core && uv run pytest -q` → `1097 passed, 127
+skipped` (skips are pre-existing postgis/qgis markers, unrelated to this
+change).
 
-- **Created:** `core/app/secrets/schemas.py`
-  - 5 payload model classes (discriminated by `kind` field):
-    - `ApiKeyPayload` (supports both `header` and `query` placement)
-    - `BearerTokenPayload`
-    - `BasicAuthPayload`
-    - `OAuth2ClientCredentialsPayload`
-    - `PostgresDsnPayload`
-  - Type alias `SecretPayload` with `Field(discriminator="kind")`
-  - `SECRET_PAYLOAD_ADAPTER: TypeAdapter[SecretPayload]` for runtime validation
-  - `SecretCreate` model (name + payload)
+## lint-imports output
 
-- **Created:** `core/tests/test_secrets_schemas.py`
-  - 9 comprehensive tests covering all payload kinds, validation rules, and adapter usage
+```
+Analyzed 145 files, 414 dependencies.
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
+```
 
-## Self-Review Findings
+## Files changed
 
-✅ **Completeness:**
-- All 5 steps from the brief executed in order
-- All 9 tests pass
-- Files match brief's specification exactly (verbatim transcription)
-- No scope creep or extra work beyond the brief
+- `core/app/pipelines/egress.py` (new)
+- `core/tests/test_pipeline_egress.py` (new)
+- `core/pyproject.toml` (added `requests>=2.31` direct dependency)
+- `core/uv.lock` (regenerated by `uv sync`)
 
-✅ **Code Quality:**
-- Discriminated union correctly implemented with Pydantic v2 `Annotated` + `Field(discriminator="kind")`
-- Docstrings in French match project conventions (français for docs)
-- All required fields and constraints present (e.g., `min_length=1, max_length=200` on name)
-- SPDX header present on both files
+Commit: `85f71c6 feat(core): pipelines — SSRF egress guard for reader.connector.rest`
 
-✅ **Testing:**
-- Tests cover all payload kinds
-- Tests verify validation rules (required fields, unknown kinds rejected)
-- Tests verify adapter usage pattern (post-decrypt validation)
-- Edge cases like `location` field requirement tested
+## Self-review
 
-✅ **Discipline:**
-- Only files specified in brief created (no extraneous files)
-- Only git commands used were `git add <specific files>` and `git commit` (no reset/checkout)
-- Commit message matches brief's exact specification
+- `egress.py` imports only stdlib (`ipaddress`, `logging`, `os`, `socket`,
+  `urllib.parse.urlparse`) and `requests` — verified with
+  `grep -n "^import\|^from" core/app/pipelines/egress.py`. Nothing from
+  `app.harvest` or any other `app.*` module. Confirmed independently by
+  `lint-imports` reporting the layered-architecture contract kept.
+- All 14 tests pass, pristine output (no warnings, no stderr noise beyond
+  normal pytest summary).
+- `lint-imports` reports `1 kept, 0 broken` — unchanged from before this
+  task, confirming the new module doesn't violate the layering contract and
+  nothing else regressed.
+- Staged/committed exactly the 4 files named in the brief's Step 7 command —
+  did not touch the unrelated pre-existing unstaged changes in
+  `.superpowers/sdd/progress.md`, `task-1-brief.md`, `task-1-report.md`,
+  `task-2-brief.md` (out of scope for this task, left as found).
 
 ## Concerns
 
-None. Task completed cleanly with all tests passing and commit successful.
-
-## Commit
-
-```
-8d269c5 feat(core): secrets module — discriminated payload schemas
-```
-
-This commit is on the `dev` branch and ready for integration into the full SP-15e plan (Task 3+).
+None blocking. Minor note: brief's Step 5 expected count ("8 passed") doesn't
+match the actual/correct collected count (14, due to the 7-way parametrize) —
+flagged above for whoever reconciles the plan ledger, but the code and tests
+themselves are exactly as specified and fully green.

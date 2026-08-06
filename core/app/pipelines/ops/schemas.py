@@ -127,6 +127,34 @@ class TransformQgisParams(BaseModel):
         return self
 
 
+class ReaderConnectorRestParams(BaseModel):
+    """Lecture d'une ressource REST paginée (design SP-15f §2). `secretName`
+    référence un secret api_key/bearer_token/basic_auth/
+    oauth2_client_credentials (SP-15e) ; None = endpoint public non
+    authentifié. `recordsPath` est un chemin pointé vers le tableau
+    d'enregistrements dans le corps de réponse (ex. "data.items") ; None =
+    le corps de réponse EST le tableau."""
+    baseUrl: str = Field(..., pattern=r"^https?://")
+    path: str = ""
+    method: Literal["GET", "POST"] = "GET"
+    query: dict[str, str] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
+    recordsPath: str | None = None
+    paginator: Literal["none", "page_number", "cursor", "offset"] = "none"
+    paginatorConfig: dict[str, Any] = Field(default_factory=dict)
+    secretName: str | None = None
+
+
+class ReaderConnectorPostgresParams(BaseModel):
+    """Lecture d'une requête SQL libre sur un Postgres distant (design
+    SP-15f §2). `secretName` référence toujours un secret postgres_dsn
+    (SP-15e) — pas de notion de DSN non authentifié, contrairement à REST.
+    `query` n'est validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
+    jamais ici (forme seulement) ni à la sauvegarde (design §6)."""
+    secretName: str
+    query: str
+
+
 OP_KINDS: dict[str, str] = {
     "reader.collection": "reader",
     "transform.filter": "transform",
@@ -143,6 +171,8 @@ OP_KINDS: dict[str, str] = {
     "writer.collection": "writer",
     "writer.export": "writer",
     "writer.dataset": "writer",
+    "reader.connector.rest": "reader",
+    "reader.connector.postgres": "reader",
 }
 
 OP_PARAMS: dict[str, type[BaseModel]] = {
@@ -161,6 +191,8 @@ OP_PARAMS: dict[str, type[BaseModel]] = {
     "writer.collection": WriterCollectionParams,
     "writer.export": WriterExportParams,
     "writer.dataset": WriterDatasetParams,
+    "reader.connector.rest": ReaderConnectorRestParams,
+    "reader.connector.postgres": ReaderConnectorPostgresParams,
 }
 
 

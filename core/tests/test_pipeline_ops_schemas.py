@@ -82,7 +82,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_fifteen_ops_are_registered():
+def test_all_seventeen_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
@@ -90,6 +90,7 @@ def test_all_fifteen_ops_are_registered():
         "transform.buffer", "transform.reproject", "transform.intersection",
         "transform.countWithin", "transform.h3Aggregate", "writer.dataset",
         "transform.qgis",
+        "reader.connector.rest", "reader.connector.postgres",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -256,3 +257,72 @@ def test_transform_qgis_rejects_malformed_output_srid():
              "params": {"SEPARATE_DISJOINT": False},
              "outputSrid": "not-a-crs"},
         )
+
+
+def test_reader_connector_ops_are_kind_reader():
+    assert OP_KINDS["reader.connector.rest"] == "reader"
+    assert OP_KINDS["reader.connector.postgres"] == "reader"
+
+
+def test_reader_connector_rest_minimal_params():
+    params = parse_op_params("reader.connector.rest", {"baseUrl": "https://api.example.com/"})
+    assert params.path == ""
+    assert params.method == "GET"
+    assert params.query == {}
+    assert params.headers == {}
+    assert params.recordsPath is None
+    assert params.paginator == "none"
+    assert params.paginatorConfig == {}
+    assert params.secretName is None
+
+
+def test_reader_connector_rest_rejects_non_http_base_url():
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.rest", {"baseUrl": "ftp://example.com/"})
+
+
+def test_reader_connector_rest_full_params():
+    params = parse_op_params("reader.connector.rest", {
+        "baseUrl": "https://api.example.com/",
+        "path": "v1/items",
+        "method": "POST",
+        "query": {"limit": "100"},
+        "headers": {"User-Agent": "geostudio"},
+        "recordsPath": "data.items",
+        "paginator": "page_number",
+        "paginatorConfig": {"pageParam": "page"},
+        "secretName": "my-api-key",
+    })
+    assert params.path == "v1/items"
+    assert params.method == "POST"
+    assert params.recordsPath == "data.items"
+    assert params.paginator == "page_number"
+    assert params.secretName == "my-api-key"
+
+
+def test_reader_connector_rest_rejects_unknown_paginator():
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.rest", {
+            "baseUrl": "https://api.example.com/", "paginator": "not-a-paginator",
+        })
+
+
+def test_reader_connector_postgres_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.postgres",
+        {"secretName": "warehouse-pg", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-pg"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.postgres", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.postgres", {"secretName": "x"})
+
+
+def test_reader_connector_ops_appear_in_catalog():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.rest"]["kind"] == "reader"
+    assert "baseUrl" in catalog["reader.connector.rest"]["paramsSchema"]["properties"]
+    assert catalog["reader.connector.postgres"]["kind"] == "reader"
+    assert "query" in catalog["reader.connector.postgres"]["paramsSchema"]["properties"]
