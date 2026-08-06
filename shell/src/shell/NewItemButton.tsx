@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCreateItem, useCreateMap, useCreateDataset, useCollectionsAdmin, useFeatureLayers } from "../api/hooks";
+import { useCreateItem, useCreateMap, useCreateDataset, useCollectionsAdmin, useFeatureLayers, useInstanceInfo } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -9,7 +9,7 @@ import { Dialog } from "../ui/dialog";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 
-type Kind = "app" | "dashboard" | "map" | "site" | "dataset";
+type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline";
 
 export function NewItemButton() {
   const [open, setOpen] = useState(false);
@@ -26,6 +26,8 @@ export function NewItemButton() {
   const create = useCreateItem();
   const createMap = useCreateMap();
   const createDataset = useCreateDataset();
+  const instanceQuery = useInstanceInfo();
+  const etlEnabled = instanceQuery.data?.etlEnabled === true;
   const collectionsQuery = useCollectionsAdmin({ enabled: open && kind === "dataset" && datasetSource === "collection" });
   const featureLayersQuery = useFeatureLayers({ enabled: open && kind === "dataset" && datasetSource === "arcgis" });
 
@@ -56,6 +58,11 @@ export function NewItemButton() {
     if (kind === "site" && !isValidSlug(slug)) return;
     if (kind === "dataset" && datasetSource === "collection" && !collectionId) return;
     if (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId) return;
+    if (kind === "pipeline") {
+      close();
+      navigate("/pipelines/new", { state: { title: clean } });
+      return;
+    }
     try {
       const item =
         kind === "map"
@@ -102,9 +109,10 @@ export function NewItemButton() {
               <option value="map">Map</option>
               <option value="site">Site</option>
               <option value="dataset">Dataset partagé</option>
+              {etlEnabled && <option value="pipeline">Pipeline</option>}
             </select>
           </label>
-          {kind !== "map" && kind !== "dataset" && (
+          {kind !== "map" && kind !== "dataset" && kind !== "pipeline" && (
             <label className="flex flex-col gap-1 text-sm">
               Modèle
               <select
