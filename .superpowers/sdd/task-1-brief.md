@@ -1,128 +1,157 @@
-## Task 1: Core — `geomIntersects` on the DuckDB aggregate endpoint
+## Task 1: `CORE_ETL_ENABLED` capability flag
 
 **Files:**
-- Modify: `core/app/analytics/aggregate.py:1-20` (add `import json`, extend `AggregateRequestBody`), `:78-104` (`_validate_fields`), `:142-167` (`_build_where`)
-- Test: `core/tests/test_analytics_aggregate.py` (append)
+- Modify: `core/app/auth/dependency.py`
+- Modify: `core/app/instance/routes.py`
+- Modify: `.env.example`
+- Modify: `core/tests/test_read_only_mode.py` (two exact-dict assertions break once `/instance` gains a key)
+- Test: `core/tests/test_etl_enabled_flag.py`
 
 **Interfaces:**
-- Produces: `AggregateRequestBody.geomIntersects: dict | None = None` (a GeoJSON geometry dict) — validated (raises `UnknownAggregateField("geomIntersects", ...)` when the collection has no geometry) and applied as `ST_Intersects(<geom col>, ST_GeomFromGeoJSON(?))` in the DuckDB WHERE clause, same pattern as the existing `bbox` field right above it.
+- Produces: `is_etl_enabled() -> bool` in `app.auth.dependency`, imported by
+  every later task that needs to gate a surface (Tasks 4, 9 doc-only, 10, 11).
+  `GET /instance` response gains `"etlEnabled": bool`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `core/tests/test_analytics_aggregate.py`, right after `test_bbox_filter_narrows_rows_spatially` (and its neighbor `test_bbox_without_geometry_column_raises` a few lines down — insert after that one instead, to keep the two "without geometry" tests adjacent):
+Create `core/tests/test_etl_enabled_flag.py`:
 
 ```python
-def test_geom_intersects_filter_narrows_rows_spatially(tmp_path, conn):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", "2025", 10, lsn=1, x=2.3, y=48.8),  # dans le polygone
-        _row(2, "Sud", "2025", 5, lsn=1, x=100.0, y=50.0),  # hors polygone
-    ])
-    polygon = {
-        "type": "Polygon",
-        "coordinates": [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]],
-    }
-    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop", geomIntersects=polygon)
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+from fastapi.testclient import TestClient
 
-    _category_key, rows = run_collection_aggregate(
-        conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="villes",
-        table_info=TABLE_INFO, request=request,
-    )
-
-    assert rows == [{"region": "Nord", "value": 10}]
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional, is_etl_enabled
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
-def test_geom_intersects_without_geometry_column_raises():
-    info_no_geom = TableInfo(table_name="t", pk_column="id", geometry_column=None,
-                             geometry_type=None, srid=None, columns=[])
-    request = AggregateRequestBody(geomIntersects={"type": "Point", "coordinates": [0, 0]})
-    with pytest.raises(UnknownAggregateField) as exc_info:
-        run_collection_aggregate(
-            duckdb.connect(":memory:"), base_uri="/nonexistent", tenant_id="t1",
-            collection_id="c", table_info=info_no_geom, request=request,
+def test_is_etl_enabled_defaults_to_false(monkeypatch):
+    monkeypatch.delenv("CORE_ETL_ENABLED", raising=False)
+    assert is_etl_enabled() is False
+
+
+def test_is_etl_enabled_reads_env_var(monkeypatch):
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    assert is_etl_enabled() is True
+    monkeypatch.setenv("CORE_ETL_ENABLED", "false")
+    assert is_etl_enabled() is False
+
+
+@pytest.fixture()
+def env():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+            email=None, first_name="", last_name="", bootstrap_admin=True,
         )
-    assert exc_info.value.field == "geomIntersects"
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: admin
+    app.dependency_overrides[get_current_user_optional] = lambda: admin
+    return TestClient(app)
+
+
+def test_instance_reports_etl_disabled_by_default(env):
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json() == {"readOnly": False, "etlEnabled": False}
+
+
+def test_instance_reports_etl_enabled(env, monkeypatch):
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json() == {"readOnly": False, "etlEnabled": True}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k geom_intersects -v`
-Expected: FAIL — `AggregateRequestBody` has no field `geomIntersects` (Pydantic ignores unknown fields by default, so it's silently dropped and the WHERE clause never filters — the first test's assertion on `rows` fails because both rows are summed: `[{"region": "Nord", "value": 10}]` vs actual `[{"region": "Nord", "value": 10}, {"region": "Sud", "value": 5}]`; the second test fails because no `UnknownAggregateField` is ever raised).
+Run: `cd core && uv run pytest tests/test_etl_enabled_flag.py -v`
+Expected: FAIL — `ImportError: cannot import name 'is_etl_enabled'`
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement `is_etl_enabled()`**
 
-In `core/app/analytics/aggregate.py`, add the import (line 15, alongside the existing one):
+In `core/app/auth/dependency.py`, add right after `is_read_only_mode` (after line 23):
 
 ```python
-import json
-from typing import Literal
+def is_etl_enabled() -> bool:
+    """CORE_ETL_ENABLED (SP-15a) — capacité instance-wide optionnelle, même
+    convention que is_read_only_mode : lue à chaque appel, sans cache, pour
+    que les tests basculent via monkeypatch sans recréer l'app. Défaut
+    false : une instance qui monte en version ne voit rien de nouveau tant
+    qu'elle n'a pas explicitement activé la capacité (cf. design SP-15a §3)."""
+    return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
 ```
 
-Extend `AggregateRequestBody` (right after `bbox`):
+- [ ] **Step 4: Wire it into `GET /instance`**
+
+Replace the full contents of `core/app/instance/routes.py`:
 
 ```python
-class AggregateRequestBody(BaseModel):
-    groupBy: str | list[str] | None = None
-    split: str | None = None
-    agg: str = "count"
-    field: str | None = None
-    measures: list[AggregateMeasure] | None = None
-    filters: dict[str, str] = {}
-    bbox: tuple[float, float, float, float] | None = None
-    geomIntersects: dict | None = None
-    bucket: Literal["day", "week", "month"] | None = None
-    bins: int | None = None
+# SPDX-License-Identifier: Apache-2.0
+from fastapi import APIRouter
+
+from app.auth.dependency import is_etl_enabled, is_read_only_mode
+
+router = APIRouter()
+
+
+@router.get("/instance")
+def get_instance_info() -> dict:
+    return {"readOnly": is_read_only_mode(), "etlEnabled": is_etl_enabled()}
 ```
 
-In `_validate_fields`, right after the existing bbox check:
+- [ ] **Step 5: Fix the two existing exact-dict assertions**
+
+In `core/tests/test_read_only_mode.py`, update:
 
 ```python
-    if request.bbox is not None and not table_info.geometry_column:
-        raise UnknownAggregateField("bbox", "collection has no geometry")
-    if request.geomIntersects is not None and not table_info.geometry_column:
-        raise UnknownAggregateField("geomIntersects", "collection has no geometry")
+def test_instance_defaults_to_read_write(env):
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json() == {"readOnly": False, "etlEnabled": False}
+
+
+def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json() == {"readOnly": True, "etlEnabled": False}
 ```
 
-In `_build_where`, right after the existing bbox clause:
+- [ ] **Step 6: Add `.env.example` entry**
 
-```python
-    if request.bbox is not None:
-        minx, miny, maxx, maxy = request.bbox
-        # Native GEOMETRY : la colonne géométrie du GeoParquet CDC est déjà
-        # lue par DuckDB comme un type GEOMETRY (spike Task 1, vérifié
-        # contre MinIO réel) — pas de ST_GeomFromWKB(...) ici.
-        clauses.append(
-            f"ST_Intersects({_qi(table_info.geometry_column)}, "
-            f"ST_MakeEnvelope(?, ?, ?, ?))"
-        )
-        params.extend([minx, miny, maxx, maxy])
-    if request.geomIntersects is not None:
-        # SP-14n : intersection géométrique exacte, complément précis du bbox
-        # ci-dessus (rectangle). Même colonne, même opérateur ST_Intersects —
-        # seule la forme du second argument change (GeoJSON arbitraire, pas
-        # une enveloppe rectangulaire).
-        clauses.append(
-            f"ST_Intersects({_qi(table_info.geometry_column)}, "
-            f"ST_GeomFromGeoJSON(?))"
-        )
-        params.append(json.dumps(request.geomIntersects))
-    return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
+In `.env.example`, right after the `CORE_READ_ONLY_MODE=false` line, add:
+
+```
+CORE_ETL_ENABLED=false
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 7: Run all affected tests**
 
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -k geom_intersects -v`
-Expected: PASS (2 tests)
+Run: `cd core && uv run pytest tests/test_etl_enabled_flag.py tests/test_read_only_mode.py -v`
+Expected: PASS (all tests green)
 
-- [ ] **Step 5: Run the full aggregate test file**
-
-Run: `cd core && uv run pytest tests/test_analytics_aggregate.py -v`
-Expected: all tests pass (previous tests + 2 new ones), no regressions.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add core/app/analytics/aggregate.py core/tests/test_analytics_aggregate.py
-git commit -m "feat(core): geomIntersects filter on the DuckDB aggregate endpoint (SP-14n)"
+git add core/app/auth/dependency.py core/app/instance/routes.py .env.example \
+  core/tests/test_read_only_mode.py core/tests/test_etl_enabled_flag.py
+git commit -m "feat(core): add CORE_ETL_ENABLED instance-wide capability flag"
 ```
 
 ---

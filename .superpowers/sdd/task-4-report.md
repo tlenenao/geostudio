@@ -1,104 +1,80 @@
-# Task 4 report — Shell types (`CrossFilterLink`, `CrossFilterEntry.geometry`, `useSetCrossFilter`) (SP-14n)
+# Task 4 report — Structural graph validation + CORE_ETL_ENABLED guard (SP-15a)
 
-Note: this file previously held a stale report from an earlier task-4 (SP-14m bookmarks). Overwritten with this task's report.
+Note: this file previously held a stale report from a different plan's task 4
+(SP-14n shell types). Overwritten with this task's report (SP-15a plan,
+"Pipeline: socle headless", task 4 of 11).
 
-## What I implemented
+## Commit
 
-Followed the brief step-for-step (all line numbers in the brief matched the actual files exactly, no drift).
+- `a44c3b8` — `feat(core): validate pipeline graph structure at save time, gate on CORE_ETL_ENABLED`
+  - `core/app/configs/pipeline_validation.py` (new)
+  - `core/app/configs/routes.py` (modified: import, `_require_etl_enabled_for_pipeline` helper, three call-site insertions in `create_config`, `update_config`, `update_config_by_item`)
+  - `core/tests/test_pipeline_config_validation.py` (new)
 
-1. **`shell/src/builder/AnalyticsContext.tsx`**
-   - `CrossFilterEntry` gained an optional `geometry?: unknown` field.
-   - `SetCrossFilter` type gained a 5th optional parameter `geometry?: unknown`.
-   - `setCrossFilter` implementation now accepts and stores `geometry` in the entry it writes to `nextCrossFilter[datasetId]`.
+Staged only these three files exactly per the brief's Step 7 (confirmed via
+`git status` before commit — unrelated pre-existing dirty files under
+`.superpowers/sdd/` and untracked `docs/superpowers/...` files were left
+untouched).
 
-2. **`shell/src/api/types.ts`**
-   - New exported type `CrossFilterLink`, a discriminated union on `mode`:
-     - `{ targetDatasetId: string; mode: "attribute"; sourceField: string; targetField: string }`
-     - `{ targetDatasetId: string; mode: "spatial"; precision: "bbox" | "exact" }`
-   - `DatasetConfig` (both `source: "collection"` and `source: "arcgis"` branches) gained an optional `crossFilterLinks?: CrossFilterLink[]`.
+## TDD steps followed
 
-3. **`shell/src/api/itemClient.ts`**
-   - Added `CrossFilterLink` to the type-only import from `./types`.
-   - `ResolvedDataset` gained `crossFilterLinks: CrossFilterLink[]` (non-optional internal cache shape).
-   - `resolveDataset` reads `crossFilterLinks` from the wire response (defaulting to `[]`) and stores it in the cache.
-   - `createDatasetItem`'s `datasetCache.set(...)` call now seeds `crossFilterLinks: []`.
-   - `getDatasetConfig` now includes `crossFilterLinks: resolved.crossFilterLinks` in both the arcgis and collection return branches.
-   - `saveDatasetConfig` now caches `crossFilterLinks: config.crossFilterLinks ?? []`.
+1. Wrote `core/tests/test_pipeline_config_validation.py` verbatim from the brief.
+2. Ran `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
+   → FAILED as expected: collection error,
+   `ImportError: cannot import name 'pipeline_validation' from 'app.configs'`
+   (same root cause as the brief's expected `ModuleNotFoundError`).
+3. Before implementing, read the real current `core/app/configs/routes.py`,
+   `dataset_validation.py`, `bookmark_validation.py`, and `schemas.py` to
+   confirm the brief's assumed structure matched reality. It matched exactly
+   — no adaptation needed (`is_etl_enabled()` already existed in
+   `app/auth/dependency.py` from Task 1; `PipelineNode`/`PipelineEdge`/
+   `PipelinePayload` already existed in `schemas.py` from Task 2).
+4. Implemented `core/app/configs/pipeline_validation.py` verbatim from the
+   brief: `_node_validators` registry dict, `register_pipeline_node_validator`,
+   `_check_linear_topology` (incoming-edge count per node), `_check_acyclic`
+   (DFS 3-color white/gray/black cycle detection), `validate_pipeline_payload`
+   (acyclic check first, then linear-topology check, then per-node validator
+   dispatch raising 422 on unknown op).
+5. Wired `core/app/configs/routes.py`: added `is_etl_enabled` to the existing
+   auth import, added the `_validate_pipeline_payload` import right after the
+   dataset one, added `_require_etl_enabled_for_pipeline` right after
+   `_validate_extension_scope`, and inserted the guard + validator calls at
+   all three write points (`create_config`, `update_config`,
+   `update_config_by_item`) — guard placed FIRST in each sequence per the
+   brief's explicit final-ordering instruction (cheapest check, fail fast),
+   overriding an earlier draft ordering shown in the brief's own prose.
+6. Ran `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
+   → PASSED, 5/5:
+   - `test_valid_linear_pipeline_saves`
+   - `test_disabled_capability_refuses_pipeline_creation`
+   - `test_disabled_capability_does_not_affect_other_kinds`
+   - `test_cyclic_graph_rejected`
+   - `test_node_with_two_incoming_edges_rejected`
+7. Regression check, exact brief command:
+   `cd core && uv run pytest tests/test_configs_extension_permissions.py tests/test_create_dataset.py tests/test_read_only_mode.py -v`
+   → PASSED, 22/22, unchanged.
+8. Extra safety net beyond the brief's ask, run anyway before committing:
+   `cd core && uv run pytest -q` (full core suite)
+   → 919 passed, 114 skipped (postgis-marked, require docker — pre-existing/expected).
+9. Committed exactly the three named files with the exact message given in
+   the brief.
 
-4. **Tests** — appended per the brief:
-   - `shell/src/builder/AnalyticsContext.test.tsx`: added `set-cf-geom` button to `Probe`, plus two new tests (`setCrossFilter stores an optional geometry...`, `setCrossFilter without a geometry omits the field entirely...`).
-   - `shell/src/api/itemClient.test.ts`: added 3 new tests after the `getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent` test (`includes crossFilterLinks from the wire response`, `defaults crossFilterLinks to an empty array when absent from the wire`, `saveDatasetConfig sends crossFilterLinks as-is and caches it for later reads`).
+## Concerns
 
-## Deviation from the brief (necessary, not optional)
+None. The brief's assumed code (routes.py structure/import ordering,
+dataset_validation.py's registry pattern, schemas.py's pipeline models,
+`is_etl_enabled()`) all matched the real repository state exactly, so the
+brief's code was used verbatim as instructed with no deviation.
 
-The brief's Step 9 said "Expected: PASS (all tests, including the 3 new ones)" but running the suite after Step 8 surfaced **one pre-existing regression**: the test `"getDatasetConfig reads the dataset payload from the by-item config"` (line ~347) used an exact `toEqual({...})` without a `crossFilterLinks` key. Since `getDatasetConfig` now *always* returns `crossFilterLinks` (defaulting to `[]`, exactly like the existing `timeField`/`reactsToExtent` defaults already did), that pre-existing test's literal expectation was stale. I updated it to add `crossFilterLinks: []` to the expected object — consistent with how `timeField: null, reactsToExtent: false` were already asserted there. No other exact-equality `getDatasetConfig` assertions existed elsewhere (checked the arcgis-shaped test and others — they use partial/property assertions, not full-object `toEqual`).
-
-## Testing / TDD evidence
-
-### RED — AnalyticsContext (Step 2)
-```
-cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
-```
-Result: `Tests  1 failed | 9 passed (10)` — `setCrossFilter stores an optional geometry alongside the entry` failed:
-```
-TestingLibraryElementError: Unable to find an element with the text: /"geometry":\{"type":"Point","coordinates":\[1,2\]\}/
-...
-crossFilter:{"ds1":{"field":"region","value":"Nord","originSourceId":"src1"}}
-```
-Failed for the expected reason: `geometry` was never stored (vitest/esbuild doesn't type-check at runtime, so the extra 5th arg is silently ignored rather than raising a TS compile error — the resulting *behavioral* failure is the correct RED signal here). The second new test (`...omits the field entirely`) passed trivially both before and after — expected, since it asserts the absence of `geometry`, which was already true pre-change.
-
-### GREEN — AnalyticsContext (Step 4)
-```
-cd shell && npx vitest run src/builder/AnalyticsContext.test.tsx
-```
-Result: `Test Files  1 passed (1)` / `Tests  10 passed (10)`.
-
-### RED — itemClient (Step 7)
-```
-cd shell && npx vitest run src/api/itemClient.test.ts
-```
-Result: `Tests  2 failed | 100 passed (102)`.
-- `getDatasetConfig includes crossFilterLinks from the wire response`: `expected undefined to deeply equal [ { targetDatasetId: 'ds-2', … } ]`
-- `getDatasetConfig defaults crossFilterLinks to an empty array when absent from the wire`: `expected undefined to deeply equal []`
-
-(The third new test, `saveDatasetConfig sends crossFilterLinks as-is...`, passed even pre-implementation because it only asserts the outbound PUT body — which already carried `crossFilterLinks` through untouched, since `saveDatasetConfig` just forwards the `config` object as-is into the request body; the read/round-trip side is what needed implementing.)
-
-### GREEN — itemClient (Step 9, plus regression fix)
-```
-cd shell && npx vitest run src/api/itemClient.test.ts
-```
-Result: `Test Files  1 passed (1)` / `Tests  102 passed (102)`.
-
-### Type check
-```
-cd shell && npx tsc --noEmit
-```
-Result: no output (clean).
-
-### Full suite (Step 10)
-```
-cd shell && npm run test
-```
-Result: `Test Files  110 passed (110)` / `Tests  856 passed (856)`. (Some stderr noise from an unrelated pre-existing CEL-parse-error test in `exprBindings.test.ts` — expected error-path logging, not a failure.)
-
-## Files changed
-- `/home/lenen/projets/geostudio/shell/src/api/types.ts`
-- `/home/lenen/projets/geostudio/shell/src/builder/AnalyticsContext.tsx`
-- `/home/lenen/projets/geostudio/shell/src/api/itemClient.ts`
-- `/home/lenen/projets/geostudio/shell/src/builder/AnalyticsContext.test.tsx`
-- `/home/lenen/projets/geostudio/shell/src/api/itemClient.test.ts`
-
-Commit: `7e1bde4` — `feat(shell): CrossFilterLink type, cross-filter geometry, dataset round-trip (SP-14n)`
-
-## Self-review
-
-- **Completeness**: all 11 steps of the brief done, including the commit.
-- **Quality**: names and shapes mirror the brief exactly (`CrossFilterLink`, `crossFilterLinks`, `geometry`), matching the core's `DatasetCrossFilterLink` field-for-field as required for Task 5/6 consumers.
-- **Discipline**: no scope creep — only touched the 5 files named in the brief, plus the one necessary pre-existing-test fix (documented above) required to keep the suite green; no other files touched.
-- **Testing**: TDD followed (RED confirmed before GREEN for both test files); `tsc --noEmit` clean; full suite green with no regressions.
-
-## Issues or concerns
-
-None. The one deviation (fixing the stale pre-existing `toEqual` assertion in `itemClient.test.ts`) is a minimal, necessary consistency fix flagged explicitly above, not a silent change.
+One thing worth flagging for whoever does Task 5: `validate_pipeline_payload`
+raises `HTTPException(422, "unknown op '<op>'")` for any node whose `op` has
+no registered validator. Right now (before Task 5 registers the real op
+validators) that means *any* pipeline node using a real op other than the two
+faked in this task's test fixture will 422 in production — this is expected
+and intentional per the brief (Task 5 registers `reader.collection`,
+`writer.collection`, `transform.filter`, etc. via
+`register_pipeline_node_validator`, imported for side effect by `app.main`).
+Not a defect, just noting the current window where pipeline configs cannot
+actually be saved end-to-end until Task 5 lands.
 
 ## Status: DONE

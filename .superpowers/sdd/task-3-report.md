@@ -1,154 +1,87 @@
-# Task 3 Report: Core — `crossFilterLinks` on `DatasetPayload`
+# Task 3 Report: Pipeline Op Catalogue (8 data-only ops)
 
 ## Summary
+Successfully completed Task 3 of the SP-15a plan. Created the Phase 1 pipeline op catalogue with 8 data-only operations, passing all tests.
 
-Successfully implemented the `crossFilterLinks` field on `DatasetPayload` with discriminated-union schema for cross-filter links between datasets. The field accepts an optional list of attribute-based or spatial link configurations, each with mode-specific validation.
+## Files Created
+- `core/app/pipelines/__init__.py` (empty module, license header only)
+- `core/app/pipelines/ops/__init__.py` (empty module, license header only)
+- `core/app/pipelines/ops/schemas.py` (8 Pydantic param classes + 3 exported functions)
+- `core/tests/test_pipeline_ops_schemas.py` (comprehensive test suite)
 
-## What Was Implemented
+## Implementation
 
-### Interfaces Added
+### Op Catalogue Structure
+Created `core/app/pipelines/ops/schemas.py` with:
 
-1. **`DatasetCrossFilterLinkAttribute`** — attribute-based cross-filter link:
-   - `mode: Literal["attribute"] = "attribute"` (discriminator)
-   - `targetDatasetId: str` — dataset to filter
-   - `sourceField: str` — column in this dataset
-   - `targetField: str` — column in target dataset
+1. **8 Pydantic param classes**:
+   - `ReaderCollectionParams` — (collectionId: str)
+   - `TransformFilterParams` — (expr: str)
+   - `TransformSelectParams` — (columns: dict[str, str | None] with default empty)
+   - `TransformDeriveParams` — (column: str, expr: str)
+   - `TransformAggregateParams` — (groupBy: list, metrics: dict with defaults)
+   - `TransformJoinParams` — (withCollectionId: str, on: str, how: Literal["inner", "left"] default="inner")
+   - `WriterCollectionParams` — (collectionId: str)
+   - `WriterExportParams` — (format: Literal["geojson", "csv"], key: str)
 
-2. **`DatasetCrossFilterLinkSpatial`** — spatial cross-filter link:
-   - `mode: Literal["spatial"] = "spatial"` (discriminator)
-   - `targetDatasetId: str` — dataset to filter
-   - `precision: Literal["bbox", "exact"] = "bbox"` — defaults to bbox
+2. **OP_KINDS registry**: Maps op names to phase (reader/transform/writer)
 
-3. **`DatasetCrossFilterLink`** — discriminated union type alias:
-   - Pydantic `Field(discriminator="mode")` routing on `mode` field
-   - Rejects unknown modes at validation time
+3. **OP_PARAMS registry**: Maps op names to their Pydantic model class
 
-4. **`DatasetPayload.crossFilterLinks`** — list field:
-   - Type: `list[DatasetCrossFilterLink]`
-   - Default: `[]` (empty list via `Field(default_factory=list)`)
+4. **parse_op_params(op: str, params: dict) -> BaseModel**: Validates and instantiates params, raises ValueError for unknown ops
 
-### Files Modified
+5. **ops_catalog() -> dict[str, dict]**: Exports JSON Schema for all ops, includes kind and paramsSchema
 
-- **`core/app/configs/schemas.py`**
-  - Line 2: Added `Annotated` to imports
-  - Lines 95–111: Inserted three new model classes + type alias
-  - Line 122: Added `crossFilterLinks` field to `DatasetPayload`
-
-- **`core/tests/test_dataset_config_schema.py`**
-  - Lines 83–125: Appended 5 new tests (84 lines total)
+### Design Decisions
+- Expressions (filter.expr, derive.expr, aggregate.metrics) are intentionally stored as strings — semantic validation happens later in `app.pipelines.expr_validation`, not here
+- This module only validates the FORM of parameters, not their semantics
+- JSON Schema export ready for UI consumption via GET /pipelines/ops (SP-15b)
 
 ## Testing
 
-### TDD Sequence
-
-#### RED Phase (Failing Tests)
-
-Command:
-```
-cd core && uv run pytest tests/test_dataset_config_schema.py -k cross_filter -v
+### Test Run
+```bash
+cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
 ```
 
-**Exit:** 1 (FAILED)
-**Output:** 5 FAILED (attribute and mode errors):
-- `test_dataset_config_cross_filter_links_default_empty`: `AttributeError: 'DatasetPayload' object has no attribute 'crossFilterLinks'`
-- `test_dataset_config_attribute_cross_filter_link`: Same AttributeError (field does not exist)
-- `test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision`: Same AttributeError
-- `test_dataset_config_spatial_cross_filter_link_exact_precision`: Same AttributeError
-- `test_dataset_config_cross_filter_link_unknown_mode_rejected`: `Failed: DID NOT RAISE ValidationError` (Pydantic silently drops unknown field by default)
+**Result: 15 tests PASSED**
 
-**Reason for Failure (Expected):** Schema models did not yet define `crossFilterLinks` field or discriminated union types.
-
-#### GREEN Phase (Passing Tests)
-
-Command:
-```
-cd core && uv run pytest tests/test_dataset_config_schema.py -v
-```
-
-**Exit:** 0 (PASSED)
-**Output:** 14 passed (9 existing + 5 new)
-
-```
-tests/test_dataset_config_schema.py::test_dataset_config_valide PASSED   [  7%]
-tests/test_dataset_config_schema.py::test_dataset_config_sans_payload_rejete PASSED [ 14%]
-tests/test_dataset_config_schema.py::test_dataset_config_colonnes_optionnelles PASSED [ 21%]
-tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_optional PASSED [ 28%]
-tests/test_dataset_config_schema.py::test_dataset_config_time_field_and_reacts_to_extent_default PASSED [ 35%]
-tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_valide PASSED [ 42%]
-tests/test_dataset_config_schema.py::test_dataset_config_collection_source_sans_collection_id_rejete PASSED [ 50%]
-tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete PASSED [ 57%]
-tests/test_dataset_config_schema.py::test_dataset_config_arcgis_source_avec_collection_id_rejete PASSED [ 64%]
-tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_links_default_empty PASSED [ 71%]
-tests/test_dataset_config_schema.py::test_dataset_config_attribute_cross_filter_link PASSED [ 78%]
-tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_defaults_to_bbox_precision PASSED [ 85%]
-tests/test_dataset_config_schema.py::test_dataset_config_spatial_cross_filter_link_exact_precision PASSED [ 92%]
-tests/test_dataset_config_schema.py::test_dataset_config_cross_filter_link_unknown_mode_rejected PASSED [100%]
-
-============================== 14 passed in 0.20s ==============================
-```
-
-### Full Suite Regression Test
-
-Command:
-```
-cd core && uv run pytest -q
-```
-
-**Exit:** 0 (PASSED)
-**Result:** `888 passed, 114 skipped in 130.41s`
-
-Confirms additive change with no regressions — existing payloads without `crossFilterLinks` validate identically, and 5 new tests integrated successfully.
-
-## Test Coverage
-
-All 5 new tests exercise required behavior:
-
-1. **Default empty list** — `crossFilterLinks` omitted defaults to `[]`
-2. **Attribute link with all fields** — roundtrip validation of mode-specific fields
-3. **Spatial link with default precision** — `precision` omitted defaults to `"bbox"`
-4. **Spatial link with explicit precision** — custom `"exact"` precision accepted
-5. **Unknown mode rejection** — discriminator rejects invalid `mode` values at validation time
-
-## Self-Review Findings
-
-### Completeness ✓
-- All three models defined per brief
-- All fields with correct types and defaults
-- Discriminated union correctly configured
-- Field added to `DatasetPayload` at correct position
-- All 5 tests written and passing
-
-### Quality ✓
-- Code follows existing conventions (Pydantic, naming style)
-- Comments added to discriminated union type alias
-- Models reuse `BaseModel` consistently with rest of schema
-- Field defaults use `Field(default_factory=list)` pattern matching codebase
-
-### Discipline ✓
-- No overbuilding — exactly what brief specifies
-- Import statement extended cleanly
-- Insertion point (before `DatasetPayload`) matches existing pattern (type definitions → class that uses them)
-- TDD strictly followed: RED → implement → GREEN → full suite
-
-### No Issues
-- No syntax errors
-- No missing imports
-- No circular dependencies
-- Validation behavior matches test expectations exactly
-- Commit message follows conventional format
+- test_all_eight_phase1_ops_are_registered: PASSED
+- test_op_kind_matches (8 parametrized): ALL PASSED
+  - reader.collection → "reader"
+  - transform.filter → "transform"
+  - transform.select → "transform"
+  - transform.derive → "transform"
+  - transform.aggregate → "transform"
+  - transform.join → "transform"
+  - writer.collection → "writer"
+  - writer.export → "writer"
+- test_parse_op_params_reader_collection: PASSED
+- test_parse_op_params_missing_required_field_raises: PASSED (ValidationError on missing required field)
+- test_parse_op_params_unknown_op_raises: PASSED (ValueError with "unknown op" message)
+- test_transform_join_defaults_how_to_inner: PASSED (default value tested)
+- test_writer_export_requires_format_and_key: PASSED (both fields required)
+- test_ops_catalog_exposes_json_schema_per_op: PASSED (JSON schema present for all ops)
 
 ## Commit
 
 ```
-d98db7c feat(core): crossFilterLinks on DatasetPayload (SP-14n)
+commit 3c5c0e3
+feat(core): add Phase 1 pipeline op catalogue (8 data-only ops)
+
+4 files changed, 158 insertions(+)
+- core/app/pipelines/__init__.py
+- core/app/pipelines/ops/__init__.py
+- core/app/pipelines/ops/schemas.py
+- core/tests/test_pipeline_ops_schemas.py
 ```
 
-Files changed: 2
-- `core/app/configs/schemas.py` — +22 lines (imports, 3 models, type alias, field)
-- `core/tests/test_dataset_config_schema.py` — +43 lines (5 tests)
+## Verification
+- All code transcribed verbatim from brief — no deviations
+- All tests pass on first run after implementation
+- Package structure follows existing conventions
+- SPDX headers correct on all Python files
+- No syntax errors, no missing imports
 
-Total: 64 insertions, 1 deletion
-
-## Concerns
-
-None. Implementation is complete, tested, and ready for Task 4 (shell types).
+## Status
+**DONE** — Task 3 complete, ready for Task 4 (pipeline execution engine)

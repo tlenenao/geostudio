@@ -1,104 +1,71 @@
-## Task 6 Report: Shell — `geomIntersects` in the aggregate request body
+# Task 6 report — Bounded SQL expression validation + DAG compiler (SP-15a)
 
-### What Was Implemented
+## Commit
 
-Modified `buildAggregateBody()` in `shell/src/api/itemClient.ts` (lines 65-67) to forward `query.geomIntersects` (a GeoJSON geometry object) to the request body as `body.geomIntersects`, which the server's DuckDB aggregate endpoint (Task 1) understands and uses for spatial filtering.
+- `4b45ec0` — `feat(core): bounded SQL expression validation + linear+join DAG compiler`
+  (4 files: `core/app/pipelines/expr_validation.py`, `core/app/pipelines/compiler.py`,
+  `core/tests/test_pipeline_expr_validation.py`, `core/tests/test_pipeline_compiler.py`)
 
-**Implementation Details:**
-- Added conditional check: if `query.geomIntersects` exists and is an object, forward it verbatim to the request body
-- Placed immediately after the existing `bbox` handling (line 64), before the generic filters loop
-- The object type guard (`typeof query.geomIntersects === "object"`) ensures only actual geometry objects are forwarded, excluding null/undefined
-- The generic filters loop naturally excludes `geomIntersects` because it only processes string/number/boolean values
+## Signature verification (before writing code)
 
-### Testing Evidence
+Read `core/app/analytics/sql_sandbox.py` first, as instructed, before trusting
+the brief. All four consumed names matched the brief exactly, no adjustment
+needed:
+- `parse_ast(conn: duckdb.DuckDBPyConnection, sql: str) -> dict`
+- `validate_select_only(ast: dict) -> None`
+- `collect_table_refs(ast: dict) -> set[str]`
+- `SqlSandboxError(Exception)`
 
-#### RED (Failing Test)
+Also checked `app.configs.schemas.PipelineNode`/`PipelineEdge` (fields `id`,
+`kind`, `op`, `params`, `x`/`y`, `title`; `PipelineEdge.from_` aliased to
+`"from"`, `populate_by_name=True`) and the six `Transform*Params` classes in
+`app/pipelines/ops/schemas.py` — both matched the brief's assumptions
+verbatim, no signature drift found.
 
-**Command:** `cd shell && npx vitest run src/api/itemClient.test.ts -t geomIntersects`
+## TDD steps and test commands run
 
-**Result:** Test failed with:
-```
-AssertionError: expected undefined to deeply equal { Object (type, coordinates) }
-```
+1. `core/tests/test_pipeline_expr_validation.py` written verbatim from brief.
+   - `cd core && uv run pytest tests/test_pipeline_expr_validation.py -v`
+     → FAIL as expected: `ModuleNotFoundError: No module named 'app.pipelines.expr_validation'`.
+   - Implemented `core/app/pipelines/expr_validation.py` verbatim from brief.
+   - Re-ran same command → **5 passed**.
+2. `core/tests/test_pipeline_compiler.py` written verbatim from brief.
+   - `cd core && uv run pytest tests/test_pipeline_compiler.py -v`
+     → FAIL as expected: `ModuleNotFoundError: No module named 'app.pipelines.compiler'`.
+   - Implemented `core/app/pipelines/compiler.py` verbatim from brief.
+   - Re-ran same command → **12 passed** (brief's step 8 comment says "11
+     tests green" — an off-by-one in the brief's narration; the test file it
+     specifies verbatim actually contains 12 test functions and all 12 pass.
+     Not a code defect, just a stale count in the brief text — noted, not
+     acted on since the brief's code block is authoritative and matched).
+3. Full suite: `cd core && uv run pytest -q` → **941 passed, 114 skipped**
+   (no regressions elsewhere).
+4. Import-boundary lint: `cd core && uv run lint-imports` → **1 kept, 0
+   broken** (layered architecture contract intact — the two new modules sit
+   under `app.pipelines`, consuming `app.analytics.sql_sandbox`,
+   `app.configs.schemas`, `app.pipelines.ops.schemas`, all within the
+   allowed layering).
+5. No `ruff`/`black`/`mypy` configured in `core/pyproject.toml` beyond
+   `import-linter`, so no additional lint step applied.
 
-**Why Expected:** `buildAggregateBody` was not yet handling `query.geomIntersects`, so the posted body did not include it.
+## Commit hygiene note
 
-**Test Added:** Append to `itemClient.test.ts` line 924:
-```typescript
-test("queryDataSource sends a geomIntersects query key as body.geomIntersects", async () => {
-  const geom = { type: "Point", coordinates: [1, 2] };
-  let posted: { geomIntersects?: unknown } | undefined;
-  server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
-      posted = (await request.json()) as { geomIntersects?: unknown };
-      return HttpResponse.json({ categoryKey: "group", rows: [] });
-    }),
-  );
-  await makeClient().queryDataSource({
-    id: "src-1", type: "statistics", service: "core", layer: "villes",
-    query: { groupBy: "region", agg: "count", geomIntersects: geom },
-  });
-  expect(posted!.geomIntersects).toEqual(geom);
-});
-```
+`git status` before staging showed several pre-existing modified/untracked
+files under `.superpowers/sdd/*` and `docs/superpowers/*` (task briefs/reports
+from earlier SP-15a tasks, plus unrelated new plan/spec docs from other work).
+These were left untouched; only the 4 files named in the brief's Step 9 were
+`git add`ed and committed, per the known `.superpowers/sdd/` tracking gotcha
+noted in prior session memory (SP-14m notes).
 
-#### GREEN (Passing Test)
+Also found: this report file (`task-6-report.md`) already existed on disk
+before this task ran, containing a stale report from an unrelated prior plan
+run (a shell `geomIntersects` task, commit `1e9f120`, SP-14n numbering). That
+is expected filename reuse across different plan executions in this repo's
+`.superpowers/sdd/` scratch area — this file now holds SP-15a Task 6's report
+instead.
 
-**Command:** `cd shell && npx vitest run src/api/itemClient.test.ts -t geomIntersects`
+## Concerns
 
-**Result:** Test passed:
-```
- ✓ src/api/itemClient.test.ts (103 tests | 102 skipped) 68ms
- ✓ queryDataSource sends a geomIntersects query key as body.geomIntersects
-```
-
-**Full Test Suite:** `cd shell && npm run test`
-
-**Result:** All tests passed:
-```
- Test Files  111 passed (111)
-      Tests  868 passed (868)
-```
-
-### Files Changed
-
-1. **shell/src/api/itemClient.ts** (lines 65-67)
-   - Added `geomIntersects` forwarding in `buildAggregateBody()`
-
-2. **shell/src/api/itemClient.test.ts** (lines 926-940)
-   - Added test case for `geomIntersects` parameter forwarding
-
-### Self-Review Findings
-
-**Completeness:** ✓ All steps from the brief completed
-- ✓ Test written and failing
-- ✓ Implementation added
-- ✓ Test passes
-- ✓ Full suite passes
-- ✓ Commit created
-
-**Quality:** ✓ Clean, idiomatic implementation
-- Implementation follows the existing pattern used for `bbox` handling
-- Type guard (`typeof ... === "object"`) prevents accidental forwarding of non-geometry values
-- Minimal change: only 3 lines added
-- No changes to STAT_KEYS or other configuration needed
-- Generic filters loop automatically excludes it (object type exclusion)
-
-**Discipline:** ✓ No overbuilding
-- Exactly what the brief specified
-- No extra features or unnecessary changes
-- Consistent with the codebase style
-
-**Testing:** ✓ Real behavior verified
-- TDD followed: RED → GREEN
-- Test captures the exact scenario: geometry object forwarded to request body
-- Integration verified with full suite
-- No regressions
-
-### Issues or Concerns
-
-None. The implementation is minimal, correct, and fully tested.
-
----
-
-**Commit:** `1e9f120` — feat(shell): forward geomIntersects to the aggregate request body (SP-14n)
+None functional. The only discrepancy found was the brief's stated expected
+compiler test count ("11 tests green") vs. the actual 12 tests in the file it
+specifies — cosmetic, does not affect correctness or the commit.

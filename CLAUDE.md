@@ -175,16 +175,37 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
   dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
   visuelle** (cf. « À venir »).
+- **SP-15a** — Pipeline : socle headless + capacité optionnelle : nouveau
+  document déclaratif `Pipeline` (`BuilderConfig.kind="pipeline"`), catalogue
+  de 8 opérations data-only (`reader.collection`, `transform.filter/select/
+  derive/aggregate/join`, `writer.collection/export`), runtime d'exécution
+  DuckDB nœud par nœud sans fusion (topologie linéaire+join seulement, DAG à
+  embranchements différé), job procrastinate sur une nouvelle file `etl`,
+  capacité instance-wide `CORE_ETL_ENABLED` (défaut `false`) qui coupe toute
+  la surface REST+MCP. Auteur MCP/REST uniquement — pas de canvas visuel
+  (différé SP-15b+). Réutilise verbatim la connexion DuckDB éphémère + le CTE
+  de dédoublonnage CDC GeoParquet (SP-11b), le chemin d'écriture OGC Features
+  (SP-3), le patron de file procrastinate (SP-6a/SP-12c). **A39 : Phase 1
+  (socle headless) du moteur ETL cœur-first livrée** — canvas, spatial +
+  sidecar `qgis_process`, automatisation/déclencheurs restent SP-15b+ (non
+  planifié).
 
 ### À venir
 
 - **SP-14** — seule reste la **requête visuelle** (Filtrer → Joindre →
-  Résumer → Trier compilant vers l'API analytique), bloquée sur SP-15 (le
-  moteur de pipeline qu'elle consommera, A39) ; toutes les autres
+  Résumer → Trier compilant vers l'API analytique) ; le moteur qu'elle
+  consommera est désormais livré (SP-15a, A39), la requête visuelle elle-même
+  reste à construire par-dessus — toujours pas livrée. Toutes les autres
   sous-parties (datasets, contexte global, cross-filter y compris
   inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
   livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
   livrée.
+- **SP-15** — reste : canvas visuel du graphe `Pipeline`, opérations
+  spatiales (buffer, countWithin, intersection, agrégation H3) + sidecar
+  `qgis_process` (GPL, opt-in, profil compose `etl`), automatisation/
+  déclencheurs au-delà de la planification simple. Phases 2–4, non
+  planifiées (SP-15b+ à écrire). Jalon M14 non atteint (seule la Phase 1 est
+  livrée).
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).
