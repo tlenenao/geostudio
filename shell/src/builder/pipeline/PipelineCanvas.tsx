@@ -10,13 +10,20 @@ import type { PipelineEdge, PipelineNode } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, wouldCreateCycle } from "./graphOps";
 
 // Les 5 op transform.* insérables sur une arête (cf. plan Task 6 — clic sur
-// le "+" d'une arête, pas de drag-drop précis sur le tracé SVG).
+// le "+" d'une arête, pas de drag-drop précis sur le tracé SVG). SP-15c
+// ajoute les 5 op spatiales étage 1 ; writer.dataset n'y figure jamais (ce
+// n'est pas une op transform, jamais candidate à cette liste, cf. design §5).
 const INSERTABLE_TRANSFORMS: { op: string; label: string }[] = [
   { op: "transform.filter", label: "Filtrer" },
   { op: "transform.select", label: "Sélectionner" },
   { op: "transform.derive", label: "Dériver" },
   { op: "transform.aggregate", label: "Agréger" },
   { op: "transform.join", label: "Joindre" },
+  { op: "transform.buffer", label: "Buffer" },
+  { op: "transform.reproject", label: "Reprojeter" },
+  { op: "transform.intersection", label: "Intersection" },
+  { op: "transform.countWithin", label: "Compter dans" },
+  { op: "transform.h3Aggregate", label: "Agréger H3" },
 ];
 
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {

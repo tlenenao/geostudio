@@ -88,3 +88,14 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
   fireEvent.click(screen.getByRole("menuitem", { name: "Filtrer" }));
   expect(onInsertOnEdge).toHaveBeenCalledWith("e1", "transform.filter");
 });
+
+test("the edge insertion menu offers the 5 spatial transform ops", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
+  for (const label of ["Buffer", "Reprojeter", "Intersection", "Compter dans", "Agréger H3"]) {
+    expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+  }
+});
