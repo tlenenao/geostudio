@@ -32,19 +32,23 @@ from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
+from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
-from app.configs.schemas import PipelineNode, PipelinePayload
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
 from app.features.repository import insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
+from app.items import repository as items_repo
 from app.pipelines import compiler
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams, TransformAggregateParams, TransformCountWithinParams,
     TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, WriterCollectionParams, WriterExportParams,
+    TransformIntersectionParams, TransformJoinParams, WriterCollectionParams,
+    WriterDatasetParams, WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
@@ -351,6 +355,74 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
     return NodeStat(node.id, node.op, count)
 
 
+def _write_dataset(
+    session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User,
+) -> NodeStat:
+    p = WriterDatasetParams.model_validate(node.params)
+    # Réutilise _write_collection TEL QUEL (même chemin d'écriture OGC
+    # Features) : writer.dataset n'introduit aucune primitive d'écriture, il
+    # catalogue seulement le résultat comme item "dataset" ensuite (design
+    # §4 point 1). Le node synthétique porte le même id que node.id : c'est
+    # ainsi que _write_collection retrouve la bonne entrée de view_by_node
+    # (posée par l'appelant, run_pipeline, avant le dispatch).
+    collection_node = PipelineNode(
+        id=node.id, kind="writer", op="writer.collection", params={"collectionId": p.collectionId},
+    )
+    write_stat = _write_collection(
+        session, conn, node=collection_node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+    )
+
+    if p.datasetId is not None:
+        facts = items_repo.get_access_facts(session, tenant_id=tenant_id, item_id=p.datasetId)
+        if facts is None or not can(session, user_id=user.id, action="write", item=facts):
+            raise PipelineRuntimeError(f"dataset '{p.datasetId}' is not writable")
+        existing = configs_repo.get_config_by_item(session, p.datasetId)
+        if existing is None or existing.config.kind != "dataset":
+            raise PipelineRuntimeError(f"dataset '{p.datasetId}' not found")
+        current = existing.config.dataset
+        assert current is not None
+        # Reconstruit un DatasetPayload frais (pas model_copy sur lui-même) :
+        # source/collectionId changent, tout le reste (columns, timeField,
+        # reactsToExtent, crossFilterLinks) est copié tel quel, jamais
+        # régénéré par le run (design §4).
+        updated_dataset = DatasetPayload(
+            source="collection", collectionId=p.collectionId,
+            columns=current.columns, timeField=current.timeField,
+            reactsToExtent=current.reactsToExtent, crossFilterLinks=current.crossFilterLinks,
+        )
+        # model_copy (pas de re-validation) est sûr ici : seul le champ
+        # "dataset" change, et il porte déjà un DatasetPayload fraîchement
+        # validé par son propre constructeur ci-dessus ; le reste de
+        # existing.config a déjà été validé lors de sa sauvegarde d'origine.
+        updated_config = existing.config.model_copy(update={"dataset": updated_dataset})
+        configs_repo.update_config(session, existing.id, updated_config, tenant_id=tenant_id)
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="config.update", object_type="config", object_id=existing.id,
+            payload={"pipelineNodeId": node.id},
+        )
+    else:
+        assert p.title is not None  # enforced by WriterDatasetParams' model_validator
+        item = items_repo.create_item(
+            session, tenant_id=tenant_id, owner_id=user.id, resource_type="dataset", title=p.title,
+        )
+        new_config = BuilderConfig(
+            kind="dataset", dataset=DatasetPayload(source="collection", collectionId=p.collectionId),
+        )
+        config_result = configs_repo.create_config(session, new_config, item_id=item.id, tenant_id=tenant_id)
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="item.create", object_type="item", object_id=item.id,
+            payload={"title": p.title},
+        )
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="config.create", object_type="config", object_id=config_result.id,
+            payload={"title": p.title, "kind": "dataset"},
+        )
+    return NodeStat(node.id, node.op, write_stat.rowCount)
+
+
 def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
@@ -416,6 +488,10 @@ def run_pipeline(
             elif node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
                 stats.append(_write_export(conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node))
+            elif node.op == "writer.dataset":
+                stats.append(_write_dataset(
+                    session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+                ))
         return stats
     finally:
         conn.close()
