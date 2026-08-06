@@ -1,174 +1,103 @@
-# Task 1 report — QGIS algorithm allowlist (generator + frozen schema)
+# Task 1 Report: Encryption primitive — `core/app/secrets/crypto.py`
 
-## Status: DONE (supersedes the earlier BLOCKED status below)
+## Summary
 
-The coordinator independently re-verified my two most consequential
-findings from the first pass (`grass7:*` vs `grass:*`, and the
-nonexistent `native:selectbyattribute`), the human decided the
-replacement (`native:polygonstolines`), and the plan document + task
-brief were corrected and regenerated. This report covers the completed
-run against the corrected brief. The original BLOCKED writeup is kept
-below for the record.
+Task 1 complete. Implemented the encryption primitive module (`app.secrets.crypto`) providing AES-256-GCM encryption/decryption for connector secrets, with master key loading from environment variable. All 6 tests pass, layering contract held, commit created.
 
-## What I implemented (second pass, against the corrected brief)
+## What Was Implemented
 
-1. Rewrote `scripts/generate_qgis_algorithm_schemas.py` to match the
-   regenerated brief exactly: corrected `ALLOWLIST_IDS` (6 prefix fixes +
-   `native:polygonstolines` swap), and the grass7-aware `fetch_schema()`
-   that chains `qgis_process plugins enable grassprovider` into the same
-   `docker run` invocation as `help` for any `grass7:*` id (verified
-   during Task 1's first pass that plugin-enable state does not survive
-   across separate `--rm` containers).
-2. Ran it for real against the pinned `qgis/qgis:release-3_34` image
-   (already present locally, digest
-   `sha256:8b976abef2e2f9376612b7597cca8b686338fa064f28d61dada167f8b17690cf`).
-   First run hit a **new** shape issue not covered by the brief: for
-   `qgis:tininterpolation` and `qgis:idwinterpolation`, the
-   `INTERPOLATION_DATA` parameter's `"type"` field is a bare string
-   (`"idw_interpolation_data"`) instead of the usual `{"id": ..., ...}`
-   dict that every other parameter across all 50 algorithms uses. This
-   crashed `fetch_schema()` at `p.get("type", {}).get("id", ...)` with
-   `AttributeError: 'str' object has no attribute 'get'`.
+1. **`core/app/secrets/__init__.py`** — Package marker with SPDX header
+2. **`core/app/secrets/crypto.py`** — AES-256-GCM encryption primitive with three functions:
+   - `load_master_key() -> bytes` — reads `CORE_SECRETS_MASTER_KEY` from environment, validates as 32-byte base64-encoded key; raises `KeyError` if missing, `RuntimeError` if malformed or wrong size
+   - `encrypt(payload: dict) -> tuple[bytes, bytes]` — encrypts dict to JSON, returns (ciphertext, nonce) pair with random 12-byte nonce
+   - `decrypt(ciphertext: bytes, nonce: bytes) -> dict` — decrypts ciphertext using matching nonce, returns original dict; raises `InvalidTag` if tampered or wrong key
+3. **`core/pyproject.toml`** — Two changes:
+   - Added `cryptography>=42.0` as direct dependency (was already present transitively via `pyjwt[crypto]`)
+   - Added `"app.secrets"` to import-linter layers list (between `"app.pipelines"` and `"app.ingestion"`)
+4. **`core/tests/test_secrets_crypto.py`** — 6 comprehensive test cases covering encrypt/decrypt round-trip, tampered ciphertext rejection, wrong-key rejection, and key validation (missing, malformed base64, wrong length)
 
-   Unlike the allowlist-id problem, I judged this fixable in place rather
-   than an escalation: it's a narrow, mechanical, backward-compatible
-   normalization (`_type_id()` helper: dict → `.get("id")`, string → the
-   string itself, anything else → `"unknown"`) that doesn't change the
-   `{"type": str}` output contract Task 2/6 consume, and doesn't touch
-   any of the id/decision questions that were the reason for the earlier
-   escalation. Added it to `fetch_schema()` and reran clean.
-3. Full run: 50/50 `fetching ...` lines, then
-   `wrote 50 algorithms to .../qgis_algorithms.json`. Verified no
-   `"unknown"` type leaked into the final file (grep across all 50
-   entries × their parameters — zero matches).
-4. Spot-checks (Step 2), all matched:
-   - `native:simplifygeometries` params: `['INPUT', 'METHOD', 'OUTPUT', 'TOLERANCE']`
-   - `native:centroids` params: `['ALL_PARTS', 'INPUT', 'OUTPUT']`
-   - `native:dissolve.FIELD.optional` = `True`
-   - `grass7:r.watershed.name` = `"r.watershed"`, `native:polygonstolines.name` = `"Polygons to lines"`
-   - `qgis:tininterpolation.INTERPOLATION_DATA.type` = `"idw_interpolation_data"` (confirms the shape fix produced the intended value, not `"unknown"`)
-5. Wrote the thin loader `core/app/pipelines/ops/qgis_algorithms.py`
-   exactly as specified (verbatim from the brief).
-6. Wrote `core/tests/test_pipeline_qgis_algorithms.py` with the corrected
-   `EXPECTED_IDS` set (verbatim from the regenerated brief).
+## TDD Evidence
 
-## Testing
-
+### RED Phase (Before Implementation)
 ```
-$ cd core && uv run pytest tests/test_pipeline_qgis_algorithms.py -v
+$ cd core && uv run pytest tests/test_secrets_crypto.py -v
+...
+ERROR tests/test_secrets_crypto.py
+ModuleNotFoundError: No module named 'app.secrets'
+```
+Test collection failed as expected before module creation.
+
+### GREEN Phase (After Implementation)
+```
+$ cd core && uv run pytest tests/test_secrets_crypto.py -v
 ============================= test session starts ==============================
-collected 6 items
+tests/test_secrets_crypto.py::test_encrypt_decrypt_round_trip PASSED     [ 16%]
+tests/test_secrets_crypto.py::test_decrypt_rejects_tampered_ciphertext PASSED [ 33%]
+tests/test_secrets_crypto.py::test_decrypt_rejects_wrong_key PASSED      [ 50%]
+tests/test_secrets_crypto.py::test_load_master_key_missing_raises PASSED [ 66%]
+tests/test_secrets_crypto.py::test_load_master_key_malformed_base64_raises PASSED [ 83%]
+tests/test_secrets_crypto.py::test_load_master_key_wrong_length_raises PASSED [100%]
 
-tests/test_pipeline_qgis_algorithms.py::test_allowlist_has_exactly_fifty_algorithms PASSED [ 16%]
-tests/test_pipeline_qgis_algorithms.py::test_allowlist_matches_expected_ids PASSED [ 33%]
-tests/test_pipeline_qgis_algorithms.py::test_each_entry_has_name_and_nonempty_parameters PASSED [ 50%]
-tests/test_pipeline_qgis_algorithms.py::test_simplify_required_params_match_spike_findings PASSED [ 66%]
-tests/test_pipeline_qgis_algorithms.py::test_centroids_required_params_match_spike_findings PASSED [ 83%]
-tests/test_pipeline_qgis_algorithms.py::test_dissolve_field_param_is_optional PASSED [100%]
-
-============================== 6 passed in 0.04s ===============================
+============================== 6 passed in 0.05s ===============================
 ```
+All 6 tests pass.
 
-Also ran the full core suite to check for collateral breakage:
+## Files Changed
+
+- **Created:** `core/app/secrets/__init__.py`
+- **Created:** `core/app/secrets/crypto.py`
+- **Created:** `core/tests/test_secrets_crypto.py`
+- **Modified:** `core/pyproject.toml` (dependencies + import-linter layers)
+- **Modified:** `core/uv.lock` (auto-generated, no cryptography version change)
+
+## Layering Contract Verification
 
 ```
-$ cd core && uv run pytest -q
-1013 passed, 122 skipped in 63.99s (0:01:03)
+$ cd core && uv run lint-imports
+...
+Contracts: 1 kept, 0 broken.
 ```
+Import-linter contract verified clean. No cross-module imports in `crypto.py`; only stdlib (`base64`, `json`, `os`) and external (`cryptography`). Layer insertion `"app.secrets"` is syntactically valid.
 
-(122 skipped are the pre-existing postgis/docker-marked tests, unrelated
-to this task.)
+## Self-Review Against Brief
 
-## TDD note
+✅ **Step 1:** Test file content matches brief exactly (lines 21–73)  
+✅ **Step 2:** Tests fail with expected `ModuleNotFoundError` before implementation  
+✅ **Step 3:** `cryptography>=42.0` added correctly after `pyjwt[crypto]>=2.8`, with full comment  
+✅ **Step 4:** `"app.secrets"` inserted in layers list between `"app.pipelines"` and `"app.ingestion"`  
+✅ **Step 5:** Module implementation matches brief exactly:
+  - `__init__.py` is single SPDX header line
+  - `crypto.py` docstring, constants, three functions, all verbatim  
+  - No extra scope, no modifications
+✅ **Step 6:** Layering contract holds (1 kept, 0 broken)  
+✅ **Step 7:** All 6 tests pass  
+✅ **Step 8:** Commit message exact: `"feat(core): secrets module — AES-GCM encryption primitive"`  
 
-This is the one task in the plan where generation precedes the test (per
-the brief): the JSON was produced by the offline generator in Step 2,
-and the tests written in Step 4 lock in what got generated rather than
-driving new production code. There is no RED phase for the test file
-itself — it was green on first run. The actual "red" moments in this
-task were the two `CalledProcessError`/`AttributeError` crashes during
-generation (bad ids, then the string-type shape), both diagnosed and
-fixed before the JSON was ever written.
+## Code Quality
 
-## Files changed (committed: `7c950ac`)
+- **Encryption:** AES-256-GCM per spec, AESGCM from `cryptography.hazmat.primitives.ciphers.aead`, random 12-byte nonce per operation
+- **Key Management:** Strict validation — 32-byte requirement, base64 decode with `validate=True`, fail-fast on missing/malformed key, never logged (docstring warning in place)
+- **JSON Roundtrip:** Plaintext serialized as JSON UTF-8, decrypted plaintext parsed back to dict
+- **Error Handling:** `KeyError` for missing env var (not caught), `RuntimeError` for malformed key with clear message, `InvalidTag` from cryptography library for tampered ciphertext or wrong key
+- **Test Coverage:** All three public functions covered; error paths (missing key, malformed base64, wrong length, tampering, wrong key) all tested
+- **Documentation:** Docstrings in French per CLAUDE.md, referencing SP-15e design doc
 
-- `scripts/generate_qgis_algorithm_schemas.py` (created) — corrected
-  `ALLOWLIST_IDS`, grass7-aware `fetch_schema()`, `_type_id()`
-  normalization helper (my addition, beyond the brief's literal text,
-  for the tininterpolation/idwinterpolation shape variance).
-- `core/app/pipelines/ops/qgis_algorithms.json` (created, generated) — 50
-  top-level keys, 1958 lines.
-- `core/app/pipelines/ops/qgis_algorithms.py` (created) — thin loader,
-  verbatim from brief.
-- `core/tests/test_pipeline_qgis_algorithms.py` (created) — 6 tests,
-  verbatim `EXPECTED_IDS` from the regenerated brief.
+## Issues or Concerns
 
-Not touched: any file outside this list (no shell/, no other core/
-files). The plan document, progress ledger, and other task briefs shown
-as modified in `git status` were edited by the coordinator, not by me —
-left uncommitted/untouched on purpose since they're outside this task's
-file list.
+None. Task is complete and correct per brief:
+- No ambiguities encountered
+- No dependencies on other tasks (crypto.py is standalone)
+- All steps followed verbatim
+- All verification gates passed
+- Ready for Task 2 and beyond
 
-## Self-review
+## Commit
 
-- Completeness: all 6 steps done, 50/50 algorithms generated for real
-  (no mocking/fabrication — every id round-tripped through a real
-  `docker run` against the pinned image), all 6 tests pass for real.
-- Quality: the one deviation from the brief's literal code
-  (`_type_id()`) is minimal, documented inline in French matching the
-  file's existing comment style, and doesn't change the public
-  `QGIS_ALGORITHMS` shape.
-- Discipline: no files touched outside the task's 4-file list; commit
-  scoped to exactly those 4 files via `git commit -- <paths>` even though
-  `git status` shows many other modified/untracked files from the
-  broader plan-correction work.
-- Testing: `test_each_entry_has_name_and_nonempty_parameters` asserts
-  `param["type"]` is a `str` for every parameter of every one of the 50
-  real algorithms — this is what would have caught the tininterpolation
-  shape bug had I not caught it manually during generation (since
-  `_type_id()` never returns non-str). Ran pristine (no `--lf`/cache
-  tricks), plus a full-suite run for collateral-damage detection.
-
-## Concerns
-
-- None blocking. One judgment call worth flagging: I fixed the
-  tininterpolation/idwinterpolation type-shape bug myself instead of
-  escalating a second time, since it was mechanical and didn't touch the
-  id/policy question that caused the first escalation. If the
-  coordinator wants that kind of fix escalated too in future tasks, say
-  so.
-- `native:extractbyattribute` remains in the (corrected) allowlist
-  unchanged from the original brief — not part of this correction round,
-  just noting it's a real, valid id (confirmed present in `qgis_process
-  list` during the first pass's diff).
+- **SHA:** `2b3f202`
+- **Message:** `feat(core): secrets module — AES-GCM encryption primitive`
+- **Date:** 2026-08-06
 
 ---
 
-## (Superseded) Original BLOCKED report from the first pass
-
-The task brief's `ALLOWLIST_IDS` (verbatim from
-`docs/superpowers/plans/2026-08-06-sp15d-qgis-sidecar.md`) contained 7
-algorithm ids that did not exist under the id/prefix given, verified
-empirically against the actual pinned image `qgis/qgis:release-3_34`:
-
-| Brief id (ALLOWLIST_IDS) | Problem | Real id (verified) |
-|---|---|---|
-| `native:minimumboundinggeometry` | wrong provider prefix | `qgis:minimumboundinggeometry` |
-| `native:heatmapkerneldensityestimation` | wrong provider prefix | `qgis:heatmapkerneldensityestimation` |
-| `native:selectbyattribute` | does not exist at all | (no equivalent found — human decided `native:polygonstolines`) |
-| `grass:r.watershed` | wrong provider prefix | `grass7:r.watershed` |
-| `grass:r.slope.aspect` | wrong provider prefix | `grass7:r.slope.aspect` |
-| `grass:r.fill.dir` | wrong provider prefix | `grass7:r.fill.dir` |
-| `grass:r.flow` | wrong provider prefix | `grass7:r.flow` |
-
-The GRASS finding directly contradicted the plan document's explicit
-claim that "the real GRASS algorithm namespace is `grass:*`, not
-`grass7:*`" — verified via `grep -c grass:` = 0 vs `grep -c grass7:` =
-306 against the same pinned image, and also confirmed `grassprovider` is
-disabled by default and its enabled state doesn't survive across
-separate `docker run --rm` invocations.
-
-I stopped before writing the JSON/loader/tests/commit at that point
-because fixing the "frozen" allowlist was a plan-level decision, not
-something to silently patch. This has since been resolved as described
-above.
+**Status:** DONE  
+**Report written:** 2026-08-06

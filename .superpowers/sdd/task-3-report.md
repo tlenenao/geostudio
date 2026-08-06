@@ -1,90 +1,96 @@
-# Task 3 Report: `compiler.py` — SRID tracking for `transform.qgis`
+# Task 3 report — Data model + migration (`connector_secrets`)
 
-## What Was Implemented
+## What I implemented
 
-Modified `core/app/pipelines/compiler.py` to add SRID tracking for the new `transform.qgis` pipeline operation:
+- `core/app/secrets/models.py` — SQLAlchemy model `ConnectorSecret` mapped to
+  table `connector_secrets`: `id` (PK), `tenant_id` (FK `tenants.id`), `name`,
+  `kind`, `ciphertext` (`LargeBinary`), `nonce` (`LargeBinary`), `created_by`
+  (FK `users.id`), `created_at`/`updated_at` (`DateTime`, UTC defaults via
+  `_now()`), unique constraint `uq_connector_secrets_tenant_name` on
+  `(tenant_id, name)`.
+- `core/alembic/versions/0019_connector_secrets.py` — migration creating the
+  `connector_secrets` table, `down_revision = "0018"` (confirmed `0018` is
+  the current head), mirrors the model schema, `downgrade()` drops the table.
+- `core/app/db.py` — registered `from app.secrets import models as
+  secrets_models  # noqa: F401` in `core_table_names()`, inserted
+  alphabetically between `app.pipelines` and `app.sharing`, exactly as the
+  brief specified.
+- `core/pyproject.toml` — added `"app.db -> app.secrets.models",` to the
+  `ignore_imports` list in the `[[tool.importlinter.contracts]]` block,
+  mirroring the 10 existing per-module exemptions.
+- `core/tests/test_secrets_models.py` — the exact 3-test file from the brief
+  (table registration, row round-trip, unique-per-tenant constraint).
 
-1. **Import Addition**: Added `TransformQgisParams` to the imports from `app.pipelines.ops.schemas`.
+Transcribed verbatim from the brief; no design decisions made.
 
-2. **`transform_output_srid` Branch**: Added a new conditional branch before the final `return input_srid`:
-   - When `op == "transform.qgis"`, validates the `params` dict against `TransformQgisParams` schema
-   - If `outputSrid` is explicitly set (e.g., for reprojecting algorithms like `gdal:warpreproject`), extracts the SRID number from the "EPSG:XXXX" format and returns it as an int
-   - Otherwise, returns `input_srid` unchanged (same-CRS assumption for ~49 non-reprojecting algorithms in the allowlist)
+## TDD evidence
 
-## TDD Evidence
-
-### RED Phase (Asymmetric Failure)
-
-Ran new tests before implementation:
-
+**RED** — before creating `models.py`:
 ```
-tests/test_pipeline_compiler.py::test_transform_output_srid_qgis_passes_through_by_default PASSED [ 50%]
-tests/test_pipeline_compiler.py::test_transform_output_srid_qgis_uses_explicit_output_srid FAILED [100%]
+$ cd core && uv run pytest tests/test_secrets_models.py -v
+...
+ImportError while importing test module '.../tests/test_secrets_models.py'.
+E   ModuleNotFoundError: No module named 'app.secrets.models'
+Interrupted: 1 error during collection
+```
+Matches the brief's expected failure exactly.
+
+**GREEN** — after implementing `models.py`, `db.py`, `pyproject.toml`, and the
+migration:
+```
+$ cd core && uv run pytest tests/test_secrets_models.py -v
+tests/test_secrets_models.py::test_connector_secrets_table_is_registered PASSED [ 33%]
+tests/test_secrets_models.py::test_connector_secret_row_round_trip PASSED [ 66%]
+tests/test_secrets_models.py::test_connector_secret_unique_name_per_tenant PASSED [100%]
+3 passed in 0.16s
 ```
 
-**Asymmetry confirmed**: 
-- First test passed by accident (existing fallthrough `return input_srid` returns 4326, matching the default expectation)
-- Second test failed (current code ignores `outputSrid`, returns 4326 instead of expected 2154)
-
-### GREEN Phase (Both Tests Pass)
-
-After implementation, both targeted tests pass:
-
+**Import-linter**:
 ```
-test_transform_output_srid_qgis_passes_through_by_default PASSED
-test_transform_output_srid_qgis_uses_explicit_output_srid PASSED
+$ cd core && uv run lint-imports
+Analyzed 142 files, 401 dependencies.
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
 ```
 
-Full test suite run confirms no regressions:
-
+**Full suite regression check** (not required by the brief, ran as extra
+diligence):
 ```
-============================== 29 passed in 0.81s ===============================
+$ cd core && uv run pytest -q
+1051 passed, 127 skipped in 68.23s
 ```
+No regressions; skip count matches the usual postgis/qgis-marked baseline.
 
-All 27 existing tests still pass + 2 new tests.
+## Files changed
 
-## Files Changed
+- `core/app/secrets/models.py` (new)
+- `core/alembic/versions/0019_connector_secrets.py` (new)
+- `core/app/db.py` (modified — 1 line added)
+- `core/pyproject.toml` (modified — 1 line added)
+- `core/tests/test_secrets_models.py` (new)
 
-- `core/app/pipelines/compiler.py`
-  - Added `TransformQgisParams` to import block
-  - Added new `if op == "transform.qgis"` branch in `transform_output_srid()` (lines 190-191)
+Commit: `58e4276` — `feat(core): secrets module — connector_secrets table + migration`
+(5 files changed, 127 insertions(+))
 
-- `core/tests/test_pipeline_compiler.py`
-  - Added `test_transform_output_srid_qgis_passes_through_by_default()` (lines 296-302)
-  - Added `test_transform_output_srid_qgis_uses_explicit_output_srid()` (lines 305-318)
+## Self-review findings
 
-## Self-Review Findings
+- Content matches the brief verbatim in all four code files — diffed
+  mentally against the brief's fenced blocks, no deviations.
+- `db.py` insertion point confirmed correct before editing: read the
+  surrounding `core_table_names()` function first, found `pipelines_models`
+  and `sharing_models` exactly where the brief said, inserted between them.
+- `0018` confirmed as the actual alembic head (`down_revision = "0018"` in
+  `0018_pipeline_runs.py`) before writing `0019`'s `down_revision`.
+- Nothing else touched: `git status --short core/` before commit showed only
+  the 5 intended files; `git add` listed them explicitly (no `-A`/`.`).
+- No destructive git commands used; untouched `.superpowers/sdd/*` working-
+  tree modifications (pre-existing, unrelated to this task) were left alone
+  per instructions.
+- Scope discipline: no other model, migration, or module touched; Task 4/5
+  concerns (repository, routes, admin gate) not started.
 
-✓ **Completeness**: All task steps completed.
-  
-✓ **Quality**: Implementation matches brief exactly:
-  - Uses `.model_validate()` for schema validation
-  - Correctly parses "EPSG:XXXX" format via `rsplit(":", 1)[1]`
-  - Converts to int for return value
-  - Preserves `input_srid` when `outputSrid is None`
+## Issues or concerns
 
-✓ **Discipline**:
-  - No changes to other ops' SRID logic
-  - No files added outside the task scope
-  - No modification to unrelated code paths
-
-✓ **Testing**:
-  - Both new tests pass (passing and failing cases covered)
-  - All existing tests pass (no regressions)
-  - Test comments match real `gdal:warpreproject` schema from Task 1
-
-✓ **Verification**:
-  - Ran full test file to confirm no side effects
-  - Import added in correct alphabetical order
-  - Logic is testable, pure (no I/O), and correct
-
-## Issues or Concerns
-
-None. Implementation is complete and verified.
-
-## Commit
-
-```
-[dev 0149e19] feat(core): transform.qgis SRID tracking via explicit outputSrid
- 2 files changed, 31 insertions(+), 2 deletions(-)
-```
+None. All steps in the brief completed exactly as specified, tests pass
+cleanly (3/3 target tests, 1051/1051 non-skipped in the full suite), and
+`lint-imports` is clean.
