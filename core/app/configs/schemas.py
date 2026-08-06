@@ -185,6 +185,10 @@ class PipelineEdge(BaseModel):
     to: str
     when: str | None = None       # CEL, routage conditionnel — accepté mais non
                                    # interprété par le compilateur avant Phase 3/4
+    role: Literal["primary", "secondary"] | None = None  # None ≡ "primary" ;
+        # "secondary" = seconde entrée d'un op binaire (SP-15g §2.2), sans
+        # effet sur tout autre op (rejeté à la validation, app.pipelines.
+        # config_validation)
 
 
 class PipelinePayload(BaseModel):
