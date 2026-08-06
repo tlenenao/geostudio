@@ -1293,3 +1293,107 @@ def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatc
             "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
             "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
         ))
+
+
+def test_preview_merge_via_secondary_edge(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
+            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"},
+            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert {r["id"] for r in rows} == {1, 2}
+
+
+def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, monkeypatch):
+    # Régression : transform.join via arête secondaire doit produire le même
+    # résultat que le chemin withCollectionId existant, pour la même donnée.
+    _write_partition(tmp_path, collection_id="base", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="labels", rows=[_row(1, "x", 0, x=9.0, y=9.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "base"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "labels"}},
+            {"id": "t1", "kind": "transform", "op": "transform.join", "params": {"on": "id"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"},
+            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert len(rows) == 1
+    assert rows[0]["id"] == 1
+    assert rows[0]["region"] == "Nord"  # from r1 — proves the join actually matched on id=1
+
+
+def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+    seen: list[str] = []
+
+    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    ordered, view_by_node, srid_by_node, join_srid_by_node = runtime._prepare(
+        conn, None, payload, tenant_id="t1", user=None, base_uri=str(tmp_path),
+    )
+    runtime._execute_transform_chain(
+        conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+        on_node_complete=lambda stat: seen.append(stat.nodeId),
+    )
+    assert seen == ["r1", "t1"]  # writer node (w1) is handled by run_pipeline, not this function
