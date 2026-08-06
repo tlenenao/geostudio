@@ -221,6 +221,25 @@ def test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guar
     assert "127.0.0.1" in str(exc)
 
 
+def test_materialize_rest_connector_data_url_egress_block_raises_connector_runtime_error(
+    monkeypatch, conn, session, tenant,
+):
+    # Contrepartie du test OAuth2 ci-dessus, mais pour l'URL de DONNÉES (pas
+    # l'URL de jeton) : réactive la VRAIE garde pour ce seul test, cible un
+    # hôte loopback interdit comme baseUrl. Avant Finding #1, cette
+    # EgressBlockedError (enveloppée par dlt en ResourceExtractionError/
+    # PipelineStepFailed) fuyait telle quelle hors de
+    # materialize_rest_connector — ici on vérifie qu'elle ressort traduite en
+    # ConnectorRuntimeError, avec un message qui rend le blocage SSRF aussi
+    # lisible qu'un rejet pré-flight (secret manquant, mauvais type...).
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", _REAL_ASSERT_EGRESS_ALLOWED)
+    params = ReaderConnectorRestParams(baseUrl="http://127.0.0.1:1/", path="items")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="egress blocked"):
+        connector_runtime.materialize_rest_connector(
+            conn, session=session, tenant_id=tenant.id, node_id="r11", params=params, view_name="node_r11",
+        )
+
+
 def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, tenant, httpserver):
     httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
     params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
