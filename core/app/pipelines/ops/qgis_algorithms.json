@@ -1,0 +1,1958 @@
+{
+  "gdal:contour": {
+    "name": "Contour",
+    "parameters": {
+      "BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "CREATE_3D": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "FIELD_NAME": {
+        "default": "ELEV",
+        "optional": true,
+        "type": "string"
+      },
+      "IGNORE_NODATA": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "INTERVAL": {
+        "default": 10.0,
+        "optional": false,
+        "type": "number"
+      },
+      "NODATA": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "OFFSET": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "vectorDestination"
+      }
+    }
+  },
+  "gdal:polygonize": {
+    "name": "Polygonize (raster to vector)",
+    "parameters": {
+      "BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "EIGHT_CONNECTEDNESS": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "FIELD": {
+        "default": "DN",
+        "optional": false,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "vectorDestination"
+      }
+    }
+  },
+  "gdal:proximity": {
+    "name": "Proximity (raster distance)",
+    "parameters": {
+      "BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "DATA_TYPE": {
+        "default": 5,
+        "optional": false,
+        "type": "enum"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "MAX_DISTANCE": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "NODATA": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "OPTIONS": {
+        "default": "",
+        "optional": true,
+        "type": "string"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "REPLACE": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "UNITS": {
+        "default": 1,
+        "optional": false,
+        "type": "enum"
+      },
+      "VALUES": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "gdal:rasterize": {
+    "name": "Rasterize (vector to raster)",
+    "parameters": {
+      "BURN": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "DATA_TYPE": {
+        "default": 5,
+        "optional": false,
+        "type": "enum"
+      },
+      "EXTENT": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "HEIGHT": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "INIT": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "INVERT": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "NODATA": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "OPTIONS": {
+        "default": "",
+        "optional": true,
+        "type": "string"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "UNITS": {
+        "default": null,
+        "optional": false,
+        "type": "enum"
+      },
+      "USE_Z": {
+        "default": false,
+        "optional": true,
+        "type": "boolean"
+      },
+      "WIDTH": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "gdal:sieve": {
+    "name": "Sieve",
+    "parameters": {
+      "EIGHT_CONNECTEDNESS": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "MASK_LAYER": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "NO_MASK": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "THRESHOLD": {
+        "default": 10,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "gdal:viewshed": {
+    "name": "Viewshed",
+    "parameters": {
+      "BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "MAX_DISTANCE": {
+        "default": 100.0,
+        "optional": false,
+        "type": "distance"
+      },
+      "OBSERVER": {
+        "default": null,
+        "optional": false,
+        "type": "point"
+      },
+      "OBSERVER_HEIGHT": {
+        "default": 1.0,
+        "optional": false,
+        "type": "number"
+      },
+      "OPTIONS": {
+        "default": "",
+        "optional": true,
+        "type": "string"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "TARGET_HEIGHT": {
+        "default": 1.0,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "gdal:warpreproject": {
+    "name": "Warp (reproject)",
+    "parameters": {
+      "DATA_TYPE": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "EXTRA": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "MULTITHREADING": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "NODATA": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "OPTIONS": {
+        "default": "",
+        "optional": true,
+        "type": "string"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "RESAMPLING": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "SOURCE_CRS": {
+        "default": null,
+        "optional": true,
+        "type": "crs"
+      },
+      "TARGET_CRS": {
+        "default": null,
+        "optional": true,
+        "type": "crs"
+      },
+      "TARGET_EXTENT": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "TARGET_EXTENT_CRS": {
+        "default": null,
+        "optional": true,
+        "type": "crs"
+      },
+      "TARGET_RESOLUTION": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "grass7:r.fill.dir": {
+    "name": "r.fill.dir",
+    "parameters": {
+      "-f": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "GRASS_RASTER_FORMAT_META": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_RASTER_FORMAT_OPT": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_REGION_CELLSIZE_PARAMETER": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "GRASS_REGION_PARAMETER": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "areas": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "direction": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "format": {
+        "default": 0,
+        "optional": true,
+        "type": "enum"
+      },
+      "input": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "output": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      }
+    }
+  },
+  "grass7:r.flow": {
+    "name": "r.flow",
+    "parameters": {
+      "-3": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-m": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-u": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "GRASS_OUTPUT_TYPE_PARAMETER": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "GRASS_RASTER_FORMAT_META": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_RASTER_FORMAT_OPT": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_REGION_CELLSIZE_PARAMETER": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "GRASS_REGION_PARAMETER": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "GRASS_VECTOR_DSCO": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_VECTOR_EXPORT_NOCAT": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "GRASS_VECTOR_LCO": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "aspect": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "barrier": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "bound": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "elevation": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "flowaccumulation": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "flowlength": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "flowline": {
+        "default": null,
+        "optional": true,
+        "type": "vectorDestination"
+      },
+      "skip": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "grass7:r.slope.aspect": {
+    "name": "r.slope.aspect",
+    "parameters": {
+      "-a": {
+        "default": true,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-e": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-n": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "GRASS_RASTER_FORMAT_META": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_RASTER_FORMAT_OPT": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_REGION_CELLSIZE_PARAMETER": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "GRASS_REGION_PARAMETER": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "aspect": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "dx": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "dxx": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "dxy": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "dy": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "dyy": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "elevation": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "format": {
+        "default": 0,
+        "optional": true,
+        "type": "enum"
+      },
+      "min_slope": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "pcurvature": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "precision": {
+        "default": 0,
+        "optional": true,
+        "type": "enum"
+      },
+      "slope": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "tcurvature": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "zscale": {
+        "default": 1.0,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "grass7:r.watershed": {
+    "name": "r.watershed",
+    "parameters": {
+      "-4": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-a": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-b": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-m": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "-s": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "GRASS_RASTER_FORMAT_META": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_RASTER_FORMAT_OPT": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "GRASS_REGION_CELLSIZE_PARAMETER": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "GRASS_REGION_PARAMETER": {
+        "default": null,
+        "optional": true,
+        "type": "extent"
+      },
+      "accumulation": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "basin": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "blocking": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "convergence": {
+        "default": 5.0,
+        "optional": true,
+        "type": "number"
+      },
+      "depression": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "disturbed_land": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "drainage": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "elevation": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "flow": {
+        "default": null,
+        "optional": true,
+        "type": "raster"
+      },
+      "half_basin": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "length_slope": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "max_slope_length": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "memory": {
+        "default": 300.0,
+        "optional": true,
+        "type": "number"
+      },
+      "slope_steepness": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "spi": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "stream": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "tci": {
+        "default": null,
+        "optional": true,
+        "type": "rasterDestination"
+      },
+      "threshold": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "native:aspect": {
+    "name": "Aspect",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "Z_FACTOR": {
+        "default": 1,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "native:centroids": {
+    "name": "Centroids",
+    "parameters": {
+      "ALL_PARTS": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:clip": {
+    "name": "Clip",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "OVERLAY": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      }
+    }
+  },
+  "native:convexhull": {
+    "name": "Convex hull",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:creategrid": {
+    "name": "Create grid",
+    "parameters": {
+      "CRS": {
+        "default": "ProjectCrs",
+        "optional": false,
+        "type": "crs"
+      },
+      "EXTENT": {
+        "default": null,
+        "optional": false,
+        "type": "extent"
+      },
+      "HOVERLAY": {
+        "default": 0,
+        "optional": false,
+        "type": "distance"
+      },
+      "HSPACING": {
+        "default": 1,
+        "optional": false,
+        "type": "distance"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "TYPE": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "VOVERLAY": {
+        "default": 0,
+        "optional": false,
+        "type": "distance"
+      },
+      "VSPACING": {
+        "default": 1,
+        "optional": false,
+        "type": "distance"
+      }
+    }
+  },
+  "native:delaunaytriangulation": {
+    "name": "Delaunay triangulation",
+    "parameters": {
+      "ADD_ATTRIBUTES": {
+        "default": true,
+        "optional": false,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "TOLERANCE": {
+        "default": 0,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "native:deleteholes": {
+    "name": "Delete holes",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "MIN_AREA": {
+        "default": 0.0,
+        "optional": false,
+        "type": "number"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:densifygeometriesgivenaninterval": {
+    "name": "Densify by interval",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "INTERVAL": {
+        "default": 1,
+        "optional": false,
+        "type": "distance"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:difference": {
+    "name": "Difference",
+    "parameters": {
+      "GRID_SIZE": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "OVERLAY": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      }
+    }
+  },
+  "native:dissolve": {
+    "name": "Dissolve",
+    "parameters": {
+      "FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "SEPARATE_DISJOINT": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      }
+    }
+  },
+  "native:extractbyattribute": {
+    "name": "Extract by attribute",
+    "parameters": {
+      "FAIL_OUTPUT": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      },
+      "FIELD": {
+        "default": null,
+        "optional": false,
+        "type": "field"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OPERATOR": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "VALUE": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:extractbylocation": {
+    "name": "Extract by location",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "INTERSECT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "PREDICATE": {
+        "default": "",
+        "optional": false,
+        "type": "enum"
+      }
+    }
+  },
+  "native:extractvertices": {
+    "name": "Extract vertices",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:fieldcalculator": {
+    "name": "Field calculator",
+    "parameters": {
+      "FIELD_LENGTH": {
+        "default": 0,
+        "optional": false,
+        "type": "number"
+      },
+      "FIELD_NAME": {
+        "default": null,
+        "optional": false,
+        "type": "string"
+      },
+      "FIELD_PRECISION": {
+        "default": 0,
+        "optional": false,
+        "type": "number"
+      },
+      "FIELD_TYPE": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "FORMULA": {
+        "default": null,
+        "optional": false,
+        "type": "expression"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:fixgeometries": {
+    "name": "Fix geometries",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "METHOD": {
+        "default": 1,
+        "optional": false,
+        "type": "enum"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:hillshade": {
+    "name": "Hillshade",
+    "parameters": {
+      "AZIMUTH": {
+        "default": 300,
+        "optional": false,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "V_ANGLE": {
+        "default": 40,
+        "optional": false,
+        "type": "number"
+      },
+      "Z_FACTOR": {
+        "default": 1,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "native:joinattributesbylocation": {
+    "name": "Join attributes by location",
+    "parameters": {
+      "DISCARD_NONMATCHING": {
+        "default": false,
+        "optional": false,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "JOIN": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "JOIN_FIELDS": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "METHOD": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "NON_MATCHING": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      },
+      "PREDICATE": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "PREFIX": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:mergevectorlayers": {
+    "name": "Merge vector layers",
+    "parameters": {
+      "CRS": {
+        "default": null,
+        "optional": true,
+        "type": "crs"
+      },
+      "LAYERS": {
+        "default": null,
+        "optional": false,
+        "type": "multilayer"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:multiparttosingleparts": {
+    "name": "Multipart to singleparts",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:multiringconstantbuffer": {
+    "name": "Multi-ring buffer (constant distance)",
+    "parameters": {
+      "DISTANCE": {
+        "default": 1,
+        "optional": false,
+        "type": "distance"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "RINGS": {
+        "default": 1,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "native:nearestneighbouranalysis": {
+    "name": "Nearest neighbour analysis",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT_HTML_FILE": {
+        "default": null,
+        "optional": true,
+        "type": "fileDestination"
+      }
+    }
+  },
+  "native:pointsalonglines": {
+    "name": "Points along geometry",
+    "parameters": {
+      "DISTANCE": {
+        "default": 1.0,
+        "optional": false,
+        "type": "distance"
+      },
+      "END_OFFSET": {
+        "default": 0.0,
+        "optional": false,
+        "type": "distance"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "START_OFFSET": {
+        "default": 0.0,
+        "optional": false,
+        "type": "distance"
+      }
+    }
+  },
+  "native:polygonstolines": {
+    "name": "Polygons to lines",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:rasterlayerzonalstats": {
+    "name": "Raster layer zonal statistics",
+    "parameters": {
+      "BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT_TABLE": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "REF_LAYER": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "ZONES": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "ZONES_BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      }
+    }
+  },
+  "native:serviceareafrompoint": {
+    "name": "Service area (from point)",
+    "parameters": {
+      "DEFAULT_DIRECTION": {
+        "default": 2,
+        "optional": false,
+        "type": "enum"
+      },
+      "DEFAULT_SPEED": {
+        "default": 50,
+        "optional": false,
+        "type": "number"
+      },
+      "DIRECTION_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "INCLUDE_BOUNDS": {
+        "default": false,
+        "optional": true,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      },
+      "OUTPUT_LINES": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      },
+      "SPEED_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "START_POINT": {
+        "default": null,
+        "optional": false,
+        "type": "point"
+      },
+      "STRATEGY": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "TOLERANCE": {
+        "default": 0,
+        "optional": false,
+        "type": "distance"
+      },
+      "TRAVEL_COST2": {
+        "default": 0,
+        "optional": false,
+        "type": "number"
+      },
+      "VALUE_BACKWARD": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "VALUE_BOTH": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "VALUE_FORWARD": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:shortestpathpointtopoint": {
+    "name": "Shortest path (point to point)",
+    "parameters": {
+      "DEFAULT_DIRECTION": {
+        "default": 2,
+        "optional": false,
+        "type": "enum"
+      },
+      "DEFAULT_SPEED": {
+        "default": 50,
+        "optional": false,
+        "type": "number"
+      },
+      "DIRECTION_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "END_POINT": {
+        "default": null,
+        "optional": false,
+        "type": "point"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "SPEED_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "START_POINT": {
+        "default": null,
+        "optional": false,
+        "type": "point"
+      },
+      "STRATEGY": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "TOLERANCE": {
+        "default": 0,
+        "optional": false,
+        "type": "distance"
+      },
+      "VALUE_BACKWARD": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "VALUE_BOTH": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      },
+      "VALUE_FORWARD": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:simplifygeometries": {
+    "name": "Simplify",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "METHOD": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "TOLERANCE": {
+        "default": 1.0,
+        "optional": false,
+        "type": "distance"
+      }
+    }
+  },
+  "native:slope": {
+    "name": "Slope",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "Z_FACTOR": {
+        "default": 1,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "native:smoothgeometry": {
+    "name": "Smooth",
+    "parameters": {
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "ITERATIONS": {
+        "default": 1,
+        "optional": false,
+        "type": "number"
+      },
+      "MAX_ANGLE": {
+        "default": 180.0,
+        "optional": false,
+        "type": "number"
+      },
+      "OFFSET": {
+        "default": 0.25,
+        "optional": false,
+        "type": "number"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      }
+    }
+  },
+  "native:snapgeometries": {
+    "name": "Snap geometries to layer",
+    "parameters": {
+      "BEHAVIOR": {
+        "default": [
+          0
+        ],
+        "optional": false,
+        "type": "enum"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "REFERENCE_LAYER": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "TOLERANCE": {
+        "default": 10.0,
+        "optional": false,
+        "type": "distance"
+      }
+    }
+  },
+  "native:splitvectorlayer": {
+    "name": "Split vector layer",
+    "parameters": {
+      "FIELD": {
+        "default": null,
+        "optional": false,
+        "type": "field"
+      },
+      "FILE_TYPE": {
+        "default": 0,
+        "optional": true,
+        "type": "enum"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "folderDestination"
+      },
+      "PREFIX_FIELD": {
+        "default": true,
+        "optional": false,
+        "type": "boolean"
+      }
+    }
+  },
+  "native:symmetricaldifference": {
+    "name": "Symmetrical difference",
+    "parameters": {
+      "GRID_SIZE": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "OVERLAY": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OVERLAY_FIELDS_PREFIX": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:union": {
+    "name": "Union",
+    "parameters": {
+      "GRID_SIZE": {
+        "default": null,
+        "optional": true,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "OVERLAY": {
+        "default": null,
+        "optional": true,
+        "type": "source"
+      },
+      "OVERLAY_FIELDS_PREFIX": {
+        "default": null,
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "native:voronoipolygons": {
+    "name": "Voronoi polygons",
+    "parameters": {
+      "BUFFER": {
+        "default": 0,
+        "optional": false,
+        "type": "number"
+      },
+      "COPY_ATTRIBUTES": {
+        "default": true,
+        "optional": false,
+        "type": "boolean"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "TOLERANCE": {
+        "default": 0,
+        "optional": true,
+        "type": "number"
+      }
+    }
+  },
+  "native:zonalstatisticsfb": {
+    "name": "Zonal statistics",
+    "parameters": {
+      "COLUMN_PREFIX": {
+        "default": "_",
+        "optional": false,
+        "type": "string"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "INPUT_RASTER": {
+        "default": null,
+        "optional": false,
+        "type": "raster"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "RASTER_BAND": {
+        "default": 1,
+        "optional": false,
+        "type": "band"
+      },
+      "STATISTICS": {
+        "default": [
+          0,
+          1,
+          2
+        ],
+        "optional": false,
+        "type": "enum"
+      }
+    }
+  },
+  "qgis:heatmapkerneldensityestimation": {
+    "name": "Heatmap (Kernel Density Estimation)",
+    "parameters": {
+      "DECAY": {
+        "default": 0.0,
+        "optional": true,
+        "type": "number"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "KERNEL": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "OUTPUT_VALUE": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "PIXEL_SIZE": {
+        "default": 0.1,
+        "optional": false,
+        "type": "number"
+      },
+      "RADIUS": {
+        "default": 100.0,
+        "optional": false,
+        "type": "distance"
+      },
+      "RADIUS_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "WEIGHT_FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      }
+    }
+  },
+  "qgis:idwinterpolation": {
+    "name": "IDW interpolation",
+    "parameters": {
+      "DISTANCE_COEFFICIENT": {
+        "default": 2.0,
+        "optional": false,
+        "type": "number"
+      },
+      "EXTENT": {
+        "default": null,
+        "optional": false,
+        "type": "extent"
+      },
+      "INTERPOLATION_DATA": {
+        "default": null,
+        "optional": false,
+        "type": "idw_interpolation_data"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "PIXEL_SIZE": {
+        "default": 0.1,
+        "optional": false,
+        "type": "number"
+      }
+    }
+  },
+  "qgis:minimumboundinggeometry": {
+    "name": "Minimum bounding geometry",
+    "parameters": {
+      "FIELD": {
+        "default": null,
+        "optional": true,
+        "type": "field"
+      },
+      "INPUT": {
+        "default": null,
+        "optional": false,
+        "type": "source"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "sink"
+      },
+      "TYPE": {
+        "default": null,
+        "optional": false,
+        "type": "enum"
+      }
+    }
+  },
+  "qgis:tininterpolation": {
+    "name": "TIN interpolation",
+    "parameters": {
+      "EXTENT": {
+        "default": null,
+        "optional": false,
+        "type": "extent"
+      },
+      "INTERPOLATION_DATA": {
+        "default": null,
+        "optional": false,
+        "type": "idw_interpolation_data"
+      },
+      "METHOD": {
+        "default": 0,
+        "optional": false,
+        "type": "enum"
+      },
+      "OUTPUT": {
+        "default": null,
+        "optional": false,
+        "type": "rasterDestination"
+      },
+      "PIXEL_SIZE": {
+        "default": 0.1,
+        "optional": false,
+        "type": "number"
+      },
+      "TRIANGULATION": {
+        "default": null,
+        "optional": true,
+        "type": "sink"
+      }
+    }
+  }
+}
