@@ -1220,3 +1220,76 @@ def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, m
             base_uri=str(tmp_path), limit=50,
         )
         assert "s3cr3t-leak-check" not in str(rows)
+
+
+@pytest.mark.postgis
+def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatch, tmp_path):
+    """Régression SP-15g §1 : rien n'empêche aujourd'hui un nœud d'alimenter
+    plusieurs nœuds avals (fan-out) — ce test en fait une capacité officielle,
+    testée explicitement pour la première fois. Un seul reader.collection
+    alimente deux writer.collection distincts (deux collections cibles)."""
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        for name in ("villes_out_a", "villes_out_b"):
+            s.execute(text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                f"VALUES ('{name}', :t, :o, '{name}', '{name}', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ), {"t": tenant.id, "o": user.id})
+            s.execute(text(
+                f"CREATE TABLE {name} (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            ))
+            apply_collection_ddl(s, name)
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
+        ])
+
+        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_a"}},
+                {"id": "w2", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_b"}},
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "w1"},
+                {"id": "e2", "from": "r1", "to": "w2"},
+            ],
+        })
+
+        stats = runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        count_a = s.execute(text("SELECT count(*) FROM villes_out_a")).scalar()
+        count_b = s.execute(text("SELECT count(*) FROM villes_out_b")).scalar()
+        assert count_a == 2
+        assert count_b == 2
+        writer_stats = {stat.nodeId: stat.rowCount for stat in stats if stat.op == "writer.collection"}
+        assert writer_stats == {"w1": 2, "w2": 2}
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
