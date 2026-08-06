@@ -25,9 +25,12 @@ from app.users.models import User
 _COLLECTION_PARAM_FIELD = {
     "reader.collection": "collectionId",
     "transform.join": "withCollectionId",
+    "transform.intersection": "withCollectionId",
+    "transform.countWithin": "withCollectionId",
     "writer.collection": "collectionId",
+    "writer.dataset": "collectionId",
 }
-_WRITE_OPS = {"writer.collection"}
+_WRITE_OPS = {"writer.collection", "writer.dataset"}
 
 
 def _validate_params(node: PipelineNode) -> BaseModel:
