@@ -82,15 +82,15 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_seventeen_ops_are_registered():
+def test_all_eighteen_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
         "writer.collection", "writer.export",
         "transform.buffer", "transform.reproject", "transform.intersection",
         "transform.countWithin", "transform.h3Aggregate", "writer.dataset",
-        "transform.qgis",
-        "reader.connector.rest", "reader.connector.postgres",
+        "transform.qgis", "reader.connector.rest", "reader.connector.postgres",
+        "transform.merge",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -326,3 +326,52 @@ def test_reader_connector_ops_appear_in_catalog():
     assert "baseUrl" in catalog["reader.connector.rest"]["paramsSchema"]["properties"]
     assert catalog["reader.connector.postgres"]["kind"] == "reader"
     assert "query" in catalog["reader.connector.postgres"]["paramsSchema"]["properties"]
+
+
+def test_transform_join_with_collection_id_is_now_optional():
+    params = parse_op_params("transform.join", {"on": "code"})
+    assert params.withCollectionId is None
+
+
+def test_transform_intersection_with_collection_id_is_now_optional():
+    params = parse_op_params("transform.intersection", {})
+    assert params.withCollectionId is None
+
+
+def test_transform_count_within_with_collection_id_is_now_optional():
+    params = parse_op_params("transform.countWithin", {})
+    assert params.withCollectionId is None
+
+
+def test_transform_merge_accepts_no_params():
+    params = parse_op_params("transform.merge", {})
+    assert params.withCollectionId is None
+
+
+def test_transform_merge_accepts_with_collection_id():
+    params = parse_op_params("transform.merge", {"withCollectionId": "x"})
+    assert params.withCollectionId == "x"
+
+
+def test_transform_merge_is_kind_transform_and_registered():
+    assert OP_KINDS["transform.merge"] == "transform"
+    assert "transform.merge" in OP_PARAMS
+
+
+def test_binary_ops_accept_secondary_input_in_catalog():
+    catalog = ops_catalog()
+    for op in ("transform.join", "transform.intersection", "transform.countWithin", "transform.merge"):
+        assert catalog[op]["acceptsSecondaryInput"] is True
+
+
+def test_non_binary_ops_do_not_accept_secondary_input_in_catalog():
+    catalog = ops_catalog()
+    for op in ("reader.collection", "transform.filter", "writer.collection", "transform.buffer"):
+        assert catalog[op]["acceptsSecondaryInput"] is False
+
+
+def test_binary_ops_set_matches_catalog_flag():
+    from app.pipelines.ops.schemas import BINARY_OPS
+    assert BINARY_OPS == {
+        "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
+    }

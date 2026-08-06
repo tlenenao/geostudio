@@ -41,7 +41,7 @@ class TransformAggregateParams(BaseModel):
 
 
 class TransformJoinParams(BaseModel):
-    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     on: str
     how: Literal["inner", "left"] = "inner"
 
@@ -65,15 +65,24 @@ class TransformReprojectParams(BaseModel):
 
 
 class TransformIntersectionParams(BaseModel):
-    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     how: Literal["inner", "left"] = "inner"
     outputGeometry: Literal["left", "intersection"] = "left"
 
 
 class TransformCountWithinParams(BaseModel):
-    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     countColumn: str = "count"
     predicate: Literal["intersects", "contains"] = "intersects"
+
+
+class TransformMergeParams(BaseModel):
+    """Empile deux flux ligne à ligne (UNION ALL BY NAME, design SP-15g §3.2).
+    Comme les 3 op binaires ci-dessus, sa seconde entrée vient soit de
+    `withCollectionId` (collection brute), soit d'une arête `role="secondary"`
+    (sortie déjà calculée d'une autre branche du pipeline) — jamais les deux à
+    la fois, jamais ni l'un ni l'autre (app.pipelines.config_validation)."""
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
 
 
 class TransformH3AggregateParams(BaseModel):
@@ -174,6 +183,7 @@ OP_KINDS: dict[str, str] = {
     "reader.connector.rest": "reader",
     "reader.connector.postgres": "reader",
 }
+OP_KINDS["transform.merge"] = "transform"
 
 OP_PARAMS: dict[str, type[BaseModel]] = {
     "reader.collection": ReaderCollectionParams,
@@ -194,6 +204,15 @@ OP_PARAMS: dict[str, type[BaseModel]] = {
     "reader.connector.rest": ReaderConnectorRestParams,
     "reader.connector.postgres": ReaderConnectorPostgresParams,
 }
+OP_PARAMS["transform.merge"] = TransformMergeParams
+
+# Op dont la seconde entrée peut venir soit de `withCollectionId`, soit d'une
+# arête `role="secondary"` (design SP-15g §2.2/§4.2). Exporté (pas
+# `_`-préfixé) : importé directement par app.pipelines.config_validation,
+# même package app.pipelines, aucune frontière de couches à traverser.
+BINARY_OPS = {
+    "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
+}
 
 
 def parse_op_params(op: str, params: dict) -> BaseModel:
@@ -205,6 +224,10 @@ def parse_op_params(op: str, params: dict) -> BaseModel:
 
 def ops_catalog() -> dict[str, dict]:
     return {
-        op: {"kind": OP_KINDS[op], "paramsSchema": model.model_json_schema()}
+        op: {
+            "kind": OP_KINDS[op],
+            "paramsSchema": model.model_json_schema(),
+            "acceptsSecondaryInput": op in BINARY_OPS,
+        }
         for op, model in OP_PARAMS.items()
     }
