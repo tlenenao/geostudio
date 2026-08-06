@@ -3,8 +3,9 @@
 ni de connexion partagée entre requêtes concurrentes (simplicité d'abord,
 le coût de chargement des extensions — dizaines de ms — est négligeable
 face au budget de 2s ; cf. spec §Architecture, à revisiter seulement si le
-profilage montre un goulot réel). Extensions httpfs (lecture S3/MinIO) et
+profilage montre un goulot réel). Extensions httpfs (lecture S3/MinIO),
 spatial (ST_Intersects sur la colonne géométrie WKB du GeoParquet CDC)
+et h3 (fonctions H3, SP-15c, transform.h3Aggregate)
 installées une fois sur le disque de l'image lors du build (`core/Dockerfile`,
 étape dédiée juste après l'installation des paquets Python — jamais à
 l'exécution), chargées à chaque connexion sans accès réseau requis.
@@ -20,6 +21,7 @@ def open_connection(*, endpoint_url: str, access_key: str, secret_key: str) -> d
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL httpfs; LOAD httpfs;")
     conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.execute("INSTALL h3 FROM community; LOAD h3;")
     host = endpoint_url.split("://", 1)[-1]
     use_ssl = endpoint_url.startswith("https://")
     conn.execute(f"SET s3_endpoint = '{host}'")

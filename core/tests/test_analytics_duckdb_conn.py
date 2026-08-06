@@ -57,3 +57,16 @@ def test_open_connection_detects_https_endpoint(monkeypatch):
     open_connection(endpoint_url="https://minio.example.com", access_key="ak", secret_key="sk")
 
     assert "s3_use_ssl = true" in "\n".join(recording.statements)
+
+
+def test_open_connection_installs_and_loads_h3(monkeypatch):
+    import duckdb
+
+    real_conn = duckdb.connect(":memory:")
+    recording = _RecordingConnection(real_conn)
+    monkeypatch.setattr(duckdb, "connect", lambda *_a, **_kw: recording)
+
+    open_connection(endpoint_url="http://minio:9000", access_key="ak", secret_key="sk")
+
+    joined = "\n".join(recording.statements)
+    assert "INSTALL h3 FROM community" in joined and "LOAD h3" in joined
