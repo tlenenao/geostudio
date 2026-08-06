@@ -1,191 +1,175 @@
-## Task 2: `BuilderConfig` gains `kind="pipeline"`
+## Task 2: Op catalogue — `transform.qgis` param model
 
 **Files:**
-- Modify: `core/app/configs/schemas.py`
-- Test: `core/tests/test_pipeline_config_schema.py`
+- Modify: `core/app/pipelines/ops/schemas.py`
+- Test: `core/tests/test_pipeline_ops_schemas.py`
 
 **Interfaces:**
-- Consumes: nothing new from Task 1.
-- Produces: `PipelineNode`, `PipelineEdge`, `PipelinePayload` in
-  `app.configs.schemas`, `BuilderConfig.kind` literal gains `"pipeline"`,
-  `BuilderConfig.pipeline: PipelinePayload | None`. Consumed by every later
-  task (`config.pipeline`, `node.id`/`node.kind`/`node.op`/`node.params`,
-  `edge.from_`/`edge.to`).
+- Consumes: `QGIS_ALGORITHMS` (Task 1, `app.pipelines.ops.qgis_algorithms`).
+- Produces: `TransformQgisParams` (Pydantic `BaseModel` in
+  `app.pipelines.ops.schemas`), registered as `OP_KINDS["transform.qgis"] =
+  "transform"` and `OP_PARAMS["transform.qgis"] = TransformQgisParams`.
+  Fields: `algorithmId: str`, `params: dict[str, Any]`, `outputSrid: str |
+  None`. Consumed by Task 3 (`compiler.py`), Task 5 (`runtime.py`).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_pipeline_config_schema.py`:
+Append to `core/tests/test_pipeline_ops_schemas.py`:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-import pytest
-from pydantic import ValidationError
-
-from app.configs.schemas import BuilderConfig
-
-
-def _pipeline_body() -> dict:
-    return {
-        "version": 1,
-        "kind": "pipeline",
-        "pipeline": {
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection",
-                 "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_propres"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-        },
-    }
+def test_fifteenth_op_is_registered():
+    assert "transform.qgis" in OP_PARAMS
+    assert "transform.qgis" in OP_KINDS
+    assert OP_KINDS["transform.qgis"] == "transform"
 
 
-def test_pipeline_config_valide():
-    config = BuilderConfig.model_validate(_pipeline_body())
-    assert config.kind == "pipeline"
-    assert config.pipeline.nodes[0].op == "reader.collection"
-    assert config.pipeline.edges[0].from_ == "r1"
+def test_transform_qgis_accepts_allowlisted_id_with_required_params():
+    params = parse_op_params(
+        "transform.qgis",
+        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+    )
+    assert params.algorithmId == "native:centroids"
+    assert params.params == {"ALL_PARTS": False}
+    assert params.outputSrid is None
 
 
-def test_pipeline_config_sans_payload_rejete():
+def test_transform_qgis_rejects_non_allowlisted_id():
     with pytest.raises(ValidationError):
-        BuilderConfig.model_validate({"version": 1, "kind": "pipeline"})
+        parse_op_params(
+            "transform.qgis",
+            {"algorithmId": "native:totallymadeup", "params": {}},
+        )
 
 
-def test_pipeline_config_ids_dupliques_rejetes():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"][1]["id"] = "r1"
-    with pytest.raises(ValidationError, match="unique"):
-        BuilderConfig.model_validate(body)
+def test_transform_qgis_rejects_missing_required_param():
+    # native:centroids requires ALL_PARTS beyond INPUT/OUTPUT (design Task 2 —
+    # INPUT/OUTPUT are runtime-injected, never authored, cf. spike finding
+    # in test_pipeline_qgis_algorithms.py::test_centroids_required_params_...).
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "transform.qgis", {"algorithmId": "native:centroids", "params": {}},
+        )
 
 
-def test_pipeline_config_edge_vers_noeud_inconnu_rejetee():
-    body = _pipeline_body()
-    body["pipeline"]["edges"][0]["to"] = "does-not-exist"
-    with pytest.raises(ValidationError, match="unknown node"):
-        BuilderConfig.model_validate(body)
+def test_transform_qgis_does_not_require_input_output_in_params():
+    # INPUT/OUTPUT are required by native:simplifygeometries' own schema but
+    # are filled in by the runtime (scratch file paths), never by the author.
+    params = parse_op_params(
+        "transform.qgis",
+        {
+            "algorithmId": "native:simplifygeometries",
+            "params": {"METHOD": 0, "TOLERANCE": 1.0},
+        },
+    )
+    assert "INPUT" not in params.params
+    assert "OUTPUT" not in params.params
 
 
-def test_pipeline_config_sans_reader_rejete():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"] = [body["pipeline"]["nodes"][1]]
-    body["pipeline"]["edges"] = []
-    with pytest.raises(ValidationError, match="reader"):
-        BuilderConfig.model_validate(body)
+def test_transform_qgis_accepts_optional_output_srid():
+    params = parse_op_params(
+        "transform.qgis",
+        {
+            "algorithmId": "gdal:warpreproject",
+            "params": {"TARGET_CRS": "EPSG:2154"},
+            "outputSrid": "EPSG:2154",
+        },
+    )
+    assert params.outputSrid == "EPSG:2154"
 
 
-def test_pipeline_config_sans_writer_rejete():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"] = [body["pipeline"]["nodes"][0]]
-    body["pipeline"]["edges"] = []
-    with pytest.raises(ValidationError, match="writer"):
-        BuilderConfig.model_validate(body)
-
-
-def test_pipeline_config_x_y_when_acceptes_mais_inertes():
-    body = _pipeline_body()
-    body["pipeline"]["nodes"][0]["x"] = 100
-    body["pipeline"]["nodes"][0]["y"] = 40
-    body["pipeline"]["edges"][0]["when"] = "true"
-    config = BuilderConfig.model_validate(body)
-    assert config.pipeline.nodes[0].x == 100
-    assert config.pipeline.edges[0].when == "true"
+def test_transform_qgis_rejects_malformed_output_srid():
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "transform.qgis",
+            {"algorithmId": "native:dissolve",
+             "params": {"SEPARATE_DISJOINT": False},
+             "outputSrid": "not-a-crs"},
+        )
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_schema.py -v`
-Expected: FAIL — `pydantic_core._pydantic_core.ValidationError: ... Input should be 'app', 'dashboard', 'map', 'site', 'dataset' or 'bookmark'` (kind literal doesn't yet accept "pipeline")
+Run: `cd core && uv run pytest tests/test_pipeline_ops_schemas.py -k transform_qgis -v`
+Expected: FAIL — `KeyError`/`AttributeError`, `transform.qgis` not in
+`OP_PARAMS` (doesn't exist yet).
 
-- [ ] **Step 3: Add the schemas**
+- [ ] **Step 3: Add the `Any` import and `TransformQgisParams`**
 
-In `core/app/configs/schemas.py`, change the import line at the top:
+Modify `core/app/pipelines/ops/schemas.py` — change the top import:
 
 ```python
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 ```
 
-Then add, right after `BookmarkPayload` (after line 165, before `class BuilderConfig`):
+Add after `WriterDatasetParams` (before the `OP_KINDS` dict):
 
 ```python
-class PipelineNode(BaseModel):
-    id: str
-    kind: Literal["reader", "transform", "writer"]
-    op: str
-    x: int = 0
-    y: int = 0                    # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
-                                   # canvas (SP-15b) — posé maintenant pour ne pas migrer
-                                   # le schéma plus tard (design SP-15a §4.1)
+class TransformQgisParams(BaseModel):
+    """Op générique pour tout algorithme QGIS Processing de l'allowlist
+    gelée (app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS, design SP-15d
+    §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT — le runtime les
+    injecte (chemins scratch, design §6). `outputSrid` doit être renseigné
+    explicitement quand l'algorithme change le CRS (ex. gdal:warpreproject
+    via son propre param TARGET_CRS) ; laissé à None, le SRID de sortie est
+    supposé identique à l'entrée — vrai pour la quasi-totalité des 50 op de
+    l'allowlist, faux pour un algorithme de reprojection. Aucune conversion
+    automatique d'unité : un DISTANCE/TOLERANCE d'un algorithme QGIS est
+    dans les unités du CRS natif de la couche d'entrée, jamais auto-converti
+    en mètres (vérifié empiriquement en design, §2)."""
+    algorithmId: str
     params: dict[str, Any] = Field(default_factory=dict)
-    title: str | None = None
-
-
-class PipelineEdge(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    from_: str = Field(alias="from")
-    to: str
-    when: str | None = None       # CEL, routage conditionnel — accepté mais non
-                                   # interprété par le compilateur avant Phase 3/4
-
-
-class PipelinePayload(BaseModel):
-    nodes: list[PipelineNode] = Field(default_factory=list)
-    edges: list[PipelineEdge] = Field(default_factory=list)
+    outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
 
     @model_validator(mode="after")
-    def _validate_graph(self) -> "PipelinePayload":
-        ids = [n.id for n in self.nodes]
-        if len(ids) != len(set(ids)):
-            raise ValueError("pipeline node ids must be unique")
-        id_set = set(ids)
-        for edge in self.edges:
-            if edge.from_ not in id_set:
-                raise ValueError(f"edge references unknown node '{edge.from_}'")
-            if edge.to not in id_set:
-                raise ValueError(f"edge references unknown node '{edge.to}'")
-        if not any(n.kind == "reader" for n in self.nodes):
-            raise ValueError("pipeline requires at least one reader node")
-        if not any(n.kind == "writer" for n in self.nodes):
-            raise ValueError("pipeline requires at least one writer node")
+    def _check_allowlisted_and_required_params(self) -> "TransformQgisParams":
+        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+
+        schema = QGIS_ALGORITHMS.get(self.algorithmId)
+        if schema is None:
+            raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
+        required = {
+            name for name, p in schema["parameters"].items() if not p["optional"]
+        } - {"INPUT", "OUTPUT"}
+        missing = required - self.params.keys()
+        if missing:
+            raise ValueError(
+                f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}"
+            )
         return self
 ```
 
-Then in `BuilderConfig`, change the `kind` literal:
+Add to `OP_KINDS`:
 
 ```python
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline"]
+    "transform.qgis": "transform",
 ```
 
-Add the payload field right after `bookmark: BookmarkPayload | None = None`:
+Add to `OP_PARAMS`:
 
 ```python
-    pipeline: PipelinePayload | None = None
+    "transform.qgis": TransformQgisParams,
 ```
 
-And add a branch to `_require_kind_payload`, right after the bookmark check:
+- [ ] **Step 4: Run tests to verify they pass**
 
-```python
-        if self.kind == "pipeline" and self.pipeline is None:
-            raise ValueError("pipeline config requires a pipeline payload")
-```
+Run: `cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v`
+Expected: all pass, including the pre-existing 14-op tests (no regression —
+`test_all_fourteen_ops_are_registered` from SP-15c will need updating to
+15; do that now too):
 
-- [ ] **Step 4: Run to verify it passes**
+Modify the existing `test_all_fourteen_ops_are_registered` (or whatever it's
+now named) in `core/tests/test_pipeline_ops_schemas.py` to add
+`"transform.qgis"` to the expected set and rename to
+`test_all_fifteen_ops_are_registered`.
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_schema.py -v`
-Expected: PASS (7 tests green)
+Run: `cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v`
+Expected: all pass.
 
-- [ ] **Step 5: Run the full configs test suite to check no regression**
-
-Run: `cd core && uv run pytest tests/test_dataset_config_schema.py tests/test_configs_models.py -v`
-Expected: PASS (unchanged)
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/configs/schemas.py core/tests/test_pipeline_config_schema.py
-git commit -m "feat(core): add BuilderConfig kind=pipeline (PipelinePayload/Node/Edge)"
+git add core/app/pipelines/ops/schemas.py core/tests/test_pipeline_ops_schemas.py
+git commit -m "feat(core): transform.qgis op — generic QGIS Processing param model"
 ```
 
 ---

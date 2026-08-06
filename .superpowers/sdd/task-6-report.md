@@ -1,71 +1,121 @@
-# Task 6 report — Bounded SQL expression validation + DAG compiler (SP-15a)
+# Task 6 report — routes.py + jobs.py: env var wiring + algorithm catalogue resource
 
-## Commit
+## What was implemented
 
-- `4b45ec0` — `feat(core): bounded SQL expression validation + linear+join DAG compiler`
-  (4 files: `core/app/pipelines/expr_validation.py`, `core/app/pipelines/compiler.py`,
-  `core/tests/test_pipeline_expr_validation.py`, `core/tests/test_pipeline_compiler.py`)
+1. Added `GET /pipelines/ops/qgis-algorithms` route in
+   `core/app/pipelines/routes.py`, right after the existing
+   `GET /pipelines/ops` route. It imports `QGIS_ALGORITHMS` from
+   `app.pipelines.ops.qgis_algorithms` and returns it verbatim. Since it's
+   registered on the same `router` as the rest of `app.pipelines.routes`,
+   it inherits the existing `CORE_ETL_ENABLED` router mount/unmount gating
+   with no extra code.
+2. Threaded `QGIS_WORKER_URL`/`QGIS_WORKER_TIMEOUT_SECONDS` env vars (with
+   the same defaults `""`/`600` as the underlying kwargs) through:
+   - `preview_pipeline_route` in `core/app/pipelines/routes.py` → the
+     `preview_pipeline(...)` call now passes `qgis_worker_url=` and
+     `qgis_worker_timeout_seconds=`.
+   - `run_pipeline_task` in `core/app/pipelines/jobs.py` → the
+     `run_pipeline(...)` call now passes the same two kwargs.
+3. Added the two tests specified by the brief to
+   `core/tests/test_pipeline_routes.py`:
+   `test_get_qgis_algorithms_returns_full_allowlist` and
+   `test_get_qgis_algorithms_absent_when_etl_disabled`, both using the
+   existing local `_make_app(monkeypatch, *, etl_enabled)` helper (the note
+   about the helper's reference test being renamed to
+   `test_get_pipelines_ops_returns_all_fifteen` was correct and didn't
+   affect this task — the helper itself is untouched).
 
-## Signature verification (before writing code)
+## TDD evidence
 
-Read `core/app/analytics/sql_sandbox.py` first, as instructed, before trusting
-the brief. All four consumed names matched the brief exactly, no adjustment
-needed:
-- `parse_ast(conn: duckdb.DuckDBPyConnection, sql: str) -> dict`
-- `validate_select_only(ast: dict) -> None`
-- `collect_table_refs(ast: dict) -> set[str]`
-- `SqlSandboxError(Exception)`
+RED (before Step 3, route didn't exist):
 
-Also checked `app.configs.schemas.PipelineNode`/`PipelineEdge` (fields `id`,
-`kind`, `op`, `params`, `x`/`y`, `title`; `PipelineEdge.from_` aliased to
-`"from"`, `populate_by_name=True`) and the six `Transform*Params` classes in
-`app/pipelines/ops/schemas.py` — both matched the brief's assumptions
-verbatim, no signature drift found.
+```
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_returns_full_allowlist FAILED
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_absent_when_etl_disabled PASSED
+...
+E       assert 404 == 200
+E        +  where 404 = <Response [404 Not Found]>.status_code
+1 failed, 1 passed, 5 deselected in 1.64s
+```
 
-## TDD steps and test commands run
+(The "absent when disabled" test trivially passed even before the route
+existed, since a nonexistent route also 404s — expected, and it's the
+"returns_full_allowlist" test that proves the RED state.)
 
-1. `core/tests/test_pipeline_expr_validation.py` written verbatim from brief.
-   - `cd core && uv run pytest tests/test_pipeline_expr_validation.py -v`
-     → FAIL as expected: `ModuleNotFoundError: No module named 'app.pipelines.expr_validation'`.
-   - Implemented `core/app/pipelines/expr_validation.py` verbatim from brief.
-   - Re-ran same command → **5 passed**.
-2. `core/tests/test_pipeline_compiler.py` written verbatim from brief.
-   - `cd core && uv run pytest tests/test_pipeline_compiler.py -v`
-     → FAIL as expected: `ModuleNotFoundError: No module named 'app.pipelines.compiler'`.
-   - Implemented `core/app/pipelines/compiler.py` verbatim from brief.
-   - Re-ran same command → **12 passed** (brief's step 8 comment says "11
-     tests green" — an off-by-one in the brief's narration; the test file it
-     specifies verbatim actually contains 12 test functions and all 12 pass.
-     Not a code defect, just a stale count in the brief text — noted, not
-     acted on since the brief's code block is authoritative and matched).
-3. Full suite: `cd core && uv run pytest -q` → **941 passed, 114 skipped**
-   (no regressions elsewhere).
-4. Import-boundary lint: `cd core && uv run lint-imports` → **1 kept, 0
-   broken** (layered architecture contract intact — the two new modules sit
-   under `app.pipelines`, consuming `app.analytics.sql_sandbox`,
-   `app.configs.schemas`, `app.pipelines.ops.schemas`, all within the
-   allowed layering).
-5. No `ruff`/`black`/`mypy` configured in `core/pyproject.toml` beyond
-   `import-linter`, so no additional lint step applied.
+GREEN (after Steps 3, 5, 6):
 
-## Commit hygiene note
+```
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_returns_full_allowlist PASSED
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_absent_when_etl_disabled PASSED
+2 passed, 5 deselected in 1.55s
+```
 
-`git status` before staging showed several pre-existing modified/untracked
-files under `.superpowers/sdd/*` and `docs/superpowers/*` (task briefs/reports
-from earlier SP-15a tasks, plus unrelated new plan/spec docs from other work).
-These were left untouched; only the 4 files named in the brief's Step 9 were
-`git add`ed and committed, per the known `.superpowers/sdd/` tracking gotcha
-noted in prior session memory (SP-14m notes).
+Full route/jobs test files (Step 7):
 
-Also found: this report file (`task-6-report.md`) already existed on disk
-before this task ran, containing a stale report from an unrelated prior plan
-run (a shell `geomIntersects` task, commit `1e9f120`, SP-14n numbering). That
-is expected filename reuse across different plan executions in this repo's
-`.superpowers/sdd/` scratch area — this file now holds SP-15a Task 6's report
-instead.
+```
+tests/test_pipeline_routes.py::test_pipelines_routes_absent_when_disabled PASSED
+tests/test_pipeline_routes.py::test_get_pipelines_ops_returns_all_fifteen PASSED
+tests/test_pipeline_routes.py::test_run_route_defers_job_and_returns_run_id PASSED
+tests/test_pipeline_routes.py::test_preview_route_rejects_unknown_pipeline PASSED
+tests/test_pipeline_routes.py::test_list_runs_route_rejects_unknown_pipeline PASSED
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_returns_full_allowlist PASSED
+tests/test_pipeline_routes.py::test_get_qgis_algorithms_absent_when_etl_disabled PASSED
+tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_succeeded SKIPPED
+tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_never_zombie SKIPPED
+tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie SKIPPED
+7 passed, 3 skipped in 2.28s
+```
 
-## Concerns
+(The 3 skips are the pre-existing `postgis`-marked tests requiring docker,
+unrelated to this task.)
 
-None functional. The only discrepancy found was the brief's stated expected
-compiler test count ("11 tests green") vs. the actual 12 tests in the file it
-specifies — cosmetic, does not affect correctness or the commit.
+Full core suite (`cd core && uv run pytest -q`):
+
+```
+1025 passed, 126 skipped in 62.40s (0:01:02)
+```
+
+Baseline stated in the task was 1023 passed / 126 skipped; result is 1025
+passed (+2, matching the two new tests) / 126 skipped (unchanged) — no
+collateral regressions.
+
+## Files changed
+
+- `core/app/pipelines/routes.py` — new import (`QGIS_ALGORITHMS`), new
+  `GET /pipelines/ops/qgis-algorithms` route, two new kwargs on the
+  `preview_pipeline(...)` call in `preview_pipeline_route`.
+- `core/app/pipelines/jobs.py` — two new kwargs on the `run_pipeline(...)`
+  call in `run_pipeline_task`.
+- `core/tests/test_pipeline_routes.py` — two new tests appended, verbatim
+  as specified in the brief.
+
+Diff matches the brief's exact Step 3/5/6 code blocks, character for
+character (verified via `git diff` before commit).
+
+Commit: `1295502 feat(core): wire QGIS_WORKER_URL env + publish the algorithm catalogue resource` (3 files changed, 25 insertions, 0 deletions).
+
+## Self-review
+
+- Completeness: all 8 steps done — failing tests written, RED confirmed,
+  route added, GREEN confirmed, both env-var threading sites updated, full
+  route/jobs files re-run, full suite re-run, committed.
+- Quality: implementation is byte-for-byte the code given in the brief's
+  Steps 3/5/6 (import placement alphabetical among `app.pipelines.*`
+  imports, route placed immediately after `GET /pipelines/ops` as
+  instructed).
+- Discipline: no files touched outside the three listed
+  (`git status --short` shows only routes.py, jobs.py,
+  test_pipeline_routes.py modified). No behavior change for pipelines
+  without a `transform.qgis` node — confirmed by the unchanged pass/skip
+  counts on `test_pipeline_routes.py`/`test_pipeline_jobs.py` and the full
+  suite; existing tests don't set `QGIS_WORKER_URL`, so the two new kwargs
+  resolve to `""`/`600`, identical to the kwargs' own defaults from Task 5.
+- Testing: ran each test file in isolation and the full suite; output
+  captured above is from real `uv run pytest` invocations, not fabricated.
+
+## Issues or concerns
+
+None. The task was a small, self-contained wiring task; brief's assumed
+shapes for `GET /pipelines/ops`, `preview_pipeline_route`, and
+`run_pipeline_task` all matched the actual code exactly, so no escalation
+was needed.

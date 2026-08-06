@@ -1,400 +1,373 @@
-# SP-15a — Pipeline : socle headless + capacité optionnelle — Progress Ledger
+# SP-15d — Pipeline : sidecar `qgis_process` (étage 2) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-05-sp15a-pipeline-socle.md
-Spec: docs/superpowers/specs/2026-08-05-sp15a-pipeline-socle-design.md
+Plan: docs/superpowers/plans/2026-08-06-sp15d-qgis-sidecar.md
+Spec: docs/superpowers/specs/2026-08-06-sp15d-qgis-sidecar-design.md (si présent) — sinon design intégré au plan.
 Workspace: checkout principal, branche `dev` (convention établie depuis SP-6a, pas de worktree).
-Base globale: dev@837faa9 (HEAD au lancement).
+Base globale: dev@1c5eede (HEAD au lancement).
 
-Note : ce fichier remplace le ledger SP-14n (complet, READY TO MERGE,
-HEAD=3012192, déjà mergé/documenté dans CLAUDE.md) — même fichier scratch
-réutilisé par convention du dépôt ; contenu SP-14n préservé dans l'historique
-git (commits 837faa9 et antérieurs).
+Note : ce fichier remplace le ledger SP-15c (complet, READY TO MERGE,
+mergé dans dev, documenté dans CLAUDE.md) — même fichier scratch réutilisé
+par convention du dépôt ; contenu SP-15c préservé dans l'historique git.
 
-Postgis : conteneur jetable `postgis-test` (127.0.0.1:5433/gis_test) relancé
-(`docker start postgis-test`), déjà debout depuis SP-12/SP-14n. Utilisé pour
-les tâches 8 et 9 (`pytest.mark.postgis`).
+Infra locale vérifiée avant lancement :
+- `postgis-test` déjà présent (port 5433, DB `gis_test`, user/pass `gis`/`gis`,
+  `CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@localhost:5433/gis_test`).
+- Docker disponible (29.4.3), accès réseau au registre Docker Hub confirmé
+  (401 sur `/v2/` = attendu pour un pull anonyme, pas un blocage réseau).
+- Pas encore de conteneur `qgis-worker` local — Task 4 devra le construire et
+  le démarrer manuellement (`docker build` + `docker run -p 8300:8000 -v
+  /scratch:/scratch`) pour que les tests marqués `qgis` des Tasks 4/5/8
+  s'exécutent réellement plutôt que d'être skippés.
 
 ## Pré-vol
 
-Scan des 11 tâches (1: CORE_ETL_ENABLED flag ; 2: BuilderConfig kind=pipeline ;
-3: op catalogue 8 ops ; 4: validation structurelle graphe + guard ETL ;
-5: validation par nœud ; 6: validation expr SQL bornée + compilateur DAG ;
-7: PipelineRun model + migration + repo ; 8: runtime DuckDB ; 9: job
-procrastinate ; 10: routes REST + wiring + import-linter ; 11: outils MCP)
-contre les Contraintes Globales (topologie linéaire+join only, pas de
-fusion/push-down, frontière validation forme vs sémantique bornée à
-l'exécution, position de couche app.pipelines entre app.harvest et
-app.ingestion, CORE_ETL_ENABLED lu une fois par surface pas par ligne,
-en-tête SPDX partout, commentaires FR pour le "pourquoi") :
+Scan des 8 tâches (1: allowlist gelée 50 algos + loader ; 2: modèle Pydantic
+`TransformQgisParams`, 15e op ; 3: traçage SRID via `outputSrid` explicite ;
+4: sidecar HTTP `qgis-worker` isolé + marker pytest `qgis` ; 5: dispatch
+runtime — COPY GDAL avec SRS explicite -> sidecar -> ST_Read ; 6: route
+catalogue + câblage env vars ; 7: compose profile `etl` ; 8: test
+d'intégration bout-en-bout dissolve->writer.collection) contre les
+Contraintes Globales (pas de changement shell/canvas, pas de
+reader.connector/transform.sql, pas de migration DB, pas de changement de
+comportement des 14 op existantes, tag d'image pinné partout, QT_QPA_PLATFORM
+offscreen partout où qgis_process tourne, SRS explicite obligatoire sur tout
+COPY GDAL alimentant transform.qgis, pas de conversion d'unité automatique,
+grassprovider activé au build seulement, `grass:*` jamais `grass7:*`,
+contrat exit-code/stdout/stderr du sidecar, root sur les deux images sans
+USER directive, write_audit moot pour cette tâche, pas de "update" dans
+Action).
 
-Aucune contradiction réelle trouvée. Deux endroits se corrigent en ligne dans
-le texte du plan lui-même (Task 4 Step 4 : ordre du guard ETL précisé après
-un premier jet ; Task 10 Step 4 : import `is_etl_enabled` dans main.py
-précisé après un premier jet) — pas des contradictions à arbitrer, juste la
-version finale à suivre. Une duplication mandatée par le plan
-(`runtime.py::_qi` dupliquant `compiler.py::_qi`, 2 lignes) est justifiée
-explicitement dans le commentaire du plan lui-même (éviter un import
-inter-module d'un nom privé `_`-préfixé) — laissée passer sans arbitrage.
-
-Poursuite sans confirmation utilisateur (scan de contradictions clean).
+Aucune contradiction trouvée entre les 8 tâches ou avec les Contraintes
+Globales — plan explicitement vérifié contre un vrai conteneur
+`qgis/qgis:release-3_34` et un vrai DuckDB pendant le design (préambule du
+plan). Poursuite sans confirmation utilisateur (scan clean).
 
 ## Tasks
 
-Base Task 1: 837faa9
-Task 1: complete (commit 33f36b7, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
-`.env.example` sans en-tête SPDX (convention préexistante du dépôt, aucun
-fichier de config n'en porte, pas une régression introduite ici), citation
-"design SP-15a §3" dans le docstring vérifiée exacte (pas une référence
-fantôme). `is_etl_enabled()` mirror fidèle de `is_read_only_mode()` (lecture
-env à chaque appel, pas de cache — vérifié explicitement car les tâches
-suivantes en dépendent pour l'isolation par monkeypatch). `GET /instance`
-gagne `etlEnabled` de façon additive. Reviewer a vérifié indépendamment
-qu'aucun autre endroit (core/ ou shell/src/) n'a d'assertion exact-dict sur
-`/instance` qui aurait cassé silencieusement. 15/15 tests (4 nouveaux +
-2 corrigés + suite test_read_only_mode.py inchangée). Commit ne contient que
-les 5 fichiers listés par le brief, aucun scope creep.
+Base Task 1: 1c5eede
 
-Base Task 2: 33f36b7
-Task 2: complete (commit b68e069, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
-`PipelineNode.kind` réutilise le nom "kind" déjà porté par `BuilderConfig`
-(vocabulaire du design, pas un défaut), ordre de validation du graphe
-(ids→edges→reader→writer) ne rapporte que la première violation (hors
-périmètre de cette tâche, shape-only). `PipelinePayload._validate_graph`
-confirmé n'inspecter que `node.id`/`node.kind`/`edge.from_`/`edge.to` —
-jamais `node.params` (frontière shape-vs-sémantique respectée, vérifiée
-explicitement par le reviewer). `PipelineNode.x`/`y`/`PipelineEdge.when`
-confirmés inertes (présents, defaults corrects, non référencés dans la
-validation). Reviewer a vérifié que les 4 branches préexistantes de
-`_require_kind_payload` (app/dashboard/site, map, dataset, bookmark) sont
-inchangées byte-for-byte. Test "ids dupliqués" confirmé isoler réellement
-la bonne invariante (pas un faux positif d'une autre vérification). 7/7
-tests nouveaux, 16/16 suite dataset/configs (0 régression).
+**Task 1 — 1er passage : BLOCKED (NEEDS_CONTEXT), pas de commit.**
+L'implémenteur a découvert, en exécutant le script générateur pour de vrai
+contre `qgis/qgis:release-3_34`, que 7 des 50 ids d'`ALLOWLIST_IDS` du plan
+sont faux : `native:minimumboundinggeometry` et
+`native:heatmapkerneldensityestimation` ont le mauvais préfixe de provider
+(`qgis:` pas `native:`), `native:selectbyattribute` n'existe pas du tout en
+tant qu'algorithme Processing (action GUI Desktop, pas exposée par
+`qgis_process`), et les 4 ids `grass:r.*` ont le mauvais préfixe
+(`grass7:*`, pas `grass:*`) — **ce dernier point contredit littéralement
+l'affirmation "vérifiée" du plan lignes 72-75**. Contrôleur a re-vérifié
+indépendamment les deux points les plus consequents (grass7 vs grass,
+absence de selectbyattribute) contre le même conteneur pinné avant d'agir —
+confirmé à l'identique. Décision humaine demandée (remplacement de
+`native:selectbyattribute`, aucun équivalent direct) : **remplacer par
+`native:polygonstolines`** (comble un vrai manque — conversion contours de
+polygones en lignes — distinct des 49 autres op). Plan corrigé sur place
+(`docs/superpowers/plans/2026-08-06-sp15d-qgis-sidecar.md`) : contrainte
+globale grass7/grass, `ALLOWLIST_IDS` (script générateur), `EXPECTED_IDS`
+(test), commentaire Dockerfile Task 4 ; `fetch_schema()` du générateur
+étendu pour chaîner `qgis_process plugins enable grassprovider` dans le
+MÊME appel de conteneur que les ids `grass7:*` (l'état du plugin ne
+survit pas entre deux `docker run --rm` distincts — trouvaille de
+l'implémenteur, également vérifiée). Brief Task 1 régénéré depuis le plan
+corrigé avant re-dispatch.
 
-Base Task 3: b68e069
-Task 3: complete (commit 3c5c0e3, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant). Transcription pure
-(implémenteur haiku, code littéral complet du brief) — reviewer a confirmé
-byte-for-byte les 4 fichiers (2 `__init__.py` + `ops/schemas.py` + test).
-Écart de comptage relevé et résolu : le texte du plan annonçait "11 tests"
-mais le fichier de test littéral en compte réellement 15 (1 + 8 paramétrés +
-5 + 1) — coquille préexistante dans la prose du plan, pas un défaut de
-l'implémenteur, qui a bien 15/15. Frontière forme/sémantique confirmée :
-`TransformFilterParams.expr`/`TransformDeriveParams.expr`/
-`TransformAggregateParams.metrics` restent des champs `str`/`dict[str,str]`
-bruts, aucun validateur n'inspecte le contenu des expressions (SQL bornée
-validée seulement à l'exécution, Task 6). `lint-imports` toujours clean
-(`app.pipelines` sans dépendance à ce stade). 15/15 tests nouveaux, 914
-passed + 114 skipped suite complète (0 régression).
+**Task 1 — 2e passage (post-correctif) : complete (commit 7c950ac, review
+clean au premier passage sur le brief corrigé — ✅ spec compliant, task
+quality Approved, 0 Critical, 0 Important, 1 Minor négligeable —
+`_type_id()` non testé unitairement en isolation [risque faible, outil
+offline non exécuté au runtime]).** Les 7 corrections (2 préfixes qgis:, 4
+préfixes grass7:, substitution native:selectbyattribute->native:polygonstolines)
+confirmées cohérentes entre `ALLOWLIST_IDS`, le JSON généré et `EXPECTED_IDS`
+du test — zéro dérive entre les trois. Déviation additionnelle de
+l'implémenteur (non prévue par le brief, découverte lors de l'exécution
+réelle) : `_type_id()`, un normaliseur pour le paramètre
+`INTERPOLATION_DATA` de `qgis:tininterpolation`/`qgis:idwinterpolation`
+dont le champ `"type"` est une chaîne brute au lieu du dict `{"id": ...}`
+habituel — jugée correcte et bien scopée par le reviewer (contrat
+`{"type": str}` préservé pour les 50 algorithmes, zéro `"unknown"` fuité,
+vérifié par grep sur le JSON généré). 50/50 algorithmes récupérés pour de
+vrai contre le conteneur pinné (pas de mock/fabrication), les 4 spot-checks
+du plan vérifiés directement dans le diff. 6/6 tests du fichier cible,
+1013 passed + 122 skipped sur la suite complète, 0 régression.
 
-Base Task 4: 3c5c0e3
-Task 4: complete (commit a44c3b8, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 2 Minor négligeables —
-docstring de `pipeline_validation.py` entièrement en anglais (hérité verbatim
-du brief lui-même, qui reprend le précédent anglophone `dataset_validation.py`
-— pas une déviation de l'implémenteur, note pour de futurs briefs), DFS
-récursif de `_check_acyclic` sans limite d'itération explicite (sans risque
-pratique compte tenu de la topologie linéaire+join du MVP). Frontière de
-couche vérifiée : aucun import `app.pipelines` dans `pipeline_validation.py`
-ni `routes.py` (le module `app.pipelines` n'existe même pas encore comme
-package Python complet à ce stade — seulement `ops/`). Ordre guard-first
-confirmé être la version finale corrigée du brief (pas le premier jet montré
-dans sa prose). Reviewer a tracé à la main le DFS 3-couleurs sur le graphe
-cyclique du test et confirmé que l'ordre acyclique-avant-topologie est
-réellement porteur (le graphe de test a aussi 2 arêtes entrantes, donc
-l'ordre des checks déterminait quel message d'erreur sortait). Fenêtre
-"unknown op" 422 confirmée intentionnelle et temporaire (aucun validateur
-réel enregistré avant Task 5). 5/5 tests nouveaux, 22/22 régression ciblée,
-919 passed + 114 skipped suite complète, lint-imports clean (0 régression).
+Base Task 2: 7c950ac
+**Task 2 : complete (commit 596c1c8, 1 round de fix avant revue — pas un
+rejet de reviewer, une correction du contrôleur avant dispatch de la revue
+— review clean ensuite : ✅ spec compliant, task quality Approved, 0
+Critical, 0 Important, 2 Minor négligeables — numéros de ligne du rapport
+imprécis [narratif, sans impact code], import `QGIS_ALGORITHMS` local à la
+méthode plutôt qu'au niveau module [prescrit par le brief, pas une
+déviation]).** `TransformQgisParams` (3 champs, docstring verbatim),
+validator `_check_allowlisted_and_required_params`, enregistrement
+`OP_KINDS`/`OP_PARAMS` sans toucher aux 14 op existantes — tout confirmé
+verbatim au brief corrigé. **Déviation trouvée et corrigée avant revue** :
+1er passage de l'implémenteur avait substitué `native:convexhull` à
+`gdal:warpreproject` dans le test `..._accepts_optional_output_srid` pour
+contourner un échec de validation — le contrôleur a vérifié indépendamment
+contre le JSON réel généré par Task 1 que `gdal:warpreproject` requiert en
+réalité `DATA_TYPE`/`MULTITHREADING`/`RESAMPLING` (pas seulement
+`TARGET_CRS`, qui est en fait optionnel) ; plan corrigé aux deux occurrences
+(ce test-ci ET le test équivalent de Task 3, pas encore dispatché, qui
+aurait heurté le même problème) ; implémenteur a rétabli `gdal:warpreproject`
+avec les 4 params et amendé son commit (pas de commit intermédiaire visible
+dans l'historique final, vérifié par le reviewer). Reviewer a vérifié
+empiriquement la même donnée JSON de manière indépendante et confirmé les
+exigences de chaque algorithme utilisé par les 6 nouveaux tests. 42/42 tests
+du fichier cible (36 existants + 6 nouveaux), 0 régression.
 
-Base Task 5: a44c3b8
-Task 5: complete (commit fe82563, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 3 Minor négligeables —
-branche "unknown op" redondante dans `config_validation.py` (déjà
-interceptée en amont par Task 4, filet défensif inoffensif), aucun test
-n'exerce le chemin permission-lecture de `transform.join.withCollectionId`
-(fidèle au fichier de test littéral du brief, lacune de couverture pas une
-déviation), commentaires anglais dans `config_validation.py` (miroir
-délibéré de `dataset_validation.py` préexistant, convention héritée pas une
-régression). Déviation légitime signalée par l'implémenteur et vérifiée
-indépendamment par le reviewer : les 3 `INSERT INTO collections` bruts du
-brief omettaient `created_at`/`updated_at` (défauts Python-side de l'ORM,
-jamais appliqués par un INSERT SQL brut) — ajout de `CURRENT_TIMESTAMP` aux
-3 fixtures, aucun code de production touché. Les 3 signatures réelles
-(`get_collection`, `get_access_facts`, `can()`) vérifiées caractère pour
-caractère contre le code actuel, toutes conformes au brief. Parité de
-message not-found/not-readable confirmée (anti-fuite d'existence de
-collection). `writer.collection` confirmé vérifier permission ET
-`editable` sans court-circuit. 5/5 + 5/5 tests, 34/34 régression ciblée,
-924 passed + 114 skipped suite complète, lint-imports clean (0 régression).
+Base Task 3: 596c1c8
+Task 3: complete (commit 0149e19, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 Critical, 0 Important, 1 Minor
+informatif — double-validation Pydantic déjà présente dans le pattern
+existant de `transform.reproject`, pas une régression introduite par cette
+tâche). Nouvelle branche confirmée placée juste avant le fallthrough final
+`return input_srid`, suit verbatim le pattern préexistant de
+`transform.reproject` (`model_validate` + `rsplit(":",1)[1]` + `int()`).
+Aucune autre branche touchée (buffer/reproject/intersection/countWithin/
+join/h3Aggregate confirmées octet-identiques à la base). Sécurité du
+`rsplit` vérifiée par le reviewer contre la contrainte regex `outputSrid`
+de Task 2 (`^[A-Za-z]+:\d+$`). 29/29 tests du fichier cible (27 existants +
+2 nouveaux), 0 régression.
 
-Base Task 6: fe82563
-Task 6: complete (commit 4b45ec0, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 1 Important non-bloquant + 0 Minor). Écart
-de comptage supplémentaire (12 tests réels vs. "11" annoncé par la prose du
-plan) — même schéma que Task 3, coquille préexistante du plan, pas un
-défaut. Reviewer a tracé à la main l'AST de la tentative d'injection
-`"1) UNION SELECT password FROM users--"` : survit à `validate_select_only`
-(SET_OPERATION_NODE autorisé) mais est bloquée par `collect_table_refs` sur
-la référence `users` — confirmé end-to-end (AST + exception imprimés), pas
-un rejet accidentel par une erreur de syntaxe non liée. Pureté de
-`compiler.py` confirmée (aucun import duckdb, aucune connexion dans aucune
-signature). `_qi` confirmé doubler les guillemets échappés. `topological_order`
-tracé à la main sur le test de cycle 2-nœuds (Kahn's algorithm, `ordered`
-reste vide, lève bien "acyclic").
+Base Task 4: 0149e19
+**Task 4 : complete (commit 3e2763c, 2 déviations autorisées par le
+contrôleur avant la revue — pas des rejets de reviewer — review clean
+ensuite : ✅ spec compliant, task quality Approved, 0 Critical, 0
+Important, 2 Minor négligeables — absence de garde sur JSON malformé dans
+`server.py` [verbatim du brief, non testé par le brief lui-même], route 404
+non documentée dans l'interface du brief [inoffensif]).**
 
-**Finding Important signalé, arbitré par l'humain** : `validate_bounded_expr`
-ne rejette que les références `BASE_TABLE` — les fonctions table
-(`read_csv`, `pragma_database_list`) et les fonctions scalaires
-(`current_setting`) passent au travers, plus étroit que la promesse du
-design §5.1 ("aucune fonction de lecture de fichier"). Plan-mandated (code
-transcrit verbatim du brief, qui est le code exact du plan) — pas une
-déviation de l'implémenteur. Reviewer a vérifié empiriquement que le
-`_lock_down` déjà prévu par Task 8 (`enable_external_access=false`) neutralise
-les vecteurs les plus graves (lecture fichier, introspection DB) ; seule
-`current_setting()` reste exploitable sous lockdown (fuite de config session
-DuckDB, pas de données utilisateur ni de fichier). Arbitrage humain : accepté
-tel quel, aucun fix dispatché — à documenter comme suivi non bloquant dans
-CLAUDE.md (même palier de confiance que SQL Lab, SP-11c) une fois la branche
-mergée, pas pendant l'exécution des tâches restantes. 17/17 tests (5+12),
-lint-imports clean (0 régression).
+Contexte infra : `sudo` sur cette machine nécessite une authentification
+interactive indisponible pour un subagent — **décision utilisateur** :
+reporter la configuration de `/scratch` (chown) plutôt que la faire
+maintenant. Step 5 exécuté en mode dégradé (build + smoke-test HTTP réel
+sans montage `/scratch` inscriptible), **Step 9 (tests pytest réels contre
+le sidecar) explicitement différé** — à reprendre dans une session future
+avec accès sudo avant de s'appuyer sur le sidecar en production. Les 3
+tests `qgis`-marqués skippent proprement en attendant (comportement voulu,
+pas un échec).
 
-Base Task 7: 4b45ec0
-Task 7: complete (commits 3d2841a + 8ebcb8b séparé, review clean au premier
-passage — ✅ spec compliant, task quality Approved, 0 finding bloquant, 2
-Minor héritées verbatim du brief — pas de scoping tenant_id sur
-`mark_running`/`mark_succeeded`/`mark_failed` [note pour Task 10 : vérifier
-l'autorisation en amont dans les routes], tolérance ordre/ensemble dans le
-test `list_runs_ordered`). Deux déviations signalées par l'implémenteur,
-vérifiées indépendamment par le reviewer comme légitimes (pas de contour de
-problème, pas de scope creep) : (1) le test littéral du brief utilisait un
-`pipeline_item_id="item-1"` fictif sans ligne `Item` réelle + session via
-`Base.metadata.create_all()` — reviewer a reproduit les deux modes d'échec
-réels (`NoReferencedTableError` en isolation, `IntegrityError` FK en suite
-complète, ce dépôt active `PRAGMA foreign_keys=ON`) puis confirmé le fix
-(`init_db()` + `_make_pipeline_item` créant un vrai User+Item, mirror de
-`test_harvest_repository.py`) préserve les 6 noms/assertions/intentions de
-test, seule la fixture change ; (2) commit séparé `8ebcb8b` (1 ligne,
-`core/app/db.py::core_table_names()`) corrige une lacune latente réelle —
-reviewer a vérifié indépendamment qu'aucun chemin d'import réel de
-`app/main.py` n'atteint `app.pipelines.models` sans ce fix (une instance
-SQLite dev/démo fraîche n'aurait jamais eu la table `pipeline_runs`),
-confirmé par un revert temporaire + suite complète toujours verte (947
-passed, lacune non testée mais réelle). Modèle confirmé référencer
-`items.id` (pas de table `pipelines` séparée, conforme au design §4.1).
-Chaîne de migration confirmée propre (`0018`, down_revision `0017`, tête
-unique). 6/6 tests, 947 passed + 114 skipped suite complète (0 régression).
+**Déviation 1 (trouvée et corrigée par l'implémenteur, vérifiée
+indépendamment par le contrôleur ET le reviewer)** : le Dockerfile du plan
+plaçait `ENV QT_QPA_PLATFORM=offscreen` APRÈS le `RUN qgis_process plugins
+enable grassprovider` — bug de build réel (`qt.qpa.xcb: could not connect
+to display`, exit 134, les layers Docker s'appliquent dans l'ordre).
+Implémenteur a réordonné (ENV avant RUN), rebuild confirmé réussi (log de
+build avec grassprovider effectivement activé). Contrôleur a vérifié
+`docker images`/`docker ps` (image présente, aucun conteneur de test qui
+traîne). Reviewer a re-vérifié la sémantique des layers et l'absence de
+ligne résiduelle incohérente.
 
-Base Task 8: 8ebcb8b
-Task 8: complete (commit 2bd44c8, review clean au premier passage sur opus —
-✅ spec compliant, task quality Approved, 0 finding bloquant, 4 Minor
-négligeables — `AssertionError` brut au lieu de `PipelineRuntimeError` si
-`writer.export` tourne sans `s3_client` [note pour Task 9], imports inutilisés
-dans le fichier de test, classe `_FakeCollections` morte héritée du brief,
-f-strings sans placeholder cosmétiques). Tâche la plus volumineuse et la plus
-sensible du plan (écriture réelle de features via `insert_feature`/`rls_scope`)
-— 7 signatures externes réutilisées (`open_connection`, `_dedup_cte`/
-`_has_any_file`, `insert_feature`, `rls_scope`, `validate_feature`,
-`introspect_table`) toutes vérifiées conformes, aucune dérive. 4 défauts
-réels trouvés et corrigés par l'implémenteur (pas seulement transcrits),
-tous vérifiés indépendamment par le reviewer opus contre le code source
-actuel : (1) `_materialize_reader` utilisait `CREATE TEMP VIEW` (paresseux,
-ré-exécute `read_parquet()` à chaque requête) au lieu de `CREATE TEMP TABLE`
-— incompatible avec son propre design deux-passes (`_lock_down` coupe l'accès
-externe juste après), confirmé par le même choix déjà fait dans
-`app.analytics.sql_sandbox._materialize` ; correctement scopé aux
-readers/joins seulement, les VIEW des transforms restent inchangées (pas de
-remplacement en masse). (2) `SELECT *` sur la source CDC faisait fuiter les
-colonnes de bookkeeping (`_op`/`_lsn`/`_ts`) et les colonnes virtuelles Hive
-(`tenant_id`/`collection_id`/`dt`) dans les `properties` d'un `writer.collection`,
-rejetées par `validate_feature` comme `unknown_property` — corrigé par une
-liste de colonnes explicite (pk + colonnes déclarées + géométrie renommée) +
-retrait des noms réservés de la collection cible avant écriture ; reviewer a
-vérifié que rien n'est perdu (toutes les colonnes utilisateur déclarées
-restent présentes) et que `insert_feature` ignore de toute façon pk/tenant_id
-hors de son itération sur `_property_columns`. (3) Assertion de test
-`pop_double == 40` pour id=1 était une erreur arithmétique du brief
-(pop=10×2=20, pas 40) — comportement de l'implémentation confirmé correct,
-seule l'assertion littérale était fausse. (4) 5 bugs confinés aux
-fixtures/setup du test postgis (littéraux booléens `0,1` invalides sur
-Postgres, `created_at`/`updated_at` NOT NULL sans défaut SQL sur un INSERT
-brut, import `app.items` manquant pour enregistrer `Item` sur `Base.metadata`
-en exécution isolée `-m postgis`, monkeypatch `table_name` figé cassant la
-cible du writer, grants `gis_rls` manquants sur une table créée sans
-`apply_collection_ddl`) — chacun vérifié par le reviewer contre le code réel
-(modèles, `validate_feature`, `ddl.py`). Ordre deux-passes
-matérialiser-puis-verrouiller confirmé préservé ; défense en profondeur
-linéaire+join confirmée présente à l'exécution (`predecessor_id` assert).
-Test postgis exécuté pour de vrai contre le conteneur `postgis-test` (pas
-skippé) par l'implémenteur ET indépendamment par le reviewer — 3/3 passed,
-conteneur nettoyé après coup dans les deux cas. 3/3 tests (2 non-postgis +
-1 postgis réel), 57 passed + 1 skipped régression ciblée, lint-imports clean.
+**Déviation 2 (trouvée par l'implémenteur, root-cause tracée
+indépendamment par le contrôleur, fix autorisé explicitement avant
+exécution)** : `core/tests/test_pipeline_routes.py::test_get_pipelines_ops_returns_all_eight`
+échouait déjà avant cette tâche — introduit par **Task 2** (premier échec
+au commit 596c1c8, confirmé par `git stash`/checkout ciblé sur chaque SHA
+intermédiaire), pas par Task 4. Même patron que SP-15c Task 1 (test qui
+code en dur l'ensemble exact des op, cassé mécaniquement par l'ajout du 15e
+op, hors liste de fichiers du brief qui l'a introduit). Corrigé maintenant
+plutôt que laissé rouge jusqu'à Task 6 : renommage `..._all_eight` →
+`..._all_fifteen`, `"transform.qgis"` ajouté à l'ensemble attendu, amendé
+dans le même commit. Reviewer a vérifié indépendamment via `git show
+596c1c8` que `transform.qgis` est un op réellement enregistré, et recompté
+à la main l'ensemble à 15.
 
-Base Task 9: 2bd44c8
-Task 9: complete (commit 6ada6c6, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 1 Minor informationnel
-— limite résiduelle partagée avec SP-6a (`run_ingestion_task`) : si
-`mark_failed` lui-même lève pendant son propre commit, l'exception remonte
-non attrapée et le run reste bloqué "running" ; risque préexistant accepté,
-pas une régression de cette tâche, hors périmètre MVP). Premier câblage
-bout-en-bout réel des Tasks 2-9 à travers un worker procrastinate réel.
-Les 6 signatures externes réutilisées toutes vérifiées conformes, aucune
-dérive de code (seulement dérive de fixture de test, 4 bugs Postgres
-identiques à ceux déjà résolus dans le test de Task 8 — littéraux booléens,
-`created_at`/`updated_at` sur INSERT brut, import `app.items` manquant pour
-enregistrer `Item` sur `Base.metadata`, grants `gis_rls` manquants — plus
-un `keywords` NOT NULL supplémentaire propre à `items`). Préoccupation de
-Task 8 (AssertionError brut du `writer.export` catché par le `except
-Exception` final) résolue avec un 3e test ajouté (pas seulement raisonnée) :
-reviewer a confirmé le test force un vrai `AssertionError` via monkeypatch
-sur `pipeline_jobs.run_pipeline` (le nom réellement appelé par
-`run_pipeline_task`) et vérifie `status == "failed"` — pas tautologique,
-échouerait si la clause manquait ou était mal ordonnée. Ordre transactionnel
-interne (mark_running / exécution / mark_succeeded-ou-failed, chacun dans sa
-propre session) confirmé mirror fidèle de `run_ingestion_task` (SP-6a).
-Queue `"etl"` cohérente entre `jobs.py` et `docker-compose.yml`,
-`import_paths` confirmé enregistrer réellement la tâche (test dédié
-`test_import_paths_registers_all_domain_tasks`, pas une illusion in-process).
-3/3 tests postgis réels (exécutés deux fois par l'implémenteur + une fois
-par le reviewer, conteneur systématiquement nettoyé), 949 passed + 118
-skipped (SQLite) / 118 passed (postgis) suite complète (0 régression).
+Suite complète repassée au vert après les 2 corrections : 1022 passed + 125
+skipped, 0 échec (125 skipped = postgis existants + les 3 nouveaux qgis).
+`server.py`/générateur/fixtures/test confirmés verbatim au brief par le
+reviewer (contrat HTTP 200/403/502/504 tracé ligne à ligne contre les 3
+tests).
 
-Base Task 10: 6ada6c6
-Task 10: complete (commit 7f96035, review clean au premier passage — ✅ spec
-compliant, task quality Approved, 0 finding bloquant, 1 Minor cosmétique —
-`test_run_route_defers_job_and_returns_run_id` ne vérifie jamais réellement
-que le `fake_deferrer` a été appelé, le seul chemin de succès du test
-[404 sur pipeline inexistant] retourne avant d'atteindre `defer_task` ;
-lacune divulguée explicitement par le commentaire du brief lui-même, pas
-masquée par l'implémenteur ; aucun test dans toute la suite n'exerce le
-chemin HTTP heureux bout-en-bout create→commit→defer→202, mais le nom du
-test sur-promet par rapport à ce qu'il vérifie réellement). Première tâche
-du plan à ajouter `app.pipelines` à la liste `layers` d'import-linter —
-déviation nécessaire signalée par l'implémenteur et vérifiée indépendamment
-par le reviewer comme légitime, pas du contournement : l'ajout du layer a
-exposé que `app.db.core_table_names()` importe déjà paresseusement
-`app.pipelines.models` (ajouté par Task 7/commit 8ebcb8b, pas par cette
-tâche), correspondance 1:1 confirmée entre les 10 entrées `ignore_imports`
-préexistantes et les 10 imports paresseux de `core_table_names()` — la
-11e entrée ajoutée suit exactement le même patron, pas un patron nouveau.
-Reviewer a vérifié la position de couche par grep exhaustif de tous les
-imports `app.pipelines/*.py` : rien n'importe `app.harvest`/`app.mcp`/
-`app.public`/`app.main` (tout au-dessus dans le nouvel ordre), conforme à la
-justification du plan. Guard `is_etl_enabled()` confirmé lu une seule fois
-à `create_app()`, pas par requête. 404 en mode ETL désactivé confirmé être
-une preuve univoque d'absence de route (endpoint sans dépendance
-d'authentification). 5/5 tests, lint-imports clean (1 kept, 0 broken),
-952 passed + 120 deselected — première exécution conjointe des Tasks 1-10
-(0 régression).
+Base Task 5: 3e2763c
+**Task 5 : complete (commit f55bf5f, 1 déviation autorisée avant revue —
+review clean ensuite : ✅ spec compliant, task quality Approved, 0
+Critical, 0 Important, 1 Minor + 1 ⚠️ reporté pour plus tard).**
 
-Base Task 11: 7f96035
-Task 11: complete (commit ef4cad9 puis fix 06ca019, 1 round de fix — ❌
-Critical trouvé au premier passage, ✅ après fix). Dernière tâche du plan.
-Déviation légitime signalée par l'implémenteur : le brief appelait
-`validate_pipeline_payload` directement dans `create_pipeline` (lève
-`HTTPException`, invisible pour `/mcp` monté en app ASGI séparée hors des
-handlers FastAPI) — ajout d'un helper `_validate_pipeline` mirroring
-`_validate_dataset`/`_validate_bookmark` déjà présents dans le même fichier
-(conversion HTTPException→ValueError), amélioration stricte de cohérence
-sans changement de comportement sur les chemins testés, vérifiée par le
-reviewer. `READ_ONLY_TOOLS` confirmé inchangé (6 entrées, `create_pipeline`
-s'auto-garde en inline, `run_pipeline` ne fait que différer un job — même
-raisonnement que `run_analytics_query`).
+Contexte infra inchangé (cf. Task 4) : Step 5 du brief (test réel bout-en-
+bout contre le sidecar) écrit mais **non exécuté** — skip propre confirmé
+sans le sidecar, correction réelle différée à une session future avec
+accès `sudo`/`/scratch`.
 
-**Critical trouvé et corrigé** : `explain_pipeline` (code verbatim du brief,
-pas une déviation de l'implémenteur) ne vérifiait aucun accès en lecture
-avant de renvoyer le graphe complet d'un pipeline — n'importe quel
-utilisateur authentifié du même tenant pouvait lire le graphe de n'importe
-quel pipeline, y compris sans partage/rôle, violant la porte unique
-`can(user, action, object)` de CLAUDE.md. Repéré par contraste direct avec
-son sibling `run_pipeline` dans le même diff, qui fait la vérification
-correctement. Fix dispatché sans arbitrage humain (pas de conflit avec une
-contrainte du plan — le fix aligne juste `explain_pipeline` sur le pattern
-déjà correct de `run_pipeline`) : ajout du check `can(action="read")` +
-remplacement de l'`AssertionError` brut par un `ValueError("pipeline not
-found")` cohérent (pas de fuite d'existence entre "n'existe pas" et "accès
-refusé"). Re-review a vérifié empiriquement (pas seulement statiquement) :
-checkout du code pré-fix, re-exécution du nouveau test "stranger" — la faille
-se reproduit réellement (renvoie le graphe complet sans erreur), puis
-confirmé corrigée après restauration du fix. 3 tests ajoutés (propriétaire
-réussit, étranger rejeté, id inexistant même message) — cas positif ET
-négatif couverts, pas de sur-correction. 1 Minor résiduel sur le fix lui-même
-— triple quasi-duplication du pattern facts+can dans le fichier
-(`_require_access`, `run_pipeline`, `explain_pipeline`), défendable (messages
-d'erreur différents), à surveiller si un 4e appelant apparaît.
+**Déviation (trouvée par l'implémenteur, vérifiée indépendamment)** : les
+2 nouveaux payloads de test du brief (reader+transform seulement) violaient
+un validator Pydantic préexistant et non lié à cette tâche
+(`PipelinePayload._validate_graph`, `core/app/configs/schemas.py:207` :
+"pipeline requires at least one writer node"). Implémenteur a ajouté un
+nœud+edge `writer.export` minimal à chaque payload — contrôleur ET reviewer
+ont vérifié indépendamment que (1) le validator existe réellement à cette
+ligne, (2) c'est le même patron déjà établi par
+`test_preview_h3_aggregate_requires_4326_reproject_first` (lignes 367-386),
+et (3) le nœud writer est inerte pour ces tests (`up_to="t1"` déclenche un
+retour anticipé dans `_execute_transform_chain` avant que le writer ne soit
+jamais atteint) — n'affecte donc rien de ce que le test exerce/vérifie
+réellement.
 
-**Finding Important signalé pour la revue finale** : aucun test de ce fichier
-n'exerçait le corps des outils avant le fix (seulement présence/absence
-d'enregistrement) — c'est précisément pourquoi le Critical est passé
-inaperçu ; contraste avec `test_mcp_tools_dataset_create.py` qui teste déjà
-les chemins négatifs/autorisation. Les 3 tests ajoutés par le fix comblent
-ce trou pour `explain_pipeline` spécifiquement, mais le patron reste à
-appliquer si de futurs outils MCP suivent le même brief-first workflow.
+Guard `if not qgis_worker_url: raise` confirmé en toute première ligne de
+`_execute_qgis_transform` (échec propre avant tout I/O fichier/réseau).
+Option `SRS 'EPSG:{input_srid}'` du COPY confirmée présente. Ordre
+`except httpx.TimeoutException` avant `except httpx.HTTPError` confirmé
+correct (TimeoutException est une sous-classe de HTTPError). Chemin des 14
+op existantes confirmé octet-identique (`compile_transform_sql` +
+`CREATE TEMP VIEW` inchangés). `preview_pipeline`/`run_pipeline` confirmés
+correctement threadés avec les 2 nouveaux kwargs. **⚠️ Point ouvert reporté
+par le reviewer, à vérifier dans une session future avec sidecar réel** :
+le round-trip GPKG via `qgis_process` préserve-t-il bien une colonne nommée
+littéralement `geometry` (convention supposée par `preview_pipeline`/
+`writer.collection`) ? Non vérifiable sans exécution réelle — à couvrir par
+une assertion explicite sur le nom/la forme de colonne quand Step 5/6 sera
+enfin exécuté pour de vrai (avant Task 8 si celui-ci doit s'appuyer sur ce
+chemin en confiance). 1023 passed + 126 skipped sur la suite complète (+1
+test réussi, +1 skip), 0 régression.
 
-7 signatures externes vérifiées conformes (aucune dérive). Suite complète
-finale : 957 passed + 120 deselected (0 régression) — clôt les 11 tâches de
-SP-15a. Prête pour la revue finale de branche.
+Base Task 6: f55bf5f
+Task 6: complete (commit 1295502, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 Critical, 0 Important, 1 Minor
+négligeable — aucun test n'exerce le threading réel des env vars avec une
+valeur non-défaut, conforme au brief qui ne le demandait pas). Route `GET
+/pipelines/ops/qgis-algorithms` confirmée héritant du même gate
+`CORE_ETL_ENABLED` que le reste du router (pas un second gate parallèle,
+verrouillé explicitement par le 2e test 404). `preview_pipeline_route`/
+`run_pipeline_task` confirmés threader les 2 nouveaux kwargs avec les
+mêmes défauts (`""`/`600`) qui reproduisent exactement le comportement
+préexistant pour tout pipeline sans nœud `transform.qgis`. Aucune autre
+route/tâche perturbée. 1025 passed + 126 skipped sur la suite complète
+(+2 tests), 0 régression.
 
-## Revue finale de branche (opus, 837faa9..06ca019, 13 commits) — 2 Important,
-0 Critical. Baseline indépendante confirmée : 957 passed + 120 deselected
-(non-postgis), 118 passed + 959 deselected (postgis), lint-imports clean,
-pas de ruff configuré (pas un trou de lint, import-linter est le seul
-linter configuré). Checklist croisée toute verte : ordre `_lock_down` avant
-toute SQL de transform confirmé (disposition Task 6 toujours valide) ; pas
-de sibling bug au Critical de Task 11 sur `run_pipeline`/`create_pipeline`
-(REST + MCP) ; `CORE_ETL_ENABLED` lu une fois à la construction pour le
-montage routes ET l'enregistrement MCP, dans le même appel `create_app()`
-— aucune fenêtre d'incohérence ; topologie linéaire+join validée à la
-sauvegarde sur tous les chemins d'écriture (REST + MCP `create_pipeline`),
-défense en profondeur atteignable à l'exécution ; cohérence not-found/not-
-authorized confirmée entre Task 5/10/11 ; isolation tenant bout-en-bout
-confirmée (partition Hive + `rls_scope`) ; limite résiduelle Task 9
-(`mark_failed` qui lève) confirmée inchangée, toujours hors périmètre.
+Base Task 7: 1295502
+Task 7: complete (commit 562101b, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 finding, aucun Minor bloquant — pas de
+`depends_on` sur `qgis-worker` [correct, l'appel se fait au moment du job
+via HTTP, pas au démarrage du conteneur]). Diff YAML pur, 1 seul fichier, 21
+insertions. Les 4 contraintes globales vérifiées directement dans le diff
+(pas seulement rapportées) : `profiles: ["etl"]` présent, aucune credential
+DB, seuls `etl-scratch`+`gis-net` montés/attachés, aucun `USER` directive
+introduit. Cohérence du port `http://qgis-worker:8000` vérifiée contre le
+vrai `server.py` de Task 4. Blocs `environment`/`depends_on`/`networks`
+préexistants de `worker` confirmés intacts, seule une nouvelle clé
+`volumes:` insérée proprement. Validation réelle exécutée par
+l'implémenteur : `docker compose config --quiet` (exit 0), `qgis-worker`
+présent avec `--profile etl` / absent sans, build+smoke-test réel (5s de
+uptime silencieux = succès, pas de crash-loop), teardown propre confirmé
+(aucun conteneur qui traîne).
 
-**2 Important trouvés, même cause racine, fix consolidé dispatché** :
-`_materialize_reader` renomme la géométrie en `"geometry"` mais la garde en
-type DuckDB `GEOMETRY` brut, renvoyé par le client Python comme `bytes` WKB.
-Seul `_write_collection` la convertit déjà (`ST_AsGeoJSON`). (1)
-`preview_pipeline`/`POST /pipelines/{id}/preview` : 500 pour tout pipeline
-dont la collection lue a une colonne géométrie — `jsonable_encoder` tente de
-décoder les `bytes` en UTF-8 et lève `UnicodeDecodeError`. Invisible tâche
-par tâche : le test Task 8 ne lit jamais le champ géométrie, le test Task 10
-n'exerce que les 404. (2) `writer.export` : branche `geojson` lève
-`TypeError` (bytes non sérialisables JSON) — run correctement marqué
-"failed" (pas zombie) mais l'export ne fonctionne jamais ; en plus, la
-branche geojson mettait `"geometry": None` en dur indépendamment du bug
-bytes ; branche `csv` n'écrit pas d'erreur mais écrit le repr Python des
-bytes dans la colonne géométrie (valeur inutilisable). Fix dispatché en un
-seul lot (pas un fix par finding) : conversion `ST_AsGeoJSON` au point
-d'extraction finale des deux fonctions (mirror de `_write_collection`, sans
-toucher `_materialize_reader` ni `compiler.py` — Phase 1 n'a aucune op de
-transform spatiale, donc l'encodage n'est nécessaire qu'aux deux frontières
-de sortie, pas à travers les vues intermédiaires).
+Base Task 8: 562101b
+Task 8: complete (commit 0e01da5, review clean au premier passage — ✅ spec
+compliant, task quality Approved, 0 Critical, 0 Important, 2 Minor
+négligeables — docstring du nouveau test n'a pas répété la mise en garde
+`/scratch` [plan-mandated, verbatim du brief, pas une déviation de
+l'implémenteur], redondance harmless `srid=4326` re-passé à
+`dataclasses.replace`). Tâche pure test, aucun fichier de production touché
+(`git diff --stat` hors le fichier de test confirmé vide). Reviewer a tracé
+indépendamment le test contre le vrai code de production déjà mergé
+(`_execute_qgis_transform`, `_write_collection`, validation
+`TransformQgisParams`, schéma réel de `native:dissolve`) et confirmé le
+test bien formé : géométrie des 2 carrés adjacents (bord partagé x=1)
+correcte, params `{FIELD, SEPARATE_DISJOINT}` correspondent exactement au
+schéma réel de l'allowlist, câblage collection/TableInfo cohérent avec les
+monkeypatches, nettoyage/marqueurs identiques au patron établi du fichier.
 
-Fix (commit d10a30a) re-review clean — les deux findings confirmés
-réellement corrigés, vérification empirique (checkout pré-fix + re-run des
-3 nouveaux tests, échec reproduit exactement comme prédit —
-`AssertionError` sur bytes WKB bruts vs objet GeoJSON attendu pour preview,
-`TypeError` bytes-non-sérialisables pour l'export geojson, repr Python des
-bytes dans la cellule CSV — puis restauration du fix, tests verts).
-`_write_collection`/`_materialize_reader`/`compiler.py` confirmés
-non-modifiés par le diff (mirroring sans collatéral). 3 tests ajoutés, 0
-duplication de la géométrie dans `properties` pour l'export geojson. Suite
-complète : 960 passed + 120 deselected (non-postgis), 4 passed + 5
-deselected (postgis réel, `_write_collection` toujours fonctionnel).
-Conteneur `postgis-test` laissé propre.
+Contexte infra inchangé : test marqué à la fois `postgis` (infra
+disponible) et `qgis` (infra indisponible) — skip propre confirmé sans env
+vars, **exécution réelle contre le sidecar différée** à une session future
+avec accès `sudo`/`/scratch`. 1025 passed + 127 skipped sur la suite
+complète (+1 skip), `lint-imports` clean (1 kept, 0 broken), 0 régression.
 
-## **SP-15a READY TO MERGE** — HEAD=d10a30a, 15 commits (11 tâches + 1 fix
-Task 11 [Critical, authorization bypass `explain_pipeline`] + 1 fix revue
-finale [2 Important, sérialisation géométrie preview/export]), 2 rounds de
-fix au total sur toute la branche, chacun re-revu clean avec vérification
-empirique (checkout pré-fix). Suite complète finale : 960 passed + 120
-deselected (SQLite/non-postgis), 118+ passed (postgis réel, exécuté
-plusieurs fois avec succès tout au long de l'exécution — Tasks 2, 8, 9, et
-la revue finale). lint-imports clean tout au long. Aucun Critical/Important
-non résolu. Suivi non bloquant à documenter séparément (hors périmètre de
-cette session d'exécution, décision humaine déjà prise) : gap
-`validate_bounded_expr`/`current_setting()` de Task 6, à noter dans
-CLAUDE.md « Suivis non bloquants » une fois la branche mergée. Prêt pour
+## 8 tâches de SP-15d complètes. Passage au check final.
+
+**Point ouvert reporté pour la revue finale et pour l'utilisateur** :
+l'affirmation centrale du plan — « `transform.qgis` fonctionne réellement
+bout-en-bout contre un vrai sidecar `qgis_process` » — **reste non
+vérifiée par exécution réelle** dans cette session (`sudo` interactif
+indisponible pour configurer `/scratch`). Toute la logique de production a
+été relue et vérifiée statiquement à chaque tâche (contrats HTTP,
+round-trip DuckDB↔GDAL, gestion SRID/SRS, guard-rails d'erreur), et
+l'implémenteur de Task 4 a confirmé le conteneur démarre et répond
+correctement en HTTP réel (juste sans I/O fichier via `/scratch`). Mais les
+3 tests `qgis`-marqués (Task 4), le test bout-en-bout de Task 5
+(`computes_centroids`) et celui de Task 8 (`dissolve_then_write`) n'ont
+jamais tourné pour de vrai. À exécuter dans une session future ayant accès
+`sudo` avant de considérer SP-15d opérationnel en production.
+
+## Check final (contrôleur, baseline indépendante)
+
+`cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@localhost:5433/gis_test
+uv run pytest -q` → 1147 passed, 5 skipped (les 5 = exactement les tests
+`qgis`-marqués des Tasks 4/5/8, postgis réel connecté). `uv run
+lint-imports` → 1 kept, 0 broken. `cd shell && npx vitest run` → 121
+fichiers, 933 tests passed (ce plan ne touche jamais `shell/`, vérifié en
+pure régression). `npx tsc --noEmit` → clean. Baseline indépendante
+confirmée avant dispatch de la revue finale.
+
+## Revue finale de branche (opus, 1c5eede..0e01da5, 8 commits)
+
+**Ready to merge: With fixes.** Les 12 contraintes globales vérifiées une
+par une sur tout le diff (pas seulement par tâche) — toutes vertes,
+y compris les 2 corrections documentées en cours d'exécution (grass7/grass,
+test routes.py cassé par Task 2) confirmées correctement propagées
+partout, **+ une 3e correction non documentée mais correcte trouvée** :
+l'ordre `ENV`/`RUN` du Dockerfile (Task 4) — le reviewer confirme
+indépendamment que c'est la bonne correction.
+
+**1 Important trouvé et corrigé avant merge** : `_execute_qgis_transform`
+ne renomme jamais la colonne géométrie après `ST_Read(out_path)`, alors que
+tout le reste du fichier (chemin reader) impose la convention littérale
+`geometry` dont dépendent `has_geometry`/`_write_export`/`_write_collection`.
+GDAL nomme souvent la colonne géométrie GPKG `geom`, pas `geometry` — risque
+réel de perte silencieuse de géométrie si jamais exécuté contre le vrai
+sidecar. **1 Important non actionnable cette session** : les 5 tests
+`qgis`-marqués n'ont jamais tourné pour de vrai (même limitation `sudo`)
+— le reviewer juge que cela n'empêche pas le merge (feature doublement
+verrouillée par défaut : `CORE_ETL_ENABLED=false` + profil compose `etl`)
+mais **ne doit pas être activée en production avant qu'une session future
+avec accès `sudo` fasse tourner les 5 tests pour de vrai**.
+
+4 Minor négligeables triés (fuite scratch sur échec, absence de garde JSON
+malformé côté sidecar, `response.json()` fragile sur erreur non-200,
+`_type_id()` non testé isolément — ce dernier jugé acceptable, prouvé
+indirectly par le JSON committé).
+
+**Fix appliqué** : renommage robuste de la colonne géométrie (même patron
+que le chemin reader) + 3 Minor de durcissement (cleanup scratch en
+try/finally, garde JSON malformée côté sidecar → 400 propre,
+`response.json()` client tolérant à un corps non-JSON). Dispatché comme 1
+seul fix subagent couvrant les 4 points ensemble (commit d1c019d).
+
+**Preuve empirique indépendante obtenue pendant le fix** : `git stash` +
+repro directe hors pytest confirme que même le `COPY ... FORMAT GDAL DRIVER
+GPKG` de DuckDB lui-même nomme sa colonne géométrie `geom`, jamais
+`geometry` — la prémisse du Finding 1 n'était pas hypothétique, elle était
+vraie à 100 % dès le premier retour GPKG, sidecar ou pas. 8 nouveaux tests
+(4 dans `test_pipeline_runtime.py` sans sidecar réel requis — vrai COPY/
+ST_Read DuckDB, `_QGIS_SCRATCH_ROOT` extrait uniquement pour rediriger vers
+un `tmp_path` [`/scratch` appartient à root, inaccessible en écriture cette
+session] ; 4 dans un nouveau fichier `test_qgis_worker_server_handler.py`
+démarrant un vrai `ThreadingHTTPServer` sur port éphémère). RED→GREEN
+démontré pour les 2 groupes via `git stash`/`git stash pop` ciblés.
+
+**Re-revue du fix (opus, 0e01da5..d1c019d) : les 4 findings marqués
+Resolved indépendamment** — reviewer a lui-même refait la repro DuckDB
+(confirmé `geom`/`fid`, jamais `geometry`) et vérifié que la détection par
+type (`.description[1].id == "geometry"`) reste robuste même avec un SRID
+annoté dans le type (`GEOMETRY('EPSG:4326')`). `try/finally` confirmé
+couvrir COPY+HTTP+matérialisation. Garde sidecar confirmée ne pas avaler
+les requêtes bien formées (test de non-régression dédié). Aucune des 14 op
+préexistantes touchée (diff ciblé confirmé). 2 points Minor résiduels
+notés, hors périmètre des 4 findings, non bloquants (corps d'erreur JSON
+valide mais non-objet ; collision de nom `geometry`/`geom` théorique,
+absente de l'allowlist réelle). **Ready to merge: Yes.**
+
+1155 passed + 5 skipped (postgis réel, les 5 = tests qgis-marqués toujours
+différés), `lint-imports` 1 kept/0 broken, avant et après le fix.
+
+## SP-15d READY TO MERGE — HEAD=d1c019d, 9 commits (8 tâches + 1 fix de
+revue finale sur 4 findings, 1 seul round de fix). 0 Critical/Important non
+résolu sur l'ensemble de la branche. **Point ouvert non bloquant pour
+l'utilisateur, à traiter avant activation en production** : les 5 tests
+`@pytest.mark.qgis` (3 Task 4, 1 Task 5, 1 Task 8) n'ont jamais tourné pour
+de vrai cette session (`sudo` interactif indisponible pour configurer
+`/scratch`) — à exécuter dans une session future avec accès sudo avant de
+considérer `transform.qgis` vérifié de bout en bout contre un vrai
+`qgis_process`. La feature reste doublement verrouillée par défaut
+(`CORE_ETL_ENABLED=false` + profil compose `etl`), donc mergeable sans
+risque pour toute instance existante. Prêt pour
 `superpowers:finishing-a-development-branch`.
