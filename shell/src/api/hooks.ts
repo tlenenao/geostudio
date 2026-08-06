@@ -291,6 +291,15 @@ export function usePipelineOps() {
   });
 }
 
+export function usePipelinePreview(pipelineId: string, nodeId: string | null) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline-preview", pipelineId, nodeId],
+    queryFn: () => client.previewPipeline(pipelineId, nodeId!),
+    enabled: nodeId !== null,
+  });
+}
+
 export function useRunPipeline(pk: string) {
   const client = useItemClientInternal();
   return useMutation({
