@@ -13,6 +13,9 @@ dependencies = [
                        # RESTClient utilise `requests`, pas httpx (que le reste
                        # du dépôt utilise déjà) ; déclaré ici en dépendance
                        # directe plutôt que de compter sur la transitive de dlt.
+    "dlt>=1.6",  # SP-15f : reader.connector.rest/postgres — extraction,
+                # normalisation, inférence de schéma (design §3.1) ; destination
+                # duckdb, aucun extra requis (core/déjà présent).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;
@@ -59,6 +62,10 @@ dev = [
     "stac-pydantic>=3.1",  # SP-12a : validation de conformité STAC, offline, dep de test uniquement
     "rdflib>=7.0",  # SP-12b : parse JSON-LD pour validation SHACL, dep de test uniquement
     "pyshacl>=0.25",  # SP-12b : validation SHACL contre les shapes DCAT-AP vendues hors-ligne, dep de test uniquement
+    "pytest-httpserver>=1.0",  # SP-15f : serveur HTTP local réel pour tester
+                               # reader.connector.rest sans réseau (dlt utilise
+                               # `requests`, pas httpx — un mock httpx type respx
+                               # n'intercepterait rien).
 ]
 
 [tool.pytest.ini_options]
