@@ -66,13 +66,15 @@ Compose, `qgis/qgis:release-3_34`.
   reprojecting to an appropriate CRS before an op where this matters
   (documented in `TransformQgisParams`'s docstring in Task 2).
 - **`grassprovider` is present in the image but disabled by default**
-  (verified: `qgis_process list` shows zero `grass:*` ids until `qgis_process
+  (verified: `qgis_process list` shows zero `grass7:*` ids until `qgis_process
   plugins enable grassprovider` runs). Must be baked into the sidecar image
   at build time (Task 4's Dockerfile), not enabled per-request.
-- **The real GRASS algorithm namespace is `grass:*`, not `grass7:*`**
-  (verified against the pinned image — the feasibility study's `grass7:*`
-  wording is an older-version convention; do not use it anywhere in code,
-  tests, or the allowlist).
+- **The real GRASS algorithm namespace is `grass7:*`, not `grass:*`**
+  (re-verified independently during execution against the actual pinned
+  image — `qgis_process list` shows 0 `grass:*` ids and 306 `grass7:*` ids.
+  **Correction to this plan**: an earlier design pass asserted the opposite
+  — that was wrong; `grass7:*` is correct and is what code/tests/the
+  allowlist must use everywhere).
 - **`qgis_process run <id> -` contract, verified against a real container**:
   success = exit code 0, complete JSON on stdout (top-level `results` key
   has output paths), nothing on stderr worth parsing. Failure = exit code
@@ -134,41 +136,56 @@ QGIS_IMAGE = "qgis/qgis:release-3_34"
 
 # 50 algorithmes vérifiés réels contre `qgis_process list` (base +
 # grassprovider activé) pendant le spike de design — design SP-15d §10.
+# CORRECTIF (vérifié indépendamment à l'exécution de Task 1, contre le même
+# conteneur pinné) : 6 ids du spike initial portaient un préfixe de provider
+# erroné (native: -> qgis:/grass7:) et 1 id (native:selectbyattribute)
+# n'existe pas du tout en tant qu'algorithme Processing — remplacé par
+# native:polygonstolines (décision humaine, cf. progress ledger SP-15d).
 ALLOWLIST_IDS = [
     "native:dissolve", "native:simplifygeometries", "native:smoothgeometry",
     "native:centroids", "native:convexhull", "native:multiparttosingleparts",
     "native:fixgeometries", "native:deleteholes", "native:extractvertices",
     "native:pointsalonglines", "native:densifygeometriesgivenaninterval",
-    "native:snapgeometries", "native:minimumboundinggeometry",
+    "native:snapgeometries", "qgis:minimumboundinggeometry",
     "native:voronoipolygons", "native:delaunaytriangulation",
     "native:union", "native:difference", "native:symmetricaldifference",
     "native:clip", "native:mergevectorlayers", "native:splitvectorlayer",
     "native:multiringconstantbuffer",
     "native:joinattributesbylocation", "native:extractbylocation",
-    "native:extractbyattribute", "native:selectbyattribute",
+    "native:extractbyattribute", "native:polygonstolines",
     "native:nearestneighbouranalysis", "native:zonalstatisticsfb",
-    "native:rasterlayerzonalstats", "native:heatmapkerneldensityestimation",
+    "native:rasterlayerzonalstats", "qgis:heatmapkerneldensityestimation",
     "native:creategrid", "native:fieldcalculator",
     "qgis:tininterpolation", "qgis:idwinterpolation",
     "native:shortestpathpointtopoint", "native:serviceareafrompoint",
     "native:hillshade", "native:slope", "native:aspect",
     "gdal:contour", "gdal:polygonize", "gdal:rasterize", "gdal:sieve",
     "gdal:proximity", "gdal:warpreproject", "gdal:viewshed",
-    "grass:r.watershed", "grass:r.slope.aspect", "grass:r.fill.dir",
-    "grass:r.flow",
+    "grass7:r.watershed", "grass7:r.slope.aspect", "grass7:r.fill.dir",
+    "grass7:r.flow",
 ]
 
 OUTPUT_PATH = Path(__file__).parent.parent / "core" / "app" / "pipelines" / "ops" / "qgis_algorithms.json"
 
+# grassprovider est désactivé par défaut et son état ne survit pas entre deux
+# `docker run --rm` distincts (vérifié à l'exécution) : pour tout id grass7:*,
+# l'activation doit être chaînée dans le MÊME appel de conteneur que la
+# commande `help`.
+GRASS_ENABLE_CMD = "qgis_process plugins enable grassprovider >/dev/null 2>&1"
+
 
 def fetch_schema(algorithm_id: str) -> dict:
-    result = subprocess.run(
-        [
+    if algorithm_id.startswith("grass7:"):
+        argv = [
+            "docker", "run", "--rm", "-e", "QT_QPA_PLATFORM=offscreen", QGIS_IMAGE,
+            "bash", "-c", f"{GRASS_ENABLE_CMD} && qgis_process help {algorithm_id} --json",
+        ]
+    else:
+        argv = [
             "docker", "run", "--rm", "-e", "QT_QPA_PLATFORM=offscreen", QGIS_IMAGE,
             "qgis_process", "help", algorithm_id, "--json",
-        ],
-        capture_output=True, text=True, check=True,
-    )
+        ]
+    result = subprocess.run(argv, capture_output=True, text=True, check=True)
     raw = json.loads(result.stdout)
     parameters = {
         name: {
@@ -252,23 +269,23 @@ EXPECTED_IDS = {
     "native:centroids", "native:convexhull", "native:multiparttosingleparts",
     "native:fixgeometries", "native:deleteholes", "native:extractvertices",
     "native:pointsalonglines", "native:densifygeometriesgivenaninterval",
-    "native:snapgeometries", "native:minimumboundinggeometry",
+    "native:snapgeometries", "qgis:minimumboundinggeometry",
     "native:voronoipolygons", "native:delaunaytriangulation",
     "native:union", "native:difference", "native:symmetricaldifference",
     "native:clip", "native:mergevectorlayers", "native:splitvectorlayer",
     "native:multiringconstantbuffer",
     "native:joinattributesbylocation", "native:extractbylocation",
-    "native:extractbyattribute", "native:selectbyattribute",
+    "native:extractbyattribute", "native:polygonstolines",
     "native:nearestneighbouranalysis", "native:zonalstatisticsfb",
-    "native:rasterlayerzonalstats", "native:heatmapkerneldensityestimation",
+    "native:rasterlayerzonalstats", "qgis:heatmapkerneldensityestimation",
     "native:creategrid", "native:fieldcalculator",
     "qgis:tininterpolation", "qgis:idwinterpolation",
     "native:shortestpathpointtopoint", "native:serviceareafrompoint",
     "native:hillshade", "native:slope", "native:aspect",
     "gdal:contour", "gdal:polygonize", "gdal:rasterize", "gdal:sieve",
     "gdal:proximity", "gdal:warpreproject", "gdal:viewshed",
-    "grass:r.watershed", "grass:r.slope.aspect", "grass:r.fill.dir",
-    "grass:r.flow",
+    "grass7:r.watershed", "grass7:r.slope.aspect", "grass7:r.fill.dir",
+    "grass7:r.flow",
 }
 
 
@@ -397,11 +414,15 @@ def test_transform_qgis_does_not_require_input_output_in_params():
 
 
 def test_transform_qgis_accepts_optional_output_srid():
+    # gdal:warpreproject's real schema (Task 1) requires DATA_TYPE/
+    # MULTITHREADING/RESAMPLING too — TARGET_CRS itself is optional, but
+    # included here for realism (this IS the reprojection param).
     params = parse_op_params(
         "transform.qgis",
         {
             "algorithmId": "gdal:warpreproject",
-            "params": {"TARGET_CRS": "EPSG:2154"},
+            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0,
+                       "MULTITHREADING": False, "RESAMPLING": 0},
             "outputSrid": "EPSG:2154",
         },
     )
@@ -532,11 +553,15 @@ def test_transform_output_srid_qgis_passes_through_by_default():
 
 
 def test_transform_output_srid_qgis_uses_explicit_output_srid():
+    # gdal:warpreproject's real schema (Task 1) requires DATA_TYPE/
+    # MULTITHREADING/RESAMPLING too — TARGET_CRS itself is optional, but
+    # included here for realism (this IS the reprojection param).
     srid = transform_output_srid(
         "transform.qgis",
         {
             "algorithmId": "gdal:warpreproject",
-            "params": {"TARGET_CRS": "EPSG:2154"},
+            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0,
+                       "MULTITHREADING": False, "RESAMPLING": 0},
             "outputSrid": "EPSG:2154",
         },
         input_srid=4326,
@@ -731,7 +756,7 @@ Create `deploy/qgis-worker/Dockerfile`:
 # pointe vers un build 4.3.0-Master instable (vérifié en design, §2).
 FROM qgis/qgis:release-3_34
 
-# grassprovider fournit les ids grass:* (dont grass:r.watershed, le cas
+# grassprovider fournit les ids grass7:* (dont grass7:r.watershed, le cas
 # hydrologie de l'étude de faisabilité) mais est désactivé par défaut —
 # vérifié en design (qgis_process plugins list). L'activer ici l'écrit dans
 # le profil QGIS gravé dans cette image ; l'activer au runtime ne

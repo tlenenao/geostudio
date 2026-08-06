@@ -1,263 +1,310 @@
-## Task 5: Per-node validation (`app.pipelines` layer, registered into Task 4)
+## Task 5: `runtime.py` — dispatch `transform.qgis`
 
 **Files:**
-- Create: `core/app/pipelines/config_validation.py`
-- Modify: `core/app/main.py`
-- Test: `core/tests/test_pipeline_node_validation.py`
+- Modify: `core/app/pipelines/runtime.py`
+- Test: `core/tests/test_pipeline_runtime.py`
 
 **Interfaces:**
-- Consumes: `register_pipeline_node_validator` (Task 4), `OP_PARAMS` (Task 3).
-- Produces: real per-op validators registered as a side effect of importing
-  `app.pipelines.config_validation` — from this task on, `test_pipeline_config_validation.py`'s
-  fake validators are no longer the only ones in play for a real app instance
-  (the fakes remain fine as unit-test isolation, unaffected).
+- Consumes: `TransformQgisParams` (Task 2), `qgis_worker_url`/
+  `qgis_scratch_dir` fixtures (Task 4), `httpx` (already a dependency).
+- Produces: `run_pipeline(...)` and `preview_pipeline(...)` gain two new
+  keyword params, `qgis_worker_url: str = ""` and
+  `qgis_worker_timeout_seconds: int = 600` — consumed by Task 6
+  (`routes.py`/`jobs.py`).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_pipeline_node_validation.py`:
+Append to `core/tests/test_pipeline_runtime.py`:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
+def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, monkeypatch):
+    """No QGIS_WORKER_URL configured (profile 'etl' not enabled) must fail
+    the run cleanly, never crash on a connection error."""
+    from app.configs.schemas import PipelinePayload
 
-from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional
-from app.db import Base, init_db, make_engine, make_session_factory, request_scoped_session
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid))
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 1, x=2.35, y=48.85)])
 
-
-def _pipeline_body(*, reader_collection: str, writer_collection: str) -> dict:
-    return {
-        "title": "P",
-        "config": {
-            "version": 1,
-            "kind": "pipeline",
-            "pipeline": {
-                "nodes": [
-                    {"id": "r1", "kind": "reader", "op": "reader.collection",
-                     "params": {"collectionId": reader_collection}},
-                    {"id": "w1", "kind": "writer", "op": "writer.collection",
-                     "params": {"collectionId": writer_collection}},
-                ],
-                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-            },
-        },
-    }
-
-
-@pytest.fixture()
-def env(monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "t1", "kind": "transform", "op": "transform.qgis",
+             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}],
+    })
+    with pytest.raises(runtime.PipelineRuntimeError, match="QGIS_WORKER_URL"):
+        runtime.preview_pipeline(
+            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
         )
-        other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
-        )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable) "
-            "VALUES ('readable', :t, :o, 'readable', 'Readable', '', 'id', NULL, 1, 1)"
-        ), {"t": tenant.id, "o": owner.id})
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable) "
-            "VALUES ('writable', :t, :o, 'writable', 'Writable', '', 'id', NULL, 0, 1)"
-        ), {"t": tenant.id, "o": owner.id})
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable) "
-            "VALUES ('locked', :t, :o, 'locked', 'Locked', '', 'id', NULL, 0, 0)"
-        ), {"t": tenant.id, "o": other.id})
-        s.commit()
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: owner
-    app.dependency_overrides[get_current_user_optional] = lambda: owner
-    return TestClient(app)
-
-
-def test_valid_pipeline_with_existing_collections_saves(env):
-    response = env.post("/configs", json=_pipeline_body(
-        reader_collection="readable", writer_collection="writable",
-    ))
-    assert response.status_code == 201
-
-
-def test_reader_collection_missing_is_rejected(env):
-    response = env.post("/configs", json=_pipeline_body(
-        reader_collection="does-not-exist", writer_collection="writable",
-    ))
-    assert response.status_code == 422
-    assert "not found" in response.json()["detail"]
-
-
-def test_writer_collection_not_editable_is_rejected(env):
-    response = env.post("/configs", json=_pipeline_body(
-        reader_collection="readable", writer_collection="locked",
-    ))
-    assert response.status_code == 422
-
-
-def test_missing_required_param_is_rejected(env):
-    body = _pipeline_body(reader_collection="readable", writer_collection="writable")
-    body["config"]["pipeline"]["nodes"][0]["params"] = {}
-    response = env.post("/configs", json=body)
-    assert response.status_code == 422
-
-
-def test_unknown_op_is_rejected(env):
-    body = _pipeline_body(reader_collection="readable", writer_collection="writable")
-    body["config"]["pipeline"]["nodes"][0]["op"] = "reader.does-not-exist"
-    response = env.post("/configs", json=body)
-    assert response.status_code == 422
-    assert "unknown op" in response.json()["detail"]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_pipeline_node_validation.py -v`
-Expected: FAIL — `test_reader_collection_missing_is_rejected` and others get
-`422 unknown op 'reader.collection'` (no real validator registered yet in a
-freshly-created app — the fake validators from Task 4's own test file don't
-leak across test modules) instead of the specific collection-not-found
-message; `test_valid_pipeline_with_existing_collections_saves` fails with 422.
+Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k qgis_transform_raises -v`
+Expected: FAIL — `transform.qgis` isn't dispatched at all yet,
+`compiler.compile_transform_sql` raises `ValueError("'transform.qgis' is
+not a transform op")`, which is unhandled (propagates as a raw
+`ValueError`, not `PipelineRuntimeError` with the expected message).
 
-- [ ] **Step 3: Implement the real per-node validators**
+- [ ] **Step 3: Implement the dispatch branch**
 
-Create `core/app/pipelines/config_validation.py`:
+Modify `core/app/pipelines/runtime.py` — extend imports:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Registers the real per-op node validators for kind="pipeline" configs
-(see app.configs.pipeline_validation for why this indirection exists).
-Imported for its side effect by app.main, the only layer allowed to know
-about both app.pipelines and app.configs — mirrors
-app.collections.dataset_validation exactly.
+import os
+import uuid
 
-Boundary decision (design SP-15a, Global Constraints): only param SHAPE
-(Pydantic) and referenced-collection existence/permission are checked here,
-at save time. Bounded SQL expressions (filter.expr, derive.expr,
-aggregate.metrics values) and transform.join.on column existence are only
-checked at execution time (app.pipelines.expr_validation / runtime) — a bad
-expression fails the run clearly, it never blocks saving the pipeline."""
-from fastapi import HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+import httpx
+```
 
-from app.collections import repository as collections_repo
-from app.configs.pipeline_validation import register_pipeline_node_validator
-from app.configs.schemas import PipelineNode
-from app.pipelines.ops.schemas import OP_PARAMS
-from app.sharing.authorization import can
-from app.users.models import User
+(add `os`, `uuid`, `httpx` to the existing `import csv / import io / import
+json` block, alphabetically: `import csv`, `import io`, `import json`,
+`import os`, `import uuid`, blank line, `import duckdb`, `import httpx`,
+blank line, `from sqlalchemy.orm import Session`)
 
-_COLLECTION_PARAM_FIELD = {
-    "reader.collection": "collectionId",
-    "transform.join": "withCollectionId",
-    "writer.collection": "collectionId",
-}
-_WRITE_OPS = {"writer.collection"}
+Add `TransformQgisParams` to the existing `from app.pipelines.ops.schemas
+import (...)` block.
 
+Add a new helper, right before `_execute_transform_chain`:
 
-def _validate_params(node: PipelineNode) -> BaseModel:
-    model = OP_PARAMS.get(node.op)
-    if model is None:
-        raise HTTPException(status_code=422, detail=f"unknown op '{node.op}'")
+```python
+def _execute_qgis_transform(
+    conn, node: PipelineNode, *, input_view: str, input_srid: int,
+    qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
+) -> None:
+    if not qgis_worker_url:
+        raise PipelineRuntimeError(
+            "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
+        )
+    p = TransformQgisParams.model_validate(node.params)
+    scratch_dir = f"/scratch/{scratch_run_id}/{node.id}"
+    in_path = f"{scratch_dir}/in.gpkg"
+    out_path = f"{scratch_dir}/out.gpkg"
+    os.makedirs(scratch_dir, exist_ok=True)
+    # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
+    # geographic SRS" (vérifié en design §2) et qgis_process interprète les
+    # géométries dans un CRS inconnu.
+    conn.execute(
+        f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
+        f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
+    )
     try:
-        return model.model_validate(node.params)
-    except Exception as exc:  # pydantic.ValidationError, reported verbatim
-        raise HTTPException(status_code=422, detail=f"{node.op}: {exc}") from exc
-
-
-def _require_readable_collection(session: Session, *, user: User, collection_id: str) -> None:
-    collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=collection_id,
-    )
-    if collection is None:
-        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
-    readable = can(
-        session, user_id=user.id, action="read",
-        item=collections_repo.get_access_facts(collection), kind="collection",
-        actor_is_admin=user.is_admin,
-    )
-    if not readable:
-        # Same message as not-found: don't leak collection existence.
-        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
-
-
-def _require_writable_collection(session: Session, *, user: User, collection_id: str) -> None:
-    collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=collection_id,
-    )
-    if collection is None:
-        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
-    writable = can(
-        session, user_id=user.id, action="write",
-        item=collections_repo.get_access_facts(collection), kind="collection",
-        actor_is_admin=user.is_admin,
-    )
-    if not writable or not collection.editable:
-        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' is not writable")
-
-
-def _validate_node(session: Session, node: PipelineNode, user: User) -> None:
-    params = _validate_params(node)
-    field = _COLLECTION_PARAM_FIELD.get(node.op)
-    if field is None:
-        return
-    collection_id = getattr(params, field)
-    if node.op in _WRITE_OPS:
-        _require_writable_collection(session, user=user, collection_id=collection_id)
-    else:
-        _require_readable_collection(session, user=user, collection_id=collection_id)
-
-
-for _op in OP_PARAMS:
-    register_pipeline_node_validator(_op, _validate_node)
+        response = httpx.post(
+            f"{qgis_worker_url}/run",
+            json={
+                "algorithmId": p.algorithmId,
+                "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
+            },
+            timeout=qgis_worker_timeout_seconds,
+        )
+    except httpx.TimeoutException as exc:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise PipelineRuntimeError(
+            f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+        ) from exc
+    if response.status_code != 200:
+        detail = response.json().get("error", response.text)
+        raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
+    view_name = f"node_{node.id}"
+    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM ST_Read('{out_path}')")
+    # Best-effort : ne bloque jamais le run si le nettoyage échoue (design
+    # §12, risque accepté — un scratch non nettoyé après un CRASH, pas après
+    # un succès, reste un problème d'exploitation mineur).
+    import shutil
+    shutil.rmtree(scratch_dir, ignore_errors=True)
 ```
 
-- [ ] **Step 4: Wire the side-effect import into `app.main`**
-
-In `core/app/main.py`, add right after the existing
-`harvest_dataset_validation` import (after line 15):
+Modify `_execute_transform_chain`'s signature and body:
 
 ```python
-from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
+def _execute_transform_chain(
+    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
+    srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
+    *, stop_at: str | None = None, qgis_worker_url: str = "",
+    qgis_worker_timeout_seconds: int = 600,
+) -> list["NodeStat"]:
+    stats: list[NodeStat] = []
+    scratch_run_id = uuid.uuid4().hex
+    for node in ordered:
+        if node.kind == "reader":
+            stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id])))
+            if stop_at == node.id:
+                return stats
+            continue
+        if node.kind != "transform":
+            break  # writer nodes are handled by the caller, not here
+        pred_id = compiler.predecessor_id(node.id, edges)
+        assert pred_id is not None
+        input_view = view_by_node[pred_id]
+        input_srid = srid_by_node[pred_id]
+        join_view = f"node_{node.id}__join" if node.op in _JOIN_PARAM_MODELS else None
+        join_srid = join_srid_by_node.get(node.id)
+        _validate_node_exprs(conn, node)
+        try:
+            output_srid = compiler.transform_output_srid(
+                node.op, node.params, input_srid=input_srid, join_srid=join_srid,
+            )
+        except ValueError as exc:
+            raise PipelineRuntimeError(str(exc)) from exc
+        view_name = f"node_{node.id}"
+        if node.op == "transform.qgis":
+            _execute_qgis_transform(
+                conn, node, input_view=input_view, input_srid=input_srid,
+                qgis_worker_url=qgis_worker_url,
+                qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+                scratch_run_id=scratch_run_id,
+            )
+        else:
+            sql = compiler.compile_transform_sql(
+                node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
+            )
+            conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
+        view_by_node[node.id] = view_name
+        srid_by_node[node.id] = output_srid
+        stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
+        if stop_at == node.id:
+            return stats
+    return stats
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+Modify `preview_pipeline`'s signature and its call to
+`_execute_transform_chain`:
 
-Run: `cd core && uv run pytest tests/test_pipeline_node_validation.py -v`
-Expected: PASS (5 tests green)
+```python
+def preview_pipeline(
+    *, session: Session | None, payload: PipelinePayload, tenant_id: str, user: User | None,
+    up_to: str, endpoint_url: str, access_key: str, secret_key: str, base_uri: str, limit: int = 50,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
+) -> list[dict]:
+```
 
-- [ ] **Step 6: Run the full pipeline + configs test suite to check no regression**
+```python
+        _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            stop_at=up_to, qgis_worker_url=qgis_worker_url,
+            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+        )
+```
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py tests/test_pipeline_config_schema.py tests/test_pipeline_ops_schemas.py tests/test_configs_extension_permissions.py -v`
-Expected: PASS (unchanged)
+Modify `run_pipeline`'s signature and its call to
+`_execute_transform_chain`:
 
-- [ ] **Step 7: Commit**
+```python
+def run_pipeline(
+    session: Session, *, payload: PipelinePayload, tenant_id: str, user: User,
+    endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
+    s3_client=None, exports_bucket: str | None = None,
+    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
+) -> list[NodeStat]:
+```
+
+```python
+        stats = _execute_transform_chain(
+            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+            qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+        )
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k qgis_transform_raises -v`
+Expected: PASS — `PipelineRuntimeError` raised with "QGIS_WORKER_URL" in
+the message, before any file/network I/O is attempted.
+
+- [ ] **Step 5: Write the real end-to-end dispatch test (needs the sidecar)**
+
+Append to `core/tests/test_pipeline_runtime.py`:
+
+```python
+@pytest.mark.qgis
+def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
+    """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
+    preview: real sidecar round-trip, real DuckDB COPY/ST_Read (design §6).
+    Requires /scratch to be the SAME directory the qgis-worker container in
+    Task 4 Step 5 has bind-mounted at /scratch — this test writes via
+    DuckDB's COPY (inside this Python process, on the host), the sidecar
+    reads the identical path from inside its container."""
+    from shapely.geometry import Polygon
+
+    from app.configs.schemas import PipelinePayload
+
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    polygons_info = dataclasses.replace(
+        TABLE_INFO, table_name="polygons", geometry_type="Polygon",
+        columns=[ColumnInfo(name="region", type="string", required=True)],
+    )
+    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: polygons_info)
+
+    _write_partition(tmp_path, collection_id="polygons", rows=[
+        {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
+         "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])},
+        {"id": 2, "region": "b", "_op": "insert", "_lsn": 1, "_ts": 1.0,
+         "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)])},
+    ])
+
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons"}},
+            {"id": "t1", "kind": "transform", "op": "transform.qgis",
+             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}],
+    })
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
+    )
+    assert len(rows) == 2
+    centroids = sorted(
+        (row["geometry"]["coordinates"][0], row["geometry"]["coordinates"][1]) for row in rows
+    )
+    assert centroids == [(1.0, 1.0), (11.0, 11.0)]
+```
+
+Note: this test needs `/scratch` writable by the host process running
+pytest (same one-time `sudo mkdir -p /scratch && sudo chown "$(whoami)"
+/scratch` from Task 4 Step 5) — the container from Task 4 must be running
+with `-v /scratch:/scratch` for the paths to match on both sides.
+
+- [ ] **Step 6: Run test to verify it fails without setup, passes with it**
+
+Run (no sidecar running): `cd core && uv run pytest tests/test_pipeline_runtime.py -k computes_centroids -v`
+Expected: 1 skipped (`CORE_TEST_QGIS_WORKER_URL non défini`).
+
+Run (with the Task 4 Step 5/9 setup — container running, env vars set):
+```bash
+export CORE_TEST_QGIS_WORKER_URL=http://localhost:8300
+cd core && uv run pytest tests/test_pipeline_runtime.py -k computes_centroids -v
+```
+Expected: 1 passed — centroids `(1.0, 1.0)` and `(11.0, 11.0)` match the
+two synthetic squares' actual centers exactly (deterministic geometry, no
+floating-point tolerance needed).
+
+- [ ] **Step 7: Run the full test file to check for regressions**
+
+Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -v`
+Expected: all pass (postgis/qgis-marked tests skipped if those env vars
+aren't set, everything else passes unconditionally).
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add core/app/pipelines/config_validation.py core/app/main.py \
-  core/tests/test_pipeline_node_validation.py
-git commit -m "feat(core): validate pipeline node params + collection permissions at save time"
+git add core/app/pipelines/runtime.py core/tests/test_pipeline_runtime.py
+git commit -m "feat(core): runtime dispatch for transform.qgis via the qgis-worker sidecar"
 ```
 
 ---

@@ -1,87 +1,90 @@
-# Task 3 Report: Pipeline Op Catalogue (8 data-only ops)
+# Task 3 Report: `compiler.py` — SRID tracking for `transform.qgis`
 
-## Summary
-Successfully completed Task 3 of the SP-15a plan. Created the Phase 1 pipeline op catalogue with 8 data-only operations, passing all tests.
+## What Was Implemented
 
-## Files Created
-- `core/app/pipelines/__init__.py` (empty module, license header only)
-- `core/app/pipelines/ops/__init__.py` (empty module, license header only)
-- `core/app/pipelines/ops/schemas.py` (8 Pydantic param classes + 3 exported functions)
-- `core/tests/test_pipeline_ops_schemas.py` (comprehensive test suite)
+Modified `core/app/pipelines/compiler.py` to add SRID tracking for the new `transform.qgis` pipeline operation:
 
-## Implementation
+1. **Import Addition**: Added `TransformQgisParams` to the imports from `app.pipelines.ops.schemas`.
 
-### Op Catalogue Structure
-Created `core/app/pipelines/ops/schemas.py` with:
+2. **`transform_output_srid` Branch**: Added a new conditional branch before the final `return input_srid`:
+   - When `op == "transform.qgis"`, validates the `params` dict against `TransformQgisParams` schema
+   - If `outputSrid` is explicitly set (e.g., for reprojecting algorithms like `gdal:warpreproject`), extracts the SRID number from the "EPSG:XXXX" format and returns it as an int
+   - Otherwise, returns `input_srid` unchanged (same-CRS assumption for ~49 non-reprojecting algorithms in the allowlist)
 
-1. **8 Pydantic param classes**:
-   - `ReaderCollectionParams` — (collectionId: str)
-   - `TransformFilterParams` — (expr: str)
-   - `TransformSelectParams` — (columns: dict[str, str | None] with default empty)
-   - `TransformDeriveParams` — (column: str, expr: str)
-   - `TransformAggregateParams` — (groupBy: list, metrics: dict with defaults)
-   - `TransformJoinParams` — (withCollectionId: str, on: str, how: Literal["inner", "left"] default="inner")
-   - `WriterCollectionParams` — (collectionId: str)
-   - `WriterExportParams` — (format: Literal["geojson", "csv"], key: str)
+## TDD Evidence
 
-2. **OP_KINDS registry**: Maps op names to phase (reader/transform/writer)
+### RED Phase (Asymmetric Failure)
 
-3. **OP_PARAMS registry**: Maps op names to their Pydantic model class
+Ran new tests before implementation:
 
-4. **parse_op_params(op: str, params: dict) -> BaseModel**: Validates and instantiates params, raises ValueError for unknown ops
-
-5. **ops_catalog() -> dict[str, dict]**: Exports JSON Schema for all ops, includes kind and paramsSchema
-
-### Design Decisions
-- Expressions (filter.expr, derive.expr, aggregate.metrics) are intentionally stored as strings — semantic validation happens later in `app.pipelines.expr_validation`, not here
-- This module only validates the FORM of parameters, not their semantics
-- JSON Schema export ready for UI consumption via GET /pipelines/ops (SP-15b)
-
-## Testing
-
-### Test Run
-```bash
-cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
+```
+tests/test_pipeline_compiler.py::test_transform_output_srid_qgis_passes_through_by_default PASSED [ 50%]
+tests/test_pipeline_compiler.py::test_transform_output_srid_qgis_uses_explicit_output_srid FAILED [100%]
 ```
 
-**Result: 15 tests PASSED**
+**Asymmetry confirmed**: 
+- First test passed by accident (existing fallthrough `return input_srid` returns 4326, matching the default expectation)
+- Second test failed (current code ignores `outputSrid`, returns 4326 instead of expected 2154)
 
-- test_all_eight_phase1_ops_are_registered: PASSED
-- test_op_kind_matches (8 parametrized): ALL PASSED
-  - reader.collection → "reader"
-  - transform.filter → "transform"
-  - transform.select → "transform"
-  - transform.derive → "transform"
-  - transform.aggregate → "transform"
-  - transform.join → "transform"
-  - writer.collection → "writer"
-  - writer.export → "writer"
-- test_parse_op_params_reader_collection: PASSED
-- test_parse_op_params_missing_required_field_raises: PASSED (ValidationError on missing required field)
-- test_parse_op_params_unknown_op_raises: PASSED (ValueError with "unknown op" message)
-- test_transform_join_defaults_how_to_inner: PASSED (default value tested)
-- test_writer_export_requires_format_and_key: PASSED (both fields required)
-- test_ops_catalog_exposes_json_schema_per_op: PASSED (JSON schema present for all ops)
+### GREEN Phase (Both Tests Pass)
+
+After implementation, both targeted tests pass:
+
+```
+test_transform_output_srid_qgis_passes_through_by_default PASSED
+test_transform_output_srid_qgis_uses_explicit_output_srid PASSED
+```
+
+Full test suite run confirms no regressions:
+
+```
+============================== 29 passed in 0.81s ===============================
+```
+
+All 27 existing tests still pass + 2 new tests.
+
+## Files Changed
+
+- `core/app/pipelines/compiler.py`
+  - Added `TransformQgisParams` to import block
+  - Added new `if op == "transform.qgis"` branch in `transform_output_srid()` (lines 190-191)
+
+- `core/tests/test_pipeline_compiler.py`
+  - Added `test_transform_output_srid_qgis_passes_through_by_default()` (lines 296-302)
+  - Added `test_transform_output_srid_qgis_uses_explicit_output_srid()` (lines 305-318)
+
+## Self-Review Findings
+
+✓ **Completeness**: All task steps completed.
+  
+✓ **Quality**: Implementation matches brief exactly:
+  - Uses `.model_validate()` for schema validation
+  - Correctly parses "EPSG:XXXX" format via `rsplit(":", 1)[1]`
+  - Converts to int for return value
+  - Preserves `input_srid` when `outputSrid is None`
+
+✓ **Discipline**:
+  - No changes to other ops' SRID logic
+  - No files added outside the task scope
+  - No modification to unrelated code paths
+
+✓ **Testing**:
+  - Both new tests pass (passing and failing cases covered)
+  - All existing tests pass (no regressions)
+  - Test comments match real `gdal:warpreproject` schema from Task 1
+
+✓ **Verification**:
+  - Ran full test file to confirm no side effects
+  - Import added in correct alphabetical order
+  - Logic is testable, pure (no I/O), and correct
+
+## Issues or Concerns
+
+None. Implementation is complete and verified.
 
 ## Commit
 
 ```
-commit 3c5c0e3
-feat(core): add Phase 1 pipeline op catalogue (8 data-only ops)
-
-4 files changed, 158 insertions(+)
-- core/app/pipelines/__init__.py
-- core/app/pipelines/ops/__init__.py
-- core/app/pipelines/ops/schemas.py
-- core/tests/test_pipeline_ops_schemas.py
+[dev 0149e19] feat(core): transform.qgis SRID tracking via explicit outputSrid
+ 2 files changed, 31 insertions(+), 2 deletions(-)
 ```
-
-## Verification
-- All code transcribed verbatim from brief — no deviations
-- All tests pass on first run after implementation
-- Package structure follows existing conventions
-- SPDX headers correct on all Python files
-- No syntax errors, no missing imports
-
-## Status
-**DONE** — Task 3 complete, ready for Task 4 (pipeline execution engine)
