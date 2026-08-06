@@ -1,311 +1,364 @@
-## Task 5: `runtime.py` — dispatch `transform.qgis`
+## Task 5: Routes + admin gate + audit + `app.main` wiring
 
 **Files:**
-- Modify: `core/app/pipelines/runtime.py`
-- Test: `core/tests/test_pipeline_runtime.py`
+- Create: `core/app/secrets/routes.py`
+- Modify: `core/app/main.py` (mount router, eager boot-time key check)
+- Modify: `core/tests/conftest.py` (fixed test master key default)
+- Test: `core/tests/test_secrets_routes.py`
 
 **Interfaces:**
-- Consumes: `TransformQgisParams` (Task 2), `qgis_worker_url`/
-  `qgis_scratch_dir` fixtures (Task 4), `httpx` (already a dependency).
-- Produces: `run_pipeline(...)` and `preview_pipeline(...)` gain two new
-  keyword params, `qgis_worker_url: str = ""` and
-  `qgis_worker_timeout_seconds: int = 600` — consumed by Task 6
-  (`routes.py`/`jobs.py`).
+- Consumes: `repository.*` (Task 4), `crypto.encrypt`/`load_master_key`
+  (Task 1), `SecretCreate` (Task 2), `ConnectorSecret` (Task 3).
+- Produces: `app.secrets.routes.router` (FastAPI `APIRouter`, mounted in
+  `app.main.create_app()`). Terminal task of this plan — SP-15f (out of
+  scope) will be the next consumer, of `repository.get_secret_payload`
+  only, not of anything in this file.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Add the fixed test master key default to `conftest.py`**
 
-Append to `core/tests/test_pipeline_runtime.py`:
+Modify `core/tests/conftest.py` — change the docstring and add the
+`setdefault` call, right after the imports:
 
 ```python
-def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, monkeypatch):
-    """No QGIS_WORKER_URL configured (profile 'etl' not enabled) must fail
-    the run cleanly, never crash on a connection error."""
-    from app.configs.schemas import PipelinePayload
+# SPDX-License-Identifier: Apache-2.0
+"""Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
+(pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle
+et la clé de test fixe du coffre de secrets (SP-15e, ci-dessous)."""
+import os
+from pathlib import Path
 
-    monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
-        lambda session, *, tenant_id, user, collection_id: collection_id,
-    )
-    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid))
-    _write_partition(tmp_path, rows=[_row(1, "Nord", 1, x=2.35, y=48.85)])
+import pytest
+from sqlalchemy import create_engine, text
 
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "t1", "kind": "transform", "op": "transform.qgis",
-             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}],
-    })
-    with pytest.raises(runtime.PipelineRuntimeError, match="QGIS_WORKER_URL"):
-        runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-            base_uri=str(tmp_path),
-        )
+from app.db import make_session_factory
+
+# Valeur fixe, committée, dev/test uniquement — create_app() (SP-15e)
+# valide CORE_SECRETS_MASTER_KEY de façon eager ; sans ce défaut, TOUT test
+# appelant create_app() (le pattern `env()` répété dans tout le dépôt)
+# échouerait à la collecte. setdefault() : un test qui monkeypatch.setenv()
+# explicitement (ex. test_secrets_crypto.py) reste maître de sa propre
+# valeur.
+os.environ.setdefault(
+    "CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+(Everything below this point in `conftest.py` — the `pg_engine` fixture
+onward — is unchanged.)
 
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k qgis_transform_raises -v`
-Expected: FAIL — `transform.qgis` isn't dispatched at all yet,
-`compiler.compile_transform_sql` raises `ValueError("'transform.qgis' is
-not a transform op")`, which is unhandled (propagates as a raw
-`ValueError`, not `PipelineRuntimeError` with the expected message).
+- [ ] **Step 2: Write the failing tests**
 
-- [ ] **Step 3: Implement the dispatch branch**
-
-Modify `core/app/pipelines/runtime.py` — extend imports:
+Create `core/tests/test_secrets_routes.py`:
 
 ```python
-import os
+# SPDX-License-Identifier: Apache-2.0
 import uuid
 
-import httpx
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app import db
+from app.audit.models import AuditLog
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.models import Tenant
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+BEARER_BODY = {
+    "name": "weather-api",
+    "payload": {"kind": "bearer_token", "token": "s3cr3t-token-value"},
+}
+
+
+@pytest.fixture()
+def env():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+                                   email=None, first_name="", last_name="", bootstrap_admin=True)
+        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
+                                     email=None, first_name="", last_name="")
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    client = TestClient(app)
+    return app, client, Session, admin, regular
+
+
+def _as(app, user):
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
+
+
+def test_create_requires_admin(env):
+    app, client, _, _admin, regular = env
+    _as(app, regular)
+    assert client.post("/secrets", json=BEARER_BODY).status_code == 403
+
+
+def test_list_requires_admin(env):
+    app, client, _, _admin, regular = env
+    _as(app, regular)
+    assert client.get("/secrets").status_code == 403
+
+
+def test_delete_requires_admin(env):
+    app, client, _, admin, regular = env
+    _as(app, admin)
+    created = client.post("/secrets", json=BEARER_BODY).json()
+    _as(app, regular)
+    assert client.delete(f"/secrets/{created['id']}").status_code == 403
+
+
+def test_create_and_list(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    r = client.post("/secrets", json=BEARER_BODY)
+    assert r.status_code == 201
+    body = r.json()
+    assert body["name"] == "weather-api"
+    assert body["kind"] == "bearer_token"
+    assert set(body) == {"id", "name", "kind", "createdAt", "updatedAt"}
+    listed = client.get("/secrets").json()
+    assert [s["name"] for s in listed] == ["weather-api"]
+
+
+def test_create_response_never_leaks_secret_value(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    r = client.post("/secrets", json=BEARER_BODY)
+    assert "s3cr3t-token-value" not in r.text
+
+
+def test_list_response_never_leaks_secret_value(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    client.post("/secrets", json=BEARER_BODY)
+    r = client.get("/secrets")
+    assert "s3cr3t-token-value" not in r.text
+
+
+def test_create_duplicate_name_conflicts(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    client.post("/secrets", json=BEARER_BODY)
+    r = client.post("/secrets", json=BEARER_BODY)
+    assert r.status_code == 409
+
+
+def test_delete_removes_secret(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/secrets", json=BEARER_BODY).json()
+    assert client.delete(f"/secrets/{created['id']}").status_code == 204
+    assert client.get("/secrets").json() == []
+
+
+def test_delete_missing_returns_404(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    assert client.delete("/secrets/does-not-exist").status_code == 404
+
+
+def test_delete_cross_tenant_returns_404(env):
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/secrets", json=BEARER_BODY).json()
+
+    with Session() as s:
+        other_tenant = Tenant(id=uuid.uuid4().hex, slug="other", name="Other")
+        s.add(other_tenant)
+        s.flush()
+        other_admin = get_or_create_user(
+            s, tenant_id=other_tenant.id, oidc_sub="oa", username="other-admin",
+            email=None, first_name="", last_name="", bootstrap_admin=True,
+        )
+        s.commit()
+
+    _as(app, other_admin)
+    assert client.delete(f"/secrets/{created['id']}").status_code == 404
+
+
+def test_mutations_are_audited(env):
+    app, client, Session, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/secrets", json=BEARER_BODY).json()
+    client.delete(f"/secrets/{created['id']}")
+
+    with Session() as s:
+        actions = list(s.scalars(select(AuditLog.action)))
+        payloads = list(s.scalars(select(AuditLog.payload)))
+    assert actions == ["secret.create", "secret.delete"]
+    assert all("s3cr3t-token-value" not in str(p) for p in payloads)
+
+
+def test_create_app_fails_fast_without_master_key(monkeypatch):
+    monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
+    with pytest.raises(KeyError):
+        create_app()
 ```
 
-(add `os`, `uuid`, `httpx` to the existing `import csv / import io / import
-json` block, alphabetically: `import csv`, `import io`, `import json`,
-`import os`, `import uuid`, blank line, `import duckdb`, `import httpx`,
-blank line, `from sqlalchemy.orm import Session`)
+- [ ] **Step 3: Run tests to verify they fail**
 
-Add `TransformQgisParams` to the existing `from app.pipelines.ops.schemas
-import (...)` block.
+Run: `cd core && uv run pytest tests/test_secrets_routes.py -v`
+Expected: FAIL — every HTTP-hitting test gets a 404 (no `/secrets` route
+mounted yet); `test_create_app_fails_fast_without_master_key` fails with
+`Failed: DID NOT RAISE <class 'KeyError'>` (the eager check doesn't exist
+in `create_app()` yet).
 
-Add a new helper, right before `_execute_transform_chain`:
+- [ ] **Step 4: Implement `routes.py`**
+
+Create `core/app/secrets/routes.py`:
 
 ```python
-def _execute_qgis_transform(
-    conn, node: PipelineNode, *, input_view: str, input_srid: int,
-    qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
+# SPDX-License-Identifier: Apache-2.0
+"""Routes REST du coffre de secrets (design SP-15e §6) — admin-only, ne
+retourne jamais une valeur déchiffrée, un ciphertext ou un nonce."""
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.audit.writer import write_audit
+from app.auth.dependency import get_current_user
+from app.db import get_session
+from app.secrets import crypto
+from app.secrets import repository as repo
+from app.secrets.models import ConnectorSecret
+from app.secrets.schemas import SecretCreate
+from app.users.models import User
+
+router = APIRouter()
+
+
+def _require_admin(user: User) -> None:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="admin role required")
+
+
+class ConnectorSecretOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    createdAt: str
+    updatedAt: str
+
+
+def _to_response(secret: ConnectorSecret) -> ConnectorSecretOut:
+    return ConnectorSecretOut(
+        id=secret.id, name=secret.name, kind=secret.kind,
+        createdAt=secret.created_at.isoformat(), updatedAt=secret.updated_at.isoformat(),
+    )
+
+
+@router.post("/secrets", status_code=201)
+def create_secret_route(
+    body: SecretCreate,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+) -> ConnectorSecretOut:
+    _require_admin(user)
+    if repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=body.name):
+        raise HTTPException(status_code=409, detail="secret name already exists")
+    ciphertext, nonce = crypto.encrypt(body.payload.model_dump())
+    secret = repo.create_secret(
+        session, tenant_id=user.tenant_id, created_by=user.id, name=body.name,
+        kind=body.payload.kind, ciphertext=ciphertext, nonce=nonce,
+    )
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="secret.create", object_type="secret", object_id=secret.id,
+                payload={"name": secret.name, "kind": secret.kind})
+    return _to_response(secret)
+
+
+@router.get("/secrets")
+def list_secrets_route(
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+) -> list[ConnectorSecretOut]:
+    _require_admin(user)
+    return [_to_response(s) for s in repo.list_secrets(session, tenant_id=user.tenant_id)]
+
+
+@router.delete("/secrets/{secret_id}", status_code=204)
+def delete_secret_route(
+    secret_id: str,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
 ) -> None:
-    if not qgis_worker_url:
-        raise PipelineRuntimeError(
-            "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
-        )
-    p = TransformQgisParams.model_validate(node.params)
-    scratch_dir = f"/scratch/{scratch_run_id}/{node.id}"
-    in_path = f"{scratch_dir}/in.gpkg"
-    out_path = f"{scratch_dir}/out.gpkg"
-    os.makedirs(scratch_dir, exist_ok=True)
-    # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
-    # geographic SRS" (vérifié en design §2) et qgis_process interprète les
-    # géométries dans un CRS inconnu.
-    conn.execute(
-        f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
-        f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
-    )
-    try:
-        response = httpx.post(
-            f"{qgis_worker_url}/run",
-            json={
-                "algorithmId": p.algorithmId,
-                "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
-            },
-            timeout=qgis_worker_timeout_seconds,
-        )
-    except httpx.TimeoutException as exc:
-        raise PipelineRuntimeError(
-            f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise PipelineRuntimeError(
-            f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
-        ) from exc
-    if response.status_code != 200:
-        detail = response.json().get("error", response.text)
-        raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
-    view_name = f"node_{node.id}"
-    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM ST_Read('{out_path}')")
-    # Best-effort : ne bloque jamais le run si le nettoyage échoue (design
-    # §12, risque accepté — un scratch non nettoyé après un CRASH, pas après
-    # un succès, reste un problème d'exploitation mineur).
-    import shutil
-    shutil.rmtree(scratch_dir, ignore_errors=True)
+    _require_admin(user)
+    secret = repo.get_secret(session, tenant_id=user.tenant_id, secret_id=secret_id)
+    if secret is None:
+        raise HTTPException(status_code=404, detail="secret not found")
+    name, kind = secret.name, secret.kind
+    repo.delete_secret(session, secret)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="secret.delete", object_type="secret", object_id=secret_id,
+                payload={"name": name, "kind": kind})
 ```
 
-Modify `_execute_transform_chain`'s signature and body:
+- [ ] **Step 5: Wire `app.main`**
+
+Modify `core/app/main.py` — add to the import block, between the existing
+`from app.public import routes as public_routes` line and `from
+app.schemas_routes import router as schemas_router` (alphabetical position
+in that block):
 
 ```python
-def _execute_transform_chain(
-    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
-    srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
-    *, stop_at: str | None = None, qgis_worker_url: str = "",
-    qgis_worker_timeout_seconds: int = 600,
-) -> list["NodeStat"]:
-    stats: list[NodeStat] = []
-    scratch_run_id = uuid.uuid4().hex
-    for node in ordered:
-        if node.kind == "reader":
-            stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id])))
-            if stop_at == node.id:
-                return stats
-            continue
-        if node.kind != "transform":
-            break  # writer nodes are handled by the caller, not here
-        pred_id = compiler.predecessor_id(node.id, edges)
-        assert pred_id is not None
-        input_view = view_by_node[pred_id]
-        input_srid = srid_by_node[pred_id]
-        join_view = f"node_{node.id}__join" if node.op in _JOIN_PARAM_MODELS else None
-        join_srid = join_srid_by_node.get(node.id)
-        _validate_node_exprs(conn, node)
-        try:
-            output_srid = compiler.transform_output_srid(
-                node.op, node.params, input_srid=input_srid, join_srid=join_srid,
-            )
-        except ValueError as exc:
-            raise PipelineRuntimeError(str(exc)) from exc
-        view_name = f"node_{node.id}"
-        if node.op == "transform.qgis":
-            _execute_qgis_transform(
-                conn, node, input_view=input_view, input_srid=input_srid,
-                qgis_worker_url=qgis_worker_url,
-                qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
-                scratch_run_id=scratch_run_id,
-            )
-        else:
-            sql = compiler.compile_transform_sql(
-                node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
-            )
-            conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
-        view_by_node[node.id] = view_name
-        srid_by_node[node.id] = output_srid
-        stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
-        if stop_at == node.id:
-            return stats
-    return stats
+from app.public import routes as public_routes
+from app.secrets import crypto as secrets_crypto
+from app.secrets import routes as secrets_routes
+from app.schemas_routes import router as schemas_router
 ```
 
-Modify `preview_pipeline`'s signature and its call to
-`_execute_transform_chain`:
+In `create_app()`, right after `observability.setup()`, add the eager
+boot-time check (before anything touches the DB — a misconfigured key
+should fail before the app does any other work):
 
 ```python
-def preview_pipeline(
-    *, session: Session | None, payload: PipelinePayload, tenant_id: str, user: User | None,
-    up_to: str, endpoint_url: str, access_key: str, secret_key: str, base_uri: str, limit: int = 50,
-    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
-) -> list[dict]:
+def create_app() -> FastAPI:
+    observability.setup()
+    secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
+    database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 ```
+
+In the `app.include_router(...)` block, add right after
+`app.include_router(extensions_routes.router)`:
 
 ```python
-        _execute_transform_chain(
-            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
-            stop_at=up_to, qgis_worker_url=qgis_worker_url,
-            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
-        )
+    app.include_router(secrets_routes.router)
 ```
 
-Modify `run_pipeline`'s signature and its call to
-`_execute_transform_chain`:
+- [ ] **Step 6: Run tests to verify they pass**
 
-```python
-def run_pipeline(
-    session: Session, *, payload: PipelinePayload, tenant_id: str, user: User,
-    endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
-    s3_client=None, exports_bucket: str | None = None,
-    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
-) -> list[NodeStat]:
-```
+Run: `cd core && uv run pytest tests/test_secrets_routes.py -v`
+Expected: 12 passed.
 
-```python
-        stats = _execute_transform_chain(
-            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
-            qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
-        )
-```
+- [ ] **Step 7: Verify the layering contract still holds**
 
-- [ ] **Step 4: Run test to verify it passes**
+Run: `cd core && uv run lint-imports`
+Expected: `Contracts: 1 kept, 0 broken.` (`routes.py` imports `app.audit`,
+`app.auth`, `app.users`, `app.db` — all below `app.secrets`'s position in
+the layers list, per the Global Constraints check done in Task 1.)
 
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k qgis_transform_raises -v`
-Expected: PASS — `PipelineRuntimeError` raised with "QGIS_WORKER_URL" in
-the message, before any file/network I/O is attempted.
+- [ ] **Step 8: Run the full existing test suite to confirm no regression**
 
-- [ ] **Step 5: Write the real end-to-end dispatch test (needs the sidecar)**
+Run: `cd core && uv run pytest -v`
+Expected: all pre-existing tests still pass — the `CORE_SECRETS_MASTER_KEY`
+default added in Step 1 is exactly what keeps every other test file's
+`create_app()` call (or equivalent) working unchanged.
 
-Append to `core/tests/test_pipeline_runtime.py`:
-
-```python
-@pytest.mark.qgis
-def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
-    """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
-    preview: real sidecar round-trip, real DuckDB COPY/ST_Read (design §6).
-    Requires /scratch to be the SAME directory the qgis-worker container in
-    Task 4 Step 5 has bind-mounted at /scratch — this test writes via
-    DuckDB's COPY (inside this Python process, on the host), the sidecar
-    reads the identical path from inside its container."""
-    from shapely.geometry import Polygon
-
-    from app.configs.schemas import PipelinePayload
-
-    monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
-        lambda session, *, tenant_id, user, collection_id: collection_id,
-    )
-    polygons_info = dataclasses.replace(
-        TABLE_INFO, table_name="polygons", geometry_type="Polygon",
-        columns=[ColumnInfo(name="region", type="string", required=True)],
-    )
-    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: polygons_info)
-
-    _write_partition(tmp_path, collection_id="polygons", rows=[
-        {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])},
-        {"id": 2, "region": "b", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)])},
-    ])
-
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons"}},
-            {"id": "t1", "kind": "transform", "op": "transform.qgis",
-             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}],
-    })
-    rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
-    )
-    assert len(rows) == 2
-    centroids = sorted(
-        (row["geometry"]["coordinates"][0], row["geometry"]["coordinates"][1]) for row in rows
-    )
-    assert centroids == [(1.0, 1.0), (11.0, 11.0)]
-```
-
-Note: this test needs `/scratch` writable by the host process running
-pytest (same one-time `sudo mkdir -p /scratch && sudo chown "$(whoami)"
-/scratch` from Task 4 Step 5) — the container from Task 4 must be running
-with `-v /scratch:/scratch` for the paths to match on both sides.
-
-- [ ] **Step 6: Run test to verify it fails without setup, passes with it**
-
-Run (no sidecar running): `cd core && uv run pytest tests/test_pipeline_runtime.py -k computes_centroids -v`
-Expected: 1 skipped (`CORE_TEST_QGIS_WORKER_URL non défini`).
-
-Run (with the Task 4 Step 5/9 setup — container running, env vars set):
-```bash
-export CORE_TEST_QGIS_WORKER_URL=http://localhost:8300
-cd core && uv run pytest tests/test_pipeline_runtime.py -k computes_centroids -v
-```
-Expected: 1 passed — centroids `(1.0, 1.0)` and `(11.0, 11.0)` match the
-two synthetic squares' actual centers exactly (deterministic geometry, no
-floating-point tolerance needed).
-
-- [ ] **Step 7: Run the full test file to check for regressions**
-
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -v`
-Expected: all pass (postgis/qgis-marked tests skipped if those env vars
-aren't set, everything else passes unconditionally).
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add core/app/pipelines/runtime.py core/tests/test_pipeline_runtime.py
-git commit -m "feat(core): runtime dispatch for transform.qgis via the qgis-worker sidecar"
+git add core/app/secrets/routes.py core/app/main.py core/tests/conftest.py \
+  core/tests/test_secrets_routes.py
+git commit -m "feat(core): secrets module — REST routes, admin gate, audit, app wiring"
 ```
-
----
-

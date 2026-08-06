@@ -1,249 +1,236 @@
-## Task 1: QGIS algorithm allowlist — generator script + frozen schema file
+## Task 1: Encryption primitive — `core/app/secrets/crypto.py`
 
 **Files:**
-- Create: `scripts/generate_qgis_algorithm_schemas.py`
-- Create: `core/app/pipelines/ops/qgis_algorithms.json` (generated output,
-  committed)
-- Create: `core/app/pipelines/ops/qgis_algorithms.py` (thin loader)
-- Test: `core/tests/test_pipeline_qgis_algorithms.py`
+- Create: `core/app/secrets/__init__.py`
+- Create: `core/app/secrets/crypto.py`
+- Modify: `core/pyproject.toml` (add `cryptography` dependency, insert
+  `app.secrets` into the import-linter `layers` list)
+- Test: `core/tests/test_secrets_crypto.py`
 
 **Interfaces:**
-- Produces: `QGIS_ALGORITHMS: dict[str, dict]` in
-  `app.pipelines.ops.qgis_algorithms`, keyed by algorithm id (e.g.
-  `"native:simplifygeometries"`), each value shaped
-  `{"name": str, "parameters": {PARAM_NAME: {"optional": bool, "type": str,
-  "default": <any>?}}}`. Consumed by Task 2 (`TransformQgisParams`
-  validator) and Task 6 (`GET /pipelines/ops/qgis-algorithms`).
+- Produces: `app.secrets.crypto.load_master_key() -> bytes`,
+  `encrypt(payload: dict) -> tuple[bytes, bytes]`,
+  `decrypt(ciphertext: bytes, nonce: bytes) -> dict`. Consumed by Task 4
+  (`repository.get_secret_payload`), Task 5 (`routes.create_secret_route`,
+  and `app.main.create_app()`'s eager boot check).
 
-- [ ] **Step 1: Write the generator script**
+- [ ] **Step 1: Write the failing tests**
 
-Create `scripts/generate_qgis_algorithm_schemas.py`:
+Create `core/tests/test_secrets_crypto.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Régénère core/app/pipelines/ops/qgis_algorithms.json depuis
-`qgis_process help <id> --json`, exécuté dans l'image pinnée
-qgis/qgis:release-3_34 (design SP-15d §2, §5). Offline uniquement — ne
-tourne jamais au runtime du cœur. Relancer manuellement si la liste
-ALLOWLIST_IDS change :
+import base64
 
-    python scripts/generate_qgis_algorithm_schemas.py
-"""
-import json
-import subprocess
-import sys
-from pathlib import Path
+import pytest
+from cryptography.exceptions import InvalidTag
 
-QGIS_IMAGE = "qgis/qgis:release-3_34"
+from app.secrets import crypto
 
-# 50 algorithmes vérifiés réels contre `qgis_process list` (base +
-# grassprovider activé) pendant le spike de design — design SP-15d §10.
-# CORRECTIF (vérifié indépendamment à l'exécution de Task 1, contre le même
-# conteneur pinné) : 6 ids du spike initial portaient un préfixe de provider
-# erroné (native: -> qgis:/grass7:) et 1 id (native:selectbyattribute)
-# n'existe pas du tout en tant qu'algorithme Processing — remplacé par
-# native:polygonstolines (décision humaine, cf. progress ledger SP-15d).
-ALLOWLIST_IDS = [
-    "native:dissolve", "native:simplifygeometries", "native:smoothgeometry",
-    "native:centroids", "native:convexhull", "native:multiparttosingleparts",
-    "native:fixgeometries", "native:deleteholes", "native:extractvertices",
-    "native:pointsalonglines", "native:densifygeometriesgivenaninterval",
-    "native:snapgeometries", "qgis:minimumboundinggeometry",
-    "native:voronoipolygons", "native:delaunaytriangulation",
-    "native:union", "native:difference", "native:symmetricaldifference",
-    "native:clip", "native:mergevectorlayers", "native:splitvectorlayer",
-    "native:multiringconstantbuffer",
-    "native:joinattributesbylocation", "native:extractbylocation",
-    "native:extractbyattribute", "native:polygonstolines",
-    "native:nearestneighbouranalysis", "native:zonalstatisticsfb",
-    "native:rasterlayerzonalstats", "qgis:heatmapkerneldensityestimation",
-    "native:creategrid", "native:fieldcalculator",
-    "qgis:tininterpolation", "qgis:idwinterpolation",
-    "native:shortestpathpointtopoint", "native:serviceareafrompoint",
-    "native:hillshade", "native:slope", "native:aspect",
-    "gdal:contour", "gdal:polygonize", "gdal:rasterize", "gdal:sieve",
-    "gdal:proximity", "gdal:warpreproject", "gdal:viewshed",
-    "grass7:r.watershed", "grass7:r.slope.aspect", "grass7:r.fill.dir",
-    "grass7:r.flow",
+TEST_KEY_B64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+
+
+def test_encrypt_decrypt_round_trip(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"kind": "bearer_token", "token": "s3cr3t"})
+    assert crypto.decrypt(ciphertext, nonce) == {"kind": "bearer_token", "token": "s3cr3t"}
+
+
+def test_decrypt_rejects_tampered_ciphertext(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"token": "s3cr3t"})
+    tampered = bytes([ciphertext[0] ^ 0xFF]) + ciphertext[1:]
+    with pytest.raises(InvalidTag):
+        crypto.decrypt(tampered, nonce)
+
+
+def test_decrypt_rejects_wrong_key(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"token": "s3cr3t"})
+    other_key = base64.b64encode(bytes(range(1, 33))).decode()
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", other_key)
+    with pytest.raises(InvalidTag):
+        crypto.decrypt(ciphertext, nonce)
+
+
+def test_load_master_key_missing_raises(monkeypatch):
+    monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
+    with pytest.raises(KeyError):
+        crypto.load_master_key()
+
+
+def test_load_master_key_malformed_base64_raises(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "not-valid-base64!!")
+    with pytest.raises(RuntimeError, match="valid base64"):
+        crypto.load_master_key()
+
+
+def test_load_master_key_wrong_length_raises(monkeypatch):
+    short_key = base64.b64encode(b"short").decode()
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", short_key)
+    with pytest.raises(RuntimeError, match="32 bytes"):
+        crypto.load_master_key()
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd core && uv run pytest tests/test_secrets_crypto.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.secrets'`.
+
+- [ ] **Step 3: Add the `cryptography` dependency**
+
+Modify `core/pyproject.toml` — in the `dependencies = [...]` list, add right
+after `"pyjwt[crypto]>=2.8",`:
+
+```toml
+    "cryptography>=42.0",  # SP-15e : chiffrement applicatif AES-GCM du
+                           # coffre de secrets ; déjà présent transitivement
+                           # via pyjwt[crypto] (49.0.0 dans uv.lock, vérifié),
+                           # déclaré ici en dépendance directe pour ne pas
+                           # dépendre d'une extra tierce pour un import de
+                           # production.
+```
+
+Run: `cd core && uv sync`
+Expected: resolves without changing the locked `cryptography` version (it
+was already present transitively at 49.0.0 — this just makes it a direct
+dependency).
+
+- [ ] **Step 4: Insert `app.secrets` into the import-linter layers list**
+
+Modify `core/pyproject.toml` — in the `[[tool.importlinter.contracts]]`
+block, change:
+
+```toml
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.public",
+    "app.harvest",
+    "app.pipelines",
+    "app.ingestion",
+    "app.dcat",
+    "app.stac",
+    "app.features",
+    "app.collections",
+    "app.configs",
+    "app.extensions",
+    "app.items",
+    "app.sharing",
+    "app.auth",
+    "app.audit",
+    "app.users",
+    "app.tenants",
 ]
-
-OUTPUT_PATH = Path(__file__).parent.parent / "core" / "app" / "pipelines" / "ops" / "qgis_algorithms.json"
-
-# grassprovider est désactivé par défaut et son état ne survit pas entre deux
-# `docker run --rm` distincts (vérifié à l'exécution) : pour tout id grass7:*,
-# l'activation doit être chaînée dans le MÊME appel de conteneur que la
-# commande `help`.
-GRASS_ENABLE_CMD = "qgis_process plugins enable grassprovider >/dev/null 2>&1"
-
-
-def fetch_schema(algorithm_id: str) -> dict:
-    if algorithm_id.startswith("grass7:"):
-        argv = [
-            "docker", "run", "--rm", "-e", "QT_QPA_PLATFORM=offscreen", QGIS_IMAGE,
-            "bash", "-c", f"{GRASS_ENABLE_CMD} && qgis_process help {algorithm_id} --json",
-        ]
-    else:
-        argv = [
-            "docker", "run", "--rm", "-e", "QT_QPA_PLATFORM=offscreen", QGIS_IMAGE,
-            "qgis_process", "help", algorithm_id, "--json",
-        ]
-    result = subprocess.run(argv, capture_output=True, text=True, check=True)
-    raw = json.loads(result.stdout)
-    parameters = {
-        name: {
-            "optional": bool(p.get("optional", False)),
-            "type": p.get("type", {}).get("id", "unknown"),
-            **({"default": p["default_value"]} if "default_value" in p else {}),
-        }
-        for name, p in raw.get("parameters", {}).items()
-    }
-    return {"name": raw["algorithm_details"]["name"], "parameters": parameters}
-
-
-def main() -> None:
-    if len(ALLOWLIST_IDS) != len(set(ALLOWLIST_IDS)):
-        raise SystemExit("ALLOWLIST_IDS contains duplicates")
-    schemas: dict[str, dict] = {}
-    for algorithm_id in ALLOWLIST_IDS:
-        print(f"fetching {algorithm_id}...", file=sys.stderr)
-        schemas[algorithm_id] = fetch_schema(algorithm_id)
-    OUTPUT_PATH.write_text(json.dumps(schemas, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {len(schemas)} algorithms to {OUTPUT_PATH}", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    main()
 ```
 
-- [ ] **Step 2: Run the generator against the real pinned image**
+to:
 
-Run: `docker pull qgis/qgis:release-3_34 && python scripts/generate_qgis_algorithm_schemas.py`
-
-Expected: stderr prints 50 `fetching ...` lines, then `wrote 50 algorithms
-to .../qgis_algorithms.json`. This creates
-`core/app/pipelines/ops/qgis_algorithms.json` with 50 top-level keys.
-
-Spot-check the two algorithms this plan's later tasks rely on (verified
-during design, confirm the generated file matches):
-
-```bash
-python3 -c "
-import json
-d = json.load(open('core/app/pipelines/ops/qgis_algorithms.json'))
-print(sorted(d['native:simplifygeometries']['parameters']))
-print(sorted(d['native:centroids']['parameters']))
-"
+```toml
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.public",
+    "app.harvest",
+    "app.pipelines",
+    "app.secrets",
+    "app.ingestion",
+    "app.dcat",
+    "app.stac",
+    "app.features",
+    "app.collections",
+    "app.configs",
+    "app.extensions",
+    "app.items",
+    "app.sharing",
+    "app.auth",
+    "app.audit",
+    "app.users",
+    "app.tenants",
+]
 ```
 
-Expected: `['INPUT', 'METHOD', 'OUTPUT', 'TOLERANCE']` and `['ALL_PARTS',
-'INPUT', 'OUTPUT']` — all four `native:simplifygeometries` params and all
-three `native:centroids` params are non-optional (verified during design).
+(`app.secrets` sits directly below both `app.harvest` and `app.pipelines` —
+its two anticipated future consumer families — and above `app.audit`,
+which Task 5's `routes.py` needs to import.)
 
-- [ ] **Step 3: Write the thin loader module**
+- [ ] **Step 5: Create the module and implement `crypto.py`**
 
-Create `core/app/pipelines/ops/qgis_algorithms.py`:
+Create `core/app/secrets/__init__.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Allowlist gelée des 50 algorithmes QGIS Processing exposés par
-transform.qgis (design SP-15d §5/§10). Généré par
-scripts/generate_qgis_algorithm_schemas.py contre l'image pinnée
-qgis/qgis:release-3_34 — ne pas éditer qgis_algorithms.json à la main,
-relancer le script si l'allowlist doit changer."""
-import json
-from pathlib import Path
-
-QGIS_ALGORITHMS: dict[str, dict] = json.loads(
-    (Path(__file__).parent / "qgis_algorithms.json").read_text()
-)
 ```
 
-- [ ] **Step 4: Write the failing tests**
-
-Create `core/tests/test_pipeline_qgis_algorithms.py`:
+Create `core/app/secrets/crypto.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+"""Chiffrement applicatif AES-256-GCM des secrets connecteurs (design
+SP-15e §2/§4 —
+docs/superpowers/specs/2026-08-06-sp15e-connector-secrets-store-design.md).
+La clé maître ne doit JAMAIS être loguée, incluse dans un message d'erreur,
+un span OTel ou une entrée audit_log."""
+import base64
+import json
+import os
 
-EXPECTED_IDS = {
-    "native:dissolve", "native:simplifygeometries", "native:smoothgeometry",
-    "native:centroids", "native:convexhull", "native:multiparttosingleparts",
-    "native:fixgeometries", "native:deleteholes", "native:extractvertices",
-    "native:pointsalonglines", "native:densifygeometriesgivenaninterval",
-    "native:snapgeometries", "qgis:minimumboundinggeometry",
-    "native:voronoipolygons", "native:delaunaytriangulation",
-    "native:union", "native:difference", "native:symmetricaldifference",
-    "native:clip", "native:mergevectorlayers", "native:splitvectorlayer",
-    "native:multiringconstantbuffer",
-    "native:joinattributesbylocation", "native:extractbylocation",
-    "native:extractbyattribute", "native:polygonstolines",
-    "native:nearestneighbouranalysis", "native:zonalstatisticsfb",
-    "native:rasterlayerzonalstats", "qgis:heatmapkerneldensityestimation",
-    "native:creategrid", "native:fieldcalculator",
-    "qgis:tininterpolation", "qgis:idwinterpolation",
-    "native:shortestpathpointtopoint", "native:serviceareafrompoint",
-    "native:hillshade", "native:slope", "native:aspect",
-    "gdal:contour", "gdal:polygonize", "gdal:rasterize", "gdal:sieve",
-    "gdal:proximity", "gdal:warpreproject", "gdal:viewshed",
-    "grass7:r.watershed", "grass7:r.slope.aspect", "grass7:r.fill.dir",
-    "grass7:r.flow",
-}
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+_NONCE_SIZE_BYTES = 12
+_KEY_SIZE_BYTES = 32
 
 
-def test_allowlist_has_exactly_fifty_algorithms():
-    assert len(QGIS_ALGORITHMS) == 50
+def load_master_key() -> bytes:
+    """Lit CORE_SECRETS_MASTER_KEY (32 octets encodés base64). Lève
+    `KeyError` si absente, `RuntimeError` si mal formée — échec rapide,
+    jamais un défaut silencieux (design §4)."""
+    raw = os.environ["CORE_SECRETS_MASTER_KEY"]
+    try:
+        key = base64.b64decode(raw, validate=True)
+    except Exception as exc:
+        raise RuntimeError("CORE_SECRETS_MASTER_KEY must be valid base64") from exc
+    if len(key) != _KEY_SIZE_BYTES:
+        raise RuntimeError(
+            f"CORE_SECRETS_MASTER_KEY must decode to {_KEY_SIZE_BYTES} bytes, got {len(key)}"
+        )
+    return key
 
 
-def test_allowlist_matches_expected_ids():
-    assert set(QGIS_ALGORITHMS) == EXPECTED_IDS
+def encrypt(payload: dict) -> tuple[bytes, bytes]:
+    key = load_master_key()
+    nonce = os.urandom(_NONCE_SIZE_BYTES)
+    plaintext = json.dumps(payload).encode("utf-8")
+    ciphertext = AESGCM(key).encrypt(nonce, plaintext, None)
+    return ciphertext, nonce
 
 
-def test_each_entry_has_name_and_nonempty_parameters():
-    for algo_id, schema in QGIS_ALGORITHMS.items():
-        assert isinstance(schema["name"], str) and schema["name"], algo_id
-        assert isinstance(schema["parameters"], dict) and schema["parameters"], algo_id
-        for param_name, param in schema["parameters"].items():
-            assert isinstance(param["optional"], bool), (algo_id, param_name)
-            assert isinstance(param["type"], str), (algo_id, param_name)
-
-
-def test_simplify_required_params_match_spike_findings():
-    required = {
-        n for n, p in QGIS_ALGORITHMS["native:simplifygeometries"]["parameters"].items()
-        if not p["optional"]
-    }
-    assert required == {"INPUT", "METHOD", "OUTPUT", "TOLERANCE"}
-
-
-def test_centroids_required_params_match_spike_findings():
-    required = {
-        n for n, p in QGIS_ALGORITHMS["native:centroids"]["parameters"].items()
-        if not p["optional"]
-    }
-    assert required == {"ALL_PARTS", "INPUT", "OUTPUT"}
-
-
-def test_dissolve_field_param_is_optional():
-    assert QGIS_ALGORITHMS["native:dissolve"]["parameters"]["FIELD"]["optional"] is True
+def decrypt(ciphertext: bytes, nonce: bytes) -> dict:
+    key = load_master_key()
+    plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
+    return json.loads(plaintext)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 6: Verify the layering contract holds**
 
-Run: `cd core && uv run pytest tests/test_pipeline_qgis_algorithms.py -v`
-Expected: 6 passed (the file was generated in Step 2, before the tests were
-written — this is the one task in this plan where generation precedes the
-test, since the test's job is to lock in what got generated, not drive new
-production code).
+Run: `cd core && uv run lint-imports`
+Expected: `Contracts: 1 kept, 0 broken.` — `crypto.py` imports nothing from
+any other `app.*` module, so this can't yet fail; this step just confirms
+the layers-list edit itself is syntactically valid and doesn't break the
+existing contract before any real cross-module import is added in later
+tasks.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_secrets_crypto.py -v`
+Expected: 6 passed.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/generate_qgis_algorithm_schemas.py \
-  core/app/pipelines/ops/qgis_algorithms.json \
-  core/app/pipelines/ops/qgis_algorithms.py \
-  core/tests/test_pipeline_qgis_algorithms.py
-git commit -m "feat(core): freeze the 50-id QGIS Processing algorithm allowlist"
+git add core/app/secrets/__init__.py core/app/secrets/crypto.py \
+  core/pyproject.toml core/tests/test_secrets_crypto.py core/uv.lock
+git commit -m "feat(core): secrets module — AES-GCM encryption primitive"
 ```
 
 ---
