@@ -13,7 +13,7 @@ aucun moteur CEL ne tourne côté serveur) : elles ne sont validées
 syntaxiquement qu'à l'exécution (app.pipelines.expr_validation), jamais ici
 — ce module ne valide que la FORME des params, pas la sémantique des
 expressions."""
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -93,6 +93,40 @@ class WriterDatasetParams(BaseModel):
         return self
 
 
+class TransformQgisParams(BaseModel):
+    """Op générique pour tout algorithme QGIS Processing de l'allowlist
+    gelée (app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS, design SP-15d
+    §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT — le runtime les
+    injecte (chemins scratch, design §6). `outputSrid` doit être renseigné
+    explicitement quand l'algorithme change le CRS (ex. gdal:warpreproject
+    via son propre param TARGET_CRS) ; laissé à None, le SRID de sortie est
+    supposé identique à l'entrée — vrai pour la quasi-totalité des 50 op de
+    l'allowlist, faux pour un algorithme de reprojection. Aucune conversion
+    automatique d'unité : un DISTANCE/TOLERANCE d'un algorithme QGIS est
+    dans les unités du CRS natif de la couche d'entrée, jamais auto-converti
+    en mètres (vérifié empiriquement en design, §2)."""
+    algorithmId: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
+
+    @model_validator(mode="after")
+    def _check_allowlisted_and_required_params(self) -> "TransformQgisParams":
+        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+
+        schema = QGIS_ALGORITHMS.get(self.algorithmId)
+        if schema is None:
+            raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
+        required = {
+            name for name, p in schema["parameters"].items() if not p["optional"]
+        } - {"INPUT", "OUTPUT"}
+        missing = required - self.params.keys()
+        if missing:
+            raise ValueError(
+                f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}"
+            )
+        return self
+
+
 OP_KINDS: dict[str, str] = {
     "reader.collection": "reader",
     "transform.filter": "transform",
@@ -105,6 +139,7 @@ OP_KINDS: dict[str, str] = {
     "transform.intersection": "transform",
     "transform.countWithin": "transform",
     "transform.h3Aggregate": "transform",
+    "transform.qgis": "transform",
     "writer.collection": "writer",
     "writer.export": "writer",
     "writer.dataset": "writer",
@@ -122,6 +157,7 @@ OP_PARAMS: dict[str, type[BaseModel]] = {
     "transform.intersection": TransformIntersectionParams,
     "transform.countWithin": TransformCountWithinParams,
     "transform.h3Aggregate": TransformH3AggregateParams,
+    "transform.qgis": TransformQgisParams,
     "writer.collection": WriterCollectionParams,
     "writer.export": WriterExportParams,
     "writer.dataset": WriterDatasetParams,

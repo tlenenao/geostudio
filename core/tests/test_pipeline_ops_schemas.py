@@ -82,13 +82,14 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_fourteen_ops_are_registered():
+def test_all_fifteen_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
         "writer.collection", "writer.export",
         "transform.buffer", "transform.reproject", "transform.intersection",
         "transform.countWithin", "transform.h3Aggregate", "writer.dataset",
+        "transform.qgis",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -185,3 +186,73 @@ def test_new_collection_referencing_fields_carry_collection_id_format_hint():
     assert catalog["transform.intersection"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
     assert catalog["transform.countWithin"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
     assert catalog["writer.dataset"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
+
+
+def test_fifteenth_op_is_registered():
+    assert "transform.qgis" in OP_PARAMS
+    assert "transform.qgis" in OP_KINDS
+    assert OP_KINDS["transform.qgis"] == "transform"
+
+
+def test_transform_qgis_accepts_allowlisted_id_with_required_params():
+    params = parse_op_params(
+        "transform.qgis",
+        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+    )
+    assert params.algorithmId == "native:centroids"
+    assert params.params == {"ALL_PARTS": False}
+    assert params.outputSrid is None
+
+
+def test_transform_qgis_rejects_non_allowlisted_id():
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "transform.qgis",
+            {"algorithmId": "native:totallymadeup", "params": {}},
+        )
+
+
+def test_transform_qgis_rejects_missing_required_param():
+    # native:centroids requires ALL_PARTS beyond INPUT/OUTPUT (design Task 2 —
+    # INPUT/OUTPUT are runtime-injected, never authored, cf. spike finding
+    # in test_pipeline_qgis_algorithms.py::test_centroids_required_params_...).
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "transform.qgis", {"algorithmId": "native:centroids", "params": {}},
+        )
+
+
+def test_transform_qgis_does_not_require_input_output_in_params():
+    # INPUT/OUTPUT are required by native:simplifygeometries' own schema but
+    # are filled in by the runtime (scratch file paths), never by the author.
+    params = parse_op_params(
+        "transform.qgis",
+        {
+            "algorithmId": "native:simplifygeometries",
+            "params": {"METHOD": 0, "TOLERANCE": 1.0},
+        },
+    )
+    assert "INPUT" not in params.params
+    assert "OUTPUT" not in params.params
+
+
+def test_transform_qgis_accepts_optional_output_srid():
+    params = parse_op_params(
+        "transform.qgis",
+        {
+            "algorithmId": "gdal:warpreproject",
+            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0, "MULTITHREADING": False, "RESAMPLING": 0},
+            "outputSrid": "EPSG:2154",
+        },
+    )
+    assert params.outputSrid == "EPSG:2154"
+
+
+def test_transform_qgis_rejects_malformed_output_srid():
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "transform.qgis",
+            {"algorithmId": "native:dissolve",
+             "params": {"SEPARATE_DISJOINT": False},
+             "outputSrid": "not-a-crs"},
+        )
