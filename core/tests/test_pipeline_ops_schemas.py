@@ -65,3 +65,16 @@ def test_ops_catalog_exposes_json_schema_per_op():
     for op, entry in catalog.items():
         assert entry["kind"] == OP_KINDS[op]
         assert "properties" in entry["paramsSchema"]
+
+
+def test_collection_referencing_fields_carry_collection_id_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.collection"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
+    assert catalog["writer.collection"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
+    assert catalog["transform.join"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
+
+
+def test_non_collection_fields_carry_no_format_hint():
+    catalog = ops_catalog()
+    assert "format" not in catalog["transform.filter"]["paramsSchema"]["properties"]["expr"]
+    assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
