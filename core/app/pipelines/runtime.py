@@ -46,13 +46,14 @@ from app.features.repository import insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
 from app.items import repository as items_repo
-from app.pipelines import compiler
+from app.pipelines import compiler, connector_runtime
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
-    ReaderCollectionParams, TransformAggregateParams, TransformCountWithinParams,
-    TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
-    WriterCollectionParams, WriterDatasetParams, WriterExportParams,
+    ReaderCollectionParams, ReaderConnectorPostgresParams, ReaderConnectorRestParams,
+    TransformAggregateParams, TransformCountWithinParams, TransformDeriveParams,
+    TransformFilterParams, TransformH3AggregateParams, TransformIntersectionParams,
+    TransformJoinParams, TransformQgisParams, WriterCollectionParams, WriterDatasetParams,
+    WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
@@ -192,18 +193,41 @@ def _prepare(
     for node in ordered:
         if node.kind != "reader":
             continue
-        p = ReaderCollectionParams.model_validate(node.params)
-        table_name = _require_readable_collection_id(
-            session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
-        )
-        table_info = _table_info_for_collection(session, table_name)
         view_name = f"node_{node.id}"
-        _materialize_reader(
-            conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
-            collection_id=p.collectionId, table_info=table_info,
-        )
+        if node.op == "reader.collection":
+            p = ReaderCollectionParams.model_validate(node.params)
+            table_name = _require_readable_collection_id(
+                session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
+            )
+            table_info = _table_info_for_collection(session, table_name)
+            _materialize_reader(
+                conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
+                collection_id=p.collectionId, table_info=table_info,
+            )
+            srid_by_node[node.id] = table_info.srid or 4326
+        elif node.op == "reader.connector.rest":
+            p = ReaderConnectorRestParams.model_validate(node.params)
+            try:
+                connector_runtime.materialize_rest_connector(
+                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
+                    params=p, view_name=view_name,
+                )
+            except connector_runtime.ConnectorRuntimeError as exc:
+                raise PipelineRuntimeError(str(exc)) from exc
+            srid_by_node[node.id] = 4326
+        elif node.op == "reader.connector.postgres":
+            p = ReaderConnectorPostgresParams.model_validate(node.params)
+            try:
+                connector_runtime.materialize_postgres_connector(
+                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
+                    params=p, view_name=view_name,
+                )
+            except connector_runtime.ConnectorRuntimeError as exc:
+                raise PipelineRuntimeError(str(exc)) from exc
+            srid_by_node[node.id] = 4326
+        else:
+            raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
         view_by_node[node.id] = view_name
-        srid_by_node[node.id] = table_info.srid or 4326
 
     join_srid_by_node: dict[str, int] = {}
     for node in ordered:

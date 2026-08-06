@@ -1112,3 +1112,111 @@ def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, t
             "DROP TABLE dissolved_out; "
             "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
         ))
+
+
+def test_preview_reader_connector_rest_feeds_downstream_filter(tmp_path, monkeypatch, httpserver):
+    from app.pipelines import egress as pipelines_egress
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+    httpserver.expect_request("/items").respond_with_json(
+        [{"id": 1, "pop": 10}, {"id": 2, "pop": 5}, {"id": 3, "pop": 20}]
+    )
+    payload_nodes = [
+        {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
+         "params": {"baseUrl": httpserver.url_for("/"), "path": "items"}},
+        {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "pop > 8"}},
+        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+    ]
+    edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path), limit=50,
+    )
+    by_id = {r["id"]: r for r in rows}
+    assert set(by_id) == {1, 3}  # pop=5 filtered out
+
+
+def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(tmp_path):
+    # w1 is required only to satisfy PipelinePayload's pre-existing "at least
+    # one writer node" structural validator (app/configs/schemas.py) — it is
+    # never reached: preview_pipeline(up_to="r1") stops the chain at r1, and
+    # _prepare() raises on the missing secret while materializing readers,
+    # before any writer is touched.
+    payload_nodes = [
+        {"id": "r1", "kind": "reader", "op": "reader.connector.postgres",
+         "params": {"secretName": "does-not-exist", "query": "SELECT 1"}},
+        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+    ]
+    edges = [{"id": "e1", "from": "r1", "to": "w1"}]
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
+
+    from app.db import init_db, make_engine, make_session_factory
+    from app.tenants.repository import get_or_create_default_tenant
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as session:
+        tenant = get_or_create_default_tenant(session)
+        with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
+            runtime.preview_pipeline(
+                session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
+                endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+                base_uri=str(tmp_path), limit=50,
+            )
+
+
+def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, monkeypatch, httpserver):
+    from app.pipelines import egress as pipelines_egress
+    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+    from app.db import init_db, make_engine, make_session_factory
+    from app.secrets import repository as secrets_repo
+    from app.secrets.crypto import encrypt
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import get_or_create_user
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as session:
+        monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+        tenant = get_or_create_default_tenant(session)
+        # `created_by` is a real FK to users.id (app/secrets/models.py) — a
+        # literal "u1" string violates the constraint under SQLite
+        # (PRAGMA foreign_keys=ON), same fix already applied in
+        # test_pipeline_connector_runtime.py's `user` fixture.
+        author = get_or_create_user(
+            session, tenant_id=tenant.id, oidc_sub="u1", username="u1",
+            email=None, first_name="", last_name="",
+        )
+        ciphertext, nonce = encrypt({"kind": "bearer_token", "token": "s3cr3t-leak-check"})
+        secrets_repo.create_secret(
+            session, tenant_id=tenant.id, created_by=author.id, name="my-bearer", kind="bearer_token",
+            ciphertext=ciphertext, nonce=nonce,
+        )
+        session.commit()
+
+        httpserver.expect_request(
+            "/items", headers={"Authorization": "Bearer s3cr3t-leak-check"},
+        ).respond_with_json([{"id": 1, "name": "a"}])
+        # w1 satisfies PipelinePayload's "at least one writer node" structural
+        # validator; never reached — preview_pipeline(up_to="r1") stops the
+        # chain at r1.
+        payload_nodes = [
+            {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
+             "params": {"baseUrl": httpserver.url_for("/"), "path": "items", "secretName": "my-bearer"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+        ]
+        edges = [{"id": "e1", "from": "r1", "to": "w1"}]
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
+
+        rows = runtime.preview_pipeline(
+            session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path), limit=50,
+        )
+        assert "s3cr3t-leak-check" not in str(rows)

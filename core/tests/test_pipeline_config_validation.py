@@ -122,3 +122,18 @@ def test_node_with_two_incoming_edges_rejected(env):
     response = env.post("/configs", json=body)
     assert response.status_code == 422
     assert "one incoming edge" in response.json()["detail"]
+
+
+def test_reader_connector_node_saves_without_secret_or_query_check(env):
+    # Design §6 : seule la FORME des params est vérifiée à la sauvegarde —
+    # ni l'existence de "does-not-exist" comme secret, ni la validité SQL de
+    # "not even sql" sont vérifiées ici (elles échoueraient proprement à
+    # l'EXÉCUTION, cf. test_pipeline_runtime.py). Une sauvegarde réussie ici
+    # n'est pas un bug.
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["nodes"].append({
+        "id": "r2", "kind": "reader", "op": "reader.connector.postgres",
+        "params": {"secretName": "does-not-exist", "query": "not even sql"},
+    })
+    response = env.post("/configs", json=body)
+    assert response.status_code == 201
