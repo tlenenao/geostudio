@@ -17,6 +17,7 @@ import tempfile
 import uuid
 
 import dlt
+import sqlalchemy as sa
 from dlt.sources.helpers.rest_client import RESTClient
 from dlt.sources.helpers.rest_client.auth import (
     APIKeyAuth,
@@ -32,8 +33,9 @@ from dlt.sources.helpers.rest_client.paginators import (
 )
 from sqlalchemy.orm import Session
 
+from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
 from app.pipelines.egress import build_guarded_session
-from app.pipelines.ops.schemas import ReaderConnectorRestParams
+from app.pipelines.ops.schemas import ReaderConnectorPostgresParams, ReaderConnectorRestParams
 from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
 
@@ -164,5 +166,39 @@ def materialize_rest_connector(
     def _records():
         for page in client.paginate(params.path, method=params.method, params=params.query or None):
             yield page
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_postgres_connector(
+    conn, *, session: Session, tenant_id: str, node_id: str,
+    params: ReaderConnectorPostgresParams, view_name: str,
+) -> None:
+    # Défense en profondeur heuristique, pas une garantie (design §5.2) :
+    # `params.query` cible Postgres mais est parsée avec le dialecte SQL de
+    # DuckDB (même mécanisme que app.pipelines.expr_validation, appliqué ici
+    # à un texte SQL complet plutôt qu'à une expression bornée). Vérifié à
+    # l'exécution uniquement, jamais à la sauvegarde du pipeline.
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
+
+    payload = _resolve_secret(session, tenant_id, params.secretName)
+    if payload.kind != "postgres_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.postgres "
+            "(expected postgres_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)

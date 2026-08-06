@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+import os
+
 import duckdb
 import pytest
 
@@ -229,3 +231,74 @@ def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, te
     assert "_dlt_id" not in cols
     assert "_dlt_load_id" not in cols
     assert cols == {"id", "name"}
+
+
+from app.analytics.sql_sandbox import SqlSandboxError  # noqa: E402
+from app.pipelines.ops.schemas import ReaderConnectorPostgresParams  # noqa: E402
+
+
+def _pg_dsn(pg_engine) -> str:
+    # Même conversion que conftest.py::pg_engine_with_procrastinate_schema :
+    # CORE_TEST_DATABASE_URL est au format SQLAlchemy "postgresql+psycopg://",
+    # le DSN d'un secret postgres_dsn est un DSN "postgresql://" ordinaire
+    # (format vérifié par SP-15e's test_secrets_repository.py). Lu depuis la
+    # variable d'environnement (comme conftest.py) plutôt que via
+    # `str(pg_engine.url)` : `URL.__str__` masque le mot de passe
+    # (`gis:***@...`) et casserait l'authentification — vérifié
+    # empiriquement (échec `password authentication failed`), pas dans la
+    # doc SQLAlchemy.
+    return os.environ["CORE_TEST_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+
+
+@pytest.fixture()
+def pg_secret(session, tenant, user, pg_engine):
+    # `_create_secret` (défini plus haut dans ce fichier) exige un `user`
+    # réel (FK `created_by` sur `connector_secrets`) — absent de la
+    # signature donnée par le brief SP-15f, adapté ici pour matcher l'état
+    # réel de ce module (cf. autres tests de ce fichier, ex. `my-bearer`).
+    return _create_secret(
+        session, tenant, user, name="warehouse-pg", kind="postgres_dsn",
+        payload={"kind": "postgres_dsn", "dsn": _pg_dsn(pg_engine)},
+    )
+
+
+def test_materialize_postgres_connector_round_trips_query(conn, session, tenant, pg_engine, pg_secret):
+    from sqlalchemy import text
+
+    with pg_engine.begin() as db_conn:
+        db_conn.execute(text("CREATE TABLE IF NOT EXISTS sp15f_towns (id int, name text)"))
+        db_conn.execute(text("DELETE FROM sp15f_towns"))
+        db_conn.execute(text("INSERT INTO sp15f_towns (id, name) VALUES (1, 'Nord'), (2, 'Sud')"))
+
+    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="SELECT id, name FROM sp15f_towns ORDER BY id")
+    connector_runtime.materialize_postgres_connector(
+        conn, session=session, tenant_id=tenant.id, node_id="p1", params=params, view_name="node_p1",
+    )
+    rows = conn.execute("SELECT id, name FROM node_p1 ORDER BY id").fetchall()
+    assert rows == [(1, "Nord"), (2, "Sud")]
+
+
+def test_materialize_postgres_connector_rejects_non_select(conn, session, tenant, pg_secret):
+    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="DELETE FROM sp15f_towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_postgres_connector(
+            conn, session=session, tenant_id=tenant.id, node_id="p2", params=params, view_name="node_p2",
+        )
+
+
+def test_materialize_postgres_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(session, tenant, user, name="bearer-secret", kind="bearer_token",
+                    payload={"kind": "bearer_token", "token": "tok"})
+    params = ReaderConnectorPostgresParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.postgres"):
+        connector_runtime.materialize_postgres_connector(
+            conn, session=session, tenant_id=tenant.id, node_id="p3", params=params, view_name="node_p3",
+        )
+
+
+def test_materialize_postgres_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorPostgresParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_postgres_connector(
+            conn, session=session, tenant_id=tenant.id, node_id="p4", params=params, view_name="node_p4",
+        )
