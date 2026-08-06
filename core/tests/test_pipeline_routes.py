@@ -48,10 +48,13 @@ def test_get_pipelines_ops_returns_all_eight(monkeypatch):
     response = client.get("/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
+    # Phase 1 ops (8) + Phase 3c1 spatial transforms (5) + writer.dataset (1) = 14 total
     assert set(body) == {
         "reader.collection", "transform.filter", "transform.select",
         "transform.derive", "transform.aggregate", "transform.join",
-        "writer.collection", "writer.export",
+        "transform.buffer", "transform.reproject", "transform.intersection",
+        "transform.countWithin", "transform.h3Aggregate",
+        "writer.collection", "writer.export", "writer.dataset",
     }
 
 
