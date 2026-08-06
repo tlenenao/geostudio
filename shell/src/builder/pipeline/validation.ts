@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
+import { hasCycle } from "./graphOps";
 
 export type PipelineValidationResult = {
   graphErrors: string[];
@@ -42,20 +43,7 @@ export function validatePipelineGraphLocally(
     if (count > 1) graphErrors.push(`Un nœud ne peut avoir qu'une seule arête entrante (${nodeId}).`);
   }
 
-  const adjacency = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
-  for (const e of edges) adjacency.get(e.from)?.push(e.to);
-  const WHITE = 0, GRAY = 1, BLACK = 2;
-  const color = new Map<string, number>(nodes.map((n) => [n.id, WHITE]));
-  function visit(nodeId: string): boolean {
-    color.set(nodeId, GRAY);
-    for (const next of adjacency.get(nodeId) ?? []) {
-      if (color.get(next) === GRAY) return true;
-      if (color.get(next) === WHITE && visit(next)) return true;
-    }
-    color.set(nodeId, BLACK);
-    return false;
-  }
-  if (nodes.some((n) => color.get(n.id) === WHITE && visit(n.id))) {
+  if (hasCycle(nodes, edges)) {
     graphErrors.push("Le graphe contient un cycle.");
   }
 
