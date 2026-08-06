@@ -316,3 +316,65 @@ def test_transform_output_srid_qgis_uses_explicit_output_srid():
         input_srid=4326,
     )
     assert srid == 2154
+
+
+def test_secondary_predecessor_id_returns_none_without_secondary_edge():
+    edges = [_edge("e1", "r1", "t1")]
+    assert compiler.secondary_predecessor_id("t1", edges) is None
+
+
+def test_secondary_predecessor_id_returns_the_secondary_source():
+    edges = [
+        _edge("e1", "r1", "t1"),
+        PipelineEdge(id="e2", **{"from": "r2"}, to="t1", role="secondary"),
+    ]
+    assert compiler.secondary_predecessor_id("t1", edges) == "r2"
+
+
+def test_secondary_predecessor_id_raises_on_multiple_secondary_edges():
+    edges = [
+        PipelineEdge(id="e1", **{"from": "r1"}, to="t1", role="secondary"),
+        PipelineEdge(id="e2", **{"from": "r2"}, to="t1", role="secondary"),
+    ]
+    with pytest.raises(ValueError, match="secondary incoming edge"):
+        compiler.secondary_predecessor_id("t1", edges)
+
+
+def test_predecessor_id_ignores_secondary_edges():
+    # Un nœud binaire avec 1 arête primaire + 1 arête secondaire n'est PAS "2
+    # arêtes entrantes" pour predecessor_id — seule secondary_predecessor_id
+    # voit la seconde. predecessor_id doit continuer à ne compter que la
+    # primaire, exactement comme si l'arête secondaire n'existait pas.
+    edges = [
+        _edge("e1", "r1", "t1"),
+        PipelineEdge(id="e2", **{"from": "r2"}, to="t1", role="secondary"),
+    ]
+    assert predecessor_id("t1", edges) == "r1"
+
+
+def test_compile_merge(conn):
+    conn.execute("CREATE TABLE other (id INTEGER, pop INTEGER)")
+    conn.execute("INSERT INTO other VALUES (10, 99)")
+    sql = compile_transform_sql("transform.merge", {}, input_view="base", join_view="other")
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, region, pop FROM out ORDER BY id").fetchall()
+    assert rows == [(1, "Nord", 10), (2, "Sud", 5), (3, "Nord", 20), (10, None, 99)]
+
+
+def test_compile_merge_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql("transform.merge", {}, input_view="base")
+
+
+def test_transform_output_srid_merge_raises_on_mismatch():
+    with pytest.raises(ValueError, match="transform.reproject"):
+        compiler.transform_output_srid(
+            "transform.merge", {}, input_srid=4326, join_srid=3857,
+        )
+
+
+def test_transform_output_srid_merge_passes_on_match():
+    srid = compiler.transform_output_srid(
+        "transform.merge", {}, input_srid=4326, join_srid=4326,
+    )
+    assert srid == 4326

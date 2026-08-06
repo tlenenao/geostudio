@@ -11,7 +11,7 @@ from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams, TransformBufferParams, TransformCountWithinParams,
     TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
+    TransformIntersectionParams, TransformJoinParams, TransformMergeParams, TransformQgisParams,
     TransformReprojectParams, TransformSelectParams,
 )
 
@@ -46,12 +46,23 @@ def topological_order(nodes: list[PipelineNode], edges: list[PipelineEdge]) -> l
 
 
 def predecessor_id(node_id: str, edges: list[PipelineEdge]) -> str | None:
-    incoming = [e.from_ for e in edges if e.to == node_id]
+    incoming = [e.from_ for e in edges if e.to == node_id and e.role != "secondary"]
     if len(incoming) > 1:
         raise ValueError(
             f"node '{node_id}' has more than one incoming edge "
             "(linear+join topology only, SP-15a MVP)"
         )
+    return incoming[0] if incoming else None
+
+
+def secondary_predecessor_id(node_id: str, edges: list[PipelineEdge]) -> str | None:
+    """Résout la seconde entrée (SP-15g §3.1) d'un op binaire — l'alternative
+    additive à son paramètre `withCollectionId`. Ignoré pour tout autre op
+    (une arête secondaire y est de toute façon rejetée à la sauvegarde,
+    app.pipelines.config_validation)."""
+    incoming = [e.from_ for e in edges if e.to == node_id and e.role == "secondary"]
+    if len(incoming) > 1:
+        raise ValueError(f"node '{node_id}' has more than one secondary incoming edge")
     return incoming[0] if incoming else None
 
 
@@ -157,6 +168,14 @@ def compile_transform_sql(
             select_parts.append(metric_cols)
         return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)} GROUP BY h3Cell"
 
+    if op == "transform.merge":
+        TransformMergeParams.model_validate(params)  # forme seulement, aucun autre champ à lire
+        assert join_view is not None, "transform.merge requires join_view"
+        return (
+            f"SELECT * FROM {_qi(input_view)} "
+            f"UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
+        )
+
     raise ValueError(f"'{op}' is not a transform op")
 
 
@@ -172,7 +191,7 @@ def transform_output_srid(
     if op == "transform.reproject":
         p = TransformReprojectParams.model_validate(params)
         return int(p.targetCrs.rsplit(":", 1)[1])
-    if op in ("transform.intersection", "transform.countWithin"):
+    if op in ("transform.intersection", "transform.countWithin", "transform.merge"):
         assert join_srid is not None, f"{op} requires join_srid"
         if input_srid != join_srid:
             raise ValueError(
