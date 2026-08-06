@@ -11,8 +11,8 @@ from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams, TransformBufferParams, TransformCountWithinParams,
     TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, TransformReprojectParams,
-    TransformSelectParams,
+    TransformIntersectionParams, TransformJoinParams, TransformQgisParams,
+    TransformReprojectParams, TransformSelectParams,
 )
 
 
@@ -187,4 +187,7 @@ def transform_output_srid(
                 "— insert transform.reproject first"
             )
         return 4326
+    if op == "transform.qgis":
+        p = TransformQgisParams.model_validate(params)
+        return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
     return input_srid

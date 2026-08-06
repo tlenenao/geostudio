@@ -290,3 +290,29 @@ def test_transform_output_srid_h3_aggregate_requires_4326():
     assert compiler.transform_output_srid(
         "transform.h3Aggregate", {"resolution": 9, "metrics": {}}, input_srid=4326,
     ) == 4326
+
+
+def test_transform_output_srid_qgis_passes_through_by_default():
+    srid = compiler.transform_output_srid(
+        "transform.qgis",
+        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+        input_srid=4326,
+    )
+    assert srid == 4326
+
+
+def test_transform_output_srid_qgis_uses_explicit_output_srid():
+    # gdal:warpreproject's real schema (Task 1) requires DATA_TYPE/
+    # MULTITHREADING/RESAMPLING too — TARGET_CRS itself is optional, but
+    # included here for realism (this IS the reprojection param).
+    srid = compiler.transform_output_srid(
+        "transform.qgis",
+        {
+            "algorithmId": "gdal:warpreproject",
+            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0,
+                       "MULTITHREADING": False, "RESAMPLING": 0},
+            "outputSrid": "EPSG:2154",
+        },
+        input_srid=4326,
+    )
+    assert srid == 2154
