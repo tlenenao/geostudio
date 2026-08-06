@@ -123,6 +123,7 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
+      CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000

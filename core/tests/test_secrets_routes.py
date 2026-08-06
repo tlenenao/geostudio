@@ -154,3 +154,26 @@ def test_create_app_fails_fast_without_master_key(monkeypatch):
     monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
     with pytest.raises(KeyError):
         create_app()
+
+
+def test_create_concurrent_duplicate_race_returns_409(env, monkeypatch):
+    """The route pre-checks get_secret_by_name() before inserting, but two
+    concurrent requests for the same name can both pass that check before
+    either commits. Simulate the race by making the pre-check always report
+    "no existing secret" (as it would for both racing requests) so the
+    route falls through to repo.create_secret() — the second call then hits
+    the real uq_connector_secrets_tenant_name DB constraint, and the route's
+    except IntegrityError backstop must turn that into a 409, not a 500."""
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+
+    import app.secrets.routes as secrets_routes
+
+    monkeypatch.setattr(secrets_routes.repo, "get_secret_by_name", lambda *a, **k: None)
+
+    first = client.post("/secrets", json=BEARER_BODY)
+    assert first.status_code == 201
+
+    second = client.post("/secrets", json=BEARER_BODY)
+    assert second.status_code == 409
+    assert second.json()["detail"] == "secret name already exists"

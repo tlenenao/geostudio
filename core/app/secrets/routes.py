@@ -3,6 +3,7 @@
 retourne jamais une valeur déchiffrée, un ciphertext ou un nonce."""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -46,10 +47,18 @@ def create_secret_route(
     if repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=body.name):
         raise HTTPException(status_code=409, detail="secret name already exists")
     ciphertext, nonce = crypto.encrypt(body.payload.model_dump())
-    secret = repo.create_secret(
-        session, tenant_id=user.tenant_id, created_by=user.id, name=body.name,
-        kind=body.payload.kind, ciphertext=ciphertext, nonce=nonce,
-    )
+    try:
+        secret = repo.create_secret(
+            session, tenant_id=user.tenant_id, created_by=user.id, name=body.name,
+            kind=body.payload.kind, ciphertext=ciphertext, nonce=nonce,
+        )
+    except IntegrityError:
+        # Race window between the pre-check above and this insert — the
+        # uq_connector_secrets_tenant_name constraint is the real guard,
+        # this just turns a concurrent duplicate into the same 409 the
+        # pre-check gives in the common case (request_scoped_session rolls
+        # back the failed flush; see app/db.py).
+        raise HTTPException(status_code=409, detail="secret name already exists")
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="secret.create", object_type="secret", object_id=secret.id,
                 payload={"name": secret.name, "kind": secret.kind})
