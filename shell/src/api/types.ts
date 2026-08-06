@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -136,6 +136,13 @@ export interface ItemClient {
   createDatasetItem(input: CreateDatasetInput): Promise<Item>;
   createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
   getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
+  createPipelineItem(input: { title: string; owner: string; pipeline: PipelinePayload }): Promise<Item>;
+  getPipelineConfig(pk: string): Promise<PipelinePayload>;
+  savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
+  getPipelineOps(): Promise<PipelineOpsCatalog>;
+  runPipeline(pk: string): Promise<{ runId: string }>;
+  getPipelineRuns(pk: string): Promise<PipelineRun[]>;
+  previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
@@ -406,4 +413,65 @@ export type AppConfig = {
   variables?: Variable[];
   navigationMode?: "tabs" | "story";
   interactions?: "auto" | "manual"; // absent = "manual"
+};
+
+export type PipelineNodeKind = "reader" | "transform" | "writer";
+
+export type PipelineNode = {
+  id: string;
+  kind: PipelineNodeKind;
+  op: string;
+  x: number;
+  y: number;
+  params: Record<string, unknown>;
+  title?: string | null;
+};
+
+// Wire-format alias "from" comes straight from the core's PipelineEdge
+// (Pydantic Field(alias="from") — "from" is a reserved word in Python but a
+// perfectly valid object-literal key in TS/JS, so no remapping is needed on
+// either side of the wire (core/app/configs/schemas.py::PipelineEdge).
+export type PipelineEdge = {
+  id: string;
+  from: string;
+  to: string;
+  when?: string | null;
+};
+
+export type PipelinePayload = {
+  nodes: PipelineNode[];
+  edges: PipelineEdge[];
+};
+
+// Minimal typed subset of JSON Schema actually consumed by
+// PipelineNodeInspector (builder/pipeline/PipelineNodeInspector.tsx) — not a
+// general JSON Schema type, deliberately narrow to what
+// core/app/pipelines/ops/schemas.py's model_json_schema() output is used for.
+export type PipelineOpParamProperty = {
+  type?: "string" | "number" | "integer" | "boolean" | "array" | "object";
+  format?: string;
+  enum?: string[];
+  default?: unknown;
+  items?: { type?: string };
+};
+
+export type PipelineOpEntry = {
+  kind: PipelineNodeKind;
+  paramsSchema: {
+    properties: Record<string, PipelineOpParamProperty>;
+    required?: string[];
+  };
+};
+
+export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
+
+export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type PipelineRun = {
+  id: string;
+  status: PipelineRunStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  nodeStats: Record<string, unknown>;
 };

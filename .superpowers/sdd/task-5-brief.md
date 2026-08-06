@@ -1,285 +1,263 @@
-## Task 5: Shell — `bboxFromGeometry` util + `derivePatch` resolution
+## Task 5: Per-node validation (`app.pipelines` layer, registered into Task 4)
 
 **Files:**
-- Create: `shell/src/lib/geometryBbox.ts`
-- Test: `shell/src/lib/geometryBbox.test.ts` (new)
-- Modify: `shell/src/lib/analyticsPatch.ts` (full rewrite of `derivePatch`, factor out `applyCrossFilterValue`)
-- Test: `shell/src/lib/analyticsPatch.test.ts` (append)
+- Create: `core/app/pipelines/config_validation.py`
+- Modify: `core/app/main.py`
+- Test: `core/tests/test_pipeline_node_validation.py`
 
 **Interfaces:**
-- Consumes: `CrossFilterLink`, `DatasetConfig` (Task 4), `CrossFilterEntry.geometry` (Task 4).
-- Produces: `bboxFromGeometry(geometry: unknown): [number, number, number, number] | null` (pure, no dependency on turf — none exists in this repo). `derivePatch` now also resolves inter-dataset links: attribute links translate to `targetField`/`targetField__in`/`targetField__gte`+`targetField__lte`; spatial/bbox links add `patch.bbox`; spatial/exact links add `patch.geomIntersects` (raw geometry object, consumed by Task 6's `buildAggregateBody` change).
+- Consumes: `register_pipeline_node_validator` (Task 4), `OP_PARAMS` (Task 3).
+- Produces: real per-op validators registered as a side effect of importing
+  `app.pipelines.config_validation` — from this task on, `test_pipeline_config_validation.py`'s
+  fake validators are no longer the only ones in play for a real app instance
+  (the fakes remain fine as unit-test isolation, unaffected).
 
-- [ ] **Step 1: Write the failing `bboxFromGeometry` tests**
+- [ ] **Step 1: Write the failing tests**
 
-Create `shell/src/lib/geometryBbox.test.ts`:
+Create `core/tests/test_pipeline_node_validation.py`:
 
-```typescript
-// SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
-import { bboxFromGeometry } from "./geometryBbox";
+```python
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-test("returns a degenerate bbox for a Point", () => {
-  expect(bboxFromGeometry({ type: "Point", coordinates: [2.4, 46.6] })).toEqual([2.4, 46.6, 2.4, 46.6]);
-});
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.db import Base, init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
-test("returns the enclosing bbox for a Polygon", () => {
-  const polygon = {
-    type: "Polygon",
-    coordinates: [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]],
-  };
-  expect(bboxFromGeometry(polygon)).toEqual([2.0, 48.0, 3.0, 49.0]);
-});
 
-test("returns the enclosing bbox across a MultiPolygon's parts", () => {
-  const multi = {
-    type: "MultiPolygon",
-    coordinates: [
-      [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
-      [[[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]],
-    ],
-  };
-  expect(bboxFromGeometry(multi)).toEqual([0, 0, 11, 11]);
-});
-
-test("returns null for undefined, null, or a non-geometry value", () => {
-  expect(bboxFromGeometry(undefined)).toBeNull();
-  expect(bboxFromGeometry(null)).toBeNull();
-  expect(bboxFromGeometry({ foo: "bar" })).toBeNull();
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd shell && npx vitest run src/lib/geometryBbox.test.ts`
-Expected: FAIL — the module doesn't exist yet.
-
-- [ ] **Step 3: Implement `geometryBbox.ts`**
-
-Create `shell/src/lib/geometryBbox.ts`:
-
-```typescript
-// SPDX-License-Identifier: Apache-2.0
-// Recursively walks GeoJSON coordinate arrays (any depth: Point, LineString,
-// Polygon, Multi*) to compute an enclosing [minX, minY, maxX, maxY] — no
-// turf/geojson dependency, neither is present in this repo (DataRecord.geometry
-// is typed `unknown` for the same reason, api/types.ts:351).
-function walk(coords: unknown, acc: [number, number, number, number]): void {
-  if (Array.isArray(coords) && typeof coords[0] === "number") {
-    const [x, y] = coords as [number, number];
-    if (x < acc[0]) acc[0] = x;
-    if (y < acc[1]) acc[1] = y;
-    if (x > acc[2]) acc[2] = x;
-    if (y > acc[3]) acc[3] = y;
-    return;
-  }
-  if (Array.isArray(coords)) coords.forEach((c) => walk(c, acc));
-}
-
-export function bboxFromGeometry(geometry: unknown): [number, number, number, number] | null {
-  if (!geometry || typeof geometry !== "object" || !("coordinates" in geometry)) return null;
-  const coords = (geometry as { coordinates: unknown }).coordinates;
-  const acc: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
-  walk(coords, acc);
-  if (!isFinite(acc[0])) return null;
-  return acc;
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/lib/geometryBbox.test.ts`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Write the failing `derivePatch` tests**
-
-Append to `shell/src/lib/analyticsPatch.test.ts`:
-
-```typescript
-const linked: DatasetConfig = {
-  source: "collection", collectionId: "communes", columns: {},
-  crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "attribute", sourceField: "commune", targetField: "nom_commune" }],
-};
-
-test("translates an attribute link from another dataset's active cross-filter", () => {
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({ nom_commune: "Brive" });
-});
-
-test("ignores an attribute link when the active field doesn't match sourceField", () => {
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "autre_champ", value: "Brive", originSourceId: "src-OTHER" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({});
-});
-
-test("ignores a link that doesn't target this source's dataset", () => {
-  const elsewhere = { ...linked, crossFilterLinks: [{ targetDatasetId: "ds-999", mode: "attribute" as const, sourceField: "commune", targetField: "nom_commune" }] };
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": elsewhere })).toEqual({});
-});
-
-test("translates a spatial/bbox link into a bbox patch derived from the entry's geometry", () => {
-  const spatialLinked: DatasetConfig = {
-    ...linked,
-    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "bbox" }],
-  };
-  const polygon = { type: "Polygon", coordinates: [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]] };
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({
-    bbox: "2,48,3,49",
-  });
-});
-
-test("translates a spatial/exact link into a geomIntersects patch carrying the raw geometry", () => {
-  const spatialLinked: DatasetConfig = {
-    ...linked,
-    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "exact" }],
-  };
-  const polygon = { type: "Polygon", coordinates: [[[2.0, 48.0], [3.0, 48.0], [3.0, 49.0], [2.0, 49.0], [2.0, 48.0]]] };
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({
-    geomIntersects: polygon,
-  });
-});
-
-test("ignores a spatial link when the active entry has no geometry", () => {
-  const spatialLinked: DatasetConfig = {
-    ...linked,
-    crossFilterLinks: [{ targetDatasetId: "ds-1", mode: "spatial", precision: "bbox" }],
-  };
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
-  };
-  expect(derivePatch(source, ctx, { "ds-1": { ...dataset, reactsToExtent: false }, "ds-2": spatialLinked })).toEqual({});
-});
-
-test("does not resolve a link declared on the same dataset as the target source (no self-link)", () => {
-  const ctx: AnalyticsContextState = {
-    ...EMPTY,
-    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
-  };
-  // dataset "ds-1" has no crossFilterLinks of its own here — this just proves the
-  // direct same-dataset path (already tested above) and the link path don't double-fire.
-  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
-});
-```
-
-Add `DatasetConfig` to the file's type import from `../api/types` if not already present (it already is, per the file's existing `import type { DataSource, DatasetConfig } from "../api/types";`).
-
-- [ ] **Step 6: Run tests to verify they fail**
-
-Run: `cd shell && npx vitest run src/lib/analyticsPatch.test.ts`
-Expected: FAIL — `derivePatch` doesn't yet look at any dataset's `crossFilterLinks`, so every new "translates"/"ignores a link..." test that expects a non-empty patch gets `{}` instead.
-
-- [ ] **Step 7: Implement `derivePatch`**
-
-Replace the full contents of `shell/src/lib/analyticsPatch.ts`:
-
-```typescript
-// SPDX-License-Identifier: Apache-2.0
-import type { AnalyticsContextState, CrossFilterValue } from "../builder/AnalyticsContext";
-import type { DataSource, DatasetConfig } from "../api/types";
-import { bboxFromGeometry } from "./geometryBbox";
-
-// Pure translation of the global analytics context into query-filter keys
-// for one DataSource, mirroring the __gte/__lte/__in suffixes the core
-// understands (features/repository.py, analytics/aggregate.py). `datasets`
-// keys are DatasetConfig objects already resolved by the caller (DataContext)
-// — this function never fetches.
-export function derivePatch(
-  source: DataSource,
-  ctx: AnalyticsContextState,
-  datasets: Record<string, DatasetConfig>,
-): Record<string, unknown> {
-  if (!source.datasetId) return {};
-  const dataset = datasets[source.datasetId];
-  if (!dataset) return {};
-
-  const patch: Record<string, unknown> = {};
-
-  if (ctx.timeRange && dataset.timeField) {
-    patch[`${dataset.timeField}__gte`] = ctx.timeRange.from;
-    patch[`${dataset.timeField}__lte`] = ctx.timeRange.to;
-  }
-
-  if (ctx.extent && dataset.reactsToExtent) {
-    patch.bbox = ctx.extent.join(",");
-  }
-
-  const directCrossFilter = ctx.crossFilter[source.datasetId];
-  if (directCrossFilter && directCrossFilter.originSourceId !== source.id) {
-    applyCrossFilterValue(patch, directCrossFilter.field, directCrossFilter.value);
-  }
-
-  // SP-14n — cross-filter inter-datasets : pour chaque AUTRE dataset avec un
-  // cross-filter actif, vérifier s'il déclare un lien vers le dataset de
-  // cette source, et traduire en conséquence. Un seul saut (pas de chaînage
-  // transitif) ; en cas de liens contradictoires vers la même cible, le
-  // dernier résolu gagne (limite documentée, spec §1).
-  for (const [originDatasetId, entry] of Object.entries(ctx.crossFilter)) {
-    if (!entry || originDatasetId === source.datasetId) continue;
-    const originDataset = datasets[originDatasetId];
-    const link = originDataset?.crossFilterLinks?.find((l) => l.targetDatasetId === source.datasetId);
-    if (!link) continue;
-    if (link.mode === "attribute") {
-      if (entry.field === link.sourceField) applyCrossFilterValue(patch, link.targetField, entry.value);
-    } else if (entry.geometry !== undefined) {
-      if (link.precision === "bbox") {
-        const bbox = bboxFromGeometry(entry.geometry);
-        if (bbox) patch.bbox = bbox.join(",");
-      } else {
-        patch.geomIntersects = entry.geometry;
-      }
+def _pipeline_body(*, reader_collection: str, writer_collection: str) -> dict:
+    return {
+        "title": "P",
+        "config": {
+            "version": 1,
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection",
+                     "params": {"collectionId": reader_collection}},
+                    {"id": "w1", "kind": "writer", "op": "writer.collection",
+                     "params": {"collectionId": writer_collection}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        },
     }
-  }
 
-  return patch;
-}
 
-function applyCrossFilterValue(patch: Record<string, unknown>, field: string, value: CrossFilterValue): void {
-  if (Array.isArray(value)) {
-    patch[`${field}__in`] = value.join(",");
-  } else if (typeof value === "object") {
-    patch[`${field}__gte`] = value.from;
-    patch[`${field}__lte`] = value.to;
-  } else {
-    patch[field] = value;
-  }
-}
+@pytest.fixture()
+def env(monkeypatch):
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        other = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
+            email=None, first_name="", last_name="",
+        )
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable) "
+            "VALUES ('readable', :t, :o, 'readable', 'Readable', '', 'id', NULL, 1, 1)"
+        ), {"t": tenant.id, "o": owner.id})
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable) "
+            "VALUES ('writable', :t, :o, 'writable', 'Writable', '', 'id', NULL, 0, 1)"
+        ), {"t": tenant.id, "o": owner.id})
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable) "
+            "VALUES ('locked', :t, :o, 'locked', 'Locked', '', 'id', NULL, 0, 0)"
+        ), {"t": tenant.id, "o": other.id})
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: owner
+    app.dependency_overrides[get_current_user_optional] = lambda: owner
+    return TestClient(app)
+
+
+def test_valid_pipeline_with_existing_collections_saves(env):
+    response = env.post("/configs", json=_pipeline_body(
+        reader_collection="readable", writer_collection="writable",
+    ))
+    assert response.status_code == 201
+
+
+def test_reader_collection_missing_is_rejected(env):
+    response = env.post("/configs", json=_pipeline_body(
+        reader_collection="does-not-exist", writer_collection="writable",
+    ))
+    assert response.status_code == 422
+    assert "not found" in response.json()["detail"]
+
+
+def test_writer_collection_not_editable_is_rejected(env):
+    response = env.post("/configs", json=_pipeline_body(
+        reader_collection="readable", writer_collection="locked",
+    ))
+    assert response.status_code == 422
+
+
+def test_missing_required_param_is_rejected(env):
+    body = _pipeline_body(reader_collection="readable", writer_collection="writable")
+    body["config"]["pipeline"]["nodes"][0]["params"] = {}
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+
+
+def test_unknown_op_is_rejected(env):
+    body = _pipeline_body(reader_collection="readable", writer_collection="writable")
+    body["config"]["pipeline"]["nodes"][0]["op"] = "reader.does-not-exist"
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+    assert "unknown op" in response.json()["detail"]
 ```
 
-Add `CrossFilterValue` to the existing import from `../builder/AnalyticsContext` in `analyticsPatch.test.ts` if a test references it directly (it doesn't need to — the tests above only construct plain object literals typed as `AnalyticsContextState`, already imported).
+- [ ] **Step 2: Run to verify it fails**
 
-- [ ] **Step 8: Run tests to verify they pass**
+Run: `cd core && uv run pytest tests/test_pipeline_node_validation.py -v`
+Expected: FAIL — `test_reader_collection_missing_is_rejected` and others get
+`422 unknown op 'reader.collection'` (no real validator registered yet in a
+freshly-created app — the fake validators from Task 4's own test file don't
+leak across test modules) instead of the specific collection-not-found
+message; `test_valid_pipeline_with_existing_collections_saves` fails with 422.
 
-Run: `cd shell && npx vitest run src/lib/analyticsPatch.test.ts`
-Expected: PASS (all tests, including the 7 new ones — the pre-existing same-dataset tests must still pass unchanged, since `applyCrossFilterValue` is a byte-for-byte extraction of the same three branches, not a behavior change).
+- [ ] **Step 3: Implement the real per-node validators**
 
-- [ ] **Step 9: Run the full shell unit suite**
+Create `core/app/pipelines/config_validation.py`:
 
-Run: `cd shell && npm run test`
-Expected: all green, no regressions.
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Registers the real per-op node validators for kind="pipeline" configs
+(see app.configs.pipeline_validation for why this indirection exists).
+Imported for its side effect by app.main, the only layer allowed to know
+about both app.pipelines and app.configs — mirrors
+app.collections.dataset_validation exactly.
 
-- [ ] **Step 10: Commit**
+Boundary decision (design SP-15a, Global Constraints): only param SHAPE
+(Pydantic) and referenced-collection existence/permission are checked here,
+at save time. Bounded SQL expressions (filter.expr, derive.expr,
+aggregate.metrics values) and transform.join.on column existence are only
+checked at execution time (app.pipelines.expr_validation / runtime) — a bad
+expression fails the run clearly, it never blocks saving the pipeline."""
+from fastapi import HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.collections import repository as collections_repo
+from app.configs.pipeline_validation import register_pipeline_node_validator
+from app.configs.schemas import PipelineNode
+from app.pipelines.ops.schemas import OP_PARAMS
+from app.sharing.authorization import can
+from app.users.models import User
+
+_COLLECTION_PARAM_FIELD = {
+    "reader.collection": "collectionId",
+    "transform.join": "withCollectionId",
+    "writer.collection": "collectionId",
+}
+_WRITE_OPS = {"writer.collection"}
+
+
+def _validate_params(node: PipelineNode) -> BaseModel:
+    model = OP_PARAMS.get(node.op)
+    if model is None:
+        raise HTTPException(status_code=422, detail=f"unknown op '{node.op}'")
+    try:
+        return model.model_validate(node.params)
+    except Exception as exc:  # pydantic.ValidationError, reported verbatim
+        raise HTTPException(status_code=422, detail=f"{node.op}: {exc}") from exc
+
+
+def _require_readable_collection(session: Session, *, user: User, collection_id: str) -> None:
+    collection = collections_repo.get_collection(
+        session, tenant_id=user.tenant_id, collection_id=collection_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
+    readable = can(
+        session, user_id=user.id, action="read",
+        item=collections_repo.get_access_facts(collection), kind="collection",
+        actor_is_admin=user.is_admin,
+    )
+    if not readable:
+        # Same message as not-found: don't leak collection existence.
+        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
+
+
+def _require_writable_collection(session: Session, *, user: User, collection_id: str) -> None:
+    collection = collections_repo.get_collection(
+        session, tenant_id=user.tenant_id, collection_id=collection_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
+    writable = can(
+        session, user_id=user.id, action="write",
+        item=collections_repo.get_access_facts(collection), kind="collection",
+        actor_is_admin=user.is_admin,
+    )
+    if not writable or not collection.editable:
+        raise HTTPException(status_code=422, detail=f"collection '{collection_id}' is not writable")
+
+
+def _validate_node(session: Session, node: PipelineNode, user: User) -> None:
+    params = _validate_params(node)
+    field = _COLLECTION_PARAM_FIELD.get(node.op)
+    if field is None:
+        return
+    collection_id = getattr(params, field)
+    if node.op in _WRITE_OPS:
+        _require_writable_collection(session, user=user, collection_id=collection_id)
+    else:
+        _require_readable_collection(session, user=user, collection_id=collection_id)
+
+
+for _op in OP_PARAMS:
+    register_pipeline_node_validator(_op, _validate_node)
+```
+
+- [ ] **Step 4: Wire the side-effect import into `app.main`**
+
+In `core/app/main.py`, add right after the existing
+`harvest_dataset_validation` import (after line 15):
+
+```python
+from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
+```
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_pipeline_node_validation.py -v`
+Expected: PASS (5 tests green)
+
+- [ ] **Step 6: Run the full pipeline + configs test suite to check no regression**
+
+Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py tests/test_pipeline_config_schema.py tests/test_pipeline_ops_schemas.py tests/test_configs_extension_permissions.py -v`
+Expected: PASS (unchanged)
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add shell/src/lib/geometryBbox.ts shell/src/lib/geometryBbox.test.ts shell/src/lib/analyticsPatch.ts shell/src/lib/analyticsPatch.test.ts
-git commit -m "feat(shell): resolve cross-filter links (attribute + spatial) in derivePatch (SP-14n)"
+git add core/app/pipelines/config_validation.py core/app/main.py \
+  core/tests/test_pipeline_node_validation.py
+git commit -m "feat(core): validate pipeline node params + collection permissions at save time"
 ```
 
 ---

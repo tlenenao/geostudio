@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
 import { http, HttpResponse } from "msw";
@@ -329,4 +329,66 @@ test("creates an arcgis-sourced dataset from a feature-layer picker", async () =
   await waitFor(() => expect(body?.config?.dataset?.source).toBe("arcgis"));
   await waitFor(() => expect(body?.config?.dataset?.arcgisItemId).toBe("layer-1"));
   expect(await screen.findByText("dataset-ds-1")).toBeInTheDocument();
+});
+
+test("the Pipeline option is absent from the Type select when etlEnabled is false (the MSW default)", async () => {
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(screen.queryByRole("option", { name: "Pipeline" })).not.toBeInTheDocument();
+});
+
+test("the Pipeline option is present when etlEnabled is true", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(await screen.findByRole("option", { name: "Pipeline" })).toBeInTheDocument();
+});
+
+test("selecting Pipeline only asks for a title, and navigates to /pipelines/new with the title in route state, without calling the create API", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+  );
+  let configPosted = false;
+  server.use(
+    http.post("https://core.test/configs", () => {
+      configPosted = true;
+      return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" });
+    }),
+  );
+  function PipelineNewProbe() {
+    const location = useLocation();
+    const state = location.state as { title?: string } | null;
+    return <div>pipeline-new-{state?.title ?? ""}</div>;
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+          <Routes>
+            <Route path="/apps/:pk/edit" element={<AppBuilderProbe />} />
+            <Route path="/pipelines/new" element={<PipelineNewProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Type"), "pipeline");
+  await userEvent.type(screen.getByLabelText("Titre"), "Nettoyer villes");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(await screen.findByText("pipeline-new-Nettoyer villes")).toBeInTheDocument();
+  expect(configPosted).toBe(false);
 });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, Sharing, UpdatePatch } from "./types";
+import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -37,7 +37,10 @@ export function useInstanceInfo() {
     // plutôt que de planter la query. Une vraie panne réseau laisse `data`
     // undefined (react-query), et chaque appelant traite ça en fail-open
     // via `?.readOnly === true` — jamais un faux positif "lecture seule".
-    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false }),
+    // Même garde défensive pour etlEnabled que pour readOnly ci-dessus
+    // (SP-15b) : un ItemClient de test qui ne l'implémente pas encore
+    // résout silencieusement à false plutôt que de planter la query.
+    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false, etlEnabled: false }),
   });
 }
 
@@ -244,6 +247,63 @@ export function useSaveDataset(pk: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dataset", pk] });
     },
+  });
+}
+
+export function usePipelineConfig(pk: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline", pk],
+    queryFn: () => client.getPipelineConfig(pk),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreatePipeline() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { title: string; owner: string; pipeline: PipelinePayload }) =>
+      client.createPipelineItem(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+
+export function useSavePipeline(pk: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PipelinePayload) => client.savePipelineConfig(pk, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipeline", pk] });
+    },
+  });
+}
+
+export function usePipelineOps() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline-ops"],
+    queryFn: () => client.getPipelineOps(),
+    staleTime: Infinity, // catalogue statique côté serveur, jamais invalidé
+  });
+}
+
+export function usePipelinePreview(pipelineId: string, nodeId: string | null) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline-preview", pipelineId, nodeId],
+    queryFn: () => client.previewPipeline(pipelineId, nodeId!),
+    enabled: nodeId !== null,
+  });
+}
+
+export function useRunPipeline(pk: string) {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: () => client.runPipeline(pk),
   });
 }
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 
 class ReaderCollectionParams(BaseModel):
-    collectionId: str
+    collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
 
 
 class TransformFilterParams(BaseModel):
@@ -38,13 +38,13 @@ class TransformAggregateParams(BaseModel):
 
 
 class TransformJoinParams(BaseModel):
-    withCollectionId: str
+    withCollectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
     on: str
     how: Literal["inner", "left"] = "inner"
 
 
 class WriterCollectionParams(BaseModel):
-    collectionId: str
+    collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
 
 
 class WriterExportParams(BaseModel):

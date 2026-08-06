@@ -1,144 +1,115 @@
-# Rapport — corrections review finale SP-14k (source arcgis, référencement live)
+# Rapport — corrections review finale SP-15a (géométrie preview/export)
 
-Deux findings de la review finale de branche ont été corrigés, chacun dans son
-propre commit.
+Un seul commit : les deux findings partagent la même cause racine dans
+`core/app/pipelines/runtime.py`.
 
-## Finding 1 (Critical) — mismatch shell↔core sur le paramètre de chemin
+## Cause racine
 
-**Cause racine confirmée** : la route cœur `GET/POST
-/datasets/{item_id}/arcgis/items|aggregate` (`core/app/harvest/routes.py`,
-`_resolve_arcgis_dataset`) attend l'`item_id` **du dataset lui-même**
-(`get_config_by_item(session, item_id)` puis lecture de
-`config.dataset.arcgisItemId` pour retrouver la couche moissonnée). Le shell
-construisait cette même URL avec l'`arcgisItemId` (item de la couche
-moissonnée) au lieu de l'`item_id` du dataset — chemin garanti 404 en
-production puisqu'un item de couche moissonnée (`resource_type="external"`)
-n'a pas de `Config` de type `dataset`.
+`_materialize_reader` renomme la colonne géométrie source en `"geometry"`
+mais la garde en type `GEOMETRY` DuckDB brut. Le client Python DuckDB
+renvoie ce type comme `bytes` WKB. `_write_collection` convertissait déjà
+ça en GeoJSON au point d'écriture (`SELECT *, ST_AsGeoJSON(geometry) AS
+geometry` conditionné par `has_geometry`), mais `preview_pipeline` et
+`_write_export` lisaient encore la vue avec un `SELECT *` brut, donc
+récupéraient du WKB.
 
-### Changements — `shell/src/api/itemClient.ts`
+## Finding 1 (Important) — `preview_pipeline` / `POST /pipelines/{id}/preview` → 500
 
-- `buildArcgisItemsUrl` (ligne ~167) : paramètre renommé
-  `arcgisItemId: string` → `datasetItemId: string` (clarté seule, la fonction
-  reçoit désormais toujours l'item id du dataset).
-- `featuresUrl` (lignes ~706-715) : condition simplifiée en
-  `cached?.source === "arcgis"` (plus besoin de vérifier `arcgisItemId`) et
-  appel corrigé en `buildArcgisItemsUrl(coreUrl, source.datasetId, source.query)`.
-- `queryDataSource` (lignes ~717-728) : condition changée en
-  `cachedDataset?.source === "arcgis" && source.datasetId` (narrowing
-  TypeScript sur `source.datasetId`) ; URL d'agrégat corrigée en
-  `` `/datasets/${source.datasetId}/arcgis/aggregate` `` ; URL de features
-  corrigée en `buildArcgisItemsUrl(coreUrl, source.datasetId, source.query)`.
-- Aucun autre point du fichier touché : `ResolvedDataset.arcgisItemId`,
-  `getDatasetConfig`, `saveDatasetConfig`, `createDatasetItem`,
-  `listFeatureLayers` restent inchangés (l'`arcgisItemId` y reste pertinent
-  pour l'affichage/la config).
+**Changement — `preview_pipeline`** (`core/app/pipelines/runtime.py`,
+autour de la ligne 244) : avant le `SELECT * FROM <view> LIMIT <n>` final,
+détection `has_geometry` via `conn.execute(f"SELECT * FROM {view} LIMIT
+0").description` (même technique que `_write_collection`), puis
+`SELECT * EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry` à la
+place du `SELECT *` bare si la vue a une colonne géométrie. Chaque ligne du
+résultat a ensuite sa valeur `"geometry"` (chaîne GeoJSON) décodée via
+`json.loads(...)` pour redevenir un objet réel (`{"type": "Point",
+"coordinates": [...]}`) plutôt qu'une chaîne-dans-une-chaîne — c'est la
+forme qu'un consommateur REST attend d'une ligne de preview. Comportement
+inchangé si la vue n'a pas de colonne géométrie.
 
-### Changements — `shell/src/api/itemClient.test.ts`
+## Finding 2 (Important) — `writer.export` casse (geojson) ou écrit du bruit (csv)
 
-- Test `featuresUrl routes an arcgis-sourced dataset to
-  /datasets/{datasetItemId}/arcgis/items` (titre corrigé) : assertion
-  `toBe(...)` mise à jour de `/datasets/layer-9/arcgis/items` vers
-  `/datasets/ds-arcgis-1/arcgis/items`.
-- Test `queryDataSource fetches features from the arcgis proxy...` : mock
-  `http.get` déplacé de `/datasets/layer-10/arcgis/items` vers
-  `/datasets/ds-arcgis-2/arcgis/items`.
-- Test `queryDataSource posts aggregate queries to the arcgis proxy...` :
-  mock `http.post` déplacé de `/datasets/layer-11/arcgis/aggregate` vers
-  `/datasets/ds-arcgis-3/arcgis/aggregate`.
-- **Nouveau test** `featuresUrl keys the arcgis proxy URL on the dataset item
-  id, not the arcgis layer id` : dataset `ds-999` avec
-  `arcgisItemId: "totally-different-layer-id"`, assertion que l'URL générée
-  est bien keyée sur `ds-999` — régression exacte du bug corrigé.
-- Les autres tests arcgis (`getDatasetConfig`, `createDatasetItem`,
-  `listFeatureLayers`) non touchés (hors du chemin concerné).
+**Changement — `_write_export`** (`core/app/pipelines/runtime.py`, autour
+de la ligne 300) : même détection `has_geometry` + substitution
+`ST_AsGeoJSON` que ci-dessus, avant le `fetchall()`.
 
-### Changements — `shell/e2e/dataset-arcgis.spec.ts`
+- Branche `csv` : la colonne géométrie contient désormais une chaîne
+  GeoJSON exploitable au lieu du repr Python des bytes WKB — aucun autre
+  changement nécessaire, `csv.writer` l'écrit telle quelle.
+- Branche `geojson` : deux bugs indépendants corrigés — (a) au lieu du
+  `"geometry": None` codé en dur, la géométrie réelle de la ligne est
+  extraite de `properties` (`properties.pop("geometry", None)`) puis
+  décodée via `json.loads(...)` (ou `None` si la ligne n'a pas de
+  géométrie) pour construire le `"geometry"` du Feature ; (b) `pop` retire
+  aussi la colonne du dict `properties`, donc elle n'est plus dupliquée
+  dans `"properties"` — même contrat que `_write_collection` qui fait un
+  `row.pop("geometry")` équivalent avant de construire son feature.
 
-- `page.route("**/datasets/layer-1/arcgis/items*", ...)` → `**/datasets/dataset-1/arcgis/items*`.
-- `page.route("**/datasets/layer-1/arcgis/aggregate", ...)` → `**/datasets/dataset-1/arcgis/aggregate`.
-- Commentaire de la section « Runtime » mis à jour pour référencer
-  `/datasets/dataset-1/arcgis/*` (au lieu de `layer-1`).
-- Les autres occurrences de `layer-1` dans ce spec (id de couche ArcGIS lors
-  du moissonnage, `arcgisItemId` dans le payload de création du dataset) sont
-  restées inchangées — elles ne concernent pas l'URL du proxy.
+`_materialize_reader` et `app/pipelines/compiler.py` n'ont pas été
+touchés : conforme à la consigne (Phase 1 n'a aucune op spatiale, la
+géométrie n'a besoin d'être encodée qu'aux deux frontières de sortie, pas
+portée en GeoJSON à travers les vues de transform intermédiaires).
 
-## Finding 2 (Important) — noms de champs non validés dans l'agrégat arcgis
+## Tests ajoutés — `core/tests/test_pipeline_runtime.py`
 
-**Contexte** : une tâche précédente du même plan avait corrigé un finding
-Critical où les *noms* de filtres arrivaient dans la clause `where=` ArcGIS
-sans échappement (seules les *valeurs* étaient échappées), en ajoutant
-`_FIELD_NAME_RE` validé dans `_build_where`. `translate_aggregate_query`
-avait deux autres points où des noms de champs contrôlés par l'utilisateur
-atteignaient les paramètres sortants ArcGIS sans passer par cette même
-validation : `groupByFieldsForStatistics` (depuis `body.groupBy`) et
-`onStatisticField` (depuis `body.field`/`body.measures[].field`).
+- `test_preview_pipeline_serializes_geometry` : pipeline reader→writer.export
+  (up_to="r1", un reader avec colonne géométrie) ; vérifie que chaque ligne
+  renvoyée a `"geometry"` sous forme d'objet GeoJSON réel
+  (`{"type": "Point", "coordinates": [...]}`), et que `json.dumps(rows)`
+  réussit (preuve que la vraie route HTTP via `jsonable_encoder` ne
+  planterait pas, contrairement à avant le fix où c'était des `bytes`).
+- `test_write_export_geojson_serializes_geometry` : `run_pipeline` avec un
+  nœud `writer.export` `format="geojson"` et un `_FakeS3` capturant
+  `put_object` ; vérifie que `json.loads(body)` réussit, que la géométrie de
+  la feature correspond au point réel de la ligne (pas `None`), et qu'elle
+  n'est pas dupliquée dans `"properties"`.
+- `test_write_export_csv_geometry_as_geojson_string` : même patron,
+  `format="csv"` ; vérifie via `csv.reader` que la cellule "geometry" est
+  une chaîne JSON valide décodable en objet GeoJSON, pas un repr Python de
+  bytes (`b'\x...'`).
+- Nouvelle classe `_FakeS3` (stand-in `put_object`) ajoutée à côté de
+  `_FakeCollections`, même esprit (pas de vrai bucket nécessaire).
+- Imports ajoutés en tête de fichier : `csv`, `io`, `json`.
 
-### Changements — `core/app/harvest/live_query.py` (`translate_aggregate_query`)
+Les deux tests existants (`test_preview_filter_and_derive`,
+`test_preview_rejects_writer_node_as_up_to`) et le test postgis
+(`test_run_pipeline_writes_into_target_collection`) n'ont pas été modifiés.
 
-- Chaque nom non-`None` dans la boucle `measures` est désormais validé contre
-  `_FIELD_NAME_RE` avant utilisation comme `onStatisticField` ; sinon
-  `ArcgisQueryError(field, f"invalid measure field name '{field}'")`.
-- Chaque nom dans `group_by` est validé contre `_FIELD_NAME_RE` avant d'être
-  joint dans `groupByFieldsForStatistics` ; sinon
-  `ArcgisQueryError(field_name, f"invalid groupBy field name '{field_name}'")`.
-- Aucun changement de route nécessaire : `get_dataset_arcgis_aggregate`
-  (`core/app/harvest/routes.py`) attrapait déjà `live_query.ArcgisQueryError`
-  autour de l'appel à `translate_aggregate_query` et la propage en 400.
+## Commandes de test exécutées et résultats
 
-### Tests ajoutés
+```
+cd core && uv run pytest tests/test_pipeline_runtime.py -v -k "not postgis"
+→ 5 passed, 1 deselected (les 2 tests préexistants + les 3 nouveaux)
 
-- `core/tests/test_harvest_live_query.py` :
-  `test_translate_aggregate_query_rejects_invalid_groupby_field_name`,
-  `test_translate_aggregate_query_rejects_invalid_measure_field_name`.
-- `core/tests/test_harvest_dataset_arcgis_routes.py` :
-  `test_post_aggregate_invalid_groupby_field_name_rejected` (mirroring
-  `test_post_aggregate_invalid_filter_field_name_rejected`, POST avec
-  `groupBy: "1) OR (1=1--"` → 400).
+cd core && uv run pytest -k "not postgis" -q
+→ 960 passed, 120 deselected (baseline pré-fix 957 + 3 nouveaux tests, aucune régression)
 
-## Résultats des tests (intégraux, avant chaque commit)
+cd core && CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test \
+  uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_jobs.py -v -m postgis
+→ 4 passed, 5 deselected (test_run_pipeline_writes_into_target_collection +
+  les 3 tests de test_pipeline_jobs.py), confirmant que _write_collection
+  (le patron mirroré, non modifié) fonctionne toujours à l'identique.
+```
 
-### Shell
+Vérification post-run sur le conteneur `postgis-test` partagé : la table
+`villes_propres` créée par le test a bien été droppée par le teardown du
+test lui-même (`DROP TABLE villes_propres; TRUNCATE items, configs,
+config_revisions, collections, audit_log, users, tenants CASCADE`) —
+`items` et `pipeline_runs` sont vides après coup. Les tables `ingest_*`
+visibles dans `\dt` sont des reliquats d'un travail antérieur non lié à
+cette tâche, non créées par ce run, laissées en l'état (hors périmètre).
 
-- `npm run build` → OK (`tsc --noEmit && vite build`, build réussi, warnings
-  de taille de chunk préexistants et hors périmètre).
-- `npx vitest run` → **840 tests passés** (110 fichiers), 0 échec (les
-  quelques logs `stderr` visibles dans la sortie sont des chemins d'erreur
-  volontairement testés dans des tests existants, non liés à ce fix).
-- `VITE_AUTH_MODE=mock npm run e2e` → **83 tests passés** (18 specs), y
-  compris `dataset-arcgis.spec.ts` qui exerce directement le chemin corrigé
-  (création dataset arcgis → Table + Indicateur liés → runtime consomme via
-  `/datasets/dataset-1/arcgis/items` et `/datasets/dataset-1/arcgis/aggregate`).
+## Commit
 
-### Cœur
+- `d10a30a` — `fix(core): serialize geometry to GeoJSON in pipeline preview and export`
+  (`core/app/pipelines/runtime.py`, `core/tests/test_pipeline_runtime.py`)
 
-- `uv run pytest` → **850 passés, 106 skipped** (skips = tests postgis
-  nécessitant docker, préexistants), 0 échec.
-- `uv run lint-imports` → `layered architecture KEPT`, `Contracts: 1 kept, 0
-  broken`.
+## Remarques
 
-Tout est vert sur les deux stacks.
-
-## Commits
-
-- `8c2cba5` — `fix(shell): key the arcgis live proxy URL on the dataset item id (SP-14k)`
-  (`shell/src/api/itemClient.ts`, `shell/src/api/itemClient.test.ts`,
-  `shell/e2e/dataset-arcgis.spec.ts`)
-- `9f4ef1b` — `fix(core): validate groupBy and measure field names in arcgis aggregate (SP-14k)`
-  (`core/app/harvest/live_query.py`,
-  `core/tests/test_harvest_live_query.py`,
-  `core/tests/test_harvest_dataset_arcgis_routes.py`)
-
-## Remarques / points de vigilance
-
-- Périmètre strictement limité aux deux findings demandés ; les findings
-  Minor listés dans la review (message 404 incohérent, croissance du cache,
-  regex ASCII-only, etc.) n'ont pas été touchés, comme prescrit.
-- Des fichiers `.superpowers/sdd/*.md` étaient déjà modifiés dans l'arbre de
-  travail avant le début de cette tâche (non liés à ces deux findings) — ils
-  n'ont pas été inclus dans les commits ci-dessus, volontairement laissés en
-  l'état pour ne pas élargir le périmètre.
-- Aucun problème ouvert identifié après vérification complète : les deux
-  fixes sont couverts par des tests unitaires ciblés et validés de bout en
-  bout par la suite E2E (en particulier `dataset-arcgis.spec.ts`, seul test
-  qui prouve que l'URL réellement construite par le shell correspond bien à
-  ce que le cœur attend).
+- Aucun signal contraire aux hypothèses du prompt : le patron
+  `has_geometry` / `ST_AsGeoJSON(...) EXCLUDE` de `_write_collection` s'est
+  appliqué tel quel aux deux autres fonctions, sans avoir besoin de
+  toucher `_materialize_reader` ni `compiler.py`.
+- Fichiers `.superpowers/sdd/*.md` (task-1..6, progress.md) déjà modifiés
+  dans l'arbre de travail avant cette tâche, non liés à ces deux findings —
+  volontairement laissés hors du commit, comme demandé.
