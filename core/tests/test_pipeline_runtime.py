@@ -699,3 +699,121 @@ def test_writer_dataset_refuses_update_without_write_access(pg_engine, monkeypat
             "DROP TABLE villes_out; "
             "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
         ))
+
+
+@pytest.mark.postgis
+def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tmp_path):
+    """buffer(500m on schools) -> countWithin(incidents) -> aggregate(by
+    commune) -> writer.dataset — design §3.4's worked example, end to end."""
+    from app.configs import repository as configs_repo
+    from app.items.models import Item
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        # Table de sortie tabulaire (pas de géométrie : l'aggregate final
+        # group by commune ne conserve aucune colonne géométrie, cf. plan
+        # Task 8 note — transform.aggregate ne sélectionne que groupBy+metrics).
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable, "
+            "created_at, updated_at) "
+            "VALUES ('communes_incidents', :t, :o, 'communes_incidents', 'Communes incidents', "
+            "'', 'id', NULL, false, true, now(), now())"
+        ), {"t": tenant.id, "o": user.id})
+        # Colonne "region" (pas "commune") : c'est le nom réel de la colonne
+        # groupBy en sortie de transform.aggregate ci-dessous (aucun
+        # renommage n'a lieu dans compile_transform_sql pour transform.
+        # aggregate — cf. plan Task 8 note). "commune" dans le vocabulaire du
+        # cas d'usage #3 de l'étude == "region" dans les fixtures partagées
+        # de ce fichier de test.
+        s.execute(text(
+            "CREATE TABLE communes_incidents (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+            "region VARCHAR, nearby_incidents BIGINT)"
+        ))
+        apply_collection_ddl(s, "communes_incidents")
+        s.commit()
+
+        # Deux écoles dans des communes différentes ; 2 incidents proches de
+        # l'école "Nord" (dans le buffer 500m), 0 proche de "Sud".
+        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="ecoles", rows=[
+            _row(1, "Nord", 1, x=3.0, y=45.0), _row(2, "Sud", 1, x=10.0, y=10.0),
+        ])
+        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="incidents", rows=[
+            _row(1, "x", 1, x=3.0005, y=45.0), _row(2, "x", 1, x=3.0006, y=45.0),
+            _row(3, "x", 1, x=20.0, y=20.0),
+        ])
+
+        # communes_incidents (le writer.dataset target) a un schéma physique
+        # DIFFÉRENT des readers ecoles/incidents (region+nearby_incidents,
+        # pas de géométrie) : contrairement au reader-only TABLE_INFO
+        # partagé par les autres tests de ce fichier, ce test a besoin d'un
+        # TableInfo par collection_id, sans quoi validate_feature rejetterait
+        # "nearby_incidents" comme unknown_property (il n'existe pas dans
+        # TABLE_INFO.columns == [region, pop]).
+        def _table_info(session, collection_id):
+            if collection_id == "communes_incidents":
+                return dataclasses.replace(
+                    TABLE_INFO, table_name=collection_id, srid=4326,
+                    geometry_column=None, geometry_type=None,
+                    columns=[
+                        ColumnInfo(name="region", type="string", required=True),
+                        ColumnInfo(name="nearby_incidents", type="integer", required=True),
+                    ],
+                )
+            return dataclasses.replace(TABLE_INFO, table_name=collection_id, srid=4326)
+
+        monkeypatch.setattr(runtime, "_table_info_for_collection", _table_info)
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
+                {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
+                {"id": "t2", "kind": "transform", "op": "transform.countWithin",
+                 "params": {"withCollectionId": "incidents", "countColumn": "cnt"}},
+                {"id": "t3", "kind": "transform", "op": "transform.aggregate",
+                 "params": {"groupBy": ["region"], "metrics": {"nearby_incidents": "SUM(cnt)"}}},
+                {"id": "w1", "kind": "writer", "op": "writer.dataset",
+                 "params": {"collectionId": "communes_incidents", "title": "Incidents près des écoles"}},
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
+                {"id": "e3", "from": "t2", "to": "t3"}, {"id": "e4", "from": "t3", "to": "w1"},
+            ],
+        })
+
+        stats = runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        rows = dict(s.execute(text(
+            "SELECT region, nearby_incidents FROM communes_incidents"
+        )).fetchall())
+        assert rows == {"Nord": 2, "Sud": 0}
+        assert any(stat.op == "writer.dataset" and stat.rowCount == 2 for stat in stats)
+
+        # writer.dataset a bien catalogué le résultat.
+        item = s.execute(select(Item).where(
+            Item.tenant_id == tenant.id, Item.resource_type == "dataset",
+        )).scalar_one()
+        config = configs_repo.get_config_by_item(s, item.id)
+        assert config.config.dataset.collectionId == "communes_incidents"
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE communes_incidents; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
