@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { PipelineEdge, PipelineNode } from "../../api/types";
+import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
 import { PipelineCanvas } from "./PipelineCanvas";
 
 // @xyflow/react appelle ResizeObserver sans garde — stub local à ce fichier
@@ -62,7 +62,7 @@ const EDGES: PipelineEdge[] = [{ id: "e1", from: "r1", to: "w1" }];
 test("renders one labeled element per node", () => {
   render(
     <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} />,
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
   );
   expect(screen.getByText("Villes")).toBeInTheDocument();
   expect(screen.getByText("Écriture")).toBeInTheDocument();
@@ -72,7 +72,7 @@ test("clicking a node calls onSelectNode with its id", () => {
   const onSelectNode = vi.fn();
   render(
     <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={onSelectNode}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} />,
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
   );
   fireEvent.click(screen.getByText("Villes"));
   expect(onSelectNode).toHaveBeenCalledWith("r1");
@@ -82,7 +82,7 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
   const onInsertOnEdge = vi.fn();
   render(
     <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={onInsertOnEdge} />,
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={onInsertOnEdge} opsCatalog={{}} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Filtrer" }));
@@ -92,10 +92,47 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
 test("the edge insertion menu offers the 5 spatial transform ops", () => {
   render(
     <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} />,
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   for (const label of ["Buffer", "Reprojeter", "Intersection", "Compter dans", "Agréger H3"]) {
     expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
   }
+});
+
+const BINARY_CATALOG: PipelineOpsCatalog = {
+  "reader.collection": { kind: "reader", paramsSchema: { properties: {} } },
+  "writer.collection": { kind: "writer", paramsSchema: { properties: {} } },
+  "transform.join": { kind: "transform", paramsSchema: { properties: {} }, acceptsSecondaryInput: true },
+};
+
+test("a node whose op accepts a secondary input renders a second target handle", () => {
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.join", x: 300, y: 0, params: {}, title: "J" },
+  ];
+  render(
+    <PipelineCanvas nodes={nodes} edges={[]} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={BINARY_CATALOG} />,
+  );
+  const joinNodeEl = screen.getByText("J").closest(".react-flow__node")!;
+  expect(joinNodeEl.querySelectorAll(".react-flow__handle").length).toBe(3); // primary target + secondary target + source
+});
+
+test("a node whose op does not accept a secondary input renders only one target handle", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+  );
+  const readerNodeEl = screen.getByText("Villes").closest(".react-flow__node")!;
+  expect(readerNodeEl.querySelectorAll(".react-flow__handle").length).toBe(2); // target + source
+});
+
+test("the edge insertion menu offers Fusionner (transform.merge)", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
+  expect(screen.getByRole("menuitem", { name: "Fusionner" })).toBeInTheDocument();
 });
