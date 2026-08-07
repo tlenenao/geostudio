@@ -126,6 +126,19 @@ test("a binary op with only a secondary edge (no withCollectionId) is valid", ()
   expect(result.nodeErrors.t1).toEqual([]);
 });
 
+test("a binary op with only a secondary edge and no primary edge is flagged on that node", () => {
+  // Régression finding final review SP-15g : le XOR withCollectionId/arête
+  // secondaire est satisfait (secondaire seule) mais il n'y a AUCUNE arête
+  // primaire entrante — doit être rejeté, pas planter au runtime.
+  const nodes = [reader("r2"), joinNode("t1", { on: "id" }), writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toContain("transform.join : requiert une arête primaire entrante.");
+});
+
 test("a non-binary op with a secondary edge is flagged on that node", () => {
   const nodes = [reader("r1"), reader("r2"), { ...reader("t1"), kind: "transform" as const, op: "transform.filter", params: { expr: "1=1" } }, writer("w1")];
   const edges: PipelineEdge[] = [

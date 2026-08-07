@@ -81,6 +81,12 @@ def _validate_node(session: Session, node: PipelineNode, edges: list, user: User
     has_secondary_edge = any(e.to == node.id and e.role == "secondary" for e in edges)
 
     if node.op in BINARY_OPS:
+        has_primary_edge = any(e.to == node.id and e.role != "secondary" for e in edges)
+        if not has_primary_edge:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{node.op}: requires a primary input edge",
+            )
         collection_id = getattr(params, field)
         if has_secondary_edge and collection_id is not None:
             raise HTTPException(

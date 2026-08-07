@@ -194,13 +194,16 @@ def test_writer_dataset_collection_writable_saves(env):
 
 
 def _pipeline_body_binary_op(op: str, params: dict, edges_extra: list[dict] | None = None,
-                              nodes_extra: list[dict] | None = None) -> dict:
+                              nodes_extra: list[dict] | None = None,
+                              include_primary_edge: bool = True) -> dict:
     nodes = [
         {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}},
         {"id": "t1", "kind": "transform", "op": op, "params": params},
         {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "writable"}},
     ]
-    edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
+    edges = [{"id": "e2", "from": "t1", "to": "w1"}]
+    if include_primary_edge:
+        edges.insert(0, {"id": "e1", "from": "r1", "to": "t1"})
     if nodes_extra:
         nodes += nodes_extra
     if edges_extra:
@@ -257,3 +260,19 @@ def test_transform_join_with_only_secondary_edge_and_no_collection_id_saves(env)
     )
     response = env.post("/configs", json=body)
     assert response.status_code == 201
+
+
+def test_transform_join_with_only_secondary_edge_and_no_primary_edge_is_rejected(env):
+    # Régression finding final review SP-15g : un op binaire satisfait le XOR
+    # (secondaire seule, pas de withCollectionId) mais n'a AUCUNE arête
+    # primaire entrante — doit être rejeté à la sauvegarde, pas planter au
+    # runtime (predecessor_id() renvoie None, assert sans message).
+    body = _pipeline_body_binary_op(
+        "transform.join", {"on": "id"},
+        nodes_extra=[{"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}}],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+        include_primary_edge=False,
+    )
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+    assert "requires a primary input edge" in response.json()["detail"]
