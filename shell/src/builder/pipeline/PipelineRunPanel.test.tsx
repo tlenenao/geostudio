@@ -63,3 +63,41 @@ test("if runPipeline itself fails, the button re-enables and shows an error inst
   await waitFor(() => expect(screen.getByRole("button", { name: "Exécuter" })).toBeEnabled());
   expect(screen.getByRole("alert")).toHaveTextContent("réseau indisponible");
 });
+
+test("calls onLatestRunChange with the newest run whenever the run list is (re)loaded", async () => {
+  const onLatestRunChange = vi.fn();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      { id: "run-0", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:02Z", error: null, nodeStats: {} },
+    ]),
+  };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineRunPanel pipelineId="p-1" onLatestRunChange={onLatestRunChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(onLatestRunChange).toHaveBeenCalledWith(
+    expect.objectContaining({ id: "run-0" }),
+  ));
+});
+
+test("calls onLatestRunChange with null when there is no run yet", async () => {
+  const onLatestRunChange = vi.fn();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
+    getPipelineRuns: vi.fn().mockResolvedValue([]),
+  };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineRunPanel pipelineId="p-1" onLatestRunChange={onLatestRunChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(onLatestRunChange).toHaveBeenCalledWith(null));
+});
