@@ -1,131 +1,127 @@
-# Task 8 report — End-to-end integration test (full pipeline through the sidecar)
+# Task 8 report — Shell `ItemClient.exportDataSource()`
 
 ## What was implemented
 
-Appended one test to `core/tests/test_pipeline_runtime.py`, exactly as
-specified in the task brief (Step 1), verbatim, no deviations:
+- `shell/src/api/types.ts`:
+  - `ItemClient.exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>`
+    added right after `featuresUrl`.
+  - `DataSourceState` gained two optional fields, `resolvedSource?: DataSource` and
+    `hasGeometry?: boolean` (unused by this task — kept for a later task per the brief;
+    verified they don't break anything, `npm run build` is clean).
 
-`test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, tmp_path, qgis_worker_url)`
+- `shell/src/api/itemClient.ts`:
+  - New module-level helper `requestBlob(coreUrl, getToken, method, path, body?)`, placed
+    right after `requestFeatureWrite` (before `requestAnalyticsSql`). Adds the bearer token,
+    JSON-encodes `body` when present, throws on non-OK, parses `filename="..."` out of
+    `Content-Disposition` (falls back to `"export"`), and returns `{ blob, filename }` via
+    `res.blob()`.
+  - New `exportDataSource` method on the `ItemClient` object returned by `createItemClient`,
+    placed right after `queryDataSource` (before `getCollectionSchema`). Mirrors the existing
+    `queryDataSource`/`featuresUrl` dispatch logic exactly:
+    - Resolves `source.datasetId` via the existing `resolveDataset` cache to determine
+      `collectionId` and whether the dataset is arcgis-backed.
+    - `source.type === "statistics"` → `buildAggregateBody(source.query)` POSTed to either
+      `/datasets/{datasetId}/arcgis/export?format=...` (arcgis) or
+      `/collections/{collectionId ?? layer}/export?format=...` (collection).
+    - otherwise → GET `/datasets/{datasetId}/arcgis/export/items?format=...&{qs}` or
+      `/collections/{layer}/export/items?format=...&{qs}`, with `{qs}` built from
+      `_queryParams` (same attribute-filter convention as `buildFeaturesUrl`).
 
-Marked `@pytest.mark.postgis` and `@pytest.mark.qgis`. It exercises the full
-chain `reader.collection` (2 adjacent squares sharing the edge `x=1`, same
-`region="a"`) -> `transform.qgis` (`native:dissolve`, grouped by `FIELD:
-region`) -> `writer.collection`, via the real `runtime.run_pipeline`
-against a real Postgres database and a real `qgis-worker` sidecar. Asserts
-the dissolved output collapses to 1 row with `region="a"`, and that the
-returned stats include a `writer.collection` stat with `rowCount == 1`.
-Cleans up with `DROP TABLE dissolved_out` + `TRUNCATE ... CASCADE` at the
-end, matching the existing postgis-test-cleanup pattern used by
-`test_use_case_3_incidents_near_schools_by_commune` and the other
-postgis-marked tests in this file.
+All names referenced by the brief (`_queryParams`, `buildAggregateBody`, `resolveDataset`,
+the four export routes) were confirmed by grep against the actual file/core routes before
+writing code — all matched the brief exactly, no brief bugs found this time.
 
-This is a pure test-only change — no production code touched.
+- `shell/src/api/itemClient.test.ts`:
+  - Added `import type { DataSource } from "./types";`.
+  - Added the four tests specified in the brief verbatim (statistics/POST dispatch +
+    filename extraction, non-statistics/GET dispatch, arcgis-dataset dispatch, missing
+    `Content-Disposition` fallback to `"export"`).
+  - Added one small environment fix not in the brief (see "Issues" below): a guarded
+    `globalThis.Blob` swap to Node's native `Blob` (from `node:buffer`) at the top of the
+    file, needed because jsdom's `Blob` shim (the Vitest test environment for this project)
+    has no `.text()`/`.arrayBuffer()`. Without it, the first new test's
+    `expect(await blob.text())` throws `TypeError: blob.text is not a function` — this is a
+    test-environment gap, not an implementation bug (real browsers' `Blob.text()` works
+    fine, and it's what Task 10/12's UI code will call in production).
 
-## Step 2 — confirm it skips cleanly without infra
+## Testing
 
-Ran with no `CORE_TEST_DATABASE_URL` / `CORE_TEST_QGIS_WORKER_URL` /
-`CORE_TEST_QGIS_SCRATCH_DIR` set:
+- `cd shell && npx vitest run src/api/itemClient.test.ts` — RED then GREEN (see below).
+- `cd shell && npx vitest run` (full suite) — 123 files / 978 tests passed, no failures,
+  no new warnings (pre-existing `[MSW] Error: intercepted a request without a matching
+  request handler` for `GET /harvest/layers` in two unrelated `listLayerSources` tests,
+  confirmed present before my changes via `git stash`).
+- `cd shell && npm run build` — `tsc --noEmit && vite build` clean, no TS errors.
+- Confirmed via `grep -rn "ItemClient {" shell/src` that the only structural
+  implementer of the interface is `createItemClient` itself; every test double casts
+  `as unknown as ItemClient`, so no stub `exportDataSource` was needed elsewhere (also
+  confirmed indirectly: `npm run build` type-checks all of `src` and passed cleanly).
 
+### TDD Evidence
+
+**RED** — `cd shell && npx vitest run src/api/itemClient.test.ts`:
 ```
-$ cd core && uv run pytest tests/test_pipeline_runtime.py -k transform_qgis_end_to_end -v
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0
-collecting ... collected 18 items / 17 deselected / 1 selected
+ × exportDataSource posts the aggregate body and extracts the filename for a statistics source 0ms
+   → makeClient(...).exportDataSource is not a function
+ × exportDataSource GETs the items-export route for a non-statistics source 0ms
+   → makeClient(...).exportDataSource is not a function
+ × exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset 0ms
+   → makeClient(...).exportDataSource is not a function
+ × exportDataSource falls back to a generic filename when Content-Disposition is missing 0ms
+   → makeClient(...).exportDataSource is not a function
 
-tests/test_pipeline_runtime.py::test_transform_qgis_end_to_end_dissolve_then_write SKIPPED [100%]
-
-====================== 1 skipped, 17 deselected in 0.67s =======================
+ Test Files  1 failed (1)
+      Tests  4 failed | 111 passed (115)
 ```
 
-Skipped cleanly (not an error), as required. Per the task instructions,
-Step 3 (running against real infra: writable `/scratch` + a live
-`qgis-worker` sidecar) was explicitly **not** attempted this session — no
-`sudo` access to create/mount `/scratch`, and no running sidecar container.
+(Intermediate run after adding the method but before the `globalThis.Blob` fix showed 3/4
+new tests green and 1 failing with `TypeError: blob.text is not a function` — confirmed via
+a throwaway debug test that this was jsdom's `Blob` shim lacking `.text()`, and that
+swapping in Node's `node:buffer` `Blob` fixes it without touching implementation code.)
 
-## Step 4 — full core suite + lint-imports (no env vars set)
-
+**GREEN** — `cd shell && npx vitest run src/api/itemClient.test.ts`:
 ```
-$ cd core && uv run pytest -q
-1025 passed, 127 skipped in 62.52s (0:01:02)
-```
+ ✓ exportDataSource posts the aggregate body and extracts the filename for a statistics source
+ ✓ exportDataSource GETs the items-export route for a non-statistics source
+ ✓ exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset
+ ✓ exportDataSource falls back to a generic filename when Content-Disposition is missing
 
-Matches expectation exactly: 1025 passed (unchanged), 127 skipped (126
-pre-existing + 1 new skip for this test), 0 failures, 0 errors.
-
+ Test Files  1 passed (1)
+      Tests  115 passed (115)
 ```
-$ cd core && uv run lint-imports
-Analyzed 138 files, 399 dependencies.
-layered architecture KEPT
-Contracts: 1 kept, 0 broken.
-```
-
-Clean, as expected — the test imports nothing new beyond what's already
-imported elsewhere in the same file (`app.pipelines.runtime`,
-`app.configs.schemas.PipelinePayload`, `app.collections.ddl.
-apply_collection_ddl`, etc.), all already covered by the existing
-layered-architecture contract.
 
 ## Files changed
 
-- `core/tests/test_pipeline_runtime.py` — +97 lines, one new test appended
-  at the end of the file. No other file touched.
+- `shell/src/api/types.ts`
+- `shell/src/api/itemClient.ts`
+- `shell/src/api/itemClient.test.ts`
 
-Commit: `0e01da5` — `test(core): end-to-end scenario for transform.qgis
-dissolve -> writer.collection`
+Commit: `a8444cc` — `feat(shell): SP-16a — ItemClient.exportDataSource() (dispatch collection/arcgis, agrégé/items)`
 
 ## Self-review
 
-- **Completeness**: test written verbatim per the brief (diff matches the
-  brief's code block character-for-character, modulo the surrounding blank
-  lines needed to append after the previous test). Skips cleanly with no
-  infra. Full suite green with the expected new skip count. `lint-imports`
-  clean.
-- **Quality**: matches the existing pattern in this file — `pg_engine` +
-  `Base.metadata.create_all` + `make_session_factory` + tenant/user
-  bootstrap + raw `INSERT INTO collections` + `CREATE TABLE` +
-  `apply_collection_ddl` for the writer-side table, `dataclasses.replace`
-  on the shared `TABLE_INFO` fixture for both the reader and writer table
-  info, `monkeypatch.setattr` for `_table_info_for_collection` and
-  `_require_readable_collection_id`, `_write_partition` for the reader-side
-  GeoParquet partition, `PipelinePayload.model_validate` for the pipeline
-  definition, `runtime.run_pipeline` call with all required kwargs
-  including `qgis_worker_url`, and the `DROP TABLE` + `TRUNCATE ...
-  CASCADE` cleanup block at the end inside `pg_engine.begin()` — identical
-  in shape to `test_use_case_3_incidents_near_schools_by_commune` and the
-  other postgis-marked writer tests earlier in the file.
-- **Discipline**: only `core/tests/test_pipeline_runtime.py` touched,
-  confirmed via `git diff --stat` before commit (1 file changed, 97
-  insertions) and `git status` after commit (no other files staged or
-  modified by this task; the pre-existing unrelated modifications to
-  `.superpowers/sdd/*` and `docs/superpowers/plans/*` predate this task and
-  were left untouched). No production code changed — this is the one pure
-  test task in the SP-15d plan.
+- **Completeness**: all 4 tests present and passing; both type declarations added; helper
+  + method implemented exactly per brief structure/placement.
+- **Quality**: matches existing file style (module-level helper mirroring
+  `requestFeatureWrite`/`requestAnalyticsSql`; method body mirrors `queryDataSource`'s
+  dispatch shape almost line-for-line, same variable names `cachedDataset`/`resolved`).
+- **Discipline**: nothing extra added beyond the brief's three files, except the one-line
+  guarded `Blob` environment fix in the test file (see Issues) — no other files touched, no
+  UI wiring (correctly deferred to Tasks 10/12).
+- **Testing**: MSW-mocked HTTP responses realistic (real `Content-Disposition` header
+  parsing, real query-string assertions); output pristine aside from the two pre-existing,
+  unrelated `[MSW]` stderr warnings verified present before this change.
 
 ## Issues / concerns
 
-- As instructed, Step 3 (running this test against real infra — real
-  Postgres + real `qgis-worker` sidecar with a shared writable `/scratch`)
-  was **not** performed this session, since neither a writable `/scratch`
-  (requires interactive `sudo`, unavailable here) nor a running
-  `qgis-worker` container is available. This means the test's actual
-  correctness — whether `native:dissolve` on two adjacent squares sharing
-  an edge, grouped by `region="a"`, really produces one `MultiPolygon`
-  feature written through the unchanged `writer.collection` path into
-  `dissolved_out` — remains **unverified** pending a future session with
-  both `sudo`/`/scratch` access and a running sidecar.
-- Because this is Task 8 of 8, the **last** task in the SP-15d plan, this
-  same deferral applies to the plan's overarching claim: "`transform.qgis`
-  actually works end-to-end against a real `qgis_process` sidecar" has
-  never been exercised for real in any of Tasks 1–8. Every prior qgis-marked
-  test in this file (e.g. `test_execute_qgis_transform_computes_centroids`)
-  and this new one are all skip-only in every session run so far. A future
-  session with `/scratch` write access and a running `qgis-worker`
-  container needs to run Step 3 (and the equivalent for the other
-  qgis-marked tests) before the "sidecar composes end-to-end" claim in the
-  plan's design doc can be considered verified rather than merely
-  type-checked/skip-tested.
-- No other concerns. The test file's existing helpers/fixtures
-  (`pg_engine`, `Base`, `make_session_factory`, `get_or_create_default_tenant`,
-  `get_or_create_user`, `apply_collection_ddl`, `TABLE_INFO`, `ColumnInfo`,
-  `_write_partition`, `dataclasses`, `text`, `qgis_worker_url`) all existed
-  exactly as the brief assumed — no mismatch found, no escalation needed.
+- One deviation from the brief's literal instructions: added a 6-line guarded
+  `globalThis.Blob` override at the top of `itemClient.test.ts` (not mentioned in the brief)
+  because the project's Vitest `environment: "jsdom"` provides a `Blob` shim without
+  `.text()`/`.arrayBuffer()`, which the brief's own test code (`await blob.text()`) requires
+  to pass. Verified via a throwaway debug test that (a) this is purely a test-environment
+  gap — real browsers' `Blob.text()` works — and (b) the swap has no effect on any other
+  test in the file (guarded by a feature-detection check, and confirmed the full 978-test
+  suite is unaffected). Flagging this for review since it wasn't in the brief's file list,
+  though it stayed inside `itemClient.test.ts`, one of the three files the brief does list.
+- No other concerns; no brief bugs found (all consumed names/routes matched reality this
+  time, unlike some earlier core-side tasks in this plan).

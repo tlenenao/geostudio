@@ -1,392 +1,295 @@
-## Task 3: REST connector materialization — `app/pipelines/connector_runtime.py` (part 1)
+### Task 3: `POST /collections/{id}/export` (aggregate mode, collection-backed)
 
 **Files:**
-- Create: `core/app/pipelines/connector_runtime.py`
-- Modify: `core/pyproject.toml` (add `dlt` dependency, `pytest-httpserver` dev dependency)
-- Test: `core/tests/test_pipeline_connector_runtime.py`
+- Modify: `core/app/features/routes.py`
+- Test: `core/tests/test_features_export_routes.py` (new — this file also gets Task 4's tests)
 
 **Interfaces:**
-- Consumes: `app.pipelines.egress.build_guarded_session` (Task 2),
-  `app.pipelines.ops.schemas.ReaderConnectorRestParams` (Task 1),
-  `app.secrets.repository.get_secret_payload`,
-  `app.secrets.schemas.SecretPayload` (SP-15e).
-- Produces: `app.pipelines.connector_runtime.ConnectorRuntimeError`,
-  `materialize_rest_connector(conn, *, session, tenant_id, node_id, params, view_name) -> None`.
-  Consumed by Task 5 (`runtime.py`'s `_prepare()`). Task 4 adds
-  `materialize_postgres_connector` to this same file/module.
+- Consumes: `rows_to_format`, `EXPORT_MEDIA_TYPES`, `export_filename` from `app.analytics.export` (Task 2); `run_collection_aggregate`, `UnknownAggregateField` (already imported in this file); `get_readable_collection`, `get_introspector` (already imported); `write_audit` (already imported).
+- Produces: route `POST /collections/{collection_id}/export?format=csv|xlsx`, body `AggregateRequestBody` — used by Task 8 (shell `exportDataSource`).
 
-- [ ] **Step 1: Add the `dlt` and `pytest-httpserver` dependencies**
+- [ ] **Step 1: Write the failing tests**
 
-Modify `core/pyproject.toml` — in `dependencies = [...]`, add after the
-`requests` entry from Task 2:
-
-```toml
-    "dlt>=1.6",  # SP-15f : reader.connector.rest/postgres — extraction,
-                # normalisation, inférence de schéma (design §3.1) ; destination
-                # duckdb, aucun extra requis (core/déjà présent).
-```
-
-In `[dependency-groups] dev = [...]`, add:
-
-```toml
-    "pytest-httpserver>=1.0",  # SP-15f : serveur HTTP local réel pour tester
-                               # reader.connector.rest sans réseau (dlt utilise
-                               # `requests`, pas httpx — un mock httpx type respx
-                               # n'intercepterait rien).
-```
-
-Run: `cd core && uv sync`
-Expected: resolves; `dlt` and `pytest-httpserver` installed.
-
-- [ ] **Step 2: Write the failing tests**
-
-Create `core/tests/test_pipeline_connector_runtime.py`:
+Create `core/tests/test_features_export_routes.py`. This mirrors the fixture in `core/tests/test_features_aggregate_routes.py` exactly (same `env` fixture shape):
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
 import duckdb
+import geopandas as gpd
 import pytest
+from fastapi.testclient import TestClient
+from shapely.geometry import Point
 
-from app.db import init_db, make_engine, make_session_factory
-from app.pipelines import connector_runtime
-from app.pipelines import egress as pipelines_egress
-from app.pipelines.ops.schemas import ReaderConnectorRestParams
-from app.secrets import repository as secrets_repo
-from app.secrets.crypto import encrypt
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collections import routes as collections_routes
+from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.features import routes as features_routes
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
-TEST_MASTER_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+INFO = TableInfo(table_name="villes", pk_column="id", geometry_column="geometry",
+                 geometry_type="Point", srid=4326,
+                 columns=[ColumnInfo(name="region", type="string", required=True),
+                          ColumnInfo(name="pop", type="integer", required=True)])
+
+
+def fake_introspector(session, table_name):
+    if table_name != "villes":
+        raise TableNotFound(table_name)
+    return INFO
+
+
+def _write_partition(base_dir, *, tenant_id, collection_id, rows):
+    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-07"
+    partition_dir.mkdir(parents=True, exist_ok=True)
+    gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
+    gdf.to_parquet(partition_dir / "part-1.parquet")
 
 
 @pytest.fixture()
-def session(monkeypatch):
-    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_MASTER_KEY)
+def env(tmp_path):
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
     with Session() as s:
-        yield s
-    engine.dispose()
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+                                   email=None, first_name="", last_name="", bootstrap_admin=True)
+        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
+                                     email=None, first_name="", last_name="")
+        s.commit()
+        tenant_id = tenant.id
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (lambda session, table: None)
+
+    def fake_duckdb_factory():
+        conn = duckdb.connect(":memory:")
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        return conn
+
+    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: fake_duckdb_factory
+    app.dependency_overrides[features_routes.get_analytics_base_uri] = lambda: str(tmp_path)
+
+    client = TestClient(app)
+    return app, client, admin, regular, tmp_path, tenant_id
 
 
-@pytest.fixture()
-def tenant(session):
-    return get_or_create_default_tenant(session)
+def _as(app, user):
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
 
 
-@pytest.fixture()
-def conn():
-    c = duckdb.connect(":memory:")
-    yield c
-    c.close()
+def _register(app, client, admin, public=False):
+    _as(app, admin)
+    return client.post("/collections", json={"tableName": "villes", "isPublic": public}).json()
 
 
-@pytest.fixture(autouse=True)
-def _no_ssrf_guard(monkeypatch):
-    # Ces tests exercent le CONNECTEUR (dlt, pagination, injection d'auth),
-    # pas la garde SSRF elle-même (déjà couverte isolément par
-    # test_pipeline_egress.py) — le serveur pytest-httpserver écoute sur
-    # 127.0.0.1, que la vraie garde bloquerait légitimement en tant que cible
-    # loopback. Neutralisée ici pour isoler ce que ce fichier teste.
-    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
+def _seed(tmp_path, tenant_id, collection_id):
+    _write_partition(tmp_path, tenant_id=tenant_id, collection_id=collection_id, rows=[
+        {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
+        {"id": 2, "region": "Sud", "pop": 5, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(1, 1)},
+    ])
 
 
-def _create_secret(session, tenant, *, name, kind, payload):
-    ciphertext, nonce = encrypt(payload)
-    return secrets_repo.create_secret(
-        session, tenant_id=tenant.id, created_by="u1", name=name, kind=kind,
-        ciphertext=ciphertext, nonce=nonce,
-    )
+def test_export_aggregate_csv_returns_a_csv_attachment(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region", "agg": "count"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "text/csv; charset=utf-8"
+    assert 'attachment; filename="' in resp.headers["content-disposition"]
+    assert "region,value" in resp.text or "region" in resp.text.splitlines()[0]
 
 
-def test_materialize_rest_connector_unauthenticated_no_pagination(conn, session, tenant, httpserver):
-    httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
-    params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r1", params=params, view_name="node_r1",
-    )
-    rows = conn.execute("SELECT id, name FROM node_r1 ORDER BY id").fetchall()
-    assert rows == [(1, "a"), (2, "b")]
+def test_export_aggregate_xlsx_returns_an_xlsx_attachment(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    resp = client.post(f"/collections/{col['id']}/export?format=xlsx", json={"groupBy": "region", "agg": "count"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def test_materialize_rest_connector_extracts_records_path(conn, session, tenant, httpserver):
-    httpserver.expect_request("/items").respond_with_json(
-        {"data": {"items": [{"id": 1, "name": "a"}]}}
-    )
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", recordsPath="data.items",
-    )
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r2", params=params, view_name="node_r2",
-    )
-    rows = conn.execute("SELECT id, name FROM node_r2").fetchall()
-    assert rows == [(1, "a")]
+def test_export_aggregate_rejects_unknown_format(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    resp = client.post(f"/collections/{col['id']}/export?format=pdf", json={"groupBy": "region"})
+    assert resp.status_code == 400
 
 
-def test_materialize_rest_connector_injects_bearer_token(conn, session, tenant, httpserver):
-    _create_secret(session, tenant, name="my-bearer", kind="bearer_token",
-                    payload={"kind": "bearer_token", "token": "s3cr3t-tok"})
-    httpserver.expect_request(
-        "/items", headers={"Authorization": "Bearer s3cr3t-tok"},
-    ).respond_with_json([{"id": 1, "name": "a"}])
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", secretName="my-bearer",
-    )
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r3", params=params, view_name="node_r3",
-    )
-    assert conn.execute("SELECT id FROM node_r3").fetchall() == [(1,)]
+def test_export_aggregate_requires_authentication(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    app.dependency_overrides.pop(get_current_user, None)
+    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    assert resp.status_code == 401
 
 
-def test_materialize_rest_connector_injects_api_key_query_param(conn, session, tenant, httpserver):
-    _create_secret(session, tenant, name="my-key", kind="api_key",
-                    payload={"kind": "api_key", "location": "query", "key": "token", "value": "abc123"})
-    httpserver.expect_request("/items", query_string="token=abc123").respond_with_json([{"id": 1, "name": "a"}])
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", secretName="my-key",
-    )
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r4", params=params, view_name="node_r4",
-    )
-    assert conn.execute("SELECT id FROM node_r4").fetchall() == [(1,)]
+def test_export_aggregate_denies_a_user_without_read_access(env):
+    app, client, admin, regular, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=False)
+    _as(app, regular)
+    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    assert resp.status_code == 403
 
 
-def test_materialize_rest_connector_injects_basic_auth(conn, session, tenant, httpserver):
-    _create_secret(session, tenant, name="my-basic", kind="basic_auth",
-                    payload={"kind": "basic_auth", "username": "u", "password": "p"})
-    httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", secretName="my-basic",
-    )
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r5", params=params, view_name="node_r5",
-    )
-    request = httpserver.log[0][0]
-    assert request.headers["Authorization"].startswith("Basic ")
-
-
-def test_materialize_rest_connector_paginates_page_number(conn, session, tenant, httpserver):
-    httpserver.expect_request("/items", query_string="page=1").respond_with_json([{"id": 1}])
-    httpserver.expect_request("/items", query_string="page=2").respond_with_json([{"id": 2}])
-    httpserver.expect_request("/items", query_string="page=3").respond_with_json([])
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", paginator="page_number",
-        paginatorConfig={"pageParam": "page", "basePage": 1},
-    )
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r6", params=params, view_name="node_r6",
-    )
-    rows = conn.execute("SELECT id FROM node_r6 ORDER BY id").fetchall()
-    assert rows == [(1,), (2,)]
-
-
-def test_materialize_rest_connector_wrong_secret_kind_raises(conn, session, tenant, httpserver):
-    _create_secret(session, tenant, name="pg-secret", kind="postgres_dsn",
-                    payload={"kind": "postgres_dsn", "dsn": "postgresql://u:p@host/db"})
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", secretName="pg-secret",
-    )
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.rest"):
-        connector_runtime.materialize_rest_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="r7", params=params, view_name="node_r7",
-        )
-
-
-def test_materialize_rest_connector_missing_secret_raises(conn, session, tenant, httpserver):
-    params = ReaderConnectorRestParams(
-        baseUrl=httpserver.url_for("/"), path="items", secretName="does-not-exist",
-    )
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
-        connector_runtime.materialize_rest_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="r8", params=params, view_name="node_r8",
-        )
-
-
-def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, tenant, httpserver):
-    httpserver.expect_request("/items").respond_with_json([{"id": 1, "name": "a"}])
-    params = ReaderConnectorRestParams(baseUrl=httpserver.url_for("/"), path="items")
-    connector_runtime.materialize_rest_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="r9", params=params, view_name="node_r9",
-    )
-    cols = {d[0] for d in conn.execute("SELECT * FROM node_r9 LIMIT 0").description}
-    assert "_dlt_id" not in cols
-    assert "_dlt_load_id" not in cols
-    assert cols == {"id", "name"}
+def test_export_aggregate_writes_an_audit_log_row(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    Session = app.dependency_overrides[db.get_session].__wrapped__ if False else None  # unused, kept for clarity
+    with request_scoped_session(make_session_factory(make_engine("sqlite+pysqlite:///:memory:"))) as _s:
+        pass  # placeholder no-op — real assertion happens via the session_factory captured below
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+That last test needs a real session handle to assert against `audit_log`. Replace it with the following (uses the same `Session` factory the fixture already built, captured via a small fixture change):
 
-Run: `cd core && uv run pytest tests/test_pipeline_connector_runtime.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.pipelines.connector_runtime'`.
+- [ ] **Step 1b: Fix the audit-log test to use a real session**
 
-- [ ] **Step 4: Implement `connector_runtime.py` (REST half)**
-
-Create `core/app/pipelines/connector_runtime.py`:
+Edit the `env` fixture to also return the `Session` factory, and rewrite the audit test:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Matérialisation dlt des deux op reader.connector.* (design SP-15f §3) —
-chaque appel exécute un vrai pipeline dlt vers un fichier DuckDB scratch
-dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
-la table racine "records" en TEMP TABLE, puis nettoie (finally). Aucun état
-dlt ne survit à un appel (destination ET pipelines_dir scratch, supprimés
-ensemble)."""
-import os
+@pytest.fixture()
+def env(tmp_path):
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+                                   email=None, first_name="", last_name="", bootstrap_admin=True)
+        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
+                                     email=None, first_name="", last_name="")
+        s.commit()
+        tenant_id = tenant.id
+    app = create_app()
 
-# Doit précéder `import dlt` : la télémétrie anonyme de dlt est activée par
-# défaut (design SP-15f Global Constraints) — un worker ne doit jamais
-# téléphoner à l'extérieur par variable d'environnement oubliée.
-os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
 
-import shutil
-import tempfile
-import uuid
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (lambda session, table: None)
 
-import dlt
-from dlt.sources.helpers.rest_client import RESTClient
-from dlt.sources.helpers.rest_client.auth import (
-    APIKeyAuth,
-    BearerTokenAuth,
-    HttpBasicAuth,
-    OAuth2ClientCredentials,
-)
-from dlt.sources.helpers.rest_client.paginators import (
-    JSONResponseCursorPaginator,
-    OffsetPaginator,
-    PageNumberPaginator,
-)
-from sqlalchemy.orm import Session
+    def fake_duckdb_factory():
+        conn = duckdb.connect(":memory:")
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        return conn
 
-from app.pipelines.egress import build_guarded_session
-from app.pipelines.ops.schemas import ReaderConnectorRestParams
-from app.secrets import repository as secrets_repo
-from app.secrets.schemas import SecretPayload
+    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: fake_duckdb_factory
+    app.dependency_overrides[features_routes.get_analytics_base_uri] = lambda: str(tmp_path)
 
-_REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée (3e copie du dépôt) — cf. runtime.py, même
-    # rationale : helper de 2 lignes, pas un import inter-module d'un nom
-    # `_`-préfixé.
-    return '"' + name.replace('"', '""') + '"'
-
-
-class ConnectorRuntimeError(Exception):
-    """Traduite en PipelineRuntimeError par runtime.py (Task 5) — définie
-    ici plutôt qu'importée de runtime.py pour éviter un import circulaire
-    (runtime.py importe ce module)."""
-
-
-def _resolve_secret(session: Session, tenant_id: str, secret_name: str | None) -> SecretPayload | None:
-    if secret_name is None:
-        return None
-    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=secret_name)
-    if payload is None:
-        raise ConnectorRuntimeError(f"secret '{secret_name}' not found")
-    return payload
-
-
-def _build_auth(payload: SecretPayload | None):
-    if payload is None:
-        return None
-    if payload.kind not in _REST_SECRET_KINDS:
-        raise ConnectorRuntimeError(
-            f"secret has kind '{payload.kind}', not usable by reader.connector.rest "
-            f"(expected one of {sorted(_REST_SECRET_KINDS)})"
-        )
-    if payload.kind == "bearer_token":
-        return BearerTokenAuth(token=payload.token)
-    if payload.kind == "api_key":
-        return APIKeyAuth(name=payload.key, api_key=payload.value, location=payload.location)
-    if payload.kind == "basic_auth":
-        return HttpBasicAuth(payload.username, payload.password)
-    return OAuth2ClientCredentials(
-        access_token_url=payload.tokenUrl, client_id=payload.clientId, client_secret=payload.clientSecret,
-    )
-
-
-def _build_paginator(paginator: str, config: dict):
-    if paginator == "none":
-        return None
-    if paginator == "page_number":
-        return PageNumberPaginator(
-            base_page=config.get("basePage", 1), page_param=config.get("pageParam", "page"),
-            maximum_page=config.get("maximumPage"),
-        )
-    if paginator == "offset":
-        return OffsetPaginator(
-            limit=config["limit"], offset_param=config.get("offsetParam", "offset"),
-            limit_param=config.get("limitParam", "limit"), total_path=config.get("totalPath"),
-        )
-    if paginator == "cursor":
-        return JSONResponseCursorPaginator(
-            cursor_path=config.get("cursorPath", "cursors.next"), cursor_param=config.get("cursorParam", "cursor"),
-        )
-    raise ConnectorRuntimeError(f"unknown paginator '{paginator}'")
-
-
-def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None:
-    scratch_dir = tempfile.mkdtemp(prefix=f"sp15f-{node_id}-")
-    db_path = f"{scratch_dir}/extract.duckdb"
-    try:
-        pipeline = dlt.pipeline(
-            pipeline_name=f"sp15f-{node_id}-{uuid.uuid4().hex}",
-            destination=dlt.destinations.duckdb(db_path),
-            dataset_name="pipeline_dataset",
-            pipelines_dir=f"{scratch_dir}/dlt-home",
-        )
-        pipeline.run(resource)
-        conn.execute(f"ATTACH '{db_path}' AS dlt_extract (READ_ONLY)")
-        try:
-            cols = [
-                d[0] for d in conn.execute(
-                    "SELECT * FROM dlt_extract.pipeline_dataset.records LIMIT 0"
-                ).description
-                if d[0] not in {"_dlt_id", "_dlt_load_id"}
-            ]
-            select_list = ", ".join(_qi(c) for c in cols)
-            conn.execute(
-                f"CREATE TEMP TABLE {_qi(view_name)} AS "
-                f"SELECT {select_list} FROM dlt_extract.pipeline_dataset.records"
-            )
-        finally:
-            conn.execute("DETACH dlt_extract")
-    finally:
-        shutil.rmtree(scratch_dir, ignore_errors=True)
-
-
-def materialize_rest_connector(
-    conn, *, session: Session, tenant_id: str, node_id: str,
-    params: ReaderConnectorRestParams, view_name: str,
-) -> None:
-    payload = _resolve_secret(session, tenant_id, params.secretName)
-    auth = _build_auth(payload)
-    client = RESTClient(
-        base_url=params.baseUrl, headers=params.headers or None, auth=auth,
-        paginator=_build_paginator(params.paginator, params.paginatorConfig),
-        data_selector=params.recordsPath, session=build_guarded_session(),
-    )
-
-    @dlt.resource(name="records", write_disposition="replace")
-    def _records():
-        for page in client.paginate(params.path, method=params.method, params=params.query or None):
-            yield page
-
-    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+    client = TestClient(app)
+    return app, client, admin, regular, tmp_path, tenant_id, Session
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+(Note: this adds a 7th item to the returned tuple — every other test in this file must unpack `Session` too, e.g. `app, client, admin, _r, tmp_path, tenant_id, _Session = env`. Update every test above accordingly.)
 
-Run: `cd core && uv run pytest tests/test_pipeline_connector_runtime.py -v`
-Expected: 9 passed.
+Now replace the broken audit test with:
 
-- [ ] **Step 6: Commit**
+```python
+def test_export_aggregate_writes_an_audit_log_row(env):
+    app, client, admin, _r, tmp_path, tenant_id, Session = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    with Session() as s:
+        from app.audit.models import AuditLog
+        rows = s.query(AuditLog).filter_by(action="export.run").all()
+    assert len(rows) == 1
+    assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
+    assert rows[0].object_id == col["id"]
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd core && uv run pytest tests/test_features_export_routes.py -v`
+Expected: FAIL — 404 (route doesn't exist yet) on every test.
+
+- [ ] **Step 3: Implement the route**
+
+Edit `core/app/features/routes.py`. First, broaden the import line and the reserved-params set:
+
+```python
+from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
+from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
+```
+
+Change:
+```python
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f"}
+```
+to:
+```python
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f", "format"}
+```
+
+Then add the route right after `aggregate_features` (after its closing `return {"categoryKey": category_key, "rows": rows}`):
+
+```python
+EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
+
+
+@router.post("/collections/{collection_id}/export")
+def export_collection_aggregate(
+    collection_id: str, body: AggregateRequestBody, format: str = Query(...),
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    if format not in EXPORT_FORMATS_AGGREGATE:
+        raise _validation_error(
+            [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}])
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    conn = conn_factory()
+    try:
+        try:
+            _category_key, rows = run_collection_aggregate(
+                conn, base_uri=base_uri, tenant_id=col.tenant_id, collection_id=col.id,
+                table_info=info, request=body,
+            )
+        except UnknownAggregateField as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_field", "message": exc.message}])
+    finally:
+        conn.close()
+    content = rows_to_format(rows, format=format)
+    filename = export_filename(col.title, format=format)
+    write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="collection", object_id=col.id,
+                payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+```
+
+`get_current_user` must be imported — check the top of the file: it currently imports only `get_current_user, get_current_user_optional`? Confirm with `grep -n "get_current_user" core/app/features/routes.py | head -3` — if `get_current_user` (non-optional) isn't already imported, add it to the existing `from app.auth.dependency import ...` line.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_features_export_routes.py -v`
+Expected: PASS (all tests written so far in this file — Task 4 adds more to the same file, run again at the end of Task 4)
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/connector_runtime.py core/pyproject.toml core/uv.lock \
-  core/tests/test_pipeline_connector_runtime.py
-git commit -m "feat(core): pipelines — reader.connector.rest materialization (dlt REST client)"
+git add core/app/features/routes.py core/tests/test_features_export_routes.py
+git commit -m "feat(core): SP-16a — POST /collections/{id}/export (mode agrégé CSV/XLSX)"
 ```
 
 ---

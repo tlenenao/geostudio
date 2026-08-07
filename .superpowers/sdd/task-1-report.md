@@ -1,125 +1,119 @@
-# Task 1 Report: Op Catalog Entries for Reader Connectors
+# Task 1 Report: `openpyxl` dependency + spatial-only DuckDB connection helper
 
-## Summary
+## What Was Implemented
 
-Successfully implemented Task 1 of SP-15f: added two new Pipeline reader operation types (`reader.connector.rest` and `reader.connector.postgres`) to the op catalog module `core/app/pipelines/ops/schemas.py`.
+**Task scope:** Added server-side export infrastructure (Phase 1: core dependencies and utilities).
 
-## Implementation Details
+1. **Dependency added:** `openpyxl>=3.1` to `core/pyproject.toml` (line 54-55)
+   - Comment documents SP-16a context (XLSX export serialization)
+   - Placed immediately after duckdb entry, before opentelemetry (alphabetical by category)
 
-### What Was Implemented
+2. **New function:** `open_spatial_connection() -> duckdb.DuckDBPyConnection` in `core/app/analytics/duckdb_conn.py` (lines 35-39)
+   - Creates in-memory DuckDB connection with spatial extension loaded
+   - No S3 setup, httpfs, h3, or environment variables needed
+   - Simpler than sibling `open_connection()` which handles MinIO auth
+   - Designed for GPKG file conversion (used by Tasks 4/6, not Task 1)
 
-**Two new Pydantic models added to `core/app/pipelines/ops/schemas.py`:**
+3. **Test file:** `core/tests/test_duckdb_conn.py` (new, 17 lines)
+   - Two tests covering spatial capability and env-var independence
+   - Imported via `app.analytics.duckdb_conn` (module structure correct)
 
-1. **`ReaderConnectorRestParams`**
-   - Validates REST API endpoints with required `baseUrl` field (enforced http/https via regex pattern)
-   - Optional fields: `path` (default ""), `method` (GET/POST, default GET), `query`, `headers`, `recordsPath`, `paginator`, `paginatorConfig`, `secretName`
-   - Paginator types validated via Literal: "none", "page_number", "cursor", "offset"
-   - References optional authentication secret (SP-15e) for api_key, bearer_token, basic_auth, or oauth2_client_credentials
+## What Was Tested and Results
 
-2. **`ReaderConnectorPostgresParams`**
-   - Validates remote PostgreSQL queries with required `secretName` and `query` fields
-   - `secretName` references a postgres_dsn secret (SP-15e)
-   - `query` not validated for SELECT-only at schema level (validation deferred to runtime)
+**TDD Steps Executed:**
 
-**Updated catalogs:**
-- `OP_KINDS`: added entries for both ops as "reader" kind
-- `OP_PARAMS`: registered both model classes with their respective op keys
-
-### Test-Driven Development Evidence
-
-**RED phase (tests failing before implementation):**
-```bash
-cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
-# Result: 7 tests failing
-# - test_all_seventeen_ops_are_registered (KeyError/AssertionError)
-# - test_reader_connector_ops_are_kind_reader (KeyError)
-# - test_reader_connector_rest_minimal_params (ValueError: unknown op)
-# - test_reader_connector_rest_rejects_non_http_base_url (ValueError: unknown op)
-# - test_reader_connector_rest_full_params (ValueError: unknown op)
-# - test_reader_connector_rest_rejects_unknown_paginator (ValueError: unknown op)
-# - test_reader_connector_postgres_requires_secret_name_and_query (ValueError: unknown op)
-# - test_reader_connector_ops_appear_in_catalog (ValueError: unknown op)
+### Step 3 (RED): Initial test run
+```
+Command: cd core && uv run pytest tests/test_duckdb_conn.py -v
+Result: ImportError: cannot import name 'open_spatial_connection'
+Expected: FAIL ✓
 ```
 
-**GREEN phase (all tests passing after implementation):**
+### Step 4-5 (GREEN): After implementation
 ```bash
-cd core && uv run pytest tests/test_pipeline_ops_schemas.py -v
-# Result: 49 passed in 0.14s
+$ cd core && uv sync
+Resolved 148 packages in 1ms
+Checked 144 packages in 2ms
 ```
 
-**Regression test suite (full pipelines):**
-```bash
-cd core && uv run pytest tests/test_pipeline_*.py tests/test_mcp_tools_pipeline.py -v
-# Result: 143 passed, 10 skipped in 6.77s
-# (Also updated test_pipeline_routes.py::test_get_pipelines_ops_returns_all_seventeen to reflect new op count)
+```
+Command: cd core && uv run pytest tests/test_duckdb_conn.py -v
+Result:
+  test_open_spatial_connection_loads_the_spatial_extension PASSED [ 50%]
+  test_open_spatial_connection_requires_no_s3_env_vars PASSED [100%]
+  ======================== 2 passed in 0.20s =========================
+Expected: PASS ✓
+```
+
+**Test Coverage:**
+1. `test_open_spatial_connection_loads_the_spatial_extension` — Verifies `ST_AsText(ST_Point(1,2))` returns `"POINT (1 2)"` (spatial extension is loaded and functional)
+2. `test_open_spatial_connection_requires_no_s3_env_vars` — Deletes all S3 env vars, confirms connection creation succeeds (no external environment dependencies)
+
+## TDD Evidence
+
+### RED Output
+```
+ERROR tests/test_duckdb_conn.py
+ImportError while importing test module
+...
+E   ImportError: cannot import name 'open_spatial_connection' from 'app.analytics.duckdb_conn'
+=========================== short test summary info ============================
+ERROR tests/test_duckdb_conn.py
+```
+
+### GREEN Output
+```
+tests/test_duckdb_conn.py::test_open_spatial_connection_loads_the_spatial_extension PASSED [ 50%]
+tests/test_duckdb_conn.py::test_open_spatial_connection_requires_no_s3_env_vars PASSED [100%]
+
+============================== 2 passed in 0.20s ===============================
 ```
 
 ## Files Changed
 
-1. **`core/app/pipelines/ops/schemas.py`**
-   - Added `ReaderConnectorRestParams` class (40 lines)
-   - Added `ReaderConnectorPostgresParams` class (7 lines)
-   - Extended `OP_KINDS` dict with 2 new entries
-   - Extended `OP_PARAMS` dict with 2 new entries
-
-2. **`core/tests/test_pipeline_ops_schemas.py`**
-   - Renamed test: `test_all_fifteen_ops_are_registered` → `test_all_seventeen_ops_are_registered`
-   - Updated expected ops set to include both new connector reader ops
-   - Added 7 new test functions covering:
-     - Op kind registration
-     - Minimal parameter defaults
-     - URL validation (http/https only)
-     - Full parameter configuration
-     - Paginator type validation
-     - PostgreSQL required fields validation
-     - Catalog exposure
-
-3. **`core/tests/test_pipeline_routes.py`**
-   - Renamed test: `test_get_pipelines_ops_returns_all_fifteen` → `test_get_pipelines_ops_returns_all_seventeen`
-   - Updated expected ops count (15→17) and set to include new connector readers
+| File | Change |
+|------|--------|
+| `core/pyproject.toml` | Added `"openpyxl>=3.1"` dependency (1 line) |
+| `core/app/analytics/duckdb_conn.py` | Added `open_spatial_connection()` function (5 lines) |
+| `core/tests/test_duckdb_conn.py` | New file with 2 test functions (16 lines) |
+| `core/uv.lock` | Updated by `uv sync` (dependency resolution) |
 
 ## Self-Review Findings
 
-✅ **Implementation matches brief exactly:**
-- Pydantic field definitions match verbatim from brief
-- `OP_KINDS` and `OP_PARAMS` dicts contain all 17 ops in specified order
-- Docstrings in French match brief specifications
+**Completeness:** ✓ All brief requirements implemented
+- Dependency added with correct version and comment
+- Function implementation matches brief verbatim
+- Test file has both required tests
+- TDD steps followed in order
+- Commit message matches brief format
 
-✅ **TDD properly executed:**
-- Tests written first (failing)
-- Implementation added (passing)
-- Regression tests run and passing
-- Test names and descriptions accurate
+**Code Quality:** ✓ Clean, consistent with file style
+- `open_spatial_connection()` follows same structure as `open_connection()` (same return type, docstring format, INSTALL+LOAD pattern)
+- Docstring (French, as per project) explains context (SP-16a, GPKG export, no S3)
+- Test file has proper SPDX header and pytest conventions
+- No style violations, no linter warnings
 
-✅ **Code organization maintained:**
-- No file restructuring
-- Models added after `TransformQgisParams` as specified
-- Dicts remain in consistent alphabetical/category order
-- No unrelated changes
+**Testing:** ✓ Tests verify intended behavior
+- Test 1 directly confirms spatial extension is loaded (ST_AsText → POINT)
+- Test 2 confirms function is indifferent to S3 env vars (future isolation from MinIO config)
+- Connection cleanup (`conn.close()`) proper in both tests
+- No skipped/xfail markers (tests run immediately)
 
-✅ **All test assertions pass:**
-- URL pattern validation (http/https)
-- Required field validation
-- Literal type validation for paginator
-- Catalog JSON schema generation
-- Kind classification ("reader")
+**Discipline:** ✓ No scope creep
+- Only added what brief specified
+- Did not modify other analytics functions
+- Did not add extra utilities or helper modules
+- Did not change project structure
 
-✅ **No warnings or errors:**
-- Clean pytest output
-- No deprecation warnings
-- No linting issues
+**Integration:** ✓ Self-contained, no downstream breakage
+- No code in the codebase yet imports `open_spatial_connection()` (task is foundational)
+- Existing test suite unaffected (added new test file, no test modifications)
+- `uv.lock` correctly updated
 
-## Concerns
+## Issues or Concerns
 
-None. Implementation is clean, follows the exact specification, and all tests pass including the broader regression suite. The two new ops are now discoverable through:
-- `parse_op_params()` function
-- `ops_catalog()` function
-- Direct dictionary access via `OP_PARAMS` and `OP_KINDS`
+None. The implementation is complete, tested, and ready for downstream consumption by Tasks 4 and 6.
 
-## Commit Information
+---
 
-- **Commit SHA:** 7f3e7e2
-- **Branch:** dev
-- **Message:** feat(core): pipelines — reader.connector.rest/postgres op catalog entries
-- **Files changed:** 3 (schemas.py, test_pipeline_ops_schemas.py, test_pipeline_routes.py)
-- **Lines added/modified:** 106 insertions, 3 deletions
+**Commit:** `248bf92` — feat(core): SP-16a — dépendance openpyxl + connexion DuckDB spatiale sans S3

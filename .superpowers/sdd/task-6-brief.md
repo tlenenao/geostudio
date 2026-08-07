@@ -1,119 +1,171 @@
-## Task 6: `routes.py` + `jobs.py` — env var wiring + algorithm catalogue resource
+### Task 6: `GET /datasets/{id}/arcgis/export/items` (raw-entities mode, arcgis-backed)
 
 **Files:**
-- Modify: `core/app/pipelines/routes.py`
-- Modify: `core/app/pipelines/jobs.py`
-- Test: `core/tests/test_pipeline_routes.py`
+- Modify: `core/app/harvest/routes.py`
+- Modify: `core/tests/test_harvest_dataset_arcgis_export_routes.py` (append)
 
 **Interfaces:**
-- Consumes: `QGIS_ALGORITHMS` (Task 1), `run_pipeline`/`preview_pipeline`'s
-  new kwargs (Task 5).
-- Produces: `GET /pipelines/ops/qgis-algorithms` (public REST resource,
-  returns the full allowlist + schemas). `QGIS_WORKER_URL`/
-  `QGIS_WORKER_TIMEOUT_SECONDS` env vars now read and threaded through both
-  the run job and the preview route.
+- Consumes: `features_to_format` (Task 2), `open_spatial_connection` (Task 1), `translate_features_query`, `fetch_query`, `_parse_bbox`, `_resolve_arcgis_dataset` (already present).
+- Produces: route `GET /datasets/{item_id}/arcgis/export/items?format=csv|xlsx|geojson|gpkg`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Append to `core/tests/test_pipeline_routes.py`:
+Append to `core/tests/test_harvest_dataset_arcgis_export_routes.py`:
 
 ```python
-def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/pipelines/ops/qgis-algorithms")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 50
-    assert "native:centroids" in body
-    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
+def test_export_items_geojson_from_arcgis_dataset(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["features"][0]["properties"]["nom"] == "X"
 
 
-def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/pipelines/ops/qgis-algorithms").status_code == 404
+def test_export_items_gpkg_from_arcgis_dataset(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"},
+                          "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=gpkg")
+    assert resp.status_code == 200
+    assert resp.content[:16] == b"SQLite format 3\x00"
+
+
+def test_export_items_stops_paginating_on_a_short_page(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert len(calls) == 1  # one page returned fewer rows than the page size — loop stops
+
+
+def test_export_items_caps_at_10000_entities(client, monkeypatch):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    monkeypatch.setattr(harvest_routes, "_EXPORT_ITEMS_CAP", 1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Always return a full page (limit=1000) so the loop keeps paginating
+        # until the (monkeypatched) cap trips.
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}] * 1000,
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 413
 ```
 
-No new fixture: this file uses a local `_make_app(monkeypatch, *,
-etl_enabled)` helper (not a shared pytest fixture) that builds a
-`TestClient` with `CORE_ETL_ENABLED` set via `monkeypatch.setenv` — reused
-here exactly as `test_get_pipelines_ops_returns_all_eight` already does.
-The new route is registered on the same `router` as the rest of
-`app.pipelines.routes`, so it inherits the existing `CORE_ETL_ENABLED`
-gating (whatever mounts/unmounts the router based on that env var already
-covers it) — the second test above locks that in explicitly rather than
-assuming it.
+- [ ] **Step 2: Run to verify it fails**
 
-- [ ] **Step 2: Run test to verify it fails**
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -k items -v`
+Expected: FAIL — 404 on every new test.
 
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py -k qgis_algorithms -v`
-Expected: FAIL — 404, route doesn't exist yet.
+- [ ] **Step 3: Implement**
 
-- [ ] **Step 3: Add the route**
-
-Modify `core/app/pipelines/routes.py` — add the import:
+Add to `core/app/harvest/routes.py`, after `export_dataset_arcgis_aggregate`, and add `open_spatial_connection` to the analytics import block:
 
 ```python
-from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+from app.analytics.duckdb_conn import open_spatial_connection
 ```
 
-Add right after the existing `GET /pipelines/ops` route:
-
 ```python
-@router.get("/pipelines/ops/qgis-algorithms")
-def get_qgis_algorithms() -> dict:
-    return QGIS_ALGORITHMS
-```
+_EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
+_EXPORT_ITEMS_CAP = 10_000
 
-- [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py -k qgis_algorithms -v`
-Expected: PASS.
-
-- [ ] **Step 5: Thread the env vars through `preview_pipeline_route`**
-
-Modify `core/app/pipelines/routes.py`'s `preview_pipeline_route`:
-
-```python
-        return preview_pipeline(
-            session=session, payload=config.config.pipeline, tenant_id=user.tenant_id, user=user,
-            up_to=upTo, endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
-            access_key=os.environ.get("S3_ACCESS_KEY", ""), secret_key=os.environ.get("S3_SECRET_KEY", ""),
-            base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
-            qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-            qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
+@router.get("/datasets/{item_id}/arcgis/export/items")
+def export_dataset_arcgis_items(
+    item_id: str, request: Request, format: str = Query(...), bbox: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if format not in _EXPORT_FORMATS_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
         )
+    parsed_bbox = _parse_bbox(bbox)
+    reserved = {"limit", "offset", "bbox", "format"}
+    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+
+    features: list[dict] = []
+    offset = 0
+    limit = _MAX_LIMIT
+    try:
+        while True:
+            params = live_query.translate_features_query(filters=filters, bbox=parsed_bbox, limit=limit, offset=offset)
+            raw = live_query.fetch_query(client, external_url, params)
+            page_features = raw.get("features", []) if isinstance(raw, dict) else []
+            features.extend(page_features)
+            if len(features) > _EXPORT_ITEMS_CAP:
+                raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
+            if len(page_features) < limit:
+                break
+            offset += limit
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]},
+        )
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+
+    if format == "gpkg":
+        conn = open_spatial_connection()
+        try:
+            content = features_to_format(features, format=format, conn=conn)
+        finally:
+            conn.close()
+    else:
+        content = features_to_format(features, format=format)
+    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    filename = export_filename(item.title if item else item_id, format=format)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="item", object_id=item_id,
+                payload={"format": format, "mode": "items"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 ```
 
-- [ ] **Step 6: Thread the env vars through `run_pipeline_task`**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Modify `core/app/pipelines/jobs.py`'s `run_pipeline_task`:
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
+Expected: PASS (all tests in the file, both Task 5 and Task 6)
 
-```python
-            stats = run_pipeline(
-                session, payload=payload, tenant_id=tenant_id, user=user,
-                endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"], secret_key=os.environ["S3_SECRET_KEY"],
-                base_uri=_analytics_base_uri(),
-                s3_client=_s3_client_from_env(),
-                exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-                qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
-            )
-```
-
-- [ ] **Step 7: Run the full pipelines route/jobs test files**
-
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py tests/test_pipeline_jobs.py -v`
-Expected: all pass, no regression (existing tests don't set
-`QGIS_WORKER_URL`, so `run_pipeline`/`preview_pipeline` receive `""` — the
-same as their new default, no behavior change for pipelines without a
-`transform.qgis` node).
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/routes.py core/app/pipelines/jobs.py core/tests/test_pipeline_routes.py
-git commit -m "feat(core): wire QGIS_WORKER_URL env + publish the algorithm catalogue resource"
+git add core/app/harvest/routes.py core/tests/test_harvest_dataset_arcgis_export_routes.py
+git commit -m "feat(core): SP-16a — GET /datasets/{id}/arcgis/export/items (entités brutes, 4 formats)"
 ```
 
 ---

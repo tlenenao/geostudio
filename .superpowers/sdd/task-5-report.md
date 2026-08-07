@@ -1,182 +1,133 @@
-# Task 5 Report: `run_pipeline_sweep_task` (SP-15h)
+# Task 5 Report: `POST /datasets/{id}/arcgis/export` (aggregate mode, arcgis-backed)
 
-## Summary
+## What I implemented
 
-Implemented `run_pipeline_sweep_task`, a procrastinate periodic task that runs every 5 minutes, identifies due pipelines via `list_due_pipelines()`, creates `PipelineRun` entries, and defers the existing `run_pipeline_task` for execution. Factored out a `_session_factory()` helper to share database session initialization between the two tasks, enabling test seams.
+Added a new route `POST /datasets/{item_id}/arcgis/export?format=csv|xlsx` to
+`core/app/harvest/routes.py`, mirroring the existing
+`GET /datasets/{item_id}/arcgis/aggregate` (`get_dataset_arcgis_aggregate`) route
+but serializing the aggregated rows to CSV/XLSX via `rows_to_format` instead of
+returning JSON — the arcgis-backed sibling of the collection-backed
+`POST /collections/{collection_id}/export` route added in an earlier task
+(`core/app/features/routes.py`).
 
-## What Was Implemented
+Changes to `core/app/harvest/routes.py`:
+- Added `Response` to the `fastapi` import.
+- Added `from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format`
+  (imported verbatim as specified in the brief; `features_to_format` is unused
+  by this route — it is needed by Task 6's `GET /datasets/{id}/arcgis/export/items`,
+  which lands in the same file and is expected to reuse this same import line,
+  per `progress.md`'s task list).
+- Added `_EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}` and the
+  `export_dataset_arcgis_aggregate` route function, placed directly after
+  `get_dataset_arcgis_aggregate`, exactly as specified in the brief.
 
-### 1. Refactored `core/app/pipelines/jobs.py`
+The route:
+1. Validates `format` against `_EXPORT_FORMATS_AGGREGATE`, 400 on unknown format.
+2. Rejects `bucket`/`split`/`bins` (unsupported for arcgis-sourced datasets),
+   matching the same rule already enforced by the JSON aggregate route.
+3. Resolves the arcgis dataset via `_resolve_arcgis_dataset` (auth + kind checks).
+4. Builds groupBy/measures and translates to an ArcGIS query via
+   `live_query.translate_aggregate_query`, with the same `ArcgisQueryError` →
+   400 and `EgressBlockedError`/`httpx.HTTPError` → 502 handling as the
+   existing aggregate route.
+5. Aggregates the raw ArcGIS response via `live_query.aggregate_response`.
+6. Serializes rows to bytes via `rows_to_format(rows, format=format)`.
+7. Looks up the item title (falls back to `item_id` if missing) to build the
+   download filename via `export_filename`.
+8. Writes an audit log row (`action="export.run"`, `object_type="item"`,
+   `object_id=item_id`, `payload={"format": format, "mode": "aggregate"}`).
+9. Returns a `Response` with the serialized bytes, the correct
+   `EXPORT_MEDIA_TYPES[format]` media type, and a `Content-Disposition:
+   attachment` header.
 
-**Changes made:**
-- Added imports: `from app.auth.dependency import is_etl_enabled, is_read_only_mode`
-- Created `_session_factory()` helper function (lines 24-26) that encapsulates engine/session-factory creation
-- Refactored `run_pipeline_task` to call `_session_factory()` instead of inline construction (line 93)
-- Added new `run_pipeline_sweep_task` function (lines 132-145):
-  - Decorated with `@app.periodic(cron="*/5 * * * *")` and `@app.task(queue="etl")`
-  - Guards: early returns if read-only mode or ETL disabled
-  - Queries `list_due_pipelines()` from the repository
-  - For each due pipeline, creates a `PipelineRun` and defers `run_pipeline_task`
+## What I tested and test results
 
-**Guard rationale:** The `@app.periodic` decorator fires independently of REST/MCP route-mounting gates. Without the explicit `is_etl_enabled()` check, the sweep would create runs even on instances with `CORE_ETL_ENABLED=false`.
+Created `core/tests/test_harvest_dataset_arcgis_export_routes.py` (new), with
+the 3 tests from the brief, fixture mirrored verbatim from
+`core/tests/test_harvest_dataset_arcgis_routes.py`:
 
-### 2. Created `core/tests/test_pipeline_sweep.py`
+1. `test_export_aggregate_csv_from_arcgis_dataset` — mocks the ArcGIS HTTP
+   client to return one grouped row, posts to the export route with
+   `format=csv`, asserts 200, `content-type: text/csv; charset=utf-8`, and
+   that the CSV body contains `"Nord"`.
+2. `test_export_aggregate_rejects_unknown_format` — posts with
+   `format=pdf`, asserts 400 (no ArcGIS call is mocked, since the format
+   check happens before the external call).
+3. `test_export_aggregate_writes_an_audit_log_row` — posts a csv export,
+   then queries the `AuditLog` table directly and asserts exactly one
+   `export.run` row with `payload == {"format": "csv", "mode": "aggregate"}`.
 
-Four test cases covering:
+All 3 tests use a realistic mocked ArcGIS HTTP response shape
+(`{"features": [{"attributes": {...}}]}`), consistent with the real ArcGIS
+`query` endpoint's aggregate response shape already exercised by the sibling
+JSON aggregate route's tests — not vacuous/empty mocks.
 
-1. **`test_sweep_defers_run_pipeline_task_for_a_due_pipeline`** — Verifies that when a pipeline with enabled refresh policy exists, the sweep creates a `PipelineRun` with status "queued" and defers `run_pipeline_task` with correct parameters.
+### TDD Evidence
 
-2. **`test_sweep_defers_nothing_when_no_pipeline_is_due`** — Verifies that pipelines without a refresh policy are not picked up by the sweep.
-
-3. **`test_sweep_short_circuits_in_read_only_mode`** — Verifies that the sweep exits early when read-only mode is enabled, never deferring tasks.
-
-4. **`test_sweep_short_circuits_when_etl_disabled`** — Verifies that the sweep exits early when ETL is disabled, never deferring tasks.
-
-**Test implementation notes:**
-- Uses pure SQLite in-memory databases (no postgis, fast execution)
-- Monkeypatches `_session_factory` to point to test fixture
-- Monkeypatches `run_pipeline_task.defer` to capture defer calls instead of enqueuing
-- Tests 1 and 2 required explicit monkeypatches for `is_read_only_mode` and `is_etl_enabled` to enable the sweep logic (defaults are false/false). The test brief didn't include these, so they were inferred from the pattern in tests 3 and 4 and the need for the sweep to actually execute in those scenarios.
-
-## Testing & Results
-
-### TDD Sequence
-
-**Step 1 - Initial Test Run (Expected to FAIL):**
-```
-test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline FAILED
-test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due FAILED
-test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode FAILED
-test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled FAILED
-AttributeError: module 'app.pipelines.jobs' has no attribute 'run_pipeline_sweep_task'
-```
-
-**Step 2 - After Implementation (PASS):**
-```
-tests/test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline PASSED [ 25%]
-tests/test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due PASSED [ 50%]
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode PASSED [ 75%]
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled PASSED [100%]
-
-============================== 4 passed in 0.94s ===============================
-```
-
-**Step 3 - Verify Existing Tests Not Broken:**
-```
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_succeeded SKIPPED [ 25%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_never_zombie SKIPPED [ 50%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_writes_node_stats_incrementally_before_failure SKIPPED [ 75%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie SKIPPED [100%]
-
-============================== 4 skipped in 1.19s ===============================
-```
-
-(Tests skipped as expected — postgis-marked, docker not available. Crucially: no FAILURES.)
-
-## Files Changed
-
-- **`core/app/pipelines/jobs.py`** — Added imports, `_session_factory()` helper, refactored `run_pipeline_task`, added `run_pipeline_sweep_task`
-- **`core/tests/test_pipeline_sweep.py`** — Created (new file) with 4 test cases
-
-## Self-Review Findings
-
-### What Went Well
-- All 4 new tests passing on first implementation attempt
-- Existing tests remain unbroken
-- Code follows project conventions (logging, error handling, guard structure)
-- Monkeypatch seams properly exposed in module namespace
-
-### Minor Observations
-- The test brief provided didn't include monkeypatches for `is_etl_enabled` and `is_read_only_mode` in the first two tests, but these were inferred as necessary from:
-  1. The fact that tests 3 and 4 explicitly test these guards
-  2. The pattern of other test files in the codebase (e.g., `test_pipeline_routes.py`, `test_pipeline_node_validation.py`)
-  3. The default environment values (`CORE_ETL_ENABLED=false`, `CORE_READ_ONLY_MODE=false`)
-  
-  Added these monkeypatches to tests 1 and 2 for correctness and consistency with the codebase patterns.
-
-## Issues or Concerns
-
-**None.** The implementation is complete, all tests pass, and the refactoring is minimal and safe.
-
-## Commit
+**RED** — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
 
 ```
-28e3f4c feat(core): pipelines — run_pipeline_sweep_task (SP-15h)
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_csv_from_arcgis_dataset FAILED
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_rejects_unknown_format FAILED
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_writes_an_audit_log_row FAILED
+...
+INFO httpx:_client.py:1025 HTTP Request: POST http://testserver/datasets/.../arcgis/export?format=csv "HTTP/1.1 404 Not Found"
+============================== 3 failed in 2.28s ===============================
 ```
+All three failed with 404 (route not yet defined), exactly as expected. (The
+captured `procrastinate.exceptions.AppNotOpen` traceback in the log output is
+pre-existing noise from item-creation embedding enqueue in the test fixture —
+verified it also appears if you force a failure/`-s` in the pre-existing,
+already-passing `test_harvest_dataset_arcgis_routes.py`; unrelated to this task.)
 
-Commit includes:
-- Modified `core/app/pipelines/jobs.py` (2 changes)
-- Created `core/tests/test_pipeline_sweep.py` (new test file)
-
----
-
-**Date:** 2026-08-07  
-**Status:** DONE
-
-## Fix: commit before defer
-
-### Review finding
-
-`run_pipeline_sweep_task` created a `PipelineRun` row and deferred `run_pipeline_task` for it inside a loop, but the whole loop ran inside a single `request_scoped_session` block that only commits once, when the `with` exits — after ALL due pipelines in the tick have been processed. `run_pipeline_task.defer(...)` goes through procrastinate's own independent Postgres connection, not the SQLAlchemy session, and commits its job-queue row immediately. Consequence: for every pipeline except the last one in a multi-pipeline sweep tick, a worker could pick up the deferred `run_pipeline_task` before the `pipeline_runs` row was actually visible on another connection — `pipelines_repo.get_run(...)` would then return `None` and the run would be logged as an error and silently dropped, never retried.
-
-This exact hazard was already guarded against twice elsewhere for the identical create-run-then-defer sequence: `core/app/pipelines/routes.py` (manual "run now" REST route) and `core/app/mcp/tools.py`'s `run_pipeline` MCP tool, both calling `session.commit()` immediately after `create_run(...)` and before `.defer(...)`. The sweep task was missing this commit. Human-approved fix: apply the identical pattern inside the sweep's loop.
-
-### RED
-
-Added `test_sweep_commits_run_before_deferring` to `core/tests/test_pipeline_sweep.py`. First attempt reused the existing `_make_session()` helper (sqlite `:memory:` + `StaticPool`), which shares ONE physical connection across every `Session()` from that factory — a "separate" session opened inside `fake_defer` would then see the very same open transaction, making the test pass even against the buggy code (confirmed empirically: it passed with the bug still in place). Rewrote the test to use a temp-file sqlite database with two genuinely distinct engines/connections (`main_engine`/`Session` for the sweep, `separate_engine`/`SeparateSession` opened only inside `fake_defer`), matching real Postgres connection isolation. Against the unfixed code this correctly failed:
+**GREEN** — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
 
 ```
-tests/test_pipeline_sweep.py::test_sweep_commits_run_before_deferring FAILED
-E       assert [False] == [True]
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_csv_from_arcgis_dataset PASSED
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_rejects_unknown_format PASSED
+tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_writes_an_audit_log_row PASSED
+============================== 3 passed in 2.24s ===============================
 ```
 
-(the run row was not yet visible from the separate connection at the moment `defer` was called — exactly the bug described above; a separate, already-caught `AppNotOpen` log line from procrastinate's unrelated embedding-enqueue path in `app.items.repository` appeared in captured output but did not affect the test outcome).
+Also ran:
+- `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py tests/test_harvest_dataset_arcgis_routes.py -q` → `16 passed`.
+- Full core suite: `cd core && uv run pytest -q` → `1200 passed, 131 skipped` (no regressions).
+- `cd core && uv run lint-imports` → `layered architecture KEPT — Contracts: 1 kept, 0 broken.` (the new
+  `app.analytics.export` import from `app.harvest` doesn't violate the
+  import-linter layering contract).
+- `-q` run of the new file alone is pristine: `3 passed in 2.14s`, no warnings.
 
-### Fix
+## Files changed
 
-In `core/app/pipelines/jobs.py`, added `session.commit()` immediately after `create_run(...)` and before `run_pipeline_task.defer(...)`, inside the loop:
+- `core/app/harvest/routes.py` (modified: new import + new route)
+- `core/tests/test_harvest_dataset_arcgis_export_routes.py` (new)
 
-```python
-for item_id, tenant_id in due:
-    run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
-    # Commit avant de déférer, même raison que routes.py/mcp/tools.py
-    # (create_run puis defer) : un worker pourrait ramasser la tâche
-    # avant que la ligne pipeline_runs ne soit visible autrement. À
-    # l'intérieur de la boucle car chaque run doit être visible avant
-    # SON propre defer, pas seulement le dernier de la file.
-    session.commit()
-    run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
-```
+## Self-review findings
 
-`request_scoped_session` still owns the overall transaction boundary and commits again (no-op, nothing pending) when the `with` block exits normally — same shape as `routes.py`/`mcp/tools.py`. No other guard logic, `_session_factory()`, or `run_pipeline_task` touched.
+- **Completeness**: all 3 tests from the brief implemented verbatim; route
+  matches the brief's exact code (format validation, bucket/split/bins
+  rejection, `_resolve_arcgis_dataset`, translate/fetch/aggregate pipeline,
+  `rows_to_format`, filename, audit log, `Response`).
+- **Quality**: route placement and structure closely mirror
+  `get_dataset_arcgis_aggregate` immediately above it in the same file, and
+  the collection-backed `export_collection_aggregate` in
+  `core/app/features/routes.py` (same error-handling shape, same audit
+  payload shape).
+- **Discipline**: nothing added beyond the brief. One flagged but
+  intentional-per-plan wrinkle: `features_to_format` is imported but unused
+  by this route alone — it's consumed by Task 6's items-mode export route
+  landing in the same file next, and importing both together in one line
+  matches the pattern already used in `features/routes.py` where one import
+  line serves two sibling export routes. I did not silently drop it or add
+  an unrelated `# noqa`; there is no linter configured in this repo that
+  flags unused imports (no `ruff`, only `import-linter` for module
+  boundaries), so it does not break CI.
+- **Testing**: mocked ArcGIS responses use realistic
+  `{"features": [{"attributes": {...}}]}` shape, not empty/vacuous mocks;
+  assertions check status code, content-type header, body content, and
+  audit log row shape/payload — not just "it returns 200".
 
-### GREEN
+## Issues or concerns
 
-```
-tests/test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline PASSED
-tests/test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due PASSED
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode PASSED
-tests/test_pipeline_sweep.py::test_sweep_commits_run_before_deferring PASSED
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled PASSED
-
-============================== 5 passed in 0.97s ===============================
-```
-
-No regression on the postgis-marked suite:
-
-```
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_succeeded SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_never_zombie SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_writes_node_stats_incrementally_before_failure SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie SKIPPED
-
-============================== 4 skipped in 1.68s ==============================
-```
-
-### Files changed
-
-- `core/app/pipelines/jobs.py` — one-line `session.commit()` added inside the sweep loop
-- `core/tests/test_pipeline_sweep.py` — added `test_sweep_commits_run_before_deferring` (with its own temp-file two-connection setup, distinct from `_make_session()`)
-
-**Date:** 2026-08-07
-**Status:** DONE (fix applied and verified)
+None. Implementation matches the brief exactly, tests pass, no regressions,
+import-linter contract holds, output is clean.
