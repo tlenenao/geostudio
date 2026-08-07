@@ -69,6 +69,20 @@ export function DatasetEditPage({ pk }: { pk: string }) {
 
   const merged = schemaQuery.data ? mergeDatasetSchema(schemaQuery.data, draft.columns) : [];
 
+  const hasGeometry = draft.source === "arcgis" ? true : Boolean(schemaQuery.data?.geometry);
+  const exportFormats = hasGeometry ? ["csv", "xlsx", "geojson", "gpkg"] : ["csv", "xlsx"];
+
+  async function handleExport(format: string) {
+    const source = { id: "__dataset-export__", type: "features" as const, service: "core", layer: "", datasetId: pk, query: {} };
+    const { blob, filename } = await client.exportDataSource(source, format);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <h2 className="text-xl font-semibold">Dataset partagé — {itemQuery.data.title}</h2>
@@ -153,6 +167,22 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           <button type="button" className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100" onClick={addCrossFilterLink}>
             Ajouter un lien
           </button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium text-slate-500">Export</p>
+        <div className="flex gap-2">
+          {exportFormats.map((format) => (
+            <button
+              key={format}
+              type="button"
+              aria-label={`Exporter en ${format.toUpperCase()}`}
+              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+              onClick={() => handleExport(format)}
+            >
+              {format.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
