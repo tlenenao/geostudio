@@ -168,6 +168,32 @@ def test_export_items_stops_paginating_on_a_short_page(client):
     assert len(calls) == 1  # one page returned fewer rows than the page size — loop stops
 
 
+def test_export_items_continues_past_a_full_page(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            # A full page (== the route's page size, _MAX_LIMIT=1000): the loop
+            # must not stop here and must issue a second request with an
+            # incremented offset.
+            features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}] * 1000
+        else:
+            # Second page is short: the loop stops here.
+            features = [{"type": "Feature", "properties": {"nom": "Y"}, "geometry": None}]
+        return httpx.Response(200, json={"type": "FeatureCollection", "features": features})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert len(calls) == 2  # a full first page forces a second real HTTP call
+    assert "resultOffset=0" in calls[0]
+    assert "resultOffset=1000" in calls[1]  # offset actually incremented by the page size
+    body = resp.json()
+    assert len(body["features"]) == 1001  # both pages' features were accumulated
+
+
 def test_export_items_caps_at_10000_entities(client, monkeypatch):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     monkeypatch.setattr(harvest_routes, "_EXPORT_ITEMS_CAP", 1)
