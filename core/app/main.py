@@ -34,6 +34,7 @@ from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$")
 
 
 def create_app() -> FastAPI:
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
             and request.url.path != "/mcp"
             and request.url.path != "/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
+            and not _EXPORT_PATH_RE.match(request.url.path)
         ):
             return JSONResponse(
                 status_code=403,
