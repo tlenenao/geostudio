@@ -65,3 +65,20 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     run.finished_at = _now()
     run.error = error
     session.flush()
+
+
+def append_node_stat(session: Session, *, tenant_id: str, run_id: str, node_id: str, stat: dict) -> None:
+    """Écrit un NodeStat dans PipelineRun.node_stats immédiatement (fusion,
+    pas un remplacement) — c'est ce qui permet à la progression d'un run
+    d'être visible en base avant sa fin (SP-15g §3.5). Scindé de
+    mark_succeeded (qui réécrit node_stats en entier, idempotent) : cette
+    fonction est appelée une fois PAR NŒUD, sur sa propre transaction courte
+    (jobs.py::_make_progress_callback), jamais dans la même transaction que
+    le reste du run."""
+    run = session.execute(
+        select(PipelineRun).where(PipelineRun.id == run_id, PipelineRun.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if run is None:
+        return
+    run.node_stats = {**run.node_stats, node_id: stat}
+    session.flush()
