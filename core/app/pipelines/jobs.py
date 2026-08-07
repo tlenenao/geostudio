@@ -9,6 +9,7 @@ import logging
 import os
 from collections.abc import Callable
 
+from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
 from app.db import make_engine, make_session_factory, request_scoped_session
@@ -18,6 +19,11 @@ from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def _session_factory():
+    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
+    return make_session_factory(engine)
 
 
 def _get_pipeline_payload(session, *, item_id: str) -> PipelinePayload:
@@ -84,8 +90,7 @@ def _make_progress_callback(
 
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    session_factory = make_session_factory(engine)
+    session_factory = _session_factory()
 
     try:
         with request_scoped_session(session_factory) as session:
@@ -122,3 +127,19 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
         logger.exception("pipeline run %s : erreur inattendue", run_id)
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_failed(session, run_id=run_id, error=f"erreur interne : {exc}")
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(queue="etl")
+def run_pipeline_sweep_task(timestamp: int) -> None:
+    if is_read_only_mode():
+        logger.info("mode lecture seule : balayage de planification de pipelines ignoré")
+        return
+    if not is_etl_enabled():
+        return
+    session_factory = _session_factory()
+    with request_scoped_session(session_factory) as session:
+        due = pipelines_repo.list_due_pipelines(session)
+        for item_id, tenant_id in due:
+            run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+            run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
