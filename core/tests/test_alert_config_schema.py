@@ -70,3 +70,20 @@ def test_alert_email_channel_requires_smtp_secret_name():
         _base_alert(channels=[{"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-main"}])
     )
     assert config.alert.channels[0].smtpSecretName == "smtp-main"
+
+
+def test_alert_channel_missing_kind_is_rejected_not_silently_coerced():
+    # Regression: channels is a tagged union on `kind`. Without a discriminator,
+    # Pydantic's smart-union matching does not require the `kind` tag to be
+    # present — since both AlertChannelWebhook.kind and AlertChannelEmail.kind
+    # have defaults, a payload with fields from both shapes but no `kind` at
+    # all could silently resolve to one variant, dropping the other variant's
+    # fields (e.g. `url`) with no error.
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(
+            _base_alert(channels=[{
+                "url": "https://example.test/hook",
+                "to": "ops@example.test",
+                "smtpSecretName": "smtp-main",
+            }])
+        )
