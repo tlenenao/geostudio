@@ -194,6 +194,36 @@ def test_export_items_continues_past_a_full_page(client):
     assert len(body["features"]) == 1001  # both pages' features were accumulated
 
 
+def test_export_items_continues_past_a_clamped_short_page_when_exceeded_transfer_limit_is_set(client):
+    # Regression (SP-16a final review, Important #4): a real ArcGIS service
+    # clamps resultRecordCount to its own maxRecordCount (e.g. maxRecordCount=500
+    # for our requested limit=1000). The returned page is then shorter than
+    # `limit` even though more features remain — exceededTransferLimit=true is
+    # the authoritative "there's more" signal (mirrors connectors/arcgis.py:139)
+    # and must override the `len(page_features) < limit` heuristic.
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            # Clamped page: fewer rows than the requested limit, but the
+            # service signals there is more to fetch.
+            features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}] * 500
+            return httpx.Response(200, json={
+                "type": "FeatureCollection", "features": features, "exceededTransferLimit": True,
+            })
+        features = [{"type": "Feature", "properties": {"nom": "Y"}, "geometry": None}]
+        return httpx.Response(200, json={"type": "FeatureCollection", "features": features})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert len(calls) == 2  # a short-but-clamped first page still forces a second HTTP call
+    body = resp.json()
+    assert len(body["features"]) == 501  # both pages' features were accumulated, nothing lost
+
+
 def test_export_items_caps_at_10000_entities(client, monkeypatch):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     monkeypatch.setattr(harvest_routes, "_EXPORT_ITEMS_CAP", 1)
