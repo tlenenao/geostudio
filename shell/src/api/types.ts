@@ -439,9 +439,15 @@ export type PipelineEdge = {
   role?: "primary" | "secondary" | null;
 };
 
+export type PipelineRefreshPolicy = {
+  enabled: boolean;
+  cron: string;
+};
+
 export type PipelinePayload = {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
+  refreshPolicy?: PipelineRefreshPolicy | null;
 };
 
 // Minimal typed subset of JSON Schema actually consumed by
