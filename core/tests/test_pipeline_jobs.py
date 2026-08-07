@@ -35,9 +35,9 @@ def env(pg_engine, monkeypatch, tmp_path):
         )
         item_id = "item-1"
         s.execute(text(
-            "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, is_published, is_public, "
-            "keywords, created_at, updated_at) "
-            "VALUES (:id, :t, :o, 'pipeline', 'P', false, false, '[]', now(), now())"
+            "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, abstract, is_published, "
+            "is_public, keywords, created_at, updated_at) "
+            "VALUES (:id, :t, :o, 'pipeline', 'P', '', false, false, '[]', now(), now())"
         ), {"id": item_id, "t": tenant.id, "o": user.id})
         s.execute(text(
             "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, description, "
