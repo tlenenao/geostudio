@@ -1,223 +1,258 @@
-# SP-15f — `reader.connector` dlt (REST + Postgres) — Progress Ledger
+# SP-16a — Export serveur CSV/XLSX/GeoJSON/GPKG — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-06-sp15f-reader-connector-dlt.md
+Plan: docs/superpowers/plans/2026-08-07-sp16a-export-serveur.md
+Spec: docs/superpowers/specs/2026-08-07-sp16a-export-serveur-design.md
 Workspace: checkout principal, branche `dev` (convention établie, pas de worktree).
-Base globale: dev@c3d8b58 (HEAD au lancement).
+Base globale: dev@08b9342 (HEAD au lancement, immédiatement après commit du plan).
 
 ## Pré-vol
 
-Scan des 5 tâches contre les Contraintes Globales + vérification indépendante
-contre l'état réel du repo avant dispatch :
-- `core/pyproject.toml` : `httpx>=0.27` ligne 11 confirmée (point d'insertion
-  `requests`/`dlt` après elle) ; layers list `app.harvest`(84)/`app.pipelines`(85)/
-  `app.secrets`(86) confirmée, `app.analytics` absente de la liste (donc pas de
-  contrainte à modifier).
-- `core/app/pipelines/ops/schemas.py` : `OP_KINDS`/`OP_PARAMS` actuels (15 ops)
-  confirmés identiques au bloc "avant" du plan ; `TransformQgisParams` bien la
-  dernière classe avant `OP_KINDS`.
-- `core/app/harvest/egress.py` : shape confirmée (httpx-based), justifie la
-  duplication demandée par le plan pour `requests`.
-- `core/app/secrets/repository.py` : `get_secret_payload(session, *, tenant_id, name) -> SecretPayload | None`
-  confirmé exact.
-- `core/app/secrets/schemas.py` : 5 payloads confirmés avec les noms de champs
-  exacts utilisés par le plan (`location`/`key`/`value`, `token`, `username`/
-  `password`, `tokenUrl`/`clientId`/`clientSecret`, `dsn`).
-- `core/app/analytics/sql_sandbox.py` : `parse_ast`, `validate_select_only`,
-  `SqlSandboxError` confirmés ; `app/pipelines/expr_validation.py` confirmé
-  utilisant déjà le même mécanisme.
-- `core/app/pipelines/runtime.py` : bloc `_prepare()` "avant" (lignes 192-206)
-  confirmé identique caractère pour caractère au bloc que le plan demande de
-  remplacer.
-- `core/tests/conftest.py` : fixture `pg_engine` confirmée avec skip propre si
-  `CORE_TEST_DATABASE_URL` absent.
-- `core/app/pipelines/config_validation.py` : boucle générique
-  `for _op in OP_PARAMS: register_pipeline_node_validator(...)` confirmée —
-  aucune modif nécessaire pour les 2 nouveaux ops.
-- `core/Dockerfile` : confirmé n'installant que via `pyproject.toml`, pas de
-  liste dupliquée à maintenir.
+Scan des 13 tâches + Global Constraints contre l'état réel du repo (lecture
+directe, pas confiance dans le plan seul) avant dispatch :
+- `core/pyproject.toml` : `dependencies = [` ligne 6, entrée `duckdb>=1.0`
+  ligne 51 confirmée comme point d'ancrage (Task 1).
+- `core/app/analytics/duckdb_conn.py` : contenu intégral lu, `open_connection`
+  confirmé, aucun `open_spatial_connection` existant (Task 1).
+- `core/app/features/routes.py` : imports confirmés — `get_current_user` déjà
+  importé ligne 20 (le plan anticipait de devoir l'ajouter, en fait déjà là),
+  `RESERVED_QUERY_PARAMS` ligne 41, `aggregate_features`/`return
+  {"categoryKey"...}` lignes 192/213 confirmées comme point d'insertion
+  (Tasks 3/4).
+- `core/app/harvest/routes.py` : imports fastapi/analytics confirmés,
+  `get_dataset_arcgis_aggregate`/`return {"categoryKey"...}` lignes 268/300,
+  `_MAX_LIMIT=1000`, `_resolve_arcgis_dataset`, `EgressBlockedError` tous
+  confirmés présents (Tasks 5/6).
+- `core/app/main.py` : `_AGGREGATE_PATH_RE` ligne 36, garde `read_only_guard`
+  ligne 66-72 confirmés identiques au texte "avant" du plan (Task 7).
+- `shell/src/api/types.ts` : `queryDataSource`/`featuresUrl` lignes 152-153,
+  `DataSourceState` ligne 367 confirmés (Task 8).
+- `shell/src/api/itemClient.ts` : `buildAggregateBody`/`_queryParams`/
+  `resolveDataset`/`queryDataSource`/`getCollectionSchema` tous confirmés
+  présents aux noms attendus (Task 8).
+- `shell/src/builder/DataContext.tsx` : bloc `pkByCollection` confirmé
+  identique au texte "avant" du plan (Task 9).
+- `shell/src/builder/widgets/ExplorerMenu.tsx` : contenu intégral lu,
+  confirmé identique au texte "avant" du plan, aucune prop
+  resolvedSource/hasGeometry existante (Task 10).
+- Les 6 call sites `<ExplorerMenu ... />` dans chart.tsx (x2)/data.tsx
+  (x2)/indicator.tsx/mapWidget.tsx/pivot.tsx tous confirmés présents et
+  identiques au texte "avant" du plan (Task 11).
+- `shell/src/pages/DatasetEditPage.tsx` : `useItemClient`, `schemaQuery`,
+  `draft.source`, section "Enregistrer les colonnes" confirmés présents
+  (Task 12).
 
-Aucune contradiction trouvée. Poursuite sans confirmation utilisateur (scan clean).
+Aucune contradiction trouvée entre tâches ni avec les Global Constraints.
+Poursuite sans confirmation utilisateur (scan clean).
 
-## Tasks
+Note : ledger précédent (SP-15h, déjà mergé sur dev, cf. commits
+89bfc9f/dd74053/abd9b6c) écrasé ici — SP-15h est clos, ce fichier suit
+maintenant SP-16a.
 
-Base Task 1: c3d8b58
-Task 1: complete (commit 7f3e7e2, review clean on first pass — ✅ spec
-compliant, task quality Approved, 0 Critical, 0 Important réel, 1 Important
-signalé sur une contrainte que LE CONTRÔLEUR avait ajoutée de son propre
-chef dans le prompt de dispatch ("ne doit toucher aucun autre fichier") —
-absente du texte réel du plan. L'implémenteur a dû mettre à jour
-`test_pipeline_routes.py::test_get_pipelines_ops_returns_all_fifteen`
-(renommé `_seventeen`, 15→17) pour satisfaire l'étape 5 du plan elle-même
-("full pipelines test suite... all pass"), le plan n'ayant pas anticipé ce
-test à compte fixe. Le reviewer a lui-même conclu "gap in the plan's file
-list rather than implementer overreach" et vérifié qu'aucune autre
-assertion de comptage à froid ne restait obsolète ailleurs — résolu par le
-contrôleur sans escalade, ce n'est pas une vraie violation du plan).
-49/49 tests passing (test_pipeline_ops_schemas.py), régression complète
-143 passed/10 skipped.
+## Tasks (13 + final check)
 
-Base Task 2: 7f3e7e2
-Task 2: complete (commit 85f71c6, review clean on first pass — ✅ spec
-compliant, task quality Approved, 0 Critical, 0 Important, 2 Minor
-négligeables — note résiduelle TOCTOU DNS-rebinding absente du docstring du
-nouveau module (héritée verbatim du bloc de code du plan, pas une omission
-de l'implémenteur) ; commentaire de la constante d'allowlist sur 3 lignes
-physiques au lieu d'1 (lettre de la contrainte, pas son intention)). Garde
-`requests`-based confirmée distincte de `app.harvest.egress` (httpx-based),
-`CORE_PIPELINES_EGRESS_ALLOWLIST` distinct de `CORE_HARVEST_EGRESS_ALLOWLIST`
-confirmé. 14/14 tests passing (7-way parametrize + 7 tests nommés — le "8
-passed" du plan comptait les définitions de fonction, pas les items
-pytest collectés, pas un défaut de code), régression complète 1097
-passed/127 skipped. `lint-imports` propre (module sans dépendance interne).
+1. `openpyxl` + `open_spatial_connection` — core
+2. `app.analytics.export` (sérialisation CSV/XLSX/GeoJSON/GPKG) — core
+3. `POST /collections/{id}/export` (agrégé) — core
+4. `GET /collections/{id}/export/items` (entités brutes, 4 formats) — core
+5. `POST /datasets/{id}/arcgis/export` (agrégé) — core
+6. `GET /datasets/{id}/arcgis/export/items` (entités brutes, 4 formats) — core
+7. Garde lecture-seule démo — exempte les routes d'export — core
+8. `ItemClient.exportDataSource()` — shell
+9. `DataContext` expose `resolvedSource`/`hasGeometry` — shell
+10. `ExplorerMenu` gagne des entrées d'export — shell
+11. Branche `resolvedSource`/`hasGeometry` sur les 6 widgets — shell
+12. `DatasetEditPage` section Export — shell
+13. E2E `dataset-export.spec.ts` — shell
+14. Vérification finale + mise à jour CLAUDE.md
 
-Base Task 3: 85f71c6
-Task 3: complete (commits 9b6d1df + fix 35e595e, 1 round de fix). Review
-initiale : ✅ spec compliant, task quality "Needs fixes" — 1 Important réel
-trouvé (plan-mandated) : `_build_auth()` ne passait pas la session gardée
-SSRF à `OAuth2ClientCredentials`, dlt utilisant alors sa propre session non
-gardée pour l'échange de jeton (obtain_token()) — un secret
-`oauth2_client_credentials` avec `tokenUrl` interne aurait contourné la
-garde SSRF, seul des 4 kinds de secret concerné (bearer/api_key/basic_auth
-protégés car ils décorent la session déjà gardée plutôt que de faire leur
-propre requête). Non couvert par les 9 tests initiaux. Fix : `session=
-build_guarded_session()` ajouté à la construction `OAuth2ClientCredentials`
-+ 1 test de régression (tokenUrl loopback interdit, remonte
-`EgressBlockedError` via `__cause__` — dlt enveloppe dans
-`PipelineStepFailed`/`ResourceExtractionError`). Re-revue : fix vérifié
-indépendamment contre le source dlt réellement installé (`obtain_token()`
-utilise bien `self.session.post(...)`), test de régression confirmé non
-tautologique (échouerait avec `ConnectionError` sans le fix, pas
-`EgressBlockedError`). **Ready to merge: Yes** sur ce fix.
-Deux déviations du texte littéral du brief, toutes deux vérifiées légitimes
-par le reviewer initial : `SinglePagePaginator()` explicite au lieu de
-`None` (supprime un warning dlt, aucun changement de comportement) ; fixture
-de test `_create_secret` corrigée pour utiliser un vrai `user.id` au lieu du
-littéral `"u1"` du brief (violait la FK réelle `users.id` sur
-`ConnectorSecret.created_by`) — fix de fixture de test pur, aucun code de
-prod ni assertion changée. Toutes les API dlt du brief vérifiées contre
-dlt 1.29.1 réellement installé via `inspect`. 1 Minor non bloquant (`offset`
-paginator lève un `KeyError` brut au lieu de `ConnectorRuntimeError` si
-`limit` manque — hérité verbatim du brief, flagué pour Task 5's reviewer
-car `runtime.py` traduit spécifiquement `ConnectorRuntimeError`).
-10/10 + 14/14 tests passing après fix, 1106+ suite complète sans régression
-avant fix.
+Base Task 1: 08b9342
+Task 1: complete (commit 248bf92, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 2 Minor
+négligeables (duplication de 2 lignes avec open_connection, choix
+délibéré pour ne pas partager de base commune ; test env-vars ne prouve
+pas que la fonction les ignorerait si présentes)). `openpyxl>=3.1` +
+`open_spatial_connection()` (aucun accès disque/S3/env var) confirmés
+verbatim contre le brief. 2/2 tests passing.
 
-Base Task 4: 35e595e
-Task 4: complete (commit dfd2bb2, review clean on first pass — ✅ spec
-compliant, task quality Approved, 0 Critical, 0 Important, 3 Minor
-négligeables — import `SqlSandboxError` inutilisé dans le fichier de test,
-placement d'import mi-fichier avec `# noqa: E402`, paramètre `pg_engine`
-de `_pg_dsn` non utilisé dans le corps). `materialize_postgres_connector`
-confirmé réutilisant réellement `_run_dlt_and_attach` (pas de duplication),
-ordre validation SELECT-only → résolution secret confirmé exact, disposal
-`engine.dispose()` confirmé garanti sur tous les chemins (`finally`).
-Tests exécutés contre un vrai conteneur `postgis-test` (127.0.0.1:5433,
-disponible dans cet environnement) — pas skippés. 2 déviations
-auto-signalées par l'implémenteur, vérifiées légitimes : `_pg_dsn` du brief
-utilisait `str(pg_engine.url)` qui masque le mot de passe (`***`,
-casserait l'auth réelle) → lit `CORE_TEST_DATABASE_URL` directement comme
-`conftest.py` ; `_create_secret` du brief omettait l'argument `user`
-(FK `created_by`, même problème que Task 3). 14/14 tests passing, suite
-complète 1233 passed/5 skipped (skips pré-existants qgis), sans régression.
+Base Task 2: 248bf92
+Task 2: complete (commit 4b025d4, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 2 Minor
+négligeables héritées verbatim du brief (DictWriter lève sur des rows
+hétérogènes ; test GPKG round-trip écrit un chemin fixe /tmp sans
+cleanup)). 1 déviation du code littéral du brief identifiée ET vérifiée
+par le reviewer (pas du scope creep) : `ALTER TABLE t DROP COLUMN
+OGC_FID` avant COPY vers GPKG — reviewer a reproduit indépendamment que
+le code littéral du brief échoue réellement (IOException DuckDB, OGC_FID
+auto-généré par ST_Read), confirmé que le DROP ne peut jamais supprimer
+un champ utilisateur réel (un champ nommé pareil ferait déjà planter
+CREATE TABLE une ligne plus tôt). 11/11 tests passing.
 
-Base Task 5: dfd2bb2
-Task 5: complete (commit 7341d35, review clean on first pass — ✅ spec
-compliant, task quality Approved, 0 Critical, 0 Important, 1 Minor
-plan-mandated — `test_run_pipeline_reader_connector_rest_never_leaks_secret_value`
-assertion (`"s3cr3t-leak-check" not in str(rows)`) est quasi tautologique
-avec l'implémentation actuelle (le token n'atteint `rows` par aucun chemin
-plausible) ; la vraie vérification qui compte est l'assertion d'en-tête
-`httpserver.expect_request(headers={"Authorization": "Bearer ..."})` —
-verbatim du brief, pas un défaut d'exécution de cette tâche, flagué pour la
-revue finale comme note qualité sur le plan lui-même, pas à corriger ici).
-Dispatch `_prepare()` confirmé fidèle à la forme exacte du brief, motif de
-traduction `ConnectorRuntimeError`→`PipelineRuntimeError` confirmé
-structurellement identique au motif préexistant pour `ValueError` (pas
-seulement "lève aussi PipelineRuntimeError"). `reader.collection` confirmé
-inchangé caractère pour caractère (seul `view_name` mutualisé entre
-branches). Claim SRID placeholder 4326 vérifié (pas juste accepté) :
-aucune colonne géométrie dans les vues connecteur, DuckDB lèverait une
-erreur de binder franche, pas un résultat faux silencieux.
-3 déviations auto-signalées, toutes vérifiées comme de vrais défauts dans
-le CODE DE TEST DU PLAN lui-même (pas de l'implémenteur) : fusion de deux
-imports (cosmétique) ; 2 tests du brief sans nœud writer alors que
-`PipelinePayload` exige au moins un writer (`app/configs/schemas.py:207-208`)
-— aurait levé une `ValidationError` avant même d'atteindre le runtime ;
-littéral `created_by="u1"` violant la FK réelle `users.id` (même défaut que
-Tasks 3/4). `config_validation.py` confirmé n'avoir eu besoin d'aucune
-modif — vérifié indépendamment, pas supposé. 1237 passed/5 skipped (suite
-complète, régression zéro), `lint-imports` 1 kept/0 broken.
+Base Task 3: 4b025d4
+Task 3: complete (commit 684379e, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 3 Minor
+négligeables (import features_to_format inutilisé jusqu'à Task 4 même
+fichier, brief-mandaté ; RESERVED_QUERY_PARAMS+="format" sans effet sur
+cette route précise, brief-mandaté ; _category_key jamais lu, style)). 1
+déviation du texte littéral du brief identifiée ET vérifiée
+indépendamment par le reviewer (bug du plan, pas de l'implémenteur) :
+test `denies_a_user_without_read_access` attendait 403, corrigé en 404 —
+`get_readable_collection` (core/app/collections/routes.py:133-151)
+renvoie 404 aussi bien pour "collection absente" que "lisible refusée"
+par construction ("404 avant 403"), reviewer a lu le code réel plutôt que
+de faire confiance au rapport. Format validé avant tout accès
+DB/DuckDB, audit_log écrit uniquement en cas de succès avec le payload
+exact {"format", "mode": "aggregate"}. 6/6 nouveaux tests, suite complète
+1192 passed/131 skipped.
 
-## 5 tâches de SP-15f complètes. Passage à la revue finale de branche.
+Base Task 4: 684379e
+Task 4: complete (commit caaeeec, review clean — ✅ spec compliant, task
+quality Approved, 0 Critical/Important, 3 Minor négligeables (pas de
+test à la borne exacte 10000 succès, seulement au-dessus via
+monkeypatch ; pas de test multi-page réel, MAX_LIMIT=1000 jamais
+dépassé par les fixtures ; docblock un peu long)). 3 déviations du texte
+littéral du brief (DONE_WITH_CONCERNS), toutes vérifiées indépendamment
+par le reviewer contre le code réel (pas seulement le rapport) : (1)
+`"type": "Feature"` manquant dans les payloads POST du brief —
+validate_feature() rejette sans, confirmé + comparé à d'autres fichiers
+de test existants ; (2) champ `"pop"` manquant dans le test de cap —
+requis par le fixture INFO, confirmé ; (3) fixture env étendue avec
+`make_fake_items_repo()` + overrides get_features_repo/get_rls_scope
+(RLS réel utilise set_config, absent de SQLite) — confirmé sans effet
+sur les tests Task 3 (routes différentes, aucune dépendance partagée),
+confirmé fidèle au comportement réel (pagination/cap testés pour de
+vrai), confirmé reproduire fidèlement un patron déjà établi dans
+test_features_routes_read.py (même forme SimpleNamespace, même
+commentaire sur set_config). Boucle de pagination + cap 413
+avant-troncature vérifiés ligne à ligne par le reviewer, borne exacte
+correcte par inspection. 11/11 tests (fichier complet), suite 1197
+passed/131 skipped.
 
-## Revue finale de branche (opus, c3d8b58..7341d35, 6 commits)
+Base Task 5: caaeeec
+Task 5: complete (commit d1ad7eb, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 4 Minor
+négligeables (client.close() jamais appelé sur les sorties d'erreur
+précoces — préexistant dans la route sœur get_dataset_arcgis_aggregate,
+pas une régression ; import features_to_format inutilisé jusqu'à Task 6 ;
+~25 lignes dupliquées avec la route sœur, brief-mandaté ; un test
+n'affirme que le status code sans la forme du détail d'erreur)). Aucune
+déviation du texte littéral du brief cette fois (contrairement à Tasks
+3/4) — reviewer spécifiquement mis en garde de rester sceptique, a
+vérifié indépendamment chaque contrainte globale (auth, payload audit
+exact, pas de nouveau flag, pas de nouvelle logique d'autorisation,
+séparation de couches features/harvest respectée). 3/3 nouveaux tests,
+suite complète 1200 passed/131 skipped.
 
-**Ready to merge: With fixes.** Cœur sécurité confirmé sain et bien testé :
-couverture SSRF sur les 4 kinds d'auth REST (y compris le chemin OAuth2
-déjà corrigé en Task 3), bornage SELECT-only, non-fuite de secrets,
-télémétrie coupée, nettoyage scratch garanti.
+Base Task 6: d1ad7eb
+Task 6: complete (commit 41ecc9e + fix 102f7a4, 1 round de fix). Review
+initiale : ✅ spec compliant (route clone fidèle de get_dataset_arcgis_items
++ queue export d'export_dataset_arcgis_aggregate, cap-avant-troncature
+vérifié par trace manuelle), 1 Important labellisé plan-mandated — aucun
+test ne forçait une seconde page réelle (offset += limit jamais exercé,
+un bug d'incrémentation serait passé inaperçu). Décision : fix pur
+additif (nouveau test, aucun changement de route/du texte du plan) donc
+pas besoin d'arbitrage utilisateur, contrairement aux fixes Tasks 4/5 de
+SP-15h qui changeaient un comportement. Fix : nouveau test
+`test_export_items_continues_past_a_full_page` forçant 2 appels HTTP
+réels (page pleine 1000 puis page courte 1), assertant resultOffset=0
+puis resultOffset=1000 et 1001 features accumulées. RED confirmé contre
+un bug injecté offset+=0 (413 au lieu de 200), GREEN confirmé contre le
+code réel. Re-revue confirmée : route non touchée par le commit de fix,
+assertions prouvent réellement l'incrémentation d'offset (pas seulement
+"un second appel a eu lieu"). 8/8 tests (fichier), suite complète 1205
+passed/131 skipped.
 
-**1 Important trouvé et corrigé** : les échecs survenant PENDANT
-l'extraction dlt elle-même (notamment un blocage SSRF sur l'URL de
-DONNÉES, pas seulement l'URL de jeton OAuth2 déjà testée) n'étaient pas
-traduits en `ConnectorRuntimeError` — ils s'échappaient en exception dlt
-brute (`PipelineStepFailed`/`ResourceExtractionError`), contournant la
-traduction `ConnectorRuntimeError`→`PipelineRuntimeError` de `runtime.py`
-et ressortant en 500 opaque/« erreur interne » au lieu d'une erreur propre
-— le pire signal d'erreur pour le cas le plus sensible en sécurité de toute
-la fonctionnalité.
+Base Task 7: 102f7a4
+Task 7: complete (commit d35f46b, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 2 Minor
+négligeables (nouveau test n'exerce que la forme /export nue, pas
+/export/items — conforme au brief ; drift de numéros de ligne dans le
+rapport, cosmétique)). Reviewer a vérifié la regex `_EXPORT_PATH_RE` à la
+main caractère par caractère contre les 4 formes réelles de route +
+contre des routes d'écriture qui doivent rester bloquées (POST
+/collections, /collections/foo/export2) — tout correct. Aucun nouveau
+flag de capacité introduit. 12 tests read-only-mode, suite complète 1206
+passed/131 skipped.
 
-**4 Minor triés, non corrigés (tradeoffs acceptés/documentés)** : test
-`..._never_leaks_secret_value` quasi tautologique (l'assertion qui compte
-est ailleurs dans le même test, hérité du plan) ; garde SELECT-only ne peut
-pas arrêter un `SELECT` d'une fonction qui écrit côté serveur distant
-(hérité, heuristique documentée comme non-garantie par le design §5.2, la
-vraie frontière de confiance est le DSN admin) ; aucune borne de
-lignes/taille sur l'extraction connecteur (cohérent avec les lecteurs
-existants, pas une régression) ; `CORE_PIPELINES_EGRESS_ALLOWLIST` non
-documenté dans `.env.example` (même trou que `CORE_HARVEST_EGRESS_ALLOWLIST`,
-pas une régression mais corrigé opportunément avec l'Important ci-dessus).
+## BACKEND (Tasks 1-7) COMPLET. Passage aux tâches shell/frontend (Tasks
+8-13).
 
-**Fix appliqué** (1 seul fix subagent couvrant l'Important + le test de
-régression associé + le doc `.env.example`, commit `0b92ede`) :
-`_run_dlt_and_attach` (helper partagé par les deux connecteurs) enveloppe
-désormais `pipeline.run()` + le bloc ATTACH/SELECT/DETACH dans un
-`try/except Exception` qui remonte la chaîne de causes
-(`__cause__`/`__context__`, garde anti-cycle par `id()`) pour détecter un
-`EgressBlockedError` enfoui et le traduire en
-`ConnectorRuntimeError(f"egress blocked: {cause}")` ; les autres échecs en
-`ConnectorRuntimeError(f"reader.connector extraction failed: {exc}")` ;
-une `ConnectorRuntimeError` déjà levée à l'intérieur du bloc traverse
-inchangée (pas de double-enveloppe). Nouveau test de régression : URL de
-données pointée sur `127.0.0.1:1` avec la vraie garde active (pas la
-fixture autouse qui la neutralise), prouve que le blocage SSRF sur l'URL
-de DONNÉES (pas seulement OAuth2) remonte bien en `ConnectorRuntimeError`.
-`.env.example` documenté pour `CORE_PIPELINES_EGRESS_ALLOWLIST`.
-38/38+2 skipped (fichiers ciblés), suite complète 1238 passed/5 skipped,
-zéro régression.
+Base Task 8: d35f46b
+Task 8: complete (commit a8444cc, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 1 Minor
+négligeable (polyfill Blob.text() test-only, jsdom@25.0.1 n'implémente
+pas Blob.prototype.text/arrayBuffer — reviewer a reproduit
+indépendamment le trou avec un script node, confirmé guardé par
+feature-detection donc jamais actif en navigateur réel, confirmé
+scopé au seul fichier de test)). Dispatch statistics/items et
+arcgis/collection vérifié ligne à ligne contre le code réel (pas
+seulement le rapport), aucun autre implémenteur structurel d'ItemClient
+trouvé (grep indépendant). 115/115 tests (fichier), suite complète
+978/978, build tsc+vite propre.
 
-**Re-revue du fix (opus, 7341d35..0b92ede)** : portée exacte du `try`
-confirmée (englobe bien `pipeline.run()`, où la garde SSRF s'exécute
-réellement via l'adapter `requests`, pas au moment de la construction du
-`RESTClient`/session, qui est pré-vol) ; garde `except ConnectorRuntimeError:
-raise` confirmée sans double-enveloppe (rien dans le bloc englobé ne lève
-`ConnectorRuntimeError` aujourd'hui — tous les raises pré-vol s'exécutent
-avant l'appel à `_run_dlt_and_attach`) ; test de régression confirmé non
-tautologique (aurait échoué avant le fix — type d'exception brute, pas
-`ConnectorRuntimeError`) ; aucune fuite de secret dans les nouveaux
-messages d'erreur (vérifié pour les deux branches) ; portée du fix limitée
-aux 4 fichiers attendus, code des Tasks 1-5 déjà approuvé non altéré au-delà
-du fix. 1 Minor signalé (le `except Exception` générique traduit aussi un
-vrai bug interne en 400 plutôt qu'en 500 — compromis acceptable, `raise …
-from exc` préserve la trace). **Ready to merge: Yes.**
+Base Task 9: a8444cc
+Task 9: complete (commit a798525, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 1 Minor
+négligeable (pas de test pour "aucun dataset" → hasGeometry=false,
+chemin simple à faible risque)). arcgis toujours true (schema jamais
+appelé, vérifié par assertion .not.toHaveBeenCalled()), collection
+dérivé par collection via hasGeometryByCollection (pas de divergence
+possible entre sources partageant une collection), resolvedSource
+réutilise la variable `merged` déjà calculée. 7/7 tests (fichier), suite
+complète 980/980, tsc clean.
 
-## SP-15f READY TO MERGE — HEAD=0b92ede, 7 commits (5 tâches + 1 fix Task 3
-+ 1 fix de revue finale, 2 rounds de fix au total sur toute la branche).
-0 Critical/Important non résolu sur l'ensemble de la branche. Deux nouveaux
-ops de lecture `reader.connector.rest`/`reader.connector.postgres` dans le
-moteur de pipeline no-code, authentifiés par nom via le coffre de secrets
-SP-15e, matérialisation dlt réelle (extraction/normalisation/inférence de
-schéma) vers DuckDB scratch, garde SSRF dupliquée pour `requests`, garde
-SELECT-only à l'exécution pour Postgres. Premier consommateur réel du
-coffre SP-15e (anticipé mais non construit jusqu'ici). Prêt pour
-`superpowers:finishing-a-development-branch`.
+Base Task 10: a798525
+Task 10: complete (commit 09326bf, review clean — ✅ spec compliant, task
+quality Approved, 0 Critical/Important, 2 Minor négligeables (formats
+restent cliquables si client jamais null en pratique — cas
+hypothétique ; pas de commentaire inline dans ExplorerMenu.tsx expliquant
+le choix useOptionalItemClient, seulement dans le rapport)). 1 déviation
+du texte littéral du brief (DONE_WITH_CONCERNS, 3e fichier touché hors
+périmètre déclaré) vérifiée à 4 niveaux par le reviewer : (a) bug réel
+confirmé — useItemClient() lève sans provider, appelé
+inconditionnellement avant le early-return, cassait les 4 tests
+préexistants + le propre 5e test du brief ; (b) useOptionalItemClient
+purement additif, aucune fonction existante modifiée ; (c) App.tsx
+enveloppe bien toute l'app dans ItemClientProvider (lu directement, hors
+diff) donc impact production nul ; (d) garde handleExport sûre, aucun cas
+réel où client===null avec resolvedSource présent. 9/9 tests (fichier,
+5 nouveaux + 4 anciens), suite complète 985/985, build propre.
+
+Base Task 11: 09326bf
+Task 11: complete (commit 48ec20a, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important/Minor). Edits avaient
+déjà été appliquées par une session interrompue (fichiers non commités au
+resume) ; réimplémenteur a vérifié verbatim contre le brief plutôt que de
+réécrire, testé, commité. Les 7 accesseurs (`data.x`/`data?.x`/`ctx.data?.x`)
+confirmés cohérents avec le narrowing préexistant à chaque site par le
+reviewer. 985/985 tests, build tsc+vite propre.
+
+Base Task 12: 48ec20a
+Task 12: complete (commit a2a7748, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 1 Minor négligeable
+(vi.stubGlobal("URL",...) jamais explicitement unstubbed dans le nouveau
+test, inoffensif car Vitest isole les globals par fichier et le test suivant
+ne touche pas URL)). Les deux observations remontées par l'implémenteur
+(warning jsdom navigation, pas de gestion d'erreur sur exportDataSource
+rejeté) évaluées indépendamment par le reviewer : la première est un non-
+défaut (même motif déjà présent dans ExplorerMenu.tsx depuis 09326bf), la
+seconde un vrai gap UX mais qui reproduit fidèlement le motif déjà établi
+dans ExplorerMenu (pas une régression propre à cette tâche) — noté comme
+suivi transverse SP-16a possible, pas bloquant. RED confirmé (2 failed/5
+passed) puis GREEN (7/7), suite complète 987/987, build propre.
+
+Base Task 13: a2a7748
+Task 13: complete (commit cf97844, review clean on first pass — ✅ spec
+compliant, task quality Approved, 0 Critical/Important, 3 Minor/info
+(léger écart de comptage 45 vs 43 fichiers E2E dans le rapport — sans
+impact ; pas de commentaire inline sur le header CORS ajouté ; vérification
+finale du plan explicitement pas couverte par cette tâche — reste à faire,
+cf. Task 14)). 1 déviation du texte littéral du brief identifiée ET vérifiée
+en profondeur par le reviewer (pas du scope creep) : ajout de
+`Access-Control-Expose-Headers: Content-Disposition` sur les 2 routes
+mockées de la nouvelle spec — confirmé fix test-only (core n'a aucune
+config CORS, prod sert shell+core same-origin via Traefik `/api`), premier
+test à exercer un téléchargement piloté par Content-Disposition lu en JS
+(fetch+Blob), aucun précédent contredit. Helpers copiés verbatim
+d'analytics-context.spec.ts, sélecteurs vérifiés contre le code réel. Spec
+seule 2/2, suite E2E complète 91/91.
+

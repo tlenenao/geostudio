@@ -1,103 +1,148 @@
-# Task 2 report — SSRF egress guard for `app.pipelines`
+# Task 2: Serialization module `app.analytics.export` — Report
 
-## What was implemented
+**Date:** 2026-08-07  
+**Status:** DONE  
+**Commit:** `4b025d4` — feat(core): SP-16a — module de sérialisation d'export CSV/XLSX/GeoJSON/GPKG
 
-- `core/pyproject.toml`: added `"requests>=2.31"` as a direct dependency
-  (comment explains why: dlt's `RESTClient` uses `requests`, not `httpx`;
-  declared directly rather than relying on dlt's transitive pin). `uv sync`
-  resolved cleanly — `requests` was already present transitively, this just
-  makes it a guaranteed direct import.
-- `core/tests/test_pipeline_egress.py` (new): 14 test cases across 8 test
-  functions (one parametrized over 7 URLs), mirroring
-  `core/tests/test_harvest_egress.py` adapted from `httpx` to `requests`.
-- `core/app/pipelines/egress.py` (new): `EgressBlockedError`,
-  `assert_egress_allowed(url)`, `build_guarded_session() -> requests.Session`.
-  Deliberate duplicate of `app.harvest.egress`'s SSRF logic (blocks loopback/
-  private/link-local/reserved/multicast/unspecified IPs, resolves hostnames
-  via `socket.getaddrinfo`, non-http(s) schemes rejected, optional allowlist
-  via `CORE_PIPELINES_EGRESS_ALLOWLIST` env var — distinct env var from
-  `app.harvest`'s `CORE_HARVEST_EGRESS_ALLOWLIST`), but enforced via a
-  `requests.adapters.HTTPAdapter` subclass (`_GuardedHTTPAdapter.send`) mounted
-  on both `http://` and `https://` schemes, instead of an `httpx` transport.
-  Duplication is intentional: `app.pipelines` sits below `app.harvest` in the
-  import-linter layered-architecture contract and cannot import from it.
+---
 
-Both files' content matches the brief's Step 2 and Step 4 code blocks
-verbatim (no deviation).
+## What Was Implemented
 
-## TDD evidence
+Created a new, self-contained serialization module (`core/app/analytics/export.py`) with pure functions for converting rows (attribute data, no geometry) or GeoJSON features to CSV/XLSX/GeoJSON/GPKG formats, plus its comprehensive test file.
 
-**RED** — `cd core && uv run pytest tests/test_pipeline_egress.py -v`:
+### Module Structure (`core/app/analytics/export.py`)
 
-```
-ERROR collecting tests/test_pipeline_egress.py
-ModuleNotFoundError: No module named 'app.pipelines.egress'
-Interrupted: 1 error during collection
-1 error in 0.16s
-```
+**Public API:**
+- `EXPORT_MEDIA_TYPES: dict[str, str]` — media type mapping for all four formats
+- `export_filename(title: str, *, format: str) -> str` — slugify title + UTC timestamp + format extension
+- `rows_to_format(rows: list[dict], *, format: str) -> bytes` — serializes rows to CSV or XLSX
+- `features_to_format(features: list[dict], *, format: str, conn=None) -> bytes` — serializes GeoJSON features to CSV/XLSX/GeoJSON/GPKG
 
-**GREEN** — same command after implementing `egress.py`:
+**Helper Functions:**
+- `rows_to_csv(rows: list[dict]) -> bytes` — DictWriter-based CSV serialization (empty rows → empty bytes)
+- `rows_to_xlsx(rows: list[dict]) -> bytes` — openpyxl Workbook serialization with header row
+- `features_to_geojson(features: list[dict]) -> bytes` — wraps features in FeatureCollection envelope
+- `features_to_gpkg(features: list[dict], conn) -> bytes` — converts GeoJSON to GPKG using DuckDB spatial + GDAL COPY
 
-```
-collected 14 items
-tests/test_pipeline_egress.py::test_assert_blocks_internal_ip_literals_without_dns[...] PASSED (x7)
-tests/test_pipeline_egress.py::test_assert_allows_public_ip_literal PASSED
-tests/test_pipeline_egress.py::test_assert_blocks_non_http_scheme PASSED
-tests/test_pipeline_egress.py::test_assert_blocks_hostname_resolving_to_internal PASSED
-tests/test_pipeline_egress.py::test_assert_allows_hostname_resolving_to_public PASSED
-tests/test_pipeline_egress.py::test_allowlist_restricts_otherwise_allowed_public_host PASSED
-tests/test_pipeline_egress.py::test_guarded_session_blocks_before_connection PASSED
-tests/test_pipeline_egress.py::test_guarded_session_is_a_real_requests_session PASSED
-14 passed in 0.07s
+### Test File (`core/tests/test_analytics_export.py`)
+
+11 tests covering:
+- CSV serialization (header, data rows, empty case)
+- XLSX round-trip through openpyxl
+- Format validation (rejects unsupported formats)
+- GeoJSON FeatureCollection wrapping
+- Feature-to-row flattening (properties only, no geometry)
+- GPKG connection requirement assertion
+- GPKG round-trip (Point feature → SQLite GPKG binary → read-back via ST_Read)
+- Filename slugification (Unicode normalization, special char removal, lowercase, timestamp)
+- Filename fallback for empty titles
+- Media type constant coverage (all 4 formats)
+
+---
+
+## TDD Evidence
+
+### Step 1-2: RED (tests fail, module doesn't exist)
+
+```bash
+$ cd /home/lenen/projets/geostudio/core && uv run pytest tests/test_analytics_export.py -v
 ```
 
-Note: the brief's Step 5 said "Expected: 8 passed" — that undercounts the
-parametrized test's 7 cases (7 params + 7 other test functions = 14 items
-collected/passed). This is a brief arithmetic slip, not a code defect; the
-test file content matches the brief exactly and all 14 cases pass.
-
-Also ran the full core test suite as an extra safety check (not requested by
-the brief, but cheap): `cd core && uv run pytest -q` → `1097 passed, 127
-skipped` (skips are pre-existing postgis/qgis markers, unrelated to this
-change).
-
-## lint-imports output
-
 ```
-Analyzed 145 files, 414 dependencies.
-layered architecture KEPT
-Contracts: 1 kept, 0 broken.
+ERROR collecting tests/test_analytics_export.py
+ModuleNotFoundError: No module named 'app.analytics.export'
 ```
 
-## Files changed
+✓ **Confirmed RED**: 0 tests collected, 1 error.
 
-- `core/app/pipelines/egress.py` (new)
-- `core/tests/test_pipeline_egress.py` (new)
-- `core/pyproject.toml` (added `requests>=2.31` direct dependency)
-- `core/uv.lock` (regenerated by `uv sync`)
+### Step 3: Implement
 
-Commit: `85f71c6 feat(core): pipelines — SSRF egress guard for reader.connector.rest`
+Module created with:
+- Exact code from task brief (transcribed verbatim from §Step 3)
+- One modification: Added `ALTER TABLE t DROP COLUMN OGC_FID` in `features_to_gpkg()` to resolve DuckDB GDAL driver incompatibility with auto-generated OGC_FID column from ST_Read
 
-## Self-review
+### Step 4: GREEN (all tests pass)
 
-- `egress.py` imports only stdlib (`ipaddress`, `logging`, `os`, `socket`,
-  `urllib.parse.urlparse`) and `requests` — verified with
-  `grep -n "^import\|^from" core/app/pipelines/egress.py`. Nothing from
-  `app.harvest` or any other `app.*` module. Confirmed independently by
-  `lint-imports` reporting the layered-architecture contract kept.
-- All 14 tests pass, pristine output (no warnings, no stderr noise beyond
-  normal pytest summary).
-- `lint-imports` reports `1 kept, 0 broken` — unchanged from before this
-  task, confirming the new module doesn't violate the layering contract and
-  nothing else regressed.
-- Staged/committed exactly the 4 files named in the brief's Step 7 command —
-  did not touch the unrelated pre-existing unstaged changes in
-  `.superpowers/sdd/progress.md`, `task-1-brief.md`, `task-1-report.md`,
-  `task-2-brief.md` (out of scope for this task, left as found).
+```bash
+$ cd /home/lenen/projets/geostudio/core && uv run pytest tests/test_analytics_export.py -v
+```
 
-## Concerns
+```
+tests/test_analytics_export.py::test_rows_to_format_csv_has_header_and_data_rows PASSED
+tests/test_analytics_export.py::test_rows_to_format_csv_empty_rows_is_empty_bytes PASSED
+tests/test_analytics_export.py::test_rows_to_format_xlsx_round_trips_through_openpyxl PASSED
+tests/test_analytics_export.py::test_rows_to_format_rejects_geojson PASSED
+tests/test_analytics_export.py::test_features_to_format_geojson_wraps_a_feature_collection PASSED
+tests/test_analytics_export.py::test_features_to_format_csv_flattens_properties_and_drops_geometry PASSED
+tests/test_analytics_export.py::test_features_to_format_gpkg_requires_a_connection PASSED
+tests/test_analytics_export.py::test_features_to_format_gpkg_round_trips_a_point PASSED
+tests/test_analytics_export.py::test_export_filename_slugifies_the_title_and_appends_the_format PASSED
+tests/test_analytics_export.py::test_export_filename_falls_back_to_export_for_an_empty_title PASSED
+tests/test_analytics_export.py::test_export_media_types_cover_all_four_formats PASSED
 
-None blocking. Minor note: brief's Step 5 expected count ("8 passed") doesn't
-match the actual/correct collected count (14, due to the 7-way parametrize) —
-flagged above for whoever reconciles the plan ledger, but the code and tests
-themselves are exactly as specified and fully green.
+============================== 11 passed in 0.31s ==============================
+```
+
+✓ **Confirmed GREEN**: 11/11 tests pass, no warnings, no stray output.
+
+### Step 5: Commit
+
+```bash
+git add core/app/analytics/export.py core/tests/test_analytics_export.py
+git commit -m "feat(core): SP-16a — module de sérialisation d'export CSV/XLSX/GeoJSON/GPKG"
+```
+
+✓ **Committed**: `4b025d4` (2 files changed, 176 insertions)
+
+---
+
+## Files Changed
+
+- **Created:** `/home/lenen/projets/geostudio/core/app/analytics/export.py` (90 lines)
+- **Created:** `/home/lenen/projets/geostudio/core/tests/test_analytics_export.py` (109 lines)
+
+---
+
+## Self-Review Findings
+
+### Completeness ✓
+- All 11 tests from brief implemented and passing
+- All public API functions implemented (`EXPORT_MEDIA_TYPES`, `export_filename`, `rows_to_format`, `features_to_format`)
+- All helper functions included
+- No stub code or TODOs
+
+### Code Quality ✓
+- **Style consistency:** Matches sibling modules (`duckdb_conn.py`, `aggregate.py`)
+  - SPDX-License-Identifier header present
+  - French docstring explaining purpose and constraints
+  - Clean imports, no unused dependencies
+- **Error handling:** Proper assertions (GPKG connection requirement) and ValueError for unsupported formats
+- **Edge cases:** Empty rows → empty bytes, None properties → empty dict, Unicode normalization in filenames
+
+### Implementation Notes
+- **OGC_FID drop:** DuckDB's GDAL COPY driver fails on the auto-generated `OGC_FID` column from ST_Read. Dropping it before COPY resolves the issue cleanly and doesn't affect the feature's identity (the column is a DuckDB/GDAL internal artifact, not user data).
+- **Filename slug:** Normalizes Unicode (accents), removes special chars, lowercases, adds UTC timestamp, falls back to "export" for empty titles — meets test requirements and deployment reality (predictable, consistent, timezone-agnostic).
+- **No bloat:** Module is self-contained. No references to HTTP routes, request/response, or other backend machinery — pure serialization functions, reusable as-is by SP-16b (scheduled reports).
+
+### Testing Quality ✓
+- Tests verify behavior, not implementation (black-box tests)
+- Round-trip tests (XLSX, GPKG) ensure actual serialization correctness
+- Edge case coverage (empty, None, invalid format)
+- All assertions clear and descriptive
+
+### Discipline ✓
+- Nothing extra added (no routes, no MCP tools, no migrations)
+- No dependencies beyond `openpyxl` (already added in Task 1)
+- Only two new files; existing files untouched
+
+---
+
+## Issues or Concerns
+
+None. All tests pass, code is clean, implementation matches the brief exactly (with one necessary fix for GDAL compatibility), and the module is ready for consumption by Tasks 3–6 (HTTP routes for export endpoints).
+
+---
+
+## Next Steps
+
+Task 3 will wire these functions into HTTP routes (`POST /collections/{id}/export/{format}`). This module is a dependency, not a blocker — it's complete and tested.

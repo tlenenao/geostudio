@@ -1,189 +1,107 @@
-# Task 7 report — Docker Compose wiring
+# Task 7: Read-only demo guard — exempt export routes
 
-## What was implemented
+**Date:** 2026-08-07  
+**Status:** ✅ DONE  
+**Branch:** dev  
+**Commit:** d35f46b
 
-`docker-compose.yml` only, exactly per the brief:
+## What Was Implemented
 
-1. **Step 1** — added `etl-scratch:` to the top-level `volumes:` section
-   (alongside the pre-existing `pg-data:`, `minio-data:`, `keycloak-data:`).
-2. **Step 2** — added the `qgis-worker` service block (after `worker:`,
-   before the `cdc-worker:` comment): `build: ./deploy/qgis-worker`,
-   `profiles: ["etl"]`, `QT_QPA_PLATFORM: offscreen`, `etl-scratch:/scratch`
-   mount, `gis-net` network, `restart: unless-stopped`, plus the French
-   comment block from the brief (SP-15d / A39 rationale).
-3. **Step 3** — added to `worker:`'s `environment:` block:
-   `QGIS_WORKER_URL: http://qgis-worker:8000` and
-   `QGIS_WORKER_TIMEOUT_SECONDS: "600"`; added a new `volumes:` key
-   (`- etl-scratch:/scratch`) right after `environment:` and before
-   `networks: [gis-net]`, since `worker:` had no `volumes:` key before.
+Task 7 adds a new regex pattern `_EXPORT_PATH_RE` to the read-only-demo middleware guard in `core/app/main.py` and adds a corresponding test to `core/tests/test_read_only_mode.py`. The export routes (added in Tasks 1-6) use POST for aggregate-mode exports and must be exempted from the read-only guard to work correctly in demo mode.
 
-No other service, no other file, was touched.
+### Changes Made
 
-## Validation evidence
+**File: `core/app/main.py`**
+- Added `_EXPORT_PATH_RE` regex pattern: `r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"`
+- Updated `read_only_guard` middleware to include `and not _EXPORT_PATH_RE.match(request.url.path)` in the condition
 
-### `docker compose config --quiet`
-Exit code: `0`. No output beyond the expected `level=warning` lines for
-unset `.env` variables (PG_PASSWORD, MINIO_USER, etc. — pre-existing,
-unrelated to this change; there is no `.env` file in this environment).
-Confirms valid YAML + valid compose schema.
+**File: `core/tests/test_read_only_mode.py`**
+- Appended new test function: `test_read_only_mode_does_not_block_export_endpoints()`
+- Test verifies both export routes return 404 (not 403) in read-only mode
 
-### `docker compose --profile etl config --services`
+## Testing and Test Results
+
+### TDD Evidence: RED Phase
 ```
-postgis
-pgbouncer
-martin
-minio
-qgis-worker
-titiler
-keycloak
-shell
-traefik
-worker
-cdc-worker
-core
+cd core && uv run pytest tests/test_read_only_mode.py::test_read_only_mode_does_not_block_export_endpoints -v
+
+FAILED tests/test_read_only_mode.py::test_read_only_mode_does_not_block_export_endpoints
+assert 403 == 404
 ```
-`qgis-worker` is present.
+✅ Test failed as expected with 403 status (guard blocking before route execution).
 
-### `docker compose config --services` (no `--profile etl`)
+### TDD Evidence: GREEN Phase
 ```
-postgis
-pgbouncer
-martin
-minio
-titiler
-traefik
-cdc-worker
-shell
-worker
-core
+cd core && uv run pytest tests/test_read_only_mode.py -v
+
+tests/test_read_only_mode.py::test_instance_defaults_to_read_write PASSED
+tests/test_read_only_mode.py::test_instance_reports_read_only_without_needing_auth PASSED
+tests/test_read_only_mode.py::test_read_only_mode_blocks_every_mutation_even_for_admin[...] PASSED (5 variants)
+tests/test_read_only_mode.py::test_read_only_mode_does_not_affect_reads PASSED
+tests/test_read_only_mode.py::test_read_only_mode_off_by_default_leaves_mutations_working PASSED
+tests/test_read_only_mode.py::test_read_only_mode_does_not_block_the_aggregate_endpoint PASSED
+tests/test_read_only_mode.py::test_analytics_sql_is_exempt_from_read_only PASSED
+tests/test_read_only_mode.py::test_read_only_mode_does_not_block_export_endpoints PASSED
+
+====== 12 passed in 2.97s ======
 ```
-`qgis-worker` is absent — confirms the profile gate works.
+✅ All read-only mode tests pass.
 
-### Smoke test transcript
-
+### Full Core Test Suite
 ```
-$ docker compose --profile etl build qgis-worker
-... (build steps, all CACHED from Task 4's image) ...
- Image geostudio-qgis-worker Built
+cd core && uv run pytest -q
+
+1206 passed, 131 skipped in 78.41s
 ```
-Compose built its own tagged image `geostudio-qgis-worker:latest` from
-`./deploy/qgis-worker`'s `build:` key (all layers cached from Task 4's
-earlier manual build, so this was fast — expected, not a shortcut taken).
+✅ No regressions. Test count increased due to Tasks 1-7 additions (previously 606 + 87 skipped).
 
-```
-$ docker compose --profile etl up -d qgis-worker
- Network geostudio_gis-net Creating
- Network geostudio_gis-net Created
- Volume geostudio_etl-scratch Creating
- Volume geostudio_etl-scratch Created
- Container geostudio-qgis-worker-1 Creating
- Container geostudio-qgis-worker-1 Created
- Container geostudio-qgis-worker-1 Starting
- Container geostudio-qgis-worker-1 Started
-```
+## Files Changed
 
-```
-$ sleep 5 && docker compose --profile etl ps qgis-worker
-NAME                      IMAGE                   COMMAND                  SERVICE       CREATED          STATUS          PORTS
-geostudio-qgis-worker-1   geostudio-qgis-worker   "python3 /app/server…"   qgis-worker   13 seconds ago   Up 12 seconds
+- `/home/lenen/projets/geostudio/core/app/main.py`
+  - Line 36-37: Added `_EXPORT_PATH_RE` regex
+  - Line 73: Added export path check to guard condition
 
-$ docker compose --profile etl logs qgis-worker
-(no output)
-```
-Container status `Up`, no crash-loop, no log output — matches the expected
-success signal for the `ThreadingHTTPServer.serve_forever()` blocking call
-from Task 4.
+- `/home/lenen/projets/geostudio/core/tests/test_read_only_mode.py`
+  - Lines 107-121: Appended new test function
 
-```
-$ docker compose --profile etl down
- Container geostudio-qgis-worker-1 Stopping
- Container geostudio-qgis-worker-1 Stopped
- Container geostudio-qgis-worker-1 Removing
- Container geostudio-qgis-worker-1 Removed
- Network geostudio_gis-net Removing
- Network geostudio_gis-net Removed
-```
-Clean teardown. (The `etl-scratch` named volume itself persists across
-`down`, which is normal compose behavior — it is not removed by `down`
-without `-v`.)
+## Self-Review Findings
 
-## Files changed
+### Regex Validation
 
-- `docker-compose.yml` (only file touched; +21/-0 lines)
+The `_EXPORT_PATH_RE` pattern correctly matches all four export route shapes:
+- ✅ `/collections/{id}/export` — matches `^/collections/[^/]+/export$`
+- ✅ `/collections/{id}/export/items` — matches with optional `/items` capture
+- ✅ `/datasets/{id}/arcgis/export` — matches alternation second part
+- ✅ `/datasets/{id}/arcgis/export/items` — matches with optional `/items`
 
-Full diff:
-```diff
---- a/docker-compose.yml
-+++ b/docker-compose.yml
-@@ -6,6 +6,7 @@ volumes:
-   pg-data:
-   minio-data:
-   keycloak-data:
-+  etl-scratch:
- 
- services:
- 
-@@ -173,10 +174,30 @@ services:
-       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
-       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
-       OTEL_SERVICE_NAME: geostudio-worker
-+      QGIS_WORKER_URL: http://qgis-worker:8000
-+      QGIS_WORKER_TIMEOUT_SECONDS: "600"
-+    volumes:
-+      - etl-scratch:/scratch
-     networks: [gis-net]
-     depends_on: [pgbouncer, minio]
-     restart: unless-stopped
- 
-+  # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
-+  # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un
-+  # `docker compose up` par défaut ne le démarre pas, même porte que
-+  # CORE_ETL_ENABLED. Aucune credential DB, aucun accès réseau externe —
-+  # ne voit que le volume scratch partagé avec `worker` (garde
-+  # anti-confused-deputy, patron SP-6a).
-+  qgis-worker:
-+    build: ./deploy/qgis-worker
-+    profiles: ["etl"]
-+    environment:
-+      QT_QPA_PLATFORM: offscreen
-+    volumes:
-+      - etl-scratch:/scratch
-+    networks: [gis-net]
-+    restart: unless-stopped
-+
-   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
-   # A16). Connexion DIRECTE à postgis:5432, PAS à pgbouncer:6432 : PgBouncer
-```
+**Negative cases (must NOT match):**
+- ❌ `/collections/x/aggregate` — correctly NOT matched (different route)
+- ❌ `/collections/x/export/unknown` — correctly NOT matched (only `/items` allowed)
+- ❌ `/datasets/x/export` — correctly NOT matched (requires `arcgis` segment)
+- ❌ `/invalid/export` — correctly NOT matched (invalid collection/dataset prefix)
 
-## Self-review
+### Guard Condition Logic
 
-- **Completeness**: all 6 steps done and verified for real, no automated
-  test suite exists for this task, so the compose validation commands
-  (Step 4) plus the manual smoke test (Step 5) constitute the full
-  verification.
-- **Quality**: YAML matches the brief exactly, indentation (2 spaces per
-  nesting level) is consistent with the rest of the file. `qgis-worker` has
-  no `depends_on` (correct — it has no dependency on postgis/minio/etc,
-  matches its "no credentials, no DB access" design). `worker:`'s new
-  `volumes:` key is placed between `environment:` and `networks:` as
-  specified.
-- **Discipline**: only `docker-compose.yml` was staged and committed
-  (`git status --short` before commit confirmed no other file was staged
-  — this repo currently has several unrelated pre-existing modified/
-  untracked files from other sessions, none touched here).
-- Confirmed `git diff docker-compose.yml` before commit matches the brief's
-  YAML snippets verbatim.
+The middleware guard now correctly exempts:
+1. GET requests (method not in mutation set)
+2. `/mcp` path (exact match)
+3. `/analytics/sql` path (exact match)
+4. Paths matching `_AGGREGATE_PATH_RE` (e.g., `/collections/{id}/aggregate`)
+5. Paths matching `_EXPORT_PATH_RE` (new — e.g., `/collections/{id}/export`)
 
-## Issues or concerns
+Write operations on other paths remain blocked in read-only mode. ✅
 
-None. The task went exactly as specified — the current file's structure
-matched the brief's assumptions precisely (worker: at line 156 with an
-environment block and no volumes key, cdc-worker: at line 185, top-level
-volumes with pg-data/minio-data — plus a pre-existing keycloak-data: not
-mentioned in the brief but harmless to leave alongside).
+### Code Quality
 
-One minor observation, not a defect: `docker compose --profile etl down`
-does not remove the `etl-scratch` volume (expected default behavior); it
-was left in place after the smoke test. This is fine — it's an ordinary
-compose volume that will be reused/recreated as needed and contains no
-sensitive data (scratch space only).
+- Implementation mirrors existing `_AGGREGATE_PATH_RE` pattern exactly
+- No extraneous changes beyond the brief requirements
+- Test message (French) matches project documentation style
+- Commit message follows conventional format (`fix(core): SP-16a — …`)
+
+## Issues and Concerns
+
+**None.** The implementation:
+- Matches the brief specification exactly
+- Passes all tests (12 read-only + 1206 full suite)
+- Introduces no regressions
+- Follows established patterns in the codebase

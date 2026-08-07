@@ -1,254 +1,222 @@
-## Task 5: Wire into the runtime — `_prepare()` dispatch, end-to-end tests
+### Task 5: `POST /datasets/{id}/arcgis/export` (aggregate mode, arcgis-backed)
 
 **Files:**
-- Modify: `core/app/pipelines/runtime.py`
-- Test: `core/tests/test_pipeline_runtime.py`
-- Test: `core/tests/test_pipeline_config_validation.py` (one new regression test, no code change to `config_validation.py`)
+- Modify: `core/app/harvest/routes.py`
+- Test: `core/tests/test_harvest_dataset_arcgis_export_routes.py` (new)
 
 **Interfaces:**
-- Consumes: `app.pipelines.connector_runtime.materialize_rest_connector`,
-  `materialize_postgres_connector`, `ConnectorRuntimeError` (Tasks 3/4);
-  `ReaderConnectorRestParams`, `ReaderConnectorPostgresParams` (Task 1).
-- Produces: no new public interface — `_prepare()`'s reader-materialization
-  loop now dispatches on `node.op` instead of assuming `reader.collection`.
-  This is the terminal task of the plan.
+- Consumes: `rows_to_format`, `EXPORT_MEDIA_TYPES`, `export_filename` (Task 2); `_resolve_arcgis_dataset`, `_groupby_fields`, `_measure_label`, `live_query` (all already present in this file).
+- Produces: route `POST /datasets/{item_id}/arcgis/export?format=csv|xlsx`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `core/tests/test_pipeline_runtime.py`:
+Create `core/tests/test_harvest_dataset_arcgis_export_routes.py`, mirroring `core/tests/test_harvest_dataset_arcgis_routes.py`'s fixture:
 
 ```python
-def test_preview_reader_connector_rest_feeds_downstream_filter(tmp_path, monkeypatch, httpserver):
-    from app.pipelines import egress as pipelines_egress
-    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
-    httpserver.expect_request("/items").respond_with_json(
-        [{"id": 1, "pop": 10}, {"id": 2, "pop": 5}, {"id": 3, "pop": 20}]
-    )
-    payload_nodes = [
-        {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
-         "params": {"baseUrl": httpserver.url_for("/"), "path": "items"}},
-        {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "pop > 8"}},
-        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
-    ]
-    edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
-    from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
+# SPDX-License-Identifier: Apache-2.0
+import httpx
+import pytest
+from fastapi.testclient import TestClient
 
-    rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), limit=50,
-    )
-    by_id = {r["id"]: r for r in rows}
-    assert set(by_id) == {1, 3}  # pop=5 filtered out
+from app import db
+from app.audit.models import AuditLog
+from app.auth.dependency import get_current_user
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.harvest import live_query, routes as harvest_routes
+from app.harvest import repository as harvest_repo
+from app.items import repository as items_repo
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
 
 
-def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(tmp_path):
-    payload_nodes = [
-        {"id": "r1", "kind": "reader", "op": "reader.connector.postgres",
-         "params": {"secretName": "does-not-exist", "query": "SELECT 1"}},
-    ]
-    from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": []})
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    live_query._cache.clear()
+    yield
+    live_query._cache.clear()
 
-    from app.db import init_db, make_engine, make_session_factory
-    from app.tenants.repository import get_or_create_default_tenant
+
+def _mock_client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.fixture()
+def client():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
-    with Session() as session:
-        tenant = get_or_create_default_tenant(session)
-        with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
-            runtime.preview_pipeline(
-                session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
-                endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-                base_uri=str(tmp_path), limit=50,
-            )
 
-
-def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, monkeypatch, httpserver):
-    from app.pipelines import egress as pipelines_egress
-    monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
-    from app.db import init_db, make_engine, make_session_factory
-    from app.secrets import repository as secrets_repo
-    from app.secrets.crypto import encrypt
-    from app.tenants.repository import get_or_create_default_tenant
-
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as session:
-        monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
-        tenant = get_or_create_default_tenant(session)
-        ciphertext, nonce = encrypt({"kind": "bearer_token", "token": "s3cr3t-leak-check"})
-        secrets_repo.create_secret(
-            session, tenant_id=tenant.id, created_by="u1", name="my-bearer", kind="bearer_token",
-            ciphertext=ciphertext, nonce=nonce,
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        alice = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="sub-1",
+            username="alice", email="a@example.com", first_name="Alice", last_name="Doe",
         )
-        session.commit()
-
-        httpserver.expect_request(
-            "/items", headers={"Authorization": "Bearer s3cr3t-leak-check"},
-        ).respond_with_json([{"id": 1, "name": "a"}])
-        payload_nodes = [
-            {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
-             "params": {"baseUrl": httpserver.url_for("/"), "path": "items", "secretName": "my-bearer"}},
-        ]
-        from app.configs.schemas import PipelinePayload
-        payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": []})
-
-        rows = runtime.preview_pipeline(
-            session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-            base_uri=str(tmp_path), limit=50,
+        source = harvest_repo.create_source(
+            s, tenant_id=tenant.id, owner_id=alice.id, type="arcgis",
+            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
+            mode="reference", enabled=True, interval_minutes=None,
         )
-        assert "s3cr3t-leak-check" not in str(rows)
-```
+        layer_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=alice.id, resource_type="external", title="Bâtiments",
+        )
+        harvest_repo.create_record(
+            s, tenant_id=tenant.id, source_id=source.id, external_id="layer-0",
+            item_id=layer_item.id, collection_id=None, content_hash=None,
+            external_url=SERVICE, layer_kind="feature",
+        )
+        s.commit()
 
-Append to `core/tests/test_pipeline_config_validation.py`:
+    app = create_app()
 
-```python
-def test_reader_connector_node_saves_without_secret_or_query_check(env):
-    # Design §6 : seule la FORME des params est vérifiée à la sauvegarde —
-    # ni l'existence de "does-not-exist" comme secret, ni la validité SQL de
-    # "not even sql" sont vérifiées ici (elles échoueraient proprement à
-    # l'EXÉCUTION, cf. test_pipeline_runtime.py). Une sauvegarde réussie ici
-    # n'est pas un bug.
-    body = _linear_pipeline()
-    body["config"]["pipeline"]["nodes"].append({
-        "id": "r2", "kind": "reader", "op": "reader.connector.postgres",
-        "params": {"secretName": "does-not-exist", "query": "not even sql"},
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: alice
+
+    test_client = TestClient(app)
+    test_client.layer_item_id = layer_item.id  # type: ignore[attr-defined]
+    test_client.session_factory = Session  # type: ignore[attr-defined]
+    yield test_client
+    engine.dispose()
+
+
+def _create_dataset(client, arcgis_item_id: str) -> str:
+    res = client.post("/configs", json={
+        "title": "Bâtiments (live)",
+        "config": {
+            "version": 1, "kind": "dataset",
+            "dataset": {"source": "arcgis", "arcgisItemId": arcgis_item_id, "columns": {}},
+        },
     })
-    response = env.post("/configs", json=body)
-    assert response.status_code == 201
+    assert res.status_code == 201, res.text
+    return res.json()["itemId"]
+
+
+def test_export_aggregate_csv_from_arcgis_dataset(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "features": [{"attributes": {"region": "Nord", "m0": 3}}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=csv",
+                        json={"groupBy": "region", "agg": "count"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "text/csv; charset=utf-8"
+    assert "Nord" in resp.text
+
+
+def test_export_aggregate_rejects_unknown_format(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=pdf", json={"groupBy": "region"})
+    assert resp.status_code == 400
+
+
+def test_export_aggregate_writes_an_audit_log_row(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"features": [{"attributes": {"region": "Nord", "m0": 3}}]})
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=csv", json={"groupBy": "region", "agg": "count"})
+    with client.session_factory() as s:
+        rows = s.query(AuditLog).filter_by(action="export.run").all()
+    assert len(rows) == 1
+    assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k reader_connector -v`
-Expected: FAIL — `pydantic.ValidationError`/`PipelineRuntimeError: unknown reader op 'reader.connector.rest'`
-(the `_prepare()` loop still hard-codes `ReaderCollectionParams.model_validate(node.params)` for every reader node).
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
+Expected: FAIL — 404 on every test.
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py -k reader_connector -v`
-Expected: this one already passes (config_validation.py needs no change) —
-confirms the "no code change needed" claim from Global Constraints instead
-of silently assuming it.
+- [ ] **Step 3: Implement**
 
-- [ ] **Step 3: Wire the dispatch into `_prepare()`**
-
-Modify `core/app/pipelines/runtime.py` — add to the imports, after the
-existing `from app.pipelines.ops.schemas import (...)` block:
+Edit `core/app/harvest/routes.py`. Add `Response` to the fastapi import and add the export imports:
 
 ```python
-from app.pipelines import connector_runtime
-from app.pipelines.ops.schemas import (
-    ReaderCollectionParams, ReaderConnectorPostgresParams, ReaderConnectorRestParams,
-    TransformAggregateParams, TransformCountWithinParams, TransformDeriveParams,
-    TransformFilterParams, TransformH3AggregateParams, TransformIntersectionParams,
-    TransformJoinParams, TransformQgisParams, WriterCollectionParams, WriterDatasetParams,
-    WriterExportParams,
-)
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 ```
 
-Replace the reader-materialization loop inside `_prepare()` (currently):
+```python
+from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
+from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
+```
+
+Add the route after `get_dataset_arcgis_aggregate`'s closing `return {"categoryKey": category_key, "rows": rows}`:
 
 ```python
-    for node in ordered:
-        if node.kind != "reader":
-            continue
-        p = ReaderCollectionParams.model_validate(node.params)
-        table_name = _require_readable_collection_id(
-            session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
+_EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
+
+
+@router.post("/datasets/{item_id}/arcgis/export")
+def export_dataset_arcgis_aggregate(
+    item_id: str, body: AggregateRequestBody, format: str = Query(...),
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if format not in _EXPORT_FORMATS_AGGREGATE:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
         )
-        table_info = _table_info_for_collection(session, table_name)
-        view_name = f"node_{node.id}"
-        _materialize_reader(
-            conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
-            collection_id=p.collectionId, table_info=table_info,
+    if body.bucket is not None or body.split is not None or body.bins is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="bucket/split/bins are not supported for arcgis-sourced datasets",
         )
-        view_by_node[node.id] = view_name
-        srid_by_node[node.id] = table_info.srid or 4326
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+    group_by = _groupby_fields(body.groupBy)
+    measures_in = body.measures or [AggregateMeasure(field=body.field, agg=body.agg, label="value")]
+    measures = [(m.agg, m.field, _measure_label(m)) for m in measures_in]
+    try:
+        params = live_query.translate_aggregate_query(
+            group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox,
+        )
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}]},
+        )
+    try:
+        raw = live_query.fetch_query(client, external_url, params)
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+    _category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
+    content = rows_to_format(rows, format=format)
+    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    filename = export_filename(item.title if item else item_id, format=format)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="item", object_id=item_id,
+                payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 ```
-
-with:
-
-```python
-    for node in ordered:
-        if node.kind != "reader":
-            continue
-        view_name = f"node_{node.id}"
-        if node.op == "reader.collection":
-            p = ReaderCollectionParams.model_validate(node.params)
-            table_name = _require_readable_collection_id(
-                session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
-            )
-            table_info = _table_info_for_collection(session, table_name)
-            _materialize_reader(
-                conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
-                collection_id=p.collectionId, table_info=table_info,
-            )
-            srid_by_node[node.id] = table_info.srid or 4326
-        elif node.op == "reader.connector.rest":
-            p = ReaderConnectorRestParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_rest_connector(
-                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
-                    params=p, view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        elif node.op == "reader.connector.postgres":
-            p = ReaderConnectorPostgresParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_postgres_connector(
-                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
-                    params=p, view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        else:
-            raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
-        view_by_node[node.id] = view_name
-```
-
-(`srid_by_node[node.id] = 4326` for both connector ops is a harmless
-default — design §3.2/non-goals: connector output carries no geometry
-column in v0, so this value is never actually consulted by a spatial
-transform; a pipeline author who chains a spatial op directly after a
-connector reader gets a clean DuckDB error about the missing geometry
-column, not a wrong-SRID bug.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -v`
-Expected: all pass, including the 3 new `reader_connector` tests.
+Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
+Expected: PASS (3 tests)
 
-Run: `cd core && uv run pytest tests/test_pipeline_config_validation.py -v`
-Expected: all pass.
-
-- [ ] **Step 5: Verify the layering contract still holds**
-
-Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.` — `runtime.py` now imports
-`app.pipelines.connector_runtime` (same layer, always allowed) and
-transitively `app.secrets`/`app.analytics` (already-legal directions,
-confirmed in Global Constraints); `app.pipelines.egress` still imports
-nothing from `app.harvest`.
-
-- [ ] **Step 6: Run the full core test suite to confirm no regression**
-
-Run: `cd core && uv run pytest -v`
-Expected: all pre-existing tests still pass — this plan is additive only
-(2 new op catalog entries, 1 new guard module, 1 new connector-runtime
-module, 1 dispatch branch in an existing loop; no route, MCP tool, or
-existing op's behavior changed).
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/runtime.py core/tests/test_pipeline_runtime.py \
-  core/tests/test_pipeline_config_validation.py
-git commit -m "feat(core): pipelines — wire reader.connector.rest/postgres into runtime dispatch"
+git add core/app/harvest/routes.py core/tests/test_harvest_dataset_arcgis_export_routes.py
+git commit -m "feat(core): SP-16a — POST /datasets/{id}/arcgis/export (mode agrégé CSV/XLSX)"
 ```
+
+---
+

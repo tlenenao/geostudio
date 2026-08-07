@@ -1,234 +1,221 @@
-## Task 2: SSRF egress guard for `app.pipelines` — `app/pipelines/egress.py`
+### Task 2: Serialization module `app.analytics.export`
 
 **Files:**
-- Create: `core/app/pipelines/egress.py`
-- Modify: `core/pyproject.toml` (add `requests` dependency)
-- Test: `core/tests/test_pipeline_egress.py`
+- Create: `core/app/analytics/export.py`
+- Test: `core/tests/test_analytics_export.py`
 
 **Interfaces:**
-- Produces: `app.pipelines.egress.EgressBlockedError`,
-  `assert_egress_allowed(url: str) -> None`,
-  `build_guarded_session() -> requests.Session`. Consumed by Task 3
-  (`connector_runtime.materialize_rest_connector` passes the guarded
-  session to dlt's `RESTClient`).
+- Consumes: `open_spatial_connection()` from Task 1 (test-only, for the GPKG round-trip test).
+- Produces (used by Tasks 3-6):
+  - `EXPORT_MEDIA_TYPES: dict[str, str]` — keys `"csv"`, `"xlsx"`, `"geojson"`, `"gpkg"`.
+  - `export_filename(title: str, *, format: str) -> str`
+  - `rows_to_format(rows: list[dict], *, format: str) -> bytes` — `format` must be `"csv"` or `"xlsx"`.
+  - `features_to_format(features: list[dict], *, format: str, conn=None) -> bytes` — `format` one of `"csv"`/`"xlsx"`/`"geojson"`/`"gpkg"`; `conn` (a `duckdb.DuckDBPyConnection` with `spatial` loaded) is required only when `format == "gpkg"`.
 
-- [ ] **Step 1: Add the `requests` dependency**
+- [ ] **Step 1: Write the failing tests**
 
-Modify `core/pyproject.toml` — in `dependencies = [...]`, add after
-`"httpx>=0.27",`:
-
-```toml
-    "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
-                       # RESTClient utilise `requests`, pas httpx (que le reste
-                       # du dépôt utilise déjà) ; déclaré ici en dépendance
-                       # directe plutôt que de compter sur la transitive de dlt.
-```
-
-Run: `cd core && uv sync`
-Expected: resolves; `requests` becomes a direct dependency (it was almost
-certainly already present transitively via other packages, but wasn't
-importable as a guaranteed direct dependency before this).
-
-- [ ] **Step 2: Write the failing tests**
-
-Create `core/tests/test_pipeline_egress.py` (mirrors
-`core/tests/test_harvest_egress.py` exactly, adapted from `httpx` to
-`requests`):
+Create `core/tests/test_analytics_export.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-import socket
+import json
 
+import openpyxl
 import pytest
-import requests
 
-from app.pipelines.egress import (
-    EgressBlockedError,
-    assert_egress_allowed,
-    build_guarded_session,
+from app.analytics.duckdb_conn import open_spatial_connection
+from app.analytics.export import (
+    EXPORT_MEDIA_TYPES,
+    export_filename,
+    features_to_format,
+    rows_to_format,
 )
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://127.0.0.1/x",
-        "http://169.254.169.254/latest/meta-data/",
-        "http://10.0.0.5/x",
-        "http://192.168.1.1/x",
-        "http://[::1]/x",
-        "http://[fc00::1]/x",
-        "http://0.0.0.0/x",
-    ],
-)
-def test_assert_blocks_internal_ip_literals_without_dns(url):
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed(url)
+def test_rows_to_format_csv_has_header_and_data_rows():
+    content = rows_to_format([{"region": "Nord", "pop": 10}, {"region": "Sud", "pop": 5}], format="csv")
+    text = content.decode("utf-8")
+    assert text.splitlines()[0] == "region,pop"
+    assert "Nord,10" in text
 
 
-def test_assert_allows_public_ip_literal():
-    assert_egress_allowed("https://93.184.216.34/x") is None
+def test_rows_to_format_csv_empty_rows_is_empty_bytes():
+    assert rows_to_format([], format="csv") == b""
 
 
-def test_assert_blocks_non_http_scheme():
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("file:///etc/passwd")
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("ftp://example.com/x")
+def test_rows_to_format_xlsx_round_trips_through_openpyxl():
+    content = rows_to_format([{"region": "Nord", "pop": 10}], format="xlsx")
+    import io
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows == [("region", "pop"), ("Nord", 10)]
 
 
-def test_assert_blocks_hostname_resolving_to_internal(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("https://evil.example.com/x")
+def test_rows_to_format_rejects_geojson():
+    with pytest.raises(ValueError):
+        rows_to_format([{"a": 1}], format="geojson")
 
 
-def test_assert_allows_hostname_resolving_to_public(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    assert_egress_allowed("https://public.example.com/x") is None
-
-
-def test_allowlist_restricts_otherwise_allowed_public_host(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "other.example.com")
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("https://public.example.com/x")
-    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "public.example.com,other.example.com")
-    assert_egress_allowed("https://public.example.com/x") is None
+def test_features_to_format_geojson_wraps_a_feature_collection():
+    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
+    content = features_to_format(features, format="geojson")
+    body = json.loads(content)
+    assert body == {"type": "FeatureCollection", "features": features}
 
 
-def test_guarded_session_blocks_before_connection():
-    # 127.0.0.1:9 (discard) : la garde doit lever AVANT toute tentative de
-    # connexion réseau — donc EgressBlockedError, jamais un ConnectionError.
-    session = build_guarded_session()
-    with pytest.raises(EgressBlockedError):
-        session.get("http://127.0.0.1:9/x", timeout=1.0)
+def test_features_to_format_csv_flattens_properties_and_drops_geometry():
+    features = [{"type": "Feature", "properties": {"nom": "X", "pop": 3}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
+    content = features_to_format(features, format="csv")
+    text = content.decode("utf-8")
+    assert text.splitlines()[0] == "nom,pop"
+    assert "geometry" not in text
 
 
-def test_guarded_session_is_a_real_requests_session():
-    session = build_guarded_session()
-    assert isinstance(session, requests.Session)
+def test_features_to_format_gpkg_requires_a_connection():
+    with pytest.raises(AssertionError):
+        features_to_format([{"type": "Feature", "properties": {}, "geometry": None}], format="gpkg")
+
+
+def test_features_to_format_gpkg_round_trips_a_point():
+    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}}]
+    conn = open_spatial_connection()
+    try:
+        content = features_to_format(features, format="gpkg", conn=conn)
+        assert content[:16] == b"SQLite format 3\x00"
+        read_back = open_spatial_connection()
+        try:
+            with open("/tmp/sp16a_test.gpkg", "wb") as f:
+                f.write(content)
+            row = read_back.execute("SELECT nom FROM ST_Read('/tmp/sp16a_test.gpkg')").fetchone()
+            assert row[0] == "X"
+        finally:
+            read_back.close()
+    finally:
+        conn.close()
+
+
+def test_export_filename_slugifies_the_title_and_appends_the_format():
+    name = export_filename("Bâtiments (2026)", format="csv")
+    assert name.startswith("batiments-2026")
+    assert name.endswith(".csv")
+
+
+def test_export_filename_falls_back_to_export_for_an_empty_title():
+    assert export_filename("", format="xlsx").startswith("export")
+
+
+def test_export_media_types_cover_all_four_formats():
+    assert set(EXPORT_MEDIA_TYPES) == {"csv", "xlsx", "geojson", "gpkg"}
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.pipelines.egress'`.
+Run: `cd core && uv run pytest tests/test_analytics_export.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.analytics.export'`
 
-- [ ] **Step 4: Implement `egress.py`**
+- [ ] **Step 3: Implement**
 
-Create `core/app/pipelines/egress.py`:
+Create `core/app/analytics/export.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Garde d'egress SSRF pour reader.connector.rest (design SP-15f §5.1) —
-duplication délibérée de app.harvest.egress : app.pipelines est positionné
-SOUS app.harvest dans le contrat de couches import-linter
-(core/pyproject.toml [[tool.importlinter.contracts]]), donc ne peut pas
-l'importer. Point d'application différent de l'original : dlt.sources.rest_api
-utilise `requests`, pas `httpx` — copier le transport httpx de
-app.harvest.egress ne garderait rien en pratique."""
-import ipaddress
-import logging
-import os
-import socket
-from urllib.parse import urlparse
+"""Sérialisation d'export (SP-16a) : lignes attributaires (mode agrégé,
+sans géométrie par construction) ou features GeoJSON (mode entités brutes)
+vers CSV/XLSX/GeoJSON/GPKG. Fonctions pures, réutilisables telles quelles
+par SP-16b (rapports planifiés) sans passer par un appel HTTP interne."""
+import json
+import re
+import tempfile
+import unicodedata
+from csv import DictWriter
+from datetime import datetime, timezone
+from io import BytesIO, StringIO
+from pathlib import Path
 
-import requests
+from openpyxl import Workbook
 
-logger = logging.getLogger(__name__)
-
-# Variable dédiée, distincte de CORE_HARVEST_EGRESS_ALLOWLIST (app.harvest) :
-# même logique de duplication que la garde elle-même, plutôt que de partager
-# un état de configuration à travers la frontière de couches.
-_ALLOWLIST_ENV = "CORE_PIPELINES_EGRESS_ALLOWLIST"
-
-
-class EgressBlockedError(Exception):
-    """Cible réseau interdite (plage interne ou hors allowlist)."""
+EXPORT_MEDIA_TYPES = {
+    "csv": "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "geojson": "application/geo+json",
+    "gpkg": "application/geopackage+sqlite3",
+}
 
 
-def _allowlist() -> set[str]:
-    raw = os.environ.get(_ALLOWLIST_ENV, "")
-    return {h.strip() for h in raw.split(",") if h.strip()}
+def export_filename(title: str, *, format: str) -> str:
+    normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower() or "export"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{slug}-{stamp}.{format}"
 
 
-def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_loopback
-        or ip.is_private
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+def rows_to_csv(rows: list[dict]) -> bytes:
+    if not rows:
+        return b""
+    buf = StringIO()
+    writer = DictWriter(buf, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8")
 
 
-def assert_egress_allowed(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
-    host = parsed.hostname
-    if not host:
-        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
-
-    try:
-        addresses = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
-
-    for ip in addresses:
-        if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
-
-    allowlist = _allowlist()
-    if allowlist and host not in allowlist:
-        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+def rows_to_xlsx(rows: list[dict]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    if rows:
+        headers = list(rows[0].keys())
+        ws.append(headers)
+        for row in rows:
+            ws.append([row.get(h) for h in headers])
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
-    def send(self, request, **kwargs):
-        assert_egress_allowed(request.url)
-        return super().send(request, **kwargs)
+def rows_to_format(rows: list[dict], *, format: str) -> bytes:
+    if format == "csv":
+        return rows_to_csv(rows)
+    if format == "xlsx":
+        return rows_to_xlsx(rows)
+    raise ValueError(f"unsupported row format '{format}'")
 
 
-def build_guarded_session() -> requests.Session:
-    session = requests.Session()
-    adapter = _GuardedHTTPAdapter()
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+def features_to_geojson(features: list[dict]) -> bytes:
+    return json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
+
+
+def features_to_gpkg(features: list[dict], conn) -> bytes:
+    with tempfile.TemporaryDirectory() as scratch_dir:
+        in_path = Path(scratch_dir) / "in.geojson"
+        out_path = Path(scratch_dir) / "out.gpkg"
+        in_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+        conn.execute(f"CREATE TABLE t AS SELECT * FROM ST_Read('{in_path}')")
+        conn.execute(f"COPY t TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')")
+        return out_path.read_bytes()
+
+
+def features_to_format(features: list[dict], *, format: str, conn=None) -> bytes:
+    if format in ("csv", "xlsx"):
+        return rows_to_format([f.get("properties") or {} for f in features], format=format)
+    if format == "geojson":
+        return features_to_geojson(features)
+    if format == "gpkg":
+        assert conn is not None, "features_to_format(format='gpkg') requires a duckdb connection"
+        return features_to_gpkg(features, conn)
+    raise ValueError(f"unsupported feature format '{format}'")
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
-Expected: 8 passed.
+Run: `cd core && uv run pytest tests/test_analytics_export.py -v`
+Expected: PASS (11 tests)
 
-- [ ] **Step 6: Verify the layering contract still holds**
-
-Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.` — `egress.py` imports nothing from
-any other `app.*` module, so this only confirms nothing else broke.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/egress.py core/pyproject.toml core/uv.lock core/tests/test_pipeline_egress.py
-git commit -m "feat(core): pipelines — SSRF egress guard for reader.connector.rest"
+git add core/app/analytics/export.py core/tests/test_analytics_export.py
+git commit -m "feat(core): SP-16a — module de sérialisation d'export CSV/XLSX/GeoJSON/GPKG"
 ```
 
 ---

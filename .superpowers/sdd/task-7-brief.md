@@ -1,92 +1,80 @@
-## Task 7: Docker Compose wiring
+### Task 7: Read-only demo guard — exempt export routes
 
 **Files:**
-- Modify: `docker-compose.yml`
+- Modify: `core/app/main.py`
+- Modify: `core/tests/test_read_only_mode.py` (append)
 
 **Interfaces:**
-- Produces: `qgis-worker` service (profile `etl`), `etl-scratch` named
-  volume shared with `worker`, `worker`'s new `QGIS_WORKER_URL`/
-  `QGIS_WORKER_TIMEOUT_SECONDS` env vars + volume mount.
+- Consumes: nothing new (pure regex addition to the existing middleware).
 
-- [ ] **Step 1: Add the named volume**
+- [ ] **Step 1: Write the failing test**
 
-Modify `docker-compose.yml`'s top-level `volumes:` section (currently
-`pg-data:` and `minio-data:`, around line 5-8):
+Append to `core/tests/test_read_only_mode.py`:
 
-```yaml
-volumes:
-  pg-data:
-  minio-data:
-  etl-scratch:
+```python
+def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
+    """POST .../export (mode agrégé) est une lecture malgré son verbe HTTP,
+    même raisonnement que POST /collections/{id}/aggregate (SP-16a) : sans
+    cette exemption, une démo publique en lecture seule casserait le bouton
+    Exporter de tout widget analytique."""
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    resp = env.post("/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
+    assert resp.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+
+    resp = env.post("/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
+    assert resp.status_code == 404
 ```
 
-- [ ] **Step 2: Add the `qgis-worker` service**
+- [ ] **Step 2: Run to verify it fails**
 
-Add a new service block near `worker` (after the `worker:` block, around
-line 176, before the `cdc-worker:` comment):
+Run: `cd core && uv run pytest tests/test_read_only_mode.py -k export -v`
+Expected: FAIL — both requests return 403 with `{"detail": "Mode démo : lecture seule, écritures désactivées."}`.
 
-```yaml
-  # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
-  # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un
-  # `docker compose up` par défaut ne le démarre pas, même porte que
-  # CORE_ETL_ENABLED. Aucune credential DB, aucun accès réseau externe —
-  # ne voit que le volume scratch partagé avec `worker` (garde
-  # anti-confused-deputy, patron SP-6a).
-  qgis-worker:
-    build: ./deploy/qgis-worker
-    profiles: ["etl"]
-    environment:
-      QT_QPA_PLATFORM: offscreen
-    volumes:
-      - etl-scratch:/scratch
-    networks: [gis-net]
-    restart: unless-stopped
+- [ ] **Step 3: Implement**
+
+Edit `core/app/main.py`. Change:
+
+```python
+_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 ```
 
-- [ ] **Step 3: Wire `worker`'s env vars + volume**
+to:
 
-Modify `docker-compose.yml`'s `worker:` service block — add to its
-`environment:` section:
-
-```yaml
-      QGIS_WORKER_URL: http://qgis-worker:8000
-      QGIS_WORKER_TIMEOUT_SECONDS: "600"
+```python
+_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$")
 ```
 
-`worker:` (`docker-compose.yml:156-176`) has no `volumes:` key today —
-add one, right after its `environment:` block and before `networks:
-[gis-net]`:
+Change the guard condition:
 
-```yaml
-    volumes:
-      - etl-scratch:/scratch
+```python
+    @app.middleware("http")
+    async def read_only_guard(request: Request, call_next):
+        if (
+            is_read_only_mode()
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path != "/mcp"
+            and request.url.path != "/analytics/sql"
+            and not _AGGREGATE_PATH_RE.match(request.url.path)
+            and not _EXPORT_PATH_RE.match(request.url.path)
+        ):
 ```
 
-- [ ] **Step 4: Validate the compose file**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `docker compose config --quiet`
-Expected: no output, exit code 0 (valid YAML + valid compose schema).
+Run: `cd core && uv run pytest tests/test_read_only_mode.py -v`
+Expected: PASS (all tests in the file)
 
-Run: `docker compose --profile etl config --services`
-Expected: includes `qgis-worker` in the service list (confirms the profile
-gate works as intended — omit `--profile etl` and re-run to confirm
-`qgis-worker` is absent from the default service list).
+- [ ] **Step 5: Run the full core test suite**
 
-- [ ] **Step 5: Smoke-test the full compose service (manual, not automated)**
-
-Run: `docker compose --profile etl build qgis-worker && docker compose --profile etl up -d qgis-worker`
-Expected: service starts, `docker compose --profile etl logs qgis-worker`
-shows no crash loop (the `ThreadingHTTPServer` from Task 4 blocks forever
-on `serve_forever()`, so "no output, still running" after a few seconds is
-the success signal).
-
-Run: `docker compose --profile etl down`
+Run: `cd core && uv run pytest -q`
+Expected: all tests pass (previously: 606 executed + 87 skipped, now +~30 new tests from Tasks 1-7)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docker-compose.yml
-git commit -m "feat(deploy): wire qgis-worker into compose behind the etl profile"
+git add core/app/main.py core/tests/test_read_only_mode.py
+git commit -m "fix(core): SP-16a — exempte les routes d'export du garde lecture-seule démo"
 ```
 
 ---

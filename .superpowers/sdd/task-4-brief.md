@@ -1,159 +1,170 @@
-## Task 4: Postgres connector materialization — `connector_runtime.py` (part 2)
+### Task 4: `GET /collections/{id}/export/items` (raw-entities mode, collection-backed)
 
 **Files:**
-- Modify: `core/app/pipelines/connector_runtime.py`
-- Test: `core/tests/test_pipeline_connector_runtime.py`
+- Modify: `core/app/features/routes.py`
+- Modify: `core/tests/test_features_export_routes.py` (same file as Task 3, append)
 
 **Interfaces:**
-- Consumes: `app.analytics.sql_sandbox.parse_ast`, `validate_select_only`,
-  `SqlSandboxError` (existing, already imported the same way by
-  `app.pipelines.expr_validation`).
-- Produces: `app.pipelines.connector_runtime.materialize_postgres_connector(conn, *, session, tenant_id, node_id, params, view_name) -> None`.
-  Consumed by Task 5 (`runtime.py`'s `_prepare()`).
+- Consumes: `features_to_format` (Task 2), `open_spatial_connection` (Task 1), `_parse_bbox`, `_parse_geom_intersects`, `_collect_filters`, `get_features_repo`, `get_rls_scope`, `FilterError` (all already present in this file), `MAX_LIMIT` (already present, = 1000).
+- Produces: route `GET /collections/{collection_id}/export/items?format=csv|xlsx|geojson|gpkg` — used by Task 8 and by Task 12 (`DatasetEditPage`, unfiltered, all formats).
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `core/tests/test_pipeline_connector_runtime.py`:
+Append to `core/tests/test_features_export_routes.py`:
 
 ```python
-from app.analytics.sql_sandbox import SqlSandboxError
-from app.pipelines.ops.schemas import ReaderConnectorPostgresParams
+def test_export_items_geojson_returns_a_feature_collection(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    # items export reads from the live PostGIS-backed collection table via
+    # select_features, not the GeoParquet CDC lake used by aggregate — but
+    # this fixture never wrote actual rows to the fake sqlite-backed
+    # collection table, only to the CDC parquet lake (_seed). To exercise
+    # the items path meaningfully, create features through the normal write
+    # route first.
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/geo+json"
+    body = resp.json()
+    assert body["type"] == "FeatureCollection"
+    assert len(body["features"]) == 1
+    assert body["features"][0]["properties"]["region"] == "Nord"
 
 
-def _pg_dsn(pg_engine) -> str:
-    # Même conversion que conftest.py::pg_engine_with_procrastinate_schema :
-    # CORE_TEST_DATABASE_URL est au format SQLAlchemy "postgresql+psycopg://",
-    # le DSN d'un secret postgres_dsn est un DSN "postgresql://" ordinaire
-    # (format vérifié par SP-15e's test_secrets_repository.py).
-    return str(pg_engine.url).replace("postgresql+psycopg://", "postgresql://")
+def test_export_items_csv_flattens_properties(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    assert resp.status_code == 200
+    assert "Nord" in resp.text
+    assert "geometry" not in resp.text.splitlines()[0]
 
 
-@pytest.fixture()
-def pg_secret(session, tenant, pg_engine):
-    return _create_secret(
-        session, tenant, name="warehouse-pg", kind="postgres_dsn",
-        payload={"kind": "postgres_dsn", "dsn": _pg_dsn(pg_engine)},
-    )
+def test_export_items_gpkg_returns_a_sqlite_container(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=gpkg")
+    assert resp.status_code == 200
+    assert resp.content[:16] == b"SQLite format 3\x00"
 
 
-def test_materialize_postgres_connector_round_trips_query(conn, session, tenant, pg_engine, pg_secret):
-    from sqlalchemy import text
-
-    with pg_engine.begin() as db_conn:
-        db_conn.execute(text("CREATE TABLE IF NOT EXISTS sp15f_towns (id int, name text)"))
-        db_conn.execute(text("DELETE FROM sp15f_towns"))
-        db_conn.execute(text("INSERT INTO sp15f_towns (id, name) VALUES (1, 'Nord'), (2, 'Sud')"))
-
-    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="SELECT id, name FROM sp15f_towns ORDER BY id")
-    connector_runtime.materialize_postgres_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="p1", params=params, view_name="node_p1",
-    )
-    rows = conn.execute("SELECT id, name FROM node_p1 ORDER BY id").fetchall()
-    assert rows == [(1, "Nord"), (2, "Sud")]
+def test_export_items_rejects_unknown_format(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    resp = client.get(f"/collections/{col['id']}/export/items?format=pdf")
+    assert resp.status_code == 400
 
 
-def test_materialize_postgres_connector_rejects_non_select(conn, session, tenant, pg_secret):
-    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="DELETE FROM sp15f_towns")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p2", params=params, view_name="node_p2",
-        )
-
-
-def test_materialize_postgres_connector_wrong_secret_kind_raises(conn, session, tenant):
-    _create_secret(session, tenant, name="bearer-secret", kind="bearer_token",
-                    payload={"kind": "bearer_token", "token": "tok"})
-    params = ReaderConnectorPostgresParams(secretName="bearer-secret", query="SELECT 1")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.postgres"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p3", params=params, view_name="node_p3",
-        )
-
-
-def test_materialize_postgres_connector_missing_secret_raises(conn, session, tenant):
-    params = ReaderConnectorPostgresParams(secretName="does-not-exist", query="SELECT 1")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p4", params=params, view_name="node_p4",
-        )
+def test_export_items_caps_at_10000_entities(env, monkeypatch):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    import app.features.routes as routes_module
+    monkeypatch.setattr(routes_module, "EXPORT_ITEMS_CAP", 1)
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "properties": {"region": "Nord"}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    client.post(f"/collections/{col['id']}/items", json={
+        "properties": {"region": "Sud"}, "geometry": {"type": "Point", "coordinates": [1, 1]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    assert resp.status_code == 413
 ```
 
-These four tests need `pg_engine` (from `core/tests/conftest.py`) — add the
-fixture to the test function signatures above (already done); no new
-fixtures beyond `_pg_dsn`/`pg_secret` need to be added to `conftest.py`
-itself. Tests using `pg_engine` transitively skip with
-`pytest.skip("CORE_TEST_DATABASE_URL non défini...")` when no test database
-is configured, same as every other `postgis`-marked test in this repo — no
-new pytest marker needed (`conftest.py`'s existing `pg_engine` fixture
-already handles the skip).
+- [ ] **Step 2: Run to verify it fails**
 
-- [ ] **Step 2: Run tests to verify they fail**
+Run: `cd core && uv run pytest tests/test_features_export_routes.py -k items -v`
+Expected: FAIL — 404 on every new test.
 
-Run: `cd core && uv run pytest tests/test_pipeline_connector_runtime.py -k postgres -v`
-Expected: FAIL — `AttributeError: module 'app.pipelines.connector_runtime' has no attribute 'materialize_postgres_connector'`.
+- [ ] **Step 3: Implement the route**
 
-- [ ] **Step 3: Implement `materialize_postgres_connector`**
-
-Modify `core/app/pipelines/connector_runtime.py` — add to the imports:
+Add to `core/app/features/routes.py`, after the new `export_collection_aggregate` route:
 
 ```python
-import sqlalchemy as sa
+EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
+EXPORT_ITEMS_CAP = 10_000
 
-from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
-from app.pipelines.ops.schemas import ReaderConnectorPostgresParams, ReaderConnectorRestParams
-```
 
-(replacing the single-line `from app.pipelines.ops.schemas import ReaderConnectorRestParams` from Task 3).
+@router.get("/collections/{collection_id}/export/items")
+def export_collection_items(
+    collection_id: str, request: Request, format: str = Query(...),
+    bbox: str | None = None, geom_intersects: str | None = None,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    if format not in EXPORT_FORMATS_ITEMS:
+        raise _validation_error(
+            [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}])
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    parsed_bbox = _parse_bbox(bbox)
+    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
+    filters = _collect_filters(request)
 
-Append at the end of the file:
-
-```python
-def materialize_postgres_connector(
-    conn, *, session: Session, tenant_id: str, node_id: str,
-    params: ReaderConnectorPostgresParams, view_name: str,
-) -> None:
-    # Défense en profondeur heuristique, pas une garantie (design §5.2) :
-    # `params.query` cible Postgres mais est parsée avec le dialecte SQL de
-    # DuckDB (même mécanisme que app.pipelines.expr_validation, appliqué ici
-    # à un texte SQL complet plutôt qu'à une expression bornée). Vérifié à
-    # l'exécution uniquement, jamais à la sauvegarde du pipeline.
-    try:
-        validate_select_only(parse_ast(conn, params.query))
-    except SqlSandboxError as exc:
-        raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
-
-    payload = _resolve_secret(session, tenant_id, params.secretName)
-    if payload.kind != "postgres_dsn":
-        raise ConnectorRuntimeError(
-            f"secret has kind '{payload.kind}', not usable by reader.connector.postgres "
-            "(expected postgres_dsn)"
-        )
-
-    @dlt.resource(name="records", write_disposition="replace")
-    def _records():
-        engine = sa.create_engine(payload.dsn)
+    features: list[dict] = []
+    offset = 0
+    while True:
         try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
+            with rls(session, col.tenant_id):
+                page = repo.select_features(session, info, limit=MAX_LIMIT, offset=offset,
+                                            bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
+                                            filters=filters or None)
+        except FilterError as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
+        features.extend(page.features)
+        if len(features) > EXPORT_ITEMS_CAP:
+            raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
+        if page.number_returned < MAX_LIMIT:
+            break
+        offset += MAX_LIMIT
 
-    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+    if format == "gpkg":
+        conn = open_spatial_connection()
+        try:
+            content = features_to_format(features, format=format, conn=conn)
+        finally:
+            conn.close()
+    else:
+        content = features_to_format(features, format=format)
+    filename = export_filename(col.title, format=format)
+    write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="collection", object_id=col.id,
+                payload={"format": format, "mode": "items"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+```
+
+Add `open_spatial_connection` to the `app.analytics.duckdb_conn` import (new line, since `duckdb_conn` isn't currently imported in this file):
+
+```python
+from app.analytics.duckdb_conn import open_spatial_connection
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `CORE_TEST_DATABASE_URL=<your test db url> cd core && uv run pytest tests/test_pipeline_connector_runtime.py -v`
-Expected: all pass (REST tests from Task 3 unaffected; Postgres tests pass
-if `CORE_TEST_DATABASE_URL` is set, otherwise skip cleanly — both are
-acceptable outcomes, matching this repo's existing `postgis`-gated tests).
+Run: `cd core && uv run pytest tests/test_features_export_routes.py -v`
+Expected: PASS (all tests in the file, both Task 3 and Task 4)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/connector_runtime.py core/tests/test_pipeline_connector_runtime.py
-git commit -m "feat(core): pipelines — reader.connector.postgres materialization (SELECT-only guard)"
+git add core/app/features/routes.py core/tests/test_features_export_routes.py
+git commit -m "feat(core): SP-16a — GET /collections/{id}/export/items (entités brutes, 4 formats)"
 ```
 
 ---
