@@ -172,6 +172,24 @@ test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and 
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
+test("a failed export surfaces an inline error message instead of failing silently", async () => {
+  const exportDataSource = vi.fn().mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
+
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue({ ...schema, geometry: { column: "geometry", type: "Point", srid: 4326 } }),
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(item),
+    exportDataSource,
+  });
+
+  await screen.findByText(/Dataset partagé/);
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("413");
+});
+
 test("only offers CSV/XLSX when the collection has no geometry", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
