@@ -61,10 +61,14 @@ export function validatePipelineGraphLocally(
     const entry = opsCatalog[node.op];
     const errors = entry ? validateNodeParamsShape(entry, node.params) : [`Opération inconnue : ${node.op}.`];
     const hasSecondaryEdge = edges.some((e) => e.to === node.id && e.role === "secondary");
+    const hasPrimaryEdge = edges.some((e) => e.to === node.id && e.role !== "secondary");
     if (entry) {
       if (entry.acceptsSecondaryInput) {
         const withCollectionId = node.params.withCollectionId;
         const hasParam = withCollectionId !== undefined && withCollectionId !== null && withCollectionId !== "";
+        if (!hasPrimaryEdge) {
+          errors.push(`${node.op} : requiert une arête primaire entrante.`);
+        }
         if (hasSecondaryEdge && hasParam) {
           errors.push(`${node.op} : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.`);
         } else if (!hasSecondaryEdge && !hasParam) {

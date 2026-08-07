@@ -1329,6 +1329,47 @@ def test_preview_merge_via_secondary_edge(tmp_path, monkeypatch):
     assert {r["id"] for r in rows} == {1, 2}
 
 
+def test_preview_merge_via_secondary_edge_where_secondary_is_a_transform_output(tmp_path, monkeypatch):
+    # Régression : tous les tests d'arête secondaire existants utilisent un
+    # reader brut comme prédécesseur secondaire. Ici le prédécesseur
+    # secondaire est lui-même la sortie d'un transform.filter, pour prouver
+    # que view_by_node/srid_by_node sont bien peuplés pour un nœud non-reader
+    # (garanti par l'ordre topologique, mais jamais testé jusqu'ici).
+    _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
+            {"id": "t0", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
+            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t0"},
+            {"id": "e2", "from": "t0", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "r2", "to": "t1"},
+            {"id": "e4", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert {r["id"] for r in rows} == {1, 2}
+
+
 def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, monkeypatch):
     # Régression : transform.join via arête secondaire doit produire le même
     # résultat que le chemin withCollectionId existant, pour la même donnée.
