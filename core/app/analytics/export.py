@@ -8,9 +8,11 @@ import re
 import tempfile
 import unicodedata
 from csv import DictWriter
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
+from uuid import UUID
 
 from openpyxl import Workbook
 
@@ -20,6 +22,32 @@ EXPORT_MEDIA_TYPES = {
     "geojson": "application/geo+json",
     "gpkg": "application/geopackage+sqlite3",
 }
+
+
+def _json_default(value):
+    """Encodeur de repli pour json.dumps() sur des properties issues de psycopg
+    brut (contrairement à GET /collections/{id}/items, protégé par
+    jsonable_encoder de FastAPI) : date/datetime/time -> isoformat,
+    Decimal/UUID -> str, bytes/memoryview -> None (binaire non représentable
+    en JSON/GeoJSON)."""
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, (Decimal, UUID)):
+        return str(value)
+    if isinstance(value, (bytes, memoryview)):
+        return None
+    raise TypeError(f"unserializable value of type {type(value).__name__}")
+
+
+def _xlsx_cell_value(value):
+    """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
+    nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
+    rejette les datetime tz-aware et les dict/list/tuple."""
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, default=str)
+    return value
 
 
 def export_filename(title: str, *, format: str) -> str:
@@ -46,7 +74,7 @@ def rows_to_xlsx(rows: list[dict]) -> bytes:
         headers = list(rows[0].keys())
         ws.append(headers)
         for row in rows:
-            ws.append([row.get(h) for h in headers])
+            ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -61,14 +89,18 @@ def rows_to_format(rows: list[dict], *, format: str) -> bytes:
 
 
 def features_to_geojson(features: list[dict]) -> bytes:
-    return json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
+    return json.dumps(
+        {"type": "FeatureCollection", "features": features}, default=_json_default,
+    ).encode("utf-8")
 
 
 def features_to_gpkg(features: list[dict], conn) -> bytes:
     with tempfile.TemporaryDirectory() as scratch_dir:
         in_path = Path(scratch_dir) / "in.geojson"
         out_path = Path(scratch_dir) / "out.gpkg"
-        in_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+        in_path.write_text(
+            json.dumps({"type": "FeatureCollection", "features": features}, default=_json_default),
+        )
         conn.execute(f"CREATE TABLE t AS SELECT * FROM ST_Read('{in_path}')")
         conn.execute("ALTER TABLE t DROP COLUMN OGC_FID")
         conn.execute(f"COPY t TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')")

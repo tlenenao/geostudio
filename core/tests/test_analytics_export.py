@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+import io
 import json
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import openpyxl
 import pytest
@@ -88,3 +93,66 @@ def test_export_filename_falls_back_to_export_for_an_empty_title():
 
 def test_export_media_types_cover_all_four_formats():
     assert set(EXPORT_MEDIA_TYPES) == {"csv", "xlsx", "geojson", "gpkg"}
+
+
+def test_features_to_format_geojson_encodes_datetime_decimal_and_uuid_properties():
+    # Regression (SP-16a final review, Critical #2): properties from raw psycopg
+    # rows carry native datetime/Decimal/UUID objects (no jsonable_encoder step,
+    # unlike GET /collections/{id}/items) — bare json.dumps() used to raise
+    # TypeError on any of these.
+    when = datetime(2026, 3, 1, 12, 30, tzinfo=timezone.utc)
+    row_id = UUID("12345678-1234-5678-1234-567812345678")
+    features = [{
+        "type": "Feature",
+        "geometry": None,
+        "properties": {"seen_at": when, "amount": Decimal("12.50"), "row_id": row_id, "d": date(2026, 3, 1)},
+    }]
+    content = features_to_format(features, format="geojson")
+    body = json.loads(content)
+    props = body["features"][0]["properties"]
+    assert props["seen_at"] == when.isoformat()
+    assert props["amount"] == "12.50"
+    assert props["row_id"] == str(row_id)
+    assert props["d"] == "2026-03-01"
+
+
+def test_features_to_format_gpkg_does_not_crash_on_datetime_and_decimal_properties():
+    # Same bug as above but through the GPKG path, which round-trips features
+    # through an intermediate .geojson scratch file (features_to_gpkg).
+    when = datetime(2026, 3, 1, 12, 30, tzinfo=timezone.utc)
+    features = [{
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+        "properties": {"seen_at": when, "amount": Decimal("12.50")},
+    }]
+    conn = open_spatial_connection()
+    try:
+        content = features_to_format(features, format="gpkg", conn=conn)
+        assert content[:16] == b"SQLite format 3\x00"
+    finally:
+        conn.close()
+
+
+def test_rows_to_xlsx_normalizes_a_tz_aware_datetime_to_utc_naive():
+    # Regression (SP-16a final review, Important #3): openpyxl raises
+    # "Excel does not support timezones in datetimes" on tz-aware values.
+    # A non-UTC offset must be normalized to UTC before dropping tzinfo,
+    # not just have tzinfo stripped in place (which would silently shift
+    # the wall-clock value).
+    paris_time = datetime(2026, 3, 1, 14, 30, tzinfo=ZoneInfo("Europe/Paris"))  # UTC+1
+    content = rows_to_format([{"seen_at": paris_time}], format="xlsx")
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows[1][0] == datetime(2026, 3, 1, 13, 30)  # UTC-normalized, tzinfo dropped
+
+
+def test_rows_to_xlsx_serializes_dict_and_list_values_as_json_strings():
+    # Regression (SP-16a final review, Important #3): openpyxl raises
+    # ValueError on dict/list cell values (e.g. a jsonb column).
+    content = rows_to_format([{"tags": ["a", "b"], "meta": {"k": "v"}}], format="xlsx")
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows[1][0] == json.dumps(["a", "b"])
+    assert rows[1][1] == json.dumps({"k": "v"})
