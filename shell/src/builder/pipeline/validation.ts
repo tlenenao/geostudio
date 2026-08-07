@@ -37,10 +37,17 @@ export function validatePipelineGraphLocally(
   const graphErrors: string[] = [];
   const nodeErrors: Record<string, string[]> = {};
 
-  const incomingCount = new Map<string, number>();
-  for (const e of edges) incomingCount.set(e.to, (incomingCount.get(e.to) ?? 0) + 1);
-  for (const [nodeId, count] of incomingCount) {
+  const primaryCount = new Map<string, number>();
+  const secondaryCount = new Map<string, number>();
+  for (const e of edges) {
+    const bucket = e.role === "secondary" ? secondaryCount : primaryCount;
+    bucket.set(e.to, (bucket.get(e.to) ?? 0) + 1);
+  }
+  for (const [nodeId, count] of primaryCount) {
     if (count > 1) graphErrors.push(`Un nœud ne peut avoir qu'une seule arête entrante (${nodeId}).`);
+  }
+  for (const [nodeId, count] of secondaryCount) {
+    if (count > 1) graphErrors.push(`Un nœud ne peut avoir qu'une seule arête secondaire entrante (${nodeId}).`);
   }
 
   if (hasCycle(nodes, edges)) {
@@ -52,9 +59,22 @@ export function validatePipelineGraphLocally(
 
   for (const node of nodes) {
     const entry = opsCatalog[node.op];
-    nodeErrors[node.id] = entry
-      ? validateNodeParamsShape(entry, node.params)
-      : [`Opération inconnue : ${node.op}.`];
+    const errors = entry ? validateNodeParamsShape(entry, node.params) : [`Opération inconnue : ${node.op}.`];
+    const hasSecondaryEdge = edges.some((e) => e.to === node.id && e.role === "secondary");
+    if (entry) {
+      if (entry.acceptsSecondaryInput) {
+        const withCollectionId = node.params.withCollectionId;
+        const hasParam = withCollectionId !== undefined && withCollectionId !== null && withCollectionId !== "";
+        if (hasSecondaryEdge && hasParam) {
+          errors.push(`${node.op} : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.`);
+        } else if (!hasSecondaryEdge && !hasParam) {
+          errors.push(`${node.op} : requiert soit withCollectionId, soit une arête secondaire.`);
+        }
+      } else if (hasSecondaryEdge) {
+        errors.push(`${node.op} n'accepte pas d'arête secondaire.`);
+      }
+    }
+    nodeErrors[node.id] = errors;
   }
 
   return { graphErrors, nodeErrors };
