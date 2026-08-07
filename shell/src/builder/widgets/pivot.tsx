@@ -71,7 +71,7 @@ export function registerPivotWidget(): void {
 
       return (
         <div className="relative h-full overflow-auto text-xs">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={dataSourceId} />
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={dataSourceId} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
           {props.title ? <p className="mb-1 font-medium">{String(props.title)}</p> : null}
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>

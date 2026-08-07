@@ -227,7 +227,7 @@ export function registerChartWidget(): void {
         );
         return (
           <div className="relative h-full">
-            <ExplorerMenu datasetId={datasetId} dataSourceId={originSourceId} />
+            <ExplorerMenu datasetId={datasetId} dataSourceId={originSourceId} resolvedSource={data?.resolvedSource} hasGeometry={data?.hasGeometry} />
             <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
               <EChart option={option} />
             </Suspense>
@@ -247,7 +247,7 @@ export function registerChartWidget(): void {
       }
       return (
         <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={originSourceId} />
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={originSourceId} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
           <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
             <EChart option={option} onClick={handleClick} />
           </Suspense>
