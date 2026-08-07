@@ -51,6 +51,8 @@ dependencies = [
     "duckdb>=1.0",  # SP-11b : module analytique — lit le GeoParquet CDC (SP-11a)
                     # via httpfs (S3/MinIO) + spatial (ST_Intersects sur la colonne
                     # géométrie WKB), connexion in-process éphémère par requête.
+    "openpyxl>=3.1",  # SP-16a : sérialisation d'export XLSX (app/analytics/export.py) —
+                      # aucune dépendance XLSX n'existait dans le cœur avant ce sous-plan.
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
     "opentelemetry-instrumentation-fastapi>=0.48b0",
