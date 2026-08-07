@@ -127,6 +127,24 @@ async function requestFeatureWrite<T>(
   return (await res.json()) as T;
 }
 
+async function requestBlob(
+  coreUrl: string, getToken: () => string | undefined, method: string, path: string, body?: unknown,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${coreUrl}${path}`, {
+    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match ? match[1] : "export";
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
 async function requestAnalyticsSql(
   coreUrl: string,
   token: string | undefined,
@@ -817,6 +835,25 @@ export function createItemClient(opts: {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    async exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }> {
+      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
+      const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
+      if (source.type === "statistics") {
+        const body = buildAggregateBody(source.query);
+        const path = isArcgis
+          ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
+          : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
+        return requestBlob(coreUrl, getToken, "POST", path, body);
+      }
+      const resolved = source.datasetId ? { ...source, layer: cachedDataset?.collectionId ?? source.layer } : source;
+      const qs = _queryParams(resolved.query);
+      const suffix = qs ? `&${qs}` : "";
+      const path = isArcgis
+        ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
+        : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
+      return requestBlob(coreUrl, getToken, "GET", path);
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {
