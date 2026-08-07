@@ -1,182 +1,203 @@
-# Task 4 report — Postgres connector materialization
+# Task 4 Report: `pipelines_repo.list_due_pipelines`
 
-## What was implemented
+## Summary
 
-Added `materialize_postgres_connector(conn, *, session, tenant_id, node_id, params, view_name)`
-to `core/app/pipelines/connector_runtime.py`, following the brief's Step 3
-almost verbatim:
+Successfully implemented `list_due_pipelines(session: Session) -> list[tuple[str, str]]` in `core/app/pipelines/repository.py`. This function scans all tenant configurations for pipeline configs with enabled refresh policies, determines which are due to run based on cron schedules, and returns eligible (item_id, tenant_id) tuples. Includes safety logic to reclaim stale "running"/"queued" runs older than 60 minutes.
 
-1. Parses `params.query` with DuckDB's `json_serialize_sql` (via
-   `app.analytics.sql_sandbox.parse_ast`) and validates it's a single
-   read-only SELECT (`validate_select_only`) — same mechanism
-   `app.pipelines.expr_validation` already uses for scalar expressions,
-   applied here to a full SQL text instead. `SqlSandboxError` is translated
-   to `ConnectorRuntimeError("reader.connector.postgres query rejected: …")`.
-   This is a heuristic defense-in-depth check only (DuckDB's SQL dialect,
-   not Postgres's) — never a guarantee, and only enforced at execution
-   time, never at pipeline-save time (matches design §5.2/§6).
-2. Resolves the `postgres_dsn` secret via the existing `_resolve_secret`
-   helper; raises `ConnectorRuntimeError(...not usable by
-   reader.connector.postgres...)` if the resolved secret's `kind` isn't
-   `postgres_dsn`.
-3. Builds a `@dlt.resource(name="records", write_disposition="replace")`
-   generator that opens a SQLAlchemy engine against `payload.dsn`, runs
-   `params.query` via `exec_driver_sql` with `yield_per=1000`, yields
-   `dict(row._mapping)` per row, and disposes the engine in a `finally`
-   block (so disposal happens even if the query raises).
-4. Delegates to the existing `_run_dlt_and_attach` helper (unchanged) to
-   materialize the dlt extract into a DuckDB TEMP TABLE — identical
-   mechanism to Task 3's REST connector, no duplication.
+## What Was Implemented
 
-Imports updated: added `import sqlalchemy as sa` and
-`from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only`,
-extended the `app.pipelines.ops.schemas` import to also bring in
-`ReaderConnectorPostgresParams`.
+### Files Changed
+1. **core/tests/test_pipeline_repository.py**
+   - Added datetime imports: `from datetime import datetime, timedelta, timezone`
+   - Added config-related imports: `from app.configs import repository as configs_repo` and `from app.configs.schemas import BuilderConfig`
+   - Added helper function: `_make_pipeline_config()` to create test pipeline configs
+   - Added 6 new test functions testing various scenarios for `list_due_pipelines()`
 
-## Deviations from the brief
+2. **core/app/pipelines/repository.py**
+   - Updated imports to include `timedelta` and `croniter`, plus `configs_repo`
+   - Added reclaim constant: `_RUNNING_RECLAIM_MINUTES = 60`
+   - Added function: `list_due_pipelines(session: Session) -> list[tuple[str, str]]`
 
-1. **`_pg_dsn` helper bug (found and fixed).** The brief's Step 1 test code
-   defines `_pg_dsn(pg_engine) -> str: return
-   str(pg_engine.url).replace("postgresql+psycopg://", "postgresql://")`.
-   `SQLAlchemy`'s `URL.__str__` masks the password (`gis:***@127.0.0.1:...`)
-   by design — this produced a DSN with the literal password `***`, which
-   fails authentication against the real Postgres container
-   (`psycopg2.OperationalError: password authentication failed for user
-   "gis"`), confirmed empirically on the first GREEN run attempt (13/14
-   passed, only the round-trip test failed on this). Fixed by reading the
-   DSN from `os.environ["CORE_TEST_DATABASE_URL"]` directly (same source
-   `conftest.py::pg_engine_with_procrastinate_schema` already uses for the
-   identical conversion), rather than from `str(pg_engine.url)`. Required
-   adding `import os` to the test file.
-2. **`_create_secret` call signature.** The brief's Step 1 code calls
-   `_create_secret(session, tenant, name=..., kind=..., payload=...)`, but
-   the actual helper already defined in this test file (added by Task 3)
-   is `_create_secret(session, tenant, user, *, name, kind, payload)` — it
-   requires a real `user` (FK `created_by` on `connector_secrets`, enforced
-   under SQLite `PRAGMA foreign_keys=ON`). Adapted by adding the `user`
-   fixture to `pg_secret` and to
-   `test_materialize_postgres_connector_wrong_secret_kind_raises`, and
-   passing it positionally, matching every other `_create_secret` call
-   already in this file (e.g. `my-bearer`, `my-key`, etc.).
-3. Everything else (implementation code, error messages, test bodies) was
-   used verbatim from the brief — no dlt/SQLAlchemy API mismatches were
-   found; `exec_driver_sql`/`execution_options(yield_per=...)` and
-   `sa.create_engine` behave exactly as the brief assumed on the installed
-   SQLAlchemy 2.0.51 + psycopg2 dialect.
+### Implementation Details
 
-## TDD evidence
+The `list_due_pipelines()` function:
+- Iterates over all pipeline configs via `configs_repo.list_configs_by_kind(session, kind="pipeline")`
+- Filters out pipelines without refresh policies or with disabled policies
+- For pipelines that have never run: marks them as due
+- For pipelines with a latest run:
+  - If status is "queued" or "running":
+    - Reclaims (marks as due) if created_at is older than 60 minutes
+    - Otherwise skips (in progress)
+  - If status is final (succeeded/failed):
+    - Uses croniter to calculate next scheduled tick from the run's created_at
+    - Marks as due if next tick <= now
+- Returns a list of (item_id, tenant_id) tuples for all due pipelines
 
-**RED** (before implementation):
+## Testing Results
+
+### TDD Verification
+
+**Step 1: RED (tests fail)**
 ```
-CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
-  uv run pytest tests/test_pipeline_connector_runtime.py -k postgres -v
+uv run pytest tests/test_pipeline_repository.py -v -k list_due_pipelines
 ```
-```
-FAILED tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_round_trips_query
-FAILED tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_rejects_non_select
-FAILED tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_wrong_secret_kind_raises
-FAILED tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_missing_secret_raises
-======================= 4 failed, 10 deselected in 0.78s =======================
-```
-All four failed with
-`AttributeError: module 'app.pipelines.connector_runtime' has no attribute 'materialize_postgres_connector'`,
-as expected. No skips — `pg_secret`/`pg_engine` executed against the real
-container even in this RED run (confirms `CORE_TEST_DATABASE_URL` was
-honored, not silently skipped).
+Result: 6 tests FAILED with `AttributeError: module 'app.pipelines.repository' has no attribute 'list_due_pipelines'` (expected)
 
-**First GREEN attempt** (implementation done, `_pg_dsn` bug still present):
-13 passed, 1 failed — `test_materialize_postgres_connector_round_trips_query`
-failed with `psycopg2.OperationalError: … password authentication failed
-for user "gis"` (root-caused to the `str(url)` password-masking bug above).
-
-**GREEN** (after fixing `_pg_dsn`):
+**Step 2: GREEN (tests pass)**
 ```
-CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
-  uv run pytest tests/test_pipeline_connector_runtime.py -v
+uv run pytest tests/test_pipeline_repository.py -v
 ```
+Result: 17 tests PASSED (all existing + 6 new tests):
+- test_create_run_defaults_to_queued PASSED
+- test_get_run_round_trips PASSED
+- test_get_run_scoped_to_tenant PASSED
+- test_list_runs_ordered_most_recent_first PASSED
+- test_mark_running_then_succeeded PASSED
+- test_mark_failed_records_error PASSED
+- test_append_node_stat_merges_into_existing_node_stats PASSED
+- test_append_node_stat_scoped_to_tenant PASSED
+- test_get_latest_run_returns_none_when_no_runs PASSED
+- test_get_latest_run_returns_most_recent PASSED
+- test_get_latest_run_scoped_to_tenant PASSED
+- test_list_due_pipelines_excludes_pipelines_without_refresh_policy PASSED
+- test_list_due_pipelines_excludes_disabled_policy PASSED
+- test_list_due_pipelines_includes_never_run_enabled_pipeline PASSED
+- test_list_due_pipelines_excludes_pipeline_not_yet_due PASSED
+- test_list_due_pipelines_skips_run_already_in_progress PASSED
+- test_list_due_pipelines_reclaims_stale_running_run PASSED
+
+**Step 3: Lint-imports verification**
 ```
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_unauthenticated_no_pagination PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_extracts_records_path PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_injects_bearer_token PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_injects_api_key_query_param PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_injects_basic_auth PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_paginates_page_number PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_wrong_secret_kind_raises PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_missing_secret_raises PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guard PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_rest_connector_drops_dlt_plumbing_columns PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_round_trips_query PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_rejects_non_select PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_wrong_secret_kind_raises PASSED
-tests/test_pipeline_connector_runtime.py::test_materialize_postgres_connector_missing_secret_raises PASSED
-============================== 14 passed in 3.47s ==============================
+uv run lint-imports
 ```
-The round-trip test actually created `sp15f_towns` in the real
-`postgis-test` container, inserted 2 rows, ran the pipeline through a real
-dlt→SQLAlchemy→psycopg2 connection to `127.0.0.1:5433`, and asserted the
-round-tripped rows — not a skip.
+Result: PASS — Contracts: 1 kept, 0 broken.
 
-**Full core suite** (regression check):
+## Commit
+
 ```
-CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" uv run pytest -q
+20da2b2 feat(core): pipelines — list_due_pipelines (SP-15h)
 ```
+
+## Self-Review Findings
+
+- All 6 new test cases implemented exactly as specified in the brief
+- All existing tests remain passing (no regressions)
+- Import layering verified: `app.pipelines` importing `app.configs` is an allowed direction (consistent with `app.pipelines.jobs`)
+- Exact code from brief was used (function signature, logic, constants)
+- Code follows project conventions (French docstrings for complex logic, English function names)
+- Timezone handling implemented correctly with fallback for naive datetimes
+- Reclaim logic mirrors existing pattern from `app.harvest.repository.list_due_sources`
+- croniter usage correctly integrated with datetime handling
+
+## Issues & Concerns
+
+None. Implementation is complete, tested, and verified per requirements.
+
+## Fix: reclaim anchor (SP-15h review finding, 2026-08-07)
+
+### Bug
+
+`list_due_pipelines` measured staleness of a `"running"` run from `created_at`
+(queue time, set once at `create_run` and never updated) instead of
+`started_at` (set by `mark_running` when the run actually starts). A run that
+sat `"queued"` for 55+ minutes then transitioned to `"running"` was
+immediately reclaimed as "presumably stuck" on the next sweep tick, spawning
+a duplicate concurrent run of the same pipeline.
+
+### RED
+
+Added `test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue`
+to `core/tests/test_pipeline_repository.py` (right after
+`test_list_due_pipelines_reclaims_stale_running_run`): backdates `created_at`
+by 61 minutes, then calls `mark_running` (fresh `started_at`), and asserts
+`list_due_pipelines(s) == []`. Run before the fix:
+
 ```
-1233 passed, 5 skipped in 91.19s (0:01:31)
+FAILED tests/test_pipeline_repository.py::test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue
+AssertionError: assert [('9075ff8a...', 'default')] == []
 ```
-(the 5 skips are pre-existing `qgis`-marked tests requiring the sidecar
-container, unrelated to this task — same count as before this change).
 
-## Files changed
+Confirms the bug reproduces exactly as described.
 
-- `core/app/pipelines/connector_runtime.py` — added `materialize_postgres_connector`, extended imports.
-- `core/tests/test_pipeline_connector_runtime.py` — added `import os`, `_pg_dsn` (fixed), `pg_secret` fixture (fixed to include `user`), and the 4 Postgres tests.
+### Fix
 
-## Self-review
+In `core/app/pipelines/repository.py`'s `list_due_pipelines`: for a `"running"`
+run with a non-`None` `started_at`, the reclaim anchor is now `started_at`
+(normalized to aware UTC, same pattern as the existing `created_at`
+normalization) instead of `created_at`. `"queued"` runs still anchor on
+`created_at` (no better timestamp exists before a run starts). The
+`next_tick = croniter.croniter(policy.cron, created_at)...` line was left
+untouched, as scoped.
 
-- SELECT-only guard rejects `DELETE FROM sp15f_towns` with
-  `ConnectorRuntimeError` matching "query rejected" — confirmed by
-  `test_materialize_postgres_connector_rejects_non_select` (PASSED). The
-  guard runs before secret resolution and before any engine is created, so
-  a rejected query never touches the network.
-- Wrong secret kind (`bearer_token` used where `postgres_dsn` expected)
-  raises `ConnectorRuntimeError` matching "not usable by
-  reader.connector.postgres" — confirmed by
-  `test_materialize_postgres_connector_wrong_secret_kind_raises` (PASSED).
-- Missing secret raises `ConnectorRuntimeError` matching "not found" (via
-  the existing `_resolve_secret` helper, unchanged) — confirmed by
-  `test_materialize_postgres_connector_missing_secret_raises` (PASSED).
-- Successful round-trip test hits the real `postgis-test` container (not
-  skipped) — confirmed above, and confirmed by direct `psql`-equivalent
-  SQLAlchemy connect test done before implementation
-  (`sa.create_engine('postgresql://gis:gis@127.0.0.1:5433/gis_test')` →
-  `SELECT 1` → `(1,)`).
-- SQLAlchemy engine is disposed even if the query raises: the
-  `engine.dispose()` call sits in a `finally` block wrapping the
-  `with engine.connect() as db_conn: ...` block, so it runs whether
-  `exec_driver_sql` succeeds, raises, or the generator is only partially
-  consumed. (Rejected-query and missing/wrong-secret paths never create an
-  engine at all, since those checks happen earlier — nothing to dispose in
-  those cases.)
-- Test output is pristine: reran the target file with `-rw` and grepped for
-  "warn"/"error" in the output — no matches. Full-suite run shows a clean
-  `1233 passed, 5 skipped` with no new skips or warnings introduced.
+### Deviation from the brief's stated scope — existing test had to change too
 
-## Concerns
+The brief asserted that `test_list_due_pipelines_reclaims_stale_running_run`
+"exercises a run left in `running` with backdated `created_at` AND no fresh
+`started_at` override" and would still pass unmodified under the fix. That
+turned out to be factually wrong: that test calls `repo.mark_running(s,
+run_id=run.id)` *before* backdating `created_at`, so `mark_running` sets
+`started_at` to a fresh timestamp (now) that is never backdated. Running the
+full suite after the fix confirmed this concretely:
 
-None blocking. One thing worth flagging for whoever reviews the whole
-SP-15f branch later: the SELECT-only guard parses `params.query` with
-DuckDB's SQL dialect (via `json_serialize_sql`), not Postgres's — this is
-explicitly called out as a heuristic, not a guarantee, in both the design
-doc (§5.2) and the code comment. A Postgres-specific SQL construct that
-DuckDB's parser doesn't understand would raise `SqlSandboxError("invalid
-SQL: …")` (translated to "query rejected") even for a legitimate read-only
-query — a false-positive-reject failure mode, not a security hole. Nothing
-to fix here (this is the design's accepted tradeoff, already documented),
-just noting it's inherited unchanged from the brief.
+```
+FAILED tests/test_pipeline_repository.py::test_list_due_pipelines_reclaims_stale_running_run
+assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
+```
 
-The `_pg_dsn` bug (task 4's own test helper) is worth a note for whoever
-writes Task 5+'s tests reusing the same `pg_engine`/DSN pattern: always
-build DSNs with real credentials from `CORE_TEST_DATABASE_URL` directly (as
-`conftest.py::pg_engine_with_procrastinate_schema` already does), never
-from `str(engine.url)` — the latter is safe for logging but not for
-reconnecting.
+The test's scenario as written (old `created_at`, fresh `started_at`) is
+*exactly* the "just started after a long queue" case the fix is meant to
+protect — under the corrected anchor logic it must NOT be reclaimed, which
+directly contradicts that test's own assertion. The test was implicitly
+asserting the buggy behavior as correct.
+
+Resolution applied (minimal, preserves the test's original intent of
+verifying a genuinely-stuck running run gets reclaimed): backdated
+`run.started_at` by 61 minutes as well as `run.created_at`, so the scenario
+now represents a run that actually started running over an hour ago and
+never finished — a real stuck run — rather than a run that merely waited a
+long time in queue before just starting. Added a comment explaining why
+backdating `created_at` alone is no longer sufficient post-fix, cross-
+referencing the new regression test.
+
+This was not pre-authorized in the brief's scope, but leaving the existing
+test unmodified was not an option: it would either fail (contradicting "all
+existing tests must pass") or, if left passing, would mean the fix wasn't
+actually applied. Flagging this explicitly rather than silently editing
+another task's test.
+
+### GREEN — full `test_pipeline_repository.py` (18 tests)
+
+```
+tests/test_pipeline_repository.py::test_create_run_defaults_to_queued PASSED
+tests/test_pipeline_repository.py::test_get_run_round_trips PASSED
+tests/test_pipeline_repository.py::test_get_run_scoped_to_tenant PASSED
+tests/test_pipeline_repository.py::test_list_runs_ordered_most_recent_first PASSED
+tests/test_pipeline_repository.py::test_mark_running_then_succeeded PASSED
+tests/test_pipeline_repository.py::test_mark_failed_records_error PASSED
+tests/test_pipeline_repository.py::test_append_node_stat_merges_into_existing_node_stats PASSED
+tests/test_pipeline_repository.py::test_append_node_stat_scoped_to_tenant PASSED
+tests/test_pipeline_repository.py::test_get_latest_run_returns_none_when_no_runs PASSED
+tests/test_pipeline_repository.py::test_get_latest_run_returns_most_recent PASSED
+tests/test_pipeline_repository.py::test_get_latest_run_scoped_to_tenant PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_pipelines_without_refresh_policy PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_disabled_policy PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_includes_never_run_enabled_pipeline PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_pipeline_not_yet_due PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_skips_run_already_in_progress PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_reclaims_stale_running_run PASSED
+tests/test_pipeline_repository.py::test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue PASSED
+
+18 passed in 0.80s
+```
+
+Also ran the wider pipelines suite for collateral regressions:
+`uv run pytest tests/ -k pipeline -q` → `222 passed, 14 skipped, 1060 deselected`.
+
+### lint-imports
+
+```
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
+```
+
+No regression, as expected (fix touches no imports).
