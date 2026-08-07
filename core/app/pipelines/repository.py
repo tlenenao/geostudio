@@ -38,6 +38,15 @@ def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> lis
     return list(rows)
 
 
+def get_latest_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun | None:
+    return session.execute(
+        select(PipelineRun)
+        .where(PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id)
+        .order_by(PipelineRun.created_at.desc())
+        .limit(1)
+    ).scalars().first()
+
+
 def mark_running(session: Session, *, run_id: str) -> None:
     run = session.get(PipelineRun, run_id)
     if run is None:

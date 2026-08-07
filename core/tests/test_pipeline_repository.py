@@ -161,3 +161,37 @@ def test_append_node_stat_scoped_to_tenant():
         s.commit()
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert fetched.node_stats == {}
+
+
+def test_get_latest_run_returns_none_when_no_runs():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        assert repo.get_latest_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id) is None
+
+
+def test_get_latest_run_returns_most_recent():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        second = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        s.commit()
+        latest = repo.get_latest_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        assert latest is not None
+        assert latest.id == second.id
+
+
+def test_get_latest_run_scoped_to_tenant():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        s.commit()
+        assert repo.get_latest_run(s, tenant_id="other-tenant", pipeline_item_id=pipeline_item_id) is None
