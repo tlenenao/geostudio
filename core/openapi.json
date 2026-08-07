@@ -81,6 +81,33 @@
             ],
             "title": "Bbox"
           },
+          "bins": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bins"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "enum": [
+                  "day",
+                  "week",
+                  "month"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket"
+          },
           "field": {
             "anyOf": [
               {
@@ -100,10 +127,28 @@
             "title": "Filters",
             "type": "object"
           },
+          "geomIntersects": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geomintersects"
+          },
           "groupBy": {
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -140,6 +185,40 @@
         "title": "AggregateRequestBody",
         "type": "object"
       },
+      "ApiKeyPayload": {
+        "description": "`location=\"query\"` couvre les jetons en param\u00e8tre d'URL (ex.\n`?token=...` d'un ArcGIS Feature Service, cl\u00e9 GeoServer sur un WFS) ;\n`location=\"header\"` couvre le cas g\u00e9n\u00e9rique (`X-API-Key`, etc.).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "api_key",
+            "default": "api_key",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "enum": [
+              "header",
+              "query"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "key",
+          "value"
+        ],
+        "title": "ApiKeyPayload",
+        "type": "object"
+      },
       "BaseMap": {
         "properties": {
           "style": {
@@ -151,6 +230,50 @@
           "style"
         ],
         "title": "BaseMap",
+        "type": "object"
+      },
+      "BasicAuthPayload": {
+        "description": "Couvre aussi un WFS/WMS/WMTS/CSW gat\u00e9 par HTTP Basic Auth, et le flux\nArcGIS Enterprise `generateToken` si un connecteur choisit de faire\nl'\u00e9change de jeton lui-m\u00eame \u2014 le coffre ne porte que le mat\u00e9riel brut.",
+        "properties": {
+          "kind": {
+            "const": "basic_auth",
+            "default": "basic_auth",
+            "title": "Kind",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "BasicAuthPayload",
+        "type": "object"
+      },
+      "BearerTokenPayload": {
+        "properties": {
+          "kind": {
+            "const": "bearer_token",
+            "default": "bearer_token",
+            "title": "Kind",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "BearerTokenPayload",
         "type": "object"
       },
       "Body_upload_thumbnail_items__item_id__thumbnail_post": {
@@ -167,8 +290,134 @@
         "title": "Body_upload_thumbnail_items__item_id__thumbnail_post",
         "type": "object"
       },
+      "BookmarkCrossFilterEntry": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "originSourceId": {
+            "title": "Originsourceid",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "$ref": "#/components/schemas/BookmarkTimeRange"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "value",
+          "originSourceId"
+        ],
+        "title": "BookmarkCrossFilterEntry",
+        "type": "object"
+      },
+      "BookmarkPayload": {
+        "properties": {
+          "appId": {
+            "title": "Appid",
+            "type": "string"
+          },
+          "crossFilter": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BookmarkCrossFilterEntry"
+            },
+            "title": "Crossfilter",
+            "type": "object"
+          },
+          "extent": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extent"
+          },
+          "pageId": {
+            "title": "Pageid",
+            "type": "string"
+          },
+          "timeRange": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookmarkTimeRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "appId",
+          "pageId"
+        ],
+        "title": "BookmarkPayload",
+        "type": "object"
+      },
+      "BookmarkTimeRange": {
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "BookmarkTimeRange",
+        "type": "object"
+      },
       "BuilderConfig": {
         "properties": {
+          "bookmark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookmarkPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "dataSources": {
             "items": {
               "$ref": "#/components/schemas/DataSource"
@@ -218,7 +467,9 @@
               "dashboard",
               "map",
               "site",
-              "dataset"
+              "dataset",
+              "bookmark",
+              "pipeline"
             ],
             "title": "Kind",
             "type": "string"
@@ -265,6 +516,16 @@
             },
             "title": "Pages",
             "type": "array"
+          },
+          "pipeline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PipelinePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "theme": {
             "additionalProperties": true,
@@ -415,6 +676,39 @@
         "title": "ConfigRead",
         "type": "object"
       },
+      "ConnectorSecretOut": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ConnectorSecretOut",
+        "type": "object"
+      },
       "CreateConfigRequest": {
         "properties": {
           "config": {
@@ -528,11 +822,86 @@
         "title": "DatasetColumnMeta",
         "type": "object"
       },
+      "DatasetCrossFilterLinkAttribute": {
+        "properties": {
+          "mode": {
+            "const": "attribute",
+            "default": "attribute",
+            "title": "Mode",
+            "type": "string"
+          },
+          "sourceField": {
+            "title": "Sourcefield",
+            "type": "string"
+          },
+          "targetDatasetId": {
+            "title": "Targetdatasetid",
+            "type": "string"
+          },
+          "targetField": {
+            "title": "Targetfield",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetDatasetId",
+          "sourceField",
+          "targetField"
+        ],
+        "title": "DatasetCrossFilterLinkAttribute",
+        "type": "object"
+      },
+      "DatasetCrossFilterLinkSpatial": {
+        "properties": {
+          "mode": {
+            "const": "spatial",
+            "default": "spatial",
+            "title": "Mode",
+            "type": "string"
+          },
+          "precision": {
+            "default": "bbox",
+            "enum": [
+              "bbox",
+              "exact"
+            ],
+            "title": "Precision",
+            "type": "string"
+          },
+          "targetDatasetId": {
+            "title": "Targetdatasetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetDatasetId"
+        ],
+        "title": "DatasetCrossFilterLinkSpatial",
+        "type": "object"
+      },
       "DatasetPayload": {
         "properties": {
+          "arcgisItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arcgisitemid"
+          },
           "collectionId": {
-            "title": "Collectionid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionid"
           },
           "columns": {
             "additionalProperties": {
@@ -541,13 +910,37 @@
             "title": "Columns",
             "type": "object"
           },
+          "crossFilterLinks": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "attribute": "#/components/schemas/DatasetCrossFilterLinkAttribute",
+                  "spatial": "#/components/schemas/DatasetCrossFilterLinkSpatial"
+                },
+                "propertyName": "mode"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/DatasetCrossFilterLinkAttribute"
+                },
+                {
+                  "$ref": "#/components/schemas/DatasetCrossFilterLinkSpatial"
+                }
+              ]
+            },
+            "title": "Crossfilterlinks",
+            "type": "array"
+          },
           "reactsToExtent": {
             "default": false,
             "title": "Reactstoextent",
             "type": "boolean"
           },
           "source": {
-            "const": "collection",
+            "enum": [
+              "collection",
+              "arcgis"
+            ],
             "title": "Source",
             "type": "string"
           },
@@ -564,8 +957,7 @@
           }
         },
         "required": [
-          "source",
-          "collectionId"
+          "source"
         ],
         "title": "DatasetPayload",
         "type": "object"
@@ -1742,6 +2134,36 @@
         "title": "Message",
         "type": "object"
       },
+      "OAuth2ClientCredentialsPayload": {
+        "description": "Flux OAuth2 client-credentials \u2014 couvre notamment l'\u00ab app login \u00bb\nArcGIS Online et toute API tierce gat\u00e9e par ce flux standard. Le coffre\nstocke les identifiants client, jamais le jeton d'acc\u00e8s obtenu.",
+        "properties": {
+          "clientId": {
+            "title": "Clientid",
+            "type": "string"
+          },
+          "clientSecret": {
+            "title": "Clientsecret",
+            "type": "string"
+          },
+          "kind": {
+            "const": "oauth2_client_credentials",
+            "default": "oauth2_client_credentials",
+            "title": "Kind",
+            "type": "string"
+          },
+          "tokenUrl": {
+            "title": "Tokenurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tokenUrl",
+          "clientId",
+          "clientSecret"
+        ],
+        "title": "OAuth2ClientCredentialsPayload",
+        "type": "object"
+      },
       "Page": {
         "properties": {
           "id": {
@@ -1769,6 +2191,176 @@
           "layout"
         ],
         "title": "Page",
+        "type": "object"
+      },
+      "PipelineEdge": {
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "primary",
+                  "secondary"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          },
+          "when": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to"
+        ],
+        "title": "PipelineEdge",
+        "type": "object"
+      },
+      "PipelineNode": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reader",
+              "transform",
+              "writer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "op": {
+            "title": "Op",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "x": {
+            "default": 0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "default": 0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "op"
+        ],
+        "title": "PipelineNode",
+        "type": "object"
+      },
+      "PipelinePayload": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "refreshPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PipelineRefreshPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PipelinePayload",
+        "type": "object"
+      },
+      "PipelineRefreshPolicy": {
+        "properties": {
+          "cron": {
+            "title": "Cron",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cron"
+        ],
+        "title": "PipelineRefreshPolicy",
+        "type": "object"
+      },
+      "PostgresDsnPayload": {
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "postgres_dsn",
+            "default": "postgres_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "PostgresDsnPayload",
         "type": "object"
       },
       "PresignRequest": {
@@ -1917,6 +2509,52 @@
           }
         },
         "title": "SearchBody",
+        "type": "object"
+      },
+      "SecretCreate": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "api_key": "#/components/schemas/ApiKeyPayload",
+                "basic_auth": "#/components/schemas/BasicAuthPayload",
+                "bearer_token": "#/components/schemas/BearerTokenPayload",
+                "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
+                "postgres_dsn": "#/components/schemas/PostgresDsnPayload"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ApiKeyPayload"
+              },
+              {
+                "$ref": "#/components/schemas/BearerTokenPayload"
+              },
+              {
+                "$ref": "#/components/schemas/BasicAuthPayload"
+              },
+              {
+                "$ref": "#/components/schemas/OAuth2ClientCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/PostgresDsnPayload"
+              }
+            ],
+            "title": "Payload"
+          }
+        },
+        "required": [
+          "name",
+          "payload"
+        ],
+        "title": "SecretCreate",
         "type": "object"
       },
       "Sharing": {
@@ -2536,6 +3174,22 @@
                 }
               ],
               "title": "Bbox"
+            }
+          },
+          {
+            "in": "query",
+            "name": "geom_intersects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Geom Intersects"
             }
           },
           {
@@ -3434,6 +4088,148 @@
         "summary": "Conformance"
       }
     },
+    "/datasets/{item_id}/arcgis/aggregate": {
+      "post": {
+        "operationId": "get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggregateRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dataset Arcgis Aggregate"
+      }
+    },
+    "/datasets/{item_id}/arcgis/items": {
+      "get": {
+        "operationId": "get_dataset_arcgis_items_datasets__item_id__arcgis_items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dataset Arcgis Items"
+      }
+    },
     "/dcat/catalog": {
       "get": {
         "operationId": "get_catalog_dcat_catalog_get",
@@ -3818,6 +4614,60 @@
           }
         },
         "summary": "Add Member"
+      }
+    },
+    "/harvest/feature-layers": {
+      "get": {
+        "operationId": "list_feature_layers_harvest_feature_layers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Feature Layers"
       }
     },
     "/harvest/layers": {
@@ -4890,6 +5740,140 @@
           }
         },
         "summary": "Get App Config Schema"
+      }
+    },
+    "/secrets": {
+      "get": {
+        "operationId": "list_secrets_route_secrets_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorSecretOut"
+                  },
+                  "title": "Response List Secrets Route Secrets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Secrets Route"
+      },
+      "post": {
+        "operationId": "create_secret_route_secrets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Secret Route"
+      }
+    },
+    "/secrets/{secret_id}": {
+      "delete": {
+        "operationId": "delete_secret_route_secrets__secret_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "secret_id",
+            "required": true,
+            "schema": {
+              "title": "Secret Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Secret Route"
       }
     },
     "/stac": {
