@@ -1220,3 +1220,221 @@ def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, m
             base_uri=str(tmp_path), limit=50,
         )
         assert "s3cr3t-leak-check" not in str(rows)
+
+
+@pytest.mark.postgis
+def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatch, tmp_path):
+    """Régression SP-15g §1 : rien n'empêche aujourd'hui un nœud d'alimenter
+    plusieurs nœuds avals (fan-out) — ce test en fait une capacité officielle,
+    testée explicitement pour la première fois. Un seul reader.collection
+    alimente deux writer.collection distincts (deux collections cibles)."""
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        for name in ("villes_out_a", "villes_out_b"):
+            s.execute(text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                f"VALUES ('{name}', :t, :o, '{name}', '{name}', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ), {"t": tenant.id, "o": user.id})
+            s.execute(text(
+                f"CREATE TABLE {name} (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            ))
+            apply_collection_ddl(s, name)
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
+        ])
+
+        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_a"}},
+                {"id": "w2", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_b"}},
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "w1"},
+                {"id": "e2", "from": "r1", "to": "w2"},
+            ],
+        })
+
+        stats = runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        count_a = s.execute(text("SELECT count(*) FROM villes_out_a")).scalar()
+        count_b = s.execute(text("SELECT count(*) FROM villes_out_b")).scalar()
+        assert count_a == 2
+        assert count_b == 2
+        writer_stats = {stat.nodeId: stat.rowCount for stat in stats if stat.op == "writer.collection"}
+        assert writer_stats == {"w1": 2, "w2": 2}
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
+
+
+def test_preview_merge_via_secondary_edge(tmp_path, monkeypatch):
+    _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
+            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"},
+            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert {r["id"] for r in rows} == {1, 2}
+
+
+def test_preview_merge_via_secondary_edge_where_secondary_is_a_transform_output(tmp_path, monkeypatch):
+    # Régression : tous les tests d'arête secondaire existants utilisent un
+    # reader brut comme prédécesseur secondaire. Ici le prédécesseur
+    # secondaire est lui-même la sortie d'un transform.filter, pour prouver
+    # que view_by_node/srid_by_node sont bien peuplés pour un nœud non-reader
+    # (garanti par l'ordre topologique, mais jamais testé jusqu'ici).
+    _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
+            {"id": "t0", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
+            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t0"},
+            {"id": "e2", "from": "t0", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "r2", "to": "t1"},
+            {"id": "e4", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert {r["id"] for r in rows} == {1, 2}
+
+
+def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, monkeypatch):
+    # Régression : transform.join via arête secondaire doit produire le même
+    # résultat que le chemin withCollectionId existant, pour la même donnée.
+    _write_partition(tmp_path, collection_id="base", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    _write_partition(tmp_path, collection_id="labels", rows=[_row(1, "x", 0, x=9.0, y=9.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "base"}},
+            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "labels"}},
+            {"id": "t1", "kind": "transform", "op": "transform.join", "params": {"on": "id"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"},
+            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+            {"id": "e3", "from": "t1", "to": "w1"},
+        ],
+    })
+
+    rows = runtime.preview_pipeline(
+        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert len(rows) == 1
+    assert rows[0]["id"] == 1
+    assert rows[0]["region"] == "Nord"  # from r1 — proves the join actually matched on id=1
+
+
+def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime, "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+    payload = PipelinePayload.model_validate({
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+            {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
+            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
+    })
+    seen: list[str] = []
+
+    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    ordered, view_by_node, srid_by_node, join_srid_by_node = runtime._prepare(
+        conn, None, payload, tenant_id="t1", user=None, base_uri=str(tmp_path),
+    )
+    runtime._execute_transform_chain(
+        conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+        on_node_complete=lambda stat: seen.append(stat.nodeId),
+    )
+    assert seen == ["r1", "t1"]  # writer node (w1) is handled by run_pipeline, not this function

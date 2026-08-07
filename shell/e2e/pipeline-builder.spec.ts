@@ -5,6 +5,11 @@ import { mockCore } from "./mocks";
 const OPS_CATALOG = {
   "reader.collection": { kind: "reader", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
   "transform.filter": { kind: "transform", paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] } },
+  "transform.join": {
+    kind: "transform",
+    paramsSchema: { properties: { withCollectionId: { type: "string", format: "collection-id" }, on: { type: "string" } }, required: ["on"] },
+    acceptsSecondaryInput: true,
+  },
   "writer.collection": { kind: "writer", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
 };
 
@@ -83,4 +88,63 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
 
   await page.getByRole("button", { name: "Exécuter" }).click();
   await expect(page.getByText("succeeded")).toBeVisible({ timeout: 10_000 });
+});
+
+test("un utilisateur relie une seconde source sur la poignée secondaire d'un transform.join", async ({ page }) => {
+  await mockCore(page);
+  await mockPipelineFlow(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("pipeline");
+  await dialog.getByLabel("Titre").fill("Joindre deux sources");
+  await dialog.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/pipelines\/new$/);
+
+  const canvas = page.locator(".react-flow__pane");
+  // Les libellés de la palette (`.cursor-grab`) sont ciblés explicitement :
+  // une fois un nœud déposé, son op apparaît aussi dans le nœud (titre +
+  // sous-titre), ce qui rendrait `getByText` ambigu (mode strict Playwright).
+  const paletteItem = (op: string) => page.locator(".cursor-grab", { hasText: op });
+  // Positions volontairement resserrées et étagées verticalement : l'app
+  // place un nœud déposé à `event.clientX/Y` bruts (coordonnées page, non
+  // relatives au pane React Flow ni compensées du pan/zoom) — au-delà d'un
+  // petit décalage, le nœud atterrit hors de la zone du canvas (sous le
+  // panneau d'inspection à droite), rendant ses poignées impossibles à
+  // cibler. Cette disposition reste dans la zone sûre tout en gardant
+  // chaque nœud vertical séparé des autres pour que les segments de
+  // glisser-déposer entre poignées ne traversent pas un nœud tiers.
+  await paletteItem("reader.collection").dragTo(canvas, { targetPosition: { x: 0, y: 210 } });
+  await paletteItem("reader.collection").dragTo(canvas, { targetPosition: { x: 0, y: 50 } });
+  await paletteItem("transform.join").dragTo(canvas, { targetPosition: { x: 70, y: 150 } });
+  await paletteItem("writer.collection").dragTo(canvas, { targetPosition: { x: 100, y: 320 } });
+
+  const nodes = page.locator(".react-flow__node");
+  const primaryReader = nodes.nth(0);
+  const secondaryReader = nodes.nth(1);
+  const joinNode = nodes.nth(2);
+  const writerNode = nodes.nth(3);
+
+  // Primaire : premier reader -> entrée primaire (gauche) du join.
+  await primaryReader.locator(".react-flow__handle-right").dragTo(joinNode.locator(".react-flow__handle-left"));
+  // Secondaire : second reader -> entrée secondaire (haut) du join.
+  await secondaryReader.locator(".react-flow__handle-right").dragTo(joinNode.locator(".react-flow__handle-top"));
+  // join -> writer.
+  await joinNode.locator(".react-flow__handle-right").dragTo(writerNode.locator(".react-flow__handle-left"));
+
+  await primaryReader.click();
+  await page.getByLabel("collectionId").selectOption("villes");
+  await secondaryReader.click();
+  await page.getByLabel("collectionId").selectOption("villes_propres");
+  await joinNode.click();
+  // Match exact : `getByLabel("on")` en sous-chaîne matcherait aussi
+  // "withCollectionId" (contient "on") ainsi que les contrôles React Flow
+  // ("Control Panel", "React Flow attribution", qui contiennent tous deux
+  // "on" comme sous-chaîne) — mode strict Playwright sinon violé.
+  await page.getByLabel("on", { exact: true }).fill("id");
+  await writerNode.click();
+  await page.getByLabel("collectionId").selectOption("villes_propres");
+
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
 });

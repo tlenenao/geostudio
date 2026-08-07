@@ -7,6 +7,11 @@ const CATALOG: PipelineOpsCatalog = {
   "reader.collection": { kind: "reader", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
   "transform.filter": { kind: "transform", paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] } },
   "writer.collection": { kind: "writer", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
+  "transform.join": {
+    kind: "transform",
+    paramsSchema: { properties: { withCollectionId: { type: "string", format: "collection-id" }, on: { type: "string" } }, required: ["on"] },
+    acceptsSecondaryInput: true,
+  },
 };
 
 function reader(id: string, params: Record<string, unknown> = { collectionId: "villes" }): PipelineNode {
@@ -14,6 +19,9 @@ function reader(id: string, params: Record<string, unknown> = { collectionId: "v
 }
 function writer(id: string, params: Record<string, unknown> = { collectionId: "villes_propres" }): PipelineNode {
   return { id, kind: "writer", op: "writer.collection", x: 0, y: 0, params };
+}
+function joinNode(id: string, params: Record<string, unknown> = { on: "id" }): PipelineNode {
+  return { id, kind: "transform", op: "transform.join", x: 0, y: 0, params };
 }
 
 test("a valid linear reader->writer graph has no errors", () => {
@@ -75,4 +83,69 @@ test("a node whose op is not in the catalogue is flagged on that node", () => {
 test("isPipelineValid is false when any node has errors even if graphErrors is empty", () => {
   const result = { graphErrors: [], nodeErrors: { r1: ["x est requis."] } };
   expect(isPipelineValid(result)).toBe(false);
+});
+
+test("a node with two secondary incoming edges is invalid", () => {
+  const nodes = [reader("r1"), reader("r2"), reader("r3"), joinNode("t1"), writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "r3", to: "t1", role: "secondary" },
+    { id: "e4", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.graphErrors).toContain("Un nœud ne peut avoir qu'une seule arête secondaire entrante (t1).");
+});
+
+test("a binary op with neither withCollectionId nor a secondary edge is flagged on that node", () => {
+  const nodes = [reader("r1"), joinNode("t1", { on: "id" }), writer("w1")];
+  const edges: PipelineEdge[] = [{ id: "e1", from: "r1", to: "t1" }, { id: "e2", from: "t1", to: "w1" }];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toContain("transform.join : requiert soit withCollectionId, soit une arête secondaire.");
+});
+
+test("a binary op with both withCollectionId and a secondary edge is flagged on that node", () => {
+  const nodes = [reader("r1"), reader("r2"), joinNode("t1", { on: "id", withCollectionId: "villes" }), writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toContain("transform.join : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.");
+});
+
+test("a binary op with only a secondary edge (no withCollectionId) is valid", () => {
+  const nodes = [reader("r1"), reader("r2"), joinNode("t1", { on: "id" }), writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toEqual([]);
+});
+
+test("a binary op with only a secondary edge and no primary edge is flagged on that node", () => {
+  // Régression finding final review SP-15g : le XOR withCollectionId/arête
+  // secondaire est satisfait (secondaire seule) mais il n'y a AUCUNE arête
+  // primaire entrante — doit être rejeté, pas planter au runtime.
+  const nodes = [reader("r2"), joinNode("t1", { on: "id" }), writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toContain("transform.join : requiert une arête primaire entrante.");
+});
+
+test("a non-binary op with a secondary edge is flagged on that node", () => {
+  const nodes = [reader("r1"), reader("r2"), { ...reader("t1"), kind: "transform" as const, op: "transform.filter", params: { expr: "1=1" } }, writer("w1")];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+    { id: "e3", from: "t1", to: "w1" },
+  ];
+  const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
+  expect(result.nodeErrors.t1).toContain("transform.filter n'accepte pas d'arête secondaire.");
 });

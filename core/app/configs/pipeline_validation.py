@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.configs.schemas import BuilderConfig, PipelineEdge, PipelineNode
 from app.users.models import User
 
-NodeValidator = Callable[[Session, PipelineNode, User], None]
+NodeValidator = Callable[[Session, PipelineNode, list[PipelineEdge], User], None]
 
 _node_validators: dict[str, NodeValidator] = {}
 
@@ -25,16 +25,24 @@ def register_pipeline_node_validator(op: str, validator: NodeValidator) -> None:
     _node_validators[op] = validator
 
 
-def _check_linear_topology(edges: list[PipelineEdge]) -> None:
-    incoming_count: dict[str, int] = {}
+def _check_topology(edges: list[PipelineEdge]) -> None:
+    primary_count: dict[str, int] = {}
+    secondary_count: dict[str, int] = {}
     for edge in edges:
-        incoming_count[edge.to] = incoming_count.get(edge.to, 0) + 1
-    for node_id, count in incoming_count.items():
+        bucket = secondary_count if edge.role == "secondary" else primary_count
+        bucket[edge.to] = bucket.get(edge.to, 0) + 1
+    for node_id, count in primary_count.items():
         if count > 1:
             raise HTTPException(
                 status_code=422,
                 detail=f"node '{node_id}' has more than one incoming edge "
                        "(linear+join topology only, SP-15a MVP)",
+            )
+    for node_id, count in secondary_count.items():
+        if count > 1:
+            raise HTTPException(
+                status_code=422,
+                detail=f"node '{node_id}' has more than one secondary incoming edge",
             )
 
 
@@ -67,10 +75,10 @@ def validate_pipeline_payload(session: Session, config: BuilderConfig, *, user: 
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
 
     _check_acyclic(payload.nodes, payload.edges)
-    _check_linear_topology(payload.edges)
+    _check_topology(payload.edges)
 
     for node in payload.nodes:
         validator = _node_validators.get(node.op)
         if validator is None:
             raise HTTPException(status_code=422, detail=f"unknown op '{node.op}'")
-        validator(session, node, user)
+        validator(session, node, payload.edges, user)

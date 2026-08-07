@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.configs.schemas import BuilderConfig
+from app.configs.schemas import BuilderConfig, PipelineEdge
 
 
 def _pipeline_body() -> dict:
@@ -71,3 +71,18 @@ def test_pipeline_config_x_y_when_acceptes_mais_inertes():
     config = BuilderConfig.model_validate(body)
     assert config.pipeline.nodes[0].x == 100
     assert config.pipeline.edges[0].when == "true"
+
+
+def test_pipeline_edge_role_defaults_to_none():
+    edge = PipelineEdge(id="e1", **{"from": "a"}, to="b")
+    assert edge.role is None
+
+
+def test_pipeline_edge_accepts_secondary_role():
+    edge = PipelineEdge(id="e1", **{"from": "a"}, to="b", role="secondary")
+    assert edge.role == "secondary"
+
+
+def test_pipeline_edge_rejects_unknown_role():
+    with pytest.raises(ValidationError):
+        PipelineEdge(id="e1", **{"from": "a"}, to="b", role="tertiary")

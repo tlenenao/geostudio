@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import type { PipelineEdge, PipelineNode } from "../../api/types";
-import { genEdgeId, genNodeId, hasIncomingEdge, insertNodeOnEdge, wouldCreateCycle } from "./graphOps";
+import { genEdgeId, genNodeId, hasIncomingEdge, insertNodeOnEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 
 test("genNodeId and genEdgeId produce distinct, non-empty ids", () => {
   const a = genNodeId();
@@ -70,4 +70,61 @@ test("insertNodeOnEdge is a no-op when the edge id does not exist", () => {
   const newNode: PipelineNode = { id: "t1", kind: "transform", op: "transform.filter", x: 0, y: 0, params: {} };
   const result = insertNodeOnEdge(nodes, edges, "missing", newNode);
   expect(result).toEqual({ nodes, edges });
+});
+
+test("hasIncomingEdge defaults to checking for a primary (non-secondary) edge", () => {
+  const edges: PipelineEdge[] = [{ id: "e1", from: "r1", to: "w1", role: "secondary" }];
+  expect(hasIncomingEdge(edges, "w1")).toBe(false); // only a secondary edge exists, not a primary one
+  expect(hasIncomingEdge(edges, "w1", "secondary")).toBe(true);
+});
+
+test("hasIncomingEdge distinguishes primary from secondary explicitly", () => {
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+  ];
+  expect(hasIncomingEdge(edges, "t1", "primary")).toBe(true);
+  expect(hasIncomingEdge(edges, "t1", "secondary")).toBe(true);
+});
+
+test("insertNodeOnEdge preserves the original edge's role on the downstream half", () => {
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} },
+    { id: "t1", kind: "transform", op: "transform.join", x: 200, y: 0, params: {} },
+  ];
+  const edges: PipelineEdge[] = [{ id: "e1", from: "r1", to: "t1", role: "secondary" }];
+  const newNode: PipelineNode = { id: "f1", kind: "transform", op: "transform.filter", x: 100, y: 0, params: {} };
+
+  const result = insertNodeOnEdge(nodes, edges, "e1", newNode);
+
+  const upstream = result.edges.find((e) => e.from === "r1");
+  const downstream = result.edges.find((e) => e.from === "f1");
+  expect(upstream?.role).toBeUndefined();
+  expect(downstream?.role).toBe("secondary");
+});
+
+test("topologicalOrder returns nodes in a valid dependency order", () => {
+  const nodes: PipelineNode[] = [
+    { id: "w1", kind: "writer", op: "writer.collection", x: 0, y: 0, params: {} },
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 0, y: 0, params: {} },
+  ];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "t1", to: "w1" },
+  ];
+  expect(topologicalOrder(nodes, edges)).toEqual(["r1", "t1", "w1"]);
+});
+
+test("topologicalOrder handles fan-out and fan-in deterministically (sorted ties)", () => {
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} },
+    { id: "r2", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} },
+    { id: "t1", kind: "transform", op: "transform.merge", x: 0, y: 0, params: {} },
+  ];
+  const edges: PipelineEdge[] = [
+    { id: "e1", from: "r1", to: "t1" },
+    { id: "e2", from: "r2", to: "t1", role: "secondary" },
+  ];
+  expect(topologicalOrder(nodes, edges)).toEqual(["r1", "r2", "t1"]);
 });

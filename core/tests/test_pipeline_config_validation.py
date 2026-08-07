@@ -48,11 +48,15 @@ def env(monkeypatch):
     # regardless of execution order.
     monkeypatch.setitem(
         pipeline_validation_module._node_validators, "reader.collection",
-        lambda session, node, user: None,
+        lambda session, node, edges, user: None,
     )
     monkeypatch.setitem(
         pipeline_validation_module._node_validators, "writer.collection",
-        lambda session, node, user: None,
+        lambda session, node, edges, user: None,
+    )
+    monkeypatch.setitem(
+        pipeline_validation_module._node_validators, "reader.connector.postgres",
+        lambda session, node, edges, user: None,
     )
 
     engine = make_engine("sqlite+pysqlite:///:memory:")
@@ -122,6 +126,41 @@ def test_node_with_two_incoming_edges_rejected(env):
     response = env.post("/configs", json=body)
     assert response.status_code == 422
     assert "one incoming edge" in response.json()["detail"]
+
+
+def test_node_with_two_secondary_incoming_edges_rejected(env):
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["nodes"] += [
+        {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers"}},
+        {"id": "r3", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers2"}},
+    ]
+    body["config"]["pipeline"]["edges"] += [
+        {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"},
+        {"id": "e3", "from": "r3", "to": "w1", "role": "secondary"},
+    ]
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+    assert "one secondary incoming edge" in response.json()["detail"]
+
+
+def test_node_with_one_primary_and_one_secondary_incoming_edge_is_not_a_topology_error(env):
+    # Régression : ce n'est PAS "2 arêtes entrantes" au sens de la garde de
+    # topologie (une primaire + une secondaire est la forme normale d'un op
+    # binaire) — la sauvegarde peut échouer pour une AUTRE raison (op non
+    # binaire, Task 7), mais jamais sur _check_topology elle-même.
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["nodes"].append(
+        {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers"}}
+    )
+    body["config"]["pipeline"]["edges"].append(
+        {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"}
+    )
+    response = env.post("/configs", json=body)
+    # w1 est writer.collection (pas un op binaire) : Task 7 le rejette, mais
+    # PAS avec le message de _check_topology — on vérifie juste l'absence de
+    # "one secondary incoming edge" / "one incoming edge" ici, la garde de
+    # forme (Task 7) est testée séparément dans test_pipeline_node_validation.py.
+    assert "incoming edge" not in response.json().get("detail", "")
 
 
 def test_reader_connector_node_saves_without_secret_or_query_check(env):

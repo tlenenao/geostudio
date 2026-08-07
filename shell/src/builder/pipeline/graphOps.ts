@@ -16,8 +16,13 @@ export function genEdgeId(): string {
   return genId("e");
 }
 
-export function hasIncomingEdge(edges: PipelineEdge[], nodeId: string): boolean {
-  return edges.some((e) => e.to === nodeId);
+export function hasIncomingEdge(
+  edges: PipelineEdge[], nodeId: string, role: "primary" | "secondary" = "primary",
+): boolean {
+  return edges.some((e) => {
+    if (e.to !== nodeId) return false;
+    return role === "secondary" ? e.role === "secondary" : e.role !== "secondary";
+  });
 }
 
 // Détection de cycle interne (DFS trois couleurs) — factorisée pour être
@@ -69,8 +74,39 @@ export function insertNodeOnEdge(
   const edge = edges.find((e) => e.id === edgeId);
   if (!edge) return { nodes, edges };
   const rest = edges.filter((e) => e.id !== edgeId);
+  const downstream: PipelineEdge = { id: genEdgeId(), from: newNode.id, to: edge.to };
+  if (edge.role) downstream.role = edge.role;
   return {
     nodes: [...nodes, newNode],
-    edges: [...rest, { id: genEdgeId(), from: edge.from, to: newNode.id }, { id: genEdgeId(), from: newNode.id, to: edge.to }],
+    edges: [...rest, { id: genEdgeId(), from: edge.from, to: newNode.id }, downstream],
   };
+}
+
+// Miroir client de app/pipelines/compiler.py::topological_order (SP-15a) —
+// même algorithme de Kahn, tri déterministe des ids à chaque étape pour que
+// le "prochain nœud" affiché pendant une exécution (PipelineCanvas, SP-15g
+// §5.2) corresponde à l'ordre réel du runtime. Ne lève jamais sur un cycle
+// (contrairement à la version serveur) : un pipeline sauvegardé est déjà
+// garanti acyclique (validation serveur) au moment où ce calcul sert
+// uniquement d'heuristique d'affichage.
+export function topologicalOrder(nodes: PipelineNode[], edges: PipelineEdge[]): string[] {
+  const indegree = new Map<string, number>(nodes.map((n) => [n.id, 0]));
+  const adjacency = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
+  for (const e of edges) {
+    adjacency.get(e.from)?.push(e.to);
+    indegree.set(e.to, (indegree.get(e.to) ?? 0) + 1);
+  }
+  let queue = nodes.filter((n) => indegree.get(n.id) === 0).map((n) => n.id).sort();
+  const ordered: string[] = [];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    ordered.push(current);
+    const newlyReady: string[] = [];
+    for (const neighbor of adjacency.get(current) ?? []) {
+      indegree.set(neighbor, (indegree.get(neighbor) ?? 0) - 1);
+      if (indegree.get(neighbor) === 0) newlyReady.push(neighbor);
+    }
+    queue = [...queue, ...newlyReady].sort();
+  }
+  return ordered;
 }

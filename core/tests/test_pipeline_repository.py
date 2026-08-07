@@ -116,3 +116,48 @@ def test_mark_failed_records_error():
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert fetched.status == "failed"
         assert fetched.error == "collection not found"
+
+
+def test_append_node_stat_merges_into_existing_node_stats():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        s.commit()
+
+        repo.append_node_stat(
+            s, tenant_id=tenant.id, run_id=run.id, node_id="r1",
+            stat={"nodeId": "r1", "op": "reader.collection", "rowCount": 3},
+        )
+        s.commit()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.node_stats == {"r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 3}}
+
+        repo.append_node_stat(
+            s, tenant_id=tenant.id, run_id=run.id, node_id="w1",
+            stat={"nodeId": "w1", "op": "writer.collection", "rowCount": 3},
+        )
+        s.commit()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.node_stats == {
+            "r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 3},
+            "w1": {"nodeId": "w1", "op": "writer.collection", "rowCount": 3},
+        }
+
+
+def test_append_node_stat_scoped_to_tenant():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        s.commit()
+        repo.append_node_stat(
+            s, tenant_id="other-tenant", run_id=run.id, node_id="r1", stat={"rowCount": 1},
+        )
+        s.commit()
+        fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.node_stats == {}

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.collections import repository as collections_repo
 from app.configs.pipeline_validation import register_pipeline_node_validator
 from app.configs.schemas import PipelineNode
-from app.pipelines.ops.schemas import OP_PARAMS
+from app.pipelines.ops.schemas import BINARY_OPS, OP_PARAMS
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -27,6 +27,7 @@ _COLLECTION_PARAM_FIELD = {
     "transform.join": "withCollectionId",
     "transform.intersection": "withCollectionId",
     "transform.countWithin": "withCollectionId",
+    "transform.merge": "withCollectionId",
     "writer.collection": "collectionId",
     "writer.dataset": "collectionId",
 }
@@ -74,9 +75,39 @@ def _require_writable_collection(session: Session, *, user: User, collection_id:
         raise HTTPException(status_code=422, detail=f"collection '{collection_id}' is not writable")
 
 
-def _validate_node(session: Session, node: PipelineNode, user: User) -> None:
+def _validate_node(session: Session, node: PipelineNode, edges: list, user: User) -> None:
     params = _validate_params(node)
     field = _COLLECTION_PARAM_FIELD.get(node.op)
+    has_secondary_edge = any(e.to == node.id and e.role == "secondary" for e in edges)
+
+    if node.op in BINARY_OPS:
+        has_primary_edge = any(e.to == node.id and e.role != "secondary" for e in edges)
+        if not has_primary_edge:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{node.op}: requires a primary input edge",
+            )
+        collection_id = getattr(params, field)
+        if has_secondary_edge and collection_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{node.op}: cannot have both '{field}' and a secondary input edge",
+            )
+        if not has_secondary_edge and collection_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{node.op}: requires either '{field}' or a secondary input edge",
+            )
+        if collection_id is not None:
+            _require_readable_collection(session, user=user, collection_id=collection_id)
+        return
+
+    if has_secondary_edge:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{node.op}: does not accept a secondary input edge",
+        )
+
     if field is None:
         return
     collection_id = getattr(params, field)

@@ -148,6 +148,35 @@ def test_run_pipeline_task_marks_run_failed_never_zombie(env, monkeypatch):
         assert fetched.error is not None
 
 
+def test_run_pipeline_task_writes_node_stats_incrementally_before_failure(env, monkeypatch):
+    """Régression du callback de progression (SP-15g §3.5) : node_stats doit
+    être visible en base dès qu'un nœud se termine, pas seulement au dernier
+    commit de mark_succeeded/mark_failed. Prouvé en faisant échouer le run
+    APRÈS que le callback ait déjà écrit un NodeStat — si l'écriture était
+    différée à la fin, ce test ne verrait rien avant le statut 'failed'."""
+    app, Session, tenant, user, item_id = env
+    from app.pipelines.runtime import NodeStat
+
+    def _fake_run_pipeline(session, *, on_node_complete, **kwargs):
+        on_node_complete(NodeStat("r1", "reader.collection", 5))
+        raise ValueError("boom after first node")
+
+    monkeypatch.setattr(pipeline_jobs, "run_pipeline", _fake_run_pipeline)
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "failed"
+        assert fetched.node_stats == {"r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 5}}
+
+
 def test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie(env, monkeypatch):
     # Reproduit le cas relevé en revue de la Tâche 8 : run_pipeline() peut
     # lever une AssertionError "nue" (pas PipelineRuntimeError/ValueError) —

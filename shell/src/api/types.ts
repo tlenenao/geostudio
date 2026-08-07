@@ -436,6 +436,7 @@ export type PipelineEdge = {
   from: string;
   to: string;
   when?: string | null;
+  role?: "primary" | "secondary" | null;
 };
 
 export type PipelinePayload = {
@@ -461,11 +462,14 @@ export type PipelineOpEntry = {
     properties: Record<string, PipelineOpParamProperty>;
     required?: string[];
   };
+  acceptsSecondaryInput?: boolean;
 };
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
 
 export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type PipelineNodeStat = { nodeId: string; op: string; rowCount: number | null };
 
 export type PipelineRun = {
   id: string;
@@ -473,5 +477,5 @@ export type PipelineRun = {
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
-  nodeStats: Record<string, unknown>;
+  nodeStats: Record<string, PipelineNodeStat>;
 };

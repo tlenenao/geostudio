@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreatePipeline, usePipelineConfig, usePipelineOps, useSavePipeline } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
-import type { PipelineEdge, PipelineNode, PipelinePayload } from "../api/types";
+import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRun } from "../api/types";
 import { Button } from "../ui/button";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
@@ -29,6 +29,7 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
 
   const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
 
   useEffect(() => {
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
@@ -99,8 +100,11 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
           onNodesChange={setNodes}
           onEdgesChange={setEdges}
           onInsertOnEdge={onInsertOnEdge}
+          opsCatalog={catalog}
+          nodeStats={latestRun?.nodeStats}
+          runStatus={latestRun?.status}
         />
-        {pk !== null && <PipelineRunPanel pipelineId={pk} />}
+        {pk !== null && <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />}
       </div>
       <div className="w-64 shrink-0 border-l border-slate-200 pl-4">
         {selectedNode && catalog[selectedNode.op] && (

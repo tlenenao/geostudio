@@ -29,6 +29,7 @@ import json
 import os
 import shutil
 import uuid
+from collections.abc import Callable
 
 import duckdb
 import httpx
@@ -52,8 +53,8 @@ from app.pipelines.ops.schemas import (
     ReaderCollectionParams, ReaderConnectorPostgresParams, ReaderConnectorRestParams,
     TransformAggregateParams, TransformCountWithinParams, TransformDeriveParams,
     TransformFilterParams, TransformH3AggregateParams, TransformIntersectionParams,
-    TransformJoinParams, TransformQgisParams, WriterCollectionParams, WriterDatasetParams,
-    WriterExportParams,
+    TransformJoinParams, TransformMergeParams, TransformQgisParams, WriterCollectionParams,
+    WriterDatasetParams, WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
@@ -62,6 +63,7 @@ _JOIN_PARAM_MODELS: dict[str, type] = {
     "transform.join": TransformJoinParams,
     "transform.intersection": TransformIntersectionParams,
     "transform.countWithin": TransformCountWithinParams,
+    "transform.merge": TransformMergeParams,
 }
 
 
@@ -234,7 +236,16 @@ def _prepare(
         model = _JOIN_PARAM_MODELS.get(node.op)
         if model is None:
             continue
+        if compiler.secondary_predecessor_id(node.id, payload.edges) is not None:
+            # La seconde entrée vient d'un nœud du pipeline déjà (ou bientôt)
+            # matérialisé par le reste de l'exécution — rien à matérialiser
+            # ici (design SP-15g §3.3).
+            continue
         p = model.model_validate(node.params)
+        if p.withCollectionId is None:
+            raise PipelineRuntimeError(
+                f"'{node.op}': requires either 'withCollectionId' or a secondary input edge"
+            )
         table_name = _require_readable_collection_id(
             session, tenant_id=tenant_id, user=user, collection_id=p.withCollectionId,
         )
@@ -351,12 +362,16 @@ def _execute_transform_chain(
     srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
     *, stop_at: str | None = None, qgis_worker_url: str = "",
     qgis_worker_timeout_seconds: int = 600,
+    on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
     scratch_run_id = uuid.uuid4().hex
     for node in ordered:
         if node.kind == "reader":
-            stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id])))
+            stat = NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id]))
+            stats.append(stat)
+            if on_node_complete is not None:
+                on_node_complete(stat)
             if stop_at == node.id:
                 return stats
             continue
@@ -366,8 +381,16 @@ def _execute_transform_chain(
         assert pred_id is not None
         input_view = view_by_node[pred_id]
         input_srid = srid_by_node[pred_id]
-        join_view = f"node_{node.id}__join" if node.op in _JOIN_PARAM_MODELS else None
-        join_srid = join_srid_by_node.get(node.id)
+        join_view = None
+        join_srid = None
+        if node.op in _JOIN_PARAM_MODELS:
+            secondary_pred = compiler.secondary_predecessor_id(node.id, edges)
+            if secondary_pred is not None:
+                join_view = view_by_node[secondary_pred]
+                join_srid = srid_by_node[secondary_pred]
+            else:
+                join_view = f"node_{node.id}__join"
+                join_srid = join_srid_by_node.get(node.id)
         _validate_node_exprs(conn, node)
         try:
             output_srid = compiler.transform_output_srid(
@@ -390,7 +413,10 @@ def _execute_transform_chain(
             conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name
         srid_by_node[node.id] = output_srid
-        stats.append(NodeStat(node.id, node.op, _view_row_count(conn, view_name)))
+        stat = NodeStat(node.id, node.op, _view_row_count(conn, view_name))
+        stats.append(stat)
+        if on_node_complete is not None:
+            on_node_complete(stat)
         if stop_at == node.id:
             return stats
     return stats
@@ -604,6 +630,7 @@ def run_pipeline(
     endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
     s3_client=None, exports_bucket: str | None = None,
     qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
+    on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list[NodeStat]:
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
@@ -613,6 +640,7 @@ def run_pipeline(
         stats = _execute_transform_chain(
             conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
             qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+            on_node_complete=on_node_complete,
         )
         for node in ordered:
             if node.kind != "writer":
@@ -621,16 +649,19 @@ def run_pipeline(
             assert pred_id is not None
             view_by_node[node.id] = view_by_node[pred_id]
             if node.op == "writer.collection":
-                stats.append(_write_collection(
+                stat = _write_collection(
                     session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
-                ))
+                )
             elif node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
-                stats.append(_write_export(conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node))
+                stat = _write_export(conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node)
             elif node.op == "writer.dataset":
-                stats.append(_write_dataset(
+                stat = _write_dataset(
                     session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
-                ))
+                )
+            stats.append(stat)
+            if on_node_complete is not None:
+                on_node_complete(stat)
         return stats
     finally:
         conn.close()

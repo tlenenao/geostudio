@@ -7,13 +7,14 @@ partagé (docker-compose.yml, queue dédiée "etl", cf. app.jobs pour la
 raison de import_paths)."""
 import logging
 import os
+from collections.abc import Callable
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.jobs import app
 from app.pipelines import repository as pipelines_repo
-from app.pipelines.runtime import PipelineRuntimeError, run_pipeline
+from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,17 @@ def _analytics_base_uri() -> str:
     return f"s3://{bucket}/cdc"
 
 
+def _make_progress_callback(
+    session_factory, *, run_id: str, tenant_id: str,
+) -> Callable[[NodeStat], None]:
+    def _on_node_complete(stat: NodeStat) -> None:
+        with request_scoped_session(session_factory) as s:
+            pipelines_repo.append_node_stat(
+                s, tenant_id=tenant_id, run_id=run_id, node_id=stat.nodeId, stat=stat.to_dict(),
+            )
+    return _on_node_complete
+
+
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
@@ -96,6 +108,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
                 qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
                 qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
+                on_node_complete=_make_progress_callback(session_factory, run_id=run_id, tenant_id=tenant_id),
             )
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_succeeded(

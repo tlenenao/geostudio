@@ -13,6 +13,7 @@ export class MockMap {
   removed = false;
   throwOnAddLayer = new Set<string>();
   flyToArgs: unknown[] = [];
+  fitBoundsArgs: unknown[] = [];
   bounds: [[number, number], [number, number]] = [[0, 0], [0, 0]];
 
   constructor(opts: MockMap["opts"]) {
@@ -49,6 +50,9 @@ export class MockMap {
   }
   flyTo(opts: unknown) {
     this.flyToArgs.push(opts);
+  }
+  fitBounds(bounds: unknown, opts?: unknown) {
+    this.fitBoundsArgs.push({ bounds, opts });
   }
   addLayer(layer: { id: string; [k: string]: unknown }) {
     if (this.throwOnAddLayer.has(layer.id)) throw new Error(`boom ${layer.id}`);
