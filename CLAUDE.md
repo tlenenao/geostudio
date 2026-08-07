@@ -175,7 +175,7 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
   dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
   visuelle** (cf. « À venir »).
-- **SP-15** (a, c, d, e, f, g) — Pipeline no-code « équivalent FME » (A39) :
+- **SP-15** (a, c, d, e, f, g, h) — Pipeline no-code « équivalent FME » (A39) :
   - **SP-15a** — socle headless : nouveau document déclaratif `Pipeline`
     (`BuilderConfig.kind="pipeline"`), catalogue de 8 opérations data-only
     (`reader.collection`, `transform.filter/select/derive/aggregate/join`,
@@ -276,11 +276,36 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     planifié : le canvas visuel supporte désormais un vrai embranchement
     DAG (une seconde poignée d'entrée visuellement distincte + arêtes
     secondaires en pointillés), pas seulement linéaire+join.
+  - **SP-15h** — planification simple des pipelines : un `Pipeline`
+    sauvegardé peut désormais s'exécuter seul sur un cron récurrent, sans
+    nouvelle route REST ni nouvel outil MCP. Cœur : `PipelineRefreshPolicy
+    {enabled, cron}` (validation `croniter`) sur `PipelinePayload`, une
+    tâche procrastinate périodique (`run_pipeline_sweep_task`, sweep 5
+    min, file `etl`) qui balaie tous les tenants (`list_configs_by_kind`,
+    cross-tenant, jamais exposé par une route), dérive le "dernier run"
+    depuis `pipeline_runs` (`get_latest_run`, aucune colonne dupliquée,
+    aucune migration) et défère `run_pipeline_task` — même chemin
+    d'exécution qu'un run manuel. `explain_pipeline` expose `refreshPolicy`
+    en lecture (signature inchangée). Deux Important trouvés et corrigés en
+    revue (aucun n'était visible tâche par tâche, tous deux des bugs de
+    concurrence hérités du texte littéral du plan) : l'ancre de reclaim
+    d'un run "stuck" utilisait `created_at` (jamais mis à jour) au lieu de
+    `started_at`, réclamant à tort un run qui venait de démarrer après une
+    longue attente en file ; le sweep déférait `run_pipeline_task` avant de
+    committer la ligne `pipeline_runs` (un seul commit en fin de boucle),
+    au lieu du patron `commit()` puis `defer()` déjà établi dans
+    `routes.py`/`mcp/tools.py` — un worker aurait pu ramasser la tâche
+    avant que la ligne ne soit visible, perdant silencieusement le run.
+    Shell : `PipelineScheduleEditor` (3 préréglages sans syntaxe cron —
+    intervalle/quotidien/hebdomadaire — plus un mode cron avancé en
+    échappatoire), câblé dans le cycle `draft`/`onSave` existant de
+    `PipelineBuilderPage` (pas d'action de sauvegarde séparée), erreurs de
+    sauvegarde désormais surfacées près du bouton Enregistrer.
   - **A39 : Phases 1+2 (socle headless + étage 1+2 spatial) livrées**, plus
     SP-15e (coffre de secrets), SP-15f (premier consommateur réel du
-    coffre) et SP-15g (canvas DAG — branchements & fusion) — reste non
-    planifié : automatisation/déclencheurs au-delà de la planification
-    simple.
+    coffre), SP-15g (canvas DAG — branchements & fusion) et SP-15h
+    (planification simple) — reste non planifié : événements/déclencheurs
+    durables au-delà de la planification cron simple.
 
 ### À venir
 
@@ -292,13 +317,16 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
   livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
   livrée.
-- **SP-15** — reste : automatisation/déclencheurs au-delà de la
-  planification simple, vérification réelle des 5 tests
-  `@pytest.mark.qgis` de SP-15d (sidecar + `/scratch` réels, non exécutée
-  à ce jour). Exposition MCP des noms de secrets (métadonnées seules) non
-  planifiée, non numérotée. Jalon M14 non atteint (socle + étage 1+2
-  spatial + coffre de secrets + premier connecteur authentifié + canvas
-  DAG branchements/fusion livrés, automatisation/déclencheurs restent).
+- **SP-15** — reste : événements/déclencheurs durables au-delà de la
+  planification cron simple (livrée SP-15h) — non planifié, non numéroté ;
+  vérification réelle des 5 tests `@pytest.mark.qgis` de SP-15d (sidecar +
+  `/scratch` réels, non exécutée à ce jour). Exposition MCP des noms de
+  secrets (métadonnées seules) non planifiée, non numérotée. Jalon M14 non
+  atteint (socle + étage 1+2 spatial + coffre de secrets + premier
+  connecteur authentifié + canvas DAG branchements/fusion + planification
+  simple livrés ; seule la vérification des tests qgis réels bloque encore
+  M14, les événements durables étant hors périmètre du jalon tel que
+  cadré).
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).
