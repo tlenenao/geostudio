@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
@@ -38,7 +39,7 @@ _sql_queries_counter = _meter.create_counter(
 class SqlQueryBody(BaseModel):
     sql: str
 
-RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f"}
+RESERVED_QUERY_PARAMS = {"limit", "offset", "bbox", "geom_intersects", "f", "format"}
 MAX_LIMIT = 1000
 
 CONFORMANCE_CLASSES = [
@@ -211,6 +212,43 @@ def aggregate_features(
     finally:
         conn.close()
     return {"categoryKey": category_key, "rows": rows}
+
+
+EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
+
+
+@router.post("/collections/{collection_id}/export")
+def export_collection_aggregate(
+    collection_id: str, body: AggregateRequestBody, format: str = Query(...),
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    conn_factory=Depends(get_duckdb_connection_factory),
+    base_uri: str = Depends(get_analytics_base_uri),
+):
+    if format not in EXPORT_FORMATS_AGGREGATE:
+        raise _validation_error(
+            [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}])
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    conn = conn_factory()
+    try:
+        try:
+            _category_key, rows = run_collection_aggregate(
+                conn, base_uri=base_uri, tenant_id=col.tenant_id, collection_id=col.id,
+                table_info=info, request=body,
+            )
+        except UnknownAggregateField as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_field", "message": exc.message}])
+    finally:
+        conn.close()
+    content = rows_to_format(rows, format=format)
+    filename = export_filename(col.title, format=format)
+    write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="collection", object_id=col.id,
+                payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/analytics/sql")
