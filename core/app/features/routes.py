@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
 from app.audit.writer import write_audit
@@ -247,6 +248,61 @@ def export_collection_aggregate(
     write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
                 action="export.run", object_type="collection", object_id=col.id,
                 payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
+EXPORT_ITEMS_CAP = 10_000
+
+
+@router.get("/collections/{collection_id}/export/items")
+def export_collection_items(
+    collection_id: str, request: Request, format: str = Query(...),
+    bbox: str | None = None, geom_intersects: str | None = None,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect=Depends(get_introspector), repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    if format not in EXPORT_FORMATS_ITEMS:
+        raise _validation_error(
+            [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}])
+    col = get_readable_collection(session, user, collection_id)
+    info = introspect(session, col.table_name)
+    parsed_bbox = _parse_bbox(bbox)
+    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
+    filters = _collect_filters(request)
+
+    features: list[dict] = []
+    offset = 0
+    while True:
+        try:
+            with rls(session, col.tenant_id):
+                page = repo.select_features(session, info, limit=MAX_LIMIT, offset=offset,
+                                            bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
+                                            filters=filters or None)
+        except FilterError as exc:
+            raise _validation_error(
+                [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
+        features.extend(page.features)
+        if len(features) > EXPORT_ITEMS_CAP:
+            raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
+        if page.number_returned < MAX_LIMIT:
+            break
+        offset += MAX_LIMIT
+
+    if format == "gpkg":
+        conn = open_spatial_connection()
+        try:
+            content = features_to_format(features, format=format, conn=conn)
+        finally:
+            conn.close()
+    else:
+        content = features_to_format(features, format=format)
+    filename = export_filename(col.title, format=format)
+    write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="collection", object_id=col.id,
+                payload={"format": format, "mode": "items"})
     return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
                      headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
