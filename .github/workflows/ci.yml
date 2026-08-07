@@ -83,6 +83,7 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
+          CORE_SECRETS_MASTER_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
       - run: npm ci
         working-directory: shell
       - run: npm run gen:api-types

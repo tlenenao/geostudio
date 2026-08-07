@@ -287,6 +287,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/datasets/{item_id}/arcgis/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Dataset Arcgis Aggregate */
+        post: operations["get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/datasets/{item_id}/arcgis/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Arcgis Items */
+        get: operations["get_dataset_arcgis_items_datasets__item_id__arcgis_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dcat/catalog": {
         parameters: {
             query?: never;
@@ -385,6 +419,23 @@ export interface paths {
         put?: never;
         /** Add Member */
         post: operations["add_member_groups__group_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/harvest/feature-layers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Feature Layers */
+        get: operations["list_feature_layers_harvest_feature_layers_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -670,6 +721,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Secrets Route */
+        get: operations["list_secrets_route_secrets_get"];
+        put?: never;
+        /** Create Secret Route */
+        post: operations["create_secret_route_secrets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets/{secret_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Secret Route */
+        delete: operations["delete_secret_route_secrets__secret_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stac": {
         parameters: {
             query?: never;
@@ -927,6 +1013,10 @@ export interface components {
                 number,
                 number
             ] | null;
+            /** Bins */
+            bins?: number | null;
+            /** Bucket */
+            bucket?: ("day" | "week" | "month") | null;
             /** Field */
             field?: string | null;
             /**
@@ -936,25 +1026,114 @@ export interface components {
             filters: {
                 [key: string]: string;
             };
+            /** Geomintersects */
+            geomIntersects?: {
+                [key: string]: unknown;
+            } | null;
             /** Groupby */
-            groupBy?: string | null;
+            groupBy?: string | string[] | null;
             /** Measures */
             measures?: components["schemas"]["AggregateMeasure"][] | null;
             /** Split */
             split?: string | null;
+        };
+        /**
+         * ApiKeyPayload
+         * @description `location="query"` couvre les jetons en paramètre d'URL (ex.
+         *     `?token=...` d'un ArcGIS Feature Service, clé GeoServer sur un WFS) ;
+         *     `location="header"` couvre le cas générique (`X-API-Key`, etc.).
+         */
+        ApiKeyPayload: {
+            /** Key */
+            key: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "api_key";
+            /**
+             * Location
+             * @enum {string}
+             */
+            location: "header" | "query";
+            /** Value */
+            value: string;
         };
         /** BaseMap */
         BaseMap: {
             /** Style */
             style: string;
         };
+        /**
+         * BasicAuthPayload
+         * @description Couvre aussi un WFS/WMS/WMTS/CSW gaté par HTTP Basic Auth, et le flux
+         *     ArcGIS Enterprise `generateToken` si un connecteur choisit de faire
+         *     l'échange de jeton lui-même — le coffre ne porte que le matériel brut.
+         */
+        BasicAuthPayload: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "basic_auth";
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** BearerTokenPayload */
+        BearerTokenPayload: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "bearer_token";
+            /** Token */
+            token: string;
+        };
         /** Body_upload_thumbnail_items__item_id__thumbnail_post */
         Body_upload_thumbnail_items__item_id__thumbnail_post: {
             /** File */
             file: string;
         };
+        /** BookmarkCrossFilterEntry */
+        BookmarkCrossFilterEntry: {
+            /** Field */
+            field: string;
+            /** Originsourceid */
+            originSourceId: string;
+            /** Value */
+            value: string | string[] | components["schemas"]["BookmarkTimeRange"];
+        };
+        /** BookmarkPayload */
+        BookmarkPayload: {
+            /** Appid */
+            appId: string;
+            /** Crossfilter */
+            crossFilter?: {
+                [key: string]: components["schemas"]["BookmarkCrossFilterEntry"];
+            };
+            /** Extent */
+            extent?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Pageid */
+            pageId: string;
+            timeRange?: components["schemas"]["BookmarkTimeRange"] | null;
+        };
+        /** BookmarkTimeRange */
+        BookmarkTimeRange: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+        };
         /** BuilderConfig */
         BuilderConfig: {
+            bookmark?: components["schemas"]["BookmarkPayload"] | null;
             /** Datasources */
             dataSources?: components["schemas"]["DataSource"][];
             dataset?: components["schemas"]["DatasetPayload"] | null;
@@ -966,7 +1145,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site" | "dataset";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -979,6 +1158,7 @@ export interface components {
             navigationMode: "tabs" | "story";
             /** Pages */
             pages?: components["schemas"]["Page"][];
+            pipeline?: components["schemas"]["PipelinePayload"] | null;
             /** Theme */
             theme?: {
                 [key: string]: unknown;
@@ -1031,6 +1211,19 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ConnectorSecretOut */
+        ConnectorSecretOut: {
+            /** Createdat */
+            createdAt: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Updatedat */
+            updatedAt: string;
+        };
         /** CreateConfigRequest */
         CreateConfigRequest: {
             config: components["schemas"]["BuilderConfig"];
@@ -1068,14 +1261,48 @@ export interface components {
             /** Label */
             label?: string | null;
         };
+        /** DatasetCrossFilterLinkAttribute */
+        DatasetCrossFilterLinkAttribute: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "attribute";
+            /** Sourcefield */
+            sourceField: string;
+            /** Targetdatasetid */
+            targetDatasetId: string;
+            /** Targetfield */
+            targetField: string;
+        };
+        /** DatasetCrossFilterLinkSpatial */
+        DatasetCrossFilterLinkSpatial: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "spatial";
+            /**
+             * Precision
+             * @default bbox
+             * @enum {string}
+             */
+            precision: "bbox" | "exact";
+            /** Targetdatasetid */
+            targetDatasetId: string;
+        };
         /** DatasetPayload */
         DatasetPayload: {
+            /** Arcgisitemid */
+            arcgisItemId?: string | null;
             /** Collectionid */
-            collectionId: string;
+            collectionId?: string | null;
             /** Columns */
             columns?: {
                 [key: string]: components["schemas"]["DatasetColumnMeta"];
             };
+            /** Crossfilterlinks */
+            crossFilterLinks?: (components["schemas"]["DatasetCrossFilterLinkAttribute"] | components["schemas"]["DatasetCrossFilterLinkSpatial"])[];
             /**
              * Reactstoextent
              * @default false
@@ -1083,9 +1310,9 @@ export interface components {
             reactsToExtent: boolean;
             /**
              * Source
-             * @constant
+             * @enum {string}
              */
-            source: "collection";
+            source: "collection" | "arcgis";
             /** Timefield */
             timeField?: string | null;
         };
@@ -1455,6 +1682,25 @@ export interface components {
             /** When */
             when?: string | null;
         };
+        /**
+         * OAuth2ClientCredentialsPayload
+         * @description Flux OAuth2 client-credentials — couvre notamment l'« app login »
+         *     ArcGIS Online et toute API tierce gatée par ce flux standard. Le coffre
+         *     stocke les identifiants client, jamais le jeton d'accès obtenu.
+         */
+        OAuth2ClientCredentialsPayload: {
+            /** Clientid */
+            clientId: string;
+            /** Clientsecret */
+            clientSecret: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "oauth2_client_credentials";
+            /** Tokenurl */
+            tokenUrl: string;
+        };
         /** Page */
         Page: {
             /** Id */
@@ -1464,6 +1710,75 @@ export interface components {
             name: string;
             /** Onenter */
             onEnter?: components["schemas"]["Message"][];
+        };
+        /** PipelineEdge */
+        PipelineEdge: {
+            /** From */
+            from: string;
+            /** Id */
+            id: string;
+            /** Role */
+            role?: ("primary" | "secondary") | null;
+            /** To */
+            to: string;
+            /** When */
+            when?: string | null;
+        };
+        /** PipelineNode */
+        PipelineNode: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reader" | "transform" | "writer";
+            /** Op */
+            op: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title?: string | null;
+            /**
+             * X
+             * @default 0
+             */
+            x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            y: number;
+        };
+        /** PipelinePayload */
+        PipelinePayload: {
+            /** Edges */
+            edges?: components["schemas"]["PipelineEdge"][];
+            /** Nodes */
+            nodes?: components["schemas"]["PipelineNode"][];
+            refreshPolicy?: components["schemas"]["PipelineRefreshPolicy"] | null;
+        };
+        /** PipelineRefreshPolicy */
+        PipelineRefreshPolicy: {
+            /** Cron */
+            cron: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+        };
+        /** PostgresDsnPayload */
+        PostgresDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "postgres_dsn";
         };
         /** PresignRequest */
         PresignRequest: {
@@ -1511,6 +1826,13 @@ export interface components {
             limit: number;
             /** Token */
             token?: string | null;
+        };
+        /** SecretCreate */
+        SecretCreate: {
+            /** Name */
+            name: string;
+            /** Payload */
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"];
         };
         /** Sharing */
         Sharing: {
@@ -1871,6 +2193,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 bbox?: string | null;
+                geom_intersects?: string | null;
             };
             header?: {
                 authorization?: string;
@@ -2477,6 +2800,80 @@ export interface operations {
             };
         };
     };
+    get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AggregateRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_arcgis_items_datasets__item_id__arcgis_items_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                bbox?: string | null;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_catalog_dcat_catalog_get: {
         parameters: {
             query?: never;
@@ -2735,6 +3132,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feature_layers_harvest_feature_layers_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
@@ -3474,6 +3904,103 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_secrets_route_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSecretOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_secret_route_secrets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSecretOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_secret_route_secrets__secret_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

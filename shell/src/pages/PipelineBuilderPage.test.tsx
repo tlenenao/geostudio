@@ -117,3 +117,59 @@ test("persisted mode: Enregistrer calls savePipelineConfig with the current grap
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledWith("p-1", payload));
 });
+
+test("persisted mode: toggling planification then saving includes refreshPolicy in the saved payload", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "Villes" },
+      { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "Écriture" },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload), savePipelineConfig });
+  await waitFor(() => expect(screen.getByLabelText("Planification automatique")).toBeInTheDocument());
+
+  await userEvent.click(screen.getByLabelText("Planification automatique"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalledWith(
+    "p-1", { ...payload, refreshPolicy: { enabled: true, cron: "*/15 * * * *" } },
+  ));
+});
+
+test("persisted mode: loads an existing refreshPolicy pre-filled into the editor", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "Villes" },
+      { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "Écriture" },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+    refreshPolicy: { enabled: true, cron: "0 2 * * *" },
+  };
+  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload) });
+  await waitFor(() => expect(screen.getByLabelText("Planification automatique")).toBeChecked());
+  expect(screen.getByLabelText("Mode de planification")).toHaveValue("daily");
+  expect(screen.getByLabelText("Heure d'exécution")).toHaveValue("02:00");
+});
+
+test("unsaved mode: no schedule editor before the first save (no pipelineId yet)", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByLabelText("Planification automatique")).not.toBeInTheDocument();
+});
+
+test("persisted mode: a rejected save shows the server error message", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "Villes" },
+      { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "Écriture" },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const savePipelineConfig = vi.fn().mockRejectedValue(new Error("invalid cron expression: 'nope'"));
+  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload), savePipelineConfig });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("invalid cron expression"));
+});

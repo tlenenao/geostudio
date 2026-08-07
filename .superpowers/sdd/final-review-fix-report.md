@@ -1,208 +1,90 @@
-# Rapport — fixes revue finale SP-15f (Finding #1 + #6)
+# Fix — final whole-branch review, SP-15h : `list_configs_by_kind` tolère une config non validable
 
-Branche `dev`, base HEAD 7341d35, pas de worktree (convention du dépôt).
+## Constat (finding Important)
 
-## Finding #1 (Important) — traduction des échecs dlt en cours d'extraction
+`core/app/configs/repository.py::list_configs_by_kind(session, kind)` balaie les
+configs de tous les tenants pour un `kind` donné et appelle
+`BuilderConfig.model_validate(revision.data)` sans filet sur chaque ligne. Une
+seule config `kind="pipeline"` corrompue (édition manuelle en base, ou
+durcissement futur du schéma `BuilderConfig`) fait remonter une
+`pydantic.ValidationError` non rattrapée à travers `pipelines_repo.
+list_due_pipelines` jusqu'à `run_pipeline_sweep_task` (job périodique toutes
+les 5 min, tous tenants confondus) — plantant tout le balayage pour **tous**
+les tenants, silencieusement (seule trace : log worker).
 
-### Problème
+Analogue `harvest.list_due_sources` : pas de mode de panne équivalent, car il
+itère des lignes ORM typées sans re-valider du JSON stocké.
 
-`_run_dlt_and_attach` (`core/app/pipelines/connector_runtime.py`) n'attrapait
-aucune exception autour de `pipeline.run(resource)`. Tout échec **pendant**
-l'extraction dlt elle-même (garde SSRF bloquant l'URL de DONNÉES — pas
-seulement l'URL de jeton OAuth2, déjà couverte —, erreur HTTP distante,
-échec de connexion/requête Postgres, JSON malformé) ressortait enveloppé
-dans un type dlt (`PipelineStepFailed`/`ResourceExtractionError`), pas
-`ConnectorRuntimeError`. `runtime.py::_prepare()` ne traduit que
-`ConnectorRuntimeError` → `PipelineRuntimeError` ; tout le reste fuit tel
-quel jusqu'à :
-- `routes.py::preview_pipeline_route` : seul `PipelineRuntimeError` devient
-  un 400 propre (`except PipelineRuntimeError as exc: raise HTTPException(400, ...)`)
-  — une exception dlt brute retombe dans le gestionnaire d'erreur générique
-  FastAPI (500).
-- `jobs.py::run_pipeline_task` : `except (PipelineRuntimeError, ValueError)`
-  produit `mark_failed(error=str(exc))` propre ; le `except Exception`
-  générique produit `error=f"erreur interne : {exc}"` — le run finit bien
-  "failed" (jamais zombie), mais avec le pire message possible pour le cas
-  le plus sécuritairement significatif (blocage SSRF).
+## Fix implémenté
 
-### Fix
+Dans `list_configs_by_kind`, le seul appel `BuilderConfig.model_validate(...)`
+est enveloppé dans un `try/except ValidationError` : sur échec, un
+`logger.warning(...)` (message français, identifiant `item_id`/`tenant_id`/
+`kind`) est émis et la boucle `continue` au record suivant au lieu de
+propager. Signature et type de retour inchangés. Aucune autre fonction
+touchée (notamment pas `list_due_pipelines`) — le fix est posé à la source
+commune, bénéficiant à tout consommateur présent/futur de ce helper
+cross-tenant.
 
-Dans `_run_dlt_and_attach` (`core/app/pipelines/connector_runtime.py`),
-englobé `pipeline.run(resource)` **et** le bloc ATTACH/sélection/DETACH dans
-un `try/except` :
-
-```python
-def _find_egress_blocked_cause(exc: BaseException) -> EgressBlockedError | None:
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        if isinstance(current, EgressBlockedError):
-            return current
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-    return None
-
-
-def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None:
-    scratch_dir = tempfile.mkdtemp(prefix=f"sp15f-{node_id}-")
-    db_path = f"{scratch_dir}/extract.duckdb"
-    try:
-        pipeline = dlt.pipeline(...)
-        try:
-            pipeline.run(resource)
-            conn.execute(f"ATTACH '{db_path}' AS dlt_extract (READ_ONLY)")
-            try:
-                ...  # inchangé : select_list, CREATE TEMP TABLE
-            finally:
-                conn.execute("DETACH dlt_extract")
-        except ConnectorRuntimeError:
-            raise  # jamais de double-enveloppe si une ConnectorRuntimeError
-                   # venait à naître à l'intérieur de ce bloc
-        except Exception as exc:
-            egress_cause = _find_egress_blocked_cause(exc)
-            if egress_cause is not None:
-                raise ConnectorRuntimeError(f"egress blocked: {egress_cause}") from exc
-            raise ConnectorRuntimeError(f"reader.connector extraction failed: {exc}") from exc
-    finally:
-        shutil.rmtree(scratch_dir, ignore_errors=True)
-```
-
-Ce helper est partagé par `materialize_rest_connector` ET
-`materialize_postgres_connector` — les deux bénéficient sans duplication.
-
-### Décisions / arbitrages
-
-1. **Déroulement de la chaîne de causes** : `__cause__` puis `__context__`,
-   avec un set `seen` par `id()` pour éviter toute boucle infinie si jamais
-   une chaîne se referme sur elle-même (défense en profondeur, pas rencontré
-   empiriquement). dlt chaîne systématiquement via `__cause__`
-   (`raise ... from ...`), vérifié sur le cas OAuth2 existant.
-2. **Portée du wrapping** : `pipeline.run()` **et** le bloc ATTACH/SELECT
-   (pas seulement `pipeline.run()` comme le minimum demandé) — le fichier
-   DuckDB écrit par dlt pourrait en théorie être tronqué/corrompu si
-   l'extraction s'arrête à mi-chemin dans un état inattendu ; autant que
-   toute erreur DuckDB de cette phase bénéficie de la même traduction propre.
-3. **Message pour le cas SSRF** : `f"egress blocked: {egress_cause}"` — le
-   texte de `EgressBlockedError` est déjà descriptif et sûr (ex.
-   `cible réseau interne bloquée : '127.0.0.1' → 127.0.0.1`, ou
-   `hôte non résoluble : '...'`), aucune donnée sensible dedans par
-   construction (`app/pipelines/egress.py`).
-4. **Message pour les autres échecs** : `f"reader.connector extraction failed: {exc}"`.
-   Vérifié EMPIRIQUEMENT (pas supposé) qu'aucune des deux formes réalistes
-   d'échec Postgres ne fait fuiter le mot de passe du DSN :
-   - Connexion refusée (port fermé) : `(psycopg.OperationalError) connection
-     failed: connection to server at "127.0.0.1", port 1 failed: Connection
-     refused` — pas de DSN, pas de mot de passe.
-   - Authentification échouée (contre le conteneur Postgres de test réel,
-     `gis:gis@127.0.0.1:5433/gis_test`, mot de passe substitué par un faux) :
-     `(psycopg2.OperationalError) connection to server at "127.0.0.1", port
-     5433 failed: FATAL:  password authentication failed for user "gis"` —
-     toujours aucun mot de passe dans le message.
-   Ces deux vérifications ont été faites via `uv run python -c "..."` contre
-   `sqlalchemy.create_engine(...)` avant d'écrire le message, pas supposées
-   depuis la doc.
-
-## Regression test (Finding #3, minor, inclus)
-
-Nouveau test dans `core/tests/test_pipeline_connector_runtime.py` :
-`test_materialize_rest_connector_data_url_egress_block_raises_connector_runtime_error`.
-
-Réactive la VRAIE garde SSRF pour ce seul test (même technique que
-`test_materialize_rest_connector_oauth2_token_exchange_goes_through_ssrf_guard` :
-capture de `_REAL_ASSERT_EGRESS_ALLOWED` au chargement du module, avant que
-l'autouse fixture `_no_ssrf_guard` ne la neutralise, puis
-`monkeypatch.setattr` pour la restaurer dans ce test précis). Cible
-`baseUrl="http://127.0.0.1:1/"` (loopback, port fermé — jamais de vraie
-connexion tentée puisque la garde bloque avant l'envoi de la requête) et
-vérifie :
-
-```python
-with pytest.raises(connector_runtime.ConnectorRuntimeError, match="egress blocked"):
-    connector_runtime.materialize_rest_connector(...)
-```
-
-Ce test échouait avant le fix (l'exception qui sortait était un type dlt
-brut, pas `ConnectorRuntimeError`) et passe après.
-
-## `.env.example`
-
-Ajouté après `CORE_ETL_ENABLED=false` (racine, `/.env.example` — pas de
-`core/.env.example` dans ce dépôt) :
-
-```
-# Allowlist d'hôtes pour la garde d'egress SSRF des connecteurs de pipeline
-# (reader.connector.rest, SP-15f) — liste séparée par des virgules ; vide
-# (défaut) = seules les plages réseau internes/privées sont bloquées, aucune
-# restriction d'hôte supplémentaire.
-CORE_PIPELINES_EGRESS_ALLOWLIST=
-```
-
-Note : `CORE_HARVEST_EGRESS_ALLOWLIST` (le pendant côté `app.harvest`, SP-12d)
-n'est en fait PAS documenté dans `.env.example` non plus — pas de convention
-préexistante à reproduire pour cette variable précise ; placé au plus proche
-de `CORE_ETL_ENABLED` (la capacité qui active toute la surface pipelines,
-donc ce connecteur) plutôt que dans la section SP-15e (coffre de secrets),
-qui est un sujet distinct.
-
-## Ce qui n'a PAS été touché (findings différés, par consigne)
-
-- #2 : `test_run_pipeline_reader_connector_rest_never_leaks_secret_value` —
-  laissé tel quel.
-- #4 : heuristique du garde SELECT-only — laissé tel quel.
-- #5 : absence de borne lignes/taille sur l'extraction connecteur — laissé
-  tel quel.
-
-## Preuves TDD
-
-1. Lu en entier `connector_runtime.py`, `runtime.py`, `routes.py`, `jobs.py`
-   avant toute modification (confirmé la chaîne d'erreurs décrite ci-dessus).
-2. Vérification empirique préalable (avant d'écrire le message d'erreur) du
-   contenu de `str(exc)` pour deux échecs Postgres réalistes (connexion
-   refusée + mot de passe erroné contre le conteneur `gis_test` réel) — voir
-   §"Décisions" point 4.
-3. Écrit le nouveau test AVANT de vérifier qu'il échouait sur le code
-   d'origine (exécution locale confirmée : sans le fix, l'exception levée
-   n'était pas `ConnectorRuntimeError`), puis appliqué le fix, puis confirmé
-   le test vert.
-4. Confirmé qu'aucun test existant (wrong-secret-kind, missing-secret,
-   SELECT-only-rejection, régression OAuth2) n'a changé de comportement
-   observable — leurs assertions `match=...`/chaîne de causes tiennent
-   toujours, car :
-   - Les rejets pré-flight (`_resolve_secret`, `_build_auth`,
-     `validate_select_only`) sont levés AVANT tout appel à
-     `_run_dlt_and_attach`, donc hors de la nouvelle zone de wrapping — ils
-     ne passent pas par le nouveau code, aucun changement possible.
-   - Le test OAuth2 marche par déroulement manuel de `__cause__` jusqu'à
-     trouver `EgressBlockedError` (`pytest.raises(Exception)`, pas un type
-     précis) — la nouvelle `ConnectorRuntimeError` s'ajoute un niveau
-     au-dessus dans la chaîne, sans casser la recherche.
-
-## Résultats de tests
-
-### Fichiers ciblés
-
-```
-cd core && CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
-  uv run pytest tests/test_pipeline_connector_runtime.py tests/test_pipeline_runtime.py -v
-```
-
-→ **38 passed, 2 skipped** (les 2 skips sont les tests `@pytest.mark.qgis`
-préexistants nécessitant le sidecar réel, non touchés par ce fix, cf. notes
-SP-15d — inchangés).
-
-### Suite complète
-
-```
-cd core && CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@127.0.0.1:5433/gis_test" \
-  uv run pytest -q
-```
-
-→ **1238 passed, 5 skipped** en 93.67s. Zéro régression branche entière.
+**Choix `ValidationError` plutôt que `Exception` large** : le seul chemin de
+panne documenté et reproductible pour `BuilderConfig.model_validate` sur un
+JSON déjà désérialisé (colonne `JSON` SQLAlchemy) est une `ValidationError`
+pydantic (mismatch de type/forme/contrainte). Un `except Exception` masquerait
+aussi des bugs de programmation réels (ex. `AttributeError` dans un futur
+validator custom) sous un simple "config ignorée", ce qui serait pire pour le
+diagnostic. Champ ouvert : si `BuilderConfig` gagnait un jour un validator
+levant une exception non-pydantic, il faudrait élargir le `except` — non
+observé aujourd'hui (aucun validator du schéma ne lève autre chose que
+`ValueError`, que pydantic re-enveloppe en `ValidationError`).
 
 ## Fichiers modifiés
 
-- `core/app/pipelines/connector_runtime.py` — wrapping `_run_dlt_and_attach`
-  + helper `_find_egress_blocked_cause`, import `EgressBlockedError`.
-- `core/tests/test_pipeline_connector_runtime.py` — nouveau test de
-  régression.
-- `.env.example` — documentation `CORE_PIPELINES_EGRESS_ALLOWLIST`.
+- `core/app/configs/repository.py` — import `logging`, `ValidationError`,
+  déclaration du logger de module, `try/except` autour du seul appel
+  `model_validate` dans `list_configs_by_kind`.
+- `core/tests/test_repository.py` — nouveau test
+  `test_list_configs_by_kind_skips_one_unvalidatable_config`.
+
+## Preuve RED/GREEN
+
+**RED** (avant fix, test seul) :
+```
+E           pydantic_core._pydantic_core.ValidationError: 1 validation error for BuilderConfig
+E           pipeline
+E             Input should be a valid dictionary or instance of PipelinePayload [type=model_type, input_value='not-a-valid-shape', input_type=str]
+app/configs/repository.py:101: ValidationError
+FAILED tests/test_repository.py::test_list_configs_by_kind_skips_one_unvalidatable_config
+```
+
+**GREEN** (après fix) :
+```
+cd core && uv run pytest tests/test_repository.py tests/test_pipeline_repository.py tests/test_pipeline_sweep.py -v
+...
+37 passed in 1.51s
+```
+Le nouveau test vérifie : (1) la config `item-bad` corrompue (donnée
+directement patchée sur `ConfigRevision.data` via l'ORM, car `create_config`
+n'écrit que du JSON valide) est absente du résultat ; (2) la config
+`item-good` valide est bien retournée ; (3) aucune exception ne remonte ;
+(4) un warning contenant `item-bad` est bien loggé (`caplog.at_level
+("WARNING")`).
+
+## Auto-revue
+
+- Portée strictement respectée : un seul `try/except` autour du seul appel
+  visé, pas de retry, pas de dead-letter, signature/type de retour intacts.
+- `list_due_pipelines` (`core/app/pipelines/repository.py`) non touché — testé
+  transitivement par `tests/test_pipeline_repository.py` et
+  `tests/test_pipeline_sweep.py`, tous verts.
+- Message de log en français, conforme à la convention déjà en place dans
+  `app/harvest/service.py` (`logger.warning("...", args)` %-style, pas
+  d'f-string).
+- Pas de régression sur les 3 tests `list_configs_by_kind` préexistants ni sur
+  le reste de la suite ciblée (37/37 passed).
+
+## Préoccupations
+
+- Aucune préoccupation bloquante. Point mineur déjà documenté ci-dessus : le
+  `except ValidationError` ciblé ne couvrirait pas une future exception
+  non-pydantic levée depuis un validator custom de `BuilderConfig` — à
+  élargir si un tel cas apparaît un jour (aucun aujourd'hui).

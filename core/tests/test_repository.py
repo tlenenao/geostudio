@@ -122,3 +122,103 @@ def test_get_config_by_item_returns_latest(session):
 
 def test_get_config_by_item_missing_returns_none(session):
     assert repo.get_config_by_item(session, "nope") is None
+
+
+def test_list_configs_by_kind_returns_matching_kind_only(session):
+    tenant_id = _make_item(session, "item-app")
+    repo.create_config(session, _config(kind="app"), item_id="item-app", tenant_id=tenant_id)
+    session.add(Item(id="item-pipe", tenant_id=tenant_id, owner_id=session.execute(
+        __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-app")
+    ).scalar_one(), resource_type="pipeline", title="placeholder"))
+    session.commit()
+    pipeline_config = BuilderConfig.model_validate({
+        "kind": "pipeline",
+        "pipeline": {
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        },
+    })
+    repo.create_config(session, pipeline_config, item_id="item-pipe", tenant_id=tenant_id)
+
+    results = repo.list_configs_by_kind(session, kind="pipeline")
+    assert [item_id for item_id, _, _ in results] == ["item-pipe"]
+    assert results[0][1] == tenant_id
+    assert results[0][2].kind == "pipeline"
+
+
+def test_list_configs_by_kind_returns_empty_when_none_match(session):
+    assert repo.list_configs_by_kind(session, kind="pipeline") == []
+
+
+def test_list_configs_by_kind_returns_latest_revision(session):
+    tenant_id = _make_item(session, "item-1")
+    created = repo.create_config(session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id)
+    repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
+
+    results = repo.list_configs_by_kind(session, kind="app")
+    assert len(results) == 1
+    assert results[0][2].layout.items[0].widget == "table"
+
+
+def test_list_configs_by_kind_skips_one_unvalidatable_config(session, caplog):
+    # Une config "pipeline" corrompue (JSON stocké ne validant plus contre
+    # BuilderConfig, ex. édition manuelle en base ou durcissement de schéma)
+    # ne doit pas faire planter tout le balayage cross-tenant : elle est
+    # journalisée et ignorée, les autres configs valides sont retournées.
+    tenant_id = _make_item(session, "item-good")
+    repo.create_config(
+        session,
+        BuilderConfig.model_validate({
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                    {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        }),
+        item_id="item-good",
+        tenant_id=tenant_id,
+    )
+
+    session.add(Item(
+        id="item-bad", tenant_id=tenant_id,
+        owner_id=session.execute(
+            __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-good")
+        ).scalar_one(),
+        resource_type="pipeline", title="placeholder",
+    ))
+    session.commit()
+    bad_created = repo.create_config(
+        session,
+        BuilderConfig.model_validate({
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                    {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        }),
+        item_id="item-bad",
+        tenant_id=tenant_id,
+    )
+    # Corruption directe de la révision stockée : un dict qui ne valide plus
+    # contre BuilderConfig (kind="pipeline" mais champ "pipeline" invalide).
+    from app.configs.models import ConfigRevision
+    stored = session.scalars(
+        __import__("sqlalchemy").select(ConfigRevision).where(ConfigRevision.config_id == bad_created.id)
+    ).one()
+    stored.data = {"kind": "pipeline", "pipeline": "not-a-valid-shape"}
+    session.commit()
+
+    with caplog.at_level("WARNING"):
+        results = repo.list_configs_by_kind(session, kind="pipeline")
+
+    assert [item_id for item_id, _, _ in results] == ["item-good"]
+    assert any("item-bad" in message for message in caplog.messages)

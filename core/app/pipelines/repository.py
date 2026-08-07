@@ -1,15 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.configs import repository as configs_repo
 from app.pipelines.models import PipelineRun
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_RUNNING_RECLAIM_MINUTES = 60
 
 
 def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun:
@@ -36,6 +41,15 @@ def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> lis
         .order_by(PipelineRun.created_at.desc())
     ).scalars().all()
     return list(rows)
+
+
+def get_latest_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun | None:
+    return session.execute(
+        select(PipelineRun)
+        .where(PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id)
+        .order_by(PipelineRun.created_at.desc())
+        .limit(1)
+    ).scalars().first()
 
 
 def mark_running(session: Session, *, run_id: str) -> None:
@@ -82,3 +96,50 @@ def append_node_stat(session: Session, *, tenant_id: str, run_id: str, node_id: 
         return
     run.node_stats = {**run.node_stats, node_id: stat}
     session.flush()
+
+
+def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
+    """Balayage cross-tenant des pipelines planifiés dus, consommé par
+    run_pipeline_sweep_task (app.pipelines.jobs, SP-15h). "Dernier run"
+    dérivé de pipeline_runs (jamais une colonne dupliquée) ; garde de
+    concurrence par âge identique à app.harvest.repository.list_due_sources
+    (_RUNNING_RECLAIM_MINUTES) — un run resté "running"/"queued" plus vieux
+    que ce délai est présumé planté et redevient éligible."""
+    now = datetime.now(timezone.utc)
+    due: list[tuple[str, str]] = []
+    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="pipeline"):
+        payload = config.pipeline
+        if payload is None:
+            continue
+        policy = payload.refreshPolicy
+        if policy is None or not policy.enabled:
+            continue
+        latest = get_latest_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+        if latest is None:
+            due.append((item_id, tenant_id))
+            continue
+        created_at = latest.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if latest.status in ("queued", "running"):
+            # Ancre de péremption : pour un run "running", l'horloge pertinente
+            # est started_at (posé par mark_running), pas created_at (heure de
+            # mise en file) — sinon un run resté longtemps en file d'attente
+            # avant de démarrer réellement est réclamé comme planté dès le
+            # tick suivant son passage à "running", alors qu'il vient tout
+            # juste de commencer à progresser. Pour "queued", pas d'autre
+            # ancre disponible avant que le run démarre : created_at reste
+            # correct.
+            reclaim_anchor = created_at
+            if latest.status == "running" and latest.started_at is not None:
+                reclaim_anchor = latest.started_at
+                if reclaim_anchor.tzinfo is None:
+                    reclaim_anchor = reclaim_anchor.replace(tzinfo=timezone.utc)
+            if (now - reclaim_anchor) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
+                continue
+            due.append((item_id, tenant_id))
+            continue
+        next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
+        if next_tick <= now:
+            due.append((item_id, tenant_id))
+    return due
