@@ -123,6 +123,24 @@ test("clicking an export format calls exportDataSource and triggers a download",
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
+test("a failed export surfaces an inline error message instead of failing silently", async () => {
+  const exportDataSource = vi.fn().mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
+  const client = { exportDataSource } as unknown as ItemClient;
+  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region" } };
+
+  render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry={false} />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("413");
+});
+
 test("no export entries when resolvedSource is absent (backward compatible with existing callers)", async () => {
   render(
     <ExplorerProvider enabled>

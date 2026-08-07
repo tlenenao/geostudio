@@ -25,6 +25,8 @@ export function ExplorerMenu({
   const open = useOpenExplorer();
   const client = useOptionalItemClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   if (!enabled || !datasetId) return null;
 
@@ -33,13 +35,21 @@ export function ExplorerMenu({
   async function handleExport(format: string) {
     if (!resolvedSource || !client) return;
     setMenuOpen(false);
-    const { blob, filename } = await client.exportDataSource(resolvedSource, format);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    setExportError(null);
+    setExportingFormat(format);
+    try {
+      const { blob, filename } = await client.exportDataSource(resolvedSource, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Échec de l'export.");
+    } finally {
+      setExportingFormat(null);
+    }
   }
 
   return (
@@ -70,13 +80,19 @@ export function ExplorerMenu({
               key={format}
               type="button"
               aria-label={`Exporter en ${format.toUpperCase()}`}
-              className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
+              disabled={exportingFormat === format}
+              className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)] disabled:opacity-50"
               onClick={() => handleExport(format)}
             >
               Exporter en {format.toUpperCase()}
             </button>
           ))}
         </div>
+      )}
+      {exportError && (
+        <p role="alert" className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-red-600 shadow-sm">
+          {exportError}
+        </p>
       )}
     </div>
   );
