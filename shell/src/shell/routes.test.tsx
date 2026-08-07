@@ -23,6 +23,11 @@ const authState: AuthState = {
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
+vi.mock("maplibre-gl", async () => {
+  const { MockMap } = await import("../test/MockMaplibreMap");
+  return { default: { Map: MockMap } };
+});
+
 vi.mock("../pages/MapEditorPage", () => ({
   MapEditorPage: ({ pk }: { pk: string }) => <div>map-editor-{pk}</div>,
 }));
