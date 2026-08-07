@@ -86,3 +86,33 @@ def test_pipeline_edge_accepts_secondary_role():
 def test_pipeline_edge_rejects_unknown_role():
     with pytest.raises(ValidationError):
         PipelineEdge(id="e1", **{"from": "a"}, to="b", role="tertiary")
+
+
+def test_pipeline_refresh_policy_defaults_to_none():
+    config = BuilderConfig.model_validate(_pipeline_body())
+    assert config.pipeline.refreshPolicy is None
+
+
+def test_pipeline_refresh_policy_accepts_valid_cron():
+    body = _pipeline_body()
+    body["pipeline"]["refreshPolicy"] = {"enabled": True, "cron": "*/15 * * * *"}
+    config = BuilderConfig.model_validate(body)
+    assert config.pipeline.refreshPolicy.enabled is True
+    assert config.pipeline.refreshPolicy.cron == "*/15 * * * *"
+
+
+def test_pipeline_refresh_policy_rejects_invalid_cron():
+    body = _pipeline_body()
+    body["pipeline"]["refreshPolicy"] = {"enabled": True, "cron": "not a cron"}
+    with pytest.raises(ValidationError, match="invalid cron"):
+        BuilderConfig.model_validate(body)
+
+
+def test_pipeline_refresh_policy_requires_cron_even_when_disabled():
+    # cron reste requis même enabled=False : ça permet à l'UI de toujours
+    # pré-remplir un cron valide en mémoire quand l'auteur bascule le
+    # toggle (design SP-15h §2.1).
+    body = _pipeline_body()
+    body["pipeline"]["refreshPolicy"] = {"enabled": False}
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(body)
