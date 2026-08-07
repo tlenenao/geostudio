@@ -138,7 +138,7 @@ test("a failed export surfaces an inline error message instead of failing silent
   await userEvent.click(screen.getByLabelText("Explorer"));
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("413");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Trop d'entités : affinez vos filtres.");
 });
 
 test("no export entries when resolvedSource is absent (backward compatible with existing callers)", async () => {

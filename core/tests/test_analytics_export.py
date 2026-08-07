@@ -156,3 +156,22 @@ def test_rows_to_xlsx_serializes_dict_and_list_values_as_json_strings():
     rows = list(ws.iter_rows(values_only=True))
     assert rows[1][0] == json.dumps(["a", "b"])
     assert rows[1][1] == json.dumps({"k": "v"})
+
+
+def test_rows_to_xlsx_coerces_uuid_and_bytes_values():
+    # Regression (SP-16a second fix pass, Blocking #2): a Postgres uuid/bytea
+    # column comes back from psycopg as a native UUID/bytes-or-memoryview
+    # object — openpyxl's _bind_value raises ValueError on both, just like it
+    # did for tz-aware datetimes and dict/list above. _json_default in this
+    # same module already handles both (str(uuid), None for binary); the
+    # xlsx coercion helper was missing them.
+    row_id = UUID("12345678-1234-5678-1234-567812345678")
+    content = rows_to_format(
+        [{"id": row_id, "blob": b"\x00\x01", "chunk": memoryview(b"\x02\x03")}], format="xlsx",
+    )
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows[1][0] == str(row_id)
+    assert rows[1][1] is None
+    assert rows[1][2] is None

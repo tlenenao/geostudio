@@ -220,6 +220,11 @@ def test_export_items_continues_past_a_clamped_short_page_when_exceeded_transfer
     resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 200
     assert len(calls) == 2  # a short-but-clamped first page still forces a second HTTP call
+    assert "resultOffset=0" in calls[0]
+    # Regression: the cursor must advance by the number of features actually
+    # received on the clamped page (500), not by the requested page size
+    # (limit=1000) — otherwise records 500-999 are silently skipped.
+    assert "resultOffset=500" in calls[1]
     body = resp.json()
     assert len(body["features"]) == 501  # both pages' features were accumulated, nothing lost
 

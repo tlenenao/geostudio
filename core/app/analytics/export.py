@@ -42,11 +42,17 @@ def _json_default(value):
 def _xlsx_cell_value(value):
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
-    rejette les datetime tz-aware et les dict/list/tuple."""
+    rejette les datetime tz-aware, les dict/list/tuple, et — comme colonnes
+    Postgres uuid/bytea remontées brutes par psycopg — UUID et bytes/
+    memoryview (mêmes choix de coercition que _json_default ci-dessus)."""
     if isinstance(value, datetime) and value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, default=str)
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (bytes, memoryview)):
+        return None
     return value
 
 
