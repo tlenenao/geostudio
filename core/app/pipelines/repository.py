@@ -122,7 +122,20 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
         if latest.status in ("queued", "running"):
-            if (now - created_at) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
+            # Ancre de péremption : pour un run "running", l'horloge pertinente
+            # est started_at (posé par mark_running), pas created_at (heure de
+            # mise en file) — sinon un run resté longtemps en file d'attente
+            # avant de démarrer réellement est réclamé comme planté dès le
+            # tick suivant son passage à "running", alors qu'il vient tout
+            # juste de commencer à progresser. Pour "queued", pas d'autre
+            # ancre disponible avant que le run démarre : created_at reste
+            # correct.
+            reclaim_anchor = created_at
+            if latest.status == "running" and latest.started_at is not None:
+                reclaim_anchor = latest.started_at
+                if reclaim_anchor.tzinfo is None:
+                    reclaim_anchor = reclaim_anchor.replace(tzinfo=timezone.utc)
+            if (now - reclaim_anchor) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
                 continue
             due.append((item_id, tenant_id))
             continue

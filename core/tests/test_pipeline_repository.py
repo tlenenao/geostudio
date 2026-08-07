@@ -299,8 +299,40 @@ def test_list_due_pipelines_reclaims_stale_running_run():
         s.commit()
         run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
         repo.mark_running(s, run_id=run.id)
-        # Simule un run planté depuis longtemps : recule created_at au-delà
-        # du délai de reclaim (même seuil que le moissonnage, 60 min).
-        run.created_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+        # Simule un run planté depuis longtemps : recule created_at ET
+        # started_at au-delà du délai de reclaim (même seuil que le
+        # moissonnage, 60 min). Reculer created_at seul ne suffit plus depuis
+        # le fix "ancre de reclaim" (SP-15h review finding) : l'ancre pour un
+        # run "running" est started_at (posé par mark_running), donc un
+        # started_at frais ne serait jamais réclamé même avec un created_at
+        # ancien — ce serait au contraire le run "juste démarré après un
+        # long séjour en file" que le fix protège explicitement (cf.
+        # test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue
+        # ci-dessous).
+        stale = datetime.now(timezone.utc) - timedelta(minutes=61)
+        run.created_at = stale
+        run.started_at = stale
         s.commit()
         assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
+
+
+def test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
+        )
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        # Simule un run resté en file d'attente longtemps (backlog worker)
+        # avant de démarrer réellement il y a quelques secondes seulement :
+        # created_at très ancien, mais started_at (posé par mark_running)
+        # est frais -> ne doit PAS être réclamé.
+        run.created_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+        s.commit()
+        repo.mark_running(s, run_id=run.id)
+        s.commit()
+        assert repo.list_due_pipelines(s) == []
