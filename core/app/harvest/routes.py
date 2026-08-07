@@ -384,7 +384,16 @@ def export_dataset_arcgis_items(
             features.extend(page_features)
             if len(features) > _EXPORT_ITEMS_CAP:
                 raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
-            if len(page_features) < limit:
+            if not page_features:
+                break
+            # Real ArcGIS services clamp resultRecordCount to their own
+            # maxRecordCount (e.g. maxRecordCount=500 for a 1000-row request),
+            # so a page shorter than `limit` does not necessarily mean the
+            # service is out of features — exceededTransferLimit is the
+            # authoritative signal (same pattern as connectors/arcgis.py:139).
+            # Fall back to the length heuristic only when the flag is absent.
+            exceeded_transfer_limit = isinstance(raw, dict) and raw.get("exceededTransferLimit") is True
+            if not exceeded_transfer_limit and len(page_features) < limit:
                 break
             offset += limit
     except live_query.ArcgisQueryError as exc:
