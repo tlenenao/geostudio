@@ -191,9 +191,22 @@ class PipelineEdge(BaseModel):
         # config_validation)
 
 
+class PipelineRefreshPolicy(BaseModel):
+    enabled: bool = False
+    cron: str
+
+    @model_validator(mode="after")
+    def _require_valid_cron(self) -> "PipelineRefreshPolicy":
+        import croniter
+        if not croniter.croniter.is_valid(self.cron):
+            raise ValueError(f"invalid cron expression: {self.cron!r}")
+        return self
+
+
 class PipelinePayload(BaseModel):
     nodes: list[PipelineNode] = Field(default_factory=list)
     edges: list[PipelineEdge] = Field(default_factory=list)
+    refreshPolicy: PipelineRefreshPolicy | None = None
 
     @model_validator(mode="after")
     def _validate_graph(self) -> "PipelinePayload":
