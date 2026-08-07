@@ -136,3 +136,30 @@ test("the edge insertion menu offers Fusionner (transform.merge)", () => {
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   expect(screen.getByRole("menuitem", { name: "Fusionner" })).toBeInTheDocument();
 });
+
+test("a node present in nodeStats shows its row count as a badge", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
+      nodeStats={{ r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 } }} runStatus="running" />,
+  );
+  expect(screen.getByText("42")).toBeInTheDocument();
+});
+
+test("the first not-yet-completed node in topological order shows a spinner while running", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
+      nodeStats={{}} runStatus="running" />,
+  );
+  expect(screen.getByRole("status", { name: "Exécution en cours" })).toBeInTheDocument();
+});
+
+test("no spinner is shown once the run is no longer 'running'", () => {
+  render(
+    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
+      nodeStats={{}} runStatus="succeeded" />,
+  );
+  expect(screen.queryByRole("status", { name: "Exécution en cours" })).not.toBeInTheDocument();
+});
