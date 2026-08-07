@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import datetime, timedelta, timezone
+
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
 from app.pipelines import repository as repo
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -30,6 +34,23 @@ def _make_pipeline_item(session, *, tenant_id):
         title="Pipeline de test",
     )
     return item.id
+
+
+def _make_pipeline_config(session, *, tenant_id, item_id, refresh_policy=None):
+    body = {
+        "kind": "pipeline",
+        "pipeline": {
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        },
+    }
+    if refresh_policy is not None:
+        body["pipeline"]["refreshPolicy"] = refresh_policy
+    config = BuilderConfig.model_validate(body)
+    configs_repo.create_config(session, config, item_id=item_id, tenant_id=tenant_id)
 
 
 def test_create_run_defaults_to_queued():
@@ -195,3 +216,91 @@ def test_get_latest_run_scoped_to_tenant():
         repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
         s.commit()
         assert repo.get_latest_run(s, tenant_id="other-tenant", pipeline_item_id=pipeline_item_id) is None
+
+
+def test_list_due_pipelines_excludes_pipelines_without_refresh_policy():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(s, tenant_id=tenant.id, item_id=item_id)
+        s.commit()
+        assert repo.list_due_pipelines(s) == []
+
+
+def test_list_due_pipelines_excludes_disabled_policy():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            refresh_policy={"enabled": False, "cron": "*/5 * * * *"},
+        )
+        s.commit()
+        assert repo.list_due_pipelines(s) == []
+
+
+def test_list_due_pipelines_includes_never_run_enabled_pipeline():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
+        )
+        s.commit()
+        assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
+
+
+def test_list_due_pipelines_excludes_pipeline_not_yet_due():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            # cron quotidien a 02:00 ; le run le plus récent vient d'avoir
+            # lieu -> le prochain tick est dans le futur, jamais dû.
+            refresh_policy={"enabled": True, "cron": "0 2 * * *"},
+        )
+        s.commit()
+        repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        assert repo.list_due_pipelines(s) == []
+
+
+def test_list_due_pipelines_skips_run_already_in_progress():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
+        )
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        repo.mark_running(s, run_id=run.id)
+        s.commit()
+        assert repo.list_due_pipelines(s) == []
+
+
+def test_list_due_pipelines_reclaims_stale_running_run():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        _make_pipeline_config(
+            s, tenant_id=tenant.id, item_id=item_id,
+            refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
+        )
+        s.commit()
+        run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        repo.mark_running(s, run_id=run.id)
+        # Simule un run planté depuis longtemps : recule created_at au-delà
+        # du délai de reclaim (même seuil que le moissonnage, 60 min).
+        run.created_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+        s.commit()
+        assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
