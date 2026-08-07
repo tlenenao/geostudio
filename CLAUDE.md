@@ -175,7 +175,7 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
   dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
   visuelle** (cf. « À venir »).
-- **SP-15** (a, c, d, e) — Pipeline no-code « équivalent FME » (A39) :
+- **SP-15** (a, c, d, e, f, g) — Pipeline no-code « équivalent FME » (A39) :
   - **SP-15a** — socle headless : nouveau document déclaratif `Pipeline`
     (`BuilderConfig.kind="pipeline"`), catalogue de 8 opérations data-only
     (`reader.collection`, `transform.filter/select/derive/aggregate/join`,
@@ -254,11 +254,33 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     l'extraction dlt elle-même, y compris un blocage SSRF sur l'URL de
     données, n'étaient pas traduits en erreur propre et ressortaient en 500
     opaque) — 0 Critical/Important non résolu au merge.
+  - **SP-15g** — canvas DAG (branchements & fusion) : le graphe `Pipeline`
+    gagne un embranchement réel au-delà de linéaire+join, côté runtime et
+    canvas. `PipelineEdge.role` (`primary`/`secondary`) distingue, pour un
+    nœud à deux entrées, l'arête primaire de l'arête secondaire ; le
+    fan-out (un nœud alimentant plusieurs avals) était déjà possible et
+    est désormais couvert par un test explicite, le fan-in (deux amonts
+    convergeant sur un même nœud via primary+secondary) est nouveau.
+    Nouvel op `transform.merge` (UNION ALL BY NAME des deux entrées).
+    Validation XOR côté serveur et côté client entre `withCollectionId` et
+    une arête secondaire pour les 4 op binaires (`transform.join`/
+    `transform.intersection`/`transform.countWithin`/`transform.merge`) —
+    la seconde entrée d'un nœud binaire vient soit d'une collection
+    déclarée, soit d'une arête secondaire, jamais des deux. Progression
+    d'exécution incrémentale : `PipelineRun.node_stats` s'écrit nœud par
+    nœud via un callback pendant le run (plus seulement à la fin),
+    consommée par le canvas pour des badges de progression/spinner par
+    nœud en direct pendant qu'un run tourne. Nouveau panneau
+    `PipelinePreviewMap` (MapLibre) à bascule avec l'aperçu tabulaire
+    existant. Ferme le point que le résumé SP-15a-f qualifiait de non
+    planifié : le canvas visuel supporte désormais un vrai embranchement
+    DAG (une seconde poignée d'entrée visuellement distincte + arêtes
+    secondaires en pointillés), pas seulement linéaire+join.
   - **A39 : Phases 1+2 (socle headless + étage 1+2 spatial) livrées**, plus
-    SP-15e (coffre de secrets) et SP-15f (premier consommateur réel du
-    coffre) — canvas visuel du graphe complet (branchements DAG au-delà de
-    linéaire+join) et automatisation/déclencheurs au-delà de la
-    planification simple restent non planifiés.
+    SP-15e (coffre de secrets), SP-15f (premier consommateur réel du
+    coffre) et SP-15g (canvas DAG — branchements & fusion) — reste non
+    planifié : automatisation/déclencheurs au-delà de la planification
+    simple.
 
 ### À venir
 
@@ -270,14 +292,13 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
   livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
   livrée.
-- **SP-15** — reste : canvas visuel du graphe `Pipeline` au-delà de la
-  topologie linéaire+join actuelle (branchements DAG), automatisation/
-  déclencheurs au-delà de la planification simple, vérification réelle des
-  5 tests `@pytest.mark.qgis` de SP-15d (sidecar + `/scratch` réels, non
-  exécutée à ce jour). Exposition MCP des noms de secrets (métadonnées
-  seules) non planifiée, non numérotée. Jalon M14 non atteint (socle +
-  étage 1+2 spatial + coffre de secrets + premier connecteur authentifié
-  livrés, DAG/automatisation restent).
+- **SP-15** — reste : automatisation/déclencheurs au-delà de la
+  planification simple, vérification réelle des 5 tests
+  `@pytest.mark.qgis` de SP-15d (sidecar + `/scratch` réels, non exécutée
+  à ce jour). Exposition MCP des noms de secrets (métadonnées seules) non
+  planifiée, non numérotée. Jalon M14 non atteint (socle + étage 1+2
+  spatial + coffre de secrets + premier connecteur authentifié + canvas
+  DAG branchements/fusion livrés, automatisation/déclencheurs restent).
 - **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).
