@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCreatePipeline, usePipelineConfig, usePipelineOps, useSavePipeline } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
-import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRun } from "../api/types";
+import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRefreshPolicy, PipelineRun } from "../api/types";
 import { Button } from "../ui/button";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
 import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/PipelinePalette";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
+import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 
@@ -30,6 +31,7 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
   const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
@@ -49,6 +51,9 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
   function setEdges(edges: PipelineEdge[]) {
     setDraft((d) => ({ ...d, edges }));
   }
+  function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
+    setDraft((d) => ({ ...d, refreshPolicy }));
+  }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
     if (!selectedNode) return;
     setNodes(draft.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)));
@@ -66,12 +71,17 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
   }
 
   async function onSave() {
-    if (pk === null) {
-      const item = await createPipeline.mutateAsync({ title: initialTitle ?? "", owner: username ?? "", pipeline: draft });
-      navigate(`/pipelines/${item.pk}/edit`, { replace: true });
-      return;
+    setSaveError(null);
+    try {
+      if (pk === null) {
+        const item = await createPipeline.mutateAsync({ title: initialTitle ?? "", owner: username ?? "", pipeline: draft });
+        navigate(`/pipelines/${item.pk}/edit`, { replace: true });
+        return;
+      }
+      await savePipeline.mutateAsync(draft);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Échec de l'enregistrement.");
     }
-    await savePipeline.mutateAsync(draft);
   }
 
   return (
@@ -92,6 +102,7 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
             Enregistrer
           </Button>
         </div>
+        {saveError && <p role="alert" className="text-red-600 text-xs">{saveError}</p>}
         <PipelineCanvas
           nodes={draft.nodes}
           edges={draft.edges}
@@ -105,6 +116,9 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
           runStatus={latestRun?.status}
         />
         {pk !== null && <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />}
+        {pk !== null && (
+          <PipelineScheduleEditor value={draft.refreshPolicy ?? null} onChange={setRefreshPolicy} />
+        )}
       </div>
       <div className="w-64 shrink-0 border-l border-slate-200 pl-4">
         {selectedNode && catalog[selectedNode.op] && (
