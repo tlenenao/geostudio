@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from types import SimpleNamespace
+
 import duckdb
 import geopandas as gpd
 import pytest
@@ -11,6 +13,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.features import routes as features_routes
+from app.features.repository import FeaturePage
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -25,6 +28,41 @@ def fake_introspector(session, table_name):
     if table_name != "villes":
         raise TableNotFound(table_name)
     return INFO
+
+
+def make_fake_items_repo():
+    # Task 3's fixture never wrote to the fake sqlite-backed "villes" table
+    # (get_ddl_applier is a no-op, and the real repository's raw SQL relies
+    # on PostGIS-only functions such as set_config for RLS) — only to the
+    # CDC parquet lake via _seed(). Task 4's items export needs a real
+    # write-then-read round trip through repo.insert_feature/select_features,
+    # so a minimal in-memory fake stands in for the real repository here,
+    # same pattern as make_fake_repo() in test_features_routes_read.py.
+    state = {"rows": {}, "next": 1}
+
+    def insert_feature(session, info, *, properties, geometry):
+        fid = state["next"]
+        state["next"] += 1
+        state["rows"][fid] = {"properties": dict(properties), "geometry": geometry}
+        return fid
+
+    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
+        items = sorted(state["rows"].items())
+        page_items = items[offset:offset + limit]
+        features = [
+            {"type": "Feature", "id": fid, "properties": v["properties"], "geometry": v["geometry"]}
+            for fid, v in page_items
+        ]
+        return FeaturePage(features=features, number_matched=len(items), number_returned=len(features))
+
+    def get_feature(session, info, *, fid):
+        v = state["rows"].get(int(fid))
+        if v is None:
+            return None
+        return {"type": "Feature", "id": int(fid), "properties": v["properties"], "geometry": v["geometry"]}
+
+    return SimpleNamespace(insert_feature=insert_feature, select_features=select_features,
+                           get_feature=get_feature, state=state)
 
 
 def _write_partition(base_dir, *, tenant_id, collection_id, rows):
@@ -56,6 +94,12 @@ def env(tmp_path):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (lambda session, table: None)
+    fake_items_repo = make_fake_items_repo()
+    app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_items_repo
+    # SQLite ne connaît pas set_config (GUC PostGIS RLS) : neutraliser le
+    # scope, même patron que test_features_routes_read.py.
+    app.dependency_overrides[features_routes.get_rls_scope] = (
+        lambda: features_routes.null_rls_scope)
 
     def fake_duckdb_factory():
         conn = duckdb.connect(":memory:")
@@ -146,3 +190,79 @@ def test_export_aggregate_writes_an_audit_log_row(env):
     assert len(rows) == 1
     assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
     assert rows[0].object_id == col["id"]
+
+
+def test_export_items_geojson_returns_a_feature_collection(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _seed(tmp_path, tenant_id, col["id"])
+    # items export reads from the live PostGIS-backed collection table via
+    # select_features, not the GeoParquet CDC lake used by aggregate — but
+    # this fixture never wrote actual rows to the fake sqlite-backed
+    # collection table, only to the CDC parquet lake (_seed). To exercise
+    # the items path meaningfully, create features through the normal write
+    # route first.
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "type": "Feature",
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/geo+json"
+    body = resp.json()
+    assert body["type"] == "FeatureCollection"
+    assert len(body["features"]) == 1
+    assert body["features"][0]["properties"]["region"] == "Nord"
+
+
+def test_export_items_csv_flattens_properties(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "type": "Feature",
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    assert resp.status_code == 200
+    assert "Nord" in resp.text
+    assert "geometry" not in resp.text.splitlines()[0]
+
+
+def test_export_items_gpkg_returns_a_sqlite_container(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "type": "Feature",
+        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=gpkg")
+    assert resp.status_code == 200
+    assert resp.content[:16] == b"SQLite format 3\x00"
+
+
+def test_export_items_rejects_unknown_format(env):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    col = _register(app, client, admin, public=True)
+    resp = client.get(f"/collections/{col['id']}/export/items?format=pdf")
+    assert resp.status_code == 400
+
+
+def test_export_items_caps_at_10000_entities(env, monkeypatch):
+    app, client, admin, _r, tmp_path, tenant_id, _Session = env
+    import app.features.routes as routes_module
+    monkeypatch.setattr(routes_module, "EXPORT_ITEMS_CAP", 1)
+    col = _register(app, client, admin, public=True)
+    _as(app, admin)
+    client.post(f"/collections/{col['id']}/items", json={
+        "type": "Feature",
+        "properties": {"region": "Nord", "pop": 1}, "geometry": {"type": "Point", "coordinates": [0, 0]},
+    })
+    client.post(f"/collections/{col['id']}/items", json={
+        "type": "Feature",
+        "properties": {"region": "Sud", "pop": 2}, "geometry": {"type": "Point", "coordinates": [1, 1]},
+    })
+    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    assert resp.status_code == 413
