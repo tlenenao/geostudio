@@ -124,6 +124,52 @@ def test_sweep_short_circuits_in_read_only_mode(monkeypatch):
     assert deferred == []
 
 
+def test_sweep_commits_run_before_deferring(monkeypatch, tmp_path):
+    # sqlite ":memory:" partage UNE connexion physique unique via StaticPool
+    # (cf. _make_session/app.db.make_engine) : une seconde Session() issue de
+    # la même factory verrait alors la MÊME transaction non validée, ce qui
+    # rendrait ce test aveugle au bug (il passerait même sans le fix). On
+    # utilise donc un fichier sqlite temporaire avec DEUX engines distincts
+    # (deux vraies connexions) pour obtenir une isolation transactionnelle
+    # réelle, comparable à deux connexions Postgres séparées en production.
+    db_url = f"sqlite+pysqlite:///{tmp_path / 'sweep.db'}"
+
+    main_engine = make_engine(db_url)
+    init_db(main_engine)
+    Session = make_session_factory(main_engine)
+
+    separate_engine = make_engine(db_url)
+    SeparateSession = make_session_factory(separate_engine)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
+        s.commit()
+
+    seen_from_separate_session = []
+
+    def fake_defer(**kw):
+        # Au moment où defer() est appelé, le run doit déjà être visible
+        # depuis une session INDÉPENDANTE (preuve que le commit a bien eu
+        # lieu avant, pas seulement flush() dans la même transaction).
+        with SeparateSession() as s2:
+            run = pipelines_repo.get_run(s2, tenant_id=tenant.id, run_id=kw["run_id"])
+            seen_from_separate_session.append(run is not None)
+
+    monkeypatch.setattr(pipeline_jobs.run_pipeline_task, "defer", fake_defer)
+    monkeypatch.setattr(pipeline_jobs, "_session_factory", lambda: Session)
+    monkeypatch.setattr(pipeline_jobs, "is_read_only_mode", lambda: False)
+    monkeypatch.setattr(pipeline_jobs, "is_etl_enabled", lambda: True)
+
+    pipeline_jobs.run_pipeline_sweep_task(timestamp=0)
+
+    assert seen_from_separate_session == [True]
+
+
 def test_sweep_short_circuits_when_etl_disabled(monkeypatch):
     Session = _make_session()
     with Session() as s:

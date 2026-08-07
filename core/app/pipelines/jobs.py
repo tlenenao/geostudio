@@ -142,4 +142,10 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
             run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+            # Commit avant de déférer, même raison que routes.py/mcp/tools.py
+            # (create_run puis defer) : un worker pourrait ramasser la tâche
+            # avant que la ligne pipeline_runs ne soit visible autrement. À
+            # l'intérieur de la boucle car chaque run doit être visible avant
+            # SON propre defer, pas seulement le dernier de la file.
+            session.commit()
             run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
