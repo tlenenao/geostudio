@@ -30,3 +30,12 @@ def open_connection(*, endpoint_url: str, access_key: str, secret_key: str) -> d
     conn.execute(f"SET s3_access_key_id = '{access_key}'")
     conn.execute(f"SET s3_secret_access_key = '{secret_key}'")
     return conn
+
+
+def open_spatial_connection() -> duckdb.DuckDBPyConnection:
+    """Connexion DuckDB in-process pour la seule conversion GPKG des exports
+    (SP-16a) : contrairement à open_connection, ne touche jamais S3 — aucune
+    variable d'environnement requise, aucun httpfs/h3 chargé."""
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    return conn
