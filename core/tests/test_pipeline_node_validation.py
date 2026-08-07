@@ -191,3 +191,69 @@ def test_writer_dataset_collection_writable_saves(env):
     }
     response = env.post("/configs", json=body)
     assert response.status_code == 201
+
+
+def _pipeline_body_binary_op(op: str, params: dict, edges_extra: list[dict] | None = None,
+                              nodes_extra: list[dict] | None = None) -> dict:
+    nodes = [
+        {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}},
+        {"id": "t1", "kind": "transform", "op": op, "params": params},
+        {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "writable"}},
+    ]
+    edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
+    if nodes_extra:
+        nodes += nodes_extra
+    if edges_extra:
+        edges += edges_extra
+    return {
+        "title": "P",
+        "config": {"version": 1, "kind": "pipeline", "pipeline": {"nodes": nodes, "edges": edges}},
+    }
+
+
+def test_transform_merge_with_neither_collection_id_nor_secondary_edge_is_rejected(env):
+    response = env.post("/configs", json=_pipeline_body_binary_op("transform.merge", {}))
+    assert response.status_code == 422
+    assert "requires either" in response.json()["detail"]
+
+
+def test_transform_merge_with_both_collection_id_and_secondary_edge_is_rejected(env):
+    body = _pipeline_body_binary_op(
+        "transform.merge", {"withCollectionId": "readable"},
+        nodes_extra=[{"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}}],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+    assert "cannot have both" in response.json()["detail"]
+
+
+def test_transform_merge_via_secondary_edge_saves(env):
+    body = _pipeline_body_binary_op(
+        "transform.merge", {},
+        nodes_extra=[{"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}}],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/configs", json=body)
+    assert response.status_code == 201
+
+
+def test_non_binary_op_with_secondary_edge_is_rejected(env):
+    body = _pipeline_body_binary_op(
+        "transform.filter", {"expr": "1=1"},
+        nodes_extra=[{"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}}],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/configs", json=body)
+    assert response.status_code == 422
+    assert "does not accept a secondary input edge" in response.json()["detail"]
+
+
+def test_transform_join_with_only_secondary_edge_and_no_collection_id_saves(env):
+    body = _pipeline_body_binary_op(
+        "transform.join", {"on": "id"},
+        nodes_extra=[{"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "readable"}}],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/configs", json=body)
+    assert response.status_code == 201
