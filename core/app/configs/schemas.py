@@ -261,12 +261,18 @@ class AlertChannelEmail(BaseModel):
     smtpSecretName: str
 
 
+AlertChannel = Annotated[
+    AlertChannelWebhook | AlertChannelEmail,
+    Field(discriminator="kind"),
+]
+
+
 class AlertRulePayload(BaseModel):
     datasetItemId: str
     query: AggregateRequestBody
     condition: AlertCondition
     refreshPolicy: PipelineRefreshPolicy
-    channels: list[AlertChannelWebhook | AlertChannelEmail] = Field(default_factory=list)
+    channels: list[AlertChannel] = Field(default_factory=list)
     messageTemplate: str = "Alert {ruleName}: value={value} ({state})"
 
     @model_validator(mode="after")
