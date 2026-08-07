@@ -13,6 +13,18 @@ function formatsFor(source: DataSource, hasGeometry: boolean): string[] {
   return hasGeometry ? ITEMS_FORMATS_WITH_GEOMETRY : ITEMS_FORMATS_WITHOUT_GEOMETRY;
 }
 
+// requestBlob (itemClient.ts) throws a bare `Error("Request failed: <status> ...")`
+// with no French-language mapping — parse the status back out of the message
+// rather than changing itemClient's error-throwing shape.
+function exportErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : "";
+  const match = /^Request failed: (\d{3})\b/.exec(message);
+  const status = match ? Number(match[1]) : null;
+  if (status === 413) return "Trop d'entités : affinez vos filtres.";
+  if (status === 403) return "Accès refusé.";
+  return "Échec de l'export.";
+}
+
 export function ExplorerMenu({
   datasetId, dataSourceId, resolvedSource, hasGeometry,
 }: {
@@ -26,17 +38,25 @@ export function ExplorerMenu({
   const client = useOptionalItemClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   if (!enabled || !datasetId) return null;
 
   const formats = resolvedSource ? formatsFor(resolvedSource, Boolean(hasGeometry)) : [];
 
-  async function handleExport(format: string) {
-    if (!resolvedSource || !client) return;
+  // Closes the menu and clears any stale export error with it — the error
+  // alert renders outside the menu's own subtree (see below), so it would
+  // otherwise survive indefinitely once the menu closes.
+  function closeMenu() {
     setMenuOpen(false);
     setExportError(null);
-    setExportingFormat(format);
+  }
+
+  async function handleExport(format: string) {
+    if (!resolvedSource || !client) return;
+    // The menu closes immediately on click (its items, including this
+    // button, unmount right away) — there is no pending/disabled state to
+    // show on the button itself, so none is tracked here.
+    closeMenu();
     try {
       const { blob, filename } = await client.exportDataSource(resolvedSource, format);
       const url = URL.createObjectURL(blob);
@@ -46,9 +66,7 @@ export function ExplorerMenu({
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "Échec de l'export.");
-    } finally {
-      setExportingFormat(null);
+      setExportError(exportErrorMessage(err));
     }
   }
 
@@ -58,7 +76,7 @@ export function ExplorerMenu({
         type="button"
         aria-label="Explorer"
         className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
-        onClick={() => setMenuOpen((v) => !v)}
+        onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
       >
         ⋮
       </button>
@@ -69,7 +87,7 @@ export function ExplorerMenu({
             aria-label="Voir les entités"
             className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
             onClick={() => {
-              setMenuOpen(false);
+              closeMenu();
               open({ datasetId, dataSourceId });
             }}
           >
@@ -80,8 +98,7 @@ export function ExplorerMenu({
               key={format}
               type="button"
               aria-label={`Exporter en ${format.toUpperCase()}`}
-              disabled={exportingFormat === format}
-              className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)] disabled:opacity-50"
+              className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
               onClick={() => handleExport(format)}
             >
               Exporter en {format.toUpperCase()}

@@ -395,7 +395,7 @@ def export_dataset_arcgis_items(
             exceeded_transfer_limit = isinstance(raw, dict) and raw.get("exceededTransferLimit") is True
             if not exceeded_transfer_limit and len(page_features) < limit:
                 break
-            offset += limit
+            offset += len(page_features)
     except live_query.ArcgisQueryError as exc:
         raise HTTPException(
             status_code=400,
