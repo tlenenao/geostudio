@@ -117,3 +117,69 @@ def test_export_aggregate_writes_an_audit_log_row(client):
         rows = s.query(AuditLog).filter_by(action="export.run").all()
     assert len(rows) == 1
     assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
+
+
+def test_export_items_geojson_from_arcgis_dataset(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["features"][0]["properties"]["nom"] == "X"
+
+
+def test_export_items_gpkg_from_arcgis_dataset(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"},
+                          "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=gpkg")
+    assert resp.status_code == 200
+    assert resp.content[:16] == b"SQLite format 3\x00"
+
+
+def test_export_items_stops_paginating_on_a_short_page(client):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}],
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 200
+    assert len(calls) == 1  # one page returned fewer rows than the page size — loop stops
+
+
+def test_export_items_caps_at_10000_entities(client, monkeypatch):
+    dataset_item_id = _create_dataset(client, client.layer_item_id)
+    monkeypatch.setattr(harvest_routes, "_EXPORT_ITEMS_CAP", 1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Always return a full page (limit=1000) so the loop keeps paginating
+        # until the (monkeypatched) cap trips.
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"nom": "X"}, "geometry": None}] * 1000,
+        })
+
+    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
+    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    assert resp.status_code == 413

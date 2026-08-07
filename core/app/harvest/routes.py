@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import httpx
 
 from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
+from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
@@ -348,5 +349,68 @@ def export_dataset_arcgis_aggregate(
     write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
                 action="export.run", object_type="item", object_id=item_id,
                 payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+_EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
+_EXPORT_ITEMS_CAP = 10_000
+
+
+@router.get("/datasets/{item_id}/arcgis/export/items")
+def export_dataset_arcgis_items(
+    item_id: str, request: Request, format: str = Query(...), bbox: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if format not in _EXPORT_FORMATS_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
+        )
+    parsed_bbox = _parse_bbox(bbox)
+    reserved = {"limit", "offset", "bbox", "format"}
+    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+
+    features: list[dict] = []
+    offset = 0
+    limit = _MAX_LIMIT
+    try:
+        while True:
+            params = live_query.translate_features_query(filters=filters, bbox=parsed_bbox, limit=limit, offset=offset)
+            raw = live_query.fetch_query(client, external_url, params)
+            page_features = raw.get("features", []) if isinstance(raw, dict) else []
+            features.extend(page_features)
+            if len(features) > _EXPORT_ITEMS_CAP:
+                raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
+            if len(page_features) < limit:
+                break
+            offset += limit
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]},
+        )
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+
+    if format == "gpkg":
+        conn = open_spatial_connection()
+        try:
+            content = features_to_format(features, format=format, conn=conn)
+        finally:
+            conn.close()
+    else:
+        content = features_to_format(features, format=format)
+    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    filename = export_filename(item.title if item else item_id, format=format)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="item", object_id=item_id,
+                payload={"format": format, "mode": "items"})
     return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
                      headers={"Content-Disposition": f'attachment; filename="{filename}"'})
