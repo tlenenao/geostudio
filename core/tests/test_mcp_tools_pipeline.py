@@ -199,3 +199,41 @@ def test_explain_pipeline_missing_id_errors_the_same_way(app_client):
     with client:
         error_text = call_tool_expecting_error(client, "explain_pipeline", {"pipelineId": "does-not-exist"})
     assert "not found" in error_text.lower()
+
+
+def test_explain_pipeline_includes_refresh_policy_when_set(app_client):
+    client = app_client(etl_enabled=True)
+    with client:
+        source_id, target_id = _register_collections(client)
+        created = call_tool(client, "create_pipeline", _linear_pipeline_args(source_id, target_id))
+
+        # refreshPolicy n'est pas un argument de create_pipeline (design
+        # SP-15h §4 : transite par le PATCH de config générique, pas un
+        # nouvel outil) — on le pose directement via configs_repo, comme le
+        # ferait PUT /configs/by-item/{id}. model_validate (pas model_copy)
+        # est nécessaire ici : model_copy(update=...) n'exécute aucun
+        # validateur, donc refreshPolicy resterait un dict brut sans
+        # .model_dump() — exactement ce qu'explain_pipeline appellerait et
+        # ferait planter.
+        with client.session_factory() as session:
+            config = configs_repo.get_config_by_item(session, created["pk"])
+            payload_dict = config.config.pipeline.model_dump(by_alias=True)
+            payload_dict["refreshPolicy"] = {"enabled": True, "cron": "*/15 * * * *"}
+            payload = PipelinePayload.model_validate(payload_dict)
+            new_config = BuilderConfig(version=1, kind="pipeline", pipeline=payload)
+            configs_repo.update_config(session, config.id, new_config, tenant_id=client.tenant.id)
+            session.commit()
+
+        result = call_tool(client, "explain_pipeline", {"pipelineId": created["pk"]})
+
+    assert result["refreshPolicy"] == {"enabled": True, "cron": "*/15 * * * *"}
+
+
+def test_explain_pipeline_refresh_policy_is_none_when_unset(app_client):
+    client = app_client(etl_enabled=True)
+    with client:
+        source_id, target_id = _register_collections(client)
+        created = call_tool(client, "create_pipeline", _linear_pipeline_args(source_id, target_id))
+        result = call_tool(client, "explain_pipeline", {"pipelineId": created["pk"]})
+
+    assert result["refreshPolicy"] is None

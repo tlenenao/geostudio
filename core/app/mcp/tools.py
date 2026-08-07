@@ -694,6 +694,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                         for n in payload.nodes
                     ],
                     "edges": [{"from": e.from_, "to": e.to} for e in payload.edges],
+                    "refreshPolicy": payload.refreshPolicy.model_dump() if payload.refreshPolicy else None,
                 }
 
     @server.tool()
