@@ -68,3 +68,21 @@ def test_evaluate_condition_is_safe_to_call_twice_on_the_same_connection(conn):
     # the first call has already locked it down.
     assert evaluate_condition(conn, "value > 100", 150.0) is True
     assert evaluate_condition(conn, "value > 100", 50.0) is False
+
+
+def test_evaluate_condition_bounds_a_compute_bound_table_function(conn, monkeypatch):
+    # Second sandbox bypass, distinct from the file-read/SSRF one covered by
+    # test_evaluate_condition_rejects_table_function_file_read_bypass above:
+    # a table function that performs NO external I/O at all (e.g. DuckDB's
+    # builtin range()) is unaffected by enable_external_access=false and
+    # still slips past collect_table_refs (BASE_TABLE-only, not
+    # TABLE_FUNCTION). Without a statement timeout, this cross join is
+    # effectively unbounded compute and would hang the worker evaluating
+    # alerts. STATEMENT_TIMEOUT_S is monkeypatched down so the test itself
+    # stays fast and deterministic rather than needing a genuinely
+    # long-running query.
+    monkeypatch.setattr("app.configs.alert_condition.STATEMENT_TIMEOUT_S", 0.2)
+    expr = "(SELECT count(*) FROM range(100000000000) t1, range(100000) t2) > -1"
+    validate_condition_expr(conn, expr)  # must NOT raise -- confirms the bypass is real
+    with pytest.raises(SqlSandboxError):
+        evaluate_condition(conn, expr, 0.0)

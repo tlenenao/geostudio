@@ -10,9 +10,19 @@ app.pipelines.expr_validation.validate_bounded_expr but placed where both
 the save-time validator (app.configs) and the run-time evaluator
 (app.alerts, Task 9) can import it downward without crossing the contract.
 """
+import threading
+
 import duckdb
 
-from app.analytics.sql_sandbox import collect_table_refs, parse_ast, validate_select_only, SqlSandboxError
+from app.analytics.sql_sandbox import (
+    MEMORY_LIMIT,
+    STATEMENT_TIMEOUT_S,
+    THREADS,
+    collect_table_refs,
+    parse_ast,
+    validate_select_only,
+    SqlSandboxError,
+)
 
 
 def validate_condition_expr(conn: duckdb.DuckDBPyConnection, expr: str) -> None:
@@ -60,6 +70,32 @@ def evaluate_condition(conn: duckdb.DuckDBPyConnection, expr: str, value: float)
     # lock_configuration) — there is no safe way to proceed, so this
     # raises rather than silently executing untrusted SQL on an open
     # connection.
+    #
+    # Second bypass, distinct from the file-read/SSRF one above: even with
+    # external access disabled, a table function that is purely
+    # compute-bound (no I/O at all) still slips past collect_table_refs
+    # (BASE_TABLE-only) and is completely unaffected by
+    # enable_external_access=false, since it never touches anything
+    # external. E.g. "(SELECT count(*) FROM range(500000000) WHERE
+    # md5(range::VARCHAR) LIKE 'zzzz%') > -1" generates data in-memory and
+    # can burn CPU/RAM for as long as it likes, hanging the worker
+    # evaluating alerts instance-wide (no per-tenant isolation exists in
+    # this design). Matching app.analytics.sql_sandbox.run_analyst_sql's
+    # own precedent (_apply_limits + _execute_bounded's
+    # threading.Timer(...).../conn.interrupt), memory/thread caps and a
+    # statement timeout are applied around the actual execution below.
+    # MEMORY_LIMIT/THREADS/STATEMENT_TIMEOUT_S are imported (public names)
+    # rather than duplicated, but the timeout wrapper itself is
+    # reimplemented here rather than reusing `_execute_bounded`, because
+    # that helper returns (columns, rows, truncated) for an arbitrary
+    # multi-row SELECT — this module needs a single boolean from
+    # `SELECT (expr) FROM (SELECT ? AS value) t`, a different
+    # execute-and-fetch shape.
+    #
+    # SET memory_limit/threads must happen in the same "not locked yet"
+    # branch as the external-access lockdown below: once
+    # lock_configuration=true is set, DuckDB refuses ANY further SET on
+    # that connection, memory_limit/threads included.
     validate_condition_expr(conn, expr)
     locked, external_access = conn.execute(
         "SELECT current_setting('lock_configuration'), current_setting('enable_external_access')"
@@ -69,7 +105,16 @@ def evaluate_condition(conn: duckdb.DuckDBPyConnection, expr: str, value: float)
             "connection configuration is locked but external access was never disabled"
         )
     if not locked:
+        conn.execute(f"SET memory_limit = '{MEMORY_LIMIT}'")
+        conn.execute(f"SET threads = {THREADS}")
         conn.execute("SET enable_external_access = false")
         conn.execute("SET lock_configuration = true")
-    row = conn.execute(f"SELECT ({expr}) FROM (SELECT ? AS value) t", [value]).fetchone()
+    timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
+    timer.start()
+    try:
+        row = conn.execute(f"SELECT ({expr}) FROM (SELECT ? AS value) t", [value]).fetchone()
+    except duckdb.InterruptException as exc:
+        raise SqlSandboxError("condition expression exceeded the time limit") from exc
+    finally:
+        timer.cancel()
     return bool(row[0])
