@@ -151,6 +151,7 @@ export interface ItemClient {
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   featuresUrl(source: DataSource): string;
+  exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
   getCollection(collectionId: string): Promise<CollectionAdmin>;
   getCollectionPermission(collectionId: string): Promise<boolean>;
@@ -372,6 +373,8 @@ export type DataSourceState = {
   url?: string;
   datasetId?: string;
   pkColumn?: string;
+  resolvedSource?: DataSource;
+  hasGeometry?: boolean;
 };
 
 export type ActionMessage = {

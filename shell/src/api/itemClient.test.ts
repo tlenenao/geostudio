@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Blob as NodeBlob } from "node:buffer";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient, FeatureValidationError, SqlQueryError } from "./itemClient";
+import type { DataSource } from "./types";
+
+// jsdom's Blob shim (used by this test environment) has no .text()/.arrayBuffer();
+// Node's own Blob (from node:buffer) does — swap it in so exportDataSource tests
+// can read the fetched blob's content. No effect in real browsers.
+if (typeof (globalThis.Blob?.prototype as { text?: unknown } | undefined)?.text !== "function") {
+  (globalThis as unknown as { Blob: typeof Blob }).Blob = NodeBlob as unknown as typeof Blob;
+}
 
 function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
@@ -1682,4 +1691,68 @@ test("previewPipeline posts upTo as a query param and returns the row list", asy
   const rows = await makeClient().previewPipeline("p-7", "r1");
   expect(url).toContain("upTo=r1");
   expect(rows).toEqual([{ id: 1, pop: 1200 }]);
+});
+
+test("exportDataSource posts the aggregate body and extracts the filename for a statistics source", async () => {
+  let posted: unknown;
+  server.use(
+    http.post("https://core.test/collections/parcs/export", async ({ request }) => {
+      posted = await request.json();
+      const url = new URL(request.url);
+      expect(url.searchParams.get("format")).toBe("csv");
+      return new HttpResponse("region,count\nNord,3\n", {
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": 'attachment; filename="parcs-20260807-120000.csv"',
+        },
+      });
+    }),
+  );
+  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region", agg: "count" } };
+  const { blob, filename } = await makeClient("tok").exportDataSource(source, "csv");
+  expect(filename).toBe("parcs-20260807-120000.csv");
+  expect(await blob.text()).toBe("region,count\nNord,3\n");
+  expect(posted).toEqual({ groupBy: "region", agg: "count" });
+});
+
+test("exportDataSource GETs the items-export route for a non-statistics source", async () => {
+  server.use(
+    http.get("https://core.test/collections/parcs/export/items", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("format")).toBe("geojson");
+      return new HttpResponse('{"type":"FeatureCollection","features":[]}', {
+        headers: { "Content-Type": "application/geo+json", "Content-Disposition": 'attachment; filename="parcs.geojson"' },
+      });
+    }),
+  );
+  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
+  expect(filename).toBe("parcs.geojson");
+});
+
+test("exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds1", () =>
+      HttpResponse.json({ config: { dataset: { source: "arcgis", arcgisItemId: "ext1", columns: {} } } }),
+    ),
+    http.post("https://core.test/datasets/ds1/arcgis/export", () =>
+      new HttpResponse("a,b\n1,2\n", {
+        headers: { "Content-Type": "text/csv", "Content-Disposition": 'attachment; filename="x.csv"' },
+      }),
+    ),
+  );
+  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds1", query: {} };
+  const { filename } = await makeClient("tok").exportDataSource(source, "csv");
+  expect(filename).toBe("x.csv");
+});
+
+test("exportDataSource falls back to a generic filename when Content-Disposition is missing", async () => {
+  server.use(
+    http.get("https://core.test/collections/parcs/export/items", () =>
+      new HttpResponse("[]", { headers: { "Content-Type": "application/geo+json" } }),
+    ),
+  );
+  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
+  expect(filename).toBe("export");
 });
