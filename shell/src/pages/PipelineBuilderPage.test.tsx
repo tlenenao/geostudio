@@ -8,6 +8,15 @@ import type { ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/typ
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
 
+// PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
+// PipelinePreviewMap (SP-15g Task 16) -> maplibre-gl. jsdom lacks URL.createObjectURL, which
+// maplibre-gl calls at import time; same stub as PipelinePreviewPanel.test.tsx/
+// PipelinePreviewMap.test.tsx.
+vi.mock("maplibre-gl", async () => {
+  const { MockMap } = await import("../test/MockMaplibreMap");
+  return { default: { Map: MockMap } };
+});
+
 // PipelineBuilderPage calls useAuth() for `username` on save — same mock as
 // shell/src/shell/NewItemButton.test.tsx, needed because the real hook calls
 // react-oidc-context's useAuth(), which throws without an AuthProvider.
@@ -74,6 +83,24 @@ test("persisted mode: loads the existing graph and shows Exécuter", async () =>
   renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload) });
   await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Exécuter" })).toBeInTheDocument();
+});
+
+test("persisted mode: a completed run's node stats reach the canvas as a badge", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "Villes" },
+      { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "Écriture" },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      { id: "run-1", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:02Z", error: null,
+        nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 7 } } },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument());
 });
 
 test("persisted mode: Enregistrer calls savePipelineConfig with the current graph", async () => {
