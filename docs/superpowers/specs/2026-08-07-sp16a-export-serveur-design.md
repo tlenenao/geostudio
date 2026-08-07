@@ -80,8 +80,21 @@ L'export suit exactement le même patron :
 |---|---|---|---|
 | `POST /collections/{id}/export?format=csv\|xlsx` (body `AggregateRequestBody`) | `app.features` | `/collections/{id}/aggregate` | agrégé |
 | `POST /datasets/{id}/arcgis/export?format=csv\|xlsx` (body `AggregateRequestBody`) | `app.harvest` | `/datasets/{id}/arcgis/aggregate` | agrégé |
-| `GET /collections/{id}/export/items?format=geojson\|gpkg` (query = filtres/bbox comme `items`) | `app.features` | `/collections/{id}/items` | entités brutes |
-| `GET /datasets/{id}/arcgis/export/items?format=geojson\|gpkg` (query = filtres/bbox) | `app.harvest` | `/datasets/{id}/arcgis/items` | entités brutes |
+| `GET /collections/{id}/export/items?format=csv\|xlsx\|geojson\|gpkg` (query = filtres/bbox comme `items`) | `app.features` | `/collections/{id}/items` | entités brutes |
+| `GET /datasets/{id}/arcgis/export/items?format=csv\|xlsx\|geojson\|gpkg` (query = filtres/bbox) | `app.harvest` | `/datasets/{id}/arcgis/items` | entités brutes |
+
+Précision découverte en planification (writing-plans) : le mode agrégé n'a de
+sens qu'avec un `groupBy` (le contrat `/aggregate` renvoie toujours au moins
+une ligne `Total`, jamais « toutes les lignes ») — il ne peut donc pas servir
+un export « aperçu complet, non filtré » comme celui de `DatasetEditPage`
+(§6). Le mode entités brutes sert donc **aussi** le CSV/XLSX (colonnes
+attributaires aplaties depuis `feature.properties`, géométrie ignorée),
+réutilisant les mêmes fonctions de sérialisation `rows_to_csv`/`rows_to_xlsx`
+que le mode agrégé — pas de nouveau code, juste un enum de formats plus
+large sur la route `items`. `DatasetEditPage` et les widgets de type
+« table »/liste passent donc toujours par le mode entités brutes (CSV/XLSX
+compris) ; seuls les widgets chart/kpi (fondamentalement agrégés) utilisent
+le mode agrégé, limité à CSV/XLSX.
 
 Aucune nouvelle table, aucun nouveau `kind` de `BuilderConfig` — l'export
 est une opération de lecture pure sur un dataset déjà résolu, pas un objet
