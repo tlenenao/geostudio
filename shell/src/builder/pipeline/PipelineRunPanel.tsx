@@ -11,14 +11,18 @@ const STATUS_LABEL: Record<PipelineRun["status"], string> = {
 // Patron de poll identique à shell/src/shell/ImportFileButton.tsx (SP-6a) —
 // boucle récursive manuelle via le client, pas un refetchInterval react-query
 // (cf. plan Global Constraints).
-export function PipelineRunPanel({ pipelineId }: { pipelineId: string }) {
+export function PipelineRunPanel({
+  pipelineId, onLatestRunChange,
+}: { pipelineId: string; onLatestRunChange?: (run: PipelineRun | null) => void }) {
   const client = useItemClient();
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
   async function loadRuns() {
-    setRuns(await client.getPipelineRuns(pipelineId));
+    const latest = await client.getPipelineRuns(pipelineId);
+    setRuns(latest);
+    onLatestRunChange?.(latest[0] ?? null);
   }
 
   useEffect(() => {
@@ -30,6 +34,7 @@ export function PipelineRunPanel({ pipelineId }: { pipelineId: string }) {
     for (;;) {
       const latest = await client.getPipelineRuns(pipelineId);
       setRuns(latest);
+      onLatestRunChange?.(latest[0] ?? null);
       const status = latest[0]?.status;
       if (status !== "queued" && status !== "running") {
         setRunning(false);
