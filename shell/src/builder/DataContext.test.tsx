@@ -180,3 +180,65 @@ test("does not crash and leaves pkColumn undefined for an arcgis-sourced dataset
   });
   expect(client.getCollectionSchema).not.toHaveBeenCalled();
 });
+
+test("exposes resolvedSource and hasGeometry for a collection-backed source with a geometry column", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/parcs/items.json"),
+    getDatasetConfig: vi.fn().mockResolvedValue({ source: "collection", collectionId: "parcs", columns: {}, timeField: null, reactsToExtent: false }),
+    getCollectionSchema: vi.fn().mockResolvedValue({ collection: "parcs", pk: "id", geometry: { column: "geometry", type: "Point", srid: 4326 }, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "parcs", datasetId: "dataset-1", query: {} }];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    return <p>resolvedSource:{s?.resolvedSource?.id ?? "none"} hasGeometry:{String(s?.hasGeometry)}</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}><Probe /></DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText(/resolvedSource:ds1/)).toBeInTheDocument();
+    expect(screen.getByText(/hasGeometry:true/)).toBeInTheDocument();
+  });
+});
+
+test("exposes hasGeometry true for an arcgis-sourced dataset regardless of schema", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/arcgis/items.json"),
+    getDatasetConfig: vi.fn().mockResolvedValue({ source: "arcgis", arcgisItemId: "layer-1", columns: {}, timeField: null, reactsToExtent: false }),
+    getCollectionSchema: vi.fn(), // must never be called for arcgis-sourced datasets
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "arcgis-layer", datasetId: "dataset-arcgis", query: {} }];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    return <p>hasGeometry:{String(s?.hasGeometry)}</p>;
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}><Probe /></DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByText(/hasGeometry:true/)).toBeInTheDocument());
+  expect(client.getCollectionSchema).not.toHaveBeenCalled();
+});

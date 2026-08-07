@@ -46,9 +46,13 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
     queries: collectionIds.map((id) => ({ queryKey: ["collection-schema", id], queryFn: () => client.getCollectionSchema(id) })),
   });
   const pkByCollection: Record<string, string> = {};
+  const hasGeometryByCollection: Record<string, boolean> = {};
   collectionIds.forEach((id, i) => {
     const data = schemaResults[i].data;
-    if (data) pkByCollection[id] = data.pk;
+    if (data) {
+      pkByCollection[id] = data.pk;
+      hasGeometryByCollection[id] = data.geometry != null;
+    }
   });
 
   function mergedQueryFor(s: DataSource): DataSource {
@@ -71,6 +75,9 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
     const r = results[i];
     const merged = mergedQueryFor(s);
     const dataset = s.datasetId ? datasets[s.datasetId] : undefined;
+    const hasGeometry = dataset
+      ? (dataset.source === "arcgis" ? true : (hasGeometryByCollection[dataset.collectionId] ?? false))
+      : false;
     states[s.id] = {
       loading: r.isLoading,
       error: r.isError,
@@ -79,6 +86,8 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,
       pkColumn: dataset && dataset.source === "collection" ? pkByCollection[dataset.collectionId] : undefined,
+      resolvedSource: merged,
+      hasGeometry,
     };
   });
 
