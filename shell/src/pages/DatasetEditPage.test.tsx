@@ -148,3 +148,39 @@ test("removing a cross-filter link drops it from the draft before saving", async
   const [, savedConfig] = saveDatasetConfig.mock.calls[0];
   expect(savedConfig.crossFilterLinks).toEqual([]);
 });
+
+test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and downloads on click", async () => {
+  const blob = new Blob(["a,b\n1,2\n"], { type: "text/csv" });
+  const exportDataSource = vi.fn().mockResolvedValue({ blob, filename: "villes.csv" });
+  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue({ ...schema, geometry: { column: "geometry", type: "Point", srid: 4326 } }),
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(item),
+    exportDataSource,
+  });
+
+  await screen.findByText(/Dataset partagé/);
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+  expect(exportDataSource).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "features", datasetId: "ds-1", query: {} }), "csv",
+  );
+  expect(createObjectURL).toHaveBeenCalledWith(blob);
+});
+
+test("only offers CSV/XLSX when the collection has no geometry", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema), // schema.geometry is already null
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(item),
+  });
+  await screen.findByText(/Dataset partagé/);
+  expect(screen.getByLabelText("Exporter en CSV")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Exporter en GEOJSON")).not.toBeInTheDocument();
+});
