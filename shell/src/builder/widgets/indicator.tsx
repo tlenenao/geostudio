@@ -205,7 +205,7 @@ export function registerIndicatorWidget(): void {
 
       return (
         <div className="relative flex h-full flex-col items-center justify-center gap-1">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
           <div className="flex items-center gap-1">
             <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
             {level && (
