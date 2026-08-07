@@ -306,6 +306,23 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     coffre), SP-15g (canvas DAG — branchements & fusion) et SP-15h
     (planification simple) — reste non planifié : événements/déclencheurs
     durables au-delà de la planification cron simple.
+- **SP-16a** — export serveur secs CSV/XLSX (+ GeoJSON/GPKG quand la source a
+  une géométrie) : `app.analytics.export` (sérialisation des 4 formats),
+  4 routes d'export (`POST`/`GET .../export[/items]` sur `collections` et
+  `datasets/{id}/arcgis`, agrégé et entités brutes), exemptées du garde
+  lecture-seule démo ; `ItemClient.exportDataSource()`, `DataContext` expose
+  `resolvedSource`/`hasGeometry` par source, `ExplorerMenu` + section Export
+  de `DatasetEditPage` branchées sur les 6 widgets analytiques. Deux passes
+  de fix en revue finale de branche (0 Critical/Important non résolu au
+  merge) : (1) types OpenAPI/TS régénérés, encodage datetime/Decimal/UUID/
+  bytes dans GeoJSON/GPKG/XLSX, pagination export ArcGIS suivant
+  `exceededTransferLimit`, échecs d'export shell surfacés au lieu d'être
+  avalés silencieusement ; (2) coercition UUID/bytes manquante dans la
+  branche XLSX de l'export (même défaut que (1), fonction sœur oubliée),
+  curseur de pagination ArcGIS avançant du mauvais pas (`limit` demandé au
+  lieu du nombre de features reçues — perte silencieuse sur une page
+  plafonnée côté service), message d'erreur shell traduit en français
+  actionnable (413/403).
 
 ### À venir
 
@@ -327,7 +344,9 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   simple livrés ; seule la vérification des tests qgis réels bloque encore
   M14, les événements durables étant hors périmètre du jalon tel que
   cadré).
-- **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
+- **SP-16b** — alertes & rapports planifiés (SP-16a a livré les exports secs
+  CSV/XLSX/GeoJSON/GPKG à la demande ; reste la planification/automatisation
+  — alertes sur seuil, rapports périodiques). Jalon M12.
 - **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
   à arbitrer avant lancement).
 - Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem),
