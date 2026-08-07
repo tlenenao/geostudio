@@ -148,3 +148,46 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
 
   await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
 });
+
+test("un auteur planifie un pipeline existant sans écrire de cron à la main", async ({ page }) => {
+  await mockCore(page);
+  await mockPipelineFlow(page);
+
+  let savedConfig: Record<string, unknown> = {
+    kind: "pipeline",
+    pipeline: {
+      nodes: [
+        { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "reader.collection" },
+        { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "writer.collection" },
+      ],
+      edges: [{ id: "e1", from: "r1", to: "w1" }],
+    },
+  };
+  await page.route("https://core.test/configs/by-item/pipe-1", async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({ json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig } });
+    } else if (method === "PUT") {
+      savedConfig = await route.request().postDataJSON();
+      await route.fulfill({ json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig } });
+    } else {
+      await route.fallback();
+    }
+  });
+
+  await page.goto("/pipelines/pipe-1/edit");
+  await expect(page.locator(".react-flow__node").first()).toBeVisible();
+
+  await page.getByLabel("Planification automatique").check();
+  await page.getByLabel("Mode de planification").selectOption("daily");
+  await page.getByLabel("Heure d'exécution").fill("02:00");
+
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeEnabled();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await page.reload();
+  await expect(page.locator(".react-flow__node").first()).toBeVisible();
+  await expect(page.getByLabel("Planification automatique")).toBeChecked();
+  await expect(page.getByLabel("Mode de planification")).toHaveValue("daily");
+  await expect(page.getByLabel("Heure d'exécution")).toHaveValue("02:00");
+});
