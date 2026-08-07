@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
+import logging
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.configs.models import Config, ConfigRevision
 from app.configs.schemas import BuilderConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigRead(BaseModel):
@@ -98,7 +101,20 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
         revision = _latest_revision(session, record.id)
         if revision is None:
             continue
-        result.append((record.item_id, record.tenant_id, BuilderConfig.model_validate(revision.data)))
+        try:
+            config = BuilderConfig.model_validate(revision.data)
+        except ValidationError:
+            # Une config stockée corrompue (édition manuelle en base,
+            # durcissement de schéma depuis l'écriture) ne doit jamais faire
+            # planter tout le balayage cross-tenant (SP-15h) : on la
+            # journalise et on l'ignore, plutôt que de bloquer le
+            # traitement de tous les autres tenants.
+            logger.warning(
+                "list_configs_by_kind: config invalide ignorée (item_id=%s, tenant_id=%s, kind=%s)",
+                record.item_id, record.tenant_id, kind,
+            )
+            continue
+        result.append((record.item_id, record.tenant_id, config))
     return result
 
 
