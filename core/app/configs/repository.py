@@ -85,6 +85,23 @@ def get_config_by_item(session: Session, item_id: str) -> ConfigRead | None:
     return _to_read(record, revision)
 
 
+def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, BuilderConfig]]:
+    """Scan cross-tenant (pas de filtre tenant_id) — réservé aux tâches
+    système (balayage périodique, SP-15h), jamais exposé via une route :
+    contrairement à ConfigRead (response_model public), le tuple retourné
+    porte tenant_id en clair."""
+    records = session.scalars(select(Config).where(Config.kind == kind)).all()
+    result: list[tuple[str, str, BuilderConfig]] = []
+    for record in records:
+        if record.item_id is None:
+            continue
+        revision = _latest_revision(session, record.id)
+        if revision is None:
+            continue
+        result.append((record.item_id, record.tenant_id, BuilderConfig.model_validate(revision.data)))
+    return result
+
+
 def update_config(
     session: Session, config_id: str, config: BuilderConfig, *, tenant_id: str
 ) -> ConfigRead | None:
