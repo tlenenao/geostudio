@@ -36,16 +36,32 @@ def _s3_client_from_env():
 
 def _launch_and_navigate(url: str) -> RenderPage:
     # Seule fonction de ce module qui a besoin d'un vrai Chromium — isolée
-    # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). Pas de
-    # gestion de cycle de vie du navigateur ici au-delà de la navigation :
-    # la tâche appelante ferme tout dans un `finally` (cf. render_export_task).
+    # pour être monkeypatchée en test (cf. tests/test_export_jobs.py). La
+    # tâche appelante ferme la page/le navigateur retournés dans un
+    # `finally` (cf. render_export_task) — mais ça ne couvre que le cas où
+    # cette fonction *réussit*. Si driver start / chromium.launch / new_page
+    # / goto / wait_for_selector échoue en cours de route, tout ce qui a
+    # déjà été créé (processus driver Node, processus Chromium) doit être
+    # nettoyé ici même, avant de relayer l'exception — sinon ça fuit
+    # silencieusement à chaque échec, sans jamais atteindre le `finally`
+    # de l'appelant (revue SP-17a task 6, fix round 1).
     from playwright.sync_api import sync_playwright
 
     playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.goto(url, wait_until="load")
-    page.wait_for_selector('[data-export-ready="true"]', timeout=30_000, state="attached")
+    browser = None
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(url, wait_until="load")
+        page.wait_for_selector('[data-export-ready="true"]', timeout=30_000, state="attached")
+    except Exception:
+        try:
+            if browser is not None:
+                browser.close()
+        finally:
+            playwright.stop()
+        raise
+
     # sync_playwright().start() without a matching .stop() leaks the driver
     # connection and the asyncio event loop it privately owns (confirmed:
     # running a real-Chromium call inside the pytest suite without stopping
@@ -92,14 +108,20 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         try:
             content = render_export(browser_page, format=export_format, print_layout=print_layout)
         finally:
-            browser_page.context.browser.close()
             # See the comment in _launch_and_navigate: closing the browser
             # alone does not stop the Playwright driver connection/loop.
             # _FakePage (orchestration tests) never sets this attribute, so
             # getattr()'s default keeps those tests a real no-op here.
+            # Nested try/finally (not a flat pair of statements): if
+            # browser.close() itself raises, the driver stop must still run
+            # — a flat sequence would let a close() failure skip it, leaking
+            # the driver process (revue SP-17a task 6, fix round 1, Minor).
             playwright_driver = getattr(browser_page, "_geostudio_playwright", None)
-            if playwright_driver is not None:
-                playwright_driver.stop()
+            try:
+                browser_page.context.browser.close()
+            finally:
+                if playwright_driver is not None:
+                    playwright_driver.stop()
 
         result_key = f"renders/{job_id}.{export_format}"
         _s3_client_from_env().put_object(
