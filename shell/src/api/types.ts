@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -143,6 +143,11 @@ export interface ItemClient {
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string): Promise<PipelineRun[]>;
   previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
+  createAlertRuleItem(input: { title: string; owner: string; alert: AlertRulePayload }): Promise<Item>;
+  getAlertRuleConfig(pk: string): Promise<AlertRulePayload>;
+  saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
+  listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
+  getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
@@ -452,6 +457,40 @@ export type PipelinePayload = {
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
 };
+
+export interface AlertCondition {
+  expr: string;
+}
+
+export type AlertChannel =
+  | { kind: "webhook"; url: string }
+  | { kind: "email"; to: string; smtpSecretName: string };
+
+export interface AlertRulePayload {
+  datasetItemId: string;
+  // Untyped query bag, same convention as DataSource.query (line ~222) — every
+  // widget/query-shaped field in this codebase is a Record<string, unknown>
+  // read/written dynamically, not a named structured interface.
+  query: Record<string, unknown>;
+  condition: AlertCondition;
+  refreshPolicy: PipelineRefreshPolicy; // reused verbatim, same shape as pipeline scheduling
+  channels: AlertChannel[];
+  messageTemplate: string;
+}
+
+export interface AlertRuleSummary {
+  itemId: string;
+  title: string;
+}
+
+export interface AlertEvaluation {
+  id: string;
+  value: number | null;
+  state: "pending" | "ok" | "firing" | "error";
+  transitioned: boolean;
+  error: string | null;
+  createdAt: string;
+}
 
 // Minimal typed subset of JSON Schema actually consumed by
 // PipelineNodeInspector (builder/pipeline/PipelineNodeInspector.tsx) — not a
