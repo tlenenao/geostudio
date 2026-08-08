@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app import db, observability
 from app.alerts import routes as alerts_routes
 from app.auth import routes as auth_routes
-from app.auth.dependency import is_etl_enabled, is_read_only_mode
+from app.auth.dependency import is_etl_enabled, is_export_enabled, is_read_only_mode
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
@@ -19,6 +19,7 @@ from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
 from app.harvest import routes as harvest_routes
@@ -35,7 +36,7 @@ from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
-_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$")
+_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$")
 
 
 def create_app() -> FastAPI:
@@ -104,6 +105,8 @@ def create_app() -> FastAPI:
     app.include_router(alerts_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
+    if is_export_enabled():
+        app.include_router(export_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
