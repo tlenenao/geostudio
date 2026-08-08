@@ -313,6 +313,16 @@ class AlertRulePayload(BaseModel):
         return self
 
 
+class PrintLayout(BaseModel):
+    pageSize: Literal["a4", "a3"] = "a4"
+    orientation: Literal["portrait", "landscape"] = "portrait"
+    title: str | None = None
+    showLegend: bool = True
+    showScaleBar: bool = True
+    showNorthArrow: bool = False
+    cartouche: str | None = None
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -332,6 +342,7 @@ class BuilderConfig(BaseModel):
     bookmark: BookmarkPayload | None = None
     pipeline: PipelinePayload | None = None
     alert: AlertRulePayload | None = None
+    printLayout: PrintLayout | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":

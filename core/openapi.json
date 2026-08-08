@@ -663,6 +663,16 @@
               }
             ]
           },
+          "printLayout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrintLayout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "theme": {
             "additionalProperties": true,
             "title": "Theme",
@@ -2589,6 +2599,67 @@
           "key"
         ],
         "title": "PresignResponse",
+        "type": "object"
+      },
+      "PrintLayout": {
+        "properties": {
+          "cartouche": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cartouche"
+          },
+          "orientation": {
+            "default": "portrait",
+            "enum": [
+              "portrait",
+              "landscape"
+            ],
+            "title": "Orientation",
+            "type": "string"
+          },
+          "pageSize": {
+            "default": "a4",
+            "enum": [
+              "a4",
+              "a3"
+            ],
+            "title": "Pagesize",
+            "type": "string"
+          },
+          "showLegend": {
+            "default": true,
+            "title": "Showlegend",
+            "type": "boolean"
+          },
+          "showNorthArrow": {
+            "default": false,
+            "title": "Shownortharrow",
+            "type": "boolean"
+          },
+          "showScaleBar": {
+            "default": true,
+            "title": "Showscalebar",
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "PrintLayout",
         "type": "object"
       },
       "RevisionInfo": {

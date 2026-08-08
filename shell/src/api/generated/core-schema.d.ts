@@ -1311,6 +1311,7 @@ export interface components {
             /** Pages */
             pages?: components["schemas"]["Page"][];
             pipeline?: components["schemas"]["PipelinePayload"] | null;
+            printLayout?: components["schemas"]["PrintLayout"] | null;
             /** Theme */
             theme?: {
                 [key: string]: unknown;
@@ -1960,6 +1961,40 @@ export interface components {
             key: string;
             /** Uploadurl */
             uploadUrl: string;
+        };
+        /** PrintLayout */
+        PrintLayout: {
+            /** Cartouche */
+            cartouche?: string | null;
+            /**
+             * Orientation
+             * @default portrait
+             * @enum {string}
+             */
+            orientation: "portrait" | "landscape";
+            /**
+             * Pagesize
+             * @default a4
+             * @enum {string}
+             */
+            pageSize: "a4" | "a3";
+            /**
+             * Showlegend
+             * @default true
+             */
+            showLegend: boolean;
+            /**
+             * Shownortharrow
+             * @default false
+             */
+            showNorthArrow: boolean;
+            /**
+             * Showscalebar
+             * @default true
+             */
+            showScaleBar: boolean;
+            /** Title */
+            title?: string | null;
         };
         /** RevisionInfo */
         RevisionInfo: {
