@@ -170,7 +170,7 @@ export function registerMapWidget(): void {
       };
       return (
         <div className="relative h-full">
-          <ExplorerMenu datasetId={ctx.data?.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <ExplorerMenu datasetId={ctx.data?.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={ctx.data?.resolvedSource} hasGeometry={ctx.data?.hasGeometry} />
           <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
             <MapView
               ref={handle}

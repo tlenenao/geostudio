@@ -306,6 +306,66 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     coffre), SP-15g (canvas DAG — branchements & fusion) et SP-15h
     (planification simple) — reste non planifié : événements/déclencheurs
     durables au-delà de la planification cron simple.
+- **SP-16a** — export serveur secs CSV/XLSX (+ GeoJSON/GPKG quand la source a
+  une géométrie) : `app.analytics.export` (sérialisation des 4 formats),
+  4 routes d'export (`POST`/`GET .../export[/items]` sur `collections` et
+  `datasets/{id}/arcgis`, agrégé et entités brutes), exemptées du garde
+  lecture-seule démo ; `ItemClient.exportDataSource()`, `DataContext` expose
+  `resolvedSource`/`hasGeometry` par source, `ExplorerMenu` + section Export
+  de `DatasetEditPage` branchées sur les 6 widgets analytiques. Deux passes
+  de fix en revue finale de branche (0 Critical/Important non résolu au
+  merge) : (1) types OpenAPI/TS régénérés, encodage datetime/Decimal/UUID/
+  bytes dans GeoJSON/GPKG/XLSX, pagination export ArcGIS suivant
+  `exceededTransferLimit`, échecs d'export shell surfacés au lieu d'être
+  avalés silencieusement ; (2) coercition UUID/bytes manquante dans la
+  branche XLSX de l'export (même défaut que (1), fonction sœur oubliée),
+  curseur de pagination ArcGIS avançant du mauvais pas (`limit` demandé au
+  lieu du nombre de features reçues — perte silencieuse sur une page
+  plafonnée côté service), message d'erreur shell traduit en français
+  actionnable (413/403).
+- **SP-16b** — alertes de seuil (`AlertRule`, 8e kind `BuilderConfig`) :
+  condition scalaire bornée sur DuckDB (`app.configs.alert_condition`),
+  validée à la sauvegarde (Pydantic) et évaluée à l'exécution contre un
+  résultat d'agrégat live ; v1 = un seul scalaire par règle (pas de
+  groupBy/split/bucket/bins, pas de géofencing) et datasets sourcés
+  collection uniquement (arcgis échoue proprement en `error`, jamais
+  mal-évalué silencieusement) ; notification webhook (garde SSRF dédiée
+  `app.alerts.egress`) et/ou email (SMTP via un nouveau kind de secret
+  `smtp` dans le coffre SP-15e) uniquement sur transition d'état
+  (`ok↔firing`), jamais à chaque tick d'un balayage périodique
+  procrastinate miroir du patron SP-15h ; routes `GET /datasets/{id}/alerts`
+  + `GET /alerts/{id}/evaluations`, outil MCP `explain_alert_rule`, section
+  « Alertes » sur `DatasetEditPage` (liste + création inline, réutilise
+  `PipelineScheduleEditor` pour la planification cron). **Renumérotation
+  actée avec l'utilisateur au moment de la spec** : `ReportSchedule`/
+  rapports planifiés/PDF paginés (annoncés « 16c » dans SP-16a) partent
+  entièrement dans SP-17 — SP-16b clôt SP-16, il n'y a pas de 16c ; jalon
+  **M12 atteint** sous ce périmètre resserré (le critère de sortie M12 a
+  été explicitement reformulé pour ne couvrir que le cycle alerte de
+  seuil, les rapports planifiés diffusés restant à livrer sous SP-17).
+  Exécution en subagent-driven-development avec revue systématique par
+  tâche : 9 des 16 tâches ont vu un défaut réel du texte littéral du plan
+  trouvé et corrigé avant merge (bien au-dessus de la moyenne des SP
+  précédents), tous arbitrés explicitement, 0 Critical/Important non
+  résolu au final — notamment deux failles de sécurité dans le sandbox
+  DuckDB dicté par le plan (bypass par fonction de table permettant
+  lecture fichier/SSRF, puis DoS par fonction de table calculatoire non
+  bornée — corrigées par verrouillage moteur `enable_external_access`
+  + timeout/limites en miroir de `app.analytics.sql_sandbox`), un union
+  de canaux non discriminé laissant un payload ambigu se résoudre
+  silencieusement en la mauvaise variante, une SSRF par redirection HTTP
+  contournant une vérification unique (corrigée par la session gardée
+  `build_guarded_session` déjà construite pour cet usage), un test seam
+  `S3_CDC_BUCKET_BASE_URI` manquant cassant la lecture locale de
+  partitions CDC en test, un scan cross-tenant explicitement interdit par
+  sa propre docstring exposé quand même via une route REST, un décorateur
+  MCP inexistant (`@mcp.tool()` au lieu de `@server.tool()`) plus un
+  mauvais placement sous le flag `CORE_ETL_ENABLED` contredisant
+  l'exigence d'enregistrement inconditionnel, une erreur de fetch avalée
+  silencieusement dans l'UI (liste vide indiscernable d'un échec réel), et
+  une assertion E2E finale ne prouvant qu'un POST avait eu lieu sans
+  vérifier son contenu. `app.alerts` inséré dans le contrat de couches
+  import-linter (sous `app.pipelines`, au-dessus de `app.secrets`).
 
 ### À venir
 
@@ -327,9 +387,17 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   simple livrés ; seule la vérification des tests qgis réels bloque encore
   M14, les événements durables étant hors périmètre du jalon tel que
   cadré).
-- **SP-16** — alertes & rapports planifiés (exports secs CSV/XLSX). Jalon M12.
-- **SP-17** — reste à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17
-  à arbitrer avant lancement).
+- **SP-16** — clos (SP-16a + SP-16b livrés, jalon M12 atteint sous le
+  périmètre reformulé — cf. `### Fait`). Aucun SP-16c : le renumérotage
+  acté avec l'utilisateur au moment de la spec SP-16b déplace
+  `ReportSchedule`/rapports planifiés/PDF de dashboards paginés
+  entièrement dans **SP-17**, où le socle export CSV/XLSX/GeoJSON/GPKG de
+  SP-16a sera réutilisé tel quel plutôt que reconstruit.
+- **SP-17** — porte désormais `ReportSchedule` (rapports planifiés, PDF de
+  dashboards paginés, en s'appuyant sur le worker Playwright/`PrintLayout`
+  déjà prévu par la vision post-v0.1) en plus de son périmètre restant à
+  cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17 à arbitrer
+  avant lancement).
 - Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem),
   impression (Playwright en worker).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/

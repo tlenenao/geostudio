@@ -1,92 +1,80 @@
-## Task 7: Docker Compose wiring
+### Task 7: `SmtpCredentialsPayload` secret kind
 
 **Files:**
-- Modify: `docker-compose.yml`
+- Modify: `core/app/secrets/schemas.py`
+- Modify: `core/tests/test_secrets_schemas.py`
 
 **Interfaces:**
-- Produces: `qgis-worker` service (profile `etl`), `etl-scratch` named
-  volume shared with `worker`, `worker`'s new `QGIS_WORKER_URL`/
-  `QGIS_WORKER_TIMEOUT_SECONDS` env vars + volume mount.
+- Produces: `SmtpCredentialsPayload` variant added to the `SecretPayload` union, consumed by Task 8 (`app.alerts.notify`).
 
-- [ ] **Step 1: Add the named volume**
+- [ ] **Step 1: Write the failing test**
 
-Modify `docker-compose.yml`'s top-level `volumes:` section (currently
-`pg-data:` and `minio-data:`, around line 5-8):
+Add to `core/tests/test_secrets_schemas.py` (open the file first to match its existing style — it parametrizes over the 5 existing kinds; add a 6th case rather than a new file, since this is additive to the existing union test suite):
 
-```yaml
-volumes:
-  pg-data:
-  minio-data:
-  etl-scratch:
+```python
+def test_smtp_credentials_payload_round_trips():
+    from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
+
+    payload = SmtpCredentialsPayload(
+        host="smtp.example.test", port=587, username="alerts@example.test",
+        password="s3cret", useTls=True, fromAddress="alerts@example.test",
+    )
+    dumped = SECRET_PAYLOAD_ADAPTER.dump_python(payload)
+    assert dumped["kind"] == "smtp"
+    restored = SECRET_PAYLOAD_ADAPTER.validate_python(dumped)
+    assert isinstance(restored, SmtpCredentialsPayload)
+    assert restored.host == "smtp.example.test"
+    assert restored.useTls is True
 ```
 
-- [ ] **Step 2: Add the `qgis-worker` service**
+- [ ] **Step 2: Run test to verify it fails**
 
-Add a new service block near `worker` (after the `worker:` block, around
-line 176, before the `cdc-worker:` comment):
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py -k smtp`
+Expected: FAIL with `ImportError: cannot import name 'SmtpCredentialsPayload'`
 
-```yaml
-  # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
-  # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un
-  # `docker compose up` par défaut ne le démarre pas, même porte que
-  # CORE_ETL_ENABLED. Aucune credential DB, aucun accès réseau externe —
-  # ne voit que le volume scratch partagé avec `worker` (garde
-  # anti-confused-deputy, patron SP-6a).
-  qgis-worker:
-    build: ./deploy/qgis-worker
-    profiles: ["etl"]
-    environment:
-      QT_QPA_PLATFORM: offscreen
-    volumes:
-      - etl-scratch:/scratch
-    networks: [gis-net]
-    restart: unless-stopped
+- [ ] **Step 3: Write the implementation**
+
+```python
+# Add to core/app/secrets/schemas.py, alongside PostgresDsnPayload:
+class SmtpCredentialsPayload(BaseModel):
+    """SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
+    the webhook channel's URL, this comes from an admin-only secret
+    (POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule
+    user input — no egress guard applies to it (Global Constraints,
+    SP-16b plan), same trust model as postgres_dsn."""
+    kind: Literal["smtp"] = "smtp"
+    host: str
+    port: int
+    username: str
+    password: str
+    useTls: bool = True
+    fromAddress: str
 ```
 
-- [ ] **Step 3: Wire `worker`'s env vars + volume**
-
-Modify `docker-compose.yml`'s `worker:` service block — add to its
-`environment:` section:
-
-```yaml
-      QGIS_WORKER_URL: http://qgis-worker:8000
-      QGIS_WORKER_TIMEOUT_SECONDS: "600"
+```python
+# Change the SecretPayload union:
+SecretPayload = Annotated[
+    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload | PostgresDsnPayload | SmtpCredentialsPayload,
+    Field(discriminator="kind"),
+]
 ```
 
-`worker:` (`docker-compose.yml:156-176`) has no `volumes:` key today —
-add one, right after its `environment:` block and before `networks:
-[gis-net]`:
+- [ ] **Step 4: Run test to verify it passes**
 
-```yaml
-    volumes:
-      - etl-scratch:/scratch
-```
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py`
+Expected: all passing, including the new `test_smtp_credentials_payload_round_trips`.
 
-- [ ] **Step 4: Validate the compose file**
+Also run the full secrets suite to confirm the union change doesn't break existing routes/repository tests:
 
-Run: `docker compose config --quiet`
-Expected: no output, exit code 0 (valid YAML + valid compose schema).
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_routes.py tests/test_secrets_repository.py tests/test_secrets_models.py`
+Expected: unchanged, all passing.
 
-Run: `docker compose --profile etl config --services`
-Expected: includes `qgis-worker` in the service list (confirms the profile
-gate works as intended — omit `--profile etl` and re-run to confirm
-`qgis-worker` is absent from the default service list).
-
-- [ ] **Step 5: Smoke-test the full compose service (manual, not automated)**
-
-Run: `docker compose --profile etl build qgis-worker && docker compose --profile etl up -d qgis-worker`
-Expected: service starts, `docker compose --profile etl logs qgis-worker`
-shows no crash loop (the `ThreadingHTTPServer` from Task 4 blocks forever
-on `serve_forever()`, so "no output, still running" after a few seconds is
-the success signal).
-
-Run: `docker compose --profile etl down`
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add docker-compose.yml
-git commit -m "feat(deploy): wire qgis-worker into compose behind the etl profile"
+git add core/app/secrets/schemas.py core/tests/test_secrets_schemas.py
+git commit -m "feat(core): SP-16b — SmtpCredentialsPayload secret kind (additive)"
 ```
 
 ---

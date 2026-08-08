@@ -1,203 +1,150 @@
-# Task 4 Report: `pipelines_repo.list_due_pipelines`
+# Task 4 report — `AlertEvaluation` model + migration
 
-## Summary
+## What was implemented
 
-Successfully implemented `list_due_pipelines(session: Session) -> list[tuple[str, str]]` in `core/app/pipelines/repository.py`. This function scans all tenant configurations for pipeline configs with enabled refresh policies, determines which are due to run based on cron schedules, and returns eligible (item_id, tenant_id) tuples. Includes safety logic to reclaim stale "running"/"queued" runs older than 60 minutes.
+- `core/app/alerts/__init__.py` (empty, SPDX header only) — new package.
+- `core/app/alerts/models.py` — `AlertEvaluation` ORM model (table
+  `alert_evaluations`), exactly as dictated in the brief: `id`, `tenant_id`
+  (FK `tenants.id`), `alert_rule_item_id` (FK `items.id`), `value` (nullable
+  float), `state`, `transitioned` (bool, default False), `error` (nullable
+  string), `created_at` (default `_now()`). Style matches the sibling
+  `app/pipelines/models.py` (same `_now()` helper pattern, same import
+  layout).
+- `core/alembic/versions/0020_alert_evaluations.py` — migration matching the
+  model column-for-column, same shape as `0018_pipeline_runs.py`/
+  `0019_connector_secrets.py` (added the SPDX header line the brief's
+  snippet omitted, to match every other file in `alembic/versions/`).
+- `core/tests/test_alert_models.py` — the round-trip test verbatim from the
+  brief.
 
-## What Was Implemented
+### Addendum 1 (user-approved): import-linter layers contract
 
-### Files Changed
-1. **core/tests/test_pipeline_repository.py**
-   - Added datetime imports: `from datetime import datetime, timedelta, timezone`
-   - Added config-related imports: `from app.configs import repository as configs_repo` and `from app.configs.schemas import BuilderConfig`
-   - Added helper function: `_make_pipeline_config()` to create test pipeline configs
-   - Added 6 new test functions testing various scenarios for `list_due_pipelines()`
+Added `"app.alerts"` to `core/pyproject.toml`'s `[tool.importlinter]`
+`layers` list, between `"app.pipelines"` and `"app.secrets"`, per the plan's
+Global Constraints. Ran `uv run lint-imports` — first run **broke** two
+different ways (see Self-review below), fixed, then confirmed 0 broken
+contracts.
 
-2. **core/app/pipelines/repository.py**
-   - Updated imports to include `timedelta` and `croniter`, plus `configs_repo`
-   - Added reclaim constant: `_RUNNING_RECLAIM_MINUTES = 60`
-   - Added function: `list_due_pipelines(session: Session) -> list[tuple[str, str]]`
+### Addendum 2 (found during verification, not in the brief): `app.db` registration
 
-### Implementation Details
+While verifying the brief's code against the current codebase, I checked
+how other model modules become known to `Base.metadata` outside of the
+test's own `from app.alerts.models import AlertEvaluation` import line.
+`app/db.py::core_table_names()` explicitly imports every model module
+(`app.audit.models`, `app.pipelines.models`, `app.secrets.models`, etc.) —
+this is documented in its own docstring as "Source de vérité de la denylist
+du registre de collections" and is exactly what `init_db()` relies on to
+populate `Base.metadata` before `create_all()` on the SQLite path, and what
+`app/collections/routes.py` uses as the denylist so a user-created
+collection can't collide with a core table name.
 
-The `list_due_pipelines()` function:
-- Iterates over all pipeline configs via `configs_repo.list_configs_by_kind(session, kind="pipeline")`
-- Filters out pipelines without refresh policies or with disabled policies
-- For pipelines that have never run: marks them as due
-- For pipelines with a latest run:
-  - If status is "queued" or "running":
-    - Reclaims (marks as due) if created_at is older than 60 minutes
-    - Otherwise skips (in progress)
-  - If status is final (succeeded/failed):
-    - Uses croniter to calculate next scheduled tick from the run's created_at
-    - Marks as due if next tick <= now
-- Returns a list of (item_id, tenant_id) tuples for all due pipelines
+The brief's test would still pass without this fix, because the test module
+itself does `from app.alerts.models import AlertEvaluation` at import time,
+which registers the model on `Base.metadata` as a side effect before
+`init_db()` runs. But in any code path that reaches `init_db()`/
+`core_table_names()` without first importing `app.alerts.models` directly
+(any other test, any app startup path, the collections denylist check),
+`alert_evaluations` would have been silently invisible — not created by
+`create_all()` on SQLite, and not excluded from collection names. This is
+the same class of "looks right in isolation, wrong once wired into the
+whole app" gap the brief warned about for prior tasks (DuckDB sandbox
+bypass in Task 1, discriminated-union gap in Task 2).
 
-## Testing Results
+Fix: added `from app.alerts import models as alerts_models  # noqa: F401`
+to `core_table_names()` in `app/db.py`, alphabetically before `app.audit`
+(matches the existing alphabetical-ish ordering of that import block).
 
-### TDD Verification
+## What was tested and results
 
-**Step 1: RED (tests fail)**
+- RED: `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_models.py`
+  → `ModuleNotFoundError: No module named 'app.alerts'` (collection error,
+  1 error), confirmed before writing any implementation code.
+- GREEN (same command after implementation): `1 passed in 0.41s`.
+- Full non-postgis suite after all changes:
+  `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q -m "not postgis"`
+  → `1236 passed, 6 skipped, 125 deselected in 83.45s`. No regressions from
+  the `app/db.py` edit.
+- `uv run alembic heads` before writing the migration: `0019 (head)`,
+  matching the brief and the dispatcher's confirmation. After adding the
+  migration: `uv run alembic heads` → `0020 (head)`.
+- `uv run lint-imports`: first run after adding `"app.alerts"` to `layers`
+  **broke** 6+ contracts (`app.items`/`app.extensions`/`app.auth`/
+  `app.sharing`/`app.features`/`app.stac` "not allowed to import
+  app.alerts", all routed through `app.db -> app.alerts.models`) — because
+  `core_table_names()` now imports `app.alerts.models`, and every module
+  transitively imports `app.db`. This exact pattern already exists for
+  every other model module (`app.db -> app.pipelines.models`, `app.db ->
+  app.secrets.models`, etc.) via an `ignore_imports` allowlist. Added
+  `"app.db -> app.alerts.models"` to that list. Re-ran: `Contracts: 1 kept,
+  0 broken.`
+- Real Postgres migration apply: `docker compose ps` showed no running
+  containers (no `.env`, all vars defaulting blank, no services listed) —
+  did not start new services per instructions. Not run; covered by the
+  `postgis`-marked CI job per the brief's stated caveat, same as prior
+  migrations in this repo.
+
+## TDD Evidence
+
+RED:
 ```
-uv run pytest tests/test_pipeline_repository.py -v -k list_due_pipelines
-```
-Result: 6 tests FAILED with `AttributeError: module 'app.pipelines.repository' has no attribute 'list_due_pipelines'` (expected)
-
-**Step 2: GREEN (tests pass)**
-```
-uv run pytest tests/test_pipeline_repository.py -v
-```
-Result: 17 tests PASSED (all existing + 6 new tests):
-- test_create_run_defaults_to_queued PASSED
-- test_get_run_round_trips PASSED
-- test_get_run_scoped_to_tenant PASSED
-- test_list_runs_ordered_most_recent_first PASSED
-- test_mark_running_then_succeeded PASSED
-- test_mark_failed_records_error PASSED
-- test_append_node_stat_merges_into_existing_node_stats PASSED
-- test_append_node_stat_scoped_to_tenant PASSED
-- test_get_latest_run_returns_none_when_no_runs PASSED
-- test_get_latest_run_returns_most_recent PASSED
-- test_get_latest_run_scoped_to_tenant PASSED
-- test_list_due_pipelines_excludes_pipelines_without_refresh_policy PASSED
-- test_list_due_pipelines_excludes_disabled_policy PASSED
-- test_list_due_pipelines_includes_never_run_enabled_pipeline PASSED
-- test_list_due_pipelines_excludes_pipeline_not_yet_due PASSED
-- test_list_due_pipelines_skips_run_already_in_progress PASSED
-- test_list_due_pipelines_reclaims_stale_running_run PASSED
-
-**Step 3: Lint-imports verification**
-```
-uv run lint-imports
-```
-Result: PASS — Contracts: 1 kept, 0 broken.
-
-## Commit
-
-```
-20da2b2 feat(core): pipelines — list_due_pipelines (SP-15h)
-```
-
-## Self-Review Findings
-
-- All 6 new test cases implemented exactly as specified in the brief
-- All existing tests remain passing (no regressions)
-- Import layering verified: `app.pipelines` importing `app.configs` is an allowed direction (consistent with `app.pipelines.jobs`)
-- Exact code from brief was used (function signature, logic, constants)
-- Code follows project conventions (French docstrings for complex logic, English function names)
-- Timezone handling implemented correctly with fallback for naive datetimes
-- Reclaim logic mirrors existing pattern from `app.harvest.repository.list_due_sources`
-- croniter usage correctly integrated with datetime handling
-
-## Issues & Concerns
-
-None. Implementation is complete, tested, and verified per requirements.
-
-## Fix: reclaim anchor (SP-15h review finding, 2026-08-07)
-
-### Bug
-
-`list_due_pipelines` measured staleness of a `"running"` run from `created_at`
-(queue time, set once at `create_run` and never updated) instead of
-`started_at` (set by `mark_running` when the run actually starts). A run that
-sat `"queued"` for 55+ minutes then transitioned to `"running"` was
-immediately reclaimed as "presumably stuck" on the next sweep tick, spawning
-a duplicate concurrent run of the same pipeline.
-
-### RED
-
-Added `test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue`
-to `core/tests/test_pipeline_repository.py` (right after
-`test_list_due_pipelines_reclaims_stale_running_run`): backdates `created_at`
-by 61 minutes, then calls `mark_running` (fresh `started_at`), and asserts
-`list_due_pipelines(s) == []`. Run before the fix:
-
-```
-FAILED tests/test_pipeline_repository.py::test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue
-AssertionError: assert [('9075ff8a...', 'default')] == []
+ImportError while importing test module '.../tests/test_alert_models.py'.
+E   ModuleNotFoundError: No module named 'app.alerts'
+1 error in 0.10s
 ```
 
-Confirms the bug reproduces exactly as described.
-
-### Fix
-
-In `core/app/pipelines/repository.py`'s `list_due_pipelines`: for a `"running"`
-run with a non-`None` `started_at`, the reclaim anchor is now `started_at`
-(normalized to aware UTC, same pattern as the existing `created_at`
-normalization) instead of `created_at`. `"queued"` runs still anchor on
-`created_at` (no better timestamp exists before a run starts). The
-`next_tick = croniter.croniter(policy.cron, created_at)...` line was left
-untouched, as scoped.
-
-### Deviation from the brief's stated scope — existing test had to change too
-
-The brief asserted that `test_list_due_pipelines_reclaims_stale_running_run`
-"exercises a run left in `running` with backdated `created_at` AND no fresh
-`started_at` override" and would still pass unmodified under the fix. That
-turned out to be factually wrong: that test calls `repo.mark_running(s,
-run_id=run.id)` *before* backdating `created_at`, so `mark_running` sets
-`started_at` to a fresh timestamp (now) that is never backdated. Running the
-full suite after the fix confirmed this concretely:
-
+GREEN:
 ```
-FAILED tests/test_pipeline_repository.py::test_list_due_pipelines_reclaims_stale_running_run
-assert repo.list_due_pipelines(s) == [(item_id, tenant.id)]
+tests/test_alert_models.py .                                          [100%]
+1 passed in 0.41s
 ```
 
-The test's scenario as written (old `created_at`, fresh `started_at`) is
-*exactly* the "just started after a long queue" case the fix is meant to
-protect — under the corrected anchor logic it must NOT be reclaimed, which
-directly contradicts that test's own assertion. The test was implicitly
-asserting the buggy behavior as correct.
+## Files changed
 
-Resolution applied (minimal, preserves the test's original intent of
-verifying a genuinely-stuck running run gets reclaimed): backdated
-`run.started_at` by 61 minutes as well as `run.created_at`, so the scenario
-now represents a run that actually started running over an hour ago and
-never finished — a real stuck run — rather than a run that merely waited a
-long time in queue before just starting. Added a comment explaining why
-backdating `created_at` alone is no longer sufficient post-fix, cross-
-referencing the new regression test.
+- `core/app/alerts/__init__.py` (new)
+- `core/app/alerts/models.py` (new)
+- `core/alembic/versions/0020_alert_evaluations.py` (new)
+- `core/tests/test_alert_models.py` (new)
+- `core/app/db.py` (1-line addition: register `app.alerts.models` in
+  `core_table_names()`)
+- `core/pyproject.toml` (2-line addition: `"app.alerts"` in the layers list;
+  `"app.db -> app.alerts.models"` in `ignore_imports`)
 
-This was not pre-authorized in the brief's scope, but leaving the existing
-test unmodified was not an option: it would either fail (contradicting "all
-existing tests must pass") or, if left passing, would mean the fix wasn't
-actually applied. Flagging this explicitly rather than silently editing
-another task's test.
+## Self-review findings
 
-### GREEN — full `test_pipeline_repository.py` (18 tests)
+- **Model vs. migration**: column-for-column match confirmed by inspection
+  (types, nullability, FKs, default handling — `transitioned` uses
+  `server_default=sa.false()` in the migration matching the Python-side
+  `default=False`, same pattern as no other boolean column in this repo
+  needed to diverge from).
+- **Style**: matches `app/pipelines/models.py` (`_now()` helper, import
+  ordering, `Mapped`/`mapped_column` conventions). No fields added beyond
+  the brief.
+- **Discipline**: did not add anything beyond the brief's model/migration
+  except the two addenda explicitly scoped (import-linter layers entry,
+  user-approved; `app.db` registration, self-found and justified above).
+  Did not touch `app/alerts/repository.py` or anything belonging to Task 5.
+- **Testing**: the test genuinely exercises persistence — two separate
+  `Session()` contexts (write-then-commit, then a fresh session to reload
+  by primary key), not just in-memory construction. Confirmed it fails for
+  the right reason (`ModuleNotFoundError`, not some unrelated setup error)
+  before implementing.
+- **Import-linter**: verified the *before* state of `pyproject.toml` matched
+  the dispatch description exactly before editing, and verified the
+  contract still holds (`1 kept, 0 broken`) after — not just "no error",
+  actually inspected the failure output on the first attempt to understand
+  *why* it broke rather than reflexively adding an ignore rule.
 
-```
-tests/test_pipeline_repository.py::test_create_run_defaults_to_queued PASSED
-tests/test_pipeline_repository.py::test_get_run_round_trips PASSED
-tests/test_pipeline_repository.py::test_get_run_scoped_to_tenant PASSED
-tests/test_pipeline_repository.py::test_list_runs_ordered_most_recent_first PASSED
-tests/test_pipeline_repository.py::test_mark_running_then_succeeded PASSED
-tests/test_pipeline_repository.py::test_mark_failed_records_error PASSED
-tests/test_pipeline_repository.py::test_append_node_stat_merges_into_existing_node_stats PASSED
-tests/test_pipeline_repository.py::test_append_node_stat_scoped_to_tenant PASSED
-tests/test_pipeline_repository.py::test_get_latest_run_returns_none_when_no_runs PASSED
-tests/test_pipeline_repository.py::test_get_latest_run_returns_most_recent PASSED
-tests/test_pipeline_repository.py::test_get_latest_run_scoped_to_tenant PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_pipelines_without_refresh_policy PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_disabled_policy PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_includes_never_run_enabled_pipeline PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_excludes_pipeline_not_yet_due PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_skips_run_already_in_progress PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_reclaims_stale_running_run PASSED
-tests/test_pipeline_repository.py::test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue PASSED
+## Issues or concerns
 
-18 passed in 0.80s
-```
-
-Also ran the wider pipelines suite for collateral regressions:
-`uv run pytest tests/ -k pipeline -q` → `222 passed, 14 skipped, 1060 deselected`.
-
-### lint-imports
-
-```
-layered architecture KEPT
-Contracts: 1 kept, 0 broken.
-```
-
-No regression, as expected (fix touches no imports).
+- None blocking. The one non-trivial judgment call was fixing the
+  `core_table_names()` gap (Addendum 2) — it wasn't in the brief or the
+  dispatcher's explicit addendum, but leaving it out would have produced a
+  model that passes its own test while being invisible to the rest of the
+  app's table-name bookkeeping. Flagging clearly here in case a reviewer
+  disagrees with in-scope-ness; it's a 1-line, low-risk, immediately
+  necessary correctness fix and easy to revert independently if desired
+  (`core/app/db.py`, one `noqa: F401` import line).
+- Real-Postgres `alembic upgrade head` was not exercised (no stack running,
+  consistent with the brief's stated caveat and the existing CLAUDE.md note
+  that this repo's default compose Postgres volume has a pre-existing,
+  unrelated `alembic_version` stamping problem).

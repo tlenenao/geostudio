@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -125,6 +125,24 @@ async function requestFeatureWrite<T>(
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+async function requestBlob(
+  coreUrl: string, getToken: () => string | undefined, method: string, path: string, body?: unknown,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${coreUrl}${path}`, {
+    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match ? match[1] : "export";
+  const blob = await res.blob();
+  return { blob, filename };
 }
 
 async function requestAnalyticsSql(
@@ -678,6 +696,39 @@ export function createItemClient(opts: {
       );
     },
 
+    async createAlertRuleItem(input: { title: string; owner: string; alert: AlertRulePayload }): Promise<Item> {
+      const config = { version: 1, kind: "alert", alert: input.alert };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createAlertRuleItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "alert", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getAlertRuleConfig(pk: string): Promise<AlertRulePayload> {
+      const data = await request<{ config?: { alert?: AlertRulePayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.alert) throw new Error("getAlertRuleConfig: config has no alert payload");
+      return data.config.alert;
+    },
+
+    async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "alert", alert: payload });
+    },
+
+    async listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]> {
+      return request<AlertRuleSummary[]>("GET", `/datasets/${datasetItemId}/alerts`);
+    },
+
+    async getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]> {
+      return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
+    },
+
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
       const resolved = await resolveDataset(pk);
       if (resolved.source === "arcgis" && resolved.arcgisItemId) {
@@ -817,6 +868,25 @@ export function createItemClient(opts: {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    async exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }> {
+      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
+      const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
+      if (source.type === "statistics") {
+        const body = buildAggregateBody(source.query);
+        const path = isArcgis
+          ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
+          : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
+        return requestBlob(coreUrl, getToken, "POST", path, body);
+      }
+      const resolved = source.datasetId ? { ...source, layer: cachedDataset?.collectionId ?? source.layer } : source;
+      const qs = _queryParams(resolved.query);
+      const suffix = qs ? `&${qs}` : "";
+      const path = isArcgis
+        ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
+        : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
+      return requestBlob(coreUrl, getToken, "GET", path);
     },
 
     async getCollectionSchema(collectionId: string): Promise<CollectionSchema> {

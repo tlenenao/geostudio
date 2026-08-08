@@ -23,3 +23,10 @@ export function useItemClient(): ItemClient {
   }
   return client;
 }
+
+// Non-throwing variant for components that only need the client conditionally
+// (e.g. an optional export feature) and must otherwise keep working when
+// rendered without an ItemClientProvider in scope.
+export function useOptionalItemClient(): ItemClient | null {
+  return useContext(ItemClientContext);
+}

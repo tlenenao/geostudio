@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import db, observability
+from app.alerts import routes as alerts_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
@@ -34,6 +35,7 @@ from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$")
 
 
 def create_app() -> FastAPI:
@@ -70,6 +72,7 @@ def create_app() -> FastAPI:
             and request.url.path != "/mcp"
             and request.url.path != "/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
+            and not _EXPORT_PATH_RE.match(request.url.path)
         ):
             return JSONResponse(
                 status_code=403,
@@ -98,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
     app.include_router(harvest_routes.router)
+    app.include_router(alerts_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
 

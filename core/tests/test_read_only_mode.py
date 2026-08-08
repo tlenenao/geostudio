@@ -101,3 +101,16 @@ def test_analytics_sql_is_exempt_from_read_only(env, monkeypatch):
     response = env.post("/analytics/sql", json={"sql": "SELECT 1"})
     assert response.status_code == 403
     assert response.json() != {"detail": READ_ONLY_MESSAGE}
+
+
+def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
+    """POST .../export (mode agrégé) est une lecture malgré son verbe HTTP,
+    même raisonnement que POST /collections/{id}/aggregate (SP-16a) : sans
+    cette exemption, une démo publique en lecture seule casserait le bouton
+    Exporter de tout widget analytique."""
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    resp = env.post("/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
+    assert resp.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+
+    resp = env.post("/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
+    assert resp.status_code == 404

@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 import httpx
 
 from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
+from app.analytics.duckdb_conn import open_spatial_connection
+from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
@@ -298,3 +300,126 @@ def get_dataset_arcgis_aggregate(
         client.close()
     category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
     return {"categoryKey": category_key, "rows": rows}
+
+
+_EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
+
+
+@router.post("/datasets/{item_id}/arcgis/export")
+def export_dataset_arcgis_aggregate(
+    item_id: str, body: AggregateRequestBody, format: str = Query(...),
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if format not in _EXPORT_FORMATS_AGGREGATE:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
+        )
+    if body.bucket is not None or body.split is not None or body.bins is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="bucket/split/bins are not supported for arcgis-sourced datasets",
+        )
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+    group_by = _groupby_fields(body.groupBy)
+    measures_in = body.measures or [AggregateMeasure(field=body.field, agg=body.agg, label="value")]
+    measures = [(m.agg, m.field, _measure_label(m)) for m in measures_in]
+    try:
+        params = live_query.translate_aggregate_query(
+            group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox,
+        )
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}]},
+        )
+    try:
+        raw = live_query.fetch_query(client, external_url, params)
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+    _category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
+    content = rows_to_format(rows, format=format)
+    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    filename = export_filename(item.title if item else item_id, format=format)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="item", object_id=item_id,
+                payload={"format": format, "mode": "aggregate"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+_EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
+_EXPORT_ITEMS_CAP = 10_000
+
+
+@router.get("/datasets/{item_id}/arcgis/export/items")
+def export_dataset_arcgis_items(
+    item_id: str, request: Request, format: str = Query(...), bbox: str | None = None,
+    user: User = Depends(get_current_user), session: Session = Depends(get_session),
+    client: httpx.Client = Depends(get_arcgis_http_client),
+):
+    if format not in _EXPORT_FORMATS_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
+        )
+    parsed_bbox = _parse_bbox(bbox)
+    reserved = {"limit", "offset", "bbox", "format"}
+    filters = {k: v for k, v in request.query_params.items() if k not in reserved}
+    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
+
+    features: list[dict] = []
+    offset = 0
+    limit = _MAX_LIMIT
+    try:
+        while True:
+            params = live_query.translate_features_query(filters=filters, bbox=parsed_bbox, limit=limit, offset=offset)
+            raw = live_query.fetch_query(client, external_url, params)
+            page_features = raw.get("features", []) if isinstance(raw, dict) else []
+            features.extend(page_features)
+            if len(features) > _EXPORT_ITEMS_CAP:
+                raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
+            if not page_features:
+                break
+            # Real ArcGIS services clamp resultRecordCount to their own
+            # maxRecordCount (e.g. maxRecordCount=500 for a 1000-row request),
+            # so a page shorter than `limit` does not necessarily mean the
+            # service is out of features — exceededTransferLimit is the
+            # authoritative signal (same pattern as connectors/arcgis.py:139).
+            # Fall back to the length heuristic only when the flag is absent.
+            exceeded_transfer_limit = isinstance(raw, dict) and raw.get("exceededTransferLimit") is True
+            if not exceeded_transfer_limit and len(page_features) < limit:
+                break
+            offset += len(page_features)
+    except live_query.ArcgisQueryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]},
+        )
+    except EgressBlockedError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    finally:
+        client.close()
+
+    if format == "gpkg":
+        conn = open_spatial_connection()
+        try:
+            content = features_to_format(features, format=format, conn=conn)
+        finally:
+            conn.close()
+    else:
+        content = features_to_format(features, format=format)
+    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    filename = export_filename(item.title if item else item_id, format=format)
+    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
+                action="export.run", object_type="item", object_id=item_id,
+                payload={"format": format, "mode": "items"})
+    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
+                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})

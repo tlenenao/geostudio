@@ -1,234 +1,202 @@
-## Task 2: SSRF egress guard for `app.pipelines` — `app/pipelines/egress.py`
+### Task 2: `AlertRule` payload schema
 
 **Files:**
-- Create: `core/app/pipelines/egress.py`
-- Modify: `core/pyproject.toml` (add `requests` dependency)
-- Test: `core/tests/test_pipeline_egress.py`
+- Modify: `core/app/configs/schemas.py`
+- Test: `core/tests/test_alert_config_schema.py`
 
 **Interfaces:**
-- Produces: `app.pipelines.egress.EgressBlockedError`,
-  `assert_egress_allowed(url: str) -> None`,
-  `build_guarded_session() -> requests.Session`. Consumed by Task 3
-  (`connector_runtime.materialize_rest_connector` passes the guarded
-  session to dlt's `RESTClient`).
+- Consumes: `app.configs.alert_condition.validate_condition_expr` (Task 1), `PipelineRefreshPolicy` (existing, reused verbatim), `AggregateRequestBody` (existing, `app.analytics.aggregate`).
+- Produces: `AlertCondition`, `AlertChannelWebhook`, `AlertChannelEmail`, `AlertRulePayload` classes; `BuilderConfig.kind` gains `"alert"`; `BuilderConfig.alert: AlertRulePayload | None` field. Consumed by Task 3 (`alert_validation.py`) and Task 9 (`app.alerts.jobs`).
 
-- [ ] **Step 1: Add the `requests` dependency**
-
-Modify `core/pyproject.toml` — in `dependencies = [...]`, add after
-`"httpx>=0.27",`:
-
-```toml
-    "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
-                       # RESTClient utilise `requests`, pas httpx (que le reste
-                       # du dépôt utilise déjà) ; déclaré ici en dépendance
-                       # directe plutôt que de compter sur la transitive de dlt.
-```
-
-Run: `cd core && uv sync`
-Expected: resolves; `requests` becomes a direct dependency (it was almost
-certainly already present transitively via other packages, but wasn't
-importable as a guaranteed direct dependency before this).
-
-- [ ] **Step 2: Write the failing tests**
-
-Create `core/tests/test_pipeline_egress.py` (mirrors
-`core/tests/test_harvest_egress.py` exactly, adapted from `httpx` to
-`requests`):
+- [ ] **Step 1: Write the failing tests**
 
 ```python
+# core/tests/test_alert_config_schema.py
 # SPDX-License-Identifier: Apache-2.0
-import socket
-
 import pytest
-import requests
+from pydantic import ValidationError
 
-from app.pipelines.egress import (
-    EgressBlockedError,
-    assert_egress_allowed,
-    build_guarded_session,
-)
+from app.configs.schemas import BuilderConfig
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://127.0.0.1/x",
-        "http://169.254.169.254/latest/meta-data/",
-        "http://10.0.0.5/x",
-        "http://192.168.1.1/x",
-        "http://[::1]/x",
-        "http://[fc00::1]/x",
-        "http://0.0.0.0/x",
-    ],
-)
-def test_assert_blocks_internal_ip_literals_without_dns(url):
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed(url)
+def _base_alert(**overrides):
+    body = {
+        "kind": "alert",
+        "alert": {
+            "datasetItemId": "ds-1",
+            "query": {"agg": "count"},
+            "condition": {"expr": "value > 100"},
+            "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+        },
+    }
+    body["alert"].update(overrides)
+    return body
 
 
-def test_assert_allows_public_ip_literal():
-    assert_egress_allowed("https://93.184.216.34/x") is None
+def test_alert_config_requires_alert_payload():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate({"kind": "alert"})
 
 
-def test_assert_blocks_non_http_scheme():
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("file:///etc/passwd")
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("ftp://example.com/x")
+def test_alert_config_accepts_a_valid_payload():
+    config = BuilderConfig.model_validate(_base_alert())
+    assert config.alert.datasetItemId == "ds-1"
+    assert config.alert.condition.expr == "value > 100"
 
 
-def test_assert_blocks_hostname_resolving_to_internal(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("https://evil.example.com/x")
+def test_alert_condition_rejects_an_invalid_expression():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(condition={"expr": "value >"}))
 
 
-def test_assert_allows_hostname_resolving_to_public(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    assert_egress_allowed("https://public.example.com/x") is None
-
-
-def test_allowlist_restricts_otherwise_allowed_public_host(monkeypatch):
-    def fake_getaddrinfo(host, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "other.example.com")
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("https://public.example.com/x")
-    monkeypatch.setenv("CORE_PIPELINES_EGRESS_ALLOWLIST", "public.example.com,other.example.com")
-    assert_egress_allowed("https://public.example.com/x") is None
+def test_alert_condition_rejects_a_table_reference():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(
+            _base_alert(condition={"expr": "(SELECT count(*) FROM some_table)"})
+        )
 
 
-def test_guarded_session_blocks_before_connection():
-    # 127.0.0.1:9 (discard) : la garde doit lever AVANT toute tentative de
-    # connexion réseau — donc EgressBlockedError, jamais un ConnectionError.
-    session = build_guarded_session()
-    with pytest.raises(EgressBlockedError):
-        session.get("http://127.0.0.1:9/x", timeout=1.0)
+def test_alert_requires_at_least_one_channel():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(channels=[]))
 
 
-def test_guarded_session_is_a_real_requests_session():
-    session = build_guarded_session()
-    assert isinstance(session, requests.Session)
+def test_alert_query_rejects_groupby():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(query={"groupBy": "region", "agg": "count"}))
+
+
+def test_alert_query_rejects_more_than_one_measure():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(query={
+            "measures": [{"field": "a", "agg": "count", "label": "x"}, {"field": "b", "agg": "sum", "label": "y"}],
+        }))
+
+
+def test_alert_refresh_policy_rejects_invalid_cron():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(refreshPolicy={"enabled": True, "cron": "not-a-cron"}))
+
+
+def test_alert_email_channel_requires_smtp_secret_name():
+    config = BuilderConfig.model_validate(
+        _base_alert(channels=[{"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-main"}])
+    )
+    assert config.alert.channels[0].smtpSecretName == "smtp-main"
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.pipelines.egress'`.
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_config_schema.py`
+Expected: FAIL — `pydantic_core._pydantic_core.ValidationError` on `kind="alert"` not being a recognized literal (or `AttributeError` on `config.alert`), since nothing has been added yet.
 
-- [ ] **Step 4: Implement `egress.py`**
+- [ ] **Step 3: Write the implementation**
 
-Create `core/app/pipelines/egress.py`:
+Add to `core/app/configs/schemas.py`, near `PipelineRefreshPolicy`/`PipelinePayload` (the file already imports `AggregateRequestBody`? confirm — it does not yet; add the import alongside the existing ones at the top of the file):
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Garde d'egress SSRF pour reader.connector.rest (design SP-15f §5.1) —
-duplication délibérée de app.harvest.egress : app.pipelines est positionné
-SOUS app.harvest dans le contrat de couches import-linter
-(core/pyproject.toml [[tool.importlinter.contracts]]), donc ne peut pas
-l'importer. Point d'application différent de l'original : dlt.sources.rest_api
-utilise `requests`, pas `httpx` — copier le transport httpx de
-app.harvest.egress ne garderait rien en pratique."""
-import ipaddress
-import logging
-import os
-import socket
-from urllib.parse import urlparse
-
-import requests
-
-logger = logging.getLogger(__name__)
-
-# Variable dédiée, distincte de CORE_HARVEST_EGRESS_ALLOWLIST (app.harvest) :
-# même logique de duplication que la garde elle-même, plutôt que de partager
-# un état de configuration à travers la frontière de couches.
-_ALLOWLIST_ENV = "CORE_PIPELINES_EGRESS_ALLOWLIST"
-
-
-class EgressBlockedError(Exception):
-    """Cible réseau interdite (plage interne ou hors allowlist)."""
-
-
-def _allowlist() -> set[str]:
-    raw = os.environ.get(_ALLOWLIST_ENV, "")
-    return {h.strip() for h in raw.split(",") if h.strip()}
-
-
-def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_loopback
-        or ip.is_private
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
-
-
-def assert_egress_allowed(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
-    host = parsed.hostname
-    if not host:
-        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
-
-    try:
-        addresses = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
-
-    for ip in addresses:
-        if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
-
-    allowlist = _allowlist()
-    if allowlist and host not in allowlist:
-        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-
-
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
-    def send(self, request, **kwargs):
-        assert_egress_allowed(request.url)
-        return super().send(request, **kwargs)
-
-
-def build_guarded_session() -> requests.Session:
-    session = requests.Session()
-    adapter = _GuardedHTTPAdapter()
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+# Add to the top-level import block in core/app/configs/schemas.py:
+from app.analytics.aggregate import AggregateRequestBody
+from app.configs.alert_condition import validate_condition_expr
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+```python
+# Add near PipelinePayload in core/app/configs/schemas.py:
+class AlertCondition(BaseModel):
+    # Bounded DuckDB scalar SQL expression, binding `value` — see
+    # app.configs.alert_condition (design SP-16b §4: no CEL engine exists
+    # server-side, only client-side cel-js for visibleWhen/computed
+    # columns).
+    expr: str
 
-Run: `cd core && uv run pytest tests/test_pipeline_egress.py -v`
-Expected: 8 passed.
+    @model_validator(mode="after")
+    def _require_valid_expr(self) -> "AlertCondition":
+        import duckdb
 
-- [ ] **Step 6: Verify the layering contract still holds**
+        conn = duckdb.connect(":memory:")
+        try:
+            validate_condition_expr(conn, self.expr)
+        except Exception as exc:
+            raise ValueError(f"invalid condition expression: {exc}") from exc
+        finally:
+            conn.close()
+        return self
 
-Run: `cd core && uv run lint-imports`
-Expected: `Contracts: 1 kept, 0 broken.` — `egress.py` imports nothing from
-any other `app.*` module, so this only confirms nothing else broke.
 
-- [ ] **Step 7: Commit**
+class AlertChannelWebhook(BaseModel):
+    kind: Literal["webhook"] = "webhook"
+    url: str
+
+
+class AlertChannelEmail(BaseModel):
+    kind: Literal["email"] = "email"
+    to: str
+    smtpSecretName: str
+
+
+class AlertRulePayload(BaseModel):
+    datasetItemId: str
+    query: AggregateRequestBody
+    condition: AlertCondition
+    refreshPolicy: PipelineRefreshPolicy
+    channels: list[AlertChannelWebhook | AlertChannelEmail] = Field(default_factory=list)
+    messageTemplate: str = "Alert {ruleName}: value={value} ({state})"
+
+    @model_validator(mode="after")
+    def _require_at_least_one_channel(self) -> "AlertRulePayload":
+        if not self.channels:
+            raise ValueError("alert rule requires at least one channel")
+        return self
+
+    @model_validator(mode="after")
+    def _require_single_scalar_query(self) -> "AlertRulePayload":
+        # v1 scope (design SP-16b §1 non-buts, §2): one scalar per rule, no
+        # per-group/multi-series alerting.
+        if self.query.groupBy:
+            raise ValueError("alert query must not use groupBy (v1 supports a single scalar per rule)")
+        if self.query.split is not None:
+            raise ValueError("alert query must not use split (v1 supports a single scalar per rule)")
+        if self.query.bucket is not None or self.query.bins is not None:
+            raise ValueError("alert query must not use bucket/bins (v1 supports a single scalar per rule)")
+        if self.query.measures is not None and len(self.query.measures) > 1:
+            raise ValueError("alert query must have at most one measure (v1 supports a single scalar per rule)")
+        return self
+```
+
+Modify the `kind` literal and add the `alert` field + payload requirement on `BuilderConfig`:
+
+```python
+# Change in class BuilderConfig:
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert"]
+```
+
+```python
+# Add alongside `pipeline: PipelinePayload | None = None` in class BuilderConfig:
+    alert: AlertRulePayload | None = None
+```
+
+```python
+# Add inside _require_kind_payload, alongside the "pipeline" check:
+        if self.kind == "alert" and self.alert is None:
+            raise ValueError("alert config requires an alert payload")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_config_schema.py`
+Expected: `9 passed`
+
+Then run the full config-schema suite to check for regressions on the `BuilderConfig.kind` literal change:
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_bookmark_config_schema.py tests/test_dataset_config_schema.py tests/test_pipeline_config_schema.py`
+Expected: all passing, unchanged.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/egress.py core/pyproject.toml core/uv.lock core/tests/test_pipeline_egress.py
-git commit -m "feat(core): pipelines — SSRF egress guard for reader.connector.rest"
+git add core/app/configs/schemas.py core/tests/test_alert_config_schema.py
+git commit -m "feat(core): SP-16b — AlertRule payload schema (BuilderConfig kind=\"alert\")"
 ```
 
 ---

@@ -60,7 +60,7 @@ export function registerDataWidgets(): void {
 
       return (
         <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
           <ul className="flex flex-col gap-0.5 text-sm">
             {data.records.map((r) => (
               <li
@@ -193,7 +193,7 @@ export function registerDataWidgets(): void {
 
       return (
         <div className="relative flex h-full flex-col text-xs">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} />
+          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
               <tr>

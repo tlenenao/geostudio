@@ -8,6 +8,7 @@ import { mergeDatasetSchema } from "../lib/datasetSchema";
 import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/button";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
+import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
@@ -16,6 +17,8 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const updateItem = useUpdateItem(pk);
   const client = useItemClient();
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   useEffect(() => {
     if (configQuery.data) setDraft((d) => d ?? configQuery.data);
@@ -68,6 +71,28 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   }
 
   const merged = schemaQuery.data ? mergeDatasetSchema(schemaQuery.data, draft.columns) : [];
+
+  const hasGeometry = draft.source === "arcgis" ? true : Boolean(schemaQuery.data?.geometry);
+  const exportFormats = hasGeometry ? ["csv", "xlsx", "geojson", "gpkg"] : ["csv", "xlsx"];
+
+  async function handleExport(format: string) {
+    const source = { id: "__dataset-export__", type: "features" as const, service: "core", layer: "", datasetId: pk, query: {} };
+    setExportError(null);
+    setExportingFormat(format);
+    try {
+      const { blob, filename } = await client.exportDataSource(source, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Échec de l'export.");
+    } finally {
+      setExportingFormat(null);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -155,6 +180,29 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           </button>
         </div>
       </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium text-slate-500">Export</p>
+        <div className="flex gap-2">
+          {exportFormats.map((format) => (
+            <button
+              key={format}
+              type="button"
+              aria-label={`Exporter en ${format.toUpperCase()}`}
+              disabled={exportingFormat === format}
+              className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-50"
+              onClick={() => handleExport(format)}
+            >
+              {format.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        {exportError && (
+          <p role="alert" className="text-sm text-red-600">
+            {exportError}
+          </p>
+        )}
+      </div>
+      <AlertRuleEditor datasetItemId={pk} owner={itemQuery.data.owner} />
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
         Enregistrer les colonnes
       </Button>

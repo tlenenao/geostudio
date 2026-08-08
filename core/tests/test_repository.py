@@ -5,6 +5,7 @@ from app.db import make_engine, make_session_factory, init_db
 from app.configs import repository as repo
 from app.configs.schemas import BuilderConfig
 from app.items.models import Item
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -221,4 +222,63 @@ def test_list_configs_by_kind_skips_one_unvalidatable_config(session, caplog):
         results = repo.list_configs_by_kind(session, kind="pipeline")
 
     assert [item_id for item_id, _, _ in results] == ["item-good"]
+    assert any("item-bad" in message for message in caplog.messages)
+
+
+def _make_item_for_tenant(session, item_id: str, tenant_id: str, *, oidc_sub: str) -> None:
+    user = get_or_create_user(
+        session, tenant_id=tenant_id, oidc_sub=oidc_sub,
+        username=oidc_sub, email=None, first_name="", last_name="",
+    )
+    session.add(Item(
+        id=item_id, tenant_id=tenant_id, owner_id=user.id,
+        resource_type="app", title="placeholder",
+    ))
+    session.commit()
+
+
+def test_list_configs_by_kind_and_tenant_excludes_other_tenants(session):
+    # SP-16b Task 10 fix: this variant must never load another tenant's
+    # rows at all (unlike list_configs_by_kind, which is cross-tenant by
+    # design and reserved for system sweeps).
+    tenant_a = get_or_create_default_tenant(session)
+    tenant_b = Tenant(id="tenant-b", slug="tenant-b", name="Tenant B")
+    session.add(tenant_b)
+    session.commit()
+
+    _make_item_for_tenant(session, "item-a", tenant_a.id, oidc_sub="user-a")
+    _make_item_for_tenant(session, "item-b", tenant_b.id, oidc_sub="user-b")
+    repo.create_config(session, _config(kind="app"), item_id="item-a", tenant_id=tenant_a.id)
+    repo.create_config(session, _config(kind="app"), item_id="item-b", tenant_id=tenant_b.id)
+
+    results_a = repo.list_configs_by_kind_and_tenant(session, kind="app", tenant_id=tenant_a.id)
+    results_b = repo.list_configs_by_kind_and_tenant(session, kind="app", tenant_id=tenant_b.id)
+
+    assert [item_id for item_id, _ in results_a] == ["item-a"]
+    assert [item_id for item_id, _ in results_b] == ["item-b"]
+
+
+def test_list_configs_by_kind_and_tenant_returns_empty_when_none_match(session):
+    tenant = get_or_create_default_tenant(session)
+    assert repo.list_configs_by_kind_and_tenant(session, kind="pipeline", tenant_id=tenant.id) == []
+
+
+def test_list_configs_by_kind_and_tenant_skips_one_unvalidatable_config(session, caplog):
+    tenant = get_or_create_default_tenant(session)
+    _make_item_for_tenant(session, "item-good", tenant.id, oidc_sub="sub-good")
+    repo.create_config(session, _config(kind="app"), item_id="item-good", tenant_id=tenant.id)
+
+    _make_item_for_tenant(session, "item-bad", tenant.id, oidc_sub="sub-bad")
+    bad_created = repo.create_config(session, _config(kind="app"), item_id="item-bad", tenant_id=tenant.id)
+    from app.configs.models import ConfigRevision
+    stored = session.scalars(
+        __import__("sqlalchemy").select(ConfigRevision).where(ConfigRevision.config_id == bad_created.id)
+    ).one()
+    stored.data = {"kind": "pipeline", "pipeline": "not-a-valid-shape"}
+    session.commit()
+
+    with caplog.at_level("WARNING"):
+        results = repo.list_configs_by_kind_and_tenant(session, kind="app", tenant_id=tenant.id)
+
+    assert [item_id for item_id, _ in results] == ["item-good"]
     assert any("item-bad" in message for message in caplog.messages)

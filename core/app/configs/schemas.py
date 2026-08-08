@@ -3,6 +3,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.analytics.aggregate import AggregateRequestBody
+from app.configs.alert_condition import validate_condition_expr
+
 
 class DataSource(BaseModel):
     id: str
@@ -226,12 +229,96 @@ class PipelinePayload(BaseModel):
         return self
 
 
+class AlertCondition(BaseModel):
+    # Bounded DuckDB scalar SQL expression, binding `value` — see
+    # app.configs.alert_condition (design SP-16b §4: no CEL engine exists
+    # server-side, only client-side cel-js for visibleWhen/computed
+    # columns).
+    expr: str
+
+    @model_validator(mode="after")
+    def _require_valid_expr(self) -> "AlertCondition":
+        import duckdb
+
+        conn = duckdb.connect(":memory:")
+        try:
+            validate_condition_expr(conn, self.expr)
+        except Exception as exc:
+            raise ValueError(f"invalid condition expression: {exc}") from exc
+        finally:
+            conn.close()
+        return self
+
+
+class AlertChannelWebhook(BaseModel):
+    kind: Literal["webhook"] = "webhook"
+    url: str
+
+
+class AlertChannelEmail(BaseModel):
+    kind: Literal["email"] = "email"
+    to: str
+    smtpSecretName: str
+
+
+AlertChannel = Annotated[
+    AlertChannelWebhook | AlertChannelEmail,
+    Field(discriminator="kind"),
+]
+
+
+class AlertRulePayload(BaseModel):
+    datasetItemId: str
+    query: AggregateRequestBody
+    condition: AlertCondition
+    refreshPolicy: PipelineRefreshPolicy
+    channels: list[AlertChannel] = Field(default_factory=list)
+    messageTemplate: str = "Alert {ruleName}: value={value} ({state})"
+
+    @model_validator(mode="after")
+    def _require_at_least_one_channel(self) -> "AlertRulePayload":
+        if not self.channels:
+            raise ValueError("alert rule requires at least one channel")
+        return self
+
+    @model_validator(mode="after")
+    def _require_valid_message_template(self) -> "AlertRulePayload":
+        # Must call .format(...) with the exact same keyword shape as
+        # app.alerts.jobs._render_message (ruleName/value/state/
+        # datasetName) — app.configs sits BELOW app.alerts in the layers
+        # contract, so this can't import _render_message to guarantee
+        # agreement; keep the two in sync by hand if either one's
+        # placeholder set changes. Rejecting an unknown placeholder or a
+        # malformed brace here (422 at save time) is what stops a rule from
+        # being saved successfully but then failing every single
+        # notification attempt forever.
+        try:
+            self.messageTemplate.format(ruleName="x", value=1.0, state="firing", datasetName="y")
+        except (KeyError, IndexError, ValueError) as exc:
+            raise ValueError(f"invalid messageTemplate: {exc}") from exc
+        return self
+
+    @model_validator(mode="after")
+    def _require_single_scalar_query(self) -> "AlertRulePayload":
+        # v1 scope (design SP-16b §1 non-buts, §2): one scalar per rule, no
+        # per-group/multi-series alerting.
+        if self.query.groupBy:
+            raise ValueError("alert query must not use groupBy (v1 supports a single scalar per rule)")
+        if self.query.split is not None:
+            raise ValueError("alert query must not use split (v1 supports a single scalar per rule)")
+        if self.query.bucket is not None or self.query.bins is not None:
+            raise ValueError("alert query must not use bucket/bins (v1 supports a single scalar per rule)")
+        if self.query.measures is not None and len(self.query.measures) > 1:
+            raise ValueError("alert query must have at most one measure (v1 supports a single scalar per rule)")
+        return self
+
+
 class BuilderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -244,6 +331,7 @@ class BuilderConfig(BaseModel):
     dataset: DatasetPayload | None = None
     bookmark: BookmarkPayload | None = None
     pipeline: PipelinePayload | None = None
+    alert: AlertRulePayload | None = None
 
     @model_validator(mode="after")
     def _require_kind_payload(self) -> "BuilderConfig":
@@ -257,4 +345,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("bookmark config requires a bookmark payload")
         if self.kind == "pipeline" and self.pipeline is None:
             raise ValueError("pipeline config requires a pipeline payload")
+        if self.kind == "alert" and self.alert is None:
+            raise ValueError("alert config requires an alert payload")
         return self

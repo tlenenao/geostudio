@@ -1,131 +1,203 @@
-# Task 8 report — End-to-end integration test (full pipeline through the sidecar)
+# Task 8 Report — `app/alerts/notify.py` (webhook + SMTP email delivery)
 
-## What was implemented
+## What I implemented
 
-Appended one test to `core/tests/test_pipeline_runtime.py`, exactly as
-specified in the task brief (Step 1), verbatim, no deviations:
+`core/app/alerts/notify.py` (new), consumed by Task 9 (`app.alerts.jobs`):
 
-`test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, tmp_path, qgis_worker_url)`
+- `NotifyError` — always raised on delivery failure, never a raw
+  `requests`/`smtplib`/`EgressBlockedError` exception escaping to the caller.
+- `send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None` —
+  posts JSON to the channel's user-supplied URL, egress-guarded.
+- `send_email(session, *, tenant_id, channel: AlertChannelEmail, subject, body) -> None`
+  — delivers via SMTP using the admin-configured secret named by
+  `channel.smtpSecretName` (Task 7's `SmtpCredentialsPayload`), implemented
+  exactly as dictated in the brief (no issues found there).
 
-Marked `@pytest.mark.postgis` and `@pytest.mark.qgis`. It exercises the full
-chain `reader.collection` (2 adjacent squares sharing the edge `x=1`, same
-`region="a"`) -> `transform.qgis` (`native:dissolve`, grouped by `FIELD:
-region`) -> `writer.collection`, via the real `runtime.run_pipeline`
-against a real Postgres database and a real `qgis-worker` sidecar. Asserts
-the dissolved output collapses to 1 row with `region="a"`, and that the
-returned stats include a `writer.collection` stat with `rowCount == 1`.
-Cleans up with `DROP TABLE dissolved_out` + `TRUNCATE ... CASCADE` at the
-end, matching the existing postgis-test-cleanup pattern used by
-`test_use_case_3_incidents_near_schools_by_commune` and the other
-postgis-marked tests in this file.
+### The webhook-session correction (and why)
 
-This is a pure test-only change — no production code touched.
+The brief's Step 3 code called `assert_egress_allowed(channel.url)` once,
+then delivered via plain `requests.post(channel.url, json=payload,
+timeout=10)`. `requests.post` follows HTTP redirects by default, and each
+redirect hop is **not** re-checked against the egress guard — only the
+one-time check on the original URL happens. A webhook URL that looks
+public but 302-redirects to an internal address (e.g. the cloud metadata
+endpoint `http://169.254.169.254/...`) would pass the one-time check and
+then get followed anyway, defeating the guard.
 
-## Step 2 — confirm it skips cleanly without infra
+Fix (per the task instructions, using Task 6's already-merged
+`app/alerts/egress.py`):
 
-Ran with no `CORE_TEST_DATABASE_URL` / `CORE_TEST_QGIS_WORKER_URL` /
-`CORE_TEST_QGIS_SCRATCH_DIR` set:
+```python
+def send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None:
+    try:
+        assert_egress_allowed(channel.url)          # fail fast, upfront
+    except EgressBlockedError as exc:
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
 
-```
-$ cd core && uv run pytest tests/test_pipeline_runtime.py -k transform_qgis_end_to_end -v
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0
-collecting ... collected 18 items / 17 deselected / 1 selected
-
-tests/test_pipeline_runtime.py::test_transform_qgis_end_to_end_dissolve_then_write SKIPPED [100%]
-
-====================== 1 skipped, 17 deselected in 0.67s =======================
-```
-
-Skipped cleanly (not an error), as required. Per the task instructions,
-Step 3 (running against real infra: writable `/scratch` + a live
-`qgis-worker` sidecar) was explicitly **not** attempted this session — no
-`sudo` access to create/mount `/scratch`, and no running sidecar container.
-
-## Step 4 — full core suite + lint-imports (no env vars set)
-
-```
-$ cd core && uv run pytest -q
-1025 passed, 127 skipped in 62.52s (0:01:02)
+    session = build_guarded_session()                # Task 6
+    try:
+        resp = session.post(channel.url, json=payload, timeout=10)
+        resp.raise_for_status()
+    except EgressBlockedError as exc:                 # raised on a redirect hop
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
+    except requests.RequestException as exc:
+        raise NotifyError(f"webhook delivery failed: {exc}") from exc
 ```
 
-Matches expectation exactly: 1025 passed (unchanged), 127 skipped (126
-pre-existing + 1 new skip for this test), 0 failures, 0 errors.
+`build_guarded_session()`'s `_GuardedHTTPAdapter.send()` calls
+`assert_egress_allowed(request.url)` on every hop `requests`'
+`resolve_redirects()` sends through it (not just the first), so a
+redirect to an internal target now raises `EgressBlockedError`, which is
+caught and wrapped in `NotifyError` just like the upfront check.
+
+## What I verified before finalizing the tests
+
+- `core/app/secrets/crypto.py`: `load_master_key()` re-reads
+  `os.environ["CORE_SECRETS_MASTER_KEY"]` on **every call** — there is no
+  `_MASTER_KEY` module attribute (the brief's dictated test referenced a
+  phantom `secrets_crypto._MASTER_KEY` / `load_master_key()`-if-not-loaded
+  pattern that doesn't exist in the real module). `encrypt()`/`decrypt()`
+  are the real function names, matching the brief's guess.
+- `core/tests/test_secrets_repository.py`'s own round-trip test sets up a
+  decryptable secret via `monkeypatch.setenv("CORE_SECRETS_MASTER_KEY",
+  TEST_KEY_B64)` before calling `crypto.encrypt(...)`. I copied this exact
+  pattern into a `smtp_secret_session` pytest fixture (taking `monkeypatch`
+  as a parameter) instead of the brief's free-standing helper function
+  that couldn't call `monkeypatch.setenv` at all.
+- `core/app/secrets/repository.py`: `create_secret(session, *, tenant_id,
+  created_by, name, kind, ciphertext, nonce)` and `get_secret_payload(...)`
+  signatures match the brief's usage verbatim.
+- `AlertChannelWebhook`/`AlertChannelEmail` (`app/configs/schemas.py`) and
+  `SmtpCredentialsPayload` (`app/secrets/schemas.py`) field names all match
+  the brief's usage verbatim (`url`; `to`, `smtpSecretName`; `host`, `port`,
+  `username`, `password`, `useTls`, `fromAddress`).
+- A second, independent latent bug in the brief's dictated tests (separate
+  from the known SSRF issue): `test_send_webhook_posts_json_to_the_url` /
+  `test_send_webhook_wraps_a_request_failure` used
+  `AlertChannelWebhook(url="https://example.test/hook")` with no DNS
+  mocking. `example.test` is an RFC 2606 reserved TLD that never resolves
+  (confirmed directly: `socket.getaddrinfo("example.test", None)` raises
+  `gaierror` in this sandbox) — `assert_egress_allowed` would raise
+  `EgressBlockedError` ("hôte non résoluble") before ever reaching the
+  webhook-post logic the tests meant to exercise. Fixed by adding the same
+  `getaddrinfo` monkeypatch the sister guard test suites already use
+  (`test_alert_egress.py::test_allows_a_public_https_url`,
+  `test_pipeline_egress.py`, `test_harvest_egress.py`).
+
+## Tests written (`core/tests/test_alert_notify.py`)
+
+1. `test_send_webhook_blocks_an_internal_url` — as dictated, unchanged (IP
+   literal, no DNS needed).
+2. `test_send_webhook_posts_json_to_the_url` — adapted: DNS-mocked, patches
+   `app.alerts.notify.build_guarded_session` to return a `MagicMock()`
+   session instead of patching `requests.post` (which is no longer called).
+3. `test_send_webhook_wraps_a_request_failure` — same adaptation, mock
+   session's `.post` raises `requests.ConnectionError`.
+4. **New** `test_send_webhook_rechecks_egress_on_redirect_hops` — the
+   redirect-based-bypass regression test. Fakes only the network I/O layer
+   (`requests.adapters.HTTPAdapter.send`, the real base class method that
+   would otherwise open a socket) to return a crafted 302 response pointing
+   at `http://169.254.169.254/latest/meta-data/`; everything above that
+   (`Session.send()`, `resolve_redirects()`, and the real
+   `_GuardedHTTPAdapter.send()`'s egress check) runs for real via a real
+   `build_guarded_session()`. Asserts `NotifyError` is raised **and** that
+   its `__cause__` is specifically `EgressBlockedError` (not some unrelated
+   failure).
+5. **New** `test_guarded_session_used_by_send_webhook_blocks_before_connection`
+   — minimal no-mocking sanity check mirroring
+   `test_pipeline_egress.py::test_guarded_session_blocks_before_connection`.
+6. `test_send_email_delivers_via_smtp_secret` — adapted only in the fixture
+   plumbing (real crypto/repository APIs via `monkeypatch.setenv`), SMTP
+   assertions unchanged from the brief.
+7. `test_send_email_raises_when_secret_is_missing` — same fixture fix,
+   unchanged assertions.
+
+### Proof the redirect regression test actually catches the bug
+
+I temporarily reverted `send_webhook` to the brief's naive
+`requests.post(channel.url, ...)` implementation and re-ran
+`test_send_webhook_rechecks_egress_on_redirect_hops` in isolation:
 
 ```
-$ cd core && uv run lint-imports
-Analyzed 138 files, 399 dependencies.
+E       AssertionError: assert False
+E        +  where False = isinstance(TooManyRedirects('Exceeded 30 redirects.'), EgressBlockedError)
+E        +    where TooManyRedirects('Exceeded 30 redirects.') = NotifyError('webhook delivery failed: Exceeded 30 redirects.').__cause__
+```
+
+This confirms the test is discriminating: the naive implementation still
+raises *some* `NotifyError` (because the plain `requests.Session` used by
+`requests.post` keeps following the same 302 forever and eventually hits
+`TooManyRedirects`), but the `__cause__` assertion proves it was **not**
+the egress guard that stopped it — i.e., without the fix, an internal
+redirect target is followed, not blocked. Restored the guarded-session fix
+immediately after, and re-ran the full file to confirm green again.
+
+## TDD Evidence
+
+**RED** (before `app/alerts/notify.py` existed):
+```
+ImportError while importing test module '.../tests/test_alert_notify.py'.
+E   ModuleNotFoundError: No module named 'app.alerts.notify'
+1 error in 0.19s
+```
+
+**GREEN** (after implementation):
+```
+tests/test_alert_notify.py .......                                       [100%]
+7 passed in 0.29s
+```
+
+**Full core suite** (regression check):
+```
+1255 passed, 131 skipped in 84.65s (0:01:24)
+```
+(131 skipped are the pre-existing `postgis`/`qgis`-marked tests requiring
+docker, unrelated to this task.)
+
+**Import-boundary lint** (`uv run lint-imports`):
+```
 layered architecture KEPT
 Contracts: 1 kept, 0 broken.
 ```
 
-Clean, as expected — the test imports nothing new beyond what's already
-imported elsewhere in the same file (`app.pipelines.runtime`,
-`app.configs.schemas.PipelinePayload`, `app.collections.ddl.
-apply_collection_ddl`, etc.), all already covered by the existing
-layered-architecture contract.
+`ruff` was not available in this environment (`error: Failed to spawn:
+'ruff': No such file or directory`) — pre-existing environment gap, not
+introduced by this task.
 
 ## Files changed
 
-- `core/tests/test_pipeline_runtime.py` — +97 lines, one new test appended
-  at the end of the file. No other file touched.
+- `core/app/alerts/notify.py` (new)
+- `core/tests/test_alert_notify.py` (new)
 
-Commit: `0e01da5` — `test(core): end-to-end scenario for transform.qgis
-dissolve -> writer.collection`
+Commit: `9efab00` — `feat(core): SP-16b — app.alerts.notify (webhook via
+guarded session + SMTP email delivery)`
 
 ## Self-review
 
-- **Completeness**: test written verbatim per the brief (diff matches the
-  brief's code block character-for-character, modulo the surrounding blank
-  lines needed to append after the previous test). Skips cleanly with no
-  infra. Full suite green with the expected new skip count. `lint-imports`
-  clean.
-- **Quality**: matches the existing pattern in this file — `pg_engine` +
-  `Base.metadata.create_all` + `make_session_factory` + tenant/user
-  bootstrap + raw `INSERT INTO collections` + `CREATE TABLE` +
-  `apply_collection_ddl` for the writer-side table, `dataclasses.replace`
-  on the shared `TABLE_INFO` fixture for both the reader and writer table
-  info, `monkeypatch.setattr` for `_table_info_for_collection` and
-  `_require_readable_collection_id`, `_write_partition` for the reader-side
-  GeoParquet partition, `PipelinePayload.model_validate` for the pipeline
-  definition, `runtime.run_pipeline` call with all required kwargs
-  including `qgis_worker_url`, and the `DROP TABLE` + `TRUNCATE ...
-  CASCADE` cleanup block at the end inside `pg_engine.begin()` — identical
-  in shape to `test_use_case_3_incidents_near_schools_by_commune` and the
-  other postgis-marked writer tests earlier in the file.
-- **Discipline**: only `core/tests/test_pipeline_runtime.py` touched,
-  confirmed via `git diff --stat` before commit (1 file changed, 97
-  insertions) and `git status` after commit (no other files staged or
-  modified by this task; the pre-existing unrelated modifications to
-  `.superpowers/sdd/*` and `docs/superpowers/plans/*` predate this task and
-  were left untouched). No production code changed — this is the one pure
-  test task in the SP-15d plan.
+- **Completeness**: all 7 tests pass, including the new redirect
+  regression test and the SMTP tests using verified-real crypto/repository
+  APIs. Full suite green, no regressions.
+- **Quality**: webhook delivery genuinely re-checks egress on redirects —
+  proven by reverting to the naive implementation and watching the
+  regression test fail for a distinguishing reason (`TooManyRedirects`
+  instead of `EgressBlockedError`), not just fail generically.
+- **Discipline**: no extra retry logic, no extra channels, no scope creep.
+  `send_email` implemented exactly as dictated (verified correct, no
+  changes needed beyond the test fixture's crypto API names). Only the two
+  files named in Code Organization were touched (confirmed via `git
+  status` before commit — several unrelated pre-existing modifications to
+  `.superpowers/sdd/*.md` files were left untouched/unstaged).
+- **Testing**: the redirect test exercises the real `requests.Session` /
+  `resolve_redirects()` machinery and the real `_GuardedHTTPAdapter.send()`
+  — only the network I/O boundary (`HTTPAdapter.send`) is faked. This is
+  not mocks-testing-mocks: it's a real integration test of the actual
+  mechanism, independently confirmed to fail against the vulnerable
+  implementation.
 
-## Issues / concerns
+## Issues or concerns
 
-- As instructed, Step 3 (running this test against real infra — real
-  Postgres + real `qgis-worker` sidecar with a shared writable `/scratch`)
-  was **not** performed this session, since neither a writable `/scratch`
-  (requires interactive `sudo`, unavailable here) nor a running
-  `qgis-worker` container is available. This means the test's actual
-  correctness — whether `native:dissolve` on two adjacent squares sharing
-  an edge, grouped by `region="a"`, really produces one `MultiPolygon`
-  feature written through the unchanged `writer.collection` path into
-  `dissolved_out` — remains **unverified** pending a future session with
-  both `sudo`/`/scratch` access and a running sidecar.
-- Because this is Task 8 of 8, the **last** task in the SP-15d plan, this
-  same deferral applies to the plan's overarching claim: "`transform.qgis`
-  actually works end-to-end against a real `qgis_process` sidecar" has
-  never been exercised for real in any of Tasks 1–8. Every prior qgis-marked
-  test in this file (e.g. `test_execute_qgis_transform_computes_centroids`)
-  and this new one are all skip-only in every session run so far. A future
-  session with `/scratch` write access and a running `qgis-worker`
-  container needs to run Step 3 (and the equivalent for the other
-  qgis-marked tests) before the "sidecar composes end-to-end" claim in the
-  plan's design doc can be considered verified rather than merely
-  type-checked/skip-tested.
-- No other concerns. The test file's existing helpers/fixtures
-  (`pg_engine`, `Base`, `make_session_factory`, `get_or_create_default_tenant`,
-  `get_or_create_user`, `apply_collection_ddl`, `TABLE_INFO`, `ColumnInfo`,
-  `_write_partition`, `dataclasses`, `text`, `qgis_worker_url`) all existed
-  exactly as the brief assumed — no mismatch found, no escalation needed.
+None. The guarded-session approach worked exactly as Task 6 designed it
+to; no conflicts encountered. No dependency on `responses`/`requests-mock`
+was needed (neither is a project dependency, confirmed via `pyproject.toml`
+grep) — the `HTTPAdapter.send`-level fake was sufficient and arguably more
+faithful to the real mechanism than a mocking library would have been.

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
+from app.alerts import repository as alerts_repo
 from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs, is_etl_enabled, is_read_only_mode
@@ -696,6 +697,37 @@ def register_tools(server: FastMCP, session_factory) -> None:
                     "edges": [{"from": e.from_, "to": e.to} for e in payload.edges],
                     "refreshPolicy": payload.refreshPolicy.model_dump() if payload.refreshPolicy else None,
                 }
+
+    @server.tool()
+    async def explain_alert_rule(ctx: Context, alertRuleId: str) -> dict:
+        """Describe an AlertRule (dataset, condition, schedule, current
+        state) without evaluating it — mirrors explain_pipeline's shape.
+        Registered unconditionally (no capability flag). SP-16b."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            config = configs_repo.get_config_by_item(session, alertRuleId)
+            if config is None or config.config.kind != "alert":
+                raise ValueError("alert rule not found")
+            facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=alertRuleId)
+            if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+                raise ValueError("alert rule not found")
+            item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=alertRuleId)
+            if item is None:
+                raise ValueError("alert rule not found")
+            payload = config.config.alert
+            assert payload is not None
+            latest = alerts_repo.get_latest_evaluation(
+                session, tenant_id=user.tenant_id, alert_rule_item_id=alertRuleId,
+            )
+            return {
+                "title": item.title,
+                "datasetItemId": payload.datasetItemId,
+                "condition": payload.condition.expr,
+                "refreshPolicy": payload.refreshPolicy.model_dump(),
+                "channels": [c.kind for c in payload.channels],
+                "currentState": latest.state if latest else "pending",
+            }
 
     @server.tool()
     async def get_sharing(ctx: Context, itemId: str) -> Sharing:

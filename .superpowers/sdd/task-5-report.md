@@ -1,182 +1,198 @@
-# Task 5 Report: `run_pipeline_sweep_task` (SP-15h)
+# Task 5 Report: `app/alerts/repository.py`
 
-## Summary
+## What was implemented
 
-Implemented `run_pipeline_sweep_task`, a procrastinate periodic task that runs every 5 minutes, identifies due pipelines via `list_due_pipelines()`, creates `PipelineRun` entries, and defers the existing `run_pipeline_task` for execution. Factored out a `_session_factory()` helper to share database session initialization between the two tasks, enabling test seams.
+`core/app/alerts/repository.py` — CRUD for `AlertEvaluation` (Task 4's model) plus
+`list_due_rules(session)`, modeled explicitly on `app.pipelines.repository.list_due_pipelines`
+(SP-15h):
 
-## What Was Implemented
+- `create_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation` — inserts a
+  `state="pending"` row.
+- `mark_evaluated(session, *, evaluation_id, value, state, transitioned, error=None) -> None`.
+- `get_evaluation(session, *, tenant_id, evaluation_id) -> AlertEvaluation | None` (not required by
+  the brief's public interface list, but present in the brief's dictated code — kept, tenant-scoped
+  lookup by id, symmetrical with the rest of the module).
+- `get_latest_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation | None`.
+- `list_evaluations(session, *, tenant_id, alert_rule_item_id) -> list[AlertEvaluation]` (most
+  recent first).
+- `list_due_rules(session) -> list[tuple[str, str]]` — cross-tenant sweep over
+  `configs_repo.list_configs_by_kind(session, kind="alert")`, same reclaim-by-age discipline as
+  pipelines (`_PENDING_RECLAIM_MINUTES = 60`), never exposed via a route.
 
-### 1. Refactored `core/app/pipelines/jobs.py`
+Implemented the brief's dictated code as-is after verifying it against the real codebase (see
+Self-review below) — no changes were needed to the dictated implementation.
 
-**Changes made:**
-- Added imports: `from app.auth.dependency import is_etl_enabled, is_read_only_mode`
-- Created `_session_factory()` helper function (lines 24-26) that encapsulates engine/session-factory creation
-- Refactored `run_pipeline_task` to call `_session_factory()` instead of inline construction (line 93)
-- Added new `run_pipeline_sweep_task` function (lines 132-145):
-  - Decorated with `@app.periodic(cron="*/5 * * * *")` and `@app.task(queue="etl")`
-  - Guards: early returns if read-only mode or ETL disabled
-  - Queries `list_due_pipelines()` from the repository
-  - For each due pipeline, creates a `PipelineRun` and defers `run_pipeline_task`
+## What was tested and test results
 
-**Guard rationale:** The `@app.periodic` decorator fires independently of REST/MCP route-mounting gates. Without the explicit `is_etl_enabled()` check, the sweep would create runs even on instances with `CORE_ETL_ENABLED=false`.
+`core/tests/test_alert_repository.py`, the 6 tests specified in the brief:
 
-### 2. Created `core/tests/test_pipeline_sweep.py`
+1. `test_create_and_mark_evaluated_round_trip`
+2. `test_list_due_rules_includes_a_rule_with_no_prior_evaluation`
+3. `test_list_due_rules_excludes_a_disabled_rule`
+4. `test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval`
+5. `test_list_due_rules_reclaims_a_stuck_pending_evaluation`
+6. `test_list_evaluations_orders_most_recent_first`
 
-Four test cases covering:
+Result: `6 passed`.
 
-1. **`test_sweep_defers_run_pipeline_task_for_a_due_pipeline`** — Verifies that when a pipeline with enabled refresh policy exists, the sweep creates a `PipelineRun` with status "queued" and defers `run_pipeline_task` with correct parameters.
+Full repo suite after the change: `1242 passed, 131 skipped` (the skipped are the pre-existing
+`postgis`-marked tests requiring docker, per CLAUDE.md's documented baseline) — no regressions.
 
-2. **`test_sweep_defers_nothing_when_no_pipeline_is_due`** — Verifies that pipelines without a refresh policy are not picked up by the sweep.
+## TDD Evidence
 
-3. **`test_sweep_short_circuits_in_read_only_mode`** — Verifies that the sweep exits early when read-only mode is enabled, never deferring tasks.
-
-4. **`test_sweep_short_circuits_when_etl_disabled`** — Verifies that the sweep exits early when ETL is disabled, never deferring tasks.
-
-**Test implementation notes:**
-- Uses pure SQLite in-memory databases (no postgis, fast execution)
-- Monkeypatches `_session_factory` to point to test fixture
-- Monkeypatches `run_pipeline_task.defer` to capture defer calls instead of enqueuing
-- Tests 1 and 2 required explicit monkeypatches for `is_read_only_mode` and `is_etl_enabled` to enable the sweep logic (defaults are false/false). The test brief didn't include these, so they were inferred from the pattern in tests 3 and 4 and the need for the sweep to actually execute in those scenarios.
-
-## Testing & Results
-
-### TDD Sequence
-
-**Step 1 - Initial Test Run (Expected to FAIL):**
-```
-test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline FAILED
-test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due FAILED
-test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode FAILED
-test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled FAILED
-AttributeError: module 'app.pipelines.jobs' has no attribute 'run_pipeline_sweep_task'
-```
-
-**Step 2 - After Implementation (PASS):**
-```
-tests/test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline PASSED [ 25%]
-tests/test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due PASSED [ 50%]
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode PASSED [ 75%]
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled PASSED [100%]
-
-============================== 4 passed in 0.94s ===============================
-```
-
-**Step 3 - Verify Existing Tests Not Broken:**
-```
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_succeeded SKIPPED [ 25%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_never_zombie SKIPPED [ 50%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_writes_node_stats_incrementally_before_failure SKIPPED [ 75%]
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie SKIPPED [100%]
-
-============================== 4 skipped in 1.19s ===============================
-```
-
-(Tests skipped as expected — postgis-marked, docker not available. Crucially: no FAILURES.)
-
-## Files Changed
-
-- **`core/app/pipelines/jobs.py`** — Added imports, `_session_factory()` helper, refactored `run_pipeline_task`, added `run_pipeline_sweep_task`
-- **`core/tests/test_pipeline_sweep.py`** — Created (new file) with 4 test cases
-
-## Self-Review Findings
-
-### What Went Well
-- All 4 new tests passing on first implementation attempt
-- Existing tests remain unbroken
-- Code follows project conventions (logging, error handling, guard structure)
-- Monkeypatch seams properly exposed in module namespace
-
-### Minor Observations
-- The test brief provided didn't include monkeypatches for `is_etl_enabled` and `is_read_only_mode` in the first two tests, but these were inferred as necessary from:
-  1. The fact that tests 3 and 4 explicitly test these guards
-  2. The pattern of other test files in the codebase (e.g., `test_pipeline_routes.py`, `test_pipeline_node_validation.py`)
-  3. The default environment values (`CORE_ETL_ENABLED=false`, `CORE_READ_ONLY_MODE=false`)
-  
-  Added these monkeypatches to tests 1 and 2 for correctness and consistency with the codebase patterns.
-
-## Issues or Concerns
-
-**None.** The implementation is complete, all tests pass, and the refactoring is minimal and safe.
-
-## Commit
+**RED** — before creating `app/alerts/repository.py`:
 
 ```
-28e3f4c feat(core): pipelines — run_pipeline_sweep_task (SP-15h)
+$ PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_repository.py
+ImportError while importing test module '.../tests/test_alert_repository.py'.
+E   ImportError: cannot import name 'repository' from 'app.alerts' (.../app/alerts/__init__.py)
+1 error in 0.10s
 ```
 
-Commit includes:
-- Modified `core/app/pipelines/jobs.py` (2 changes)
-- Created `core/tests/test_pipeline_sweep.py` (new test file)
-
----
-
-**Date:** 2026-08-07  
-**Status:** DONE
-
-## Fix: commit before defer
-
-### Review finding
-
-`run_pipeline_sweep_task` created a `PipelineRun` row and deferred `run_pipeline_task` for it inside a loop, but the whole loop ran inside a single `request_scoped_session` block that only commits once, when the `with` exits — after ALL due pipelines in the tick have been processed. `run_pipeline_task.defer(...)` goes through procrastinate's own independent Postgres connection, not the SQLAlchemy session, and commits its job-queue row immediately. Consequence: for every pipeline except the last one in a multi-pipeline sweep tick, a worker could pick up the deferred `run_pipeline_task` before the `pipeline_runs` row was actually visible on another connection — `pipelines_repo.get_run(...)` would then return `None` and the run would be logged as an error and silently dropped, never retried.
-
-This exact hazard was already guarded against twice elsewhere for the identical create-run-then-defer sequence: `core/app/pipelines/routes.py` (manual "run now" REST route) and `core/app/mcp/tools.py`'s `run_pipeline` MCP tool, both calling `session.commit()` immediately after `create_run(...)` and before `.defer(...)`. The sweep task was missing this commit. Human-approved fix: apply the identical pattern inside the sweep's loop.
-
-### RED
-
-Added `test_sweep_commits_run_before_deferring` to `core/tests/test_pipeline_sweep.py`. First attempt reused the existing `_make_session()` helper (sqlite `:memory:` + `StaticPool`), which shares ONE physical connection across every `Session()` from that factory — a "separate" session opened inside `fake_defer` would then see the very same open transaction, making the test pass even against the buggy code (confirmed empirically: it passed with the bug still in place). Rewrote the test to use a temp-file sqlite database with two genuinely distinct engines/connections (`main_engine`/`Session` for the sweep, `separate_engine`/`SeparateSession` opened only inside `fake_defer`), matching real Postgres connection isolation. Against the unfixed code this correctly failed:
+**GREEN** — after implementing `app/alerts/repository.py`:
 
 ```
-tests/test_pipeline_sweep.py::test_sweep_commits_run_before_deferring FAILED
-E       assert [False] == [True]
+$ PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_repository.py
+......                                                                   [100%]
+6 passed in 0.98s
 ```
 
-(the run row was not yet visible from the separate connection at the moment `defer` was called — exactly the bug described above; a separate, already-caught `AppNotOpen` log line from procrastinate's unrelated embedding-enqueue path in `app.items.repository` appeared in captured output but did not affect the test outcome).
+## Files changed
 
-### Fix
+- `core/app/alerts/repository.py` (new)
+- `core/tests/test_alert_repository.py` (new)
 
-In `core/app/pipelines/jobs.py`, added `session.commit()` immediately after `create_run(...)` and before `run_pipeline_task.defer(...)`, inside the loop:
+Commit: `0c283d8 feat(core): SP-16b — app.alerts.repository (evaluations CRUD, list_due_rules)`
+(only these two files staged/committed — verified with `git status --short` before commit that no
+other tracked/untracked files were swept in; pre-existing uncommitted modifications to
+`.superpowers/sdd/*` from earlier tasks in this session were left untouched).
 
-```python
-for item_id, tenant_id in due:
-    run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
-    # Commit avant de déférer, même raison que routes.py/mcp/tools.py
-    # (create_run puis defer) : un worker pourrait ramasser la tâche
-    # avant que la ligne pipeline_runs ne soit visible autrement. À
-    # l'intérieur de la boucle car chaque run doit être visible avant
-    # SON propre defer, pas seulement le dernier de la file.
-    session.commit()
-    run_pipeline_task.defer(run_id=run.id, tenant_id=tenant_id)
-```
+## Self-review
 
-`request_scoped_session` still owns the overall transaction boundary and commits again (no-op, nothing pending) when the `with` block exits normally — same shape as `routes.py`/`mcp/tools.py`. No other guard logic, `_session_factory()`, or `run_pipeline_task` touched.
+### Verification against the real codebase (before trusting the brief's dictated code)
 
-### GREEN
+Per the task's explicit instruction to treat every prior task's plan-dictated code as suspect
+(Tasks 1 and 2 each had real bugs), I read the actual current implementations rather than assuming
+the brief's descriptions were accurate:
 
-```
-tests/test_pipeline_sweep.py::test_sweep_defers_run_pipeline_task_for_a_due_pipeline PASSED
-tests/test_pipeline_sweep.py::test_sweep_defers_nothing_when_no_pipeline_is_due PASSED
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_in_read_only_mode PASSED
-tests/test_pipeline_sweep.py::test_sweep_commits_run_before_deferring PASSED
-tests/test_pipeline_sweep.py::test_sweep_short_circuits_when_etl_disabled PASSED
+- **`app.pipelines.repository.list_due_pipelines`** (real code read in full): confirms the same
+  `_RUNNING_RECLAIM_MINUTES = 60` reclaim-by-age pattern, the same tz-guard
+  (`if created_at.tzinfo is None: created_at = created_at.replace(tzinfo=timezone.utc)`), and the
+  same `croniter.croniter(policy.cron, created_at).get_next(datetime)` cron-tick call. One
+  meaningful difference: pipelines have a three-state non-terminal lifecycle (`queued` → `running`
+  → terminal) and use `started_at` (when present) as the reclaim anchor for `running` rather than
+  `created_at`, with an explicit comment explaining why (a run queued a long time before actually
+  starting shouldn't be reclaimed the instant it starts running). Alerts have only a two-state
+  lifecycle (`pending` → terminal, no separate "started" mark) — there is no `started_at` column on
+  `AlertEvaluation` at all — so the brief's simpler single-anchor (`created_at`) reclaim check for
+  `pending` is the *correct* mirror, not a regression or an omitted case. This is a real, understood
+  divergence from the mirrored function, not an unnoticed one.
+- **`app.configs.repository.list_configs_by_kind`** (real code read): signature and behavior match
+  exactly what the brief and the task instructions assumed —
+  `(session, kind: str) -> list[tuple[str, str, BuilderConfig]]`, cross-tenant, skips items with a
+  corrupted/unparseable stored config rather than raising.
+- **`app.alerts.models.AlertEvaluation`** (Task 4, real code read): fields
+  `id, tenant_id, alert_rule_item_id, value, state, transitioned, error, created_at` match every
+  field the brief's repository code and tests reference.
+- **`app.configs.schemas.AlertRulePayload.refreshPolicy`** (real code read): typed
+  `PipelineRefreshPolicy` (non-optional, unlike `PipelinePayload.refreshPolicy` which is
+  `| None`), with fields `enabled: bool` and `cron: str` (validated by croniter at parse time via a
+  `model_validator`). The brief's `if not policy.enabled` check (no `None` guard) is correct given
+  the field is required on the alert payload.
+- **`croniter` API**: confirmed `croniter.croniter(cron_str, start_dt).get_next(datetime)` is the
+  exact call signature already used by `list_due_pipelines`, and the installed version
+  (`croniter>=6.2`, `uv.lock` pins `6.2.4`) supports it.
 
-============================== 5 passed in 0.97s ===============================
-```
+No drift found between the brief's assumptions and the real code. No changes to the brief's
+dictated implementation were necessary.
 
-No regression on the postgis-marked suite:
+### Hand-trace of `list_due_rules` against each of the 6 test scenarios
 
-```
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_succeeded SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_never_zombie SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_writes_node_stats_incrementally_before_failure SKIPPED
-tests/test_pipeline_jobs.py::test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie SKIPPED
+1. **`test_create_and_mark_evaluated_round_trip`** — no cron/reclaim logic exercised; plain CRUD.
+   `create_evaluation` inserts `state="pending"`; `mark_evaluated` overwrites
+   `value/state/transitioned/error`; `get_latest_evaluation` orders by `created_at desc limit 1`.
+   Traced: passes trivially.
 
-============================== 4 skipped in 1.68s ==============================
-```
+2. **`test_list_due_rules_includes_a_rule_with_no_prior_evaluation`** — `get_latest_evaluation`
+   returns `None` for a freshly-seeded rule → `list_due_rules` hits the `if latest is None:
+   due.append(...); continue` branch unconditionally. Traced: `(rule_id, tenant.id)` is added.
+   Matches assertion.
 
-### Files changed
+3. **`test_list_due_rules_excludes_a_disabled_rule`** — `refreshPolicy.enabled=False` →
+   `if not policy.enabled: continue` fires before any evaluation lookup. Traced: never added,
+   `list_due_rules(s) == []`. Matches assertion.
 
-- `core/app/pipelines/jobs.py` — one-line `session.commit()` added inside the sweep loop
-- `core/tests/test_pipeline_sweep.py` — added `test_sweep_commits_run_before_deferring` (with its own temp-file two-connection setup, distinct from `_make_session()`)
+4. **`test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval`** — one evaluation
+   created and immediately `mark_evaluated(..., state="ok", ...)` (terminal, not `"pending"`), so
+   the `pending`-branch is skipped and control falls to
+   `next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)`. `created_at` is
+   ~"now" (just inserted) and `cron = "*/5 * * * *"`. `croniter.get_next` returns the next tick
+   strictly *after* the start time, i.e. at most 5 minutes in the future — always `> now` (evaluated
+   microseconds later in the same test). So `next_tick <= now` is `False` → not added. Traced:
+   `list_due_rules(s) == []`. Matches assertion. (This is the scenario that genuinely exercises the
+   cron-interval arithmetic, not a tautology — it depends on `croniter` correctly computing "more
+   than 0 and up to 5 minutes from now.")
 
-**Date:** 2026-08-07
-**Status:** DONE (fix applied and verified)
+5. **`test_list_due_rules_reclaims_a_stuck_pending_evaluation`** — an evaluation is created
+   (`state="pending"`) and then its `created_at` is *directly mutated* on the ORM object to
+   `now - 120min` and committed, without ever calling `mark_evaluated` (simulating a worker that
+   died mid-evaluation). In `list_due_rules`: `latest.state == "pending"` is true, so
+   `(now - created_at) < timedelta(minutes=60)` is evaluated: `now - created_at ≈ 120min`, which is
+   *not* `< 60min` → falls through to `due.append(...)`. Traced: `(rule_id, tenant.id)` is in the
+   result. Matches assertion. This genuinely exercises the age-based reclaim threshold (120min stuck
+   vs. the 60min cutoff), not a tautology.
+
+6. **`test_list_evaluations_orders_most_recent_first`** — two evaluations created and marked in
+   sequence; `list_evaluations` orders by `created_at desc`. Traced: `[second.id, first.id]`.
+   Matches assertion (no cron logic involved).
+
+### Timezone-guard verification (not just read, actually probed)
+
+The task instructions specifically asked to confirm the `if created_at.tzinfo is None: ...
+replace(tzinfo=timezone.utc)` guard is necessary and correctly placed rather than assumed. I did
+not just read it — I empirically probed it:
+
+- Confirmed `make_session_factory` uses `sessionmaker(bind=engine, expire_on_commit=False)`
+  (`core/app/db.py`). This means within the *same* SQLAlchemy session, an ORM object's Python
+  attributes are never expired/reloaded after `commit()`, so the in-memory `datetime` objects
+  created in these tests keep whatever `tzinfo` they were constructed with — the unit tests
+  therefore do **not** by themselves force a true DB round-trip of the timestamp's timezone
+  representation within a single session.
+- I then temporarily removed the guard and re-ran the affected tests in isolation: they still
+  passed, confirming point above (same-session identity-map reuse masks the naive/aware
+  distinction in this specific test harness).
+- I separately confirmed, via a raw insert probe, that the bound SQL parameter for a `DateTime`
+  column (no `timezone=True`) on `created_at` is rendered as a plain string with no UTC offset
+  (`'2026-08-07 23:42:31.460260'`) — i.e., on a genuinely fresh read (a different session/process,
+  such as a periodic worker task calling `list_due_rules` against Postgres or a freshly-opened
+  SQLite connection), the column comes back **naive**. `_now()` always writes
+  `datetime.now(timezone.utc)`, so a naive value read back is implicitly UTC.
+- Conclusion: the guard is not exercised as load-bearing by *this specific* in-memory,
+  single-session unit test, but it is **necessary** for the real production path — `list_due_rules`
+  is invoked by a periodic sweep job (`app.alerts.jobs`, Task 9) in a separate session/process from
+  whatever wrote the evaluation, where the naive-on-read behavior is real and would otherwise raise
+  `TypeError: can't subtract offset-naive and offset-aware datetimes` the first time `now -
+  created_at` executes with a genuinely fresh read. It is placed correctly: applied once,
+  immediately after fetching `latest.created_at`, before it is used by either the `pending`-reclaim
+  arithmetic or the `croniter` call, so both consumers of `created_at` are covered by the same
+  guard. No case is missing and it is not redundant — it is dormant-but-correct in the unit-test
+  harness and load-bearing in production, exactly mirroring `list_due_pipelines`'s identical guard
+  for its `created_at`.
+
+### Discipline / scope
+
+Touched only `core/app/alerts/repository.py` and `core/tests/test_alert_repository.py`, per the
+Code Organization constraint. Did not add anything beyond the brief (kept `get_evaluation`, which
+is in the brief's dictated code even though not listed in the "Produces" interface list — it's a
+natural, harmless CRUD primitive consistent with the module's style, not scope creep beyond what
+was dictated).
+
+## Issues or concerns
+
+None. The brief's dictated code was verified correct against the real
+`list_due_pipelines`/`list_configs_by_kind`/`AlertEvaluation`/`AlertRulePayload`/`croniter`
+implementations, all 6 tests were confirmed RED then GREEN, the reclaim and cron-interval tests
+were hand-traced and confirmed to genuinely exercise time-based logic, the timezone guard was
+empirically probed (not just assumed) and confirmed necessary for the real cross-session/process
+production path even though dormant in this specific same-session test harness, and the full
+1242-test suite passes with no regressions.

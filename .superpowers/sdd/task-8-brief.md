@@ -1,169 +1,187 @@
-## Task 8: End-to-end integration test — full pipeline run through the sidecar
+### Task 8: `app/alerts/notify.py` — webhook + email delivery
 
 **Files:**
-- Test: `core/tests/test_pipeline_runtime.py`
+- Create: `core/app/alerts/notify.py`
+- Test: `core/tests/test_alert_notify.py`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1–7. No new production code — this task
-  is purely a test that proves the whole chain works together, mirroring
-  SP-15c's own Task 8 (`test_use_case_3_incidents_near_schools_by_commune`).
+- Consumes: `app.alerts.egress.assert_egress_allowed` (Task 6), `app.secrets.repository.get_secret_payload` (existing), `SmtpCredentialsPayload` (Task 7), `AlertChannelWebhook`/`AlertChannelEmail` (Task 2).
+- Produces: `NotifyError`, `send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None`, `send_email(session, *, tenant_id: str, channel: AlertChannelEmail, subject: str, body: str) -> None`. Consumed by Task 9 (`app.alerts.jobs`).
 
-- [ ] **Step 1: Write the failing test**
-
-Append to `core/tests/test_pipeline_runtime.py`:
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-@pytest.mark.postgis
-@pytest.mark.qgis
-def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, tmp_path, qgis_worker_url):
-    """reader.collection (2 adjacent polygons, same region) ->
-    transform.qgis(native:dissolve) -> writer.collection: full run_pipeline,
-    real Postgres write, real sidecar round-trip. Two squares sharing an
-    edge dissolve (grouped by "region", both "a") into one polygon feature —
-    proves the qgis dispatch composes with the pre-existing writer.collection
-    path unchanged (design §6, 'no fusion to break, node-by-node as before')."""
-    from shapely.geometry import Polygon
+# core/tests/test_alert_notify.py
+# SPDX-License-Identifier: Apache-2.0
+from unittest.mock import MagicMock, patch
 
-    from app.configs.schemas import PipelinePayload
+import pytest
+import requests
 
-    Base.metadata.create_all(pg_engine)
-    Session = make_session_factory(pg_engine)
+from app.alerts.egress import EgressBlockedError
+from app.alerts.notify import NotifyError, send_email, send_webhook
+from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
+from app.db import init_db, make_engine, make_session_factory
+from app.secrets import crypto as secrets_crypto
+from app.secrets import repository as secrets_repo
+from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+
+def test_send_webhook_blocks_an_internal_url():
+    channel = AlertChannelWebhook(url="http://127.0.0.1/hook")
+    with pytest.raises(NotifyError):
+        send_webhook(channel, payload={"state": "firing"})
+
+
+def test_send_webhook_posts_json_to_the_url():
+    channel = AlertChannelWebhook(url="https://example.test/hook")
+    with patch("app.alerts.notify.requests.post") as mock_post:
+        mock_post.return_value = MagicMock(status_code=200, raise_for_status=lambda: None)
+        send_webhook(channel, payload={"state": "firing"})
+    mock_post.assert_called_once()
+    assert mock_post.call_args.args[0] == "https://example.test/hook"
+    assert mock_post.call_args.kwargs["json"] == {"state": "firing"}
+
+
+def test_send_webhook_wraps_a_request_failure():
+    channel = AlertChannelWebhook(url="https://example.test/hook")
+    with patch("app.alerts.notify.requests.post", side_effect=requests.ConnectionError("boom")):
+        with pytest.raises(NotifyError):
+            send_webhook(channel, payload={"state": "firing"})
+
+
+def _make_session_with_smtp_secret():
+    if not secrets_crypto._MASTER_KEY:  # ensure test harness has a master key loaded
+        secrets_crypto.load_master_key()
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
             s, tenant_id=tenant.id, oidc_sub="a", username="alice",
             email=None, first_name="", last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('dissolved_out', :t, :o, 'dissolved_out', 'Dissolved', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            # geometry(MultiPolygon, 4326), PAS geometry(Polygon, 4326) : verified
-            # against a real qgis_process run during plan-writing that
-            # native:dissolve always outputs MultiPolygon (even for a single
-            # dissolved group of 1 feature) — ogrinfo on the real output showed
-            # "Geometry: Multi Polygon". Using Polygon here would make
-            # validate_feature reject every row ("expected Polygon").
-            "CREATE TABLE dissolved_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, geometry geometry(MultiPolygon, 4326))"
-        ))
-        apply_collection_ddl(s, "dissolved_out")
-        s.commit()
-
-        polygons_info = dataclasses.replace(
-            TABLE_INFO, table_name="polygons_in", geometry_type="Polygon", srid=4326,
-            columns=[ColumnInfo(name="region", type="string", required=True)],
+        payload = SmtpCredentialsPayload(
+            host="smtp.example.test", port=587, username="alerts@example.test",
+            password="s3cret", useTls=True, fromAddress="alerts@example.test",
         )
-        out_info = dataclasses.replace(
-            # geometry_type="MultiPolygon" (not "Polygon") — see the CREATE
-            # TABLE comment above: native:dissolve's real output type, verified.
-            TABLE_INFO, table_name="dissolved_out", geometry_type="MultiPolygon", srid=4326,
-            columns=[ColumnInfo(name="region", type="string", required=True)],
-        )
-
-        def _table_info(session, collection_id):
-            return out_info if collection_id == "dissolved_out" else polygons_info
-
-        monkeypatch.setattr(runtime, "_table_info_for_collection", _table_info)
-        monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
-            lambda session, *, tenant_id, user, collection_id: collection_id,
-        )
-
-        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="polygons_in", rows=[
-            {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-             "geometry": Polygon([(0, 0), (0, 2), (1, 2), (1, 0)])},
-            {"id": 2, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-             "geometry": Polygon([(1, 0), (1, 2), (2, 2), (2, 0)])},
-        ])
-
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons_in"}},
-                {"id": "t1", "kind": "transform", "op": "transform.qgis",
-                 "params": {"algorithmId": "native:dissolve",
-                            "params": {"FIELD": "region", "SEPARATE_DISJOINT": False}}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "dissolved_out"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-        })
-        stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-            base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
+        ciphertext, nonce = secrets_crypto.encrypt(SECRET_PAYLOAD_ADAPTER.dump_python(payload))
+        secrets_repo.create_secret(
+            s, tenant_id=tenant.id, created_by=user.id, name="smtp-main", kind="smtp",
+            ciphertext=ciphertext, nonce=nonce,
         )
         s.commit()
+        tenant_id = tenant.id
+    return Session, tenant_id
 
-        rows = s.execute(text("SELECT region FROM dissolved_out")).fetchall()
-        assert len(rows) == 1
-        assert rows[0][0] == "a"
-        assert any(stat.op == "writer.collection" and stat.rowCount == 1 for stat in stats)
 
-    with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE dissolved_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+def test_send_email_delivers_via_smtp_secret():
+    Session, tenant_id = _make_session_with_smtp_secret()
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="smtp-main")
+    with Session() as s:
+        with patch("app.alerts.notify.smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp = MagicMock()
+            mock_smtp_cls.return_value.__enter__.return_value = mock_smtp
+            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
+    mock_smtp.starttls.assert_called_once()
+    mock_smtp.login.assert_called_once_with("alerts@example.test", "s3cret")
+    mock_smtp.send_message.assert_called_once()
+
+
+def test_send_email_raises_when_secret_is_missing():
+    Session, tenant_id = _make_session_with_smtp_secret()
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="does-not-exist")
+    with Session() as s:
+        with pytest.raises(NotifyError):
+            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
 ```
 
-- [ ] **Step 2: Run test to verify it's skipped without infra**
+Check the real names of `app.secrets.crypto`'s encrypt function and master-key-loaded flag before finalizing this test (used above as `secrets_crypto.encrypt`/`secrets_crypto._MASTER_KEY`/`secrets_crypto.load_master_key`) — read `core/app/secrets/crypto.py` and `core/tests/test_secrets_repository.py` for the exact fixture pattern used there to set up a decryptable secret in a test, and align this test's setup to match verbatim rather than guessing the private attribute name.
 
-Run: `cd core && uv run pytest tests/test_pipeline_runtime.py -k transform_qgis_end_to_end -v`
-Expected (no `CORE_TEST_DATABASE_URL`/`CORE_TEST_QGIS_WORKER_URL` set): 1
-skipped.
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 3: Run test against real infra**
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_notify.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.notify'`
 
-Run:
-```bash
-export CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@localhost:5433/gis_test
-export CORE_TEST_QGIS_WORKER_URL=http://localhost:8300
-cd core && uv run pytest tests/test_pipeline_runtime.py -k transform_qgis_end_to_end -v
+- [ ] **Step 3: Write the implementation**
+
+```python
+# core/app/alerts/notify.py
+# SPDX-License-Identifier: Apache-2.0
+"""Notification delivery for AlertRule (design SP-16b §5). Webhook is
+egress-guarded (user-supplied URL); email is not (admin-configured SMTP
+secret) — see Global Constraints in the plan for the trust-model
+rationale."""
+import smtplib
+from email.message import EmailMessage
+
+import requests
+from sqlalchemy.orm import Session
+
+from app.alerts.egress import EgressBlockedError, assert_egress_allowed
+from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
+from app.secrets import repository as secrets_repo
+
+
+class NotifyError(Exception):
+    """Notification delivery failed — always caught by the caller (Task 9)
+    and turned into an audit_log entry + evaluation error, never left to
+    crash the evaluation task."""
+
+
+def send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None:
+    try:
+        assert_egress_allowed(channel.url)
+    except EgressBlockedError as exc:
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
+    try:
+        resp = requests.post(channel.url, json=payload, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise NotifyError(f"webhook delivery failed: {exc}") from exc
+
+
+def send_email(
+    session: Session, *, tenant_id: str, channel: AlertChannelEmail, subject: str, body: str,
+) -> None:
+    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=channel.smtpSecretName)
+    if payload is None:
+        raise NotifyError(f"secret '{channel.smtpSecretName}' not found")
+    if payload.kind != "smtp":
+        raise NotifyError(
+            f"secret has kind '{payload.kind}', not usable for email (expected smtp)"
+        )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = payload.fromAddress
+    message["To"] = channel.to
+    message.set_content(body)
+
+    try:
+        with smtplib.SMTP(payload.host, payload.port, timeout=10) as smtp:
+            if payload.useTls:
+                smtp.starttls()
+            smtp.login(payload.username, payload.password)
+            smtp.send_message(message)
+    except (smtplib.SMTPException, OSError) as exc:
+        raise NotifyError(f"email delivery failed: {exc}") from exc
 ```
-Expected: 1 passed — the two adjacent squares (sharing the edge `x=1`)
-dissolve into a single polygon feature grouped by `region="a"`, written
-into the real `dissolved_out` Postgres table via the unchanged
-`writer.collection` path.
 
-- [ ] **Step 4: Run the full core test suite**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run:
-```bash
-export CORE_TEST_DATABASE_URL=postgresql+psycopg://gis:gis@localhost:5433/gis_test
-export CORE_TEST_QGIS_WORKER_URL=http://localhost:8300
-export CORE_TEST_QGIS_SCRATCH_DIR=/scratch
-cd core && uv run pytest -q
-```
-Expected: all tests pass (previous count + this plan's new tests), 0
-regressions. Then also run `uv run lint-imports` (expect `Contracts: 1
-kept, 0 broken` — this plan adds no new cross-module imports that violate
-the layered-architecture contract: `runtime.py`/`compiler.py`/
-`routes.py`/`jobs.py` already import from `app.pipelines.ops.schemas`,
-`qgis_algorithms.py` is a new file in that same already-permitted
-package).
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_notify.py`
+Expected: `5 passed`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/tests/test_pipeline_runtime.py
-git commit -m "test(core): end-to-end scenario for transform.qgis dissolve -> writer.collection"
+git add core/app/alerts/notify.py core/tests/test_alert_notify.py
+git commit -m "feat(core): SP-16b — app.alerts.notify (webhook + SMTP email delivery)"
 ```
 
 ---
 
-## Final check (after all 8 tasks)
-
-Run the full suite one more time with all env vars set (Task 8 Step 4's
-commands), plus:
-
-```bash
-cd shell && npx vitest run && npx tsc --noEmit
-```
-
-Expected: unchanged shell test count and a clean typecheck — this plan
-never touches `shell/`, so this is purely a regression guard, not expected
-to surface anything new.

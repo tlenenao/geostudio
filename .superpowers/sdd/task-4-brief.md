@@ -1,159 +1,151 @@
-## Task 4: Postgres connector materialization — `connector_runtime.py` (part 2)
+### Task 4: `AlertEvaluation` model + migration
 
 **Files:**
-- Modify: `core/app/pipelines/connector_runtime.py`
-- Test: `core/tests/test_pipeline_connector_runtime.py`
+- Create: `core/app/alerts/__init__.py` (empty)
+- Create: `core/app/alerts/models.py`
+- Create: `core/alembic/versions/0020_alert_evaluations.py`
+- Test: `core/tests/test_alert_models.py`
 
 **Interfaces:**
-- Consumes: `app.analytics.sql_sandbox.parse_ast`, `validate_select_only`,
-  `SqlSandboxError` (existing, already imported the same way by
-  `app.pipelines.expr_validation`).
-- Produces: `app.pipelines.connector_runtime.materialize_postgres_connector(conn, *, session, tenant_id, node_id, params, view_name) -> None`.
-  Consumed by Task 5 (`runtime.py`'s `_prepare()`).
+- Produces: `AlertEvaluation` ORM model (table `alert_evaluations`), consumed by Task 5 (`app/alerts/repository.py`).
 
-- [ ] **Step 1: Write the failing tests**
-
-Append to `core/tests/test_pipeline_connector_runtime.py`:
+- [ ] **Step 1: Write the failing test**
 
 ```python
-from app.analytics.sql_sandbox import SqlSandboxError
-from app.pipelines.ops.schemas import ReaderConnectorPostgresParams
+# core/tests/test_alert_models.py
+# SPDX-License-Identifier: Apache-2.0
+from app.alerts.models import AlertEvaluation
+from app.db import init_db, make_engine, make_session_factory
+from app.items import repository as items_repo
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
-def _pg_dsn(pg_engine) -> str:
-    # Même conversion que conftest.py::pg_engine_with_procrastinate_schema :
-    # CORE_TEST_DATABASE_URL est au format SQLAlchemy "postgresql+psycopg://",
-    # le DSN d'un secret postgres_dsn est un DSN "postgresql://" ordinaire
-    # (format vérifié par SP-15e's test_secrets_repository.py).
-    return str(pg_engine.url).replace("postgresql+psycopg://", "postgresql://")
-
-
-@pytest.fixture()
-def pg_secret(session, tenant, pg_engine):
-    return _create_secret(
-        session, tenant, name="warehouse-pg", kind="postgres_dsn",
-        payload={"kind": "postgres_dsn", "dsn": _pg_dsn(pg_engine)},
-    )
-
-
-def test_materialize_postgres_connector_round_trips_query(conn, session, tenant, pg_engine, pg_secret):
-    from sqlalchemy import text
-
-    with pg_engine.begin() as db_conn:
-        db_conn.execute(text("CREATE TABLE IF NOT EXISTS sp15f_towns (id int, name text)"))
-        db_conn.execute(text("DELETE FROM sp15f_towns"))
-        db_conn.execute(text("INSERT INTO sp15f_towns (id, name) VALUES (1, 'Nord'), (2, 'Sud')"))
-
-    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="SELECT id, name FROM sp15f_towns ORDER BY id")
-    connector_runtime.materialize_postgres_connector(
-        conn, session=session, tenant_id=tenant.id, node_id="p1", params=params, view_name="node_p1",
-    )
-    rows = conn.execute("SELECT id, name FROM node_p1 ORDER BY id").fetchall()
-    assert rows == [(1, "Nord"), (2, "Sud")]
-
-
-def test_materialize_postgres_connector_rejects_non_select(conn, session, tenant, pg_secret):
-    params = ReaderConnectorPostgresParams(secretName="warehouse-pg", query="DELETE FROM sp15f_towns")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p2", params=params, view_name="node_p2",
+def test_alert_evaluation_round_trips_through_sqlite():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
         )
-
-
-def test_materialize_postgres_connector_wrong_secret_kind_raises(conn, session, tenant):
-    _create_secret(session, tenant, name="bearer-secret", kind="bearer_token",
-                    payload={"kind": "bearer_token", "token": "tok"})
-    params = ReaderConnectorPostgresParams(secretName="bearer-secret", query="SELECT 1")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.postgres"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p3", params=params, view_name="node_p3",
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="High counts",
         )
+        s.commit()
 
-
-def test_materialize_postgres_connector_missing_secret_raises(conn, session, tenant):
-    params = ReaderConnectorPostgresParams(secretName="does-not-exist", query="SELECT 1")
-    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
-        connector_runtime.materialize_postgres_connector(
-            conn, session=session, tenant_id=tenant.id, node_id="p4", params=params, view_name="node_p4",
+        evaluation = AlertEvaluation(
+            id="eval-1", tenant_id=tenant.id, alert_rule_item_id=item.id,
+            value=150.0, state="firing", transitioned=True, error=None,
         )
+        s.add(evaluation)
+        s.commit()
+
+    with Session() as s:
+        reloaded = s.get(AlertEvaluation, "eval-1")
+        assert reloaded is not None
+        assert reloaded.state == "firing"
+        assert reloaded.transitioned is True
+        assert reloaded.value == 150.0
+        assert reloaded.error is None
+        assert reloaded.created_at is not None
 ```
 
-These four tests need `pg_engine` (from `core/tests/conftest.py`) — add the
-fixture to the test function signatures above (already done); no new
-fixtures beyond `_pg_dsn`/`pg_secret` need to be added to `conftest.py`
-itself. Tests using `pg_engine` transitively skip with
-`pytest.skip("CORE_TEST_DATABASE_URL non défini...")` when no test database
-is configured, same as every other `postgis`-marked test in this repo — no
-new pytest marker needed (`conftest.py`'s existing `pg_engine` fixture
-already handles the skip).
+- [ ] **Step 2: Run test to verify it fails**
 
-- [ ] **Step 2: Run tests to verify they fail**
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_models.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts'`
 
-Run: `cd core && uv run pytest tests/test_pipeline_connector_runtime.py -k postgres -v`
-Expected: FAIL — `AttributeError: module 'app.pipelines.connector_runtime' has no attribute 'materialize_postgres_connector'`.
-
-- [ ] **Step 3: Implement `materialize_postgres_connector`**
-
-Modify `core/app/pipelines/connector_runtime.py` — add to the imports:
+- [ ] **Step 3: Write the implementation**
 
 ```python
+# core/app/alerts/__init__.py
+# SPDX-License-Identifier: Apache-2.0
+```
+
+```python
+# core/app/alerts/models.py
+# SPDX-License-Identifier: Apache-2.0
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class AlertEvaluation(Base):
+    __tablename__ = "alert_evaluations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    alert_rule_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    transitioned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+```
+
+Check the alembic head revision, then write the migration:
+
+Run: `cd core && uv run alembic heads`
+Expected: `0019 (head)`
+
+```python
+# core/alembic/versions/0020_alert_evaluations.py
+# SPDX-License-Identifier: Apache-2.0
+"""app.alerts — alert_evaluations (SP-16b)
+
+Revision ID: 0020
+Revises: 0019
+Create Date: 2026-08-07
+"""
 import sqlalchemy as sa
+from alembic import op
 
-from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
-from app.pipelines.ops.schemas import ReaderConnectorPostgresParams, ReaderConnectorRestParams
+revision = "0020"
+down_revision = "0019"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "alert_evaluations",
+        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
+        sa.Column("alert_rule_item_id", sa.String(), sa.ForeignKey("items.id"), nullable=False),
+        sa.Column("value", sa.Float(), nullable=True),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("transitioned", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("error", sa.String(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("alert_evaluations")
 ```
 
-(replacing the single-line `from app.pipelines.ops.schemas import ReaderConnectorRestParams` from Task 3).
+- [ ] **Step 4: Run test to verify it passes**
 
-Append at the end of the file:
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_models.py`
+Expected: `1 passed`
 
-```python
-def materialize_postgres_connector(
-    conn, *, session: Session, tenant_id: str, node_id: str,
-    params: ReaderConnectorPostgresParams, view_name: str,
-) -> None:
-    # Défense en profondeur heuristique, pas une garantie (design §5.2) :
-    # `params.query` cible Postgres mais est parsée avec le dialecte SQL de
-    # DuckDB (même mécanisme que app.pipelines.expr_validation, appliqué ici
-    # à un texte SQL complet plutôt qu'à une expression bornée). Vérifié à
-    # l'exécution uniquement, jamais à la sauvegarde du pipeline.
-    try:
-        validate_select_only(parse_ast(conn, params.query))
-    except SqlSandboxError as exc:
-        raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
-
-    payload = _resolve_secret(session, tenant_id, params.secretName)
-    if payload.kind != "postgres_dsn":
-        raise ConnectorRuntimeError(
-            f"secret has kind '{payload.kind}', not usable by reader.connector.postgres "
-            "(expected postgres_dsn)"
-        )
-
-    @dlt.resource(name="records", write_disposition="replace")
-    def _records():
-        engine = sa.create_engine(payload.dsn)
-        try:
-            with engine.connect() as db_conn:
-                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
-                yield from (dict(row._mapping) for row in rows)
-        finally:
-            engine.dispose()
-
-    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `CORE_TEST_DATABASE_URL=<your test db url> cd core && uv run pytest tests/test_pipeline_connector_runtime.py -v`
-Expected: all pass (REST tests from Task 3 unaffected; Postgres tests pass
-if `CORE_TEST_DATABASE_URL` is set, otherwise skip cleanly — both are
-acceptable outcomes, matching this repo's existing `postgis`-gated tests).
+Verify the migration itself applies cleanly against the real (postgis-marked) suite path used elsewhere in the repo — if a local Postgres is available via docker compose, run `cd core && uv run alembic upgrade head` and confirm no error; otherwise note this is covered by the `postgis`-marked CI job and move on (same caveat SP-15a/b noted for migrations tested primarily via SQLite `init_db` in unit tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/pipelines/connector_runtime.py core/tests/test_pipeline_connector_runtime.py
-git commit -m "feat(core): pipelines — reader.connector.postgres materialization (SELECT-only guard)"
+git add core/app/alerts/__init__.py core/app/alerts/models.py core/alembic/versions/0020_alert_evaluations.py core/tests/test_alert_models.py
+git commit -m "feat(core): SP-16b — AlertEvaluation model + migration 0020"
 ```
 
 ---

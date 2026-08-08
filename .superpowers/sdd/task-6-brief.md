@@ -1,119 +1,158 @@
-## Task 6: `routes.py` + `jobs.py` — env var wiring + algorithm catalogue resource
+### Task 6: `app/alerts/egress.py` — SSRF guard for webhooks
 
 **Files:**
-- Modify: `core/app/pipelines/routes.py`
-- Modify: `core/app/pipelines/jobs.py`
-- Test: `core/tests/test_pipeline_routes.py`
+- Create: `core/app/alerts/egress.py`
+- Modify: `.env.example`
+- Test: `core/tests/test_alert_egress.py`
 
 **Interfaces:**
-- Consumes: `QGIS_ALGORITHMS` (Task 1), `run_pipeline`/`preview_pipeline`'s
-  new kwargs (Task 5).
-- Produces: `GET /pipelines/ops/qgis-algorithms` (public REST resource,
-  returns the full allowlist + schemas). `QGIS_WORKER_URL`/
-  `QGIS_WORKER_TIMEOUT_SECONDS` env vars now read and threaded through both
-  the run job and the preview route.
+- Produces: `assert_egress_allowed(url: str) -> None` (raises `EgressBlockedError`), consumed by Task 8 (`app.alerts.notify`).
 
-- [ ] **Step 1: Write the failing test**
-
-Append to `core/tests/test_pipeline_routes.py`:
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/pipelines/ops/qgis-algorithms")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 50
-    assert "native:centroids" in body
-    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
+# core/tests/test_alert_egress.py
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+
+from app.alerts.egress import EgressBlockedError, assert_egress_allowed
 
 
-def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/pipelines/ops/qgis-algorithms").status_code == 404
+def test_blocks_a_loopback_url():
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("http://127.0.0.1:8080/hook")
+
+
+def test_blocks_a_private_range_url():
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("http://10.0.0.5/hook")
+
+
+def test_blocks_a_non_http_scheme():
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("file:///etc/passwd")
+
+
+def test_allows_a_public_https_url():
+    assert_egress_allowed("https://example.test/hook") is None
+
+
+def test_allowlist_restricts_to_named_hosts(monkeypatch):
+    monkeypatch.setenv("CORE_ALERTS_EGRESS_ALLOWLIST", "allowed.example.test")
+    with pytest.raises(EgressBlockedError):
+        assert_egress_allowed("https://not-allowed.example.test/hook")
 ```
 
-No new fixture: this file uses a local `_make_app(monkeypatch, *,
-etl_enabled)` helper (not a shared pytest fixture) that builds a
-`TestClient` with `CORE_ETL_ENABLED` set via `monkeypatch.setenv` — reused
-here exactly as `test_get_pipelines_ops_returns_all_eight` already does.
-The new route is registered on the same `router` as the rest of
-`app.pipelines.routes`, so it inherits the existing `CORE_ETL_ENABLED`
-gating (whatever mounts/unmounts the router based on that env var already
-covers it) — the second test above locks that in explicitly rather than
-assuming it.
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 2: Run test to verify it fails**
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.egress'`
 
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py -k qgis_algorithms -v`
-Expected: FAIL — 404, route doesn't exist yet.
-
-- [ ] **Step 3: Add the route**
-
-Modify `core/app/pipelines/routes.py` — add the import:
+- [ ] **Step 3: Write the implementation**
 
 ```python
-from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+# core/app/alerts/egress.py
+# SPDX-License-Identifier: Apache-2.0
+"""SSRF egress guard for AlertRule webhook delivery (design SP-16b §5) —
+deliberate duplication of app.pipelines.egress/app.harvest.egress: the
+webhook URL is user-supplied per rule (unlike the SMTP secret, which is
+admin-configured, cf. Global Constraints), same threat model as the two
+existing guards. Own CORE_ALERTS_EGRESS_ALLOWLIST env var, distinct from
+CORE_PIPELINES_EGRESS_ALLOWLIST/CORE_HARVEST_EGRESS_ALLOWLIST — same
+duplication rationale as the guard itself."""
+import ipaddress
+import logging
+import os
+import socket
+from urllib.parse import urlparse
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+_ALLOWLIST_ENV = "CORE_ALERTS_EGRESS_ALLOWLIST"
+
+
+class EgressBlockedError(Exception):
+    """Cible réseau interdite (plage interne ou hors allowlist)."""
+
+
+def _allowlist() -> set[str]:
+    raw = os.environ.get(_ALLOWLIST_ENV, "")
+    return {h.strip() for h in raw.split(",") if h.strip()}
+
+
+def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def assert_egress_allowed(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
+
+    try:
+        addresses = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except socket.gaierror as exc:
+            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
+        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
+
+    for ip in addresses:
+        if _is_internal(ip):
+            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
+
+    allowlist = _allowlist()
+    if allowlist and host not in allowlist:
+        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
+
+
+class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
+    def send(self, request, **kwargs):
+        assert_egress_allowed(request.url)
+        return super().send(request, **kwargs)
+
+
+def build_guarded_session() -> requests.Session:
+    session = requests.Session()
+    adapter = _GuardedHTTPAdapter()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 ```
 
-Add right after the existing `GET /pipelines/ops` route:
-
-```python
-@router.get("/pipelines/ops/qgis-algorithms")
-def get_qgis_algorithms() -> dict:
-    return QGIS_ALGORITHMS
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py -k qgis_algorithms -v`
-Expected: PASS.
-
-- [ ] **Step 5: Thread the env vars through `preview_pipeline_route`**
-
-Modify `core/app/pipelines/routes.py`'s `preview_pipeline_route`:
-
-```python
-        return preview_pipeline(
-            session=session, payload=config.config.pipeline, tenant_id=user.tenant_id, user=user,
-            up_to=upTo, endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
-            access_key=os.environ.get("S3_ACCESS_KEY", ""), secret_key=os.environ.get("S3_SECRET_KEY", ""),
-            base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
-            qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-            qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
-        )
-```
-
-- [ ] **Step 6: Thread the env vars through `run_pipeline_task`**
-
-Modify `core/app/pipelines/jobs.py`'s `run_pipeline_task`:
-
-```python
-            stats = run_pipeline(
-                session, payload=payload, tenant_id=tenant_id, user=user,
-                endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"], secret_key=os.environ["S3_SECRET_KEY"],
-                base_uri=_analytics_base_uri(),
-                s3_client=_s3_client_from_env(),
-                exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-                qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
-            )
-```
-
-- [ ] **Step 7: Run the full pipelines route/jobs test files**
-
-Run: `cd core && uv run pytest tests/test_pipeline_routes.py tests/test_pipeline_jobs.py -v`
-Expected: all pass, no regression (existing tests don't set
-`QGIS_WORKER_URL`, so `run_pipeline`/`preview_pipeline` receive `""` — the
-same as their new default, no behavior change for pipelines without a
-`transform.qgis` node).
-
-- [ ] **Step 8: Commit**
+Add to `.env.example`, next to the existing egress allowlist entries:
 
 ```bash
-git add core/app/pipelines/routes.py core/app/pipelines/jobs.py core/tests/test_pipeline_routes.py
-git commit -m "feat(core): wire QGIS_WORKER_URL env + publish the algorithm catalogue resource"
+# Allowlist d'hôtes pour la garde d'egress SSRF des webhooks d'alerte
+# (AlertRule, SP-16b) — liste séparée par des virgules ; vide (défaut) =
+# seules les plages réseau internes/privées sont bloquées, aucune
+# restriction d'hôte supplémentaire.
+CORE_ALERTS_EGRESS_ALLOWLIST=
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
+Expected: `5 passed`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/app/alerts/egress.py .env.example core/tests/test_alert_egress.py
+git commit -m "feat(core): SP-16b — app.alerts.egress SSRF guard for webhook delivery"
 ```
 
 ---
