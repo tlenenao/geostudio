@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAppConfig, useItem } from "../api/hooks";
+import { useAppConfig, useInstanceInfo, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";
 import { EXTENT_DEBOUNCE_MS, type AnalyticsContextState } from "../builder/AnalyticsContext";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
@@ -16,6 +16,7 @@ import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
+import { ExportPanel } from "../builder/print/ExportPanel";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -26,6 +27,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const query = useAppConfig(pk, { enabled: itemQuery.isSuccess, mode: "runtime" });
   const navigate = useNavigate();
   const isExportRender = useIsExportRender();
+  const instanceQuery = useInstanceInfo();
+  const exportEnabled = instanceQuery.data?.exportEnabled === true;
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
   // navigates here with ?exportRender=1. Non-map apps/dashboards have no
@@ -121,7 +124,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   return (
     <div className="flex h-full w-full flex-col">
       {!isExportRender && query.data.interactions === "auto" && (
-        <div className="flex justify-end border-b border-slate-200 p-2">
+        <div className="flex justify-end gap-2 border-b border-slate-200 p-2">
+          {exportEnabled && <ExportPanel itemId={pk} />}
           <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
             Enregistrer la vue
           </Button>

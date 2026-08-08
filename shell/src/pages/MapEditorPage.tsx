@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useMapConfig, useSaveMap } from "../api/hooks";
+import { useInstanceInfo, useMapConfig, useSaveMap } from "../api/hooks";
 import type { MapConfig, MapLayer, PrintLayoutConfig } from "../api/types";
 import { MapView } from "../map/MapView";
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
+import { ExportPanel } from "../builder/print/ExportPanel";
 import { Button } from "../ui/button";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
@@ -15,6 +16,8 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const save = useSaveMap(pk);
   const [draft, setDraft] = useState<MapConfig | null>(null);
   const isExportRender = useIsExportRender();
+  const instanceQuery = useInstanceInfo();
+  const exportEnabled = instanceQuery.data?.exportEnabled === true;
 
   useEffect(() => {
     if (query.data) setDraft(query.data);
@@ -74,6 +77,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
         <LayersPanel layers={draft.layers} onChange={setLayers} />
         <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+        {exportEnabled && <ExportPanel itemId={pk} />}
         <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
           Enregistrer
         </Button>
