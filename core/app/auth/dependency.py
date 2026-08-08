@@ -32,6 +32,14 @@ def is_etl_enabled() -> bool:
     return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
 
 
+def is_export_enabled() -> bool:
+    """CORE_EXPORT_ENABLED (SP-17a) — capacité instance-wide optionnelle,
+    même convention que is_etl_enabled : lue à chaque appel, sans cache.
+    Défaut false : le worker Playwright/export-worker n'est jamais requis
+    pour faire tourner le reste de la plateforme."""
+    return os.environ.get("CORE_EXPORT_ENABLED", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par

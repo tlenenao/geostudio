@@ -39,14 +39,14 @@ def env():
 def test_instance_defaults_to_read_write(env):
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": False}
+    assert response.json() == {"readOnly": False, "etlEnabled": False, "exportEnabled": False}
 
 
 def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": True, "etlEnabled": False}
+    assert response.json() == {"readOnly": True, "etlEnabled": False, "exportEnabled": False}
 
 
 @pytest.mark.parametrize(

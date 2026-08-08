@@ -40,7 +40,7 @@ export function useInstanceInfo() {
     // Même garde défensive pour etlEnabled que pour readOnly ci-dessus
     // (SP-15b) : un ItemClient de test qui ne l'implémente pas encore
     // résout silencieusement à false plutôt que de planter la query.
-    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false, etlEnabled: false }),
+    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false, etlEnabled: false, exportEnabled: false }),
   });
 }
 

@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 

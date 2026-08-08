@@ -3,23 +3,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_etl_enabled
+from app.auth.dependency import get_current_user, get_current_user_optional, is_export_enabled
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-def test_is_etl_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_ETL_ENABLED", raising=False)
-    assert is_etl_enabled() is False
+def test_is_export_enabled_defaults_to_false(monkeypatch):
+    monkeypatch.delenv("CORE_EXPORT_ENABLED", raising=False)
+    assert is_export_enabled() is False
 
 
-def test_is_etl_enabled_reads_env_var(monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    assert is_etl_enabled() is True
-    monkeypatch.setenv("CORE_ETL_ENABLED", "false")
-    assert is_etl_enabled() is False
+def test_is_export_enabled_reads_env_var(monkeypatch):
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
+    assert is_export_enabled() is True
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
+    assert is_export_enabled() is False
 
 
 @pytest.fixture()
@@ -46,14 +46,14 @@ def env():
     return TestClient(app)
 
 
-def test_instance_reports_etl_disabled_by_default(env):
+def test_instance_reports_export_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {"readOnly": False, "etlEnabled": False, "exportEnabled": False}
 
 
-def test_instance_reports_etl_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+def test_instance_reports_export_enabled(env, monkeypatch):
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": True, "exportEnabled": False}
+    assert response.json()["exportEnabled"] is True
