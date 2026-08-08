@@ -47,9 +47,24 @@ class PostgresDsnPayload(BaseModel):
     dsn: str
 
 
+class SmtpCredentialsPayload(BaseModel):
+    """SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
+    the webhook channel's URL, this comes from an admin-only secret
+    (POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule
+    user input — no egress guard applies to it (Global Constraints,
+    SP-16b plan), same trust model as postgres_dsn."""
+    kind: Literal["smtp"] = "smtp"
+    host: str
+    port: int
+    username: str
+    password: str
+    useTls: bool = True
+    fromAddress: str
+
+
 SecretPayload = Annotated[
     ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
-    | OAuth2ClientCredentialsPayload | PostgresDsnPayload,
+    | OAuth2ClientCredentialsPayload | PostgresDsnPayload | SmtpCredentialsPayload,
     Field(discriminator="kind"),
 ]
 
