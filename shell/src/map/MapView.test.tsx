@@ -162,6 +162,15 @@ test("renders a legend of visible layers", () => {
   expect(document.body.textContent).toContain("Communes");
 });
 
+test("hideLegend suppresses the built-in MapLegend", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "a", title: "Communes", visible: true, kind: "vector", tilesUrl: "u", sourceLayer: "c" }],
+  };
+  render(<MapView config={cfg} hideLegend />);
+  expect(document.body.textContent).not.toContain("Communes");
+});
+
 test("mounts a Deck.gl overlay and adds a HeatmapLayer for a heatmap deck layer", () => {
   const cfg: MapConfig = {
     ...config,
@@ -295,6 +304,29 @@ test("ignores a clicked feature with no id", () => {
   render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
   mapInstances[0].fireOnLayer("click", "a", { features: [{ properties: { nom: "Parc A" }, geometry: null }] });
   expect(onFeatureClick).not.toHaveBeenCalled();
+});
+
+test("calls onReady once the map fires 'idle'", () => {
+  const onReady = vi.fn();
+  render(<MapView config={config} onReady={onReady} />);
+  const map = mapInstances[0];
+  map.fire("idle");
+  expect(onReady).toHaveBeenCalledTimes(1);
+});
+
+test("does not call onReady before 'idle' fires", () => {
+  const onReady = vi.fn();
+  render(<MapView config={config} onReady={onReady} />);
+  expect(onReady).not.toHaveBeenCalled();
+});
+
+test("only calls onReady once even if 'idle' fires again (map.once semantics)", () => {
+  const onReady = vi.fn();
+  render(<MapView config={config} onReady={onReady} />);
+  const map = mapInstances[0];
+  map.fire("idle");
+  map.fire("idle");
+  expect(onReady).toHaveBeenCalledTimes(1);
 });
 
 test("detaches the old layer's click handler when config.layers replaces it", () => {
