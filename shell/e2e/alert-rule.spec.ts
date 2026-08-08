@@ -74,4 +74,17 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
   await expect(page.getByText("Trop d'incidents")).toBeVisible();
   await expect(page.getByText(/firing/i)).toBeVisible();
   expect(createdAlertConfig).not.toBeNull();
+  // Vérifie que le POST /configs porte bien les valeurs saisies dans le
+  // formulaire, pas seulement qu'un POST a eu lieu (cf. itemClient.ts's
+  // createAlertRuleItem: { title, config: { version, kind, alert } }).
+  expect(createdAlertConfig).toMatchObject({
+    title: "Trop d'incidents",
+    config: {
+      kind: "alert",
+      alert: {
+        condition: { expr: "value > 2" },
+        channels: [{ kind: "webhook", url: "https://example.test/hook" }],
+      },
+    },
+  });
 });
