@@ -58,6 +58,33 @@ def qgis_scratch_dir():
     return Path(path)
 
 
+@pytest.fixture(scope="session")
+def chromium_available():
+    """Sonde le binaire Chromium de Playwright sans jamais ouvrir de page ;
+    skip proprement (miroir du patron pg_engine/qgis_worker_url ci-dessus)
+    si le package n'est pas installé ou si `playwright install --with-deps
+    chromium` n'a pas été exécuté dans cet environnement. Utilise
+    start()/stop() explicites (jamais le context manager `with
+    sync_playwright()`) : c'est le même patron que
+    app/export/jobs.py::_launch_and_navigate — voir son commentaire sur la
+    fuite de driver/event-loop qui corrompt le Runner anyio partagé par les
+    tests async du même process si stop() n'est jamais appelé."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        pytest.skip("playwright non installé — test playwright skippé")
+    driver = sync_playwright().start()
+    try:
+        executable = Path(driver.chromium.executable_path)
+    finally:
+        driver.stop()
+    if not executable.exists():
+        pytest.skip(
+            f"binaire Chromium introuvable ({executable}) — "
+            "playwright install --with-deps chromium requis — test playwright skippé"
+        )
+
+
 @pytest.fixture()
 def pg_session_factory(pg_engine):
     return make_session_factory(pg_engine)

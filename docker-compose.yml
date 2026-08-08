@@ -317,6 +317,14 @@ services:
 
   shell:
     build: ./shell
+    environment:
+      # No-op par défaut : même valeur que l'ARG de build de shell/Dockerfile
+      # (http://localhost:8200), injectée au runtime via
+      # docker-entrypoint.d/40-render-runtime-config.sh (envsubst ->
+      # env-config.js -> shell/src/config.ts::mergeRuntimeEnv). Surcharger
+      # VITE_CORE_URL dans .env pour activer un export réel (profil
+      # "export") sans rebuild — voir la note détaillée dans .env.example.
+      VITE_CORE_URL: ${VITE_CORE_URL:-http://localhost:8200}
     ports:
       - "8300:8300"
     networks: [gis-net]
