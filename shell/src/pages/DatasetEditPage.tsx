@@ -8,6 +8,7 @@ import { mergeDatasetSchema } from "../lib/datasetSchema";
 import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/button";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
+import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
@@ -201,6 +202,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           </p>
         )}
       </div>
+      <AlertRuleEditor datasetItemId={pk} owner={itemQuery.data.owner} />
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
         Enregistrer les colonnes
       </Button>
