@@ -35,9 +35,10 @@ const schema: CollectionSchema = {
 
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = { listAlertRulesForDataset: vi.fn().mockResolvedValue([]), ...client };
   return render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
+      <ItemClientProvider client={merged as ItemClient}>
         <DatasetEditPage pk="ds-1" />
       </ItemClientProvider>
     </QueryClientProvider>,

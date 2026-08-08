@@ -48,6 +48,11 @@ export function AlertRuleEditor({ datasetItemId, owner }: { datasetItemId: strin
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs font-medium text-slate-500">Alertes</p>
+      {rulesQuery.isError && (
+        <p role="alert" className="text-sm text-red-600">
+          Impossible de charger les règles d'alerte.
+        </p>
+      )}
       {(rulesQuery.data ?? []).map((rule) => <AlertRuleRow key={rule.itemId} rule={rule} />)}
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-2 text-xs">
         <label className="flex flex-col gap-1">
