@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -38,12 +39,14 @@ const config: MapConfig = {
   layers: [{ id: "a", title: "Couche A", visible: true, kind: "feature", url: "u" }],
 };
 
-function renderEditor(client: Partial<ItemClient>) {
+function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["/maps/77"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <MapEditorPage pk="77" />
+        <MemoryRouter initialEntries={initialEntries}>
+          <MapEditorPage pk="77" />
+        </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -99,4 +102,28 @@ test("surfaces a save failure", async () => {
   await screen.findAllByText("Couche A");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   expect(await screen.findByText(/échec de l'enregistrement/i)).toBeInTheDocument();
+});
+
+test("exportRender=1 renders a nude chrome (no builder aside/save button) and marks the page export-ready once the map idles", async () => {
+  renderEditor(
+    {
+      getMapConfig: vi.fn().mockResolvedValue({
+        ...config,
+        printLayout: { title: "Carte des communes", showLegend: true, cartouche: "GeoStudio © 2026" },
+      }),
+      listLayerSources: vi.fn().mockResolvedValue([]),
+    },
+    ["/maps/77?exportRender=1"],
+  );
+  // Builder chrome must be absent from the capture.
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retirer Couche A" })).not.toBeInTheDocument();
+  // PrintLayout overlays render from the loaded config.
+  expect(await screen.findByText("Carte des communes")).toBeInTheDocument();
+  expect(screen.getByText("Couche A")).toBeInTheDocument(); // showLegend
+  expect(screen.getByText("GeoStudio © 2026")).toBeInTheDocument();
+  // The map fires "idle" synchronously on mount in the MockMap harness — the
+  // export-ready DOM signal (Task 6's contract) must follow.
+  mapInstances[0].fire("idle");
+  expect(document.body.getAttribute("data-export-ready")).toBe("true");
 });

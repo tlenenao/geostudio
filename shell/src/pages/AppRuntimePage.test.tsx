@@ -254,6 +254,16 @@ test("the save-view button is present when interactions is auto", async () => {
   expect(await screen.findByRole("button", { name: "Enregistrer la vue" })).toBeInTheDocument();
 });
 
+test("exportRender=1 hides the save-view action bar and marks the page export-ready once the config loads", async () => {
+  renderRuntime(
+    { getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  await screen.findByLabelText("Date de début");
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
+  await waitFor(() => expect(document.body.getAttribute("data-export-ready")).toBe("true"));
+});
+
 test("saving a view captures the current analytics context and posts a bookmark", async () => {
   const createBookmarkItem = vi.fn().mockResolvedValue({
     pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "",

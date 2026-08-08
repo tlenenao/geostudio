@@ -35,8 +35,18 @@ export class MockMap {
     const key = `${event}:${layerId}`;
     this.layerHandlers[key] = (this.layerHandlers[key] ?? []).filter((h) => h !== cb);
   }
+  once(event: string, cb: () => void) {
+    const wrapped = () => {
+      this.handlers[event] = (this.handlers[event] ?? []).filter((h) => h !== wrapped);
+      cb();
+    };
+    (this.handlers[event] ??= []).push(wrapped);
+    return this;
+  }
   fire(event: string) {
-    this.handlers[event]?.forEach((cb) => cb());
+    // Iterate a snapshot: `once` handlers mutate this.handlers[event] while
+    // firing, which would otherwise desync a live forEach mid-iteration.
+    [...(this.handlers[event] ?? [])].forEach((cb) => cb());
   }
   fireOnLayer(event: string, layerId: string, payload: unknown) {
     this.layerHandlers[`${event}:${layerId}`]?.forEach((cb) => cb(payload));

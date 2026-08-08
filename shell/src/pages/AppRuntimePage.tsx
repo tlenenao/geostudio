@@ -14,6 +14,8 @@ import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { useIsExportRender } from "../shell/useIsExportRender";
+import { markExportReady } from "../shell/exportReady";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -23,6 +25,18 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const itemQuery = useItem(pk);
   const query = useAppConfig(pk, { enabled: itemQuery.isSuccess, mode: "runtime" });
   const navigate = useNavigate();
+  const isExportRender = useIsExportRender();
+
+  // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
+  // navigates here with ?exportRender=1. Non-map apps/dashboards have no
+  // per-widget "fully rendered" signal yet (out of SP-17a scope, documented
+  // limitation) — the best real signal available is "the config request
+  // succeeded" plus one paint frame, not a fixed timer.
+  useEffect(() => {
+    if (isExportRender && query.isSuccess) {
+      requestAnimationFrame(() => markExportReady());
+    }
+  }, [isExportRender, query.isSuccess]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   // Read once at mount ("au montage" per spec) — this component itself
@@ -106,7 +120,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   }
   return (
     <div className="flex h-full w-full flex-col">
-      {query.data.interactions === "auto" && (
+      {!isExportRender && query.data.interactions === "auto" && (
         <div className="flex justify-end border-b border-slate-200 p-2">
           <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
             Enregistrer la vue
