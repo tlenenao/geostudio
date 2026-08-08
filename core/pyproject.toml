@@ -110,6 +110,7 @@ layers = [
     "app.harvest",
     "app.pipelines",
     "app.alerts",
+    "app.export",
     "app.secrets",
     "app.ingestion",
     "app.dcat",
@@ -139,4 +140,5 @@ ignore_imports = [
     "app.db -> app.pipelines.models",
     "app.db -> app.alerts.models",
     "app.db -> app.secrets.models",
+    "app.db -> app.export.models",
 ]
