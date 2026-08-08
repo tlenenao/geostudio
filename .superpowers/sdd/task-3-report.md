@@ -1,129 +1,116 @@
-# Task 3 Report: `POST /collections/{id}/export` (aggregate mode, collection-backed)
+# Task 3 report — `app/configs/alert_validation.py`
 
-## Summary
+## What was implemented
 
-Implemented the new `POST /collections/{collection_id}/export?format=csv|xlsx` route in
-`core/app/features/routes.py`, reusing `run_collection_aggregate`/`AggregateRequestBody`/
-`get_readable_collection` (all pre-existing) plus the Task 2 serialization module
-`app.analytics.export` (`EXPORT_MEDIA_TYPES`, `export_filename`, `rows_to_format`,
-`features_to_format`). Followed the brief's Step 1b corrected fixture/test (7-tuple `env`
-fixture returning the `Session` factory, real-session audit-log assertion) rather than the
-broken initial Step 1 version.
+`core/app/configs/alert_validation.py` (new): `validate_alert_payload(session, config, *, user) -> None`.
+Mirrors `app.configs.bookmark_validation.validate_bookmark_payload` exactly:
+no-op if `config.kind != "alert"`; otherwise resolves `config.alert.datasetItemId`
+via `items_repo.get_access_facts` + `app.sharing.authorization.can(action="read")`,
+raising `HTTPException(422, detail="dataset not found")` if the item is missing
+or not readable (same message for both, to avoid leaking existence — same
+convention as bookmark_validation), then re-fetches via `items_repo.get_item`
+and raises the same 422/"dataset not found" if `target.resourceType != "dataset"`.
 
-## What I implemented
+Wired into `core/app/configs/routes.py`: one new import
+(`from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload`)
+and one new call, `_validate_alert_payload(session, ..., user=user)`, added
+alongside the three existing `_validate_*_payload` calls in `create_config`,
+`update_config`, and `update_config_by_item`.
 
-- `core/app/features/routes.py`:
-  - Import line broadened: `from app.analytics.export import EXPORT_MEDIA_TYPES,
-    export_filename, features_to_format, rows_to_format` (`features_to_format` isn't used by
-    this route yet — it's consumed by Task 4's raw-features export route added to the same
-    file later in the plan; importing it now matches the brief's Step 3 instruction verbatim).
-  - `RESERVED_QUERY_PARAMS` gained `"format"` so it isn't treated as an attribute filter by
-    `_collect_filters` (not directly exercised by this route, but shared module state with
-    `list_features`).
-  - New `EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}` and
-    `export_collection_aggregate()` route: validates `format`, resolves the collection via
-    `get_readable_collection` (404-before-403 semantics — see Self-review below), introspects
-    the table, runs the aggregate via `run_collection_aggregate`, serializes with
-    `rows_to_format`, writes an `export.run` audit row, and returns a `Response` with
-    `Content-Disposition: attachment`.
+Code matches the brief's Step 3 block verbatim — confirmed by reading the
+current `bookmark_validation.py` first, which the brief's code mirrors
+character-for-character (only the field name `datasetItemId`/`payload.alert`
+and the error-context comments differ).
 
-- `core/tests/test_features_export_routes.py` (new, 6 tests): mirrors
-  `test_features_aggregate_routes.py`'s fixture, using the Step 1b corrected `env` fixture
-  (7-tuple, includes the `Session` factory).
+## Discrepancy found and fixed (test fixture, not `bookmark_validation.py`/`routes.py`)
 
-## Deviation from the brief (found and fixed before implementing)
+`bookmark_validation.py` and `routes.py` matched the brief's assumptions
+exactly — no divergence there. The divergence was in the brief's **own test
+fixture** (`_client_and_user`), which the brief dictated verbatim:
 
-`test_export_aggregate_denies_a_user_without_read_access` in both the task brief and the
-plan document (`docs/superpowers/plans/2026-08-07-sp16a-export-serveur.md`) asserts
-`status_code == 403` for a non-owner hitting a private collection. That contradicts the
-actual, reused-verbatim permission check: `get_readable_collection`
-(`core/app/collections/routes.py:133-151`) is deliberately **404-before-403** — its docstring
-reads "404 avant 403 : une collection illisible est indistinguable d'une absente" — and the
-sibling test for the existing `/aggregate` route
-(`test_aggregate_on_private_collection_by_non_owner_returns_404` in
-`test_features_aggregate_routes.py`) already encodes this as 404, not 403. The plan itself
-also says (Task 3 preamble, plan line 17): "Reuse existing permission checks verbatim — no
-new authorization logic." Implementing a 403 would have required inventing a new check that
-contradicts the stated design and the plan's own instruction.
+The fixture created a user `oidc_sub="a"`/`username="alice"` and set
+`Authorization: Bearer mock:alice`, assuming mock-mode auth would resolve the
+acting user from the token content. It doesn't: `app.auth.dependency.
+get_current_user`'s mock branch always resolves to a **fixed** identity
+(`oidc_sub="mock-sub"`, `username="mockuser"`), ignoring everything after
+`"Bearer "` beyond the prefix check. Confirmed against `test_routes.py`'s
+`client_with_real_auth` fixture (the only other test in the suite that drives
+mock auth through the real HTTP path rather than via `dependency_overrides`),
+whose comment states this explicitly.
 
-I fixed the assertion in my test file to expect **404** (with a comment explaining why),
-matching real system behavior. I did not touch the brief/plan files themselves (out of scope
-for this task; flagging here for whoever compiles the final report/reviews the plan).
+Effect: in the brief's literal fixture, items created with `owner_id=user.id`
+("alice") were never owned by the actual acting HTTP user ("mockuser"), so
+`can(action="read")` failed even for a genuinely readable dataset — the third
+test (`succeeds_against_a_readable_dataset`) failed with 422 "dataset not
+found" for the *wrong* reason (ownership mismatch), and the second test
+(`rejects_a_non_dataset_item`) would have passed for the wrong reason too
+(masking the resourceType check behind an ownership failure).
+
+Fix: changed the fixture to create the user with `oidc_sub="mock-sub"`,
+`username="mockuser"` (matching `get_current_user`'s mock resolution exactly),
+so items created with `owner_id=user.id` are genuinely owned by the acting
+request identity. No production code was affected — `alert_validation.py`
+and the `routes.py` wiring are unchanged from the brief's Step 3 code block.
 
 ## Tests and results
 
-Ran `cd core && uv run pytest tests/test_features_export_routes.py -v`.
+- `tests/test_alert_validation.py` (3 new tests, brief's Step 1 body plus the
+  fixture fix above): `3 passed`.
+- Regression, brief-specified: `tests/test_configs_models.py`: `2 passed`.
+- Broader regression (configs/routes/alert/pipeline/bookmark/mcp-configs):
+  `tests/test_routes.py tests/test_create_bookmark.py tests/test_configs_models.py
+  tests/test_alert_validation.py tests/test_alert_condition.py
+  tests/test_alert_config_schema.py tests/test_pipeline_config_validation.py
+  tests/test_mcp_tools_configs.py tests/test_mcp_tools_bookmark_create.py`:
+  `84 passed`.
+- Full suite: `1235 passed, 131 skipped` (skips are the docker-gated postgis
+  tests, consistent with the documented baseline in CLAUDE.md).
 
-### RED (before Step 3 — route did not exist)
+All runs used:
+`PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q ...`
 
+## TDD evidence
+
+**RED** (before implementing `alert_validation.py` / wiring `routes.py`, test
+file already written):
 ```
-tests/test_features_export_routes.py::test_export_aggregate_csv_returns_a_csv_attachment FAILED
-tests/test_features_export_routes.py::test_export_aggregate_xlsx_returns_an_xlsx_attachment FAILED
-tests/test_features_export_routes.py::test_export_aggregate_rejects_unknown_format FAILED
-tests/test_features_export_routes.py::test_export_aggregate_requires_authentication FAILED
-tests/test_features_export_routes.py::test_export_aggregate_denies_a_user_without_read_access PASSED
-tests/test_features_export_routes.py::test_export_aggregate_writes_an_audit_log_row FAILED
-5 failed, 1 passed in 4.05s
+FAILED tests/test_alert_validation.py::test_create_alert_rule_rejects_a_nonexistent_dataset
+FAILED tests/test_alert_validation.py::test_create_alert_rule_rejects_a_non_dataset_item
+2 failed, 1 passed in 2.14s
 ```
+(the third test passed by accident, both rejections returned 201 — as the
+brief predicted for the RED state, before either the implementation or the
+fixture fix.)
 
-(The one "pass" is a coincidence: with no route registered, FastAPI returns 404 for any
-path/method combination, and 404 happens to be exactly what that particular test expects —
-confirming it was asserting the right thing for the wrong reason at RED, and the right thing
-for the right reason at GREEN.)
-
-### GREEN (after Step 3)
-
+**Intermediate** (implementation + wiring done, fixture bug not yet fixed):
 ```
-tests/test_features_export_routes.py::test_export_aggregate_csv_returns_a_csv_attachment PASSED
-tests/test_features_export_routes.py::test_export_aggregate_xlsx_returns_an_xlsx_attachment PASSED
-tests/test_features_export_routes.py::test_export_aggregate_rejects_unknown_format PASSED
-tests/test_features_export_routes.py::test_export_aggregate_requires_authentication PASSED
-tests/test_features_export_routes.py::test_export_aggregate_denies_a_user_without_read_access PASSED
-tests/test_features_export_routes.py::test_export_aggregate_writes_an_audit_log_row PASSED
-6 passed in 2.71s
+FAILED tests/test_alert_validation.py::test_create_alert_rule_succeeds_against_a_readable_dataset
+1 failed, 2 passed in 2.12s
 ```
+Diagnosed via a standalone repro script hitting `/configs` directly and
+inspecting the JSON body (`{"detail": "dataset not found"}` on a genuinely
+readable dataset) — traced to the mock-auth identity mismatch described
+above.
 
-Also ran the full suite to check for regressions: `cd core && uv run pytest -q` →
-`1192 passed, 131 skipped in 76.61s` (skips are the pre-existing postgis-marked tests, per
-CLAUDE.md). And `uv run lint-imports` → `layered architecture KEPT` (the new
-`app.features → app.analytics.export` dependency doesn't break the import-linter contract;
-`app.features` already depended on `app.analytics` via `aggregate`/`sql_sandbox`).
+**GREEN** (after fixing the fixture's user identity):
+```
+tests/test_alert_validation.py: 3 passed in 2.03s
+```
 
 ## Files changed
 
-- `core/app/features/routes.py` (modified)
-- `core/tests/test_features_export_routes.py` (new)
-
-Commit: `684379e feat(core): SP-16a — POST /collections/{id}/export (mode agrégé CSV/XLSX)`
+- `core/app/configs/alert_validation.py` (new) — matches brief's Step 3 verbatim.
+- `core/app/configs/routes.py` — 1 import + 3 call sites, matches brief's wiring verbatim.
+- `core/tests/test_alert_validation.py` (new) — brief's Step 1 test bodies verbatim; only the `_client_and_user` fixture's user identity (`oidc_sub`/`username`) was changed from `"a"`/`"alice"` to `"mock-sub"`/`"mockuser"` to match real mock-auth resolution.
 
 ## Self-review
 
-- **Completeness**: all 6 tests from the corrected Step 1b version are present and pass; the
-  route matches the brief's Step 3 code exactly except for the one status-code fix above.
-- **Quality**: route mirrors `aggregate_features` closely (same dependency shapes, same
-  try/finally on `conn.close()`, same `_validation_error` helper for 400s). Renamed the
-  aggregate's `category_key` local to `_category_key` since the export route doesn't need it
-  in the response — kept as a bound name (not `_`) for clarity in case of future debugging,
-  matching the brief's own code.
-- **Discipline**: no new imports beyond exactly what the brief's Step 3 specifies; no
-  restructuring elsewhere in the file; didn't touch Task 4's future work.
-- **Testing**: tests exercise a real SQLite-backed session, a real DuckDB in-memory
-  connection with the `spatial` extension loaded, and real Parquet partitions written via
-  geopandas — no mocks. Output is clean at the passing run (no warnings); the RED run's
-  captured stderr/stdout noise (an `AppNotOpen` procrastinate traceback from the collection
-  registration's best-effort embedding enqueue) is pre-existing and identical to what
-  `test_features_aggregate_routes.py` also produces on failure output — unrelated to this
-  change, and pytest only captures/prints it for failing tests.
+- Completeness: all 3 tests from the brief pass, using the real HTTP+DB path (`TestClient` + SQLite, no `get_current_user` override) as specified.
+- Quality: `alert_validation.py` matches `bookmark_validation.py`'s style exactly — same imports, same docstring shape, same two-step access-facts-then-resourceType-check structure, same "same message for both failure cases" convention and comment.
+- Discipline: no validation added beyond what the brief specifies. Did not touch `app/configs/schemas.py` or any file outside the declared scope (`alert_validation.py`, `routes.py`'s 3 call sites + 1 import, `test_alert_validation.py`).
+- Testing: pristine output on the new test file, the brief's regression file, a broader regression sweep, and the full suite (1235 passed, 131 skipped — skip count and total match the documented baseline, no new skips or failures introduced).
 
-## Issues or concerns
+## Issues / concerns
 
-- The one test-assertion fix (403 → 404) described above is a deviation from the literal
-  brief/plan text. I'm confident in it (deliberate, documented design decision + existing
-  sibling test + the plan's own "reuse verbatim" instruction all agree), but flagging clearly
-  since the task description said to follow the brief's Step 1b text precisely — this is the
-  one place I did not.
-- `features_to_format` is imported but unused by this route (by design — Task 4 will use it
-  in the same file). No lint tool (ruff/flake8) is installed in this environment to confirm
-  it wouldn't be flagged as an unused import in CI; `lint-imports` (the import-linter layering
-  check mentioned in CLAUDE.md) passes, which is the lint gate actually documented for this
-  repo.
+- The brief's dictated test fixture (`_client_and_user`) had a latent bug: it assumed mock-mode auth parses the identity from the bearer token content, but `get_current_user`'s mock branch is hardcoded to a single fixed identity. This is a fixture-only issue (already flagged as a risk pattern by Tasks 1 and 2's "plan's dictated code" discrepancies) — fixed by aligning the fixture's user identity with the real mock-mode resolution. No implementation or wiring code needed to change; `alert_validation.py` and `routes.py` are exactly as specified.
+- No other discrepancies found. `bookmark_validation.py` and the 3 `routes.py` call sites matched the brief's assumptions exactly on read.

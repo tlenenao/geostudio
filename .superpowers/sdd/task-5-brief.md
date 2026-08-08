@@ -1,221 +1,296 @@
-### Task 5: `POST /datasets/{id}/arcgis/export` (aggregate mode, arcgis-backed)
+### Task 5: `app/alerts/repository.py`
 
 **Files:**
-- Modify: `core/app/harvest/routes.py`
-- Test: `core/tests/test_harvest_dataset_arcgis_export_routes.py` (new)
+- Create: `core/app/alerts/repository.py`
+- Test: `core/tests/test_alert_repository.py`
 
 **Interfaces:**
-- Consumes: `rows_to_format`, `EXPORT_MEDIA_TYPES`, `export_filename` (Task 2); `_resolve_arcgis_dataset`, `_groupby_fields`, `_measure_label`, `live_query` (all already present in this file).
-- Produces: route `POST /datasets/{item_id}/arcgis/export?format=csv|xlsx`.
+- Consumes: `app.configs.repository.list_configs_by_kind` (existing), `AlertEvaluation` (Task 4).
+- Produces: `create_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation`, `mark_evaluated(session, *, evaluation_id, value, state, transitioned, error=None) -> None`, `get_latest_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation | None`, `list_evaluations(session, *, tenant_id, alert_rule_item_id) -> list[AlertEvaluation]`, `list_due_rules(session) -> list[tuple[str, str]]` (item_id, tenant_id). Consumed by Task 9 (`app.alerts.jobs`) and Task 10 (`app.alerts.routes`).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_harvest_dataset_arcgis_export_routes.py`, mirroring `core/tests/test_harvest_dataset_arcgis_routes.py`'s fixture:
-
 ```python
+# core/tests/test_alert_repository.py
 # SPDX-License-Identifier: Apache-2.0
-import httpx
-import pytest
-from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
 
-from app import db
-from app.audit.models import AuditLog
-from app.auth.dependency import get_current_user
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.harvest import live_query, routes as harvest_routes
-from app.harvest import repository as harvest_repo
+from app.alerts import repository as alerts_repo
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
+from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
-from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
 
-
-@pytest.fixture(autouse=True)
-def _clear_cache():
-    live_query._cache.clear()
-    yield
-    live_query._cache.clear()
-
-
-def _mock_client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-@pytest.fixture()
-def client():
+def _make_session():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
-    Session = make_session_factory(engine)
+    return make_session_factory(engine)
 
+
+def _alert_body(dataset_item_id: str, *, refresh_policy=None) -> dict:
+    body = {
+        "kind": "alert",
+        "alert": {
+            "datasetItemId": dataset_item_id,
+            "query": {"agg": "count"},
+            "condition": {"expr": "value > 100"},
+            "refreshPolicy": refresh_policy or {"enabled": True, "cron": "*/5 * * * *"},
+            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+        },
+    }
+    return body
+
+
+def _seed_alert_rule(session, *, tenant_id, owner_id, dataset_item_id="ds-1", refresh_policy=None):
+    item = items_repo.create_item(
+        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="alert", title="Rule",
+    )
+    config = BuilderConfig.model_validate(_alert_body(dataset_item_id, refresh_policy=refresh_policy))
+    configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
+    return item.id
+
+
+def test_create_and_mark_evaluated_round_trip():
+    Session = _make_session()
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="a@example.com", first_name="Alice", last_name="Doe",
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
         )
-        source = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=alice.id, type="arcgis",
-            url="https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
-            mode="reference", enabled=True, interval_minutes=None,
-        )
-        layer_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=alice.id, resource_type="external", title="Bâtiments",
-        )
-        harvest_repo.create_record(
-            s, tenant_id=tenant.id, source_id=source.id, external_id="layer-0",
-            item_id=layer_item.id, collection_id=None, content_hash=None,
-            external_url=SERVICE, layer_kind="feature",
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        s.commit()
+
+        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        assert evaluation.state == "pending"
+        alerts_repo.mark_evaluated(
+            s, evaluation_id=evaluation.id, value=150.0, state="firing", transitioned=True,
         )
         s.commit()
 
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: alice
-
-    test_client = TestClient(app)
-    test_client.layer_item_id = layer_item.id  # type: ignore[attr-defined]
-    test_client.session_factory = Session  # type: ignore[attr-defined]
-    yield test_client
-    engine.dispose()
+        latest = alerts_repo.get_latest_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        assert latest is not None
+        assert latest.state == "firing"
+        assert latest.value == 150.0
 
 
-def _create_dataset(client, arcgis_item_id: str) -> str:
-    res = client.post("/configs", json={
-        "title": "Bâtiments (live)",
-        "config": {
-            "version": 1, "kind": "dataset",
-            "dataset": {"source": "arcgis", "arcgisItemId": arcgis_item_id, "columns": {}},
-        },
-    })
-    assert res.status_code == 201, res.text
-    return res.json()["itemId"]
+def test_list_due_rules_includes_a_rule_with_no_prior_evaluation():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        s.commit()
+
+        due = alerts_repo.list_due_rules(s)
+        assert (rule_id, tenant.id) in due
 
 
-def test_export_aggregate_csv_from_arcgis_dataset(client):
-    dataset_item_id = _create_dataset(client, client.layer_item_id)
+def test_list_due_rules_excludes_a_disabled_rule():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        _seed_alert_rule(
+            s, tenant_id=tenant.id, owner_id=user.id,
+            refresh_policy={"enabled": False, "cron": "*/5 * * * *"},
+        )
+        s.commit()
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={
-            "features": [{"attributes": {"region": "Nord", "m0": 3}}],
-        })
-
-    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
-    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=csv",
-                        json={"groupBy": "region", "agg": "count"})
-    assert resp.status_code == 200
-    assert resp.headers["content-type"] == "text/csv; charset=utf-8"
-    assert "Nord" in resp.text
-
-
-def test_export_aggregate_rejects_unknown_format(client):
-    dataset_item_id = _create_dataset(client, client.layer_item_id)
-    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=pdf", json={"groupBy": "region"})
-    assert resp.status_code == 400
+        assert alerts_repo.list_due_rules(s) == []
 
 
-def test_export_aggregate_writes_an_audit_log_row(client):
-    dataset_item_id = _create_dataset(client, client.layer_item_id)
+def test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        alerts_repo.mark_evaluated(s, evaluation_id=evaluation.id, value=1.0, state="ok", transitioned=False)
+        s.commit()
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"features": [{"attributes": {"region": "Nord", "m0": 3}}]})
+        assert alerts_repo.list_due_rules(s) == []
 
-    client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(handler)
-    client.post(f"/datasets/{dataset_item_id}/arcgis/export?format=csv", json={"groupBy": "region", "agg": "count"})
-    with client.session_factory() as s:
-        rows = s.query(AuditLog).filter_by(action="export.run").all()
-    assert len(rows) == 1
-    assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
+
+def test_list_due_rules_reclaims_a_stuck_pending_evaluation():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        # Simulate a stuck evaluation: created long ago, never marked.
+        evaluation.created_at = datetime.now(timezone.utc) - timedelta(minutes=120)
+        s.commit()
+
+        assert (rule_id, tenant.id) in alerts_repo.list_due_rules(s)
+
+
+def test_list_evaluations_orders_most_recent_first():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        first = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        alerts_repo.mark_evaluated(s, evaluation_id=first.id, value=1.0, state="ok", transitioned=False)
+        second = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        alerts_repo.mark_evaluated(s, evaluation_id=second.id, value=2.0, state="firing", transitioned=True)
+        s.commit()
+
+        rows = alerts_repo.list_evaluations(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        assert [r.id for r in rows] == [second.id, first.id]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
-Expected: FAIL — 404 on every test.
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_repository.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.repository'`
 
-- [ ] **Step 3: Implement**
-
-Edit `core/app/harvest/routes.py`. Add `Response` to the fastapi import and add the export imports:
+- [ ] **Step 3: Write the implementation**
 
 ```python
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-```
+# core/app/alerts/repository.py
+# SPDX-License-Identifier: Apache-2.0
+"""Mirrors app.pipelines.repository (SP-15a/h) exactly: "last evaluation"
+is always derived from alert_evaluations (never a duplicated column on the
+config), and list_due_rules reuses the same reclaim-by-age discipline as
+list_due_pipelines — a "pending" evaluation older than
+_PENDING_RECLAIM_MINUTES is presumed stuck and becomes eligible again."""
+import uuid
+from datetime import datetime, timedelta, timezone
 
-```python
-from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
-from app.analytics.export import EXPORT_MEDIA_TYPES, export_filename, features_to_format, rows_to_format
-```
+import croniter
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-Add the route after `get_dataset_arcgis_aggregate`'s closing `return {"categoryKey": category_key, "rows": rows}`:
+from app.alerts.models import AlertEvaluation
+from app.configs import repository as configs_repo
 
-```python
-_EXPORT_FORMATS_AGGREGATE = {"csv", "xlsx"}
+_PENDING_RECLAIM_MINUTES = 60
 
 
-@router.post("/datasets/{item_id}/arcgis/export")
-def export_dataset_arcgis_aggregate(
-    item_id: str, body: AggregateRequestBody, format: str = Query(...),
-    user: User = Depends(get_current_user), session: Session = Depends(get_session),
-    client: httpx.Client = Depends(get_arcgis_http_client),
-):
-    if format not in _EXPORT_FORMATS_AGGREGATE:
-        raise HTTPException(
-            status_code=400,
-            detail={"errors": [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}]},
+def create_evaluation(session: Session, *, tenant_id: str, alert_rule_item_id: str) -> AlertEvaluation:
+    evaluation = AlertEvaluation(
+        id=uuid.uuid4().hex, tenant_id=tenant_id, alert_rule_item_id=alert_rule_item_id,
+        state="pending",
+    )
+    session.add(evaluation)
+    session.flush()
+    session.refresh(evaluation)
+    return evaluation
+
+
+def mark_evaluated(
+    session: Session, *, evaluation_id: str, value: float | None, state: str, transitioned: bool,
+    error: str | None = None,
+) -> None:
+    evaluation = session.get(AlertEvaluation, evaluation_id)
+    if evaluation is None:
+        return
+    evaluation.value = value
+    evaluation.state = state
+    evaluation.transitioned = transitioned
+    evaluation.error = error
+    session.flush()
+
+
+def get_evaluation(session: Session, *, tenant_id: str, evaluation_id: str) -> AlertEvaluation | None:
+    return session.execute(
+        select(AlertEvaluation).where(
+            AlertEvaluation.id == evaluation_id, AlertEvaluation.tenant_id == tenant_id,
         )
-    if body.bucket is not None or body.split is not None or body.bins is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="bucket/split/bins are not supported for arcgis-sourced datasets",
+    ).scalar_one_or_none()
+
+
+def get_latest_evaluation(
+    session: Session, *, tenant_id: str, alert_rule_item_id: str,
+) -> AlertEvaluation | None:
+    return session.execute(
+        select(AlertEvaluation)
+        .where(
+            AlertEvaluation.tenant_id == tenant_id,
+            AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
         )
-    external_url = _resolve_arcgis_dataset(session, item_id=item_id, user=user)
-    group_by = _groupby_fields(body.groupBy)
-    measures_in = body.measures or [AggregateMeasure(field=body.field, agg=body.agg, label="value")]
-    measures = [(m.agg, m.field, _measure_label(m)) for m in measures_in]
-    try:
-        params = live_query.translate_aggregate_query(
-            group_by=group_by, measures=measures, filters=body.filters, bbox=body.bbox,
+        .order_by(AlertEvaluation.created_at.desc())
+        .limit(1)
+    ).scalars().first()
+
+
+def list_evaluations(
+    session: Session, *, tenant_id: str, alert_rule_item_id: str,
+) -> list[AlertEvaluation]:
+    rows = session.execute(
+        select(AlertEvaluation)
+        .where(
+            AlertEvaluation.tenant_id == tenant_id,
+            AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
         )
-    except live_query.ArcgisQueryError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={"errors": [{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}]},
-        )
-    try:
-        raw = live_query.fetch_query(client, external_url, params)
-    except EgressBlockedError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    finally:
-        client.close()
-    _category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
-    content = rows_to_format(rows, format=format)
-    item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
-    filename = export_filename(item.title if item else item_id, format=format)
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="export.run", object_type="item", object_id=item_id,
-                payload={"format": format, "mode": "aggregate"})
-    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
-                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        .order_by(AlertEvaluation.created_at.desc())
+    ).scalars().all()
+    return list(rows)
+
+
+def list_due_rules(session: Session) -> list[tuple[str, str]]:
+    """Cross-tenant sweep, consumed by sweep_alert_rules_task (app.alerts.jobs,
+    Task 9). Never exposed via a route (same discipline as
+    list_due_pipelines): the tuple carries tenant_id in clear."""
+    now = datetime.now(timezone.utc)
+    due: list[tuple[str, str]] = []
+    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert"):
+        payload = config.alert
+        if payload is None:
+            continue
+        policy = payload.refreshPolicy
+        if not policy.enabled:
+            continue
+        latest = get_latest_evaluation(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
+        if latest is None:
+            due.append((item_id, tenant_id))
+            continue
+        created_at = latest.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if latest.state == "pending":
+            if (now - created_at) < timedelta(minutes=_PENDING_RECLAIM_MINUTES):
+                continue
+            due.append((item_id, tenant_id))
+            continue
+        next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
+        if next_tick <= now:
+            due.append((item_id, tenant_id))
+    return due
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`
-Expected: PASS (3 tests)
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_repository.py`
+Expected: `6 passed`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/harvest/routes.py core/tests/test_harvest_dataset_arcgis_export_routes.py
-git commit -m "feat(core): SP-16a — POST /datasets/{id}/arcgis/export (mode agrégé CSV/XLSX)"
+git add core/app/alerts/repository.py core/tests/test_alert_repository.py
+git commit -m "feat(core): SP-16b — app.alerts.repository (evaluations CRUD, list_due_rules)"
 ```
 
 ---

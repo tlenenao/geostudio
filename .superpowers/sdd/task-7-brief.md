@@ -1,80 +1,80 @@
-### Task 7: Read-only demo guard — exempt export routes
+### Task 7: `SmtpCredentialsPayload` secret kind
 
 **Files:**
-- Modify: `core/app/main.py`
-- Modify: `core/tests/test_read_only_mode.py` (append)
+- Modify: `core/app/secrets/schemas.py`
+- Modify: `core/tests/test_secrets_schemas.py`
 
 **Interfaces:**
-- Consumes: nothing new (pure regex addition to the existing middleware).
+- Produces: `SmtpCredentialsPayload` variant added to the `SecretPayload` union, consumed by Task 8 (`app.alerts.notify`).
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `core/tests/test_read_only_mode.py`:
+Add to `core/tests/test_secrets_schemas.py` (open the file first to match its existing style — it parametrizes over the 5 existing kinds; add a 6th case rather than a new file, since this is additive to the existing union test suite):
 
 ```python
-def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
-    """POST .../export (mode agrégé) est une lecture malgré son verbe HTTP,
-    même raisonnement que POST /collections/{id}/aggregate (SP-16a) : sans
-    cette exemption, une démo publique en lecture seule casserait le bouton
-    Exporter de tout widget analytique."""
-    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    resp = env.post("/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
-    assert resp.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+def test_smtp_credentials_payload_round_trips():
+    from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
 
-    resp = env.post("/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
-    assert resp.status_code == 404
+    payload = SmtpCredentialsPayload(
+        host="smtp.example.test", port=587, username="alerts@example.test",
+        password="s3cret", useTls=True, fromAddress="alerts@example.test",
+    )
+    dumped = SECRET_PAYLOAD_ADAPTER.dump_python(payload)
+    assert dumped["kind"] == "smtp"
+    restored = SECRET_PAYLOAD_ADAPTER.validate_python(dumped)
+    assert isinstance(restored, SmtpCredentialsPayload)
+    assert restored.host == "smtp.example.test"
+    assert restored.useTls is True
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_read_only_mode.py -k export -v`
-Expected: FAIL — both requests return 403 with `{"detail": "Mode démo : lecture seule, écritures désactivées."}`.
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py -k smtp`
+Expected: FAIL with `ImportError: cannot import name 'SmtpCredentialsPayload'`
 
-- [ ] **Step 3: Implement**
-
-Edit `core/app/main.py`. Change:
+- [ ] **Step 3: Write the implementation**
 
 ```python
-_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+# Add to core/app/secrets/schemas.py, alongside PostgresDsnPayload:
+class SmtpCredentialsPayload(BaseModel):
+    """SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
+    the webhook channel's URL, this comes from an admin-only secret
+    (POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule
+    user input — no egress guard applies to it (Global Constraints,
+    SP-16b plan), same trust model as postgres_dsn."""
+    kind: Literal["smtp"] = "smtp"
+    host: str
+    port: int
+    username: str
+    password: str
+    useTls: bool = True
+    fromAddress: str
 ```
-
-to:
 
 ```python
-_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
-_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$")
+# Change the SecretPayload union:
+SecretPayload = Annotated[
+    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload | PostgresDsnPayload | SmtpCredentialsPayload,
+    Field(discriminator="kind"),
+]
 ```
 
-Change the guard condition:
+- [ ] **Step 4: Run test to verify it passes**
 
-```python
-    @app.middleware("http")
-    async def read_only_guard(request: Request, call_next):
-        if (
-            is_read_only_mode()
-            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
-            and request.url.path != "/mcp"
-            and request.url.path != "/analytics/sql"
-            and not _AGGREGATE_PATH_RE.match(request.url.path)
-            and not _EXPORT_PATH_RE.match(request.url.path)
-        ):
-```
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py`
+Expected: all passing, including the new `test_smtp_credentials_payload_round_trips`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+Also run the full secrets suite to confirm the union change doesn't break existing routes/repository tests:
 
-Run: `cd core && uv run pytest tests/test_read_only_mode.py -v`
-Expected: PASS (all tests in the file)
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_routes.py tests/test_secrets_repository.py tests/test_secrets_models.py`
+Expected: unchanged, all passing.
 
-- [ ] **Step 5: Run the full core test suite**
-
-Run: `cd core && uv run pytest -q`
-Expected: all tests pass (previously: 606 executed + 87 skipped, now +~30 new tests from Tasks 1-7)
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/main.py core/tests/test_read_only_mode.py
-git commit -m "fix(core): SP-16a — exempte les routes d'export du garde lecture-seule démo"
+git add core/app/secrets/schemas.py core/tests/test_secrets_schemas.py
+git commit -m "feat(core): SP-16b — SmtpCredentialsPayload secret kind (additive)"
 ```
 
 ---

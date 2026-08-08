@@ -1,104 +1,147 @@
-# Task 6 Report: `GET /datasets/{id}/arcgis/export/items` (raw-entities mode, arcgis-backed)
+# Task 6 report — `app.alerts.egress` SSRF guard for webhooks
 
-## What was implemented
+## What I implemented
 
-- `core/app/harvest/routes.py`:
-  - Added `from app.analytics.duckdb_conn import open_spatial_connection` to the analytics import block.
-  - Added `_EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}` and `_EXPORT_ITEMS_CAP = 10_000` constants after `export_dataset_arcgis_aggregate`.
-  - Added `GET /datasets/{item_id}/arcgis/export/items` (`export_dataset_arcgis_items`): resolves the arcgis-backed dataset via `_resolve_arcgis_dataset`, paginates the live ArcGIS query endpoint via `live_query.translate_features_query` / `live_query.fetch_query` (page size `_MAX_LIMIT`=1000) accumulating features until a page shorter than the requested limit is returned (stop condition) or the accumulated count exceeds `_EXPORT_ITEMS_CAP` (413), then serializes via `features_to_format` to csv/xlsx/geojson/gpkg (opening a scratch DuckDB spatial connection only for gpkg), writes an `export.run` audit row with `payload={"format": format, "mode": "items"}`, and returns the file as an attachment — same response shape as the sibling aggregate-export route.
-- `core/tests/test_harvest_dataset_arcgis_export_routes.py`: appended the 4 tests specified in the brief verbatim (geojson happy path, gpkg happy path via SQLite magic-byte check, pagination stop-condition on a short page, 413 cap behavior via `monkeypatch.setattr(harvest_routes, "_EXPORT_ITEMS_CAP", 1)`).
+- `core/app/alerts/egress.py` (new): `assert_egress_allowed(url) -> None` raising
+  `EgressBlockedError`, plus `build_guarded_session()` returning a `requests.Session`
+  whose transport calls the guard before every send. Blocks non-http(s) schemes,
+  unresolvable hosts, and IPs that are loopback/private/link-local/reserved/
+  multicast/unspecified; optional allowlist via `CORE_ALERTS_EGRESS_ALLOWLIST`
+  (comma-separated hostnames).
+- `.env.example` (repo root): added the `CORE_ALERTS_EGRESS_ALLOWLIST` entry,
+  placed directly after `CORE_PIPELINES_EGRESS_ALLOWLIST` per the brief.
+- `core/tests/test_alert_egress.py` (new): 5 tests per the brief's intent
+  (loopback block, private-range block, non-http scheme block, public-https
+  allow, allowlist restriction) — see "Deviation from brief" below for one
+  fix required in the test file.
 
-No brief discrepancies found this time (unlike Tasks 3/4) — the brief's code and tests matched the real signatures of `live_query.translate_features_query`, `live_query.fetch_query`, `features_to_format`, `open_spatial_connection`, and `_resolve_arcgis_dataset` exactly, and the pagination/cap logic in the tests is internally consistent with the implementation (verified by tracing both by hand and by running them).
+This is a deliberate third instance of the SSRF-guard pattern already present
+as `app.pipelines.egress` (SP-15f) and `app.harvest.egress`, per the task's
+Global Constraints (webhook URLs are user-supplied per alert rule, unlike the
+admin-configured SMTP secret, which is explicitly not egress-guarded).
+Confirmed by direct diff against `app/pipelines/egress.py`: identical from the
+module docstring's closing line onward except the allowlist env var name
+(`CORE_ALERTS_EGRESS_ALLOWLIST` vs `CORE_PIPELINES_EGRESS_ALLOWLIST`) and one
+explanatory comment line above `_ALLOWLIST_ENV` that `pipelines/egress.py`
+carries and the brief's dictated code omits (the same explanation is present
+instead in `alerts/egress.py`'s module docstring, so nothing is lost).
 
-## What was tested and results
+## Deviation from the brief: test file DNS dependency (fixed)
 
-- New file-scoped run: `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v` → **7 passed** (3 pre-existing Task 5 tests + 4 new Task 6 tests).
-- Broader regression: `cd core && uv run pytest tests/ -k "harvest or arcgis" -q` → **223 passed, 13 skipped**.
-- Full core suite: `cd core && uv run pytest -q` → **1204 passed, 131 skipped** (skips are the documented postgis-marked tests requiring docker; matches CLAUDE.md's stated baseline).
-- Import-boundary contract: `cd core && uv run lint-imports` → **1 kept, 0 broken** (the new `app.harvest` → `app.analytics.duckdb_conn` import is consistent with the existing layering; `app.harvest` already imports from `app.analytics.aggregate`/`app.analytics.export`).
-- `ruff` is not installed in this environment (`No such file or directory`); no other lint tool is configured for `core/` beyond import-linter.
+The brief's dictated `test_allows_a_public_https_url` and
+`test_allowlist_restricts_to_named_hosts` use bare hostnames under the
+`.test` TLD (`example.test`, `not-allowed.example.test`, `allowed.example.test`)
+with no DNS mocking. `.test` is a TLD reserved by RFC 2606 specifically so it
+*never* resolves in real DNS — confirmed locally
+(`socket.getaddrinfo('example.test', None)` raises `gaierror` in this
+environment). As dictated, `test_allows_a_public_https_url` would fail (it
+asserts no exception, but `assert_egress_allowed` correctly raises
+`EgressBlockedError` for "hôte non résoluble") — this is a bug in the plan's
+test code, not the implementation.
 
-## TDD Evidence
+The sibling guards' test suites (`tests/test_pipeline_egress.py`,
+`tests/test_harvest_egress.py`) already solve exactly this by monkeypatching
+`socket.getaddrinfo` to return a known-public IP, rather than depending on
+live DNS. I applied the same fix here: both hostname-based tests now
+monkeypatch `socket.getaddrinfo` to resolve to `93.184.216.34` (the same
+public IP the sibling tests use), so `test_allows_a_public_https_url`
+genuinely exercises the "public → allowed" path, and
+`test_allowlist_restricts_to_named_hosts` genuinely exercises the allowlist
+mismatch (not an incidental DNS failure that also happens to raise
+`EgressBlockedError`). Test names, count (5), and coverage intent from the
+brief are unchanged; only the DNS-resolution mechanics were fixed to match
+the established, working pattern in this codebase.
 
-**RED** — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -k items -v`:
+## What I tested and results
+
+- `PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
+  → **RED** before implementation: `ModuleNotFoundError: No module named
+  'app.alerts.egress'` (1 error during collection), as the brief predicted.
+- After implementing `app/alerts/egress.py` with the brief's dictated test
+  file verbatim: 4 passed, 1 failed
+  (`test_allows_a_public_https_url` — the DNS issue above).
+- After fixing the test file's DNS mocking: **GREEN** — `5 passed in 0.06s`.
+- Cross-check: ran `test_alert_egress.py` alongside the two sibling suites
+  (`test_pipeline_egress.py`, `test_harvest_egress.py`) together — `32 passed`,
+  no interference between the three allowlist env vars.
+- Confirmed `app.alerts.egress` imports cleanly standalone
+  (`uv run python -c "import app.alerts.egress"`).
+- `ruff` is not installed/configured in this project (no `ruff` binary, no
+  ruff/black config in `pyproject.toml`) — skipped, not a project convention
+  here.
+
+## TDD evidence
+
+RED:
 ```
-FAILED tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_geojson_from_arcgis_dataset
-FAILED tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_gpkg_from_arcgis_dataset
-FAILED tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_stops_paginating_on_a_short_page
-FAILED tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_caps_at_10000_entities
-======================= 4 failed, 3 deselected in 2.39s ========================
+ERROR tests/test_alert_egress.py
+E   ModuleNotFoundError: No module named 'app.alerts.egress'
+1 error in 0.10s
 ```
-Confirmed the failures were the expected 404 (route not yet defined): `assert 404 == 200` on each `resp.status_code == 200` assertion. (Some unrelated `procrastinate.exceptions.AppNotOpen` stderr noise appears — pre-existing in this test file's setup, from `items_repo.create_item`'s async embedding-job enqueue attempt in a sqlite-only test session; identical noise is present in Task 5's tests and is not caused by this change.)
 
-**GREEN** — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`:
+Intermediate (brief's test file verbatim, after implementation — caught the
+DNS bug):
 ```
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_csv_from_arcgis_dataset PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_rejects_unknown_format PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_writes_an_audit_log_row PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_geojson_from_arcgis_dataset PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_gpkg_from_arcgis_dataset PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_stops_paginating_on_a_short_page PASSED
-tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_caps_at_10000_entities PASSED
-============================== 7 passed in 2.88s ===============================
+FAILED tests/test_alert_egress.py::test_allows_a_public_https_url
+E   app.alerts.egress.EgressBlockedError: hôte non résoluble : 'example.test'
+1 failed, 4 passed in 0.15s
+```
+
+GREEN (after fixing the test file's DNS mocking):
+```
+.....                                                                    [100%]
+5 passed in 0.06s
 ```
 
 ## Files changed
 
-- `core/app/harvest/routes.py` (+64 lines, pure addition)
-- `core/tests/test_harvest_dataset_arcgis_export_routes.py` (+66 lines, pure addition)
+- `core/app/alerts/egress.py` (new)
+- `core/tests/test_alert_egress.py` (new)
+- `.env.example` (repo root; +1 entry, `CORE_ALERTS_EGRESS_ALLOWLIST`)
 
-Commit: `41ecc9e feat(core): SP-16a — GET /datasets/{id}/arcgis/export/items (entités brutes, 4 formats)`
+Commit: `d744f0e feat(core): SP-16b — app.alerts.egress SSRF guard for webhook delivery`
+(3 files changed, 127 insertions(+); only the three intended files staged —
+verified `git status --short` showed no incidental `.superpowers/sdd/*`
+tracking-file changes pulled into this commit).
 
 ## Self-review findings
 
-- **Completeness**: all 4 new tests present and passing; route implemented exactly as specified including both new module-level constants.
-- **Quality**: implementation mirrors existing patterns in the file closely — filter/bbox handling copied from `get_dataset_arcgis_items` (same `reserved` query-param exclusion pattern, same `_parse_bbox`/`translate_features_query`/`fetch_query` usage), export/audit/response tail copied from `export_dataset_arcgis_aggregate` (same `_EXPORT_FORMATS_*` naming convention, same audit payload shape with `mode` distinguishing "aggregate" vs "items", same `Response`/`Content-Disposition` construction). The gpkg-specific `open_spatial_connection()`/`conn.close()` scoping matches the doc-comment in `duckdb_conn.py` (in-process, no S3/httpfs, export-only use).
-- **Discipline**: diff is pure addition to both files; nothing pre-existing was restructured or reformatted. No extra helpers, constants, or behavior beyond what the brief specified.
-- **Testing realism**: tests use `httpx.MockTransport` handlers returning realistic ArcGIS-shaped GeoJSON FeatureCollections (matching the shape `live_query.fetch_query`/`translate_features_query` actually produce/consume), verified the gpkg happy path via the real SQLite magic-byte header (proving `features_to_format`+DuckDB actually round-tripped a GeoPackage), and the pagination/cap tests trace correctly against the real loop semantics: a short page (1 feature vs. limit=1000) trips the `len(page_features) < limit` break after exactly one call; a monkeypatched cap of 1 trips on the first page of 1000 features via `len(features) > _EXPORT_ITEMS_CAP` before any second page is fetched. Full core suite (1204 passed) and import-linter clean confirm no regressions or layering violations introduced.
-- No stray warnings introduced by this change beyond the pre-existing procrastinate `AppNotOpen` noise inherited from the shared test fixture (also present in Task 5's tests, out of scope here).
+- **Completeness**: 5/5 tests passing, matching the brief's required coverage
+  (loopback, private range, non-http scheme, public allow, allowlist
+  restriction).
+- **Quality**: implementation is byte-for-byte identical to
+  `app/pipelines/egress.py` from the docstring's end onward, except the
+  allowlist env var name — verified via `diff`. French docstrings/comments
+  preserved (`EgressBlockedError` docstring, module docstring, inline
+  comments). English identifiers throughout, per repo convention.
+- **Discipline**: no attempt to "improve" or share code across the
+  `app.alerts`/`app.pipelines`/`app.harvest` boundary — duplication is
+  intentional and preserved, per the task's explicit instruction. The only
+  change from the brief's literal text is the test-file DNS-mocking fix
+  described above, which was necessary for correctness, not a stylistic
+  preference.
+- **Testing depth**: `test_blocks_a_private_range_url` and
+  `test_blocks_a_loopback_url` use IP literals directly (no DNS involved),
+  so they genuinely exercise `_is_internal()`'s private/loopback branches,
+  not just the scheme check. The two hostname-based tests now genuinely
+  exercise the resolution + allowlist code paths via mocked
+  `socket.getaddrinfo`, matching the rigor of the sibling test suites.
+- **Import-linter contract**: `app.alerts` is already declared as a layer in
+  `core/pyproject.toml`'s `[tool.importlinter]` contracts (line ~104,
+  `"app.alerts"`); `egress.py` imports only stdlib + `requests`, so it
+  introduces no new cross-layer dependency and needs no contract change.
+- **Known residual risk, not re-flagged as new**: DNS-rebinding TOCTOU gap
+  (resolve-then-connect race) applies here by construction, identically to
+  the two sibling guards — already documented in `CLAUDE.md`'s "Suivis non
+  bloquants ouverts" as accepted/deferred. Not raised as a new finding.
 
 ## Issues or concerns
 
-None. Brief was accurate and complete; no bugs found in the literal test/route text (unlike Tasks 3/4). Implementation is clean and matches sibling route conventions.
-
-## Fix: pagination multi-page test
-
-**Finding addressed (Important, from task review):** neither existing pagination test ever forced a second real HTTP call. `test_export_items_stops_paginating_on_a_short_page` returns a short page on the very first call (proves the break condition, never proves the loop continues). `test_export_items_caps_at_10000_entities` monkeypatches the cap down to 1, so the very first full page (1000 > 1) already trips the 413 — also exactly one HTTP call. The multi-page continuation path (`offset += limit`, looping back through `translate_features_query`/`fetch_query` a second time) was never exercised by any test in the file. A regression that broke offset incrementing, or that re-fetched the same page instead of the next one, would have passed every existing test.
-
-**What was added** — `test_export_items_continues_past_a_full_page` in `core/tests/test_harvest_dataset_arcgis_export_routes.py`: the mock handler returns a full page (1000 features, `== _MAX_LIMIT`) on the first call and a short page (1 feature) on the second call. The test asserts:
-- `len(calls) == 2` — the loop actually issued a second real HTTP call instead of stopping after the first (full) page;
-- `"resultOffset=0" in calls[0]` and `"resultOffset=1000" in calls[1]` — the offset sent on the second request is genuinely incremented by the page size, not resent unchanged or wrong;
-- `len(body["features"]) == 1001` — both pages' features were accumulated into the final export, not just the last page kept.
-
-This directly exercises the gap identified in the finding: it is the only test in the file where the `while True` loop body runs a second iteration, so it is the only test that can catch a broken `offset += limit` (e.g. not incrementing, or incrementing by the wrong amount) or a loop that re-issues the same request instead of advancing.
-
-**TDD verification (RED then GREEN):**
-- Deliberately broke the implementation by changing `core/app/harvest/routes.py`'s `offset += limit` to `offset += 0` (offset never advances, simulating exactly the kind of regression the finding warned about).
-- RED — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_continues_past_a_full_page -v`:
-  ```
-  FAILED tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_continues_past_a_full_page
-  assert resp.status_code == 200
-  E   assert 413 == 200
-  ```
-  (With offset stuck at 0, the loop kept refetching the same full page — never hitting the short-page break — until the accumulated count exceeded `_EXPORT_ITEMS_CAP`, tripping a 413 instead of the expected 200. Confirms the new test genuinely fails when the continuation path is broken.)
-- Reverted `routes.py` to the original (verified `git diff --stat core/app/harvest/routes.py` shows no changes — this is a test-only fix, `export_dataset_arcgis_items` itself was never modified in the final state).
-- GREEN — `cd core && uv run pytest tests/test_harvest_dataset_arcgis_export_routes.py -v`:
-  ```
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_csv_from_arcgis_dataset PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_rejects_unknown_format PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_aggregate_writes_an_audit_log_row PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_geojson_from_arcgis_dataset PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_gpkg_from_arcgis_dataset PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_stops_paginating_on_a_short_page PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_continues_past_a_full_page PASSED
-  tests/test_harvest_dataset_arcgis_export_routes.py::test_export_items_caps_at_10000_entities PASSED
-  ============================== 8 passed in 3.06s ===============================
-  ```
-
-**Full regression check** — `cd core && uv run pytest -q`:
-```
-1205 passed, 131 skipped in 78.89s (0:01:18)
-```
-(1205 = the previous 1204-passed baseline + 1 new test; skip count unchanged, matching the documented postgis/qgis-marker baseline. No regressions.)
-
-Commit: `test(core): SP-16a — teste la continuation de pagination multi-pages sur GET /datasets/{id}/arcgis/export/items` (test-only, additive; `core/app/harvest/routes.py` untouched).
+None blocking. The one substantive finding — the brief's dictated test file
+had a DNS-dependency bug (`.test` TLD never resolves) — was caught during RED
+verification, root-caused against RFC 2606 and confirmed by direct
+`getaddrinfo` reproduction, and fixed by adopting the exact mocking pattern
+already used by the two sibling guard test suites in this same repo. No
+change was needed to the brief's dictated implementation code
+(`app/alerts/egress.py`) or to the `.env.example` entry — both were faithful
+and correct as dictated.

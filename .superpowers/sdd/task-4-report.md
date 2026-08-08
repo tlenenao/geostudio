@@ -1,151 +1,150 @@
-# Task 4 report — GET /collections/{id}/export/items (raw-entities mode)
+# Task 4 report — `AlertEvaluation` model + migration
 
 ## What was implemented
 
-- `core/app/features/routes.py`: added `EXPORT_FORMATS_ITEMS`, `EXPORT_ITEMS_CAP = 10_000`,
-  and the route `GET /collections/{collection_id}/export/items?format=csv|xlsx|geojson|gpkg`,
-  exactly as specified in the brief. It paginates through `repo.select_features` (page size
-  `MAX_LIMIT` = 1000) under RLS scope, accumulates features, raises `413` if the accumulated
-  count exceeds `EXPORT_ITEMS_CAP`, then serializes via `features_to_format` (gpkg needs a
-  DuckDB spatial connection from the newly-imported `open_spatial_connection`), sets an
-  audit log row (`action="export.run"`, `payload={"format":..., "mode":"items"}`), and returns
-  a `Response` with the correct media type + `Content-Disposition` attachment header.
-- Added `from app.analytics.duckdb_conn import open_spatial_connection` to the imports.
-- `core/tests/test_features_export_routes.py`: appended the 5 tests from the brief (geojson,
-  csv, gpkg, unsupported-format, cap-at-10000-via-monkeypatch).
+- `core/app/alerts/__init__.py` (empty, SPDX header only) — new package.
+- `core/app/alerts/models.py` — `AlertEvaluation` ORM model (table
+  `alert_evaluations`), exactly as dictated in the brief: `id`, `tenant_id`
+  (FK `tenants.id`), `alert_rule_item_id` (FK `items.id`), `value` (nullable
+  float), `state`, `transitioned` (bool, default False), `error` (nullable
+  string), `created_at` (default `_now()`). Style matches the sibling
+  `app/pipelines/models.py` (same `_now()` helper pattern, same import
+  layout).
+- `core/alembic/versions/0020_alert_evaluations.py` — migration matching the
+  model column-for-column, same shape as `0018_pipeline_runs.py`/
+  `0019_connector_secrets.py` (added the SPDX header line the brief's
+  snippet omitted, to match every other file in `alembic/versions/`).
+- `core/tests/test_alert_models.py` — the round-trip test verbatim from the
+  brief.
 
-## Bugs found in the brief's literal test text (fixed, not worked around)
+### Addendum 1 (user-approved): import-linter layers contract
 
-Two real bugs, both in the *test* code the brief specified verbatim (not in the route
-implementation, which was correct as given):
+Added `"app.alerts"` to `core/pyproject.toml`'s `[tool.importlinter]`
+`layers` list, between `"app.pipelines"` and `"app.secrets"`, per the plan's
+Global Constraints. Ran `uv run lint-imports` — first run **broke** two
+different ways (see Self-review below), fixed, then confirmed 0 broken
+contracts.
 
-1. **Missing `"type": "Feature"` in the `POST /collections/{id}/items` payloads.**
-   `validate_feature()` (`app/features/validation.py`) rejects any payload whose
-   `feature.get("type") != "Feature"` with a structured 400 *before* even looking at
-   `properties`/`geometry`. Every other test file in this codebase that posts a feature
-   includes `"type": "Feature"` (e.g. `VALID` in `test_features_routes_write.py`,
-   `demo_incidents` roundtrip in `test_features_integration.py`); the brief's 5 new item-export
-   tests omitted it, so every `POST .../items` in the new tests failed 400, and the
-   `_seed`-only fixture had nothing real to export. Fixed by adding `"type": "Feature"` to all
-   five POST payloads.
-2. **Missing required `"pop"` field in the cap test's two POST payloads.** `INFO` declares
-   `pop` (`ColumnInfo(name="pop", type="integer", required=True)`); posting only `{"region": ...}`
-   trips `missing_required` and the feature is never created — with 0 features created,
-   `EXPORT_ITEMS_CAP=1` would never be exceeded and the 413 assertion would never be reachable.
-   Fixed by adding `"pop": 1` / `"pop": 2` to those two payloads.
+### Addendum 2 (found during verification, not in the brief): `app.db` registration
 
-## A structural gap in the shared fixture (fixed — this one was necessary, not optional)
+While verifying the brief's code against the current codebase, I checked
+how other model modules become known to `Base.metadata` outside of the
+test's own `from app.alerts.models import AlertEvaluation` import line.
+`app/db.py::core_table_names()` explicitly imports every model module
+(`app.audit.models`, `app.pipelines.models`, `app.secrets.models`, etc.) —
+this is documented in its own docstring as "Source de vérité de la denylist
+du registre de collections" and is exactly what `init_db()` relies on to
+populate `Base.metadata` before `create_all()` on the SQLite path, and what
+`app/collections/routes.py` uses as the denylist so a user-created
+collection can't collide with a core table name.
 
-The existing `env` fixture (built for Task 1–3, aggregate-mode-only) never exercised the live
-SQL-table path: `get_ddl_applier` is a no-op (no real "villes" table exists in the sqlite test
-DB), and `get_features_repo`/`get_rls_scope` were left un-overridden, defaulting to the real
-`app.features.repository`/`app.features.rls.rls_scope`. The real `rls_scope` issues
-`SET LOCAL ... set_config(...)`, a PostGIS-only GUC function that SQLite doesn't have
-(`sqlite3.OperationalError: no such function: set_config`) — confirmed by grepping the
-codebase: every other test file that exercises `POST/GET .../items` against the sqlite fixture
-(`test_features_routes_read.py`, `test_features_routes_write.py`) overrides both
-`get_features_repo` (with an in-memory fake) and `get_rls_scope` (with `null_rls_scope`); only
-`test_features_integration.py`'s real end-to-end roundtrip runs against real PostGIS
-(`@pytest.mark.postgis`), where `set_config` genuinely exists.
+The brief's test would still pass without this fix, because the test module
+itself does `from app.alerts.models import AlertEvaluation` at import time,
+which registers the model on `Base.metadata` as a side effect before
+`init_db()` runs. But in any code path that reaches `init_db()`/
+`core_table_names()` without first importing `app.alerts.models` directly
+(any other test, any app startup path, the collections denylist check),
+`alert_evaluations` would have been silently invisible — not created by
+`create_all()` on SQLite, and not excluded from collection names. This is
+the same class of "looks right in isolation, wrong once wired into the
+whole app" gap the brief warned about for prior tasks (DuckDB sandbox
+bypass in Task 1, discriminated-union gap in Task 2).
 
-Since the brief's new tests need a real write-then-read roundtrip (`POST /items` then
-`GET /export/items`) through the *SQLite* `env` fixture, and no such support existed, I added:
-- `make_fake_items_repo()` — an in-memory `SimpleNamespace(insert_feature, select_features,
-  get_feature, state)`, same shape/pattern as `make_fake_repo()` in
-  `test_features_routes_read.py`, but backed by real mutable state so a `POST` is visible to a
-  later `GET`.
-- In the `env` fixture: `app.dependency_overrides[features_routes.get_features_repo] = lambda:
-  fake_items_repo` (single shared instance, not re-created per request) and
-  `app.dependency_overrides[features_routes.get_rls_scope] = lambda:
-  features_routes.null_rls_scope`.
+Fix: added `from app.alerts import models as alerts_models  # noqa: F401`
+to `core_table_names()` in `app/db.py`, alphabetically before `app.audit`
+(matches the existing alphabetical-ish ordering of that import block).
 
-This only affects tests that call `/items` (the 5 new ones); Task 3's aggregate/export tests
-never touch `get_features_repo`/`get_rls_scope` (they go through the DuckDB CDC path only), so
-this change is additive and safe.
+## What was tested and results
 
-## Testing
+- RED: `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_models.py`
+  → `ModuleNotFoundError: No module named 'app.alerts'` (collection error,
+  1 error), confirmed before writing any implementation code.
+- GREEN (same command after implementation): `1 passed in 0.41s`.
+- Full non-postgis suite after all changes:
+  `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q -m "not postgis"`
+  → `1236 passed, 6 skipped, 125 deselected in 83.45s`. No regressions from
+  the `app/db.py` edit.
+- `uv run alembic heads` before writing the migration: `0019 (head)`,
+  matching the brief and the dispatcher's confirmation. After adding the
+  migration: `uv run alembic heads` → `0020 (head)`.
+- `uv run lint-imports`: first run after adding `"app.alerts"` to `layers`
+  **broke** 6+ contracts (`app.items`/`app.extensions`/`app.auth`/
+  `app.sharing`/`app.features`/`app.stac` "not allowed to import
+  app.alerts", all routed through `app.db -> app.alerts.models`) — because
+  `core_table_names()` now imports `app.alerts.models`, and every module
+  transitively imports `app.db`. This exact pattern already exists for
+  every other model module (`app.db -> app.pipelines.models`, `app.db ->
+  app.secrets.models`, etc.) via an `ignore_imports` allowlist. Added
+  `"app.db -> app.alerts.models"` to that list. Re-ran: `Contracts: 1 kept,
+  0 broken.`
+- Real Postgres migration apply: `docker compose ps` showed no running
+  containers (no `.env`, all vars defaulting blank, no services listed) —
+  did not start new services per instructions. Not run; covered by the
+  `postgis`-marked CI job per the brief's stated caveat, same as prior
+  migrations in this repo.
 
-### RED (before implementing the route, after fixing the test-payload bugs)
+## TDD Evidence
 
+RED:
 ```
-$ git stash push -- app/features/routes.py   # temporarily remove the new route
-$ uv run pytest tests/test_features_export_routes.py -k items -v
-...
-FAILED tests/test_features_export_routes.py::test_export_items_geojson_returns_a_feature_collection
-FAILED tests/test_features_export_routes.py::test_export_items_csv_flattens_properties
-FAILED tests/test_features_export_routes.py::test_export_items_gpkg_returns_a_sqlite_container
-FAILED tests/test_features_export_routes.py::test_export_items_rejects_unknown_format
-FAILED tests/test_features_export_routes.py::test_export_items_caps_at_10000_entities
-======================= 5 failed, 6 deselected in 4.25s ========================
-$ git stash pop
-```
-(4 failed with 404 route-not-found; the cap test failed with `AttributeError:
-<module 'app.features.routes'> has no attribute 'EXPORT_ITEMS_CAP'` since the constant
-didn't exist yet either — also an expected RED signal.)
-
-### GREEN (after implementing the route)
-
-```
-$ uv run pytest tests/test_features_export_routes.py -v
-tests/test_features_export_routes.py::test_export_aggregate_csv_returns_a_csv_attachment PASSED
-tests/test_features_export_routes.py::test_export_aggregate_xlsx_returns_an_xlsx_attachment PASSED
-tests/test_features_export_routes.py::test_export_aggregate_rejects_unknown_format PASSED
-tests/test_features_export_routes.py::test_export_aggregate_requires_authentication PASSED
-tests/test_features_export_routes.py::test_export_aggregate_denies_a_user_without_read_access PASSED
-tests/test_features_export_routes.py::test_export_aggregate_writes_an_audit_log_row PASSED
-tests/test_features_export_routes.py::test_export_items_geojson_returns_a_feature_collection PASSED
-tests/test_features_export_routes.py::test_export_items_csv_flattens_properties PASSED
-tests/test_features_export_routes.py::test_export_items_gpkg_returns_a_sqlite_container PASSED
-tests/test_features_export_routes.py::test_export_items_rejects_unknown_format PASSED
-tests/test_features_export_routes.py::test_export_items_caps_at_10000_entities PASSED
-============================== 11 passed in 3.46s ==============================
+ImportError while importing test module '.../tests/test_alert_models.py'.
+E   ModuleNotFoundError: No module named 'app.alerts'
+1 error in 0.10s
 ```
 
-### Regression check
-
+GREEN:
 ```
-$ uv run pytest -q
-1197 passed, 131 skipped in 77.38s (0:01:17)
+tests/test_alert_models.py .                                          [100%]
+1 passed in 0.41s
 ```
-No regressions; skip count matches the documented baseline (postgis-marked tests, no docker
-in this environment).
-
-Output is clean under a normal run (`pytest -v`, no `-W error`); a pre-existing
-`ResourceWarning: unclosed database in <sqlite3.Connection ...>` only surfaces under
-`-W error::pytest.PytestUnraisableExceptionWarning` and reproduces identically on the
-*original* Task-3-only tests (`-k aggregate`) with none of my changes in the loop — confirmed
-pre-existing and unrelated to this task, not introduced by it.
 
 ## Files changed
 
-- `core/app/features/routes.py` — new route + two constants + one import.
-- `core/tests/test_features_export_routes.py` — 5 new tests (with the two payload fixes above),
-  `make_fake_items_repo()` helper, two new fixture overrides, two new imports
-  (`SimpleNamespace`, `FeaturePage`).
+- `core/app/alerts/__init__.py` (new)
+- `core/app/alerts/models.py` (new)
+- `core/alembic/versions/0020_alert_evaluations.py` (new)
+- `core/tests/test_alert_models.py` (new)
+- `core/app/db.py` (1-line addition: register `app.alerts.models` in
+  `core_table_names()`)
+- `core/pyproject.toml` (2-line addition: `"app.alerts"` in the layers list;
+  `"app.db -> app.alerts.models"` in `ignore_imports`)
 
-## Self-review
+## Self-review findings
 
-- **Completeness**: all 5 tests from the brief present and passing; route implemented verbatim
-  per brief (format allowlist, pagination loop, cap check, gpkg-needs-conn branch, audit log,
-  Content-Disposition header).
-- **Quality**: route matches the existing sibling routes' style in this file (`list_features`,
-  `export_collection_aggregate`) — same helpers (`_parse_bbox`, `_parse_geom_intersects`,
-  `_collect_filters`, `_validation_error`), same RLS/introspection/repo injection pattern.
-- **Discipline**: nothing added beyond the brief's route and tests, except the two necessary
-  fixes above (test payload bugs) and the fixture gap fix (both required to make the brief's
-  own tests exercise real behaviour rather than fail for reasons unrelated to the feature under
-  test).
-- **Testing**: tests exercise real behaviour (real in-memory write-then-read roundtrip, real
-  cap-triggered 413, real format rejection) rather than being vacuously true; RED/GREEN evidence
-  captured via `git stash` isolation of the route change; full suite green; no stray warnings
-  in a normal test run.
+- **Model vs. migration**: column-for-column match confirmed by inspection
+  (types, nullability, FKs, default handling — `transitioned` uses
+  `server_default=sa.false()` in the migration matching the Python-side
+  `default=False`, same pattern as no other boolean column in this repo
+  needed to diverge from).
+- **Style**: matches `app/pipelines/models.py` (`_now()` helper, import
+  ordering, `Mapped`/`mapped_column` conventions). No fields added beyond
+  the brief.
+- **Discipline**: did not add anything beyond the brief's model/migration
+  except the two addenda explicitly scoped (import-linter layers entry,
+  user-approved; `app.db` registration, self-found and justified above).
+  Did not touch `app/alerts/repository.py` or anything belonging to Task 5.
+- **Testing**: the test genuinely exercises persistence — two separate
+  `Session()` contexts (write-then-commit, then a fresh session to reload
+  by primary key), not just in-memory construction. Confirmed it fails for
+  the right reason (`ModuleNotFoundError`, not some unrelated setup error)
+  before implementing.
+- **Import-linter**: verified the *before* state of `pyproject.toml` matched
+  the dispatch description exactly before editing, and verified the
+  contract still holds (`1 kept, 0 broken`) after — not just "no error",
+  actually inspected the failure output on the first attempt to understand
+  *why* it broke rather than reflexively adding an ignore rule.
 
-## Issues / concerns
+## Issues or concerns
 
-- The fixture change (fake repo + null RLS scope override) is a bit more invasive than a pure
-  "append tests" instruction implies — but it was the only way to make the brief's tests
-  exercise the real code path rather than 500/404 for unrelated reasons. Flagging this clearly
-  since it wasn't in the brief's literal text; happy to discuss an alternative shape if the
-  reviewer prefers a different fixture design (e.g. a real sqlite-backed "villes" table via a
-  real DDL applier instead of a fake in-memory repo).
-- Everything else matches the brief exactly (route code, constant names, commit message).
+- None blocking. The one non-trivial judgment call was fixing the
+  `core_table_names()` gap (Addendum 2) — it wasn't in the brief or the
+  dispatcher's explicit addendum, but leaving it out would have produced a
+  model that passes its own test while being invisible to the rest of the
+  app's table-name bookkeeping. Flagging clearly here in case a reviewer
+  disagrees with in-scope-ness; it's a 1-line, low-risk, immediately
+  necessary correctness fix and easy to revert independently if desired
+  (`core/app/db.py`, one `noqa: F401` import line).
+- Real-Postgres `alembic upgrade head` was not exercised (no stack running,
+  consistent with the brief's stated caveat and the existing CLAUDE.md note
+  that this repo's default compose Postgres volume has a pre-existing,
+  unrelated `alembic_version` stamping problem).
