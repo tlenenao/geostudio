@@ -199,6 +199,31 @@ services:
     networks: [gis-net]
     restart: unless-stopped
 
+  # Worker d'export Playwright (SP-17a, A25) — image dédiée (Chromium +
+  # dépendances système), séparée du worker partagé pour ne pas l'alourdir
+  # pour tout le monde. Profil `export` : un `docker compose up` par défaut
+  # ne le démarre pas, même porte que CORE_EXPORT_ENABLED. Aucun volume
+  # partagé requis : le rendu (screenshot/PDF) reste en mémoire, upload S3
+  # direct — pas d'intermédiaire disque comme etl-scratch.
+  export-worker:
+    build:
+      context: ./core
+      dockerfile: ../deploy/export-worker/Dockerfile
+    profiles: ["export"]
+    command: python -m procrastinate --app app.jobs.app worker -q export
+    environment:
+      DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_EXPORTS_BUCKET: geostudio-exports
+      CORE_EXPORT_ENABLED: "true"
+      CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
+      SHELL_BASE_URL: http://shell:8300
+    networks: [gis-net]
+    depends_on: [pgbouncer, minio]
+    restart: unless-stopped
+
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
   # A16). Connexion DIRECTE à postgis:5432, PAS à pgbouncer:6432 : PgBouncer
   # est en POOL_MODE transaction, incompatible avec le protocole de
