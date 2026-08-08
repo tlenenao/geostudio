@@ -52,7 +52,11 @@ def is_export_token(token: str) -> bool:
 def decode_export_token(token: str) -> ExportTokenClaims:
     try:
         claims = jwt.decode(token, _secret(), algorithms=[_ALGORITHM])
-    except jwt.PyJWTError as exc:
+    except (jwt.PyJWTError, KeyError) as exc:
+        # KeyError couvre CORE_EXPORT_TOKEN_SECRET absente (_secret() ci-dessus) :
+        # une instance qui n'a jamais déployé le worker d'export ne doit jamais
+        # crasher en 500 sur un jeton HS256 forgé par un attaquant, elle doit le
+        # rejeter en 401 comme n'importe quel autre jeton d'export invalide.
         raise ExportTokenError(str(exc)) from exc
     if claims.get("typ") != _TYP:
         raise ExportTokenError("wrong token type")
