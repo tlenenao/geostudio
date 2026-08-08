@@ -5,12 +5,27 @@ import { useInstanceInfo, useMe } from "../api/hooks";
 import { Button } from "../ui/button";
 import { NewItemButton } from "./NewItemButton";
 import { ImportFileButton } from "./ImportFileButton";
+import { useIsExportRender } from "./useIsExportRender";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { username, signOut } = useAuth();
   const meQuery = useMe();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
+  const isExportRender = useIsExportRender();
+
+  // Playwright's export capture (Task 6, core/app/export/jobs.py) navigates
+  // straight to a route nested under ProtectedLayout (e.g. /maps/:pk) with
+  // ?exportRender=1. ProtectedLayout keeps RequireAuth in the tree (needed
+  // for the future exportToken bypass, Task 12) but the header/nav/read-only
+  // banner chrome this layout renders must not show up in the capture — a
+  // page-level "nude chrome" guard (e.g. MapEditorPage's) can only omit what
+  // that page itself renders, not what AppLayout wraps it in. Skip straight
+  // to the children so the capture is exactly what the target page renders.
+  if (isExportRender) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       {readOnly && (

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { mapInstances } from "../test/MockMaplibreMap";
@@ -31,6 +31,10 @@ const { MapEditorPage } = await import("./MapEditorPage");
 beforeEach(() => {
   mapInstances.length = 0;
   overlayInstances.length = 0;
+});
+
+afterEach(() => {
+  delete document.body.dataset.exportReady;
 });
 
 const config: MapConfig = {
