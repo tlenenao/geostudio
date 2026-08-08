@@ -8,7 +8,7 @@ import type { AlertEvaluation, AlertRuleSummary, ItemClient } from "../api/types
 import { AlertRuleEditor } from "./AlertRuleEditor";
 
 function renderWithClient(client: Partial<ItemClient>) {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client as ItemClient}>
@@ -47,6 +47,13 @@ test("creating a rule calls createAlertRuleItem with the form values", async () 
   expect(call.alert.datasetItemId).toBe("ds-1");
   expect(call.alert.condition.expr).toBe("value > 50");
   expect(call.alert.channels).toEqual([{ kind: "webhook", url: "https://example.test/hook" }]);
+});
+
+test("shows an error banner instead of a silent empty list when the rules fetch fails", async () => {
+  const listAlertRulesForDataset = vi.fn().mockRejectedValue(new Error("Request failed: 500"));
+  renderWithClient({ listAlertRulesForDataset });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Impossible de charger les règles d'alerte.");
 });
 
 test("shows a save error inline instead of failing silently", async () => {
