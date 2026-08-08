@@ -121,6 +121,7 @@ def create_app() -> FastAPI:
         )
 
     s3_uploads_bucket = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
+    s3_exports_bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
     if s3_endpoint and s3_access_key and s3_secret_key:
         from app.ingestion.storage import make_s3_client
 
@@ -128,6 +129,11 @@ def create_app() -> FastAPI:
             endpoint_url=s3_endpoint, access_key=s3_access_key, secret_key=s3_secret_key,
         )
         app.dependency_overrides[ingestion_routes.get_uploads_bucket] = lambda: s3_uploads_bucket
+        # app.export.routes réutilise ingestion_routes.get_s3_client verbatim
+        # (même clé d'override, cf. app/export/routes.py) — seul le bucket
+        # diffère, donc seul get_exports_bucket a besoin de son propre
+        # override ici (revue SP-17a, finding Important task 7, fix round 1).
+        app.dependency_overrides[export_routes.get_exports_bucket] = lambda: s3_exports_bucket
 
     @app.get("/health")
     def health() -> dict[str, str]:

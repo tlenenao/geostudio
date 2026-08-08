@@ -2,6 +2,7 @@
 """Routes REST de l'export (SP-17a) — montées uniquement quand
 CORE_EXPORT_ENABLED est actif (app.main, à la construction de l'app, jamais
 par requête — même patron que app.pipelines.routes)."""
+import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,12 +14,17 @@ from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.export import repository as export_repo
 from app.export.jobs import render_export_task
-from app.ingestion.storage import generate_presigned_get_url, make_s3_client
+# Réutilise le placeholder générique d'app.ingestion.routes (`raise
+# RuntimeError(...)` par défaut, overridé dans app.main quand S3_* est
+# configuré) plutôt que d'en redéfinir un second identique ici : ce n'est
+# qu'un point d'injection FastAPI overridable, sans logique spécifique à
+# l'ingestion, et app.export dépend déjà d'app.ingestion.storage (revue
+# SP-17a, finding Important task 7, fix round 1).
+from app.ingestion.routes import get_s3_client
+from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.sharing.authorization import can
 from app.users.models import User
-
-import os
 
 router = APIRouter()
 
@@ -43,6 +49,10 @@ def _require_export_read_access(session: Session, *, user: User, item_id: str) -
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="item not found")
+
+
+def get_exports_bucket() -> str:
+    return os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
@@ -78,6 +88,8 @@ def get_export_job_route(
     job_id: str,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_exports_bucket),
 ) -> ExportJobStatus:
     job = export_repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
     if job is None:
@@ -85,11 +97,5 @@ def get_export_job_route(
     _require_export_read_access(session, user=user, item_id=job.item_id)
     result_url = None
     if job.status == "done" and job.result_key:
-        client = make_s3_client(
-            endpoint_url=os.environ["S3_ENDPOINT_URL"],
-            access_key=os.environ["S3_ACCESS_KEY"], secret_key=os.environ["S3_SECRET_KEY"],
-        )
-        result_url = generate_presigned_get_url(
-            client, bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"), key=job.result_key,
-        )
+        result_url = generate_presigned_get_url(s3, bucket=bucket, key=job.result_key)
     return ExportJobStatus(id=job.id, status=job.status, resultUrl=result_url, error=job.error)
