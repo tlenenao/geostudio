@@ -9,10 +9,19 @@ from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.export import repository as export_repo
 from app.export import routes as export_routes
+from app.ingestion import routes as ingestion_routes
 from app.items.repository import create_item
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+
+class _FakeS3Client:
+    # Même contrat minimal que tests/test_ingestion_routes.py::_FakeS3Client —
+    # seule generate_presigned_url est exercée par app/export/routes.py
+    # (via app.ingestion.storage.generate_presigned_get_url).
+    def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
+        return f"https://minio.test/{Params['Bucket']}/{Params['Key']}"
 
 
 def _fake_deferrer():
@@ -57,18 +66,29 @@ def env(monkeypatch):
         with request_scoped_session(Session) as session:
             yield session
 
+    # GET /export/jobs/{id} déclare désormais s3=Depends(get_s3_client) (au
+    # lieu de lire os.environ["S3_*"] en dur) — cette dépendance est résolue
+    # par FastAPI pour CHAQUE appel à cette route, quel que soit le statut du
+    # job, donc toute la suite a besoin d'un client S3 factice, pas seulement
+    # les tests qui atteignent la branche "done" (revue SP-17a, finding
+    # Important task 7, fix round 1). app.export.routes réutilise
+    # littéralement ingestion_routes.get_s3_client (même objet fonction),
+    # donc c'est cette clé qu'il faut overrider ici.
+    fake_s3 = _FakeS3Client()
+
     def make_client():
         app = create_app()
         app.dependency_overrides[db.get_session] = override_session
+        app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: fake_s3
         deferrer, calls = _fake_deferrer()
         app.dependency_overrides[export_routes.get_task_deferrer] = lambda: deferrer
         return TestClient(app), calls
 
-    return make_client, owner, stranger, item.id
+    return make_client, owner, stranger, item.id, Session
 
 
 def test_post_export_requires_flag_enabled(env, monkeypatch):
-    make_client, _owner, _stranger, item_id = env
+    make_client, _owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
     client, _calls = make_client()  # le flag est lu à la construction (patron pipelines) : re-créer l'app
     response = client.post("/export", json={"itemId": item_id, "format": "png"})
@@ -76,7 +96,7 @@ def test_post_export_requires_flag_enabled(env, monkeypatch):
 
 
 def test_post_export_creates_job_and_returns_202(env):
-    make_client, owner, _stranger, item_id = env
+    make_client, owner, _stranger, item_id, _Session = env
     client, calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
@@ -87,7 +107,7 @@ def test_post_export_creates_job_and_returns_202(env):
 
 
 def test_post_export_denies_user_without_read_access(env):
-    make_client, _owner, stranger, item_id = env
+    make_client, _owner, stranger, item_id, _Session = env
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
@@ -96,7 +116,7 @@ def test_post_export_denies_user_without_read_access(env):
 
 
 def test_get_export_job_reports_status(env):
-    make_client, owner, _stranger, item_id = env
+    make_client, owner, _stranger, item_id, _Session = env
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
@@ -111,7 +131,7 @@ def test_get_export_job_reports_status(env):
 
 
 def test_get_export_job_unknown_id_is_404(env):
-    make_client, owner, _stranger, _item_id = env
+    make_client, owner, _stranger, _item_id, _Session = env
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
@@ -124,10 +144,49 @@ def test_post_export_allowed_in_read_only_demo_mode(env, monkeypatch):
     # action de lecture (aucune écriture de donnée métier), doit rester
     # utilisable en CORE_READ_ONLY_MODE=true — même raisonnement que les
     # routes d'export SP-16a, déjà exemptées via _EXPORT_PATH_RE.
-    make_client, owner, _stranger, item_id = env
+    make_client, owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
     response = client.post("/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 202
+
+
+def test_post_export_rejects_invalid_format(env):
+    make_client, owner, _stranger, item_id, _Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    response = client.post("/export", json={"itemId": item_id, "format": "svg"})
+    assert response.status_code == 422
+
+
+def test_get_export_job_done_status_includes_result_url(env):
+    # Revue SP-17a, finding Important task 7 : avant ce fix, get_export_job_route
+    # construisait son client S3 en lisant os.environ["S3_*"] en dur (KeyError
+    # opaque hors env réel) et aucun test ne poussait un job jusqu'à "done" —
+    # toute la branche de construction du résultat (client S3 + URL présignée)
+    # était donc totalement non exercée malgré resultUrl faisant partie du
+    # contrat documenté de cette route. On pousse ici le job à "done" via
+    # export_repo.mark_done directement (même patron que
+    # tests/test_export_repository.py::test_mark_running_then_done), sans
+    # jamais faire tourner le vrai worker Playwright.
+    make_client, owner, _stranger, item_id, Session = env
+    client, _calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    created = client.post("/export", json={"itemId": item_id, "format": "png"}).json()
+    job_id = created["jobId"]
+
+    with Session() as s:
+        export_repo.mark_running(s, job_id=job_id)
+        export_repo.mark_done(s, job_id=job_id, result_key=f"renders/{job_id}.png")
+        s.commit()
+
+    response = client.get(f"/export/jobs/{job_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "done"
+    assert body["error"] is None
+    assert body["resultUrl"] == f"https://minio.test/geostudio-exports/renders/{job_id}.png"
