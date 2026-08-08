@@ -159,6 +159,75 @@ def test_render_export_task_missing_job_is_a_noop(db_session):
     export_jobs.render_export_task(job_id="does-not-exist", tenant_id=tenant.id)  # ne doit pas lever
 
 
+class _FakeLaunchedBrowser:
+    """Navigateur "lancé avec succès" mais dont la suite de la séquence
+    échoue (new_page/goto/wait_for_selector) — utilisé pour prouver que
+    _launch_and_navigate ferme ce qu'elle a déjà créé avant de relayer
+    l'exception (fix round 1 : revue SP-17a task 6, fuite Chromium/driver
+    sur échec de lancement)."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def new_page(self):
+        raise RuntimeError("boom: new_page a échoué après le lancement du navigateur")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeChromium:
+    def __init__(self, browser: _FakeLaunchedBrowser) -> None:
+        self._browser = browser
+
+    def launch(self, headless: bool):
+        return self._browser
+
+
+class _FakePlaywrightDriver:
+    """Fait à la fois office de valeur de retour de sync_playwright().start()
+    (a un attribut .chromium) et de driver arrêtable (a une méthode .stop()) —
+    reflète exactement l'objet réel de playwright.sync_api."""
+
+    def __init__(self, browser: _FakeLaunchedBrowser) -> None:
+        self.chromium = _FakeChromium(browser)
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class _FakeSyncPlaywrightContextManager:
+    def __init__(self, driver: _FakePlaywrightDriver) -> None:
+        self._driver = driver
+
+    def start(self):
+        return self._driver
+
+
+def test_launch_and_navigate_cleans_up_driver_and_browser_on_mid_sequence_failure(monkeypatch):
+    # Reproduit le vrai trou signalé en revue : contrairement à
+    # test_render_export_task_marks_error_never_zombie_on_navigation_failure
+    # (qui mocke _launch_and_navigate entièrement et ne prouve donc que le
+    # statut du job), ce test laisse le vrai corps de _launch_and_navigate
+    # s'exécuter et ne fait échouer qu'une étape interne
+    # (browser.new_page()), après que le driver et le navigateur ont déjà
+    # été créés — pour prouver que les deux sont bien nettoyés plutôt que
+    # fuités quand l'exception remonte.
+    browser = _FakeLaunchedBrowser()
+    driver = _FakePlaywrightDriver(browser)
+    monkeypatch.setattr(
+        "playwright.sync_api.sync_playwright",
+        lambda: _FakeSyncPlaywrightContextManager(driver),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        export_jobs._launch_and_navigate("http://shell.test/maps/x")
+
+    assert browser.closed is True
+    assert driver.stopped is True
+
+
 import http.server
 import socket
 import threading
