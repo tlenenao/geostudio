@@ -75,3 +75,18 @@ def test_secret_payload_adapter_decodes_decrypted_dict():
     # crypto.decrypt() returns a plain dict (Task 4).
     payload = SECRET_PAYLOAD_ADAPTER.validate_python({"kind": "bearer_token", "token": "tok"})
     assert payload.token == "tok"
+
+
+def test_smtp_credentials_payload_round_trips():
+    from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
+
+    payload = SmtpCredentialsPayload(
+        host="smtp.example.test", port=587, username="alerts@example.test",
+        password="s3cret", useTls=True, fromAddress="alerts@example.test",
+    )
+    dumped = SECRET_PAYLOAD_ADAPTER.dump_python(payload)
+    assert dumped["kind"] == "smtp"
+    restored = SECRET_PAYLOAD_ADAPTER.validate_python(dumped)
+    assert isinstance(restored, SmtpCredentialsPayload)
+    assert restored.host == "smtp.example.test"
+    assert restored.useTls is True
