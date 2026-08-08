@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useMapConfig, useSaveMap } from "../api/hooks";
-import type { MapConfig, MapLayer } from "../api/types";
+import type { MapConfig, MapLayer, PrintLayoutConfig } from "../api/types";
 import { MapView } from "../map/MapView";
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
+import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { Button } from "../ui/button";
 
 export function MapEditorPage({ pk }: { pk: string }) {
@@ -31,12 +32,16 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const setStyle = (style: string) => setDraft({ ...draft, basemap: { style } });
   const setView = (view: { center: [number, number]; zoom: number }) =>
     setDraft((d) => (d ? { ...d, view } : d));
+  function setPrintLayout(printLayout: PrintLayoutConfig | null) {
+    setDraft((d) => (d ? { ...d, printLayout } : d));
+  }
 
   return (
     <div className="flex h-full gap-4">
       <aside className="flex w-72 flex-col gap-4 overflow-auto">
         <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
         <LayersPanel layers={draft.layers} onChange={setLayers} />
+        <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
         <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
           Enregistrer
         </Button>
