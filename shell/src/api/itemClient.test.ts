@@ -1693,6 +1693,91 @@ test("previewPipeline posts upTo as a query param and returns the row list", asy
   expect(rows).toEqual([{ id: 1, pop: 1200 }]);
 });
 
+test("createAlertRuleItem posts a kind=alert config and returns the item", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/configs", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "cfg-a1", kind: "alert", itemId: "a-1" }, { status: 201 });
+    }),
+  );
+  const alert = {
+    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+    channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
+    messageTemplate: "Alert {ruleName}: value={value} ({state})",
+  };
+  const item = await makeClient().createAlertRuleItem({ title: "High counts", owner: "alice", alert });
+  expect(body.config).toEqual({ version: 1, kind: "alert", alert });
+  expect(item).toMatchObject({ pk: "a-1", resourceType: "alert", title: "High counts", configId: "cfg-a1" });
+});
+
+test("getAlertRuleConfig reads the alert payload from the by-item config", async () => {
+  const alert = {
+    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+    channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
+    messageTemplate: "Alert {ruleName}: value={value} ({state})",
+  };
+  server.use(
+    http.get("https://core.test/configs/by-item/a-2", () =>
+      HttpResponse.json({ id: "cfg-a2", itemId: "a-2", kind: "alert", config: { kind: "alert", alert } }),
+    ),
+  );
+  const cfg = await makeClient().getAlertRuleConfig("a-2");
+  expect(cfg).toEqual(alert);
+});
+
+test("getAlertRuleConfig throws when the config has no alert payload", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/a-3", () =>
+      HttpResponse.json({ id: "cfg-a3", itemId: "a-3", kind: "app", config: { kind: "app" } }),
+    ),
+  );
+  await expect(makeClient().getAlertRuleConfig("a-3")).rejects.toThrow();
+});
+
+test("saveAlertRuleConfig PUTs the alert payload wrapped in a kind=alert envelope", async () => {
+  let method = "";
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/a-4", async ({ request }) => {
+      method = request.method;
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  const alert = {
+    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+    channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
+    messageTemplate: "Alert {ruleName}: value={value} ({state})",
+  };
+  await makeClient().saveAlertRuleConfig("a-4", alert);
+  expect(method).toBe("PUT");
+  expect(body).toEqual({ version: 1, kind: "alert", alert });
+});
+
+test("listAlertRulesForDataset calls GET /datasets/{id}/alerts", async () => {
+  server.use(
+    http.get("https://core.test/datasets/ds-1/alerts", () =>
+      HttpResponse.json([{ itemId: "a-1", title: "High counts" }]),
+    ),
+  );
+  const rules = await makeClient().listAlertRulesForDataset("ds-1");
+  expect(rules).toEqual([{ itemId: "a-1", title: "High counts" }]);
+});
+
+test("getAlertEvaluations calls GET /alerts/{id}/evaluations", async () => {
+  server.use(
+    http.get("https://core.test/alerts/a-1/evaluations", () =>
+      HttpResponse.json([{ id: "e1", value: 150, state: "firing", transitioned: true, error: null, createdAt: "2026-08-07T00:00:00Z" }]),
+    ),
+  );
+  const evaluations = await makeClient().getAlertEvaluations("a-1");
+  expect(evaluations[0].state).toBe("firing");
+});
+
 test("exportDataSource posts the aggregate body and extracts the filename for a statistics source", async () => {
   let posted: unknown;
   server.use(

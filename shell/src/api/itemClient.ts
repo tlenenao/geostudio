@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -694,6 +694,39 @@ export function createItemClient(opts: {
       return request<Record<string, unknown>[]>(
         "POST", `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
       );
+    },
+
+    async createAlertRuleItem(input: { title: string; owner: string; alert: AlertRulePayload }): Promise<Item> {
+      const config = { version: 1, kind: "alert", alert: input.alert };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createAlertRuleItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "alert", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getAlertRuleConfig(pk: string): Promise<AlertRulePayload> {
+      const data = await request<{ config?: { alert?: AlertRulePayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.alert) throw new Error("getAlertRuleConfig: config has no alert payload");
+      return data.config.alert;
+    },
+
+    async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "alert", alert: payload });
+    },
+
+    async listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]> {
+      return request<AlertRuleSummary[]>("GET", `/datasets/${datasetItemId}/alerts`);
+    },
+
+    async getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]> {
+      return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
     },
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {

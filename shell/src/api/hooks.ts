@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, Sharing, UpdatePatch } from "./types";
+import type { AlertRulePayload, AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -304,6 +304,35 @@ export function useRunPipeline(pk: string) {
   const client = useItemClientInternal();
   return useMutation({
     mutationFn: () => client.runPipeline(pk),
+  });
+}
+
+export function useAlertRulesForDataset(datasetItemId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["alert-rules", datasetItemId],
+    queryFn: () => client.listAlertRulesForDataset(datasetItemId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useAlertEvaluations(alertItemId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["alert-evaluations", alertItemId],
+    queryFn: () => client.getAlertEvaluations(alertItemId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateAlertRule() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { title: string; owner: string; alert: AlertRulePayload }) => client.createAlertRuleItem(input),
+    onSuccess: (_item, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["alert-rules", variables.alert.datasetItemId] });
+    },
   });
 }
 
