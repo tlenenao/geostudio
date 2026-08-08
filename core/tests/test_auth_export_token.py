@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import jwt
 import pytest
 from fastapi import HTTPException
 
@@ -69,6 +70,25 @@ def test_get_current_user_rejects_missing_bearer():
     session, _tenant, _user = _session_with_user()
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(authorization="", session=session)
+    assert exc_info.value.status_code == 401
+
+
+def test_get_current_user_rejects_forged_hs256_token_when_export_secret_unset(monkeypatch):
+    # Régression du Critical de revue SP-17a : avec CORE_EXPORT_TOKEN_SECRET absente
+    # (toute instance à ce jour), un attaquant non authentifié envoyant un JWT HS256
+    # forgé de son cru (secret de son choix, aucune connaissance requise) ne doit
+    # jamais faire planter get_current_user en 500 (KeyError non attrapée depuis
+    # export_tokens._secret()) — il doit obtenir un 401 propre, comme n'importe quel
+    # jeton d'export invalide.
+    session, _tenant, _user = _session_with_user()
+    monkeypatch.delenv("CORE_EXPORT_TOKEN_SECRET", raising=False)
+    forged = jwt.encode(
+        {"typ": "export", "tenant_id": "t1", "user_id": "u1", "job_id": "j1"},
+        "attacker-controlled-secret-of-their-choosing",
+        algorithm="HS256",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(authorization=f"Bearer {forged}", session=session)
     assert exc_info.value.status_code == 401
 
 

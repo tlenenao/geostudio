@@ -67,3 +67,19 @@ def test_decode_rejects_missing_claim():
     bad = jwt.encode({"typ": "export", "tenant_id": "t1"}, _SECRET, algorithm="HS256")
     with pytest.raises(ExportTokenError):
         decode_export_token(bad)
+
+
+def test_decode_raises_export_token_error_when_secret_unset(monkeypatch):
+    # Régression : sur une instance qui n'a jamais déployé CORE_EXPORT_TOKEN_SECRET
+    # (toute instance à ce jour, avant l'existence du worker d'export), un jeton
+    # HS256 forgé par un attaquant avec un secret arbitraire ne doit jamais faire
+    # planter decode_export_token en KeyError brut — il doit être rejeté proprement
+    # en ExportTokenError, comme n'importe quel autre jeton invalide.
+    monkeypatch.delenv("CORE_EXPORT_TOKEN_SECRET", raising=False)
+    forged = jwt.encode(
+        {"typ": "export", "tenant_id": "t1", "user_id": "u1", "job_id": "j1"},
+        "attacker-controlled-secret-of-their-choosing",
+        algorithm="HS256",
+    )
+    with pytest.raises(ExportTokenError):
+        decode_export_token(forged)
