@@ -38,6 +38,35 @@ class AlertEvaluationError(Exception):
     caught, always turns into an `error` evaluation row, never a crash."""
 
 
+_TERMINAL_STATES = {"ok", "firing", "error"}
+
+
+def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str | None:
+    """Walk `evaluations` (most-recent-first, per list_evaluations) past the
+    current evaluation AND any other leading "pending" rows, returning the
+    first terminal-state (ok/firing/error) row's state.
+
+    Two distinct evaluations can legitimately be "pending" at once: the
+    current one being processed right now (committed before deferring, see
+    sweep_alert_rules_task), and — when a worker crashed or was restarted
+    mid-evaluation — an older one that list_due_rules reclaimed after
+    _PENDING_RECLAIM_MINUTES and superseded with a fresh row. Both must be
+    skipped; only a real terminal state counts as "the previous state",
+    otherwise a reclaim spuriously looks like a transition out of "pending"
+    even when the rule's actual state never changed.
+
+    Returns None if the rule has no prior terminal evaluation at all (first
+    real run) — the caller treats that the same as any other transition.
+    """
+    for evaluation in evaluations:
+        if evaluation.id == current_evaluation_id:
+            continue
+        if evaluation.state not in _TERMINAL_STATES:
+            continue
+        return evaluation.state
+    return None
+
+
 def _session_factory():
     engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
     return make_session_factory(engine)
@@ -185,16 +214,16 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             # it by id would just null the result out every single time,
             # never actually reaching the real previous evaluation behind it.
             # list_evaluations (already ordered most-recent-first) lets us
-            # skip past self explicitly instead of relying on ordering alone.
+            # walk past self AND any other leading "pending" rows (a worker
+            # crash/restart can leave a stuck pending evaluation that
+            # list_due_rules later reclaims and supersedes — see
+            # _previous_terminal_state) instead of relying on ordering alone.
             history = alerts_repo.list_evaluations(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
-            previous = next((e for e in history if e.id != evaluation_id), None)
-            previous_state = previous.state if previous else None
-            transitioned = previous_state is not None and previous_state != new_state and previous_state != "pending"
-            # A rule with no prior real (non-pending) evaluation always
-            # counts as a transition into its first observed state — same
-            # "first run notifies" semantics as any freshly-created alert.
-            if previous_state is None or previous_state == "pending":
-                transitioned = True
+            previous_state = _previous_terminal_state(history, current_evaluation_id=evaluation_id)
+            # A rule with no prior real (terminal) evaluation always counts
+            # as a transition into its first observed state — same "first
+            # run notifies" semantics as any freshly-created alert.
+            transitioned = previous_state is None or previous_state != new_state
 
             alerts_repo.mark_evaluated(
                 session, evaluation_id=evaluation_id, value=value, state=new_state, transitioned=transitioned,
