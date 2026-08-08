@@ -53,6 +53,13 @@ dependencies = [
                     # géométrie WKB), connexion in-process éphémère par requête.
     "openpyxl>=3.1",  # SP-16a : sérialisation d'export XLSX (app/analytics/export.py) —
                       # aucune dépendance XLSX n'existait dans le cœur avant ce sous-plan.
+    "playwright>=1.45",  # SP-17a : rendu headless Chromium pour l'export
+                        # PNG/PDF (app/export/jobs.py) — installé sans le
+                        # binaire navigateur par défaut ; `playwright install
+                        # --with-deps chromium` est requis en plus (fait dans
+                        # le Dockerfile export-worker, tâche 13 ; à faire à la
+                        # main en dev local pour lancer les tests marqués
+                        # @pytest.mark.playwright de cette tâche).
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
     "opentelemetry-instrumentation-fastapi>=0.48b0",
@@ -87,6 +94,7 @@ filterwarnings = [
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
     "qgis: nécessite un sidecar qgis-worker réel (CORE_TEST_QGIS_WORKER_URL) ; skippé sinon",
+    "playwright: nécessite le binaire Chromium (playwright install --with-deps chromium) ; skippé sinon",
 ]
 
 [tool.importlinter]
