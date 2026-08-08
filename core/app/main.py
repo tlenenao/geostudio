@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import db, observability
+from app.alerts import routes as alerts_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
     app.include_router(harvest_routes.router)
+    app.include_router(alerts_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
 

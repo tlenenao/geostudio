@@ -185,6 +185,131 @@
         "title": "AggregateRequestBody",
         "type": "object"
       },
+      "AlertChannelEmail": {
+        "properties": {
+          "kind": {
+            "const": "email",
+            "default": "email",
+            "title": "Kind",
+            "type": "string"
+          },
+          "smtpSecretName": {
+            "title": "Smtpsecretname",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to",
+          "smtpSecretName"
+        ],
+        "title": "AlertChannelEmail",
+        "type": "object"
+      },
+      "AlertChannelWebhook": {
+        "properties": {
+          "kind": {
+            "const": "webhook",
+            "default": "webhook",
+            "title": "Kind",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "AlertChannelWebhook",
+        "type": "object"
+      },
+      "AlertCondition": {
+        "properties": {
+          "expr": {
+            "title": "Expr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expr"
+        ],
+        "title": "AlertCondition",
+        "type": "object"
+      },
+      "AlertRulePayload": {
+        "properties": {
+          "channels": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "email": "#/components/schemas/AlertChannelEmail",
+                  "webhook": "#/components/schemas/AlertChannelWebhook"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AlertChannelWebhook"
+                },
+                {
+                  "$ref": "#/components/schemas/AlertChannelEmail"
+                }
+              ]
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/AlertCondition"
+          },
+          "datasetItemId": {
+            "title": "Datasetitemid",
+            "type": "string"
+          },
+          "messageTemplate": {
+            "default": "Alert {ruleName}: value={value} ({state})",
+            "title": "Messagetemplate",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/AggregateRequestBody"
+          },
+          "refreshPolicy": {
+            "$ref": "#/components/schemas/PipelineRefreshPolicy"
+          }
+        },
+        "required": [
+          "datasetItemId",
+          "query",
+          "condition",
+          "refreshPolicy"
+        ],
+        "title": "AlertRulePayload",
+        "type": "object"
+      },
+      "AlertRuleSummary": {
+        "properties": {
+          "itemId": {
+            "title": "Itemid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "title"
+        ],
+        "title": "AlertRuleSummary",
+        "type": "object"
+      },
       "ApiKeyPayload": {
         "description": "`location=\"query\"` couvre les jetons en param\u00e8tre d'URL (ex.\n`?token=...` d'un ArcGIS Feature Service, cl\u00e9 GeoServer sur un WFS) ;\n`location=\"header\"` couvre le cas g\u00e9n\u00e9rique (`X-API-Key`, etc.).",
         "properties": {
@@ -408,6 +533,16 @@
       },
       "BuilderConfig": {
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertRulePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "bookmark": {
             "anyOf": [
               {
@@ -469,7 +604,8 @@
               "site",
               "dataset",
               "bookmark",
-              "pipeline"
+              "pipeline",
+              "alert"
             ],
             "title": "Kind",
             "type": "string"
@@ -960,6 +1096,58 @@
           "source"
         ],
         "title": "DatasetPayload",
+        "type": "object"
+      },
+      "EvaluationStatus": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "transitioned": {
+            "title": "Transitioned",
+            "type": "boolean"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "value",
+          "state",
+          "transitioned",
+          "error",
+          "createdAt"
+        ],
+        "title": "EvaluationStatus",
         "type": "object"
       },
       "ExtensionCreate": {
@@ -2526,7 +2714,8 @@
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
-                "postgres_dsn": "#/components/schemas/PostgresDsnPayload"
+                "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
+                "smtp": "#/components/schemas/SmtpCredentialsPayload"
               },
               "propertyName": "kind"
             },
@@ -2545,6 +2734,9 @@
               },
               {
                 "$ref": "#/components/schemas/PostgresDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/SmtpCredentialsPayload"
               }
             ],
             "title": "Payload"
@@ -2576,6 +2768,51 @@
           "groups"
         ],
         "title": "Sharing",
+        "type": "object"
+      },
+      "SmtpCredentialsPayload": {
+        "description": "SMTP credentials for AlertRule email delivery (SP-16b \u00a75). Unlike\nthe webhook channel's URL, this comes from an admin-only secret\n(POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule\nuser input \u2014 no egress guard applies to it (Global Constraints,\nSP-16b plan), same trust model as postgres_dsn.",
+        "properties": {
+          "fromAddress": {
+            "title": "Fromaddress",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "kind": {
+            "const": "smtp",
+            "default": "smtp",
+            "title": "Kind",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "useTls": {
+            "default": true,
+            "title": "Usetls",
+            "type": "boolean"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "username",
+          "password",
+          "fromAddress"
+        ],
+        "title": "SmtpCredentialsPayload",
         "type": "object"
       },
       "SqlQueryBody": {
@@ -2738,6 +2975,59 @@
           }
         },
         "summary": "Landing Page"
+      }
+    },
+    "/alerts/{item_id}/evaluations": {
+      "get": {
+        "operationId": "get_alert_evaluations_alerts__item_id__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationStatus"
+                  },
+                  "title": "Response Get Alert Evaluations Alerts  Item Id  Evaluations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Alert Evaluations"
       }
     },
     "/analytics/sql": {
@@ -4240,6 +4530,59 @@
           }
         },
         "summary": "Conformance"
+      }
+    },
+    "/datasets/{item_id}/alerts": {
+      "get": {
+        "operationId": "list_alerts_for_dataset_datasets__item_id__alerts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertRuleSummary"
+                  },
+                  "title": "Response List Alerts For Dataset Datasets  Item Id  Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Alerts For Dataset"
       }
     },
     "/datasets/{item_id}/arcgis/aggregate": {
