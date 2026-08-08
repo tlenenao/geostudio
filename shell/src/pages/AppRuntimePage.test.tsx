@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
@@ -17,6 +17,10 @@ const authState: AuthState = {
   error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
+
+afterEach(() => {
+  delete document.body.dataset.exportReady;
+});
 
 const emptyLayout = { type: "grid" as const, breakpoints: {}, items: [] };
 const config: AppConfig = {
