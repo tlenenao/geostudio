@@ -6,6 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth.export_tokens import ExportTokenError, decode_export_token, is_export_token
 from app.db import get_session
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
@@ -86,6 +87,18 @@ def get_current_user(
             bootstrap_admin=True,
             bootstrap_analyst=True,
         )
+
+    if is_export_token(token):
+        try:
+            claims = decode_export_token(token)
+        except ExportTokenError as exc:
+            raise HTTPException(status_code=401, detail="invalid export token") from exc
+        if claims.tenant_id != tenant.id:
+            raise HTTPException(status_code=401, detail="invalid export token")
+        user = session.get(User, claims.user_id)
+        if user is None:
+            raise HTTPException(status_code=401, detail="invalid export token")
+        return user
 
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
