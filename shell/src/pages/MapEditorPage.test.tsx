@@ -70,6 +70,25 @@ test("shows an error when loading fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(/carte introuvable/i);
 });
 
+test("saving after only changing a layer keeps the previously loaded printLayout", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValue(undefined);
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue({
+      ...config,
+      printLayout: { pageSize: "a3", orientation: "landscape" },
+    }),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  // Layer name appears in both LayersPanel and MapLegend; use findAllByText as sync point
+  await screen.findAllByText("Couche A");
+  await screen.findByText(/A3/i); // le panneau reflète bien le printLayout chargé
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
+  const savedConfig = saveMapConfig.mock.calls[0][1];
+  expect(savedConfig.printLayout).toEqual({ pageSize: "a3", orientation: "landscape" });
+});
+
 test("surfaces a save failure", async () => {
   renderEditor({
     getMapConfig: vi.fn().mockResolvedValue(config),
