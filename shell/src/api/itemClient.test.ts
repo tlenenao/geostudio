@@ -1841,3 +1841,93 @@ test("exportDataSource falls back to a generic filename when Content-Disposition
   const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
   expect(filename).toBe("export");
 });
+
+test("getMapConfig reads printLayout from the top level of the config, not nested under map", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: { basemap: { style: "s" }, view: { center: [0, 0], zoom: 1 }, layers: [] },
+          printLayout: { pageSize: "a3", orientation: "landscape", showLegend: true, showScaleBar: true, showNorthArrow: false },
+        },
+      }),
+    ),
+  );
+  const config = await makeClient().getMapConfig("77");
+  expect(config.printLayout).toEqual({ pageSize: "a3", orientation: "landscape", showLegend: true, showScaleBar: true, showNorthArrow: false });
+});
+
+test("saveMapConfig sends printLayout back at the top level, sibling of map", async () => {
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveMapConfig("77", {
+    basemap: { style: "s" }, view: { center: [0, 0], zoom: 1 }, layers: [],
+    printLayout: { pageSize: "a4", orientation: "portrait", showLegend: false, showScaleBar: false, showNorthArrow: false },
+  });
+  expect(body.printLayout).toEqual({ pageSize: "a4", orientation: "portrait", showLegend: false, showScaleBar: false, showNorthArrow: false });
+  expect(body.map).toBeDefined();
+  expect(body.map.printLayout).toBeUndefined();
+});
+
+test("getAppConfig reads printLayout", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/5", () =>
+      HttpResponse.json({
+        config: {
+          kind: "app", theme: {}, dataSources: [], messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+          printLayout: { pageSize: "a4", orientation: "portrait", title: "Rapport" },
+        },
+      }),
+    ),
+  );
+  const config = await makeClient().getAppConfig("5");
+  expect(config.printLayout).toEqual({ pageSize: "a4", orientation: "portrait", title: "Rapport" });
+});
+
+test("saveAppConfig round-trips printLayout without dropping it", async () => {
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveAppConfig("5", {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+    printLayout: { pageSize: "a3", orientation: "landscape" },
+  });
+  expect(body.printLayout).toEqual({ pageSize: "a3", orientation: "landscape" });
+});
+
+test("createExport POSTs itemId and format", async () => {
+  let body: any; let method = "";
+  server.use(
+    http.post("https://core.test/export", async ({ request }) => {
+      method = request.method; body = await request.json();
+      return HttpResponse.json({ jobId: "job-1" }, { status: 202 });
+    }),
+  );
+  const result = await makeClient().createExport("pk-1", "pdf");
+  expect(result).toEqual({ jobId: "job-1" });
+  expect(method).toBe("POST");
+  expect(body).toEqual({ itemId: "pk-1", format: "pdf" });
+});
+
+test("getExportJob GETs the job status by id", async () => {
+  server.use(
+    http.get("https://core.test/export/jobs/job-1", () =>
+      HttpResponse.json({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null }),
+    ),
+  );
+  const job = await makeClient().getExportJob("job-1");
+  expect(job).toEqual({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null });
+});

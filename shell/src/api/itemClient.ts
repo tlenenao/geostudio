@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -588,9 +588,13 @@ export function createItemClient(opts: {
     },
 
     async getMapConfig(pk: string): Promise<MapConfig> {
-      // ConfigRead nests the builder config under "config"; the map is config.map.
+      // ConfigRead nests the builder config under "config"; the map is config.map,
+      // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
       const data = await request<{
-        config?: { map?: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null };
+        config?: {
+          map?: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null;
+          printLayout?: PrintLayoutConfig | null;
+        };
       }>("GET", `/configs/by-item/${pk}`);
       const map = data.config?.map;
       if (!map) throw new Error("getMapConfig: config has no map payload");
@@ -598,11 +602,13 @@ export function createItemClient(opts: {
         basemap: map.basemap,
         view: map.view,
         layers: (map.layers ?? []).map(toFrontLayer),
+        printLayout: data.config?.printLayout ?? null,
       };
     },
 
     async saveMapConfig(pk: string, config: MapConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map: config });
+      const { printLayout, ...map } = config;
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map, printLayout: printLayout ?? null });
     },
 
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
@@ -770,6 +776,7 @@ export function createItemClient(opts: {
           layout?: AppConfig["layout"] | null;
           navigationMode?: "tabs" | "story";
           interactions?: "auto" | "manual";
+          printLayout?: PrintLayoutConfig | null;
         };
       }>("GET", `/configs/by-item/${pk}${qs}`);
       const c = data.config;
@@ -784,6 +791,7 @@ export function createItemClient(opts: {
         layout: c.layout,
         navigationMode: c.navigationMode,
         interactions: c.interactions,
+        printLayout: c.printLayout ?? null,
       };
     },
 
@@ -828,7 +836,16 @@ export function createItemClient(opts: {
         layout: config.layout,
         navigationMode: config.navigationMode,
         interactions: config.interactions,
+        printLayout: config.printLayout ?? null,
       });
+    },
+
+    async createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }> {
+      return request<{ jobId: string }>("POST", `/export`, { itemId, format });
+    },
+
+    async getExportJob(jobId: string): Promise<ExportJob> {
+      return request<ExportJob>("GET", `/export/jobs/${jobId}`);
     },
 
     featuresUrl(source: DataSource): string {
