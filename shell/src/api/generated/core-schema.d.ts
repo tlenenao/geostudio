@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts/{item_id}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Alert Evaluations */
+        get: operations["get_alert_evaluations_alerts__item_id__evaluations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/analytics/sql": {
         parameters: {
             query?: never;
@@ -313,6 +330,23 @@ export interface paths {
         };
         /** Conformance */
         get: operations["conformance_conformance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/datasets/{item_id}/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alerts For Dataset */
+        get: operations["list_alerts_for_dataset_datasets__item_id__alerts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1105,6 +1139,55 @@ export interface components {
             /** Split */
             split?: string | null;
         };
+        /** AlertChannelEmail */
+        AlertChannelEmail: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "email";
+            /** Smtpsecretname */
+            smtpSecretName: string;
+            /** To */
+            to: string;
+        };
+        /** AlertChannelWebhook */
+        AlertChannelWebhook: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "webhook";
+            /** Url */
+            url: string;
+        };
+        /** AlertCondition */
+        AlertCondition: {
+            /** Expr */
+            expr: string;
+        };
+        /** AlertRulePayload */
+        AlertRulePayload: {
+            /** Channels */
+            channels?: (components["schemas"]["AlertChannelWebhook"] | components["schemas"]["AlertChannelEmail"])[];
+            condition: components["schemas"]["AlertCondition"];
+            /** Datasetitemid */
+            datasetItemId: string;
+            /**
+             * Messagetemplate
+             * @default Alert {ruleName}: value={value} ({state})
+             */
+            messageTemplate: string;
+            query: components["schemas"]["AggregateRequestBody"];
+            refreshPolicy: components["schemas"]["PipelineRefreshPolicy"];
+        };
+        /** AlertRuleSummary */
+        AlertRuleSummary: {
+            /** Itemid */
+            itemId: string;
+            /** Title */
+            title: string;
+        };
         /**
          * ApiKeyPayload
          * @description `location="query"` couvre les jetons en paramètre d'URL (ex.
@@ -1201,6 +1284,7 @@ export interface components {
         };
         /** BuilderConfig */
         BuilderConfig: {
+            alert?: components["schemas"]["AlertRulePayload"] | null;
             bookmark?: components["schemas"]["BookmarkPayload"] | null;
             /** Datasources */
             dataSources?: components["schemas"]["DataSource"][];
@@ -1213,7 +1297,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -1383,6 +1467,21 @@ export interface components {
             source: "collection" | "arcgis";
             /** Timefield */
             timeField?: string | null;
+        };
+        /** EvaluationStatus */
+        EvaluationStatus: {
+            /** Createdat */
+            createdAt: string;
+            /** Error */
+            error: string | null;
+            /** Id */
+            id: string;
+            /** State */
+            state: string;
+            /** Transitioned */
+            transitioned: boolean;
+            /** Value */
+            value: number | null;
         };
         /** ExtensionCreate */
         ExtensionCreate: {
@@ -1900,7 +1999,7 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"];
         };
         /** Sharing */
         Sharing: {
@@ -1908,6 +2007,36 @@ export interface components {
             groups: components["schemas"]["GroupShare"][];
             /** Public */
             public: boolean;
+        };
+        /**
+         * SmtpCredentialsPayload
+         * @description SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
+         *     the webhook channel's URL, this comes from an admin-only secret
+         *     (POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule
+         *     user input — no egress guard applies to it (Global Constraints,
+         *     SP-16b plan), same trust model as postgres_dsn.
+         */
+        SmtpCredentialsPayload: {
+            /** Fromaddress */
+            fromAddress: string;
+            /** Host */
+            host: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "smtp";
+            /** Password */
+            password: string;
+            /** Port */
+            port: number;
+            /**
+             * Usetls
+             * @default true
+             */
+            useTls: boolean;
+            /** Username */
+            username: string;
         };
         /** SqlQueryBody */
         SqlQueryBody: {
@@ -1979,6 +2108,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_alert_evaluations_alerts__item_id__evaluations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2940,6 +3102,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_alerts_for_dataset_datasets__item_id__alerts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -118,6 +118,38 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
     return result
 
 
+def list_configs_by_kind_and_tenant(
+    session: Session, *, kind: str, tenant_id: str
+) -> list[tuple[str, BuilderConfig]]:
+    """Variante tenant-scopée de list_configs_by_kind, sûre à exposer via une
+    route (le filtre tenant_id est appliqué en SQL, jamais après coup en
+    mémoire) : contrairement à sa sœur cross-tenant, aucune ligne d'un autre
+    tenant n'est jamais chargée par le process."""
+    records = session.scalars(
+        select(Config).where(Config.kind == kind, Config.tenant_id == tenant_id)
+    ).all()
+    result: list[tuple[str, BuilderConfig]] = []
+    for record in records:
+        if record.item_id is None:
+            continue
+        revision = _latest_revision(session, record.id)
+        if revision is None:
+            continue
+        try:
+            config = BuilderConfig.model_validate(revision.data)
+        except ValidationError:
+            # Même discipline que list_configs_by_kind : une config stockée
+            # corrompue est journalisée et ignorée plutôt que de faire
+            # planter la requête pour tout le tenant.
+            logger.warning(
+                "list_configs_by_kind_and_tenant: config invalide ignorée (item_id=%s, tenant_id=%s, kind=%s)",
+                record.item_id, record.tenant_id, kind,
+            )
+            continue
+        result.append((record.item_id, config))
+    return result
+
+
 def update_config(
     session: Session, config_id: str, config: BuilderConfig, *, tenant_id: str
 ) -> ConfigRead | None:
