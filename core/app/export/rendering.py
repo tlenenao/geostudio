@@ -11,11 +11,17 @@ from app.configs.schemas import PrintLayout
 
 class RenderPage(Protocol):
     def screenshot(self, *, full_page: bool) -> bytes: ...
-    def pdf(self, *, format: str, landscape: bool) -> bytes: ...
+    def pdf(self, *, format: str, landscape: bool, print_background: bool) -> bytes: ...
 
 
 def render_export(page: RenderPage, *, format: Literal["png", "pdf"], print_layout: PrintLayout | None) -> bytes:
     if format == "png":
         return page.screenshot(full_page=True)
     layout = print_layout or PrintLayout()
-    return page.pdf(format=layout.pageSize.upper(), landscape=layout.orientation == "landscape")
+    # print_background=True (fix round, finding I5) : Playwright/Chromium
+    # défaut à False, ce qui supprime tous les fonds CSS — y compris les
+    # puces bg-white/90 qui rendent le titre/la légende/le cartouche lisibles
+    # par-dessus la carte.
+    return page.pdf(
+        format=layout.pageSize.upper(), landscape=layout.orientation == "landscape", print_background=True,
+    )

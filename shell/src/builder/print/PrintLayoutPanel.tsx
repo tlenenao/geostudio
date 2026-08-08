@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { PrintLayoutConfig } from "../../api/types";
 
-const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend" | "showScaleBar" | "showNorthArrow">> = {
-  pageSize: "a4", orientation: "portrait", showLegend: true, showScaleBar: true, showNorthArrow: false,
+const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
+  pageSize: "a4", orientation: "portrait", showLegend: true,
 };
 
 export function PrintLayoutPanel({
@@ -60,24 +60,13 @@ export function PrintLayoutPanel({
         />
         Légende
       </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          aria-label="Barre d'échelle"
-          type="checkbox"
-          checked={current.showScaleBar}
-          onChange={(e) => patch({ showScaleBar: e.target.checked })}
-        />
-        Barre d&apos;échelle
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          aria-label="Flèche nord"
-          type="checkbox"
-          checked={current.showNorthArrow}
-          onChange={(e) => patch({ showNorthArrow: e.target.checked })}
-        />
-        Flèche nord
-      </label>
+      {/* showScaleBar/showNorthArrow controls removed (fix round, finding
+          I4): they were authorable, validated, and round-tripped but never
+          actually rendered anywhere in map or app export views — inert
+          controls that silently did nothing. Real scale-bar/north-arrow
+          rendering is out of scope for this fix round; the fields remain on
+          PrintLayoutConfig/PrintLayout (core schema) for forward
+          compatibility, just not exposed here until they do something. */}
       <label className="flex flex-col gap-1 text-sm">
         Cartouche
         <textarea

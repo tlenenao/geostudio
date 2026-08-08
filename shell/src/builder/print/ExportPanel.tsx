@@ -6,6 +6,16 @@ import { Button } from "../../ui/button";
 import { Dialog } from "../../ui/dialog";
 
 const POLL_INTERVAL_MS = 1500;
+// Fix round (finding I7) : ni PipelineRunPanel ni ImportFileButton (les deux
+// autres implémentations de ce patron de poll) n'ont de plafond — mais un
+// job d'export peut rester bloqué "running" pour de bon si export-worker
+// (Chromium) crashe en cours de rendu (OOM notamment), et il n'existe encore
+// aucun balayage de reclaim côté serveur pour ce cas précis (cf.
+// app/export/repository.py::reclaim_stuck_jobs, TODO périodicité). Sans
+// plafond ici, l'onglet du navigateur pollerait toutes les 1.5s pour
+// toujours. 200 tentatives × 1.5s = 5 minutes, un budget large pour un rendu
+// Playwright réel mais fini.
+const MAX_POLL_ATTEMPTS = 200;
 
 // Patron de poll identique à PipelineRunPanel (SP-15a) / ImportFileButton
 // (SP-6a) : boucle récursive manuelle via le client, jamais un
@@ -32,17 +42,21 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     [],
   );
 
-  async function poll(jobId: string): Promise<void> {
+  async function poll(jobId: string, attempt = 0): Promise<void> {
     if (!mountedRef.current) return;
     const latest = await client.getExportJob(jobId);
     if (!mountedRef.current) return;
     setJob(latest);
     if (latest.status !== "pending" && latest.status !== "running") return;
+    if (attempt + 1 >= MAX_POLL_ATTEMPTS) {
+      setError("Export toujours en cours, réessayer plus tard.");
+      return;
+    }
     await new Promise<void>((resolve) => {
       timerRef.current = setTimeout(resolve, POLL_INTERVAL_MS);
     });
     if (!mountedRef.current) return;
-    await poll(jobId);
+    await poll(jobId, attempt + 1);
   }
 
   async function onExport(format: ExportFormat) {

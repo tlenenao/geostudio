@@ -68,7 +68,7 @@ class _FakePage:
     def screenshot(self, *, full_page: bool) -> bytes:
         return b"PNGDATA"
 
-    def pdf(self, *, format: str, landscape: bool) -> bytes:
+    def pdf(self, *, format: str, landscape: bool, print_background: bool) -> bytes:
         return b"PDFDATA"
 
 
@@ -79,9 +79,21 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
 
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
     uploaded = {}
+    calls = []
 
     class _FakeS3Client:
+        # I2 (revue finale) : render_export_task doit s'assurer que le bucket
+        # existe (ensure_uploads_bucket) AVANT put_object — sur un MinIO
+        # tout neuf, put_object seul échouerait en NoSuchBucket. `calls`
+        # trace l'ordre pour le prouver, pas seulement l'appel.
+        def create_bucket(self, *, Bucket):
+            calls.append(("create_bucket", Bucket))
+
+        def put_bucket_cors(self, *, Bucket, CORSConfiguration):
+            calls.append(("put_bucket_cors", Bucket))
+
         def put_object(self, *, Bucket, Key, Body, ContentType):
+            calls.append(("put_object", Bucket))
             uploaded["bucket"] = Bucket
             uploaded["key"] = Key
             uploaded["body"] = Body
@@ -109,6 +121,10 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
     assert refreshed.result_key is not None
     assert uploaded["bucket"] == "geostudio-exports"
     assert uploaded["body"] == b"PNGDATA"
+    # Le bucket doit être créé (via ensure_uploads_bucket) AVANT l'upload —
+    # pas seulement appelé quelque part.
+    assert [c[0] for c in calls] == ["create_bucket", "put_bucket_cors", "put_object"]
+    assert all(c[1] == "geostudio-exports" for c in calls)
 
 
 def test_render_export_task_marks_error_when_export_disabled(db_session, monkeypatch):
