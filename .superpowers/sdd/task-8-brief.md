@@ -1,186 +1,186 @@
-### Task 8: Shell — `ItemClient.exportDataSource()`
+### Task 8: `app/alerts/notify.py` — webhook + email delivery
 
 **Files:**
-- Modify: `shell/src/api/types.ts`
-- Modify: `shell/src/api/itemClient.ts`
-- Test: `shell/src/api/itemClient.test.ts` (append)
+- Create: `core/app/alerts/notify.py`
+- Test: `core/tests/test_alert_notify.py`
 
 **Interfaces:**
-- Consumes: `DataSource`, `resolveDataset` (internal to `itemClient.ts`), `_queryParams`, `buildAggregateBody` (all already present).
-- Produces: `ItemClient.exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>` — used by Task 10 (`ExplorerMenu`) and Task 12 (`DatasetEditPage`).
+- Consumes: `app.alerts.egress.assert_egress_allowed` (Task 6), `app.secrets.repository.get_secret_payload` (existing), `SmtpCredentialsPayload` (Task 7), `AlertChannelWebhook`/`AlertChannelEmail` (Task 2).
+- Produces: `NotifyError`, `send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None`, `send_email(session, *, tenant_id: str, channel: AlertChannelEmail, subject: str, body: str) -> None`. Consumed by Task 9 (`app.alerts.jobs`).
 
-- [ ] **Step 1: Add the type declarations**
+- [ ] **Step 1: Write the failing tests**
 
-Edit `shell/src/api/types.ts`. In the `ItemClient` interface, right after the existing line:
+```python
+# core/tests/test_alert_notify.py
+# SPDX-License-Identifier: Apache-2.0
+from unittest.mock import MagicMock, patch
 
-```ts
-  queryDataSource(source: DataSource): Promise<DataRecord[]>;
-  featuresUrl(source: DataSource): string;
+import pytest
+import requests
+
+from app.alerts.egress import EgressBlockedError
+from app.alerts.notify import NotifyError, send_email, send_webhook
+from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
+from app.db import init_db, make_engine, make_session_factory
+from app.secrets import crypto as secrets_crypto
+from app.secrets import repository as secrets_repo
+from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+
+def test_send_webhook_blocks_an_internal_url():
+    channel = AlertChannelWebhook(url="http://127.0.0.1/hook")
+    with pytest.raises(NotifyError):
+        send_webhook(channel, payload={"state": "firing"})
+
+
+def test_send_webhook_posts_json_to_the_url():
+    channel = AlertChannelWebhook(url="https://example.test/hook")
+    with patch("app.alerts.notify.requests.post") as mock_post:
+        mock_post.return_value = MagicMock(status_code=200, raise_for_status=lambda: None)
+        send_webhook(channel, payload={"state": "firing"})
+    mock_post.assert_called_once()
+    assert mock_post.call_args.args[0] == "https://example.test/hook"
+    assert mock_post.call_args.kwargs["json"] == {"state": "firing"}
+
+
+def test_send_webhook_wraps_a_request_failure():
+    channel = AlertChannelWebhook(url="https://example.test/hook")
+    with patch("app.alerts.notify.requests.post", side_effect=requests.ConnectionError("boom")):
+        with pytest.raises(NotifyError):
+            send_webhook(channel, payload={"state": "firing"})
+
+
+def _make_session_with_smtp_secret():
+    if not secrets_crypto._MASTER_KEY:  # ensure test harness has a master key loaded
+        secrets_crypto.load_master_key()
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        payload = SmtpCredentialsPayload(
+            host="smtp.example.test", port=587, username="alerts@example.test",
+            password="s3cret", useTls=True, fromAddress="alerts@example.test",
+        )
+        ciphertext, nonce = secrets_crypto.encrypt(SECRET_PAYLOAD_ADAPTER.dump_python(payload))
+        secrets_repo.create_secret(
+            s, tenant_id=tenant.id, created_by=user.id, name="smtp-main", kind="smtp",
+            ciphertext=ciphertext, nonce=nonce,
+        )
+        s.commit()
+        tenant_id = tenant.id
+    return Session, tenant_id
+
+
+def test_send_email_delivers_via_smtp_secret():
+    Session, tenant_id = _make_session_with_smtp_secret()
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="smtp-main")
+    with Session() as s:
+        with patch("app.alerts.notify.smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp = MagicMock()
+            mock_smtp_cls.return_value.__enter__.return_value = mock_smtp
+            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
+    mock_smtp.starttls.assert_called_once()
+    mock_smtp.login.assert_called_once_with("alerts@example.test", "s3cret")
+    mock_smtp.send_message.assert_called_once()
+
+
+def test_send_email_raises_when_secret_is_missing():
+    Session, tenant_id = _make_session_with_smtp_secret()
+    channel = AlertChannelEmail(to="ops@example.test", smtpSecretName="does-not-exist")
+    with Session() as s:
+        with pytest.raises(NotifyError):
+            send_email(s, tenant_id=tenant_id, channel=channel, subject="Alert", body="value=150")
 ```
 
-add:
+Check the real names of `app.secrets.crypto`'s encrypt function and master-key-loaded flag before finalizing this test (used above as `secrets_crypto.encrypt`/`secrets_crypto._MASTER_KEY`/`secrets_crypto.load_master_key`) — read `core/app/secrets/crypto.py` and `core/tests/test_secrets_repository.py` for the exact fixture pattern used there to set up a decryptable secret in a test, and align this test's setup to match verbatim rather than guessing the private attribute name.
 
-```ts
-  exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_notify.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.notify'`
+
+- [ ] **Step 3: Write the implementation**
+
+```python
+# core/app/alerts/notify.py
+# SPDX-License-Identifier: Apache-2.0
+"""Notification delivery for AlertRule (design SP-16b §5). Webhook is
+egress-guarded (user-supplied URL); email is not (admin-configured SMTP
+secret) — see Global Constraints in the plan for the trust-model
+rationale."""
+import smtplib
+from email.message import EmailMessage
+
+import requests
+from sqlalchemy.orm import Session
+
+from app.alerts.egress import EgressBlockedError, assert_egress_allowed
+from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
+from app.secrets import repository as secrets_repo
+
+
+class NotifyError(Exception):
+    """Notification delivery failed — always caught by the caller (Task 9)
+    and turned into an audit_log entry + evaluation error, never left to
+    crash the evaluation task."""
+
+
+def send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None:
+    try:
+        assert_egress_allowed(channel.url)
+    except EgressBlockedError as exc:
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
+    try:
+        resp = requests.post(channel.url, json=payload, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise NotifyError(f"webhook delivery failed: {exc}") from exc
+
+
+def send_email(
+    session: Session, *, tenant_id: str, channel: AlertChannelEmail, subject: str, body: str,
+) -> None:
+    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=channel.smtpSecretName)
+    if payload is None:
+        raise NotifyError(f"secret '{channel.smtpSecretName}' not found")
+    if payload.kind != "smtp":
+        raise NotifyError(
+            f"secret has kind '{payload.kind}', not usable for email (expected smtp)"
+        )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = payload.fromAddress
+    message["To"] = channel.to
+    message.set_content(body)
+
+    try:
+        with smtplib.SMTP(payload.host, payload.port, timeout=10) as smtp:
+            if payload.useTls:
+                smtp.starttls()
+            smtp.login(payload.username, payload.password)
+            smtp.send_message(message)
+    except (smtplib.SMTPException, OSError) as exc:
+        raise NotifyError(f"email delivery failed: {exc}") from exc
 ```
 
-And in `DataSourceState`, add two optional fields:
+- [ ] **Step 4: Run tests to verify they pass**
 
-```ts
-export type DataSourceState = {
-  loading: boolean;
-  error: boolean;
-  records: DataRecord[];
-  layer?: string;
-  url?: string;
-  datasetId?: string;
-  pkColumn?: string;
-  resolvedSource?: DataSource;
-  hasGeometry?: boolean;
-};
-```
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_notify.py`
+Expected: `5 passed`
 
-- [ ] **Step 2: Write the failing test**
-
-Append to `shell/src/api/itemClient.test.ts`:
-
-```ts
-test("exportDataSource posts the aggregate body and extracts the filename for a statistics source", async () => {
-  let posted: unknown;
-  server.use(
-    http.post("https://core.test/collections/parcs/export", async ({ request }) => {
-      posted = await request.json();
-      const url = new URL(request.url);
-      expect(url.searchParams.get("format")).toBe("csv");
-      return new HttpResponse("region,count\nNord,3\n", {
-        headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": 'attachment; filename="parcs-20260807-120000.csv"',
-        },
-      });
-    }),
-  );
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region", agg: "count" } };
-  const { blob, filename } = await makeClient("tok").exportDataSource(source, "csv");
-  expect(filename).toBe("parcs-20260807-120000.csv");
-  expect(await blob.text()).toBe("region,count\nNord,3\n");
-  expect(posted).toEqual({ groupBy: "region", agg: "count" });
-});
-
-test("exportDataSource GETs the items-export route for a non-statistics source", async () => {
-  server.use(
-    http.get("https://core.test/collections/parcs/export/items", ({ request }) => {
-      const url = new URL(request.url);
-      expect(url.searchParams.get("format")).toBe("geojson");
-      return new HttpResponse('{"type":"FeatureCollection","features":[]}', {
-        headers: { "Content-Type": "application/geo+json", "Content-Disposition": 'attachment; filename="parcs.geojson"' },
-      });
-    }),
-  );
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
-  const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
-  expect(filename).toBe("parcs.geojson");
-});
-
-test("exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/ds1", () =>
-      HttpResponse.json({ config: { dataset: { source: "arcgis", arcgisItemId: "ext1", columns: {} } } }),
-    ),
-    http.post("https://core.test/datasets/ds1/arcgis/export", () =>
-      new HttpResponse("a,b\n1,2\n", {
-        headers: { "Content-Type": "text/csv", "Content-Disposition": 'attachment; filename="x.csv"' },
-      }),
-    ),
-  );
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds1", query: {} };
-  const { filename } = await makeClient("tok").exportDataSource(source, "csv");
-  expect(filename).toBe("x.csv");
-});
-
-test("exportDataSource falls back to a generic filename when Content-Disposition is missing", async () => {
-  server.use(
-    http.get("https://core.test/collections/parcs/export/items", () =>
-      new HttpResponse("[]", { headers: { "Content-Type": "application/geo+json" } }),
-    ),
-  );
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
-  const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
-  expect(filename).toBe("export");
-});
-```
-
-Check the top of `shell/src/api/itemClient.test.ts` imports `HttpResponse`/`http` from `msw` and `server` from `../test/msw/server` (same as Step 1's existing tests) — add `import type { DataSource } from "./types";` if not already imported.
-
-- [ ] **Step 3: Run to verify it fails**
-
-Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: FAIL — `TypeError: makeClient(...).exportDataSource is not a function`
-
-- [ ] **Step 4: Implement**
-
-Edit `shell/src/api/itemClient.ts`. Add a module-level helper right after `requestFeatureWrite` (or near `request`):
-
-```ts
-async function requestBlob(
-  coreUrl: string, getToken: () => string | undefined, method: string, path: string, body?: unknown,
-): Promise<{ blob: Blob; filename: string }> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${coreUrl}${path}`, {
-    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = /filename="([^"]+)"/.exec(disposition);
-  const filename = match ? match[1] : "export";
-  const blob = await res.blob();
-  return { blob, filename };
-}
-```
-
-Then, inside `createItemClient(...)`, add the method right after `queryDataSource` (which ends around line 820, before `getCollectionSchema`):
-
-```ts
-    async exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }> {
-      const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
-      const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
-      if (source.type === "statistics") {
-        const body = buildAggregateBody(source.query);
-        const path = isArcgis
-          ? `/datasets/${source.datasetId}/arcgis/export?format=${format}`
-          : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
-        return requestBlob(coreUrl, getToken, "POST", path, body);
-      }
-      const resolved = source.datasetId ? { ...source, layer: cachedDataset?.collectionId ?? source.layer } : source;
-      const qs = _queryParams(resolved.query);
-      const suffix = qs ? `&${qs}` : "";
-      const path = isArcgis
-        ? `/datasets/${source.datasetId}/arcgis/export/items?format=${format}${suffix}`
-        : `/collections/${resolved.layer}/export/items?format=${format}${suffix}`;
-      return requestBlob(coreUrl, getToken, "GET", path);
-    },
-```
-
-Check `_queryParams` is accessible at this point in the file (it's a module-level function used by `buildFeaturesUrl` at line ~166) — confirm with `grep -n "_queryParams" shell/src/api/itemClient.ts` and use its exact name.
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/api/itemClient.test.ts`
-Expected: PASS (all tests in the file)
-
-- [ ] **Step 6: Run the shell type check**
-
-Run: `cd shell && npm run build`
-Expected: no TypeScript errors (this exercises every other file implementing `ItemClient` — search for other implementations with `grep -rn "ItemClient {" shell/src --include=*.ts` and add a stub `exportDataSource` there too if any test double implements the full interface structurally rather than via `as unknown as ItemClient`)
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
-git commit -m "feat(shell): SP-16a — ItemClient.exportDataSource() (dispatch collection/arcgis, agrégé/items)"
+git add core/app/alerts/notify.py core/tests/test_alert_notify.py
+git commit -m "feat(core): SP-16b — app.alerts.notify (webhook + SMTP email delivery)"
 ```
 
 ---

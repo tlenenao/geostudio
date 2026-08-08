@@ -1,127 +1,203 @@
-# Task 8 report — Shell `ItemClient.exportDataSource()`
+# Task 8 Report — `app/alerts/notify.py` (webhook + SMTP email delivery)
 
-## What was implemented
+## What I implemented
 
-- `shell/src/api/types.ts`:
-  - `ItemClient.exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>`
-    added right after `featuresUrl`.
-  - `DataSourceState` gained two optional fields, `resolvedSource?: DataSource` and
-    `hasGeometry?: boolean` (unused by this task — kept for a later task per the brief;
-    verified they don't break anything, `npm run build` is clean).
+`core/app/alerts/notify.py` (new), consumed by Task 9 (`app.alerts.jobs`):
 
-- `shell/src/api/itemClient.ts`:
-  - New module-level helper `requestBlob(coreUrl, getToken, method, path, body?)`, placed
-    right after `requestFeatureWrite` (before `requestAnalyticsSql`). Adds the bearer token,
-    JSON-encodes `body` when present, throws on non-OK, parses `filename="..."` out of
-    `Content-Disposition` (falls back to `"export"`), and returns `{ blob, filename }` via
-    `res.blob()`.
-  - New `exportDataSource` method on the `ItemClient` object returned by `createItemClient`,
-    placed right after `queryDataSource` (before `getCollectionSchema`). Mirrors the existing
-    `queryDataSource`/`featuresUrl` dispatch logic exactly:
-    - Resolves `source.datasetId` via the existing `resolveDataset` cache to determine
-      `collectionId` and whether the dataset is arcgis-backed.
-    - `source.type === "statistics"` → `buildAggregateBody(source.query)` POSTed to either
-      `/datasets/{datasetId}/arcgis/export?format=...` (arcgis) or
-      `/collections/{collectionId ?? layer}/export?format=...` (collection).
-    - otherwise → GET `/datasets/{datasetId}/arcgis/export/items?format=...&{qs}` or
-      `/collections/{layer}/export/items?format=...&{qs}`, with `{qs}` built from
-      `_queryParams` (same attribute-filter convention as `buildFeaturesUrl`).
+- `NotifyError` — always raised on delivery failure, never a raw
+  `requests`/`smtplib`/`EgressBlockedError` exception escaping to the caller.
+- `send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None` —
+  posts JSON to the channel's user-supplied URL, egress-guarded.
+- `send_email(session, *, tenant_id, channel: AlertChannelEmail, subject, body) -> None`
+  — delivers via SMTP using the admin-configured secret named by
+  `channel.smtpSecretName` (Task 7's `SmtpCredentialsPayload`), implemented
+  exactly as dictated in the brief (no issues found there).
 
-All names referenced by the brief (`_queryParams`, `buildAggregateBody`, `resolveDataset`,
-the four export routes) were confirmed by grep against the actual file/core routes before
-writing code — all matched the brief exactly, no brief bugs found this time.
+### The webhook-session correction (and why)
 
-- `shell/src/api/itemClient.test.ts`:
-  - Added `import type { DataSource } from "./types";`.
-  - Added the four tests specified in the brief verbatim (statistics/POST dispatch +
-    filename extraction, non-statistics/GET dispatch, arcgis-dataset dispatch, missing
-    `Content-Disposition` fallback to `"export"`).
-  - Added one small environment fix not in the brief (see "Issues" below): a guarded
-    `globalThis.Blob` swap to Node's native `Blob` (from `node:buffer`) at the top of the
-    file, needed because jsdom's `Blob` shim (the Vitest test environment for this project)
-    has no `.text()`/`.arrayBuffer()`. Without it, the first new test's
-    `expect(await blob.text())` throws `TypeError: blob.text is not a function` — this is a
-    test-environment gap, not an implementation bug (real browsers' `Blob.text()` works
-    fine, and it's what Task 10/12's UI code will call in production).
+The brief's Step 3 code called `assert_egress_allowed(channel.url)` once,
+then delivered via plain `requests.post(channel.url, json=payload,
+timeout=10)`. `requests.post` follows HTTP redirects by default, and each
+redirect hop is **not** re-checked against the egress guard — only the
+one-time check on the original URL happens. A webhook URL that looks
+public but 302-redirects to an internal address (e.g. the cloud metadata
+endpoint `http://169.254.169.254/...`) would pass the one-time check and
+then get followed anyway, defeating the guard.
 
-## Testing
+Fix (per the task instructions, using Task 6's already-merged
+`app/alerts/egress.py`):
 
-- `cd shell && npx vitest run src/api/itemClient.test.ts` — RED then GREEN (see below).
-- `cd shell && npx vitest run` (full suite) — 123 files / 978 tests passed, no failures,
-  no new warnings (pre-existing `[MSW] Error: intercepted a request without a matching
-  request handler` for `GET /harvest/layers` in two unrelated `listLayerSources` tests,
-  confirmed present before my changes via `git stash`).
-- `cd shell && npm run build` — `tsc --noEmit && vite build` clean, no TS errors.
-- Confirmed via `grep -rn "ItemClient {" shell/src` that the only structural
-  implementer of the interface is `createItemClient` itself; every test double casts
-  `as unknown as ItemClient`, so no stub `exportDataSource` was needed elsewhere (also
-  confirmed indirectly: `npm run build` type-checks all of `src` and passed cleanly).
+```python
+def send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None:
+    try:
+        assert_egress_allowed(channel.url)          # fail fast, upfront
+    except EgressBlockedError as exc:
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
 
-### TDD Evidence
-
-**RED** — `cd shell && npx vitest run src/api/itemClient.test.ts`:
-```
- × exportDataSource posts the aggregate body and extracts the filename for a statistics source 0ms
-   → makeClient(...).exportDataSource is not a function
- × exportDataSource GETs the items-export route for a non-statistics source 0ms
-   → makeClient(...).exportDataSource is not a function
- × exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset 0ms
-   → makeClient(...).exportDataSource is not a function
- × exportDataSource falls back to a generic filename when Content-Disposition is missing 0ms
-   → makeClient(...).exportDataSource is not a function
-
- Test Files  1 failed (1)
-      Tests  4 failed | 111 passed (115)
+    session = build_guarded_session()                # Task 6
+    try:
+        resp = session.post(channel.url, json=payload, timeout=10)
+        resp.raise_for_status()
+    except EgressBlockedError as exc:                 # raised on a redirect hop
+        raise NotifyError(f"webhook egress blocked: {exc}") from exc
+    except requests.RequestException as exc:
+        raise NotifyError(f"webhook delivery failed: {exc}") from exc
 ```
 
-(Intermediate run after adding the method but before the `globalThis.Blob` fix showed 3/4
-new tests green and 1 failing with `TypeError: blob.text is not a function` — confirmed via
-a throwaway debug test that this was jsdom's `Blob` shim lacking `.text()`, and that
-swapping in Node's `node:buffer` `Blob` fixes it without touching implementation code.)
+`build_guarded_session()`'s `_GuardedHTTPAdapter.send()` calls
+`assert_egress_allowed(request.url)` on every hop `requests`'
+`resolve_redirects()` sends through it (not just the first), so a
+redirect to an internal target now raises `EgressBlockedError`, which is
+caught and wrapped in `NotifyError` just like the upfront check.
 
-**GREEN** — `cd shell && npx vitest run src/api/itemClient.test.ts`:
-```
- ✓ exportDataSource posts the aggregate body and extracts the filename for a statistics source
- ✓ exportDataSource GETs the items-export route for a non-statistics source
- ✓ exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset
- ✓ exportDataSource falls back to a generic filename when Content-Disposition is missing
+## What I verified before finalizing the tests
 
- Test Files  1 passed (1)
-      Tests  115 passed (115)
+- `core/app/secrets/crypto.py`: `load_master_key()` re-reads
+  `os.environ["CORE_SECRETS_MASTER_KEY"]` on **every call** — there is no
+  `_MASTER_KEY` module attribute (the brief's dictated test referenced a
+  phantom `secrets_crypto._MASTER_KEY` / `load_master_key()`-if-not-loaded
+  pattern that doesn't exist in the real module). `encrypt()`/`decrypt()`
+  are the real function names, matching the brief's guess.
+- `core/tests/test_secrets_repository.py`'s own round-trip test sets up a
+  decryptable secret via `monkeypatch.setenv("CORE_SECRETS_MASTER_KEY",
+  TEST_KEY_B64)` before calling `crypto.encrypt(...)`. I copied this exact
+  pattern into a `smtp_secret_session` pytest fixture (taking `monkeypatch`
+  as a parameter) instead of the brief's free-standing helper function
+  that couldn't call `monkeypatch.setenv` at all.
+- `core/app/secrets/repository.py`: `create_secret(session, *, tenant_id,
+  created_by, name, kind, ciphertext, nonce)` and `get_secret_payload(...)`
+  signatures match the brief's usage verbatim.
+- `AlertChannelWebhook`/`AlertChannelEmail` (`app/configs/schemas.py`) and
+  `SmtpCredentialsPayload` (`app/secrets/schemas.py`) field names all match
+  the brief's usage verbatim (`url`; `to`, `smtpSecretName`; `host`, `port`,
+  `username`, `password`, `useTls`, `fromAddress`).
+- A second, independent latent bug in the brief's dictated tests (separate
+  from the known SSRF issue): `test_send_webhook_posts_json_to_the_url` /
+  `test_send_webhook_wraps_a_request_failure` used
+  `AlertChannelWebhook(url="https://example.test/hook")` with no DNS
+  mocking. `example.test` is an RFC 2606 reserved TLD that never resolves
+  (confirmed directly: `socket.getaddrinfo("example.test", None)` raises
+  `gaierror` in this sandbox) — `assert_egress_allowed` would raise
+  `EgressBlockedError` ("hôte non résoluble") before ever reaching the
+  webhook-post logic the tests meant to exercise. Fixed by adding the same
+  `getaddrinfo` monkeypatch the sister guard test suites already use
+  (`test_alert_egress.py::test_allows_a_public_https_url`,
+  `test_pipeline_egress.py`, `test_harvest_egress.py`).
+
+## Tests written (`core/tests/test_alert_notify.py`)
+
+1. `test_send_webhook_blocks_an_internal_url` — as dictated, unchanged (IP
+   literal, no DNS needed).
+2. `test_send_webhook_posts_json_to_the_url` — adapted: DNS-mocked, patches
+   `app.alerts.notify.build_guarded_session` to return a `MagicMock()`
+   session instead of patching `requests.post` (which is no longer called).
+3. `test_send_webhook_wraps_a_request_failure` — same adaptation, mock
+   session's `.post` raises `requests.ConnectionError`.
+4. **New** `test_send_webhook_rechecks_egress_on_redirect_hops` — the
+   redirect-based-bypass regression test. Fakes only the network I/O layer
+   (`requests.adapters.HTTPAdapter.send`, the real base class method that
+   would otherwise open a socket) to return a crafted 302 response pointing
+   at `http://169.254.169.254/latest/meta-data/`; everything above that
+   (`Session.send()`, `resolve_redirects()`, and the real
+   `_GuardedHTTPAdapter.send()`'s egress check) runs for real via a real
+   `build_guarded_session()`. Asserts `NotifyError` is raised **and** that
+   its `__cause__` is specifically `EgressBlockedError` (not some unrelated
+   failure).
+5. **New** `test_guarded_session_used_by_send_webhook_blocks_before_connection`
+   — minimal no-mocking sanity check mirroring
+   `test_pipeline_egress.py::test_guarded_session_blocks_before_connection`.
+6. `test_send_email_delivers_via_smtp_secret` — adapted only in the fixture
+   plumbing (real crypto/repository APIs via `monkeypatch.setenv`), SMTP
+   assertions unchanged from the brief.
+7. `test_send_email_raises_when_secret_is_missing` — same fixture fix,
+   unchanged assertions.
+
+### Proof the redirect regression test actually catches the bug
+
+I temporarily reverted `send_webhook` to the brief's naive
+`requests.post(channel.url, ...)` implementation and re-ran
+`test_send_webhook_rechecks_egress_on_redirect_hops` in isolation:
+
 ```
+E       AssertionError: assert False
+E        +  where False = isinstance(TooManyRedirects('Exceeded 30 redirects.'), EgressBlockedError)
+E        +    where TooManyRedirects('Exceeded 30 redirects.') = NotifyError('webhook delivery failed: Exceeded 30 redirects.').__cause__
+```
+
+This confirms the test is discriminating: the naive implementation still
+raises *some* `NotifyError` (because the plain `requests.Session` used by
+`requests.post` keeps following the same 302 forever and eventually hits
+`TooManyRedirects`), but the `__cause__` assertion proves it was **not**
+the egress guard that stopped it — i.e., without the fix, an internal
+redirect target is followed, not blocked. Restored the guarded-session fix
+immediately after, and re-ran the full file to confirm green again.
+
+## TDD Evidence
+
+**RED** (before `app/alerts/notify.py` existed):
+```
+ImportError while importing test module '.../tests/test_alert_notify.py'.
+E   ModuleNotFoundError: No module named 'app.alerts.notify'
+1 error in 0.19s
+```
+
+**GREEN** (after implementation):
+```
+tests/test_alert_notify.py .......                                       [100%]
+7 passed in 0.29s
+```
+
+**Full core suite** (regression check):
+```
+1255 passed, 131 skipped in 84.65s (0:01:24)
+```
+(131 skipped are the pre-existing `postgis`/`qgis`-marked tests requiring
+docker, unrelated to this task.)
+
+**Import-boundary lint** (`uv run lint-imports`):
+```
+layered architecture KEPT
+Contracts: 1 kept, 0 broken.
+```
+
+`ruff` was not available in this environment (`error: Failed to spawn:
+'ruff': No such file or directory`) — pre-existing environment gap, not
+introduced by this task.
 
 ## Files changed
 
-- `shell/src/api/types.ts`
-- `shell/src/api/itemClient.ts`
-- `shell/src/api/itemClient.test.ts`
+- `core/app/alerts/notify.py` (new)
+- `core/tests/test_alert_notify.py` (new)
 
-Commit: `a8444cc` — `feat(shell): SP-16a — ItemClient.exportDataSource() (dispatch collection/arcgis, agrégé/items)`
+Commit: `9efab00` — `feat(core): SP-16b — app.alerts.notify (webhook via
+guarded session + SMTP email delivery)`
 
 ## Self-review
 
-- **Completeness**: all 4 tests present and passing; both type declarations added; helper
-  + method implemented exactly per brief structure/placement.
-- **Quality**: matches existing file style (module-level helper mirroring
-  `requestFeatureWrite`/`requestAnalyticsSql`; method body mirrors `queryDataSource`'s
-  dispatch shape almost line-for-line, same variable names `cachedDataset`/`resolved`).
-- **Discipline**: nothing extra added beyond the brief's three files, except the one-line
-  guarded `Blob` environment fix in the test file (see Issues) — no other files touched, no
-  UI wiring (correctly deferred to Tasks 10/12).
-- **Testing**: MSW-mocked HTTP responses realistic (real `Content-Disposition` header
-  parsing, real query-string assertions); output pristine aside from the two pre-existing,
-  unrelated `[MSW]` stderr warnings verified present before this change.
+- **Completeness**: all 7 tests pass, including the new redirect
+  regression test and the SMTP tests using verified-real crypto/repository
+  APIs. Full suite green, no regressions.
+- **Quality**: webhook delivery genuinely re-checks egress on redirects —
+  proven by reverting to the naive implementation and watching the
+  regression test fail for a distinguishing reason (`TooManyRedirects`
+  instead of `EgressBlockedError`), not just fail generically.
+- **Discipline**: no extra retry logic, no extra channels, no scope creep.
+  `send_email` implemented exactly as dictated (verified correct, no
+  changes needed beyond the test fixture's crypto API names). Only the two
+  files named in Code Organization were touched (confirmed via `git
+  status` before commit — several unrelated pre-existing modifications to
+  `.superpowers/sdd/*.md` files were left untouched/unstaged).
+- **Testing**: the redirect test exercises the real `requests.Session` /
+  `resolve_redirects()` machinery and the real `_GuardedHTTPAdapter.send()`
+  — only the network I/O boundary (`HTTPAdapter.send`) is faked. This is
+  not mocks-testing-mocks: it's a real integration test of the actual
+  mechanism, independently confirmed to fail against the vulnerable
+  implementation.
 
-## Issues / concerns
+## Issues or concerns
 
-- One deviation from the brief's literal instructions: added a 6-line guarded
-  `globalThis.Blob` override at the top of `itemClient.test.ts` (not mentioned in the brief)
-  because the project's Vitest `environment: "jsdom"` provides a `Blob` shim without
-  `.text()`/`.arrayBuffer()`, which the brief's own test code (`await blob.text()`) requires
-  to pass. Verified via a throwaway debug test that (a) this is purely a test-environment
-  gap — real browsers' `Blob.text()` works — and (b) the swap has no effect on any other
-  test in the file (guarded by a feature-detection check, and confirmed the full 978-test
-  suite is unaffected). Flagging this for review since it wasn't in the brief's file list,
-  though it stayed inside `itemClient.test.ts`, one of the three files the brief does list.
-- No other concerns; no brief bugs found (all consumed names/routes matched reality this
-  time, unlike some earlier core-side tasks in this plan).
+None. The guarded-session approach worked exactly as Task 6 designed it
+to; no conflicts encountered. No dependency on `responses`/`requests-mock`
+was needed (neither is a project dependency, confirmed via `pyproject.toml`
+grep) — the `HTTPAdapter.send`-level fake was sufficient and arguably more
+faithful to the real mechanism than a mocking library would have been.

@@ -1,221 +1,202 @@
-### Task 2: Serialization module `app.analytics.export`
+### Task 2: `AlertRule` payload schema
 
 **Files:**
-- Create: `core/app/analytics/export.py`
-- Test: `core/tests/test_analytics_export.py`
+- Modify: `core/app/configs/schemas.py`
+- Test: `core/tests/test_alert_config_schema.py`
 
 **Interfaces:**
-- Consumes: `open_spatial_connection()` from Task 1 (test-only, for the GPKG round-trip test).
-- Produces (used by Tasks 3-6):
-  - `EXPORT_MEDIA_TYPES: dict[str, str]` — keys `"csv"`, `"xlsx"`, `"geojson"`, `"gpkg"`.
-  - `export_filename(title: str, *, format: str) -> str`
-  - `rows_to_format(rows: list[dict], *, format: str) -> bytes` — `format` must be `"csv"` or `"xlsx"`.
-  - `features_to_format(features: list[dict], *, format: str, conn=None) -> bytes` — `format` one of `"csv"`/`"xlsx"`/`"geojson"`/`"gpkg"`; `conn` (a `duckdb.DuckDBPyConnection` with `spatial` loaded) is required only when `format == "gpkg"`.
+- Consumes: `app.configs.alert_condition.validate_condition_expr` (Task 1), `PipelineRefreshPolicy` (existing, reused verbatim), `AggregateRequestBody` (existing, `app.analytics.aggregate`).
+- Produces: `AlertCondition`, `AlertChannelWebhook`, `AlertChannelEmail`, `AlertRulePayload` classes; `BuilderConfig.kind` gains `"alert"`; `BuilderConfig.alert: AlertRulePayload | None` field. Consumed by Task 3 (`alert_validation.py`) and Task 9 (`app.alerts.jobs`).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_analytics_export.py`:
-
 ```python
+# core/tests/test_alert_config_schema.py
 # SPDX-License-Identifier: Apache-2.0
-import json
-
-import openpyxl
 import pytest
+from pydantic import ValidationError
 
-from app.analytics.duckdb_conn import open_spatial_connection
-from app.analytics.export import (
-    EXPORT_MEDIA_TYPES,
-    export_filename,
-    features_to_format,
-    rows_to_format,
-)
+from app.configs.schemas import BuilderConfig
 
 
-def test_rows_to_format_csv_has_header_and_data_rows():
-    content = rows_to_format([{"region": "Nord", "pop": 10}, {"region": "Sud", "pop": 5}], format="csv")
-    text = content.decode("utf-8")
-    assert text.splitlines()[0] == "region,pop"
-    assert "Nord,10" in text
+def _base_alert(**overrides):
+    body = {
+        "kind": "alert",
+        "alert": {
+            "datasetItemId": "ds-1",
+            "query": {"agg": "count"},
+            "condition": {"expr": "value > 100"},
+            "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+        },
+    }
+    body["alert"].update(overrides)
+    return body
 
 
-def test_rows_to_format_csv_empty_rows_is_empty_bytes():
-    assert rows_to_format([], format="csv") == b""
+def test_alert_config_requires_alert_payload():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate({"kind": "alert"})
 
 
-def test_rows_to_format_xlsx_round_trips_through_openpyxl():
-    content = rows_to_format([{"region": "Nord", "pop": 10}], format="xlsx")
-    import io
-    wb = openpyxl.load_workbook(io.BytesIO(content))
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    assert rows == [("region", "pop"), ("Nord", 10)]
+def test_alert_config_accepts_a_valid_payload():
+    config = BuilderConfig.model_validate(_base_alert())
+    assert config.alert.datasetItemId == "ds-1"
+    assert config.alert.condition.expr == "value > 100"
 
 
-def test_rows_to_format_rejects_geojson():
-    with pytest.raises(ValueError):
-        rows_to_format([{"a": 1}], format="geojson")
+def test_alert_condition_rejects_an_invalid_expression():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(condition={"expr": "value >"}))
 
 
-def test_features_to_format_geojson_wraps_a_feature_collection():
-    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
-    content = features_to_format(features, format="geojson")
-    body = json.loads(content)
-    assert body == {"type": "FeatureCollection", "features": features}
+def test_alert_condition_rejects_a_table_reference():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(
+            _base_alert(condition={"expr": "(SELECT count(*) FROM some_table)"})
+        )
 
 
-def test_features_to_format_csv_flattens_properties_and_drops_geometry():
-    features = [{"type": "Feature", "properties": {"nom": "X", "pop": 3}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
-    content = features_to_format(features, format="csv")
-    text = content.decode("utf-8")
-    assert text.splitlines()[0] == "nom,pop"
-    assert "geometry" not in text
+def test_alert_requires_at_least_one_channel():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(channels=[]))
 
 
-def test_features_to_format_gpkg_requires_a_connection():
-    with pytest.raises(AssertionError):
-        features_to_format([{"type": "Feature", "properties": {}, "geometry": None}], format="gpkg")
+def test_alert_query_rejects_groupby():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(query={"groupBy": "region", "agg": "count"}))
 
 
-def test_features_to_format_gpkg_round_trips_a_point():
-    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}}]
-    conn = open_spatial_connection()
-    try:
-        content = features_to_format(features, format="gpkg", conn=conn)
-        assert content[:16] == b"SQLite format 3\x00"
-        read_back = open_spatial_connection()
-        try:
-            with open("/tmp/sp16a_test.gpkg", "wb") as f:
-                f.write(content)
-            row = read_back.execute("SELECT nom FROM ST_Read('/tmp/sp16a_test.gpkg')").fetchone()
-            assert row[0] == "X"
-        finally:
-            read_back.close()
-    finally:
-        conn.close()
+def test_alert_query_rejects_more_than_one_measure():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(query={
+            "measures": [{"field": "a", "agg": "count", "label": "x"}, {"field": "b", "agg": "sum", "label": "y"}],
+        }))
 
 
-def test_export_filename_slugifies_the_title_and_appends_the_format():
-    name = export_filename("Bâtiments (2026)", format="csv")
-    assert name.startswith("batiments-2026")
-    assert name.endswith(".csv")
+def test_alert_refresh_policy_rejects_invalid_cron():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(refreshPolicy={"enabled": True, "cron": "not-a-cron"}))
 
 
-def test_export_filename_falls_back_to_export_for_an_empty_title():
-    assert export_filename("", format="xlsx").startswith("export")
-
-
-def test_export_media_types_cover_all_four_formats():
-    assert set(EXPORT_MEDIA_TYPES) == {"csv", "xlsx", "geojson", "gpkg"}
+def test_alert_email_channel_requires_smtp_secret_name():
+    config = BuilderConfig.model_validate(
+        _base_alert(channels=[{"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-main"}])
+    )
+    assert config.alert.channels[0].smtpSecretName == "smtp-main"
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_analytics_export.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.analytics.export'`
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_config_schema.py`
+Expected: FAIL — `pydantic_core._pydantic_core.ValidationError` on `kind="alert"` not being a recognized literal (or `AttributeError` on `config.alert`), since nothing has been added yet.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Write the implementation**
 
-Create `core/app/analytics/export.py`:
+Add to `core/app/configs/schemas.py`, near `PipelineRefreshPolicy`/`PipelinePayload` (the file already imports `AggregateRequestBody`? confirm — it does not yet; add the import alongside the existing ones at the top of the file):
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Sérialisation d'export (SP-16a) : lignes attributaires (mode agrégé,
-sans géométrie par construction) ou features GeoJSON (mode entités brutes)
-vers CSV/XLSX/GeoJSON/GPKG. Fonctions pures, réutilisables telles quelles
-par SP-16b (rapports planifiés) sans passer par un appel HTTP interne."""
-import json
-import re
-import tempfile
-import unicodedata
-from csv import DictWriter
-from datetime import datetime, timezone
-from io import BytesIO, StringIO
-from pathlib import Path
+# Add to the top-level import block in core/app/configs/schemas.py:
+from app.analytics.aggregate import AggregateRequestBody
+from app.configs.alert_condition import validate_condition_expr
+```
 
-from openpyxl import Workbook
+```python
+# Add near PipelinePayload in core/app/configs/schemas.py:
+class AlertCondition(BaseModel):
+    # Bounded DuckDB scalar SQL expression, binding `value` — see
+    # app.configs.alert_condition (design SP-16b §4: no CEL engine exists
+    # server-side, only client-side cel-js for visibleWhen/computed
+    # columns).
+    expr: str
 
-EXPORT_MEDIA_TYPES = {
-    "csv": "text/csv",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "geojson": "application/geo+json",
-    "gpkg": "application/geopackage+sqlite3",
-}
+    @model_validator(mode="after")
+    def _require_valid_expr(self) -> "AlertCondition":
+        import duckdb
 
-
-def export_filename(title: str, *, format: str) -> str:
-    normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower() or "export"
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"{slug}-{stamp}.{format}"
+        conn = duckdb.connect(":memory:")
+        try:
+            validate_condition_expr(conn, self.expr)
+        except Exception as exc:
+            raise ValueError(f"invalid condition expression: {exc}") from exc
+        finally:
+            conn.close()
+        return self
 
 
-def rows_to_csv(rows: list[dict]) -> bytes:
-    if not rows:
-        return b""
-    buf = StringIO()
-    writer = DictWriter(buf, fieldnames=list(rows[0].keys()))
-    writer.writeheader()
-    writer.writerows(rows)
-    return buf.getvalue().encode("utf-8")
+class AlertChannelWebhook(BaseModel):
+    kind: Literal["webhook"] = "webhook"
+    url: str
 
 
-def rows_to_xlsx(rows: list[dict]) -> bytes:
-    wb = Workbook()
-    ws = wb.active
-    if rows:
-        headers = list(rows[0].keys())
-        ws.append(headers)
-        for row in rows:
-            ws.append([row.get(h) for h in headers])
-    buf = BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+class AlertChannelEmail(BaseModel):
+    kind: Literal["email"] = "email"
+    to: str
+    smtpSecretName: str
 
 
-def rows_to_format(rows: list[dict], *, format: str) -> bytes:
-    if format == "csv":
-        return rows_to_csv(rows)
-    if format == "xlsx":
-        return rows_to_xlsx(rows)
-    raise ValueError(f"unsupported row format '{format}'")
+class AlertRulePayload(BaseModel):
+    datasetItemId: str
+    query: AggregateRequestBody
+    condition: AlertCondition
+    refreshPolicy: PipelineRefreshPolicy
+    channels: list[AlertChannelWebhook | AlertChannelEmail] = Field(default_factory=list)
+    messageTemplate: str = "Alert {ruleName}: value={value} ({state})"
 
+    @model_validator(mode="after")
+    def _require_at_least_one_channel(self) -> "AlertRulePayload":
+        if not self.channels:
+            raise ValueError("alert rule requires at least one channel")
+        return self
 
-def features_to_geojson(features: list[dict]) -> bytes:
-    return json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
+    @model_validator(mode="after")
+    def _require_single_scalar_query(self) -> "AlertRulePayload":
+        # v1 scope (design SP-16b §1 non-buts, §2): one scalar per rule, no
+        # per-group/multi-series alerting.
+        if self.query.groupBy:
+            raise ValueError("alert query must not use groupBy (v1 supports a single scalar per rule)")
+        if self.query.split is not None:
+            raise ValueError("alert query must not use split (v1 supports a single scalar per rule)")
+        if self.query.bucket is not None or self.query.bins is not None:
+            raise ValueError("alert query must not use bucket/bins (v1 supports a single scalar per rule)")
+        if self.query.measures is not None and len(self.query.measures) > 1:
+            raise ValueError("alert query must have at most one measure (v1 supports a single scalar per rule)")
+        return self
+```
 
+Modify the `kind` literal and add the `alert` field + payload requirement on `BuilderConfig`:
 
-def features_to_gpkg(features: list[dict], conn) -> bytes:
-    with tempfile.TemporaryDirectory() as scratch_dir:
-        in_path = Path(scratch_dir) / "in.geojson"
-        out_path = Path(scratch_dir) / "out.gpkg"
-        in_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
-        conn.execute(f"CREATE TABLE t AS SELECT * FROM ST_Read('{in_path}')")
-        conn.execute(f"COPY t TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')")
-        return out_path.read_bytes()
+```python
+# Change in class BuilderConfig:
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert"]
+```
 
+```python
+# Add alongside `pipeline: PipelinePayload | None = None` in class BuilderConfig:
+    alert: AlertRulePayload | None = None
+```
 
-def features_to_format(features: list[dict], *, format: str, conn=None) -> bytes:
-    if format in ("csv", "xlsx"):
-        return rows_to_format([f.get("properties") or {} for f in features], format=format)
-    if format == "geojson":
-        return features_to_geojson(features)
-    if format == "gpkg":
-        assert conn is not None, "features_to_format(format='gpkg') requires a duckdb connection"
-        return features_to_gpkg(features, conn)
-    raise ValueError(f"unsupported feature format '{format}'")
+```python
+# Add inside _require_kind_payload, alongside the "pipeline" check:
+        if self.kind == "alert" and self.alert is None:
+            raise ValueError("alert config requires an alert payload")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && uv run pytest tests/test_analytics_export.py -v`
-Expected: PASS (11 tests)
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_config_schema.py`
+Expected: `9 passed`
+
+Then run the full config-schema suite to check for regressions on the `BuilderConfig.kind` literal change:
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_bookmark_config_schema.py tests/test_dataset_config_schema.py tests/test_pipeline_config_schema.py`
+Expected: all passing, unchanged.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/analytics/export.py core/tests/test_analytics_export.py
-git commit -m "feat(core): SP-16a — module de sérialisation d'export CSV/XLSX/GeoJSON/GPKG"
+git add core/app/configs/schemas.py core/tests/test_alert_config_schema.py
+git commit -m "feat(core): SP-16b — AlertRule payload schema (BuilderConfig kind=\"alert\")"
 ```
 
 ---

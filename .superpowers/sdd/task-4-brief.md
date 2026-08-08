@@ -1,170 +1,151 @@
-### Task 4: `GET /collections/{id}/export/items` (raw-entities mode, collection-backed)
+### Task 4: `AlertEvaluation` model + migration
 
 **Files:**
-- Modify: `core/app/features/routes.py`
-- Modify: `core/tests/test_features_export_routes.py` (same file as Task 3, append)
+- Create: `core/app/alerts/__init__.py` (empty)
+- Create: `core/app/alerts/models.py`
+- Create: `core/alembic/versions/0020_alert_evaluations.py`
+- Test: `core/tests/test_alert_models.py`
 
 **Interfaces:**
-- Consumes: `features_to_format` (Task 2), `open_spatial_connection` (Task 1), `_parse_bbox`, `_parse_geom_intersects`, `_collect_filters`, `get_features_repo`, `get_rls_scope`, `FilterError` (all already present in this file), `MAX_LIMIT` (already present, = 1000).
-- Produces: route `GET /collections/{collection_id}/export/items?format=csv|xlsx|geojson|gpkg` — used by Task 8 and by Task 12 (`DatasetEditPage`, unfiltered, all formats).
+- Produces: `AlertEvaluation` ORM model (table `alert_evaluations`), consumed by Task 5 (`app/alerts/repository.py`).
 
-- [ ] **Step 1: Write the failing tests**
-
-Append to `core/tests/test_features_export_routes.py`:
+- [ ] **Step 1: Write the failing test**
 
 ```python
-def test_export_items_geojson_returns_a_feature_collection(env):
-    app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    col = _register(app, client, admin, public=True)
-    _seed(tmp_path, tenant_id, col["id"])
-    # items export reads from the live PostGIS-backed collection table via
-    # select_features, not the GeoParquet CDC lake used by aggregate — but
-    # this fixture never wrote actual rows to the fake sqlite-backed
-    # collection table, only to the CDC parquet lake (_seed). To exercise
-    # the items path meaningfully, create features through the normal write
-    # route first.
-    _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
-    resp = client.get(f"/collections/{col['id']}/export/items?format=geojson")
-    assert resp.status_code == 200
-    assert resp.headers["content-type"] == "application/geo+json"
-    body = resp.json()
-    assert body["type"] == "FeatureCollection"
-    assert len(body["features"]) == 1
-    assert body["features"][0]["properties"]["region"] == "Nord"
+# core/tests/test_alert_models.py
+# SPDX-License-Identifier: Apache-2.0
+from app.alerts.models import AlertEvaluation
+from app.db import init_db, make_engine, make_session_factory
+from app.items import repository as items_repo
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
-def test_export_items_csv_flattens_properties(env):
-    app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    col = _register(app, client, admin, public=True)
-    _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
-    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
-    assert resp.status_code == 200
-    assert "Nord" in resp.text
-    assert "geometry" not in resp.text.splitlines()[0]
+def test_alert_evaluation_round_trips_through_sqlite():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="High counts",
+        )
+        s.commit()
 
+        evaluation = AlertEvaluation(
+            id="eval-1", tenant_id=tenant.id, alert_rule_item_id=item.id,
+            value=150.0, state="firing", transitioned=True, error=None,
+        )
+        s.add(evaluation)
+        s.commit()
 
-def test_export_items_gpkg_returns_a_sqlite_container(env):
-    app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    col = _register(app, client, admin, public=True)
-    _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
-    resp = client.get(f"/collections/{col['id']}/export/items?format=gpkg")
-    assert resp.status_code == 200
-    assert resp.content[:16] == b"SQLite format 3\x00"
-
-
-def test_export_items_rejects_unknown_format(env):
-    app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    col = _register(app, client, admin, public=True)
-    resp = client.get(f"/collections/{col['id']}/export/items?format=pdf")
-    assert resp.status_code == 400
-
-
-def test_export_items_caps_at_10000_entities(env, monkeypatch):
-    app, client, admin, _r, tmp_path, tenant_id, _Session = env
-    import app.features.routes as routes_module
-    monkeypatch.setattr(routes_module, "EXPORT_ITEMS_CAP", 1)
-    col = _register(app, client, admin, public=True)
-    _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "properties": {"region": "Nord"}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
-    client.post(f"/collections/{col['id']}/items", json={
-        "properties": {"region": "Sud"}, "geometry": {"type": "Point", "coordinates": [1, 1]},
-    })
-    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
-    assert resp.status_code == 413
+    with Session() as s:
+        reloaded = s.get(AlertEvaluation, "eval-1")
+        assert reloaded is not None
+        assert reloaded.state == "firing"
+        assert reloaded.transitioned is True
+        assert reloaded.value == 150.0
+        assert reloaded.error is None
+        assert reloaded.created_at is not None
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_features_export_routes.py -k items -v`
-Expected: FAIL — 404 on every new test.
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_models.py`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts'`
 
-- [ ] **Step 3: Implement the route**
-
-Add to `core/app/features/routes.py`, after the new `export_collection_aggregate` route:
+- [ ] **Step 3: Write the implementation**
 
 ```python
-EXPORT_FORMATS_ITEMS = {"csv", "xlsx", "geojson", "gpkg"}
-EXPORT_ITEMS_CAP = 10_000
-
-
-@router.get("/collections/{collection_id}/export/items")
-def export_collection_items(
-    collection_id: str, request: Request, format: str = Query(...),
-    bbox: str | None = None, geom_intersects: str | None = None,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
-    introspect=Depends(get_introspector), repo=Depends(get_features_repo),
-    rls=Depends(get_rls_scope),
-):
-    if format not in EXPORT_FORMATS_ITEMS:
-        raise _validation_error(
-            [{"field": "format", "code": "unsupported_format", "message": f"unsupported format '{format}'"}])
-    col = get_readable_collection(session, user, collection_id)
-    info = introspect(session, col.table_name)
-    parsed_bbox = _parse_bbox(bbox)
-    parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
-    filters = _collect_filters(request)
-
-    features: list[dict] = []
-    offset = 0
-    while True:
-        try:
-            with rls(session, col.tenant_id):
-                page = repo.select_features(session, info, limit=MAX_LIMIT, offset=offset,
-                                            bbox=parsed_bbox, geom_intersects=parsed_geom_intersects,
-                                            filters=filters or None)
-        except FilterError as exc:
-            raise _validation_error(
-                [{"field": exc.field, "code": "unknown_filter", "message": exc.message}])
-        features.extend(page.features)
-        if len(features) > EXPORT_ITEMS_CAP:
-            raise HTTPException(status_code=413, detail="too many entities matched, refine your filters")
-        if page.number_returned < MAX_LIMIT:
-            break
-        offset += MAX_LIMIT
-
-    if format == "gpkg":
-        conn = open_spatial_connection()
-        try:
-            content = features_to_format(features, format=format, conn=conn)
-        finally:
-            conn.close()
-    else:
-        content = features_to_format(features, format=format)
-    filename = export_filename(col.title, format=format)
-    write_audit(session, tenant_id=col.tenant_id, actor_id=user.id, actor_kind="user",
-                action="export.run", object_type="collection", object_id=col.id,
-                payload={"format": format, "mode": "items"})
-    return Response(content=content, media_type=EXPORT_MEDIA_TYPES[format],
-                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+# core/app/alerts/__init__.py
+# SPDX-License-Identifier: Apache-2.0
 ```
-
-Add `open_spatial_connection` to the `app.analytics.duckdb_conn` import (new line, since `duckdb_conn` isn't currently imported in this file):
 
 ```python
-from app.analytics.duckdb_conn import open_spatial_connection
+# core/app/alerts/models.py
+# SPDX-License-Identifier: Apache-2.0
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class AlertEvaluation(Base):
+    __tablename__ = "alert_evaluations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    alert_rule_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    transitioned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+Check the alembic head revision, then write the migration:
 
-Run: `cd core && uv run pytest tests/test_features_export_routes.py -v`
-Expected: PASS (all tests in the file, both Task 3 and Task 4)
+Run: `cd core && uv run alembic heads`
+Expected: `0019 (head)`
+
+```python
+# core/alembic/versions/0020_alert_evaluations.py
+# SPDX-License-Identifier: Apache-2.0
+"""app.alerts — alert_evaluations (SP-16b)
+
+Revision ID: 0020
+Revises: 0019
+Create Date: 2026-08-07
+"""
+import sqlalchemy as sa
+from alembic import op
+
+revision = "0020"
+down_revision = "0019"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "alert_evaluations",
+        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
+        sa.Column("alert_rule_item_id", sa.String(), sa.ForeignKey("items.id"), nullable=False),
+        sa.Column("value", sa.Float(), nullable=True),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("transitioned", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("error", sa.String(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("alert_evaluations")
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_models.py`
+Expected: `1 passed`
+
+Verify the migration itself applies cleanly against the real (postgis-marked) suite path used elsewhere in the repo — if a local Postgres is available via docker compose, run `cd core && uv run alembic upgrade head` and confirm no error; otherwise note this is covered by the `postgis`-marked CI job and move on (same caveat SP-15a/b noted for migrations tested primarily via SQLite `init_db` in unit tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/features/routes.py core/tests/test_features_export_routes.py
-git commit -m "feat(core): SP-16a — GET /collections/{id}/export/items (entités brutes, 4 formats)"
+git add core/app/alerts/__init__.py core/app/alerts/models.py core/alembic/versions/0020_alert_evaluations.py core/tests/test_alert_models.py
+git commit -m "feat(core): SP-16b — AlertEvaluation model + migration 0020"
 ```
 
 ---
