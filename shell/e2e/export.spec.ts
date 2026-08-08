@@ -82,6 +82,30 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   expect(pollCount).toBeGreaterThanOrEqual(2);
 });
 
+test("le rendu ?exportRender=1 a une hauteur non nulle (régression C1 — chaîne de hauteur cassée)", async ({ page }) => {
+  // Régression pour la revue finale SP-17a (C1) : le rendu export sans chrome
+  // (AppLayout court-circuité) doit tout de même établir une hauteur de
+  // viewport explicite, sinon le conteneur MapLibre (h-full w-full) résout
+  // sa hauteur en pourcentage contre un ancêtre body/#root sans hauteur
+  // explicite et s'effondre à zéro — chaque capture serait alors blanche.
+  // jsdom (Vitest) n'a pas de moteur de mise en page et ne peut pas détecter
+  // cette classe de régression ; seul un vrai navigateur Playwright le peut.
+  await mockCore(page);
+  await page.route("https://core.test/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
+  });
+
+  await createMap(page, "Carte pour vérif hauteur export");
+
+  await page.goto("/maps/77?exportRender=1");
+  const mapContainer = page.getByTestId("map-container");
+  await expect(mapContainer).toBeVisible();
+  const box = await mapContainer.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThan(0);
+  expect(box!.width).toBeGreaterThan(0);
+});
+
 test("le bouton Exporter est absent quand la capacité est désactivée", async ({ page }) => {
   await mockCore(page);
 

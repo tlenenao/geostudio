@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItemClient } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { ExportPanel } from "./ExportPanel";
@@ -98,5 +98,43 @@ describe("ExportPanel", () => {
     await new Promise((r) => setTimeout(r, 2000));
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+// Fix round (finding I7) : le job d'export ne quitte jamais "running" —
+// simule export-worker mort en plein rendu (OOM, crash) sans reclaim serveur
+// pour l'instant. Scoped à sa propre describe pour les mêmes raisons que
+// AnalyticsContext.test.tsx (fake timers confinés pour ne pas accrocher les
+// userEvent.click des tests ci-dessus).
+describe("ExportPanel — plafond de poll (finding I7)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("stops polling after the max attempt budget and surfaces a clear error instead of polling forever", async () => {
+    const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    const getExportJob = vi
+      .fn()
+      .mockResolvedValue({ id: "job-1", status: "running", resultUrl: null, error: null });
+    renderPanel({ createExport, getExportJob });
+
+    fireEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    fireEvent.click(screen.getByRole("button", { name: "PDF" }));
+
+    // 200 tentatives × 1500ms (MAX_POLL_ATTEMPTS × POLL_INTERVAL_MS) suffit à
+    // épuiser le plafond ; advanceTimersByTimeAsync flushe aussi les
+    // microtâches (await client.getExportJob) entre chaque tick.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 200);
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/toujours en cours/i);
+    // Ni un lien de téléchargement (le job n'est jamais passé à "done") ni un
+    // nouveau tick de poll après le plafond : le nombre d'appels doit
+    // plafonner à MAX_POLL_ATTEMPTS et ne plus jamais grandir.
+    const callsAtCap = getExportJob.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 10);
+    });
+    expect(getExportJob.mock.calls.length).toBe(callsAtCap);
   });
 });

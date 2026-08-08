@@ -13,7 +13,7 @@ from app.configs import repository as configs_repo
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.export import repository as export_repo
 from app.export.rendering import RenderPage, render_export
-from app.ingestion.storage import generate_presigned_get_url, make_s3_client
+from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_get_url, make_s3_client
 from app.jobs import app
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,16 @@ def _launch_and_navigate(url: str) -> RenderPage:
     return page
 
 
+# TODO(SP-17a fix round, I7): export_repo.reclaim_stuck_jobs exists and is
+# tested (tests/test_export_repository.py) but has no periodic caller yet —
+# unlike app.pipelines/app.alerts, which each wire their reclaim-by-age logic
+# into a procrastinate periodic sweep task (run_pipeline_sweep_task,
+# run_alert_sweep_task). A job whose export-worker crashed mid-render (e.g.
+# OOM-killed Chromium) stays "running" in the DB until a future sweep task is
+# added. Scope tradeoff, not an oversight: wiring a full periodic task was
+# judged too large for this fix round on top of the other 10 findings: the
+# shell-side poll cap (ExportPanel, finding I7) already bounds the
+# user-visible symptom (infinite polling) even without server-side reclaim.
 @app.task(queue="export")
 def render_export_task(job_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
@@ -124,8 +134,17 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
                     playwright_driver.stop()
 
         result_key = f"renders/{job_id}.{export_format}"
-        _s3_client_from_env().put_object(
-            Bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
+        bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
+        s3_client = _s3_client_from_env()
+        # Sur un MinIO tout neuf, "geostudio-exports" n'existe pas encore —
+        # contrairement à app/ingestion/routes.py, app/cdc/storage.py et
+        # app/items/storage.py, ce module appelait put_object directement,
+        # échouant en NoSuchBucket au premier export (revue finale SP-17a,
+        # I2). ensure_uploads_bucket est agnostique du nom de bucket malgré
+        # son nom — vérifié en lisant son implémentation.
+        ensure_uploads_bucket(s3_client, bucket)
+        s3_client.put_object(
+            Bucket=bucket,
             Key=result_key, Body=content, ContentType=_CONTENT_TYPE[export_format],
         )
         with request_scoped_session(session_factory) as session:

@@ -457,6 +457,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Export Route */
+        post: operations["create_export_route_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/export/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Export Job Route */
+        get: operations["get_export_job_route_export_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/extensions": {
         parameters: {
             query?: never;
@@ -1385,6 +1419,18 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CreateExportRequest */
+        CreateExportRequest: {
+            /** Format */
+            format: string;
+            /** Itemid */
+            itemId: string;
+        };
+        /** CreateExportResponse */
+        CreateExportResponse: {
+            /** Jobid */
+            jobId: string;
+        };
         /** CreateGroupRequest */
         CreateGroupRequest: {
             /** Name */
@@ -1483,6 +1529,17 @@ export interface components {
             transitioned: boolean;
             /** Value */
             value: number | null;
+        };
+        /** ExportJobStatus */
+        ExportJobStatus: {
+            /** Error */
+            error: string | null;
+            /** Id */
+            id: string;
+            /** Resulturl */
+            resultUrl: string | null;
+            /** Status */
+            status: string;
         };
         /** ExtensionCreate */
         ExtensionCreate: {
@@ -3374,6 +3431,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_export_route_export_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_export_job_route_export_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobStatus"];
                 };
             };
             /** @description Validation Error */

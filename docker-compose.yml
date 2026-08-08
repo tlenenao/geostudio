@@ -124,6 +124,8 @@ services:
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
+      CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
+      CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -217,7 +219,12 @@ services:
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_EXPORTS_BUCKET: geostudio-exports
-      CORE_EXPORT_ENABLED: "true"
+      # Doit suivre la même variable que le service `core` (ci-dessus) — pas
+      # de valeur figée "true" : un worker qui rend une page pendant que
+      # `core` refuse le jeton d'export (CORE_EXPORT_ENABLED absent/false
+      # côté core) produirait une capture "Accès refusé" silencieuse plutôt
+      # qu'un état explicitement coupé (revue finale SP-17a, C3).
+      CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: http://shell:8300
     networks: [gis-net]
