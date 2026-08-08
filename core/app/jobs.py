@@ -58,7 +58,7 @@ app = procrastinate.App(
     connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
     import_paths=[
         "app.ingestion.tasks", "app.items.jobs", "app.collections.jobs",
-        "app.cdc.jobs", "app.harvest.jobs", "app.pipelines.jobs",
+        "app.cdc.jobs", "app.harvest.jobs", "app.pipelines.jobs", "app.alerts.jobs",
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
