@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.alerts import repository as alerts_repo
 from app.alerts.notify import NotifyError, send_email, send_webhook
-from app.analytics.aggregate import run_collection_aggregate
+from app.analytics.aggregate import _measure_label, _measures_for, run_collection_aggregate
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
@@ -148,7 +148,14 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
             f"alert query must reduce to exactly one row (got {len(rows)}) — "
             "this should be impossible given AlertRulePayload's single-scalar validation"
         )
-    label = payload.query.measures[0].label if payload.query.measures else "value"
+    # Must match aggregate.py's own row-keying exactly (_measures_for +
+    # _measure_label): a rule saved with `measures: [{"agg": "sum", "field":
+    # "amount"}]` (no explicit label) rows out keyed "sum_amount", not
+    # "value" — reusing the real helpers (rather than re-deriving the label
+    # here) is what keeps the two in agreement regardless of which
+    # schema-legal query shape (top-level agg/field vs. a one-element
+    # measures list, labelled or not) was used.
+    label = _measure_label(_measures_for(payload.query)[0])
     row = rows[0]
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
@@ -156,6 +163,11 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
 
 
 def _render_message(payload: AlertRulePayload, *, rule_name: str, value: float, state: str) -> str:
+    # Keyword shape (ruleName/value/state/datasetName) must stay in sync
+    # with AlertRulePayload._require_valid_message_template's save-time
+    # `.format(...)` probe in app.configs.schemas — that validator can't
+    # import this function (app.configs sits below app.alerts in the
+    # layers contract), so it re-derives the same call shape by hand.
     return payload.messageTemplate.format(ruleName=rule_name, value=value, state=state, datasetName=payload.datasetItemId)
 
 
@@ -233,10 +245,6 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 action="alert.evaluate", object_type="item", object_id=item_id,
                 payload={"value": value, "state": new_state, "transitioned": transitioned},
             )
-            if transitioned:
-                item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
-                rule_name = item.title if item else item_id
-                _notify(session, tenant_id=tenant_id, item_id=item_id, payload=payload, rule_name=rule_name, value=value, state=new_state)
         except AlertEvaluationError as exc:
             alerts_repo.mark_evaluated(
                 session, evaluation_id=evaluation_id, value=None, state="error", transitioned=False, error=str(exc),
@@ -246,12 +254,60 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 action="alert.evaluate", object_type="item", object_id=item_id,
                 payload={"error": str(exc)},
             )
+            return
         except Exception as exc:  # toute erreur inattendue finit "error", jamais un run zombie
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
+            error_detail = f"erreur interne : {exc}"
             alerts_repo.mark_evaluated(
                 session, evaluation_id=evaluation_id, value=None, state="error", transitioned=False,
-                error=f"erreur interne : {exc}",
+                error=error_detail,
             )
+            # Sibling of the AlertEvaluationError branch above: an
+            # unexpected error (SqlSandboxError statement timeout, a DuckDB
+            # IOException on a collection with no CDC data yet, a KeyError
+            # from a missing S3_* env var, ...) is still a real evaluation
+            # transition to "error" and must be audited exactly like the
+            # "expected" error path is — this was previously missing here.
+            write_audit(
+                session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
+                action="alert.evaluate", object_type="item", object_id=item_id,
+                payload={"error": error_detail},
+            )
+            return
+
+        # The measured state (ok/firing/error above) is already durably
+        # recorded (mark_evaluated + write_audit, still uncommitted but
+        # flushed in this same transaction) BEFORE notification is even
+        # attempted. Notification failures below are deliberately confined
+        # to their own broad try/except and their own audit entry — they
+        # must never reach mark_evaluated again for this evaluation. If they
+        # did (as before this fix), an unguarded failure inside _notify or
+        # _render_message (a KeyError/IndexError/ValueError from a malformed
+        # messageTemplate, or a non-NotifyError exception from secret
+        # decryption) would propagate to a generic handler that overwrites
+        # the just-recorded real ok/firing state with "error" — making the
+        # NEXT tick see "error" as the previous state, re-derive
+        # transitioned=True, and re-notify every channel indefinitely,
+        # including ones that already succeeded.
+        if transitioned:
+            item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+            rule_name = item.title if item else item_id
+            try:
+                _notify(session, tenant_id=tenant_id, item_id=item_id, payload=payload, rule_name=rule_name, value=value, state=new_state)
+            except Exception as exc:
+                # _notify itself already catches NotifyError per-channel and
+                # audits per-channel; this is the backstop for anything else
+                # (e.g. _render_message's `.format()` on a malformed
+                # template — save-time validation in
+                # AlertRulePayload._require_valid_message_template makes this
+                # unreachable for new rules, but pre-existing rules saved
+                # before that validator existed are still possible).
+                logger.exception("alert notification pipeline %s : erreur inattendue", evaluation_id)
+                write_audit(
+                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
+                    action="alert.notify", object_type="item", object_id=item_id,
+                    payload={"channel": None, "state": new_state, "success": False, "error": f"erreur interne : {exc}"},
+                )
 
 
 @app.periodic(cron="*/5 * * * *")

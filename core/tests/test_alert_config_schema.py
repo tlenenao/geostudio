@@ -72,6 +72,28 @@ def test_alert_email_channel_requires_smtp_secret_name():
     assert config.alert.channels[0].smtpSecretName == "smtp-main"
 
 
+def test_alert_message_template_rejects_an_unknown_placeholder():
+    # Regression (final-review Finding 2): without this validator, a rule
+    # referencing an unknown placeholder (or a malformed brace) saved fine
+    # but then failed every single notification attempt at evaluation time —
+    # rejecting it here (422 at authoring time) catches the mistake before
+    # the rule is ever saved.
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(messageTemplate="Alert {unknownField}"))
+
+
+def test_alert_message_template_rejects_a_malformed_brace():
+    with pytest.raises(ValidationError):
+        BuilderConfig.model_validate(_base_alert(messageTemplate="Alert {ruleName"))
+
+
+def test_alert_message_template_accepts_the_known_placeholders():
+    config = BuilderConfig.model_validate(
+        _base_alert(messageTemplate="{ruleName}: {value} is {state} for {datasetName}")
+    )
+    assert "ruleName" in config.alert.messageTemplate
+
+
 def test_alert_channel_missing_kind_is_rejected_not_silently_coerced():
     # Regression: channels is a tagged union on `kind`. Without a discriminator,
     # Pydantic's smart-union matching does not require the `kind` tag to be

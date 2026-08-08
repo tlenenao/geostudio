@@ -282,6 +282,23 @@ class AlertRulePayload(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _require_valid_message_template(self) -> "AlertRulePayload":
+        # Must call .format(...) with the exact same keyword shape as
+        # app.alerts.jobs._render_message (ruleName/value/state/
+        # datasetName) — app.configs sits BELOW app.alerts in the layers
+        # contract, so this can't import _render_message to guarantee
+        # agreement; keep the two in sync by hand if either one's
+        # placeholder set changes. Rejecting an unknown placeholder or a
+        # malformed brace here (422 at save time) is what stops a rule from
+        # being saved successfully but then failing every single
+        # notification attempt forever.
+        try:
+            self.messageTemplate.format(ruleName="x", value=1.0, state="firing", datasetName="y")
+        except (KeyError, IndexError, ValueError) as exc:
+            raise ValueError(f"invalid messageTemplate: {exc}") from exc
+        return self
+
+    @model_validator(mode="after")
     def _require_single_scalar_query(self) -> "AlertRulePayload":
         # v1 scope (design SP-16b §1 non-buts, §2): one scalar per rule, no
         # per-group/multi-series alerting.
