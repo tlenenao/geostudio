@@ -4,7 +4,10 @@
 the sweep. The notify half lives in test_report_jobs.py's sibling tests
 below; the periodic-task-level commit-before-defer proof lives in
 test_report_sweep.py (mirrors test_alert_sweep.py/test_pipeline_sweep.py)."""
+from sqlalchemy import select
+
 from app.alerts.notify import NotifyError
+from app.audit.models import AuditLog
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
@@ -110,3 +113,42 @@ def test_trigger_skips_report_and_audits_when_owner_lost_bookmark_access(monkeyp
     assert deferred == []
     with Session() as s:
         assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
+
+
+def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch):
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        other = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
+            email=None, first_name="", last_name="",
+        )
+        # App owned by "other", never shared with "owner" — "owner" (the
+        # report's owner) cannot read it, but CAN read the bookmark itself
+        # (bookmark owned by "owner"). This exercises the second permission
+        # check ("target app not readable"), distinct from the first
+        # ("bookmark not readable") covered by the sibling test above.
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=other.id, resource_type="app", title="Dashboard",
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
+        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}))
+    report_jobs._trigger_due_reports(Session)
+
+    assert deferred == []
+    with Session() as s:
+        assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
+        audit_rows = s.execute(
+            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
+        ).scalars().all()
+        assert len(audit_rows) == 1
+        assert audit_rows[0].payload["success"] is False
+        assert audit_rows[0].payload["error"] == "target app not readable by report owner"
