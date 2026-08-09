@@ -179,11 +179,23 @@ def _trigger_due_reports(session_factory) -> None:
         session.commit()
 
 
+# 7 jours. TTL volontairement plus long que le défaut d'1 h de
+# generate_presigned_get_url (revue finale SP-17b, I4) : ce lien part dans un
+# e-mail ou un webhook déclenché par un cron nocturne ou de week-end, il est
+# lu des heures voire des jours plus tard. Le défaut court reste le bon
+# ailleurs — GET /reports/{id}/runs re-signe à chaque sondage, il n'y a rien
+# à prolonger là-bas.
+_NOTIFICATION_URL_TTL_SECONDS = 604_800
+
+
 def _presigned_url_for_job(job) -> str | None:
     if job.status != "done" or not job.result_key:
         return None
     bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
-    return generate_presigned_get_url(s3_client_from_env(), bucket=bucket, key=job.result_key)
+    return generate_presigned_get_url(
+        s3_client_from_env(), bucket=bucket, key=job.result_key,
+        expires_in=_NOTIFICATION_URL_TTL_SECONDS,
+    )
 
 
 def _notify_pending_reports(session_factory) -> None:
