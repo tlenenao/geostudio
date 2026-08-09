@@ -56,6 +56,24 @@ def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
     return user
 
 
+def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
+    write_audit(
+        session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
+        action="report.run", object_type="item", object_id=item_id,
+        payload={"success": False, "error": error},
+    )
+
+
+def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
+    """Chemin d'échec unique du déclenchement (ReportTriggerError attendue ou
+    erreur inattendue) : on annule d'abord les écritures partielles de cette
+    itération (un export_jobs créé juste avant l'échec, par exemple), puis on
+    audite l'échec et on committe — le balayage passe au rapport suivant."""
+    session.rollback()
+    _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
+    session.commit()
+
+
 def _trigger_due_reports(session_factory) -> None:
     with request_scoped_session(session_factory) as session:
         due = reports_repo.list_due_reports(session)
@@ -99,15 +117,41 @@ def _trigger_due_reports(session_factory) -> None:
                     payload={"reportItemId": item_id, "exportJobId": job.id, "success": True},
                 )
                 session.commit()
-                render_export_task.defer(job_id=job.id, tenant_id=tenant_id)
+                try:
+                    render_export_task.defer(job_id=job.id, tenant_id=tenant_id)
+                except Exception as exc:
+                    # Le run et son export_jobs sont déjà committés (patron
+                    # commit-avant-defer) : si la mise en file échoue, plus
+                    # personne ne dépilera jamais ce job, il resterait
+                    # "pending" indéfiniment et reclaim_stuck_jobs ne
+                    # récupère que les "running". On le clôt en erreur pour
+                    # que l'étape de notification le voie au tick suivant et
+                    # notifie l'échec, comme pour n'importe quel rendu raté.
+                    logger.exception("rapport %s : mise en file du rendu impossible", item_id)
+                    export_repo.mark_error(
+                        session, job_id=job.id, error=f"mise en file impossible : {exc}",
+                    )
+                    _audit_trigger_failure(
+                        session, tenant_id=tenant_id, item_id=item_id,
+                        error=f"mise en file impossible : {exc}",
+                    )
+                    session.commit()
             except ReportTriggerError as exc:
                 logger.warning("report %s trigger failed: %s", item_id, exc)
-                write_audit(
-                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                    action="report.run", object_type="item", object_id=item_id,
-                    payload={"success": False, "error": str(exc)},
+                _record_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=str(exc))
+            except Exception as exc:
+                # Jumeau du filet large d'app.alerts.jobs : tout ce qui est
+                # dans le `try` et n'est PAS une ReportTriggerError
+                # (render_export_task.defer contre un vrai Postgres, l'assert
+                # de _owner_user, write_audit, les session.commit()) sortait
+                # auparavant de _trigger_due_reports : un incident transitoire
+                # sur le rapport n°1 abandonnait les rapports n°2..N de tous
+                # les tenants pour ce tick, et sautait le
+                # export_repo.reclaim_stuck_jobs final.
+                logger.exception("rapport %s : erreur inattendue au déclenchement", item_id)
+                _record_trigger_failure(
+                    session, tenant_id=tenant_id, item_id=item_id, error=f"erreur interne : {exc}",
                 )
-                session.commit()
         export_repo.reclaim_stuck_jobs(session)
         session.commit()
 

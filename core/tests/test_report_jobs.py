@@ -154,6 +154,102 @@ def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch)
         assert audit_rows[0].payload["error"] == "target app not readable by report owner"
 
 
+def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(monkeypatch):
+    # Revue finale SP-17b (I1) : seule ReportTriggerError était rattrapée.
+    # render_export_task.defer (vrai appel Postgres/procrastinate),
+    # write_audit et les session.commit() de la boucle ne l'étaient pas — un
+    # incident transitoire sur le premier rapport abandonnait tous les
+    # suivants, pour tous les tenants, et sautait reclaim_stuck_jobs.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
+        first_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        second_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        s.commit()
+
+    attempts = []
+
+    def _defer(**kw):
+        attempts.append(kw)
+        if len(attempts) == 1:
+            raise Exception("procrastinate indisponible")
+
+    monkeypatch.setattr(
+        report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(_defer)}),
+    )
+
+    report_jobs._trigger_due_reports(Session)  # ne doit pas propager
+
+    # Les DEUX rapports dus ont été traités : avant le correctif, l'exception
+    # du premier remontait et le second n'était jamais atteint.
+    assert len(attempts) == 2
+    with Session() as s:
+        failures = s.execute(
+            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_type == "item")
+        ).scalars().all()
+        assert len(failures) == 1
+        assert failures[0].payload["success"] is False
+        assert "mise en file impossible" in failures[0].payload["error"]
+        assert failures[0].object_id in {first_id, second_id}
+        # Le job du rapport en échec est clos en erreur : sans ça il resterait
+        # "pending" pour toujours (personne ne l'a dépilé, et
+        # reclaim_stuck_jobs ne récupère que les "running").
+        failed_run = reports_repo.get_latest_run(
+            s, tenant_id=tenant.id, report_item_id=failures[0].object_id,
+        )
+        failed_job = export_repo.get_job(s, tenant_id=tenant.id, job_id=failed_run.export_job_id)
+        assert failed_job.status == "error"
+
+
+def test_trigger_audits_unexpected_error_raised_inside_the_loop_body(monkeypatch):
+    # Second chemin d'I1 : l'erreur inattendue survient AVANT le commit
+    # (ici encode_analytics_context), donc le filet large doit annuler les
+    # écritures partielles, auditer « erreur interne » et continuer.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
+        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(
+        report_jobs, "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
+    )
+
+    def _boom(bookmark):
+        raise ValueError("bookmark illisible")
+
+    monkeypatch.setattr(report_jobs, "encode_analytics_context", _boom)
+
+    report_jobs._trigger_due_reports(Session)  # ne doit pas propager
+
+    assert deferred == []
+    with Session() as s:
+        rows = s.execute(
+            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].payload["success"] is False
+        assert rows[0].payload["error"] == "erreur interne : bookmark illisible"
+
+
 def test_notify_sends_webhook_with_result_url_and_marks_notified(monkeypatch):
     Session = _make_session()
     with Session() as s:
