@@ -24,7 +24,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def create_run(session: Session, *, tenant_id: str, report_item_id: str, export_job_id: str) -> ReportRun:
+def create_run(
+    session: Session, *, tenant_id: str, report_item_id: str, export_job_id: str | None,
+) -> ReportRun:
+    """export_job_id=None = déclenchement échoué (cf. app.reports.jobs.
+    _record_trigger_failure) : la ligne n'existe que pour donner à
+    list_due_reports une date contre laquelle mesurer la cadence cron."""
     run = ReportRun(
         id=uuid.uuid4().hex, tenant_id=tenant_id,
         report_item_id=report_item_id, export_job_id=export_job_id,

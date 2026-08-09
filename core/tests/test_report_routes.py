@@ -96,3 +96,28 @@ def test_get_report_runs_404s_for_unreadable_report():
     response = client.get(f"/reports/{report_id}/runs")
 
     assert response.status_code == 404
+
+
+def test_get_report_runs_reports_failed_trigger_run_as_error():
+    # Revue finale SP-17b (I2) : un run sans export_job_id est un
+    # déclenchement échoué (aucun rendu n'a jamais été mis en file). Il doit
+    # remonter en "error" avec un message, pas provoquer une recherche de job
+    # sur un id nul.
+    app, Session = _make_app_and_session()
+    with Session() as s:
+        tenant, user, report_id, _ = _seed(s)
+        reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=None,
+        )
+        s.commit()
+    app.dependency_overrides[get_current_user] = lambda: user
+    client = TestClient(app)
+
+    response = client.get(f"/reports/{report_id}/runs")
+
+    assert response.status_code == 200
+    body = response.json()
+    failed = [row for row in body if row["resultUrl"] is None]
+    assert len(failed) == 1
+    assert failed[0]["status"] == "error"
+    assert failed[0]["error"] == "déclenchement échoué (voir le journal d'audit)"

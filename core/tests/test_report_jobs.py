@@ -112,7 +112,11 @@ def test_trigger_skips_report_and_audits_when_owner_lost_bookmark_access(monkeyp
 
     assert deferred == []
     with Session() as s:
-        assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
+        # Une ligne report_runs existe malgré l'échec (revue finale SP-17b,
+        # I2) mais sans export_job_id : rien n'a été rendu.
+        run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None
 
 
 def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch):
@@ -145,13 +149,71 @@ def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch)
 
     assert deferred == []
     with Session() as s:
-        assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
+        run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None
         audit_rows = s.execute(
             select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
         ).scalars().all()
         assert len(audit_rows) == 1
         assert audit_rows[0].payload["success"] is False
         assert audit_rows[0].payload["error"] == "target app not readable by report owner"
+
+
+def test_failed_trigger_still_records_a_run_so_cron_cadence_is_respected(monkeypatch):
+    # Revue finale SP-17b (I2) : un déclenchement en échec n'écrivait qu'une
+    # ligne d'audit, aucune ligne report_runs. list_due_reports dérivant
+    # « dû ? » de get_latest_run, le rapport était rejugé dû à CHAQUE
+    # balayage de 5 minutes au lieu de respecter son cron hebdomadaire.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        other = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
+            email=None, first_name="", last_name="",
+        )
+        # Bookmark détenu par "other", jamais partagé : le propriétaire du
+        # rapport ne peut pas le lire → ReportTriggerError à chaque tentative.
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=other.id, resource_type="app", title="Dashboard",
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=other.id, app_id=app_item.id)
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+        )
+        config = BuilderConfig.model_validate({
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": bookmark_id,
+                "refreshPolicy": {"enabled": True, "cron": "0 8 * * 1"},  # hebdomadaire
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        })
+        configs_repo.create_config(s, config, item_id=item.id, tenant_id=tenant.id)
+        report_id = item.id
+        s.commit()
+
+    monkeypatch.setattr(
+        report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: None)}),
+    )
+
+    with Session() as s:
+        assert (report_id, tenant.id) in reports_repo.list_due_reports(s)
+
+    report_jobs._trigger_due_reports(Session)
+
+    with Session() as s:
+        run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None  # aucun rendu n'a été mis en file
+        assert run.notified_at is not None  # rien à notifier : clos d'emblée
+        # Même tick : le rapport n'est PLUS dû (avant le correctif, il l'était
+        # encore, et le serait resté à chaque balayage de 5 minutes).
+        assert (report_id, tenant.id) not in reports_repo.list_due_reports(s)
 
 
 def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(monkeypatch):

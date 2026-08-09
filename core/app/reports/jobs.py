@@ -68,8 +68,22 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     """Chemin d'échec unique du déclenchement (ReportTriggerError attendue ou
     erreur inattendue) : on annule d'abord les écritures partielles de cette
     itération (un export_jobs créé juste avant l'échec, par exemple), puis on
-    audite l'échec et on committe — le balayage passe au rapport suivant."""
+    audite l'échec et on committe — le balayage passe au rapport suivant.
+
+    Crée AUSSI une ligne report_runs sans export_job_id (revue finale SP-17b,
+    I2) : list_due_reports dérive « ce rapport est-il dû ? » de
+    get_latest_run, donc un rapport sans aucun run était rejugé dû à chaque
+    balayage de 5 minutes — un rapport définitivement cassé produisait des
+    centaines de lignes d'audit par jour au lieu d'une par cycle cron. Même
+    raisonnement qu'AlertRule, qui persiste toujours une évaluation
+    (state="error") pour que la cadence soit respectée en échec comme en
+    succès. Le run est marqué notifié immédiatement : aucun rendu n'a été mis
+    en file, il n'y a rien à notifier — l'audit report.run porte l'échec."""
     session.rollback()
+    run = reports_repo.create_run(
+        session, tenant_id=tenant_id, report_item_id=item_id, export_job_id=None,
+    )
+    reports_repo.mark_notified(session, run_id=run.id)
     _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
     session.commit()
 
@@ -166,6 +180,14 @@ def _presigned_url_for_job(job) -> str | None:
 def _notify_pending_reports(session_factory) -> None:
     with request_scoped_session(session_factory) as session:
         for run in reports_repo.list_unnotified_runs(session):
+            if run.export_job_id is None:
+                # Run de déclenchement échoué (cf. _record_trigger_failure,
+                # qui le marque déjà notifié) : aucun rendu n'a jamais été mis
+                # en file, il n'y a rien à notifier. Filet de sécurité au cas
+                # où le marquage n'aurait pas été committé.
+                reports_repo.mark_notified(session, run_id=run.id)
+                session.commit()
+                continue
             job = export_repo.get_job(session, tenant_id=run.tenant_id, job_id=run.export_job_id)
             if job is None or job.status not in ("done", "error"):
                 continue  # rendu encore en cours — on repassera au tick suivant
