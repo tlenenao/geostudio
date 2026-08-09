@@ -170,6 +170,48 @@ def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_se
     assert "navigation timeout" in refreshed.error
 
 
+def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    captured_urls = []
+
+    def fake_launch_and_navigate(url):
+        captured_urls.append(url)
+        return _FakePage()
+
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", fake_launch_and_navigate)
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
+        page_id="page-2", ctx="abc123",
+    )
+    session.commit()
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    # db_session's item is a "map" config (kind="map"), so route == "maps"
+    # (see render_export_task's `route = "maps" if config.kind == "map" ...`)
+    # — not "apps" as in the brief's illustrative (app) example.
+    assert len(captured_urls) == 1
+    assert f"/maps/{item.id}/page-2?exportToken=" in captured_urls[0]
+    assert captured_urls[0].endswith("&ctx=abc123")
+
+
+def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    captured_urls = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate",
+        lambda url: captured_urls.append(url) or _FakePage(),
+    )
+    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
+    session.commit()
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    assert len(captured_urls) == 1
+    assert f"/maps/{item.id}?exportToken=" in captured_urls[0]
+    assert "ctx=" not in captured_urls[0]
+
+
 def test_render_export_task_missing_job_is_a_noop(db_session):
     session, tenant, _user, _item = db_session
     export_jobs.render_export_task(job_id="does-not-exist", tenant_id=tenant.id)  # ne doit pas lever
