@@ -129,7 +129,7 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
         def generate_presigned_url(self, *args, **kwargs):
             return "https://minio.test/presigned"
 
-    monkeypatch.setattr(export_jobs, "_s3_client_from_env", lambda: _FakeS3Client())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeS3Client())
 
     # Appel direct de la fonction tâche (pas .defer() + run_worker) : teste
     # l'orchestration synchrone, pas la file — pas besoin d'InMemoryConnector
@@ -207,7 +207,7 @@ def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypa
         return _FakePage()
 
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", fake_launch_and_navigate)
-    monkeypatch.setattr(export_jobs, "_s3_client_from_env", lambda: _FakeUploadS3Client())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     job = export_repo.create_job(
         session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
         page_id="page-2", ctx="abc123",
@@ -240,7 +240,7 @@ def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session
         export_jobs, "_launch_and_navigate",
         lambda url: captured_urls.append(url) or _FakePage(),
     )
-    monkeypatch.setattr(export_jobs, "_s3_client_from_env", lambda: _FakeUploadS3Client())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
     session.commit()
 
