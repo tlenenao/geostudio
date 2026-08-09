@@ -32,9 +32,12 @@ class ReportRunStatus(BaseModel):
 
 
 def get_exports_bucket() -> str:
-    # Même clé de dependency-override qu'app.export.routes — réutilisée par
-    # nom (pas importée) pour que app.main puisse overrider les deux
-    # indépendamment sans qu'un des deux modules importe l'autre pour rien.
+    # Même corps qu'app.export.routes.get_exports_bucket, redéclaré ici plutôt
+    # qu'importé pour ne pas dépendre d'un module optionnel (le routeur export
+    # n'est monté que si CORE_EXPORT_ENABLED). Ce sont donc DEUX clés
+    # d'override distinctes, et app.main n'override que celle d'app.export —
+    # sans conséquence : la valeur est lue dans l'environnement à chaque
+    # appel, exactement comme le fait l'override.
     return os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
 
 

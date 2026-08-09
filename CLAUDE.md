@@ -480,7 +480,5 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   `showNorthArrow` retirés du panneau d'édition (contrôles inertes, jamais
   rendus — cf. Fait) ; `POST /export` n'valide pas le kind de l'item
   (dataset/pipeline accepté, échoue après 30s au lieu d'un 422 immédiat) ;
-  `export_repo.reclaim_stuck_jobs` existe (testé) mais aucune tâche
-  périodique ne l'appelle encore, TODO explicite dans `jobs.py` ;
   `export-worker` sans instrumentation OTel contrairement à `core`/
   `worker`/`cdc-worker`.
