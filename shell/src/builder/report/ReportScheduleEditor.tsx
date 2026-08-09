@@ -3,7 +3,7 @@ import type { AlertChannel, ReportSchedulePayload } from "../../api/types";
 import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
 
 // Composant contrôlé (reproduit la forme value/onChange de
-// PipelineScheduleEditor, pas la forme autonome create-and-reset
+// PipelineScheduleEditor, pas la forme autonome création-et-réinitialisation
 // d'AlertRuleEditor) : ReportEditPage (SP-17b) a besoin à la fois d'un
 // cycle de création ET d'édition plus un panneau d'historique des runs à
 // côté, donc c'est le parent qui possède la persistance — même raison que
