@@ -9,6 +9,14 @@ import { mockCore } from "./mocks";
 test("programmer un rapport sur un signet, voir son historique d'exécutions", async ({ page }) => {
   await mockCore(page);
 
+  // ReportSchedule est conditionné à la capacité export (revue finale
+  // SP-17b, I3) : l'entrée « Programmer un rapport » ne s'affiche que si
+  // GET /instance annonce exportEnabled, et le cœur refuse la création en 403
+  // sinon. Le défaut de mockCore ne porte que readOnly.
+  await page.route("https://core.test/instance", async (route) => {
+    await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
+  });
+
   await page.route("**/items*", async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("type") !== "bookmark") return route.fallback();
