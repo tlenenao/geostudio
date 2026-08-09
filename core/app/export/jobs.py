@@ -102,6 +102,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             return
         export_repo.mark_running(session, job_id=job_id)
         item_id, user_id, export_format = job.item_id, job.user_id, job.format
+        page_id, ctx = job.page_id, job.ctx
 
     try:
         with request_scoped_session(session_factory) as session:
@@ -110,9 +111,16 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
                 raise ValueError(f"export item '{item_id}' not found")
             print_layout = config.config.printLayout
 
+        from urllib.parse import quote
+
         token = mint_export_token(tenant_id=tenant_id, user_id=user_id, job_id=job_id)
         route = "maps" if config.kind == "map" else "apps"
-        target_url = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}?exportToken={token}&exportRender=1"
+        base = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}"
+        if page_id:
+            base = f"{base}/{quote(page_id, safe='')}"
+        target_url = f"{base}?exportToken={token}&exportRender=1"
+        if ctx:
+            target_url = f"{target_url}&ctx={ctx}"
 
         browser_page = _launch_and_navigate(target_url)
         try:
