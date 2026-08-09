@@ -22,6 +22,13 @@ class ReportRun(Base):
     # recherchées par id via export_repo.get_job à la lecture (§2 du
     # design), jamais jointes en SQL — même discipline que
     # pipeline_runs/get_latest_run.
-    export_job_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable depuis la revue finale SP-17b (I2) : un déclenchement qui
+    # échoue (propriétaire ayant perdu l'accès au bookmark/à l'app, capacité
+    # export coupée, erreur inattendue) crée quand même une ligne report_runs
+    # — sans quoi list_due_reports, qui dérive la cadence de get_latest_run,
+    # rejugeait le rapport « dû » à chaque balayage de 5 minutes au lieu de
+    # respecter son cron. Une telle ligne n'a par construction aucun
+    # export_jobs derrière elle.
+    export_job_id: Mapped[str | None] = mapped_column(String, nullable=True)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

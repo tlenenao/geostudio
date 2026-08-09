@@ -56,6 +56,18 @@ def get_report_runs_route(
     runs = reports_repo.list_runs(session, tenant_id=user.tenant_id, report_item_id=item_id)
     result: list[ReportRunStatus] = []
     for run in runs:
+        if run.export_job_id is None:
+            # Déclenchement échoué (revue finale SP-17b, I2) : la ligne existe
+            # uniquement pour que la cadence cron soit mesurable, il n'y a
+            # jamais eu d'export_jobs derrière. Le détail de l'échec est dans
+            # le journal d'audit (action report.run).
+            result.append(ReportRunStatus(
+                id=run.id, status="error", resultUrl=None,
+                error="déclenchement échoué (voir le journal d'audit)",
+                notifiedAt=run.notified_at.isoformat() if run.notified_at else None,
+                createdAt=run.created_at.isoformat(),
+            ))
+            continue
         job = export_repo.get_job(session, tenant_id=user.tenant_id, job_id=run.export_job_id)
         status = job.status if job is not None else "unknown"
         result_url = None
