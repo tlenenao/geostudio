@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { Item } from "../api/types";
@@ -30,9 +31,11 @@ function Harness({ children }: { children: ReactNode }) {
     getToken: () => "t",
   });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>{children}</ItemClientProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>{children}</ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
