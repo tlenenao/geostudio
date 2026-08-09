@@ -11,6 +11,7 @@ import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
 import { DatasetEditPage } from "../pages/DatasetEditPage";
 import { PipelineBuilderPage } from "../pages/PipelineBuilderPage";
+import { ReportEditPage } from "../pages/ReportEditPage";
 import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
@@ -53,6 +54,10 @@ function useOpenItem() {
     }
     if (type === "pipeline") {
       navigate(`/pipelines/${pk}/edit`);
+      return;
+    }
+    if (type === "report") {
+      navigate(`/reports/${pk}/edit`);
       return;
     }
     navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
@@ -131,6 +136,31 @@ function PipelineEditRoute() {
   return <PipelineBuilderPage pk={pk!} />;
 }
 
+function ReportNewRoute() {
+  const location = useLocation();
+  const bookmarkItemId = (location.state as { bookmarkItemId?: string } | null)?.bookmarkItemId;
+  return <ReportEditPage pk={null} initialBookmarkItemId={bookmarkItemId} />;
+}
+
+function ReportEditRoute() {
+  const { pk } = useParams();
+  return <ReportEditPage pk={pk!} />;
+}
+
+function ReportsRoute() {
+  const { onOpenItem, openError } = useOpenItem();
+  return (
+    <>
+      {openError && (
+        <p role="alert" className="text-sm text-red-600">
+          Échec de l'ouverture du rapport.
+        </p>
+      )}
+      <CatalogPage onOpenItem={onOpenItem} fixedType="report" />
+    </>
+  );
+}
+
 function AppRuntimeRoute() {
   const { pk, pageId } = useParams();
   return <AppRuntimePage pk={pk!} pageId={pageId} />;
@@ -173,6 +203,9 @@ export function AppRoutes() {
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
         <Route path="/pipelines/new" element={<PipelineNewRoute />} />
         <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
+        <Route path="/reports" element={<ReportsRoute />} />
+        <Route path="/reports/new" element={<ReportNewRoute />} />
+        <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
         <Route path="/analytics/sql" element={<SqlLabPage />} />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
