@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDeleteItem, useUpdateItem, useUploadThumbnail } from "../api/hooks";
 import type { Item } from "../api/types";
 import { Button } from "../ui/button";
@@ -12,6 +13,7 @@ import { ShareDialog } from "./ShareDialog";
 type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
+  const navigate = useNavigate();
   const [panel, setPanel] = useState<Panel>(null);
   const update = useUpdateItem(item.pk);
   const publish = useUpdateItem(item.pk);
@@ -57,6 +59,17 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("edit")}>
             Modifier
           </button>
+          {item.resourceType === "bookmark" && (
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => {
+                setPanel(null);
+                navigate("/reports/new", { state: { bookmarkItemId: item.pk } });
+              }}
+            >
+              Programmer un rapport
+            </button>
+          )}
           <button
             className="px-3 py-1 text-left hover:bg-slate-100"
             onClick={async () => {
