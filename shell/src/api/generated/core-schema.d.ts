@@ -806,6 +806,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reports/{item_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report Runs Route */
+        get: operations["get_report_runs_route_reports__item_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schemas/app-config": {
         parameters: {
             query?: never;
@@ -1297,7 +1314,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert" | "report";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -1312,6 +1329,7 @@ export interface components {
             pages?: components["schemas"]["Page"][];
             pipeline?: components["schemas"]["PipelinePayload"] | null;
             printLayout?: components["schemas"]["PrintLayout"] | null;
+            report?: components["schemas"]["ReportSchedulePayload"] | null;
             /** Theme */
             theme?: {
                 [key: string]: unknown;
@@ -1995,6 +2013,29 @@ export interface components {
             showScaleBar: boolean;
             /** Title */
             title?: string | null;
+        };
+        /** ReportRunStatus */
+        ReportRunStatus: {
+            /** Createdat */
+            createdAt: string;
+            /** Error */
+            error: string | null;
+            /** Id */
+            id: string;
+            /** Notifiedat */
+            notifiedAt: string | null;
+            /** Resulturl */
+            resultUrl: string | null;
+            /** Status */
+            status: string;
+        };
+        /** ReportSchedulePayload */
+        ReportSchedulePayload: {
+            /** Bookmarkitemid */
+            bookmarkItemId: string;
+            /** Channels */
+            channels?: (components["schemas"]["AlertChannelWebhook"] | components["schemas"]["AlertChannelEmail"])[];
+            refreshPolicy: components["schemas"]["PipelineRefreshPolicy"];
         };
         /** RevisionInfo */
         RevisionInfo: {
@@ -4322,6 +4363,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_runs_route_reports__item_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRunStatus"][];
                 };
             };
             /** @description Validation Error */

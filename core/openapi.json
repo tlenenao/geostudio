@@ -605,7 +605,8 @@
               "dataset",
               "bookmark",
               "pipeline",
-              "alert"
+              "alert",
+              "report"
             ],
             "title": "Kind",
             "type": "string"
@@ -667,6 +668,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PrintLayout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportSchedulePayload"
               },
               {
                 "type": "null"
@@ -2660,6 +2671,103 @@
           }
         },
         "title": "PrintLayout",
+        "type": "object"
+      },
+      "ReportRunStatus": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "notifiedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifiedat"
+          },
+          "resultUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resulturl"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "resultUrl",
+          "error",
+          "notifiedAt",
+          "createdAt"
+        ],
+        "title": "ReportRunStatus",
+        "type": "object"
+      },
+      "ReportSchedulePayload": {
+        "properties": {
+          "bookmarkItemId": {
+            "title": "Bookmarkitemid",
+            "type": "string"
+          },
+          "channels": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "email": "#/components/schemas/AlertChannelEmail",
+                  "webhook": "#/components/schemas/AlertChannelWebhook"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AlertChannelWebhook"
+                },
+                {
+                  "$ref": "#/components/schemas/AlertChannelEmail"
+                }
+              ]
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "refreshPolicy": {
+            "$ref": "#/components/schemas/PipelineRefreshPolicy"
+          }
+        },
+        "required": [
+          "bookmarkItemId",
+          "refreshPolicy"
+        ],
+        "title": "ReportSchedulePayload",
         "type": "object"
       },
       "RevisionInfo": {
@@ -6426,6 +6534,59 @@
           }
         },
         "summary": "Get Public Site"
+      }
+    },
+    "/reports/{item_id}/runs": {
+      "get": {
+        "operationId": "get_report_runs_route_reports__item_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportRunStatus"
+                  },
+                  "title": "Response Get Report Runs Route Reports  Item Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report Runs Route"
       }
     },
     "/schemas/app-config": {
