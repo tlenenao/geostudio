@@ -26,7 +26,7 @@ def _session_factory():
     return make_session_factory(engine)
 
 
-def _s3_client_from_env():
+def s3_client_from_env():
     return make_s3_client(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
         access_key=os.environ["S3_ACCESS_KEY"],
@@ -143,7 +143,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
 
         result_key = f"renders/{job_id}.{export_format}"
         bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
-        s3_client = _s3_client_from_env()
+        s3_client = s3_client_from_env()
         # Sur un MinIO tout neuf, "geostudio-exports" n'existe pas encore —
         # contrairement à app/ingestion/routes.py, app/cdc/storage.py et
         # app/items/storage.py, ce module appelait put_object directement,

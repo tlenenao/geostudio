@@ -13,12 +13,15 @@ import os
 
 from sqlalchemy import select
 
+from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
 from app.configs import repository as configs_repo
+from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.export import repository as export_repo
-from app.export.jobs import render_export_task
+from app.export.jobs import render_export_task, s3_client_from_env
+from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.jobs import app
@@ -105,3 +108,81 @@ def _trigger_due_reports(session_factory) -> None:
                 session.commit()
         export_repo.reclaim_stuck_jobs(session)
         session.commit()
+
+
+def _presigned_url_for_job(job) -> str | None:
+    if job.status != "done" or not job.result_key:
+        return None
+    bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
+    return generate_presigned_get_url(s3_client_from_env(), bucket=bucket, key=job.result_key)
+
+
+def _notify_pending_reports(session_factory) -> None:
+    with request_scoped_session(session_factory) as session:
+        for run in reports_repo.list_unnotified_runs(session):
+            job = export_repo.get_job(session, tenant_id=run.tenant_id, job_id=run.export_job_id)
+            if job is None or job.status not in ("done", "error"):
+                continue  # still rendering — revisit next tick
+
+            report_config = configs_repo.get_config_by_item(session, run.report_item_id)
+            if report_config is None or report_config.kind != "report":
+                # Report item deleted after triggering — nothing left to
+                # notify against; close the run out so the sweep doesn't
+                # loop on it forever.
+                reports_repo.mark_notified(session, run_id=run.id)
+                session.commit()
+                continue
+            payload = report_config.config.report
+            assert payload is not None
+
+            item = items_repo.get_item(session, tenant_id=run.tenant_id, item_id=run.report_item_id)
+            title = item.title if item is not None else run.report_item_id
+            result_url = _presigned_url_for_job(job)
+            message = (
+                f"Rapport « {title} » : {job.status}."
+                + (f" Lien : {result_url}" if result_url else "")
+                + (f" Erreur : {job.error}" if job.error else "")
+            )
+
+            for channel in payload.channels:
+                success = False
+                error_detail = None
+                try:
+                    if isinstance(channel, AlertChannelWebhook):
+                        send_webhook(
+                            channel,
+                            payload={"reportItemId": run.report_item_id, "status": job.status,
+                                      "resultUrl": result_url, "error": job.error},
+                        )
+                    elif isinstance(channel, AlertChannelEmail):
+                        send_email(
+                            session, tenant_id=run.tenant_id, channel=channel,
+                            subject=f"[GeoStudio] Rapport : {title}", body=message,
+                        )
+                    success = True
+                except NotifyError as exc:
+                    error_detail = str(exc)
+                    logger.warning("report notification failed for run %s: %s", run.id, exc)
+                write_audit(
+                    session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
+                    action="report.notify", object_type="item", object_id=run.report_item_id,
+                    payload={"channel": channel.kind, "success": success, "error": error_detail},
+                )
+
+            # Posé après la tentative, quel que soit le résultat par canal —
+            # une notification n'est jamais rejouée au tick suivant (design
+            # SP-17b §2, cf. le risque documenté "webhook cassé de façon
+            # permanente ne doit pas devenir un déni de service").
+            reports_repo.mark_notified(session, run_id=run.id)
+            session.commit()
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(queue="etl")
+def sweep_report_schedules_task(timestamp: int) -> None:
+    if is_read_only_mode():
+        logger.info("mode lecture seule : balayage de rapports planifiés ignoré")
+        return
+    session_factory = _session_factory()
+    _trigger_due_reports(session_factory)
+    _notify_pending_reports(session_factory)
