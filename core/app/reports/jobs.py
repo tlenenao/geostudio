@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.audit.writer import write_audit
-from app.auth.dependency import is_read_only_mode
+from app.auth.dependency import is_export_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
 from app.db import make_engine, make_session_factory, request_scoped_session
@@ -98,6 +98,15 @@ def _trigger_due_reports(session_factory) -> None:
                     continue
                 payload = config.config.report
                 assert payload is not None
+
+                # Fail-fast (revue finale SP-17b, I3) : la création est déjà
+                # refusée en 403 quand la capacité export est coupée, mais un
+                # rapport créé AVANT que l'admin ne la coupe reste en base.
+                # Sans cette garde, son rendu serait déféré sur une file
+                # `export` que personne ne dépile et resterait "pending" à
+                # jamais (reclaim_stuck_jobs ne récupère que les "running").
+                if not is_export_enabled():
+                    raise ReportTriggerError("export capability disabled on this instance")
 
                 owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
 

@@ -3,6 +3,8 @@
 test_pipeline_sweep.py exactly: pure SQLite, render_export_task.defer is
 monkeypatched so this test proves "is a report due, was export_jobs+
 report_runs created and committed before deferring", never a real render."""
+import pytest
+
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
@@ -11,6 +13,14 @@ from app.reports import jobs as report_jobs
 from app.reports import repository as reports_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+
+@pytest.fixture(autouse=True)
+def _export_enabled(monkeypatch):
+    """Le balayage refuse de déclencher un rendu quand la capacité export est
+    coupée (revue finale SP-17b, I3) — ces tests décrivent une instance où
+    elle est active ; le cas coupé a son propre test."""
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
 
 
 def _make_session():
