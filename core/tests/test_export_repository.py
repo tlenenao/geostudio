@@ -145,6 +145,33 @@ def test_reclaim_stuck_jobs_ignores_pending_and_done_jobs():
     assert export_repo.get_job(session, tenant_id=tenant.id, job_id=done_job.id).status == "done"
 
 
+def test_create_job_accepts_optional_page_id_and_ctx():
+    session = _session()
+    tenant = get_or_create_default_tenant(session)
+    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
+    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    session.commit()
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
+        page_id="page-2", ctx="eyJ0aW1lUmFuZ2UiOm51bGx9",
+    )
+    session.commit()
+    assert job.page_id == "page-2"
+    assert job.ctx == "eyJ0aW1lUmFuZ2UiOm51bGx9"
+
+
+def test_create_job_defaults_page_id_and_ctx_to_none():
+    session = _session()
+    tenant = get_or_create_default_tenant(session)
+    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
+    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    session.commit()
+    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    session.commit()
+    assert job.page_id is None
+    assert job.ctx is None
+
+
 def test_reclaim_stuck_jobs_respects_custom_threshold():
     session = _session()
     tenant = get_or_create_default_tenant(session)

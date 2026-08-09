@@ -19,6 +19,11 @@ class ExportJob(Base):
     item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     format: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable, additive (SP-17b) : None préserve le comportement actuel du
+    # bouton d'export manuel (pas de page/contexte particulier) ; renseignés
+    # uniquement par le sweep de app.reports.jobs.
+    page_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    ctx: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result_key: Mapped[str | None] = mapped_column(String, nullable=True)

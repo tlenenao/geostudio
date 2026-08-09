@@ -25,10 +25,13 @@ def _now() -> datetime:
 _RUNNING_RECLAIM_MINUTES = 60
 
 
-def create_job(session: Session, *, tenant_id: str, item_id: str, user_id: str, format: str) -> ExportJob:
+def create_job(
+    session: Session, *, tenant_id: str, item_id: str, user_id: str, format: str,
+    page_id: str | None = None, ctx: str | None = None,
+) -> ExportJob:
     job = ExportJob(
         id=uuid.uuid4().hex, tenant_id=tenant_id, item_id=item_id, user_id=user_id,
-        format=format, status="pending",
+        format=format, status="pending", page_id=page_id, ctx=ctx,
     )
     session.add(job)
     session.flush()
