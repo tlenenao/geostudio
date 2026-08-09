@@ -6,6 +6,7 @@ via Chromium headless. Tourne dans le conteneur export-worker dédié (queue
 en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 import logging
 import os
+from urllib.parse import quote
 
 from app.auth.dependency import is_export_enabled
 from app.auth.export_tokens import mint_export_token
@@ -76,16 +77,10 @@ def _launch_and_navigate(url: str) -> RenderPage:
     return page
 
 
-# TODO(SP-17a fix round, I7): export_repo.reclaim_stuck_jobs exists and is
-# tested (tests/test_export_repository.py) but has no periodic caller yet —
-# unlike app.pipelines/app.alerts, which each wire their reclaim-by-age logic
-# into a procrastinate periodic sweep task (run_pipeline_sweep_task,
-# run_alert_sweep_task). A job whose export-worker crashed mid-render (e.g.
-# OOM-killed Chromium) stays "running" in the DB until a future sweep task is
-# added. Scope tradeoff, not an oversight: wiring a full periodic task was
-# judged too large for this fix round on top of the other 10 findings: the
-# shell-side poll cap (ExportPanel, finding I7) already bounds the
-# user-visible symptom (infinite polling) even without server-side reclaim.
+# export_repo.reclaim_stuck_jobs (un job "running" trop vieux — export-worker
+# ou Chromium tué en cours de rendu) est appelé à la fin de chaque tick de
+# app.reports.jobs._trigger_due_reports depuis SP-17b, comme
+# run_pipeline_sweep_task le fait pour app.pipelines.
 @app.task(queue="export")
 def render_export_task(job_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
@@ -110,8 +105,6 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             if config is None:
                 raise ValueError(f"export item '{item_id}' not found")
             print_layout = config.config.printLayout
-
-        from urllib.parse import quote
 
         token = mint_export_token(tenant_id=tenant_id, user_id=user_id, job_id=job_id)
         route = "maps" if config.kind == "map" else "apps"

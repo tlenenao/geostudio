@@ -17,7 +17,7 @@ def validate_report_payload(session: Session, config: BuilderConfig, *, user: Us
     if config.kind != "report":
         return
     payload = config.report
-    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
+    assert payload is not None  # garanti par BuilderConfig._require_kind_payload
 
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.bookmarkItemId)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
@@ -26,6 +26,6 @@ def validate_report_payload(session: Session, config: BuilderConfig, *, user: Us
         raise HTTPException(status_code=422, detail="bookmark not found")
 
     target = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=payload.bookmarkItemId)
-    assert target is not None  # get_access_facts just confirmed it exists
+    assert target is not None  # get_access_facts vient d'en confirmer l'existence
     if target.resourceType != "bookmark":
         raise HTTPException(status_code=422, detail="bookmark not found")

@@ -16,9 +16,9 @@ def _now() -> datetime:
 # (_RUNNING_RECLAIM_MINUTES) / app.alerts.repository (_PENDING_RECLAIM_MINUTES) :
 # un job resté "running" plus vieux que ce délai est présumé planté
 # (export-worker/Chromium tué en cours de rendu, OOM notamment — cf. revue
-# finale SP-17a, I7). Contrairement à ces deux précédents, ce module n'a PAS
-# ENCORE de tâche procrastinate périodique qui appelle reclaim_stuck_jobs —
-# voir le TODO sur render_export_task dans app/export/jobs.py. Ancre
+# finale SP-17a, I7). L'appelant périodique est
+# app.reports.jobs._trigger_due_reports, à la fin de chaque tick du balayage
+# des rapports planifiés (SP-17b). Ancre
 # started_at (posé par mark_running), jamais created_at : un job resté
 # longtemps "pending" en file avant de démarrer ne doit pas être réclamé dès
 # qu'il passe "running".

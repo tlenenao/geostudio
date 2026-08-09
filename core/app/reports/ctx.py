@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Reproduit octet pour octet shell/src/lib/analyticsContextUrl.ts::
-encodeAnalyticsContext : base64url (RFC 4648 §5) de l'encodage JSON UTF-8 de
+"""Produit la même valeur décodée (via JSON.parse côté shell) que
+shell/src/lib/analyticsContextUrl.ts::encodeAnalyticsContext — et non le même
+octet à octet : json.dumps et JSON.stringify diffèrent sur les séparateurs et
+l'échappement ASCII, l'équivalence porte sur la valeur relue, pas sur la
+chaîne. Soit : base64url (RFC 4648 §5) de l'encodage JSON UTF-8 de
 {timeRange, extent, crossFilter} — exactement les trois champs que
 decodeAnalyticsContext d'AppRuntimePage relit depuis ?ctx=. Gardé dans son
 propre petit module (pas inliné dans jobs.py) pour pouvoir le tester
