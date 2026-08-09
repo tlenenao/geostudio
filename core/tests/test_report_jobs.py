@@ -577,3 +577,27 @@ def test_trigger_fails_report_without_deferring_when_export_capability_is_disabl
         ).scalars().all()
         assert len(rows) == 1
         assert rows[0].payload["error"] == "export capability disabled on this instance"
+
+
+def test_presigned_url_for_notification_uses_a_seven_day_ttl(monkeypatch):
+    # Revue finale SP-17b (I4) : le défaut de generate_presigned_get_url est
+    # 1 h — un lien envoyé par un cron nocturne ou de week-end était mort
+    # avant d'être lu.
+    captured = {}
+
+    def _fake_presign(client, *, bucket, key, expires_in=3600):
+        captured.update({"bucket": bucket, "key": key, "expires_in": expires_in})
+        return "https://s3.test/presigned"
+
+    monkeypatch.setattr(report_jobs, "generate_presigned_get_url", _fake_presign)
+    monkeypatch.setattr(report_jobs, "s3_client_from_env", lambda: object())
+
+    job = type("_Job", (), {"status": "done", "result_key": "renders/job-1.pdf"})()
+    assert report_jobs._presigned_url_for_job(job) == "https://s3.test/presigned"
+    assert captured["expires_in"] == 604_800
+
+
+def test_presigned_url_is_none_for_a_job_that_is_not_done(monkeypatch):
+    monkeypatch.setattr(report_jobs, "s3_client_from_env", lambda: pytest.fail("ne doit pas être appelé"))
+    job = type("_Job", (), {"status": "error", "result_key": None})()
+    assert report_jobs._presigned_url_for_job(job) is None
