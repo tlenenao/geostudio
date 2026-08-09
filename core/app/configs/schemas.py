@@ -315,8 +315,8 @@ class AlertRulePayload(BaseModel):
 
 class ReportSchedulePayload(BaseModel):
     bookmarkItemId: str
-    refreshPolicy: PipelineRefreshPolicy  # reused verbatim, same shape as pipeline/alert scheduling
-    channels: list[AlertChannel] = Field(default_factory=list)  # reused verbatim from AlertRule (SP-16b)
+    refreshPolicy: PipelineRefreshPolicy  # réutilisé tel quel, même forme que la planification pipeline/alerte
+    channels: list[AlertChannel] = Field(default_factory=list)  # réutilisé tel quel depuis AlertRule (SP-16b)
 
     @model_validator(mode="after")
     def _require_at_least_one_channel(self) -> "ReportSchedulePayload":

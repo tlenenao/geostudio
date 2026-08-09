@@ -9,10 +9,11 @@ const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
   error: "Échec", unknown: "Inconnu",
 };
 
-// Read-only history — mirrors PipelineRunPanel's poll loop (same 1500ms
-// pattern as ImportFileButton) minus the "Exécuter" button: a ReportSchedule
-// is only ever triggered by sweep_report_schedules_task's cron, never
-// manually, so there is nothing for a button here to defer.
+// Historique en lecture seule — reproduit la boucle de sondage de
+// PipelineRunPanel (même motif 1500ms qu'ImportFileButton) sans le bouton
+// « Exécuter » : un ReportSchedule n'est jamais déclenché que par le cron de
+// sweep_report_schedules_task, jamais manuellement, donc il n'y a rien ici
+// qu'un bouton pourrait déférer.
 export function ReportRunPanel({ reportId }: { reportId: string }) {
   const client = useItemClient();
   const [runs, setRuns] = useState<ReportRunStatus[]>([]);
