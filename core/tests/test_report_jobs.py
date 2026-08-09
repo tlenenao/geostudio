@@ -4,6 +4,8 @@
 the sweep. The notify half lives in test_report_jobs.py's sibling tests
 below; the periodic-task-level commit-before-defer proof lives in
 test_report_sweep.py (mirrors test_alert_sweep.py/test_pipeline_sweep.py)."""
+import pytest
+
 from sqlalchemy import select
 
 from app.alerts.notify import NotifyError
@@ -18,6 +20,14 @@ from app.reports import repository as reports_repo
 from app.sharing.authorization import can
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+
+@pytest.fixture(autouse=True)
+def _export_enabled(monkeypatch):
+    """Le balayage refuse de déclencher un rendu quand la capacité export est
+    coupée (revue finale SP-17b, I3) — ces tests décrivent une instance où
+    elle est active ; le cas coupé a son propre test."""
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
 
 
 def _make_session():
@@ -525,3 +535,45 @@ def test_notify_skips_runs_whose_export_job_is_still_pending():
     with Session() as s:
         fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert fetched.notified_at is None
+
+
+def test_trigger_fails_report_without_deferring_when_export_capability_is_disabled(monkeypatch):
+    # Revue finale SP-17b (I3) : un rapport créé pendant que la capacité
+    # export était active reste en base si l'admin la coupe ensuite. Sans
+    # garde, son rendu était déféré sur une file `export` que personne ne
+    # dépile — job "pending" à jamais (reclaim_stuck_jobs ne récupère que les
+    # "running"), et is_export_enabled() côté render_export_task ne s'exécute
+    # jamais puisque rien ne dépile.
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
+        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        s.commit()
+
+    deferred = []
+    monkeypatch.setattr(
+        report_jobs, "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
+    )
+
+    report_jobs._trigger_due_reports(Session)
+
+    assert deferred == []
+    with Session() as s:
+        run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None
+        rows = s.execute(
+            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].payload["error"] == "export capability disabled on this instance"

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, is_etl_enabled
+from app.auth.dependency import get_current_user, is_etl_enabled, is_export_enabled
 from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
@@ -74,6 +74,16 @@ def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
         raise HTTPException(status_code=403, detail="ETL capability disabled on this instance")
 
 
+def _require_export_enabled_for_report(config: BuilderConfig) -> None:
+    # Jumeau de la garde pipeline/ETL ci-dessus (revue finale SP-17b, I3) :
+    # sur une instance sans capacité export, un ReportSchedule pouvait être
+    # créé mais son rendu restait "pending" à jamais — rien ne dépile la file
+    # `export`, et export_repo.reclaim_stuck_jobs ne récupère que les
+    # "running". Mieux vaut refuser la création tout de suite.
+    if config.kind == "report" and not is_export_enabled():
+        raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
@@ -81,6 +91,7 @@ def create_config(
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
     _require_etl_enabled_for_pipeline(request.config)
+    _require_export_enabled_for_report(request.config)
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, request.config, user=user)
     _validate_bookmark_payload(session, request.config, user=user)
@@ -136,6 +147,7 @@ def update_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
     _require_etl_enabled_for_pipeline(config)
+    _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
@@ -240,6 +252,7 @@ def update_config_by_item(
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_etl_enabled_for_pipeline(config)
+    _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
     _validate_dataset_payload(session, config, user=user)
     _validate_bookmark_payload(session, config, user=user)
