@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Mirrors shell/src/lib/analyticsContextUrl.ts::encodeAnalyticsContext byte
-for byte: base64url (RFC 4648 §5) of the UTF-8 JSON encoding of
-{timeRange, extent, crossFilter} — the exact three fields AppRuntimePage's
-decodeAnalyticsContext reads back out of ?ctx=. Kept as its own tiny module
-(not inlined in jobs.py) so it can be unit-tested against the JS
-implementation's exact wire format without needing a running sweep."""
+"""Reproduit octet pour octet shell/src/lib/analyticsContextUrl.ts::
+encodeAnalyticsContext : base64url (RFC 4648 §5) de l'encodage JSON UTF-8 de
+{timeRange, extent, crossFilter} — exactement les trois champs que
+decodeAnalyticsContext d'AppRuntimePage relit depuis ?ctx=. Gardé dans son
+propre petit module (pas inliné dans jobs.py) pour pouvoir le tester
+unitairement contre le format de sérialisation exact de l'implémentation JS
+sans avoir besoin d'un sweep en cours d'exécution."""
 import base64
 import json
 

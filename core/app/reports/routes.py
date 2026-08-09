@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""REST routes for ReportSchedule (SP-17b §3) — CRUD itself is entirely the
-generic /configs routes (kind="report"), like AlertRule/Pipeline; this module
-only carries the one bespoke read, mirroring GET /alerts/{id}/evaluations."""
+"""Routes REST pour ReportSchedule (SP-17b §3) — le CRUD en lui-même passe
+entièrement par les routes génériques /configs (kind="report"), comme pour
+AlertRule/Pipeline ; ce module ne porte que l'unique lecture sur mesure,
+reproduisant GET /alerts/{id}/evaluations."""
 import os
 
 from fastapi import APIRouter, Depends, HTTPException

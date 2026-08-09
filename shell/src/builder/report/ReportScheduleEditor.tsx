@@ -2,12 +2,13 @@
 import type { AlertChannel, ReportSchedulePayload } from "../../api/types";
 import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
 
-// Controlled component (mirrors PipelineScheduleEditor's value/onChange
-// shape, not AlertRuleEditor's self-contained create-and-reset shape):
-// ReportEditPage (SP-17b) needs both a create AND an edit lifecycle plus a
-// run-history panel alongside it, so the parent owns persistence — same
-// reason PipelineBuilderPage owns PipelinePayload state instead of
-// PipelineScheduleEditor owning it.
+// Composant contrôlé (reproduit la forme value/onChange de
+// PipelineScheduleEditor, pas la forme autonome create-and-reset
+// d'AlertRuleEditor) : ReportEditPage (SP-17b) a besoin à la fois d'un
+// cycle de création ET d'édition plus un panneau d'historique des runs à
+// côté, donc c'est le parent qui possède la persistance — même raison que
+// PipelineBuilderPage possède l'état PipelinePayload au lieu que
+// PipelineScheduleEditor le possède.
 export function ReportScheduleEditor({
   value, onChange, bookmarkLabel,
 }: {

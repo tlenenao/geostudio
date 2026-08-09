@@ -17,9 +17,10 @@ function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   };
 }
 
-// pk === null : brouillon local (/reports/new) — mirrors PipelineBuilderPage's
-// pk-nullable create/edit split exactly (SP-15b §2.2's rationale applies
-// verbatim here: nothing persisted before the first "Enregistrer").
+// pk === null : brouillon local (/reports/new) — reproduit exactement la
+// séparation création/édition à pk nullable de PipelineBuilderPage (la
+// justification de SP-15b §2.2 s'applique ici mot pour mot : rien n'est
+// persisté avant le premier « Enregistrer »).
 export function ReportEditPage({ pk, initialBookmarkItemId }: { pk: string | null; initialBookmarkItemId?: string }) {
   const navigate = useNavigate();
   const { username } = useAuth();

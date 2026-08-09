@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Mirrors app.pipelines.repository (SP-15a/h) and app.alerts.repository
-(SP-16b): "last run" is always derived from report_runs (never a duplicated
-column on the config), list_due_reports reuses the same croniter-against-
-last-created_at pattern as list_due_pipelines. Unlike ReportRun's sibling
-tables, there is no "pending"/"running" status to reclaim here — a
-report_runs row is only ever created immediately before its export_jobs row
-is deferred (see app.reports.jobs), so there is no stuck-intermediate-state
-window to guard against; a stuck render itself is already covered by
-export_repo.reclaim_stuck_jobs (SP-17a)."""
+"""Reproduit app.pipelines.repository (SP-15a/h) et app.alerts.repository
+(SP-16b) : le « dernier run » est toujours dérivé de report_runs (jamais une
+colonne dupliquée sur la config), list_due_reports réutilise le même motif
+croniter-contre-dernier-created_at que list_due_pipelines. Contrairement aux
+tables sœurs de ReportRun, il n'y a pas de statut « pending »/« running » à
+récupérer ici — une ligne report_runs n'est jamais créée qu'immédiatement
+avant que sa ligne export_jobs soit déférée (voir app.reports.jobs), donc
+aucune fenêtre d'état intermédiaire bloqué à surveiller ; un rendu bloqué en
+lui-même est déjà couvert par export_repo.reclaim_stuck_jobs (SP-17a)."""
 import uuid
 from datetime import datetime, timezone
 
@@ -68,9 +68,10 @@ def mark_notified(session: Session, *, run_id: str) -> None:
 
 
 def list_unnotified_runs(session: Session) -> list[ReportRun]:
-    """Cross-tenant sweep, consumed by sweep_report_schedules_task's notify
-    step — same discipline as list_due_reports below: never exposed via a
-    route, the caller is a system task, not a user request."""
+    """Sweep cross-tenant, consommé par l'étape de notification de
+    sweep_report_schedules_task — même discipline que list_due_reports
+    ci-dessous : jamais exposé via une route, l'appelant est une tâche
+    système, pas une requête utilisateur."""
     rows = session.execute(
         select(ReportRun).where(ReportRun.notified_at.is_(None))
     ).scalars().all()
@@ -78,9 +79,10 @@ def list_unnotified_runs(session: Session) -> list[ReportRun]:
 
 
 def list_due_reports(session: Session) -> list[tuple[str, str]]:
-    """Cross-tenant sweep, consumed by sweep_report_schedules_task's trigger
-    step. Never exposed via a route (same discipline as list_due_pipelines/
-    list_due_rules): the tuple carries tenant_id in clear."""
+    """Sweep cross-tenant, consommé par l'étape de déclenchement de
+    sweep_report_schedules_task. Jamais exposé via une route (même
+    discipline que list_due_pipelines/list_due_rules) : le tuple porte
+    tenant_id en clair."""
     now = datetime.now(timezone.utc)
     due: list[tuple[str, str]] = []
     for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report"):

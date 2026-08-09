@@ -511,8 +511,8 @@ export interface AlertEvaluation {
 
 export interface ReportSchedulePayload {
   bookmarkItemId: string;
-  refreshPolicy: PipelineRefreshPolicy; // reused verbatim, same shape as pipeline/alert scheduling
-  channels: AlertChannel[]; // reused verbatim from AlertRule (SP-16b)
+  refreshPolicy: PipelineRefreshPolicy; // réutilisé tel quel, même forme que la planification pipeline/alerte
+  channels: AlertChannel[]; // réutilisé tel quel depuis AlertRule (SP-16b)
 }
 
 export interface ReportRunStatus {

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Direct kind="report" validation for app.configs. Mirrors
-app.configs.alert_validation/bookmark_validation exactly: bookmarkItemId
-always refers to an item of resourceType "bookmark", and app.configs already
-imports app.items, so there is no forbidden cross-module dependency to route
-around (SP-17b design §Modèle de données)."""
+"""Validation directe du kind="report" pour app.configs. Reproduit exactement
+app.configs.alert_validation/bookmark_validation : bookmarkItemId désigne
+toujours un item de resourceType "bookmark", et app.configs importe déjà
+app.items, donc aucune dépendance croisée interdite entre modules à
+contourner (design SP-17b §Modèle de données)."""
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -21,8 +21,8 @@ def validate_report_payload(session: Session, config: BuilderConfig, *, user: Us
 
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.bookmarkItemId)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        # Same message for not-found and not-readable: don't leak bookmark
-        # existence, same convention as app.configs.alert_validation.
+        # Même message pour non-trouvé et non-lisible : ne pas divulguer
+        # l'existence du bookmark, même convention que app.configs.alert_validation.
         raise HTTPException(status_code=422, detail="bookmark not found")
 
     target = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=payload.bookmarkItemId)

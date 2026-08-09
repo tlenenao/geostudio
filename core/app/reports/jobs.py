@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Procrastinate task for ReportSchedule (design SP-17b §2) — mirrors
-app.alerts.jobs/app.pipelines.jobs exactly: a periodic sweep, two steps per
-tick (trigger due schedules, then notify runs whose render finished),
-commit-before-defer inside the per-item loop for the same reason as
-run_pipeline_sweep_task. Permission is re-verified at trigger time against
-the report's OWNER (not the schedule's creator, if those ever diverge —
-mirrors app.alerts.jobs._owner_user): a report whose owner lost read access
-to its bookmark/app fails cleanly (audited, no render) rather than either
-crashing the sweep or silently rendering with elevated rights."""
+"""Tâche procrastinate pour ReportSchedule (design SP-17b §2) — reproduit
+exactement app.alerts.jobs/app.pipelines.jobs : un sweep périodique, deux
+étapes par tick (déclencher les planifications dues, puis notifier les runs
+dont le rendu est terminé), commit-avant-defer à l'intérieur de la boucle
+par élément pour la même raison que run_pipeline_sweep_task. La permission
+est revérifiée au moment du déclenchement contre le PROPRIÉTAIRE du rapport
+(pas le créateur de la planification, si jamais ils divergent — reproduit
+app.alerts.jobs._owner_user) : un rapport dont le propriétaire a perdu
+l'accès en lecture à son bookmark/app échoue proprement (audité, pas de
+rendu) plutôt que de faire planter le sweep ou de rendre silencieusement
+avec des droits élevés."""
 import logging
 import os
 
@@ -34,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 class ReportTriggerError(Exception):
-    """Anything that keeps a due report from being rendered — always caught,
-    always turns into an audit_log entry, never a crash of the sweep."""
+    """Tout ce qui empêche un rapport dû d'être rendu — toujours capturé,
+    toujours transformé en entrée audit_log, jamais un plantage du sweep."""
 
 
 def _session_factory():
@@ -126,9 +128,9 @@ def _notify_pending_reports(session_factory) -> None:
 
             report_config = configs_repo.get_config_by_item(session, run.report_item_id)
             if report_config is None or report_config.kind != "report":
-                # Report item deleted after triggering — nothing left to
-                # notify against; close the run out so the sweep doesn't
-                # loop on it forever.
+                # Item du rapport supprimé après déclenchement — plus rien
+                # contre quoi notifier ; on clôture le run pour que le sweep
+                # ne boucle pas dessus indéfiniment.
                 reports_repo.mark_notified(session, run_id=run.id)
                 session.commit()
                 continue
