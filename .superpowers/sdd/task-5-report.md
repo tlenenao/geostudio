@@ -1,198 +1,196 @@
-# Task 5 Report: `app/alerts/repository.py`
+# Task 5 Report: PDF footer template (generation date) on every export
 
-## What was implemented
+## What Was Implemented
 
-`core/app/alerts/repository.py` — CRUD for `AlertEvaluation` (Task 4's model) plus
-`list_due_rules(session)`, modeled explicitly on `app.pipelines.repository.list_due_pipelines`
-(SP-15h):
+Successfully added a PDF footer with generation-date stamp to all PDF exports rendered by `core/app/export/rendering.py`'s `render_export()` function.
 
-- `create_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation` — inserts a
-  `state="pending"` row.
-- `mark_evaluated(session, *, evaluation_id, value, state, transitioned, error=None) -> None`.
-- `get_evaluation(session, *, tenant_id, evaluation_id) -> AlertEvaluation | None` (not required by
-  the brief's public interface list, but present in the brief's dictated code — kept, tenant-scoped
-  lookup by id, symmetrical with the rest of the module).
-- `get_latest_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation | None`.
-- `list_evaluations(session, *, tenant_id, alert_rule_item_id) -> list[AlertEvaluation]` (most
-  recent first).
-- `list_due_rules(session) -> list[tuple[str, str]]` — cross-tenant sweep over
-  `configs_repo.list_configs_by_kind(session, kind="alert")`, same reclaim-by-age discipline as
-  pipelines (`_PENDING_RECLAIM_MINUTES = 60`), never exposed via a route.
+### Changes Made
 
-Implemented the brief's dictated code as-is after verifying it against the real codebase (see
-Self-review below) — no changes were needed to the dictated implementation.
+**File: `core/app/export/rendering.py`**
+1. Extended `RenderPage` Protocol signature to include two new required kwargs:
+   - `display_header_footer: bool`
+   - `footer_template: str`
 
-## What was tested and test results
+2. Added `_FOOTER_TEMPLATE` constant with HTML footer markup:
+   ```python
+   _FOOTER_TEMPLATE = (
+       '<div style="font-size:8px; width:100%; text-align:center; color:#666;">'
+       'Généré le <span class="date"></span></div>'
+   )
+   ```
 
-`core/tests/test_alert_repository.py`, the 6 tests specified in the brief:
+3. Updated `render_export()` function to pass these new kwargs to `page.pdf()`:
+   - `display_header_footer=True`
+   - `footer_template=_FOOTER_TEMPLATE`
+   - Added explanatory comments about Chromium's native `<span class="date">` handling
 
-1. `test_create_and_mark_evaluated_round_trip`
-2. `test_list_due_rules_includes_a_rule_with_no_prior_evaluation`
-3. `test_list_due_rules_excludes_a_disabled_rule`
-4. `test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval`
-5. `test_list_due_rules_reclaims_a_stuck_pending_evaluation`
-6. `test_list_evaluations_orders_most_recent_first`
+**File: `core/tests/test_export_rendering.py`**
+1. Extended `_FakePage` fixture to:
+   - Add `pdf_kwargs` attribute to record all kwargs passed to `pdf()` method
+   - Changed `pdf()` method to accept `**kwargs` instead of specific parameters
+   - Maintained backward compatibility by extracting the three original kwargs for the legacy `pdf_calls` tuple
 
-Result: `6 passed`.
+2. Added new test: `test_render_export_pdf_sets_display_header_footer_with_generation_date_template()` that verifies:
+   - `display_header_footer` is `True`
+   - `footer_template` contains the French text "Généré le"
+   - `footer_template` contains the Chromium date marker `<span class="date">`
 
-Full repo suite after the change: `1242 passed, 131 skipped` (the skipped are the pre-existing
-`postgis`-marked tests requiring docker, per CLAUDE.md's documented baseline) — no regressions.
+## Test Results
 
-## TDD Evidence
+### TDD Evidence
 
-**RED** — before creating `app/alerts/repository.py`:
-
+**RED Phase:** Initial test failure confirmed the missing kwargs:
 ```
-$ PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_repository.py
-ImportError while importing test module '.../tests/test_alert_repository.py'.
-E   ImportError: cannot import name 'repository' from 'app.alerts' (.../app/alerts/__init__.py)
-1 error in 0.10s
+KeyError: 'display_header_footer'
 ```
 
-**GREEN** — after implementing `app/alerts/repository.py`:
-
+**GREEN Phase:** All 5 tests in `test_export_rendering.py` pass:
 ```
-$ PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_repository.py
-......                                                                   [100%]
-6 passed in 0.98s
+test_render_export_png_takes_full_page_screenshot PASSED [ 20%]
+test_render_export_pdf_uses_default_layout_when_none PASSED [ 40%]
+test_render_export_pdf_respects_page_size_and_orientation PASSED [ 60%]
+test_render_export_pdf_always_prints_css_backgrounds PASSED [ 80%]
+test_render_export_pdf_sets_display_header_footer_with_generation_date_template PASSED [100%]
+
+============================== 5 passed in 0.13s ===============================
 ```
 
-## Files changed
+### Regression Testing
 
-- `core/app/alerts/repository.py` (new)
-- `core/tests/test_alert_repository.py` (new)
+Ran all 91 export-related tests across the codebase to ensure no regressions:
+```
+===================== 91 passed, 1382 deselected in 9.99s ======================
+```
 
-Commit: `0c283d8 feat(core): SP-16b — app.alerts.repository (evaluations CRUD, list_due_rules)`
-(only these two files staged/committed — verified with `git status --short` before commit that no
-other tracked/untracked files were swept in; pre-existing uncommitted modifications to
-`.superpowers/sdd/*` from earlier tasks in this session were left untouched).
+All passing tests include:
+- `test_export_rendering.py` (5 tests, all passing)
+- `test_export_jobs.py` (8 tests, all passing)
+- `test_export_routes.py` (8 tests, all passing)
+- And 68 additional export-related tests across multiple files
 
-## Self-review
+## Files Changed
 
-### Verification against the real codebase (before trusting the brief's dictated code)
+- `core/app/export/rendering.py` (3 changes: Protocol signature, footer template constant, function call)
+- `core/tests/test_export_rendering.py` (2 changes: fixture extension, new test addition)
 
-Per the task's explicit instruction to treat every prior task's plan-dictated code as suspect
-(Tasks 1 and 2 each had real bugs), I read the actual current implementations rather than assuming
-the brief's descriptions were accurate:
+## Self-Review Findings
 
-- **`app.pipelines.repository.list_due_pipelines`** (real code read in full): confirms the same
-  `_RUNNING_RECLAIM_MINUTES = 60` reclaim-by-age pattern, the same tz-guard
-  (`if created_at.tzinfo is None: created_at = created_at.replace(tzinfo=timezone.utc)`), and the
-  same `croniter.croniter(policy.cron, created_at).get_next(datetime)` cron-tick call. One
-  meaningful difference: pipelines have a three-state non-terminal lifecycle (`queued` → `running`
-  → terminal) and use `started_at` (when present) as the reclaim anchor for `running` rather than
-  `created_at`, with an explicit comment explaining why (a run queued a long time before actually
-  starting shouldn't be reclaimed the instant it starts running). Alerts have only a two-state
-  lifecycle (`pending` → terminal, no separate "started" mark) — there is no `started_at` column on
-  `AlertEvaluation` at all — so the brief's simpler single-anchor (`created_at`) reclaim check for
-  `pending` is the *correct* mirror, not a regression or an omitted case. This is a real, understood
-  divergence from the mirrored function, not an unnoticed one.
-- **`app.configs.repository.list_configs_by_kind`** (real code read): signature and behavior match
-  exactly what the brief and the task instructions assumed —
-  `(session, kind: str) -> list[tuple[str, str, BuilderConfig]]`, cross-tenant, skips items with a
-  corrupted/unparseable stored config rather than raising.
-- **`app.alerts.models.AlertEvaluation`** (Task 4, real code read): fields
-  `id, tenant_id, alert_rule_item_id, value, state, transitioned, error, created_at` match every
-  field the brief's repository code and tests reference.
-- **`app.configs.schemas.AlertRulePayload.refreshPolicy`** (real code read): typed
-  `PipelineRefreshPolicy` (non-optional, unlike `PipelinePayload.refreshPolicy` which is
-  `| None`), with fields `enabled: bool` and `cron: str` (validated by croniter at parse time via a
-  `model_validator`). The brief's `if not policy.enabled` check (no `None` guard) is correct given
-  the field is required on the alert payload.
-- **`croniter` API**: confirmed `croniter.croniter(cron_str, start_dt).get_next(datetime)` is the
-  exact call signature already used by `list_due_pipelines`, and the installed version
-  (`croniter>=6.2`, `uv.lock` pins `6.2.4`) supports it.
+✅ **Protocol Signature Change:** Both `display_header_footer` and `footer_template` parameters added to `RenderPage.pdf()` method signature with correct types and as required kwargs.
 
-No drift found between the brief's assumptions and the real code. No changes to the brief's
-dictated implementation were necessary.
+✅ **render_export PDF Branch:** Both new parameters passed correctly to `page.pdf()` call with appropriate values (`True` and `_FOOTER_TEMPLATE`).
 
-### Hand-trace of `list_due_rules` against each of the 6 test scenarios
+✅ **Test Assertions:** New test correctly asserts:
+- `display_header_footer is True` ✓
+- Template contains "Généré le" text ✓
+- Template contains `<span class="date">` marker ✓
 
-1. **`test_create_and_mark_evaluated_round_trip`** — no cron/reclaim logic exercised; plain CRUD.
-   `create_evaluation` inserts `state="pending"`; `mark_evaluated` overwrites
-   `value/state/transitioned/error`; `get_latest_evaluation` orders by `created_at desc limit 1`.
-   Traced: passes trivially.
+✅ **Test Output:** Pristine output, all tests passing, no warnings or errors.
 
-2. **`test_list_due_rules_includes_a_rule_with_no_prior_evaluation`** — `get_latest_evaluation`
-   returns `None` for a freshly-seeded rule → `list_due_rules` hits the `if latest is None:
-   due.append(...); continue` branch unconditionally. Traced: `(rule_id, tenant.id)` is added.
-   Matches assertion.
+✅ **Scope:** Changes limited to:
+- `core/app/export/rendering.py` (implementation)
+- `core/tests/test_export_rendering.py` (tests)
+- No other files modified or restructured
 
-3. **`test_list_due_rules_excludes_a_disabled_rule`** — `refreshPolicy.enabled=False` →
-   `if not policy.enabled: continue` fires before any evaluation lookup. Traced: never added,
-   `list_due_rules(s) == []`. Matches assertion.
+✅ **Fixture Adaptation:** The existing `_FakePage` fixture was successfully adapted to record kwargs without breaking backward compatibility. All 4 pre-existing tests continue to pass unchanged.
 
-4. **`test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval`** — one evaluation
-   created and immediately `mark_evaluated(..., state="ok", ...)` (terminal, not `"pending"`), so
-   the `pending`-branch is skipped and control falls to
-   `next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)`. `created_at` is
-   ~"now" (just inserted) and `cron = "*/5 * * * *"`. `croniter.get_next` returns the next tick
-   strictly *after* the start time, i.e. at most 5 minutes in the future — always `> now` (evaluated
-   microseconds later in the same test). So `next_tick <= now` is `False` → not added. Traced:
-   `list_due_rules(s) == []`. Matches assertion. (This is the scenario that genuinely exercises the
-   cron-interval arithmetic, not a tautology — it depends on `croniter` correctly computing "more
-   than 0 and up to 5 minutes from now.")
+## Issues and Concerns
 
-5. **`test_list_due_rules_reclaims_a_stuck_pending_evaluation`** — an evaluation is created
-   (`state="pending"`) and then its `created_at` is *directly mutated* on the ORM object to
-   `now - 120min` and committed, without ever calling `mark_evaluated` (simulating a worker that
-   died mid-evaluation). In `list_due_rules`: `latest.state == "pending"` is true, so
-   `(now - created_at) < timedelta(minutes=60)` is evaluated: `now - created_at ≈ 120min`, which is
-   *not* `< 60min` → falls through to `due.append(...)`. Traced: `(rule_id, tenant.id)` is in the
-   result. Matches assertion. This genuinely exercises the age-based reclaim threshold (120min stuck
-   vs. the 60min cutoff), not a tautology.
+None. The implementation is complete and straightforward:
+- The footer template is statically defined with Chromium's native date placeholder
+- No runtime calculations needed on the Python side
+- All tests passing with no regressions
+- Code is clean, well-commented, and follows existing patterns
 
-6. **`test_list_evaluations_orders_most_recent_first`** — two evaluations created and marked in
-   sequence; `list_evaluations` orders by `created_at desc`. Traced: `[second.id, first.id]`.
-   Matches assertion (no cron logic involved).
+## Commit
 
-### Timezone-guard verification (not just read, actually probed)
+**Commit SHA:** e53d127
+**Message:** `feat(core): PDF exports get a generation-date footer (SP-17b)`
+**Date:** 2026-08-09
 
-The task instructions specifically asked to confirm the `if created_at.tzinfo is None: ...
-replace(tzinfo=timezone.utc)` guard is necessary and correctly placed rather than assumed. I did
-not just read it — I empirically probed it:
+## Follow-up: review fix (Important finding)
 
-- Confirmed `make_session_factory` uses `sessionmaker(bind=engine, expire_on_commit=False)`
-  (`core/app/db.py`). This means within the *same* SQLAlchemy session, an ORM object's Python
-  attributes are never expired/reloaded after `commit()`, so the in-memory `datetime` objects
-  created in these tests keep whatever `tzinfo` they were constructed with — the unit tests
-  therefore do **not** by themselves force a true DB round-trip of the timestamp's timezone
-  representation within a single session.
-- I then temporarily removed the guard and re-ran the affected tests in isolation: they still
-  passed, confirming point above (same-session identity-map reuse masks the naive/aware
-  distinction in this specific test harness).
-- I separately confirmed, via a raw insert probe, that the bound SQL parameter for a `DateTime`
-  column (no `timezone=True`) on `created_at` is rendered as a plain string with no UTC offset
-  (`'2026-08-07 23:42:31.460260'`) — i.e., on a genuinely fresh read (a different session/process,
-  such as a periodic worker task calling `list_due_rules` against Postgres or a freshly-opened
-  SQLite connection), the column comes back **naive**. `_now()` always writes
-  `datetime.now(timezone.utc)`, so a naive value read back is implicitly UTC.
-- Conclusion: the guard is not exercised as load-bearing by *this specific* in-memory,
-  single-session unit test, but it is **necessary** for the real production path — `list_due_rules`
-  is invoked by a periodic sweep job (`app.alerts.jobs`, Task 9) in a separate session/process from
-  whatever wrote the evaluation, where the naive-on-read behavior is real and would otherwise raise
-  `TypeError: can't subtract offset-naive and offset-aware datetimes` the first time `now -
-  created_at` executes with a genuinely fresh read. It is placed correctly: applied once,
-  immediately after fetching `latest.created_at`, before it is used by either the `pending`-reclaim
-  arithmetic or the `croniter` call, so both consumers of `created_at` are covered by the same
-  guard. No case is missing and it is not redundant — it is dormant-but-correct in the unit-test
-  harness and load-bearing in production, exactly mirroring `list_due_pipelines`'s identical guard
-  for its `created_at`.
+**Finding:** This task's own report claims "`test_export_jobs.py` (8 tests, all
+passing)" as regression evidence, but that file has a *second*, separate fake
+Playwright page (`_FakePage` in `core/tests/test_export_jobs.py`, distinct from
+the one in `test_export_rendering.py` that this task did update) whose `pdf()`
+method was left with the old fixed signature:
+```python
+def pdf(self, *, format: str, landscape: bool, print_background: bool) -> bytes:
+```
+No `**kwargs` catch-all, so it rejects the two new required kwargs
+(`display_header_footer`, `footer_template`) added to the `RenderPage`
+Protocol by this task. Two tests exercise this fake end-to-end through
+`render_export_task` → `render_export` → `page.pdf(...)` with `format="pdf"`
+(`test_render_export_task_builds_url_with_page_id_and_ctx` and
+`test_render_export_task_url_unchanged_when_page_id_and_ctx_absent`).
+Reproducing confirmed:
+```
+TypeError: FakePage.pdf() got an unexpected keyword argument 'display_header_footer'
+```
+This is caught by `render_export_task`'s catch-all `except Exception as exc:`
+(→ `export_repo.mark_error`), silently turning a would-be successful PDF
+render into a failed job. Both affected tests asserted only on
+`captured_urls` (populated before the exception fires) and never on the
+job's final status, so they stayed green while every PDF render they
+exercised was actually failing.
 
-### Discipline / scope
+**Fix (`core/tests/test_export_jobs.py`):**
+1. `_FakePage.pdf` signature changed to `def pdf(self, **kwargs) -> bytes`,
+   recording `self.pdf_kwargs = kwargs` — same convention already used by
+   `test_export_rendering.py`'s `_FakePage` (Task 5), so it no longer needs
+   editing every time `RenderPage.pdf`'s kwarg set grows.
+2. Added a new module-level `_FakeUploadS3Client` (create_bucket/
+   put_bucket_cors/put_object/generate_presigned_url, all no-ops) and wired
+   it via `monkeypatch.setattr(export_jobs, "_s3_client_from_env", ...)` in
+   both affected tests. This was required as a side effect of step 3 below:
+   once the render actually succeeds, `render_export_task` proceeds to the
+   real S3 upload step, which neither test had mocked — without this it
+   fails with `EndpointConnectionError` against the unreachable
+   `http://minio.test` placeholder, for a reason unrelated to what the test
+   is exercising.
+3. Both `test_render_export_task_builds_url_with_page_id_and_ctx` and
+   `test_render_export_task_url_unchanged_when_page_id_and_ctx_absent` now
+   additionally assert, after `render_export_task` runs:
+   ```python
+   session.expire_all()
+   refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+   assert refreshed.status == "done"
+   ```
+   (mirroring the `session.expire_all()` + `get_job` pattern already used by
+   every other test in this file that checks job status). This is the
+   assertion that would have caught the swallowed exception — confirmed
+   meaningful by inspection: reverting `_FakePage.pdf`'s signature back to
+   the old fixed-kwarg form reproduces the `TypeError` inside
+   `render_export_task`, which is caught and turns the job to
+   `status == "error"`, which the new assertion now fails on (previously
+   nothing in either test would have noticed).
 
-Touched only `core/app/alerts/repository.py` and `core/tests/test_alert_repository.py`, per the
-Code Organization constraint. Did not add anything beyond the brief (kept `get_evaluation`, which
-is in the brief's dictated code even though not listed in the "Produces" interface list — it's a
-natural, harmless CRUD primitive consistent with the module's style, not scope creep beyond what
-was dictated).
+**Test results:**
+```
+$ cd core && uv run pytest tests/test_export_jobs.py tests/test_export_rendering.py -v
+...
+tests/test_export_jobs.py::test_render_export_task_marks_done_on_success PASSED
+tests/test_export_jobs.py::test_render_export_task_marks_error_when_export_disabled PASSED
+tests/test_export_jobs.py::test_render_export_task_marks_error_never_zombie_on_navigation_failure PASSED
+tests/test_export_jobs.py::test_render_export_task_builds_url_with_page_id_and_ctx PASSED
+tests/test_export_jobs.py::test_render_export_task_url_unchanged_when_page_id_and_ctx_absent PASSED
+tests/test_export_jobs.py::test_render_export_task_missing_job_is_a_noop PASSED
+tests/test_export_jobs.py::test_launch_and_navigate_cleans_up_driver_and_browser_on_mid_sequence_failure PASSED
+tests/test_export_jobs.py::test_launch_and_navigate_real_chromium_waits_for_export_ready PASSED
+tests/test_export_rendering.py::test_render_export_png_takes_full_page_screenshot PASSED
+tests/test_export_rendering.py::test_render_export_pdf_uses_default_layout_when_none PASSED
+tests/test_export_rendering.py::test_render_export_pdf_respects_page_size_and_orientation PASSED
+tests/test_export_rendering.py::test_render_export_pdf_always_prints_css_backgrounds PASSED
+tests/test_export_rendering.py::test_render_export_pdf_sets_display_header_footer_with_generation_date_template PASSED
 
-## Issues or concerns
+============================== 13 passed in 2.02s ==============================
+```
+(Two `asyncio`/Playwright teardown error log lines appear after the summary
+line from the pre-existing real-Chromium test
+`test_launch_and_navigate_real_chromium_waits_for_export_ready` — cosmetic
+teardown noise from that test's own Playwright driver, present before this
+fix too, unrelated to it, does not affect the "13 passed" result.)
 
-None. The brief's dictated code was verified correct against the real
-`list_due_pipelines`/`list_configs_by_kind`/`AlertEvaluation`/`AlertRulePayload`/`croniter`
-implementations, all 6 tests were confirmed RED then GREEN, the reclaim and cron-interval tests
-were hand-traced and confirmed to genuinely exercise time-based logic, the timezone guard was
-empirically probed (not just assumed) and confirmed necessary for the real cross-session/process
-production path even though dormant in this specific same-session test harness, and the full
-1242-test suite passes with no regressions.
+**Files changed:** `core/tests/test_export_jobs.py` only. No changes to
+`core/app/export/rendering.py` or `core/tests/test_export_rendering.py`
+(both already correct from Task 5).
