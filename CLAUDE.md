@@ -366,6 +366,58 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   une assertion E2E finale ne prouvant qu'un POST avait eu lieu sans
   vérifier son contenu. `app.alerts` inséré dans le contrat de couches
   import-linter (sous `app.pipelines`, au-dessus de `app.secrets`).
+- **SP-17a** — socle d'export (A25) : worker Playwright asynchrone qui rend
+  la vraie page runtime du shell (carte ou app/dashboard) en PNG/PDF, mise
+  en page `printLayout` déclarative embarquée dans `MapConfig`/`AppConfig`
+  (page A4/A3, orientation, titre, légende/échelle/flèche nord, cartouche),
+  bouton « Exporter » dans la visionneuse de carte et le runtime d'app/
+  dashboard — tout derrière `CORE_EXPORT_ENABLED` (défaut désactivé).
+  Nouveau module `core/app/export/` (jobs procrastinate file dédiée
+  `export`, routes REST, modèle+repository) ; jeton d'export éphémère
+  HS256 colocalisé dans `app.auth` (pas `app.export`, pour respecter le
+  sens du contrat de couches — `app.export` importe `app.auth`, jamais
+  l'inverse) fait naviguer le worker avec les droits réels de
+  l'utilisateur demandeur, révocation par TTL court (~2 min) seul, aucun
+  précédent de jeton à usage unique dans ce dépôt ; conteneur dédié
+  `export-worker` (profil compose `export`, image séparée du worker
+  partagé — Chromium est trop lourd pour lui). Shell : `printLayout`
+  round-trippé sur `MapConfig`/`AppConfig`, mode `exportRender` (page nue
+  sans chrome de builder NI chrome applicatif `AppLayout`, signal de
+  disponibilité `data-export-ready="true"` sur `document.body` que le
+  worker attend via sélecteur Playwright), panneau de poll générique
+  (patron `PipelineRunPanel`, jamais `useQuery`/`refetchInterval`).
+  Exécution en subagent-driven-development : 14 tâches, 6 défauts réels
+  trouvés/corrigés en revue par tâche (KeyError non catché sur secret
+  manquant → 500 non authentifié ; fuite Chromium/driver sur échec de
+  lancement ; client S3 en dur au lieu du patron injectable + branche
+  "done" non testée ; bug pré-existant `saveMapConfig` perdant
+  silencieusement `printLayout` ; légende dupliquée par l'overlay export ;
+  chrome applicatif complet visible dans les captures carte, avec bouton
+  de déconnexion — `AppLayout` ignorait `exportRender`), plus **3 rounds
+  de revue finale de branche** (0 Critical/Important non résolu au
+  merge) : round 1 a trouvé 3 Critical + 8 Important invisibles à une
+  revue scopée par tâche — mode export à hauteur DOM nulle (capture
+  vide, mesuré empiriquement 0px vs 653px en vrai Chromium), aucune
+  migration Alembic pour `export_jobs` (jamais créée sur Postgres),
+  `docker-compose.yml` ne donnant `CORE_EXPORT_ENABLED`/
+  `CORE_EXPORT_TOKEN_SECRET` qu'au worker jamais à `core` (routeur jamais
+  monté, ou jeton jamais validable) ; round 2 a trouvé que le fix round 1
+  lui-même cassait 2 jobs CI (spec OpenAPI régénérée avec le flag actif
+  alors que la CI ne l'active jamais — reverti pour matcher le précédent
+  `CORE_ETL_ENABLED`/pipelines déjà établi ; test `@pytest.mark.playwright`
+  sans garde de skip, échouerait au lieu de sauter faute de Chromium en
+  CI) plus `VITE_CORE_URL` jamais transmis au service `shell` du compose
+  (export non fonctionnel contre la stack par défaut malgré une
+  documentation ajoutée en round 1) ; round 3 a confirmé les 3 fixes
+  fermés par reproduction indépendante des étapes CI et de la garde de
+  skip dans les deux sens, et trouvé `SHELL_BASE_URL` avec exactement le
+  même défaut inerte que `VITE_CORE_URL` (corrigé directement, motif déjà
+  prouvé). Test `@pytest.mark.playwright` (Task 6) réellement exécuté et
+  vérifié dans les deux sens (SKIPPED sans Chromium, PASSED avec) — pas
+  seulement best-effort documenté comme le précédent SP-15d/qgis. Build
+  Docker réel de `export-worker` réussi (Chromium/FFmpeg/Chrome Headless
+  Shell téléchargés et installés). Suivis non bloquants restants : voir
+  `### Suivis non bloquants ouverts`.
 
 ### À venir
 
@@ -393,13 +445,12 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   `ReportSchedule`/rapports planifiés/PDF de dashboards paginés
   entièrement dans **SP-17**, où le socle export CSV/XLSX/GeoJSON/GPKG de
   SP-16a sera réutilisé tel quel plutôt que reconstruit.
-- **SP-17** — porte désormais `ReportSchedule` (rapports planifiés, PDF de
-  dashboards paginés, en s'appuyant sur le worker Playwright/`PrintLayout`
-  déjà prévu par la vision post-v0.1) en plus de son périmètre restant à
-  cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17 à arbitrer
-  avant lancement).
-- Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem),
-  impression (Playwright en worker).
+- **SP-17** — le socle export (worker Playwright + `PrintLayout`, SP-17a)
+  est livré (cf. `### Fait`). Reste `ReportSchedule` (rapports planifiés,
+  PDF de dashboards paginés, réutilisant ce socle) en plus du périmètre
+  restant à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17 à
+  arbitrer avant lancement).
+- Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
   Autoporté/Statique, dépend de SP-11). Jalon M15.
 - **SP-19** — undo/redo général du builder (pile d'instantanés de config,
@@ -423,3 +474,13 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   réel), Q11 (offline) — cf. comparatif §8. Seule Q2 peut réordonner SP-3/SP-6.
 - Brainstorm Analytics Platform (2026-07-09) validé et décliné en SP-14/SP-16,
   arbitrages A28–A30, jalons M11/M12.
+- SP-17a, Minor différés (non bloquants, trouvés en revue finale de branche) :
+  géométrie d'impression (viewport Playwright) non dérivée de
+  `PrintLayout.pageSize`/`orientation` ; `printLayout.showScaleBar`/
+  `showNorthArrow` retirés du panneau d'édition (contrôles inertes, jamais
+  rendus — cf. Fait) ; `POST /export` n'valide pas le kind de l'item
+  (dataset/pipeline accepté, échoue après 30s au lieu d'un 422 immédiat) ;
+  `export_repo.reclaim_stuck_jobs` existe (testé) mais aucune tâche
+  périodique ne l'appelle encore, TODO explicite dans `jobs.py` ;
+  `export-worker` sans instrumentation OTel contrairement à `core`/
+  `worker`/`cdc-worker`.
