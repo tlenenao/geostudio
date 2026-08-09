@@ -124,6 +124,8 @@ services:
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
+      CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
+      CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -197,6 +199,36 @@ services:
     volumes:
       - etl-scratch:/scratch
     networks: [gis-net]
+    restart: unless-stopped
+
+  # Worker d'export Playwright (SP-17a, A25) — image dédiée (Chromium +
+  # dépendances système), séparée du worker partagé pour ne pas l'alourdir
+  # pour tout le monde. Profil `export` : un `docker compose up` par défaut
+  # ne le démarre pas, même porte que CORE_EXPORT_ENABLED. Aucun volume
+  # partagé requis : le rendu (screenshot/PDF) reste en mémoire, upload S3
+  # direct — pas d'intermédiaire disque comme etl-scratch.
+  export-worker:
+    build:
+      context: ./core
+      dockerfile: ../deploy/export-worker/Dockerfile
+    profiles: ["export"]
+    command: python -m procrastinate --app app.jobs.app worker -q export
+    environment:
+      DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_EXPORTS_BUCKET: geostudio-exports
+      # Doit suivre la même variable que le service `core` (ci-dessus) — pas
+      # de valeur figée "true" : un worker qui rend une page pendant que
+      # `core` refuse le jeton d'export (CORE_EXPORT_ENABLED absent/false
+      # côté core) produirait une capture "Accès refusé" silencieuse plutôt
+      # qu'un état explicitement coupé (revue finale SP-17a, C3).
+      CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
+      CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
+      SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
+    networks: [gis-net]
+    depends_on: [pgbouncer, minio]
     restart: unless-stopped
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
@@ -285,6 +317,14 @@ services:
 
   shell:
     build: ./shell
+    environment:
+      # No-op par défaut : même valeur que l'ARG de build de shell/Dockerfile
+      # (http://localhost:8200), injectée au runtime via
+      # docker-entrypoint.d/40-render-runtime-config.sh (envsubst ->
+      # env-config.js -> shell/src/config.ts::mergeRuntimeEnv). Surcharger
+      # VITE_CORE_URL dans .env pour activer un export réel (profil
+      # "export") sans rebuild — voir la note détaillée dans .env.example.
+      VITE_CORE_URL: ${VITE_CORE_URL:-http://localhost:8200}
     ports:
       - "8300:8300"
     networks: [gis-net]

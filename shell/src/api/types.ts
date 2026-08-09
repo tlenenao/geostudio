@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -61,7 +61,17 @@ export type MapLayer =
   | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
   | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
   | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> };
-export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[] };
+export type PrintLayoutConfig = {
+  pageSize?: "a4" | "a3";
+  orientation?: "portrait" | "landscape";
+  title?: string | null;
+  showLegend?: boolean;
+  showScaleBar?: boolean;
+  showNorthArrow?: boolean;
+  cartouche?: string | null;
+};
+
+export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[]; printLayout?: PrintLayoutConfig | null };
 
 export type LayerSource = {
   id: string;
@@ -179,6 +189,8 @@ export interface ItemClient {
     itemId: string | null;
   }>;
   runAnalyticsSql(sql: string): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
+  createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
+  getExportJob(jobId: string): Promise<ExportJob>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
@@ -421,6 +433,7 @@ export type AppConfig = {
   variables?: Variable[];
   navigationMode?: "tabs" | "story";
   interactions?: "auto" | "manual"; // absent = "manual"
+  printLayout?: PrintLayoutConfig | null;
 };
 
 export type PipelineNodeKind = "reader" | "transform" | "writer";
@@ -514,6 +527,10 @@ export type PipelineOpEntry = {
 };
 
 export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
+
+export type ExportFormat = "png" | "pdf";
+export type ExportJobStatus = "pending" | "running" | "done" | "error";
+export type ExportJob = { id: string; status: ExportJobStatus; resultUrl: string | null; error: string | null };
 
 export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
 

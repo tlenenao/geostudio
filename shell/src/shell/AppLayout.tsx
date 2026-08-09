@@ -5,12 +5,37 @@ import { useInstanceInfo, useMe } from "../api/hooks";
 import { Button } from "../ui/button";
 import { NewItemButton } from "./NewItemButton";
 import { ImportFileButton } from "./ImportFileButton";
+import { useIsExportRender } from "./useIsExportRender";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { username, signOut } = useAuth();
   const meQuery = useMe();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
+  const isExportRender = useIsExportRender();
+
+  // Playwright's export capture (Task 6, core/app/export/jobs.py) navigates
+  // straight to a route nested under ProtectedLayout (e.g. /maps/:pk) with
+  // ?exportRender=1. ProtectedLayout keeps RequireAuth in the tree (needed
+  // for the future exportToken bypass, Task 12) but the header/nav/read-only
+  // banner chrome this layout renders must not show up in the capture — a
+  // page-level "nude chrome" guard (e.g. MapEditorPage's) can only omit what
+  // that page itself renders, not what AppLayout wraps it in. Skip straight
+  // to the children so the capture is exactly what the target page renders.
+  //
+  // The normal branch below establishes its own viewport height via
+  // `min-h-screen` (a viewport unit, not a percentage-height chain through
+  // body/#root, which have no explicit height set in index.css). The export
+  // branch must do the same: without an explicit height here, MapEditorPage's
+  // `h-full w-full` map container and AppRuntimePage's `h-full w-full` app
+  // container resolve their percentage heights against an auto-height
+  // containing block and collapse to zero, so every capture would be blank.
+  // `h-screen w-screen` mirrors the same viewport-unit approach the normal
+  // branch already uses.
+  if (isExportRender) {
+    return <div className="h-screen w-screen">{children}</div>;
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       {readOnly && (

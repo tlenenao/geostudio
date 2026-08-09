@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
@@ -17,6 +17,10 @@ const authState: AuthState = {
   error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
+
+afterEach(() => {
+  delete document.body.dataset.exportReady;
+});
 
 const emptyLayout = { type: "grid" as const, breakpoints: {}, items: [] };
 const config: AppConfig = {
@@ -252,6 +256,82 @@ test("the save-view button is absent when interactions is manual", async () => {
 test("the save-view button is present when interactions is auto", async () => {
   renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) });
   expect(await screen.findByRole("button", { name: "Enregistrer la vue" })).toBeInTheDocument();
+});
+
+test("exportRender=1 hides the save-view action bar and marks the page export-ready once the config loads", async () => {
+  renderRuntime(
+    { getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig) },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  await screen.findByLabelText("Date de début");
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
+  await waitFor(() => expect(document.body.getAttribute("data-export-ready")).toBe("true"));
+});
+
+// Fix round (finding I1) : le bouton/panneau Exporter doit apparaître dès
+// que exportEnabled est vrai, indépendamment de interactions === "auto" —
+// avant ce correctif, ExportPanel vivait entièrement à l'intérieur de la
+// barre gated sur interactions === "auto", ce qui le cachait sur la plupart
+// des apps/dashboards (interactions absent/"manual" par défaut).
+test("the export button shows when exportEnabled is true, even with interactions absent/manual (finding I1)", async () => {
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(manualDateFilterConfig),
+    getInstanceInfo: vi.fn().mockResolvedValue({ readOnly: false, etlEnabled: false, exportEnabled: true }),
+  });
+  expect(await screen.findByRole("button", { name: "Exporter" })).toBeInTheDocument();
+  // The interactions-gated "Enregistrer la vue" button keeps its own,
+  // independent gate — manual mode still hides it.
+  expect(screen.queryByRole("button", { name: "Enregistrer la vue" })).not.toBeInTheDocument();
+});
+
+test("the export button is absent when exportEnabled is false, even with interactions auto", async () => {
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig),
+    getInstanceInfo: vi.fn().mockResolvedValue({ readOnly: false, etlEnabled: false, exportEnabled: false }),
+  });
+  expect(await screen.findByRole("button", { name: "Enregistrer la vue" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Exporter" })).not.toBeInTheDocument();
+});
+
+test("the export button never renders during ?exportRender=1 capture itself, even when exportEnabled is true", async () => {
+  renderRuntime(
+    {
+      getItem: vi.fn().mockResolvedValue(okItem),
+      getAppConfig: vi.fn().mockResolvedValue(dateFilterConfig),
+      getInstanceInfo: vi.fn().mockResolvedValue({ readOnly: false, etlEnabled: false, exportEnabled: true }),
+    },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  await screen.findByLabelText("Date de début");
+  expect(screen.queryByRole("button", { name: "Exporter" })).not.toBeInTheDocument();
+});
+
+// Fix round (finding I4) : PrintLayout title/cartouche must render as an
+// overlay in the app/dashboard export capture, mirroring MapEditorPage's
+// existing overlay pattern — previously silently dropped for apps.
+const printLayoutConfig: AppConfig = {
+  kind: "app", theme: {}, dataSources: [], messages: [],
+  layout: emptyLayout,
+  pages: [{ id: "page-1", name: "Accueil", layout: emptyLayout }],
+  printLayout: { pageSize: "a4", orientation: "portrait", title: "Rapport trimestriel", cartouche: "GeoStudio — confidentiel" },
+};
+
+test("exportRender=1 renders the printLayout title/cartouche overlay (finding I4)", async () => {
+  renderRuntime(
+    { getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(printLayoutConfig) },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  expect(await screen.findByText("Rapport trimestriel")).toBeInTheDocument();
+  expect(screen.getByText("GeoStudio — confidentiel")).toBeInTheDocument();
+});
+
+test("the printLayout overlay does not render outside of exportRender", async () => {
+  renderRuntime({ getItem: vi.fn().mockResolvedValue(okItem), getAppConfig: vi.fn().mockResolvedValue(printLayoutConfig) });
+  await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  expect(screen.queryByText("Rapport trimestriel")).not.toBeInTheDocument();
+  expect(screen.queryByText("GeoStudio — confidentiel")).not.toBeInTheDocument();
 });
 
 test("saving a view captures the current analytics context and posts a bookmark", async () => {

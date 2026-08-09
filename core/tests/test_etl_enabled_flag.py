@@ -49,11 +49,11 @@ def env():
 def test_instance_reports_etl_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": False}
+    assert response.json() == {"readOnly": False, "etlEnabled": False, "exportEnabled": False}
 
 
 def test_instance_reports_etl_enabled(env, monkeypatch):
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": True}
+    assert response.json() == {"readOnly": False, "etlEnabled": True, "exportEnabled": False}

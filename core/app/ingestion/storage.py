@@ -45,6 +45,12 @@ def generate_presigned_put_url(
     )
 
 
+def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int = 3600) -> str:
+    return client.generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires_in,
+    )
+
+
 def download_object(client, *, bucket: str, key: str) -> bytes:
     obj = client.get_object(Bucket=bucket, Key=key)
     return obj["Body"].read()

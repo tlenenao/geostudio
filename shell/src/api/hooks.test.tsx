@@ -67,6 +67,24 @@ test("useInstanceInfo degrades fail-open (data stays undefined, never a false po
   expect(result.current.data?.readOnly).not.toBe(true);
 });
 
+test("useInstanceInfo returns exportEnabled from the core", async () => {
+  server.use(
+    http.get("https://core.test/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: false, exportEnabled: true }),
+    ),
+  );
+  const { result } = renderHook(() => useInstanceInfo(), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.exportEnabled).toBe(true);
+});
+
+test("useInstanceInfo falls back to exportEnabled: false when the client doesn't implement getInstanceInfo", async () => {
+  const client = {} as unknown as ItemClient;
+  const { result } = renderHook(() => useInstanceInfo(), { wrapper: makeWrapper(client) });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual({ readOnly: false, etlEnabled: false, exportEnabled: false });
+});
+
 test("useCreateItem creates an item and returns it", async () => {
   const { result } = renderHook(() => useCreateItem(), { wrapper });
   await act(async () => {

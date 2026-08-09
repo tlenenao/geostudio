@@ -117,8 +117,19 @@ export const MapView = forwardRef<
     config: MapConfig;
     onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number] }) => void;
     onFeatureClick?: (record: DataRecord) => void;
+    // Fired once the map has settled after its first load (MapLibre "idle":
+    // no pending tiles/style/sprite loads) — the real "ready to capture"
+    // signal for exportRender mode (SP-17a Task 10), as opposed to a fixed
+    // delay.
+    onReady?: () => void;
+    // Suppresses the built-in interactive legend. Used by exportRender mode
+    // (MapEditorPage), which renders its own legend overlay driven by
+    // `printLayout.showLegend` — without this, that toggle couldn't ever
+    // hide the legend from a capture (this MapLegend would still render
+    // underneath it, and both would duplicate when showLegend is true).
+    hideLegend?: boolean;
   }
->(function MapView({ config, onViewChange, onFeatureClick }, ref) {
+>(function MapView({ config, onViewChange, onFeatureClick, onReady, hideLegend }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
@@ -128,6 +139,7 @@ export const MapView = forwardRef<
   // the async "load" and "moveend" handlers never read stale values.
   const onViewChangeRef = useRef(onViewChange);
   const onFeatureClickRef = useRef(onFeatureClick);
+  const onReadyRef = useRef(onReady);
   const layersRef = useRef(config.layers);
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
@@ -135,6 +147,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     onFeatureClickRef.current = onFeatureClick;
   }, [onFeatureClick]);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
   useEffect(() => {
     layersRef.current = config.layers;
   });
@@ -156,6 +171,7 @@ export const MapView = forwardRef<
       map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
       applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
       applyDeckLayers(overlay, layersRef.current);
+      map.once("idle", () => onReadyRef.current?.());
     });
     map.on("moveend", () => {
       const cb = onViewChangeRef.current;
@@ -199,7 +215,7 @@ export const MapView = forwardRef<
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
-      <MapLegend layers={config.layers} />
+      {!hideLegend && <MapLegend layers={config.layers} />}
     </div>
   );
 });

@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { loadConfig } from "./config";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
+import { buildExportAwareToken } from "./auth/exportAwareToken";
 import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { AppRoutes } from "./shell/routes";
@@ -24,7 +25,7 @@ function AppShell() {
       createItemClient({
         coreUrl: config.coreUrl,
         martinUrl: config.martinUrl,
-        getToken: getAccessToken,
+        getToken: buildExportAwareToken(getAccessToken),
       }),
     [getAccessToken],
   );

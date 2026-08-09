@@ -6,6 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth.export_tokens import ExportTokenError, decode_export_token, is_export_token
 from app.db import get_session
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
@@ -30,6 +31,14 @@ def is_etl_enabled() -> bool:
     false : une instance qui monte en version ne voit rien de nouveau tant
     qu'elle n'a pas explicitement activé la capacité (cf. design SP-15a §3)."""
     return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
+
+
+def is_export_enabled() -> bool:
+    """CORE_EXPORT_ENABLED (SP-17a) — capacité instance-wide optionnelle,
+    même convention que is_etl_enabled : lue à chaque appel, sans cache.
+    Défaut false : le worker Playwright/export-worker n'est jamais requis
+    pour faire tourner le reste de la plateforme."""
+    return os.environ.get("CORE_EXPORT_ENABLED", "false").lower() == "true"
 
 
 def admin_subs() -> set[str]:
@@ -78,6 +87,18 @@ def get_current_user(
             bootstrap_admin=True,
             bootstrap_analyst=True,
         )
+
+    if is_export_token(token):
+        try:
+            claims = decode_export_token(token)
+        except ExportTokenError as exc:
+            raise HTTPException(status_code=401, detail="invalid export token") from exc
+        if claims.tenant_id != tenant.id:
+            raise HTTPException(status_code=401, detail="invalid export token")
+        user = session.get(User, claims.user_id)
+        if user is None:
+            raise HTTPException(status_code=401, detail="invalid export token")
+        return user
 
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)

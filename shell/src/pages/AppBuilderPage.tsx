@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
 import { useAppConfig, useCreateDataset, useSaveApp, useUploadThumbnail } from "../api/hooks";
-import type { AppConfig, RenderMode, WidgetItem } from "../api/types";
+import type { AppConfig, PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
+import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
 import { DataSourcePanel } from "../builder/DataSourcePanel";
@@ -186,6 +187,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setVariables = (variables: typeof draft.variables) =>
     setDraft((d) => (d ? { ...d, variables } : d));
 
+  function setPrintLayout(printLayout: PrintLayoutConfig | null) {
+    setDraft((d) => (d ? { ...d, printLayout } : d));
+  }
+
   const expressionErrors = draft ? getConfigExpressionErrors(draft) : [];
 
   return (
@@ -255,6 +260,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
               <ThemePanel theme={draft.theme} onChange={setTheme} />
+              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Impression</p>
+              <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
             </aside>
           )}
           <main ref={mainRef} className="flex-1 overflow-auto p-2">
