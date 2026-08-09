@@ -226,7 +226,7 @@ services:
       # qu'un état explicitement coupé (revue finale SP-17a, C3).
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
-      SHELL_BASE_URL: http://shell:8300
+      SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
     networks: [gis-net]
     depends_on: [pgbouncer, minio]
     restart: unless-stopped
