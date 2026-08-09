@@ -313,6 +313,18 @@ class AlertRulePayload(BaseModel):
         return self
 
 
+class ReportSchedulePayload(BaseModel):
+    bookmarkItemId: str
+    refreshPolicy: PipelineRefreshPolicy  # reused verbatim, same shape as pipeline/alert scheduling
+    channels: list[AlertChannel] = Field(default_factory=list)  # reused verbatim from AlertRule (SP-16b)
+
+    @model_validator(mode="after")
+    def _require_at_least_one_channel(self) -> "ReportSchedulePayload":
+        if not self.channels:
+            raise ValueError("report schedule requires at least one channel")
+        return self
+
+
 class PrintLayout(BaseModel):
     pageSize: Literal["a4", "a3"] = "a4"
     orientation: Literal["portrait", "landscape"] = "portrait"
@@ -328,7 +340,7 @@ class BuilderConfig(BaseModel):
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -342,6 +354,7 @@ class BuilderConfig(BaseModel):
     bookmark: BookmarkPayload | None = None
     pipeline: PipelinePayload | None = None
     alert: AlertRulePayload | None = None
+    report: ReportSchedulePayload | None = None
     printLayout: PrintLayout | None = None
 
     @model_validator(mode="after")
@@ -358,4 +371,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("pipeline config requires a pipeline payload")
         if self.kind == "alert" and self.alert is None:
             raise ValueError("alert config requires an alert payload")
+        if self.kind == "report" and self.report is None:
+            raise ValueError("report config requires a report payload")
         return self
