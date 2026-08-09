@@ -59,7 +59,7 @@ app = procrastinate.App(
     import_paths=[
         "app.ingestion.tasks", "app.items.jobs", "app.collections.jobs",
         "app.cdc.jobs", "app.harvest.jobs", "app.pipelines.jobs", "app.alerts.jobs",
-        "app.export.jobs",
+        "app.export.jobs", "app.reports.jobs",
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )

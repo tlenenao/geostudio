@@ -29,6 +29,7 @@ from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.reports import routes as reports_routes
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
 from app.schemas_routes import router as schemas_router
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(dcat_routes.router)
     app.include_router(harvest_routes.router)
     app.include_router(alerts_routes.router)
+    app.include_router(reports_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
     if is_export_enabled():
