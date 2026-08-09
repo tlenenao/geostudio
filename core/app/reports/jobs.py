@@ -124,59 +124,83 @@ def _notify_pending_reports(session_factory) -> None:
         for run in reports_repo.list_unnotified_runs(session):
             job = export_repo.get_job(session, tenant_id=run.tenant_id, job_id=run.export_job_id)
             if job is None or job.status not in ("done", "error"):
-                continue  # still rendering — revisit next tick
+                continue  # rendu encore en cours — on repassera au tick suivant
 
-            report_config = configs_repo.get_config_by_item(session, run.report_item_id)
-            if report_config is None or report_config.kind != "report":
-                # Item du rapport supprimé après déclenchement — plus rien
-                # contre quoi notifier ; on clôture le run pour que le sweep
-                # ne boucle pas dessus indéfiniment.
-                reports_repo.mark_notified(session, run_id=run.id)
-                session.commit()
-                continue
-            payload = report_config.config.report
-            assert payload is not None
+            # Filet large, jumeau de celui d'app.alerts.jobs.evaluate_alert_task :
+            # tout ce qui suit peut lever autre chose qu'une NotifyError
+            # (KeyError sur S3_ENDPOINT_URL absent et erreurs botocore dans
+            # _presigned_url_for_job, KeyError/RuntimeError du chargement de
+            # la clé maître ou InvalidTag AES-GCM sur une ligne de secret
+            # corrompue dans send_email...). Sans ce filet, l'exception
+            # s'échappait de _notify_pending_reports AVANT mark_notified :
+            # list_unnotified_runs étant cross-tenant et non ordonnée, un seul
+            # run cassé bloquait définitivement la notification de tous les
+            # rapports de tous les tenants, à chaque balayage — exactement la
+            # contrainte « une notification est tentée une fois par run,
+            # jamais rejouée, même en échec » que ce filet garantit désormais
+            # aussi pour le chemin d'erreur inattendue.
+            try:
+                report_config = configs_repo.get_config_by_item(session, run.report_item_id)
+                if report_config is None or report_config.kind != "report":
+                    # Item du rapport supprimé après déclenchement — plus rien
+                    # contre quoi notifier ; on clôture le run (finally
+                    # ci-dessous) pour que le sweep ne boucle pas dessus
+                    # indéfiniment.
+                    continue
+                payload = report_config.config.report
+                assert payload is not None
 
-            item = items_repo.get_item(session, tenant_id=run.tenant_id, item_id=run.report_item_id)
-            title = item.title if item is not None else run.report_item_id
-            result_url = _presigned_url_for_job(job)
-            message = (
-                f"Rapport « {title} » : {job.status}."
-                + (f" Lien : {result_url}" if result_url else "")
-                + (f" Erreur : {job.error}" if job.error else "")
-            )
-
-            for channel in payload.channels:
-                success = False
-                error_detail = None
-                try:
-                    if isinstance(channel, AlertChannelWebhook):
-                        send_webhook(
-                            channel,
-                            payload={"reportItemId": run.report_item_id, "status": job.status,
-                                      "resultUrl": result_url, "error": job.error},
-                        )
-                    elif isinstance(channel, AlertChannelEmail):
-                        send_email(
-                            session, tenant_id=run.tenant_id, channel=channel,
-                            subject=f"[GeoStudio] Rapport : {title}", body=message,
-                        )
-                    success = True
-                except NotifyError as exc:
-                    error_detail = str(exc)
-                    logger.warning("report notification failed for run %s: %s", run.id, exc)
-                write_audit(
-                    session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
-                    action="report.notify", object_type="item", object_id=run.report_item_id,
-                    payload={"channel": channel.kind, "success": success, "error": error_detail},
+                item = items_repo.get_item(session, tenant_id=run.tenant_id, item_id=run.report_item_id)
+                title = item.title if item is not None else run.report_item_id
+                result_url = _presigned_url_for_job(job)
+                message = (
+                    f"Rapport « {title} » : {job.status}."
+                    + (f" Lien : {result_url}" if result_url else "")
+                    + (f" Erreur : {job.error}" if job.error else "")
                 )
 
-            # Posé après la tentative, quel que soit le résultat par canal —
-            # une notification n'est jamais rejouée au tick suivant (design
-            # SP-17b §2, cf. le risque documenté "webhook cassé de façon
-            # permanente ne doit pas devenir un déni de service").
-            reports_repo.mark_notified(session, run_id=run.id)
-            session.commit()
+                for channel in payload.channels:
+                    success = False
+                    error_detail = None
+                    try:
+                        if isinstance(channel, AlertChannelWebhook):
+                            send_webhook(
+                                channel,
+                                payload={"reportItemId": run.report_item_id, "status": job.status,
+                                          "resultUrl": result_url, "error": job.error},
+                            )
+                        elif isinstance(channel, AlertChannelEmail):
+                            send_email(
+                                session, tenant_id=run.tenant_id, channel=channel,
+                                subject=f"[GeoStudio] Rapport : {title}", body=message,
+                            )
+                        success = True
+                    except NotifyError as exc:
+                        error_detail = str(exc)
+                        logger.warning("report notification failed for run %s: %s", run.id, exc)
+                    write_audit(
+                        session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
+                        action="report.notify", object_type="item", object_id=run.report_item_id,
+                        payload={"channel": channel.kind, "success": success, "error": error_detail},
+                    )
+            except Exception as exc:
+                logger.exception("notification du run de rapport %s : erreur inattendue", run.id)
+                try:
+                    write_audit(
+                        session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
+                        action="report.notify", object_type="item", object_id=run.report_item_id,
+                        payload={"channel": None, "success": False, "error": f"erreur interne : {exc}"},
+                    )
+                except Exception:  # session déjà cassée : l'audit ne doit pas empêcher mark_notified
+                    logger.exception("audit d'échec de notification impossible pour le run %s", run.id)
+            finally:
+                # Posé après la tentative, quel que soit le résultat par canal
+                # ET quelle que soit l'erreur inattendue ci-dessus — une
+                # notification n'est jamais rejouée au tick suivant (design
+                # SP-17b §2, cf. le risque documenté "webhook cassé de façon
+                # permanente ne doit pas devenir un déni de service").
+                reports_repo.mark_notified(session, run_id=run.id)
+                session.commit()
 
 
 @app.periodic(cron="*/5 * * * *")

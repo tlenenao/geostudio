@@ -237,6 +237,111 @@ def test_notify_marks_notified_even_when_channel_fails(monkeypatch):
         assert fetched.notified_at is not None  # never retried, even on failure
 
 
+def test_notify_marks_notified_when_channel_raises_a_non_notify_error(monkeypatch):
+    # Revue finale SP-17b (C2) : send_email peut lever autre chose qu'une
+    # NotifyError (KeyError/RuntimeError du chargement de la clé maître,
+    # InvalidTag AES-GCM sur un secret corrompu), et _presigned_url_for_job
+    # peut lever un KeyError si S3_ENDPOINT_URL est absent. Sans filet large,
+    # l'exception s'échappait avant mark_notified et bloquait la notification
+    # de TOUS les tenants pour toujours (list_unnotified_runs est
+    # cross-tenant, non ordonnée, rejouée toutes les 5 minutes).
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+        ).id
+        config = BuilderConfig.model_validate({
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": "bookmark-x",
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        })
+        configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+        )
+        export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
+        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        s.commit()
+
+    def _boom(*a, **kw):
+        raise RuntimeError("clé maître de secrets absente")
+
+    monkeypatch.setattr(report_jobs, "send_webhook", _boom)
+    monkeypatch.setattr(report_jobs, "_presigned_url_for_job", lambda job: None)
+
+    report_jobs._notify_pending_reports(Session)  # ne doit pas propager
+
+    with Session() as s:
+        fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.notified_at is not None  # jamais rejoué, même sur erreur inattendue
+        audit_rows = s.execute(
+            select(AuditLog).where(AuditLog.action == "report.notify", AuditLog.object_id == report_id)
+        ).scalars().all()
+        assert len(audit_rows) == 1
+        assert audit_rows[0].payload["success"] is False
+        assert audit_rows[0].payload["channel"] is None
+        assert "clé maître de secrets absente" in audit_rows[0].payload["error"]
+
+
+def test_notify_marks_notified_when_presigned_url_raises(monkeypatch):
+    # Second chemin du même filet : l'échec vient d'AVANT la boucle de canaux
+    # (_presigned_url_for_job lit os.environ["S3_ENDPOINT_URL"]).
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+        ).id
+        config = BuilderConfig.model_validate({
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": "bookmark-x",
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        })
+        configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+        )
+        export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
+        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        s.commit()
+
+    sent = []
+    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload: sent.append(payload))
+
+    def _boom(job):
+        raise KeyError("S3_ENDPOINT_URL")
+
+    monkeypatch.setattr(report_jobs, "_presigned_url_for_job", _boom)
+
+    report_jobs._notify_pending_reports(Session)
+
+    assert sent == []
+    with Session() as s:
+        fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.notified_at is not None
+
+
 def test_notify_skips_runs_whose_export_job_is_still_pending():
     Session = _make_session()
     with Session() as s:
