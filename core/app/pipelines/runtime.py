@@ -552,6 +552,7 @@ def _write_dataset(
             source="collection", collectionId=p.collectionId,
             columns=current.columns, timeField=current.timeField,
             reactsToExtent=current.reactsToExtent, crossFilterLinks=current.crossFilterLinks,
+            sourcePipelineId=current.sourcePipelineId,
         )
         # model_copy (pas de re-validation) est sûr ici : seul le champ
         # "dataset" change, et il porte déjà un DatasetPayload fraîchement

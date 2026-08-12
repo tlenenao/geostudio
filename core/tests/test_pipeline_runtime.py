@@ -638,6 +638,75 @@ def test_writer_dataset_updates_existing_dataset_preserving_metadata(pg_engine, 
 
 
 @pytest.mark.postgis
+def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypatch, tmp_path):
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig, DatasetPayload
+    from app.items import repository as items_repo
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable, "
+            "created_at, updated_at) "
+            "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+            "'', 'id', 'geometry', false, true, now(), now())"
+        ), {"t": tenant.id, "o": user.id})
+        s.execute(text(
+            "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+        ))
+        apply_collection_ddl(s, "villes_out")
+
+        pipeline_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Ma requête",
+        )
+        existing_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Ancien dataset",
+        )
+        existing_config = configs_repo.create_config(
+            s, BuilderConfig(kind="dataset", dataset=DatasetPayload(
+                source="collection", collectionId="villes_out_old",
+                sourcePipelineId=pipeline_item.id,
+            )),
+            item_id=existing_item.id, tenant_id=tenant.id,
+        )
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        payload = _dataset_pipeline_payload(
+            reader_collection="villes", writer_collection="villes_out", dataset_id=existing_item.id,
+        )
+        runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        updated = configs_repo.get_config(s, existing_config.id)
+        assert updated.config.dataset.sourcePipelineId == pipeline_item.id  # préservé, pas effacé
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE villes_out; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
+
+
+@pytest.mark.postgis
 def test_writer_dataset_refuses_update_without_write_access(pg_engine, monkeypatch, tmp_path):
     from app.configs import repository as configs_repo
     from app.configs.schemas import BuilderConfig, DatasetPayload
