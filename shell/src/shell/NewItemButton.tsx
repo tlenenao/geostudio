@@ -9,7 +9,7 @@ import { Dialog } from "../ui/dialog";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 
-type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline";
+type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 
 export function NewItemButton() {
   const [open, setOpen] = useState(false);
@@ -63,6 +63,11 @@ export function NewItemButton() {
       navigate("/pipelines/new", { state: { title: clean } });
       return;
     }
+    if (kind === "visual-query") {
+      close();
+      navigate("/datasets/visual-query/new", { state: { title: clean } });
+      return;
+    }
     try {
       const item =
         kind === "map"
@@ -109,6 +114,7 @@ export function NewItemButton() {
               <option value="map">Map</option>
               <option value="site">Site</option>
               <option value="dataset">Dataset partagé</option>
+              {etlEnabled && <option value="visual-query">Dataset par requête visuelle</option>}
               {etlEnabled && <option value="pipeline">Pipeline</option>}
             </select>
           </label>
