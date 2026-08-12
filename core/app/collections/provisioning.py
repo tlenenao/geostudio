@@ -9,6 +9,7 @@ geometry_type/srid nullables (l'ingestion importe toujours un fichier
 géoréférencé ; le cas non-spatial ne lui a jamais été nécessaire)."""
 import uuid
 from collections.abc import Callable
+from typing import Literal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -23,7 +24,11 @@ from app.collections.schemas import EmptyCollectionColumn
 
 def create_empty_collection(
     session: Session, *, tenant_id: str, owner_id: str, title: str,
-    columns: list[EmptyCollectionColumn], geometry_type: str | None, srid: int | None,
+    columns: list[EmptyCollectionColumn],
+    geometry_type: Literal[
+        "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon",
+    ] | None,
+    srid: int | None,
     introspect: Introspector, apply_ddl: Callable[[Session, str], None],
 ) -> Collection:
     table_name = f"query_{uuid.uuid4().hex[:12]}"
