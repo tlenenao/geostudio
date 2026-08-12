@@ -65,6 +65,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     async function poll() {
       while (!cancelled) {
         const runs = await client.getPipelineRuns(createdPipelinePk!);
+        if (cancelled) return;
         const latest = runs[0];
         if (latest && latest.status !== "queued" && latest.status !== "running") {
           if (latest.status === "succeeded") navigate(`/datasets/${createdDatasetPk}/edit`);
