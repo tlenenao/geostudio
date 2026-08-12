@@ -11,6 +11,7 @@ import { PublicItemPage } from "../pages/PublicItemPage";
 import { DatasetPage } from "../pages/DatasetPage";
 import { DatasetEditPage } from "../pages/DatasetEditPage";
 import { PipelineBuilderPage } from "../pages/PipelineBuilderPage";
+import { VisualQueryWizardPage } from "../pages/VisualQueryWizardPage";
 import { ReportEditPage } from "../pages/ReportEditPage";
 import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
@@ -136,6 +137,17 @@ function PipelineEditRoute() {
   return <PipelineBuilderPage pk={pk!} />;
 }
 
+function VisualQueryWizardNewRoute() {
+  const location = useLocation();
+  const title = (location.state as { title?: string } | null)?.title;
+  return <VisualQueryWizardPage pipelinePk={null} initialTitle={title} />;
+}
+
+function VisualQueryWizardEditRoute() {
+  const { pipelinePk } = useParams();
+  return <VisualQueryWizardPage pipelinePk={pipelinePk!} />;
+}
+
 function ReportNewRoute() {
   const location = useLocation();
   const bookmarkItemId = (location.state as { bookmarkItemId?: string } | null)?.bookmarkItemId;
@@ -203,6 +215,8 @@ export function AppRoutes() {
         <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
         <Route path="/pipelines/new" element={<PipelineNewRoute />} />
         <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
+        <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
+        <Route path="/datasets/visual-query/:pipelinePk/edit" element={<VisualQueryWizardEditRoute />} />
         <Route path="/reports" element={<ReportsRoute />} />
         <Route path="/reports/new" element={<ReportNewRoute />} />
         <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
