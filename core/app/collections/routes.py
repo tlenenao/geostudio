@@ -15,7 +15,8 @@ from app.collections.introspection import (
 )
 from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
-from app.collections.schemas import CollectionCreate, CollectionPatch
+from app.collections.provisioning import create_empty_collection
+from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
@@ -182,6 +183,21 @@ def register_collection(
                 action="collection.create", object_type="collection", object_id=col.id,
                 payload={"tableName": col.table_name})
     return _collection_json(col, _can_write_collection(session, user, col))
+
+
+@router.post("/collections/empty", status_code=201)
+def create_empty_collection_route(
+    body: EmptyCollectionCreate,
+    user=Depends(get_current_user), session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
+    apply_ddl: Callable = Depends(get_ddl_applier),
+):
+    col = create_empty_collection(
+        session, tenant_id=user.tenant_id, owner_id=user.id, title=body.title,
+        columns=body.columns, geometry_type=body.geometryType, srid=body.srid,
+        introspect=introspect, apply_ddl=apply_ddl,
+    )
+    return _collection_json(col, True)
 
 
 @router.get("/collections")
