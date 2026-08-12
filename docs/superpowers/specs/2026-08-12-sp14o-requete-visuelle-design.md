@@ -62,11 +62,17 @@ navigation forcée) — seule la première est obligatoire :
 2. **Filtrer** (optionnel) — lignes structurées `colonne / opérateur / valeur`
    combinées en ET, opérateurs proposés selon le type de colonne (texte,
    nombre, date, booléen — métadonnées déjà exposées par le schéma de
-   collection existant). Compilées en une expression CEL pour
-   `transform.filter` — **aucun CEL n'est jamais montré à l'utilisateur.**
+   collection existant). Compilées en une expression scalaire SQL DuckDB
+   bornée pour `transform.filter` (correction post-spec : ce champ n'est pas
+   du CEL, contrairement à ce qu'affirmait une première lecture — voir
+   `core/app/pipelines/expr_validation.py`, qui corrige lui-même une erreur
+   similaire de l'étude de faisabilité d'origine) — **aucune syntaxe n'est
+   jamais montrée à l'utilisateur**, la décision UX reste inchangée.
 3. **Joindre** (optionnel, une seule collection jointe en v1 — le modèle
    `TransformJoinParams` est binaire de toute façon) — collection jointe,
-   colonne de jointure de chaque côté, `inner`/`left`.
+   **une seule colonne de jointure, portant le même nom dans les deux
+   collections** (le SQL généré utilise `JOIN ... USING (col)`, qui exige un
+   nom partagé), `inner`/`left`.
 4. **Résumer** (optionnel) — `groupBy` (multi-colonnes) + liste de métriques
    nommées (colonne source + fonction d'agrégat + alias).
 5. **Planifier** (optionnel) — réutilise tel quel `PipelineScheduleEditor` /
@@ -183,10 +189,11 @@ lecture plutôt que vers l'assistant.
 ## Composants UI shell
 
 - `VisualQueryWizardPage` — orchestre les 5 étapes.
-- `QueryFilterBuilder` — lignes colonne/opérateur/valeur, compile en CEL
-  (fonction pure, testable isolément du reste du composant).
-- `QueryJoinPicker` — collection jointe + colonnes de jointure + `inner`/
-  `left`.
+- `QueryFilterBuilder` — lignes colonne/opérateur/valeur, compile en
+  expression SQL DuckDB bornée (fonction pure, testable isolément du reste
+  du composant).
+- `QueryJoinPicker` — collection jointe + une colonne de jointure partagée
+  + `inner`/`left`.
 - `QuerySummaryBuilder` — `groupBy` multi-colonnes + liste de métriques
   (colonne source + fonction + alias).
 - Réutilisés tels quels : `PipelineScheduleEditor`, un panneau de poll du même
@@ -199,8 +206,8 @@ lecture plutôt que vers l'assistant.
   collisions de nom de table) ; nouveau point de route de provisionnement
   (permissions non-admin, 400 sur schéma invalide) ; validation
   `DatasetPayload.sourcePipelineId` (référence pipeline existante/lisible).
-- **Shell (Vitest)** : compilateur CEL du filtre (cas simples + combinaisons
-  ET) ; compilateur wizard → `PipelineConfigPayload` (les combinaisons
+- **Shell (Vitest)** : compilateur SQL du filtre (cas simples + combinaisons
+  ET, échappement des valeurs) ; compilateur wizard → `PipelineConfigPayload` (les combinaisons
   d'étapes actives/inactives) ; décompilation pipeline → état formulaire
   (forme reconnue vs non reconnue).
 - **E2E (Playwright)** : parcours complet « Créer un dataset par requête »
