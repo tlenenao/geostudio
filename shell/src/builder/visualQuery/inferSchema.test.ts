@@ -39,8 +39,8 @@ describe("inferOutputColumns", () => {
     const names = result.columns.map((c) => c.name);
     expect(names).toContain("commune");       // colonne de jointure, une seule fois
     expect(names).toContain("population");    // pas de collision, nom inchangé
-    expect(names).toContain("joined_gravite"); // collision avec BASE.gravite, renommée
-    expect(names).not.toContain("gravite");    // le renommage remplace, pas ajoute
+    expect(names).toContain("gravite");       // colonne de base, jamais renommée ni supprimée
+    expect(names).toContain("joined_gravite"); // collision : seule la colonne jointe est renommée
   });
 
   test("résumé : count -> integer, sum/avg -> double precision, aucune géométrie", () => {

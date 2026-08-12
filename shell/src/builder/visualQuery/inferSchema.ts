@@ -48,17 +48,11 @@ export function inferOutputColumns(
 
   if (join && joinedSchema) {
     const baseNames = new Set(base.fields.map((f) => f.name));
-    const joinedNames = new Set(joinedSchema.fields.map((f) => f.name).filter(n => n !== join.on));
     const columns: InferredColumn[] = [];
-
-    // Add base fields, but skip those that collide with joined fields
     for (const f of base.fields) {
-      if (joinedNames.has(f.name)) continue; // Skip if collides with joined field
       const sqlType = FIELD_TYPE_TO_SQL[f.type];
       if (sqlType) columns.push({ name: f.name, sqlType });
     }
-
-    // Add joined fields
     for (const f of joinedSchema.fields) {
       if (f.name === join.on) continue; // dédupliquée par JOIN ... USING, déjà comptée côté base
       const sqlType = FIELD_TYPE_TO_SQL[f.type];
