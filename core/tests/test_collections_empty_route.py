@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional
+from app.db import Base, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+pytestmark = pytest.mark.postgis
+
+
+@pytest.fixture()
+def pg_app(pg_engine):
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
+    client = TestClient(app)
+    yield client
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "TRUNCATE items, configs, config_revisions, collections, "
+            "audit_log, users, tenants CASCADE"
+        ))
+
+
+def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app):
+    resp = pg_app.post("/collections/empty", json={
+        "title": "Ma requête",
+        "columns": [{"name": "commune", "sqlType": "text"}],
+        "geometryType": None, "srid": None,
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["featureCount"] == 0
+    assert pg_app.get(f"/collections/{body['id']}").status_code == 200
+
+
+def test_rejects_an_unknown_sql_type_with_422(pg_app):
+    resp = pg_app.post("/collections/empty", json={
+        "title": "Injection",
+        "columns": [{"name": "x", "sqlType": "text); DROP TABLE users; --"}],
+    })
+    assert resp.status_code == 422
