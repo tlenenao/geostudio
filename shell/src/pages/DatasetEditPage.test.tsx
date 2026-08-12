@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -33,13 +34,26 @@ const schema: CollectionSchema = {
   fields: [{ name: "nom", type: "string", required: true }],
 };
 
+// Route probe : rend le pk de pipeline capturé par la route de l'assistant
+// requête visuelle, pour vérifier une navigation réelle (pas seulement un
+// href) sans dépendre du vrai VisualQueryWizardPage.
+function VisualQueryEditProbe() {
+  const { pipelinePk } = useParams();
+  return <p>Assistant requête visuelle pour {pipelinePk}</p>;
+}
+
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = { listAlertRulesForDataset: vi.fn().mockResolvedValue([]), ...client };
   return render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={merged as ItemClient}>
-        <DatasetEditPage pk="ds-1" />
+        <MemoryRouter initialEntries={["/"]}>
+          <Routes>
+            <Route path="/" element={<DatasetEditPage pk="ds-1" />} />
+            <Route path="/datasets/visual-query/:pipelinePk/edit" element={<VisualQueryEditProbe />} />
+          </Routes>
+        </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -202,4 +216,31 @@ test("only offers CSV/XLSX when the collection has no geometry", async () => {
   await screen.findByText(/Dataset partagé/);
   expect(screen.getByLabelText("Exporter en CSV")).toBeInTheDocument();
   expect(screen.queryByLabelText("Exporter en GEOJSON")).not.toBeInTheDocument();
+});
+
+test("shows a « Modifier la requête » button when sourcePipelineId is set, linking to the wizard's edit route", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue({ ...datasetConfig, sourcePipelineId: "pipeline-1" }),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(item),
+  });
+
+  const button = await screen.findByRole("button", { name: "Modifier la requête" });
+  await userEvent.click(button);
+
+  expect(await screen.findByText("Assistant requête visuelle pour pipeline-1")).toBeInTheDocument();
+});
+
+test("hides the button when sourcePipelineId is absent (dataset created by hand)", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(item),
+  });
+  await screen.findByText(/Dataset partagé/);
+  expect(screen.queryByRole("button", { name: "Modifier la requête" })).not.toBeInTheDocument();
 });
