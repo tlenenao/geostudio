@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useDatasetConfig, useItem, useItems, useSaveDataset, useUpdateItem } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -16,6 +17,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const save = useSaveDataset(pk);
   const updateItem = useUpdateItem(pk);
   const client = useItemClient();
+  const navigate = useNavigate();
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
@@ -203,6 +205,14 @@ export function DatasetEditPage({ pk }: { pk: string }) {
         )}
       </div>
       <AlertRuleEditor datasetItemId={pk} owner={itemQuery.data.owner} />
+      {draft.sourcePipelineId && (
+        <Button
+          type="button" size="sm" variant="outline" className="w-fit"
+          onClick={() => navigate(`/datasets/visual-query/${draft.sourcePipelineId}/edit`)}
+        >
+          Modifier la requête
+        </Button>
+      )}
       <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
         Enregistrer les colonnes
       </Button>
