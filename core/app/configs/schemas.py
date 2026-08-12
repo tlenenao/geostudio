@@ -123,6 +123,11 @@ class DatasetPayload(BaseModel):
     timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
     reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
     crossFilterLinks: list[DatasetCrossFilterLink] = Field(default_factory=list)  # SP-14n
+    sourcePipelineId: str | None = None  # SP-14o : pipeline qui alimente ce
+        # dataset via writer.dataset, si créé par l'assistant de requête
+        # visuelle plutôt qu'à la main ; référence validée dans
+        # app.configs.dataset_validation, pas ici (un model_validator Pydantic
+        # n'a pas accès à la Session/l'utilisateur courant).
 
     @model_validator(mode="after")
     def _require_source_id(self) -> "DatasetPayload":
