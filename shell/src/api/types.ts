@@ -102,6 +102,15 @@ export type CollectionSchema = {
   fields: CollectionSchemaField[];
 };
 
+export type EmptyCollectionColumn = { name: string; sqlType: string };
+
+export type CreateEmptyCollectionInput = {
+  title: string;
+  columns: EmptyCollectionColumn[];
+  geometryType: string | null;
+  srid: number | null;
+};
+
 export type FieldError = { field: string; code: string; message: string };
 
 export type GeoJSONFeatureInput = {
@@ -131,6 +140,7 @@ export interface ItemClient {
   listCollections(): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
+  createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
   updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin>;
   deleteCollection(id: string): Promise<void>;
   listHarvestSources(): Promise<HarvestSource[]>;
@@ -261,6 +271,7 @@ export type DatasetConfig =
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      sourcePipelineId?: string | null;
     }
   | {
       source: "arcgis";
@@ -269,6 +280,7 @@ export type DatasetConfig =
       timeField?: string | null;
       reactsToExtent?: boolean;
       crossFilterLinks?: CrossFilterLink[];
+      sourcePipelineId?: string | null;
     };
 
 export type FeatureLayerSource = { id: string; title: string };

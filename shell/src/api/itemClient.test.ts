@@ -369,6 +369,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
   expect(cfg).toEqual({
     source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
     timeField: null, reactsToExtent: false, crossFilterLinks: [],
+    sourcePipelineId: null,
   });
 });
 
@@ -1930,4 +1931,23 @@ test("getExportJob GETs the job status by id", async () => {
   );
   const job = await makeClient().getExportJob("job-1");
   expect(job).toEqual({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null });
+});
+
+test("createEmptyCollection posts to /collections/empty and returns the created id", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/collections/empty", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "query_abc123" }, { status: 201 });
+    }),
+  );
+  const result = await makeClient().createEmptyCollection({
+    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null, srid: null,
+  });
+  expect(body).toEqual({
+    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null, srid: null,
+  });
+  expect(result).toEqual({ id: "query_abc123" });
 });
