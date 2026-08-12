@@ -59,6 +59,25 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     setRefreshPolicy(existingPipelineQuery.data.refreshPolicy ?? null);
   }, [pipelinePk, existingPipelineQuery.data]);
 
+  useEffect(() => {
+    if (!createdPipelinePk || !createdDatasetPk) return;
+    let cancelled = false;
+    async function poll() {
+      while (!cancelled) {
+        const runs = await client.getPipelineRuns(createdPipelinePk!);
+        const latest = runs[0];
+        if (latest && latest.status !== "queued" && latest.status !== "running") {
+          if (latest.status === "succeeded") navigate(`/datasets/${createdDatasetPk}/edit`);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+    poll();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createdPipelinePk, createdDatasetPk]);
+
   if (pipelinePk !== null && unrecognizedShape) {
     return (
       <p role="alert" className="text-sm text-red-600">
@@ -109,12 +128,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     return (
       <div className="flex flex-col gap-2 p-4">
         <p>Exécution de la requête…</p>
-        <PipelineRunPanel
-          pipelineId={createdPipelinePk}
-          onLatestRunChange={(run) => {
-            if (run?.status === "succeeded") navigate(`/datasets/${createdDatasetPk}/edit`);
-          }}
-        />
+        <PipelineRunPanel pipelineId={createdPipelinePk} />
       </div>
     );
   }

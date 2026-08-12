@@ -1,6 +1,6 @@
 // shell/src/pages/VisualQueryWizardPage.test.tsx
 import { describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -97,5 +97,27 @@ describe("VisualQueryWizardPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Créer" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("quota dépassé");
     expect(client.createDatasetItem).not.toHaveBeenCalled();
+  });
+
+  test("attend le run par son propre poll (sans clic manuel), même si le premier statut est \"running\"", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let call = 0;
+    const client = renderWizard({
+      getPipelineRuns: vi.fn().mockImplementation(() => {
+        call += 1;
+        const status = call < 2 ? "running" : "succeeded";
+        return Promise.resolve([{ id: "run-1", status, startedAt: null, finishedAt: null, error: null, nodeStats: {} }]);
+      }),
+    });
+    await userEvent.selectOptions(await screen.findByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    await waitFor(() => expect(screen.getByText("dataset-edit-page")).toBeInTheDocument());
+    // runPipeline n'a été appelé qu'une fois : aucun clic manuel n'a redéclenché un run redondant.
+    expect(client.runPipeline).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
