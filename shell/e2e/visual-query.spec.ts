@@ -106,12 +106,13 @@ test("crée un dataset par requête visuelle avec filtre, puis le rouvre pour v�
   await page.getByLabel("Valeur du filtre 1").fill("1");
   await page.getByRole("button", { name: "Créer" }).click();
 
-  await expect(page.getByText("Exécution de la requête…")).toBeVisible();
-  // `PipelineRunPanel` ne poll automatiquement qu'après un clic sur "Exécuter"
-  // (patron ImportFileButton, pas de refetchInterval react-query) — le
-  // `runPipeline` déclenché par `handleCreate` avant le montage du panneau
-  // n'entraîne qu'un unique `loadRuns()` au montage, jamais de boucle.
-  await page.getByRole("button", { name: "Exécuter" }).click();
+  // Le wizard poll désormais lui-même (indépendamment de `PipelineRunPanel`,
+  // qui reste affiché pour l'historique/relance manuelle mais ne pilote plus
+  // la redirection) : aucun clic manuel n'est nécessaire pour avancer, même
+  // si le premier statut lu est "running" (mock `runPolls < 2`). L'écran
+  // transitoire "Exécution de la requête…" n'est pas asserté ici : le poll
+  // est maintenant assez rapide (mock local, latence réseau nulle) pour que
+  // la redirection ait déjà eu lieu avant que Playwright ne l'observe.
   await expect(page).toHaveURL(/\/datasets\/dataset-1\/edit/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Modifier la requête" })).toBeVisible();
 
