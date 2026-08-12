@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ReportRunStatus, ReportSchedulePayload, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateEmptyCollectionInput, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ReportRunStatus, ReportSchedulePayload, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -223,6 +223,7 @@ export function createItemClient(opts: {
     timeField: string | null;
     reactsToExtent: boolean;
     crossFilterLinks: CrossFilterLink[];
+    sourcePipelineId: string | null;
   };
   const datasetCache = new Map<string, ResolvedDataset>();
 
@@ -237,6 +238,7 @@ export function createItemClient(opts: {
           columns?: Record<string, DatasetColumnMeta>;
           timeField?: string | null; reactsToExtent?: boolean;
           crossFilterLinks?: CrossFilterLink[];
+          sourcePipelineId?: string | null;
         } | null;
       };
     }>("GET", `/configs/by-item/${pk}`);
@@ -249,6 +251,7 @@ export function createItemClient(opts: {
       columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
       reactsToExtent: dataset.reactsToExtent ?? false,
       crossFilterLinks: dataset.crossFilterLinks ?? [],
+      sourcePipelineId: dataset.sourcePipelineId ?? null,
     };
     datasetCache.set(pk, resolved);
     return resolved;
@@ -532,6 +535,14 @@ export function createItemClient(opts: {
       return request<CollectionAdmin>("POST", `/collections`, input);
     },
 
+    async createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }> {
+      const data = await request<{ id: string }>("POST", "/collections/empty", {
+        title: input.title, columns: input.columns,
+        geometryType: input.geometryType, srid: input.srid,
+      });
+      return { id: data.id };
+    },
+
     async updateCollection(id: string, patch: CollectionPatchInput): Promise<CollectionAdmin> {
       return request<CollectionAdmin>("PATCH", `/collections/${id}`, patch);
     },
@@ -626,6 +637,7 @@ export function createItemClient(opts: {
         collectionId: dataset.source === "collection" ? dataset.collectionId : null,
         arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
         columns: {}, timeField: null, reactsToExtent: false, crossFilterLinks: [],
+        sourcePipelineId: null,
       });
       return {
         pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
@@ -771,12 +783,14 @@ export function createItemClient(opts: {
           source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
           timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
           crossFilterLinks: resolved.crossFilterLinks,
+          sourcePipelineId: resolved.sourcePipelineId ?? null,
         };
       }
       return {
         source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
         timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
         crossFilterLinks: resolved.crossFilterLinks,
+        sourcePipelineId: resolved.sourcePipelineId ?? null,
       };
     },
 
@@ -789,6 +803,7 @@ export function createItemClient(opts: {
         columns: config.columns, timeField: config.timeField ?? null,
         reactsToExtent: config.reactsToExtent ?? false,
         crossFilterLinks: config.crossFilterLinks ?? [],
+        sourcePipelineId: config.sourcePipelineId ?? null,
       });
     },
 
