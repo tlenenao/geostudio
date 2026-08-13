@@ -49,7 +49,9 @@ def env():
 def test_instance_reports_export_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {"readOnly": False, "etlEnabled": False, "exportEnabled": False}
+    assert response.json() == {
+        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "tileset3dEnabled": False,
+    }
 
 
 def test_instance_reports_export_enabled(env, monkeypatch):

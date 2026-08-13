@@ -3,23 +3,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_etl_enabled
+from app.auth.dependency import get_current_user, get_current_user_optional, is_tileset3d_enabled
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-def test_is_etl_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_ETL_ENABLED", raising=False)
-    assert is_etl_enabled() is False
+def test_is_tileset3d_enabled_defaults_to_false(monkeypatch):
+    monkeypatch.delenv("CORE_TILESET3D_ENABLED", raising=False)
+    assert is_tileset3d_enabled() is False
 
 
-def test_is_etl_enabled_reads_env_var(monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    assert is_etl_enabled() is True
-    monkeypatch.setenv("CORE_ETL_ENABLED", "false")
-    assert is_etl_enabled() is False
+def test_is_tileset3d_enabled_reads_env_var(monkeypatch):
+    monkeypatch.setenv("CORE_TILESET3D_ENABLED", "true")
+    assert is_tileset3d_enabled() is True
+    monkeypatch.setenv("CORE_TILESET3D_ENABLED", "false")
+    assert is_tileset3d_enabled() is False
 
 
 @pytest.fixture()
@@ -46,18 +46,22 @@ def env():
     return TestClient(app)
 
 
-def test_instance_reports_etl_disabled_by_default(env):
+def test_instance_reports_tileset3d_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "tileset3dEnabled": False,
-    }
+    assert response.json()["tileset3dEnabled"] is False
 
 
-def test_instance_reports_etl_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+def test_instance_reports_tileset3d_enabled(env, monkeypatch):
+    monkeypatch.setenv("CORE_TILESET3D_ENABLED", "true")
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {
-        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "tileset3dEnabled": False,
-    }
+    assert response.json()["tileset3dEnabled"] is True
+
+
+def test_upload_routes_absent_when_disabled(monkeypatch):
+    monkeypatch.delenv("CORE_TILESET3D_ENABLED", raising=False)
+    app = create_app()
+    client = TestClient(app)
+    response = client.post("/tileset3d/uploads", json={"filename": "x.zip", "title": "X"})
+    assert response.status_code == 404
