@@ -283,6 +283,72 @@ def test_put_config_by_item_404_when_missing(client):
     assert resp.status_code == 404
 
 
+def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
+    created = client.post(
+        "/configs",
+        json={
+            "title": "Carte 3D",
+            "config": {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "https://demo/style.json"},
+                    "view": {"center": [2.35, 48.85], "zoom": 5, "pitch": 45, "bearing": 90},
+                    "layers": [
+                        {"id": "bldg", "title": "Bâtiments", "visible": True,
+                         "kind": "tiles3d", "url": "https://example.test/tileset.json"},
+                    ],
+                    "terrain": {
+                        "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
+                        "encoding": "terrarium",
+                        "exaggeration": 1.5,
+                    },
+                },
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["itemId"]
+
+    by_item = client.get(f"/configs/by-item/{item_id}")
+    assert by_item.status_code == 200
+    body = by_item.json()["config"]["map"]
+    assert body["view"]["pitch"] == 45
+    assert body["view"]["bearing"] == 90
+    assert body["layers"][0] == {
+        "id": "bldg", "title": "Bâtiments", "visible": True, "kind": "tiles3d",
+        "tilesUrl": None, "sourceLayer": None, "url": "https://example.test/tileset.json",
+        "opacity": None, "deckType": None, "dataUrl": None, "paint": None, "props": None,
+    }
+    assert body["terrain"] == {
+        "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
+        "encoding": "terrarium",
+        "exaggeration": 1.5,
+    }
+
+
+def test_map_config_defaults_pitch_bearing_terrain_when_absent(client):
+    created = client.post(
+        "/configs",
+        json={
+            "title": "Carte plate",
+            "config": {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "https://demo/style.json"},
+                    "view": {"center": [0, 0], "zoom": 1},
+                    "layers": [],
+                },
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["itemId"]
+    body = client.get(f"/configs/by-item/{item_id}").json()["config"]["map"]
+    assert body["view"]["pitch"] is None
+    assert body["view"]["bearing"] is None
+    assert body["terrain"] is None
+
+
 def test_create_config_is_atomic_when_a_later_step_fails(client, monkeypatch):
     """If create_config raises AFTER create_item has already run, the whole
     request must roll back — no orphaned Item may survive. This proves the
