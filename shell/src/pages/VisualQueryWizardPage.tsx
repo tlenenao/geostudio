@@ -37,6 +37,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   const [createdDatasetPk, setCreatedDatasetPk] = useState<string | null>(null);
   const [unrecognizedShape, setUnrecognizedShape] = useState(false);
   const [existingOutput, setExistingOutput] = useState<{ collectionId: string; datasetItemId: string } | null>(null);
+  const [titleTouched, setTitleTouched] = useState(false);
 
   const baseSchemaQuery = useQuery({
     queryKey: ["collection-schema", baseCollectionId],
@@ -70,10 +71,14 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
 
   // Pré-remplit le Titre depuis l'item dataset une seule fois (la queryKey
   // ne change plus une fois existingOutput posé, donc cet effet ne se
-  // redéclenche pas quand l'utilisateur modifie le titre ensuite).
+  // redéclenche pas quand l'utilisateur modifie le titre ensuite). Gardé par
+  // titleTouched : entre la résolution de existingPipelineQuery (qui affiche
+  // déjà "Collection de base") et celle de existingDatasetItemQuery (second
+  // aller-retour), l'utilisateur peut avoir commencé à taper un titre — ne
+  // pas l'écraser silencieusement.
   useEffect(() => {
-    if (existingDatasetItemQuery.data) setTitle(existingDatasetItemQuery.data.title);
-  }, [existingDatasetItemQuery.data]);
+    if (existingDatasetItemQuery.data && !titleTouched) setTitle(existingDatasetItemQuery.data.title);
+  }, [existingDatasetItemQuery.data, titleTouched]);
 
   useEffect(() => {
     if (!createdPipelinePk || !createdDatasetPk) return;
@@ -124,6 +129,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetPk,
         );
         await client.savePipelineConfig(pipelinePk, pipeline);
+        await client.updateItem(datasetPk, { title });
       } else {
         const inferred = inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary);
         const { id: newCollectionId } = await client.createEmptyCollection({
@@ -179,7 +185,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
       </h2>
       <label className="flex flex-col gap-1 text-sm">
         Titre
-        <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input aria-label="Titre" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Collection de base
