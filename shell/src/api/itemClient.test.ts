@@ -339,6 +339,94 @@ test("saveMapConfig PUTs the map config by item", async () => {
   expect(body.map.view.zoom).toBe(3);
 });
 
+test("getMapConfig maps a tiles3d layer", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              { id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json",
+                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" });
+});
+
+test("getMapConfig reads terrain and camera pitch/bearing", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8, pitch: 40, bearing: 200 },
+            layers: [],
+            terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.view.pitch).toBe(40);
+  expect(cfg.view.bearing).toBe(200);
+  expect(cfg.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 });
+});
+
+test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8, pitch: null, bearing: null },
+            layers: [],
+            terrain: null,
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.view.pitch).toBeUndefined();
+  expect(cfg.view.bearing).toBeUndefined();
+  expect(cfg.terrain).toBeNull();
+});
+
+test("saveMapConfig sends terrain nested under map, not at the top level (unlike printLayout)", async () => {
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveMapConfig("77", {
+    basemap: { style: "s" },
+    view: { center: [0, 0], zoom: 1, pitch: 30, bearing: 60 },
+    layers: [],
+    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
+  });
+  expect(body.map.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" });
+  expect(body.map.view).toEqual({ center: [0, 0], zoom: 1, pitch: 30, bearing: 60 });
+  expect(body.terrain).toBeUndefined();
+});
+
 test("createDatasetItem posts a dataset payload and returns a dataset Item", async () => {
   let body: any;
   server.use(
@@ -369,6 +457,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
   expect(cfg).toEqual({
     source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
     timeField: null, reactsToExtent: false, crossFilterLinks: [],
+    sourcePipelineId: null,
   });
 });
 
@@ -1930,4 +2019,23 @@ test("getExportJob GETs the job status by id", async () => {
   );
   const job = await makeClient().getExportJob("job-1");
   expect(job).toEqual({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null });
+});
+
+test("createEmptyCollection posts to /collections/empty and returns the created id", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/collections/empty", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ id: "query_abc123" }, { status: 201 });
+    }),
+  );
+  const result = await makeClient().createEmptyCollection({
+    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null, srid: null,
+  });
+  expect(body).toEqual({
+    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null, srid: null,
+  });
+  expect(result).toEqual({ id: "query_abc123" });
 });

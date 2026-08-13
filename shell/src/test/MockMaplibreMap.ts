@@ -4,7 +4,7 @@ export type Recorded = { id: string; spec: unknown };
 export const mapInstances: MockMap[] = [];
 
 export class MockMap {
-  opts: { style: string; center: [number, number]; zoom: number };
+  opts: { style: string; center: [number, number]; zoom: number; pitch?: number; bearing?: number };
   handlers: Record<string, Array<() => void>> = {};
   layerHandlers: Record<string, Array<(e: unknown) => void>> = {};
   sources: Recorded[] = [];
@@ -15,6 +15,7 @@ export class MockMap {
   flyToArgs: unknown[] = [];
   fitBoundsArgs: unknown[] = [];
   bounds: [[number, number], [number, number]] = [[0, 0], [0, 0]];
+  terrain: unknown = null;
 
   constructor(opts: MockMap["opts"]) {
     this.opts = opts;
@@ -89,11 +90,26 @@ export class MockMap {
   getBounds() {
     return { toArray: () => this.bounds };
   }
+  getPitch() {
+    return this.opts.pitch ?? 0;
+  }
+  getBearing() {
+    return this.opts.bearing ?? 0;
+  }
+  setTerrain(spec: unknown) {
+    this.terrain = spec;
+  }
   loaded() {
     return true;
   }
+  // Real MapLibre's isStyleLoaded() answers "is nothing loading right now?",
+  // so a single in-flight (or failing) tile request flips it to false long
+  // after the style's initial load. Tests flip `styleSettled` to reproduce
+  // that window; MapView must not use it as a precondition for applying
+  // config updates.
+  styleSettled = true;
   isStyleLoaded() {
-    return true;
+    return this.styleSettled;
   }
   addControl(control: unknown) {
     this.controls.push(control);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -24,6 +24,14 @@ vi.mock("@deck.gl/aggregation-layers", async () => {
 vi.mock("@deck.gl/layers", async () => {
   const { ColumnLayer } = await import("../test/MockDeckgl");
   return { ColumnLayer };
+});
+vi.mock("@deck.gl/geo-layers", async () => {
+  const { Tile3DLayer } = await import("../test/MockDeckgl");
+  return { Tile3DLayer };
+});
+vi.mock("@loaders.gl/3d-tiles", async () => {
+  const { Tiles3DLoader } = await import("../test/MockLoadersGl");
+  return { Tiles3DLoader };
 });
 
 const { MapEditorPage } = await import("./MapEditorPage");
@@ -94,6 +102,47 @@ test("saving after only changing a layer keeps the previously loaded printLayout
   await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
   const savedConfig = saveMapConfig.mock.calls[0][1];
   expect(savedConfig.printLayout).toEqual({ pageSize: "a3", orientation: "landscape" });
+});
+
+test("edits terrain and camera, then saves both", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValue(undefined);
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+
+  await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
+  await userEvent.type(
+    screen.getByLabelText("URL de tuiles terrain"),
+    "https://example.test/dem/{{z}/{{x}/{{y}.png",
+  );
+  fireEvent.change(screen.getByLabelText("Inclinaison de la caméra"), { target: { value: "40" } });
+  fireEvent.change(screen.getByLabelText("Orientation de la caméra"), { target: { value: "200" } });
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
+  const saved = saveMapConfig.mock.calls[0][1];
+  expect(saved.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1 });
+  expect(saved.view.pitch).toBe(40);
+  expect(saved.view.bearing).toBe(200);
+});
+
+test("the camera reset button zeroes pitch and bearing in the saved view", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValue(undefined);
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue({ ...config, view: { ...config.view, pitch: 40, bearing: 200 } }),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await userEvent.click(screen.getByRole("button", { name: "Réinitialiser en 2D" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
+  const saved = saveMapConfig.mock.calls[0][1];
+  expect(saved.view.pitch).toBe(0);
+  expect(saved.view.bearing).toBe(0);
 });
 
 test("surfaces a save failure", async () => {

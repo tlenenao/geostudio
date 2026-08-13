@@ -2,7 +2,14 @@
 import pytest
 from pydantic import ValidationError
 
-from app.pipelines.ops.schemas import OP_KINDS, OP_PARAMS, ops_catalog, parse_op_params
+from app.pipelines.ops.schemas import (
+    OP_KINDS,
+    OP_PARAMS,
+    WriterCollectionParams,
+    WriterDatasetParams,
+    ops_catalog,
+    parse_op_params,
+)
 
 
 def test_all_eight_phase1_ops_are_registered():
@@ -375,3 +382,58 @@ def test_binary_ops_set_matches_catalog_flag():
     assert BINARY_OPS == {
         "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
     }
+
+
+def test_writer_collection_mode_defaults_to_append():
+    params = parse_op_params("writer.collection", {"collectionId": "c1"})
+    assert params.mode == "append"
+
+
+def test_writer_collection_mode_accepts_replace():
+    params = parse_op_params("writer.collection", {"collectionId": "c1", "mode": "replace"})
+    assert params.mode == "replace"
+
+
+def test_writer_collection_mode_rejects_unknown_value():
+    with pytest.raises(ValidationError):
+        parse_op_params("writer.collection", {"collectionId": "c1", "mode": "overwrite"})
+
+
+def test_writer_dataset_mode_defaults_to_append():
+    params = parse_op_params("writer.dataset", {"collectionId": "c1", "title": "My dataset"})
+    assert params.mode == "append"
+
+
+def test_writer_dataset_mode_accepts_replace():
+    params = parse_op_params(
+        "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "replace"},
+    )
+    assert params.mode == "replace"
+
+
+def test_writer_dataset_mode_rejects_unknown_value():
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "overwrite"},
+        )
+
+
+def test_writer_collection_mode_description_reaches_json_schema():
+    # Revue finale d'intégration SP-14o (Important 5) : la description doit
+    # atteindre model_json_schema() — c'est ce que ops_catalog() (donc
+    # l'inspecteur générique du canvas) expose réellement.
+    schema = WriterCollectionParams.model_json_schema()
+    assert schema["properties"]["mode"]["description"]
+
+
+def test_writer_dataset_mode_description_reaches_json_schema():
+    schema = WriterDatasetParams.model_json_schema()
+    assert schema["properties"]["mode"]["description"]
+
+
+def test_writer_collection_mode_description_reaches_ops_catalog():
+    # ops_catalog() (consommé par GET /pipelines/ops puis l'inspecteur du
+    # canvas) doit exposer la même description, pas seulement le modèle nu.
+    catalog = ops_catalog()
+    assert catalog["writer.collection"]["paramsSchema"]["properties"]["mode"]["description"]
+    assert catalog["writer.dataset"]["paramsSchema"]["properties"]["mode"]["description"]

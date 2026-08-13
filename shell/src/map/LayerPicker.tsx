@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
+import { Button } from "../ui/button";
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -30,7 +31,16 @@ function toMapLayer(source: LayerSource): MapLayer {
 
 export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
   const [q, setQ] = useState("");
+  const [tiles3dTitle, setTiles3dTitle] = useState("");
+  const [tiles3dUrl, setTiles3dUrl] = useState("");
   const { data, isLoading, isError, refetch } = useLayerSources({ q: q || undefined });
+
+  function addTiles3D() {
+    if (!tiles3dTitle.trim() || !tiles3dUrl.trim()) return;
+    onAdd({ id: crypto.randomUUID(), title: tiles3dTitle, visible: true, kind: "tiles3d", url: tiles3dUrl });
+    setTiles3dTitle("");
+    setTiles3dUrl("");
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -76,6 +86,36 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           ))}
         </ul>
       )}
+      <div className="border-t pt-2">
+        <p className="mb-1 text-xs font-medium text-slate-500">Ajouter un tileset 3D par URL</p>
+        <div className="flex flex-col gap-1">
+          <input
+            aria-label="Titre du tileset 3D"
+            type="text"
+            placeholder="Titre"
+            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            value={tiles3dTitle}
+            onChange={(e) => setTiles3dTitle(e.target.value)}
+          />
+          <input
+            aria-label="URL du tileset.json"
+            type="text"
+            placeholder="https://…/tileset.json"
+            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            value={tiles3dUrl}
+            onChange={(e) => setTiles3dUrl(e.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            className="w-fit"
+            disabled={!tiles3dTitle.trim() || !tiles3dUrl.trim()}
+            onClick={addTiles3D}
+          >
+            Ajouter le tileset 3D
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

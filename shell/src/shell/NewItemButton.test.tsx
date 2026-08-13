@@ -392,3 +392,47 @@ test("selecting Pipeline only asks for a title, and navigates to /pipelines/new 
   expect(await screen.findByText("pipeline-new-Nettoyer villes")).toBeInTheDocument();
   expect(configPosted).toBe(false);
 });
+
+test("selecting « Dataset par requête visuelle » only asks for a title, and navigates to /datasets/visual-query/new with the title in route state, without calling the create API", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+  );
+  let configPosted = false;
+  server.use(
+    http.post("https://core.test/configs", () => { configPosted = true; return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" }); }),
+  );
+  function VisualQueryNewProbe() {
+    const location = useLocation();
+    const state = location.state as { title?: string } | null;
+    return <div>visual-query-new-{state?.title ?? ""}</div>;
+  }
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+          <Routes>
+            <Route path="/datasets/visual-query/new" element={<VisualQueryNewProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Type"), "visual-query");
+  await userEvent.type(screen.getByLabelText("Titre"), "Ma requête");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  expect(await screen.findByText("visual-query-new-Ma requête")).toBeInTheDocument();
+  expect(configPosted).toBe(false);
+});
+
+test("the visual-query option is hidden when etlEnabled is false", async () => {
+  server.use(
+    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: false })),
+  );
+  render(<Harness><NewItemButton /></Harness>);
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await waitFor(() => expect(screen.queryByRole("option", { name: "Dataset par requête visuelle" })).not.toBeInTheDocument());
+});

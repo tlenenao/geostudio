@@ -48,6 +48,14 @@ class TransformJoinParams(BaseModel):
 
 class WriterCollectionParams(BaseModel):
     collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
+    mode: Literal["append", "replace"] = Field(
+        default="append",
+        description=(
+            "\"replace\" supprime TOUTES les données existantes de la "
+            "collection cible avant d'écrire — irréversible, à réserver à "
+            "une collection dédiée à ce pipeline."
+        ),
+    )
 
 
 class WriterExportParams(BaseModel):
@@ -94,6 +102,14 @@ class WriterDatasetParams(BaseModel):
     collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
     datasetId: str | None = None    # pk d'un item BuilderConfig(kind="dataset") existant
     title: str | None = None        # requis si datasetId est None
+    mode: Literal["append", "replace"] = Field(
+        default="append",
+        description=(
+            "\"replace\" supprime TOUTES les données existantes de la "
+            "collection cible avant d'écrire — irréversible, à réserver à "
+            "une collection dédiée à ce pipeline."
+        ),
+    )
 
     @model_validator(mode="after")
     def _require_title_for_new_dataset(self) -> "WriterDatasetParams":

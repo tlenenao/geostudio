@@ -43,7 +43,7 @@ from app.collections.introspection import TableInfo, TableNotFound, UnsupportedT
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
-from app.features.repository import insert_feature
+from app.features.repository import delete_all_features, insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
 from app.items import repository as items_repo
@@ -502,7 +502,10 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
     reserved_on_write = {info.pk_column, "tenant_id"}
 
     count = 0
+    deleted: int | None = None
     with rls_scope(session, tenant_id):
+        if p.mode == "replace":
+            deleted = delete_all_features(session, info)
         for raw in rows:
             row = dict(zip(cols, raw))
             geometry = json.loads(row.pop("geometry")) if has_geometry and row.get("geometry") is not None else None
@@ -515,6 +518,18 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
                 raise PipelineRuntimeError(f"writer.collection: invalid row: {errors}")
             insert_feature(session, info, properties=properties, geometry=geometry)
             count += 1
+    # write_audit APRÈS la sortie de rls_scope (RESET ROLE) : audit_log
+    # n'est pas grantée au rôle borné gis_rls (cf. docstring de rls_scope),
+    # écrire ici en aurait été un bug (permission denied), pas seulement au
+    # sens strict du texte littéral du brief — même patron que les
+    # write_audit(...) de _write_dataset ci-dessous, qui s'exécutent tous
+    # hors de tout rls_scope.
+    if deleted is not None:
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="collection.replace_purge", object_type="collection", object_id=collection.id,
+            payload={"pipelineNodeId": node.id, "deletedRows": deleted},
+        )
     return NodeStat(node.id, node.op, count)
 
 
@@ -529,7 +544,8 @@ def _write_dataset(
     # ainsi que _write_collection retrouve la bonne entrée de view_by_node
     # (posée par l'appelant, run_pipeline, avant le dispatch).
     collection_node = PipelineNode(
-        id=node.id, kind="writer", op="writer.collection", params={"collectionId": p.collectionId},
+        id=node.id, kind="writer", op="writer.collection",
+        params={"collectionId": p.collectionId, "mode": p.mode},
     )
     write_stat = _write_collection(
         session, conn, node=collection_node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
@@ -552,6 +568,7 @@ def _write_dataset(
             source="collection", collectionId=p.collectionId,
             columns=current.columns, timeField=current.timeField,
             reactsToExtent=current.reactsToExtent, crossFilterLinks=current.crossFilterLinks,
+            sourcePipelineId=current.sourcePipelineId,
         )
         # model_copy (pas de re-validation) est sûr ici : seul le champ
         # "dataset" change, et il porte déjà un DatasetPayload fraîchement
