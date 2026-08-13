@@ -606,7 +606,8 @@
               "bookmark",
               "pipeline",
               "alert",
-              "report"
+              "report",
+              "tileset3d"
             ],
             "title": "Kind",
             "type": "string"
@@ -688,6 +689,16 @@
             "additionalProperties": true,
             "title": "Theme",
             "type": "object"
+          },
+          "tileset3d": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Tileset3DPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variables": {
             "items": {
@@ -3159,6 +3170,34 @@
           "sql"
         ],
         "title": "SqlQueryBody",
+        "type": "object"
+      },
+      "Tileset3DPayload": {
+        "properties": {
+          "entryCount": {
+            "title": "Entrycount",
+            "type": "integer"
+          },
+          "sourceKey": {
+            "title": "Sourcekey",
+            "type": "string"
+          },
+          "tilesetJsonPath": {
+            "title": "Tilesetjsonpath",
+            "type": "string"
+          },
+          "totalBytes": {
+            "title": "Totalbytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceKey",
+          "tilesetJsonPath",
+          "totalBytes",
+          "entryCount"
+        ],
+        "title": "Tileset3DPayload",
         "type": "object"
       },
       "UserAdminPatch": {
