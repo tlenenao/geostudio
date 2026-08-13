@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInstanceInfo, useMapConfig, useSaveMap } from "../api/hooks";
-import type { MapConfig, MapLayer, PrintLayoutConfig } from "../api/types";
-import { MapView } from "../map/MapView";
+import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
+import { MapView, type MapViewHandle } from "../map/MapView";
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
+import { TerrainPanel } from "../map/TerrainPanel";
+import { CameraControls } from "../map/CameraControls";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { Button } from "../ui/button";
@@ -15,6 +17,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const query = useMapConfig(pk);
   const save = useSaveMap(pk);
   const [draft, setDraft] = useState<MapConfig | null>(null);
+  const mapViewRef = useRef<MapViewHandle>(null);
   const isExportRender = useIsExportRender();
   const instanceQuery = useInstanceInfo();
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
@@ -36,10 +39,18 @@ export function MapEditorPage({ pk }: { pk: string }) {
 
   const setLayers = (layers: MapLayer[]) => setDraft({ ...draft, layers });
   const setStyle = (style: string) => setDraft({ ...draft, basemap: { style } });
-  const setView = (view: { center: [number, number]; zoom: number }) =>
+  const setView = (view: { center: [number, number]; zoom: number; pitch: number; bearing: number }) =>
     setDraft((d) => (d ? { ...d, view } : d));
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
     setDraft((d) => (d ? { ...d, printLayout } : d));
+  }
+  function setTerrain(terrain: MapTerrainConfig | null) {
+    setDraft((d) => (d ? { ...d, terrain } : d));
+  }
+  const currentDraft = draft;
+  function setCamera(next: { pitch: number; bearing: number }) {
+    setDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
+    mapViewRef.current?.flyTo({ center: currentDraft.view.center, zoom: currentDraft.view.zoom, ...next });
   }
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
@@ -76,6 +87,8 @@ export function MapEditorPage({ pk }: { pk: string }) {
       <aside className="flex w-72 flex-col gap-4 overflow-auto">
         <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
         <LayersPanel layers={draft.layers} onChange={setLayers} />
+        <TerrainPanel value={draft.terrain ?? null} onChange={setTerrain} />
+        <CameraControls pitch={draft.view.pitch ?? 0} bearing={draft.view.bearing ?? 0} onChange={setCamera} />
         <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
         {exportEnabled && <ExportPanel itemId={pk} />}
         <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
@@ -88,7 +101,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         )}
       </aside>
       <div className="relative flex-1">
-        <MapView config={draft} onViewChange={setView} />
+        <MapView ref={mapViewRef} config={draft} onViewChange={setView} />
       </div>
     </div>
   );
