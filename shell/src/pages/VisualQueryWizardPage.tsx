@@ -1,4 +1,4 @@
-// shell/src/pages/VisualQueryWizardPage.tsx
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -14,7 +14,7 @@ import { QuerySummaryBuilder } from "../builder/visualQuery/QuerySummaryBuilder"
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { inferOutputColumns } from "../builder/visualQuery/inferSchema";
-import { FilterRow } from "../builder/visualQuery/compileFilter";
+import { FilterRow, isFilterRowValueValid } from "../builder/visualQuery/compileFilter";
 import { JoinConfig, SummaryConfig } from "../builder/visualQuery/inferSchema";
 import { VisualQueryState, compileVisualQueryToPipeline, decompilePipelineToWizardState } from "../builder/visualQuery/compilePipeline";
 
@@ -125,6 +125,10 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     }
   }
 
+  const filtersValid = !baseSchema || filters.every((row) => isFilterRowValueValid(row, baseSchema));
+  const joinValid = !join || Boolean(join.collectionId && join.on);
+  const summaryValid = !summary || summary.groupBy.length > 0 || summary.metrics.length > 0;
+
   if (createdPipelinePk && createdDatasetPk) {
     return (
       <div className="flex flex-col gap-2 p-4">
@@ -189,7 +193,11 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
         </>
       )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <Button size="sm" className="w-fit" disabled={submitting || !title.trim() || !baseCollectionId} onClick={handleCreate}>
+      <Button
+        size="sm" className="w-fit"
+        disabled={submitting || !title.trim() || !baseCollectionId || !filtersValid || !joinValid || !summaryValid}
+        onClick={handleCreate}
+      >
         Créer
       </Button>
     </div>

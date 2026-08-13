@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, test } from "vitest";
 import type { CollectionSchema } from "../../api/types";
-import { compileFilterRowsToSql, decompileSqlToFilterRows } from "./compileFilter";
+import { compileFilterRowsToSql, decompileSqlToFilterRows, isFilterRowValueValid } from "./compileFilter";
 
 const SCHEMA: CollectionSchema = {
   collection: "incidents", pk: "id", geometry: null,
@@ -72,5 +73,27 @@ describe("decompileSqlToFilterRows", () => {
     // accepté : renvoie null (repli vers le canvas), jamais une exception ni
     // un résultat silencieusement faux.
     expect(decompileSqlToFilterRows(sql)).toBeNull();
+  });
+});
+
+describe("isFilterRowValueValid", () => {
+  test("valeur vide -> invalide, quel que soit le type", () => {
+    expect(isFilterRowValueValid({ column: "commune", operator: "eq", value: "" }, SCHEMA)).toBe(false);
+  });
+
+  test("colonne entière avec une valeur non numérique -> invalide", () => {
+    expect(isFilterRowValueValid({ column: "gravite", operator: "eq", value: "abc" }, SCHEMA)).toBe(false);
+  });
+
+  test("colonne entière avec une valeur numérique -> valide", () => {
+    expect(isFilterRowValueValid({ column: "gravite", operator: "gt", value: "3" }, SCHEMA)).toBe(true);
+  });
+
+  test("colonne texte avec n'importe quelle valeur non vide -> valide", () => {
+    expect(isFilterRowValueValid({ column: "commune", operator: "eq", value: "Paris" }, SCHEMA)).toBe(true);
+  });
+
+  test("opérateur contains -> toute valeur non vide est valide, même sur colonne entière", () => {
+    expect(isFilterRowValueValid({ column: "gravite", operator: "contains", value: "3" }, SCHEMA)).toBe(true);
   });
 });

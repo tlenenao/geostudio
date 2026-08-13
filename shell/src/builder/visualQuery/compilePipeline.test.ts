@@ -1,4 +1,4 @@
-// shell/src/builder/visualQuery/compilePipeline.test.ts
+// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, test } from "vitest";
 import type { CollectionSchema } from "../../api/types";
 import { compileVisualQueryToPipeline, decompilePipelineToWizardState, VisualQueryState } from "./compilePipeline";
@@ -116,5 +116,31 @@ describe("decompilePipelineToWizardState", () => {
     const pipeline = compileVisualQueryToPipeline(baseState(), BASE, null, "query_out", "dataset-1");
     pipeline.nodes.push({ id: "w2", kind: "writer", op: "writer.export", x: 0, y: 0, params: { format: "csv", key: "x" } });
     expect(decompilePipelineToWizardState(pipeline)).toBeNull();
+  });
+
+  test("round-trip sur résumé seul (aggregate) — count et sum", () => {
+    const state = baseState({
+      summary: {
+        groupBy: ["commune"],
+        metrics: [
+          { alias: "nb", function: "count", sourceColumn: null },
+          { alias: "total", function: "sum", sourceColumn: "gravite" },
+        ],
+      },
+    });
+    const pipeline = compileVisualQueryToPipeline(state, BASE, null, "query_out", "dataset-1");
+    const decompiled = decompilePipelineToWizardState(pipeline);
+    expect(decompiled).toEqual({
+      baseCollectionId: "incidents",
+      filters: [],
+      join: null,
+      summary: {
+        groupBy: ["commune"],
+        metrics: [
+          { alias: "nb", function: "count", sourceColumn: null },
+          { alias: "total", function: "sum", sourceColumn: "gravite" },
+        ],
+      },
+    });
   });
 });

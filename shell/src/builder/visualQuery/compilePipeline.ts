@@ -1,4 +1,4 @@
-// shell/src/builder/visualQuery/compilePipeline.ts
+// SPDX-License-Identifier: Apache-2.0
 import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRefreshPolicy, CollectionSchema } from "../../api/types";
 import { genEdgeId, genNodeId } from "../pipeline/graphOps";
 import { FilterRow, compileFilterRowsToSql, decompileSqlToFilterRows, quoteIdent } from "./compileFilter";

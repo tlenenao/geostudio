@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { CollectionFieldType, CollectionSchema } from "../../api/types";
 
 export type FilterOperator = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
@@ -29,6 +30,22 @@ function formatValue(row: FilterRow, fieldType: CollectionFieldType): string {
     default:
       return quoteSqlLiteral(row.value);
   }
+}
+
+// Défense en profondeur (revue finale SP-14o) : le sandbox serveur
+// (app.pipelines.expr_validation) bloque déjà toute évasion SQL, mais rien
+// ne garantissait côté client qu'une valeur numérique attendue le soit
+// vraiment — une valeur non numérique pouvait produire une erreur DuckDB
+// opaque, ou pire, une comparaison colonne-à-colonne silencieuse si elle
+// coïncidait avec un nom de colonne existant.
+export function isFilterRowValueValid(row: FilterRow, schema: CollectionSchema): boolean {
+  if (row.value.trim() === "") return false;
+  if (row.operator === "contains") return true;
+  const fieldType = schema.fields.find((f) => f.name === row.column)?.type;
+  if (fieldType === "integer" || fieldType === "number") {
+    return /^-?\d+(\.\d+)?$/.test(row.value.trim());
+  }
+  return true;
 }
 
 export function compileFilterRowsToSql(rows: FilterRow[], schema: CollectionSchema): string {

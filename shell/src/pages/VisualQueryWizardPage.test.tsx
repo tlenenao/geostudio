@@ -1,4 +1,4 @@
-// shell/src/pages/VisualQueryWizardPage.test.tsx
+// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, test, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -119,5 +119,21 @@ describe("VisualQueryWizardPage", () => {
     // runPipeline n'a été appelé qu'une fois : aucun clic manuel n'a redéclenché un run redondant.
     expect(client.runPipeline).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+
+  test("le bouton Créer est désactivé tant que la jointure ou le résumé sont incomplets", async () => {
+    renderWizard();
+    // Cf. le premier test de ce fichier : attendre l'option avant de
+    // sélectionner, sinon selectOptions échoue en course avec listCollections().
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter une jointure" }));
+    expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un résumé" }));
+    // jointure toujours incomplète (aucune collection choisie) -> reste désactivé
+    expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
   });
 });
