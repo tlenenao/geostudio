@@ -48,6 +48,13 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     queryFn: () => client.getCollectionSchema(join!.collectionId),
     enabled: Boolean(join?.collectionId),
   });
+  // Le Pipeline ne porte pas de titre (seul l'item dataset en a un) : en mode
+  // édition, on va le chercher séparément pour pré-remplir le champ Titre.
+  const existingDatasetItemQuery = useQuery({
+    queryKey: ["item", existingOutput?.datasetItemId],
+    queryFn: () => client.getItem(existingOutput!.datasetItemId),
+    enabled: Boolean(existingOutput?.datasetItemId),
+  });
 
   useEffect(() => {
     if (pipelinePk === null || !existingPipelineQuery.data) return;
@@ -60,6 +67,13 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     setRefreshPolicy(existingPipelineQuery.data.refreshPolicy ?? null);
     setExistingOutput({ collectionId: decompiled.outputCollectionId, datasetItemId: decompiled.datasetItemId });
   }, [pipelinePk, existingPipelineQuery.data]);
+
+  // Pré-remplit le Titre depuis l'item dataset une seule fois (la queryKey
+  // ne change plus une fois existingOutput posé, donc cet effet ne se
+  // redéclenche pas quand l'utilisateur modifie le titre ensuite).
+  useEffect(() => {
+    if (existingDatasetItemQuery.data) setTitle(existingDatasetItemQuery.data.title);
+  }, [existingDatasetItemQuery.data]);
 
   useEffect(() => {
     if (!createdPipelinePk || !createdDatasetPk) return;

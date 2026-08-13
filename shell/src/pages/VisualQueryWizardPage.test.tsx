@@ -79,6 +79,7 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
+    getItem: vi.fn().mockResolvedValue({ pk: "dataset-1", resourceType: "dataset", title: "Ma requête existante", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false }),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "should-not-be-created" }),
     createDatasetItem: vi.fn().mockResolvedValue({ pk: "should-not-be-created", resourceType: "dataset", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-x", isPublished: false }),
     createPipelineItem: vi.fn().mockResolvedValue({ pk: "should-not-be-created", resourceType: "pipeline", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-y", isPublished: false }),
@@ -190,13 +191,19 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     const client = renderWizardEdit();
 
     // Le formulaire se pré-remplit de façon asynchrone (getPipelineConfig
-    // puis décompilation) : attendre la collection de base avant d'agir,
-    // même course que les tests en mode création ci-dessus. Le titre n'est
-    // pas restauré par la décompilation (le Pipeline ne le porte pas — seul
-    // le dataset/l'item pipeline ont un titre, non lus ici) : on le saisit
-    // comme le ferait un utilisateur réel avant de soumettre.
+    // puis décompilation, puis un fetch séparé de l'item dataset pour son
+    // titre — le Pipeline lui-même ne le porte pas) : attendre la collection
+    // de base avant d'agir, même course que les tests en mode création
+    // ci-dessus.
     await screen.findByText("Modifier la requête");
     await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    // Suivi fix I3 : le Titre se pré-remplit depuis l'item dataset, avant
+    // toute interaction utilisateur.
+    await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Ma requête existante"));
+    // L'utilisateur reste libre de modifier ce titre pré-rempli ensuite ; on
+    // simule cette édition comme le ferait un utilisateur réel avant de
+    // soumettre.
+    await userEvent.clear(screen.getByLabelText("Titre"));
     await userEvent.type(screen.getByLabelText("Titre"), "Ma requête modifiée");
     await screen.findByText("Filtrer");
 
