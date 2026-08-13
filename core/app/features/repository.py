@@ -224,3 +224,8 @@ def delete_feature(session: Session, info: TableInfo, *, fid: str) -> bool:
         f"DELETE FROM public.{t} WHERE {quote_ident(session, info.pk_column)} = :__fid"
     ), {"__fid": value})
     return r.rowcount == 1
+
+
+def delete_all_features(session: Session, info: TableInfo) -> None:
+    t = quote_ident(session, info.table_name)
+    session.execute(text(f"DELETE FROM public.{t}"))

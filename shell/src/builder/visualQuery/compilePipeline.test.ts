@@ -26,7 +26,7 @@ describe("compileVisualQueryToPipeline", () => {
     const pipeline = compileVisualQueryToPipeline(state, BASE, null, "query_out", "dataset-1");
     expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "transform.filter", "transform.select", "writer.dataset"]);
     const writer = pipeline.nodes.find((n) => n.op === "writer.dataset")!;
-    expect(writer.params).toEqual({ collectionId: "query_out", datasetId: "dataset-1" });
+    expect(writer.params).toEqual({ collectionId: "query_out", datasetId: "dataset-1", mode: "replace" });
     expect(pipeline.edges).toHaveLength(3);
     expect(pipeline.edges.every((e) => e.role == null)).toBe(true);
   });
