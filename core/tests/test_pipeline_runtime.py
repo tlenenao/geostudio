@@ -9,6 +9,7 @@ import pytest
 from shapely.geometry import Point
 from sqlalchemy import select, text
 
+from app.audit.models import AuditLog
 from app.collections.ddl import apply_collection_ddl
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.db import Base, make_engine, make_session_factory
@@ -397,6 +398,19 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
         ).scalar()
         assert parasite_after_first == 0
 
+        # Governance finding (2e revue finale d'intégration SP-14o, Important
+        # 5) : la purge en mode replace doit laisser une trace audit_log,
+        # avec le nombre exact de lignes supprimées (ici 1 : la seule ligne
+        # parasite pré-existante avant ce 1er run).
+        purge_logs_after_first = s.execute(
+            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
+        ).scalars().all()
+        assert len(purge_logs_after_first) == 1
+        [purge_log] = purge_logs_after_first
+        assert purge_log.object_type == "collection"
+        assert purge_log.object_id == "villes_replace"
+        assert purge_log.payload["deletedRows"] == 1
+
         # 2e run, même source : si mode="replace" purge bien avant d'insérer,
         # le compte reste à 2 (pas d'accumulation à 4).
         runtime.run_pipeline(
@@ -412,6 +426,14 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
             row[0] for row in s.execute(text("SELECT region FROM villes_replace")).fetchall()
         }
         assert regions == {"Nord", "Sud"}
+
+        # 2e run : une nouvelle entrée audit_log, cette fois pour les 2
+        # lignes ("Nord"/"Sud") insérées par le 1er run et purgées ici.
+        purge_logs_after_second = s.execute(
+            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
+        ).scalars().all()
+        assert len(purge_logs_after_second) == 2
+        assert purge_logs_after_second[1].payload["deletedRows"] == 2
 
     with pg_engine.begin() as conn:
         conn.execute(text(
@@ -484,6 +506,15 @@ def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(pg_
 
         count = s.execute(text("SELECT count(*) FROM villes_append")).scalar()
         assert count == 4  # 2 + 2 : accumulation, comportement historique
+
+        # Régression négative (2e revue finale d'intégration SP-14o,
+        # Important 5) : le mode append (par défaut) ne doit jamais écrire
+        # d'entrée audit_log "collection.replace_purge" — aucune purge n'a
+        # lieu, donc aucune trace n'en est créée.
+        purge_logs = s.execute(
+            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
+        ).scalars().all()
+        assert purge_logs == []
 
     with pg_engine.begin() as conn:
         conn.execute(text(

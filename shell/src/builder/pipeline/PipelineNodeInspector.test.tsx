@@ -77,6 +77,38 @@ test("an object field renders a key-value editor; adding a row updates the dict"
   expect(onChange).toHaveBeenLastCalledWith({ groupBy: [], metrics: { total_pop: "sum(pop)" } });
 });
 
+test("a field with a description renders it as helper text under the control", () => {
+  const node: PipelineNode = { id: "w1", kind: "writer", op: "writer.collection", x: 0, y: 0, params: { collectionId: "villes", mode: "append" } };
+  const opEntry: PipelineOpEntry = {
+    kind: "writer",
+    paramsSchema: {
+      properties: {
+        collectionId: { type: "string", format: "collection-id" },
+        mode: {
+          type: "string",
+          enum: ["append", "replace"],
+          description: "\"replace\" supprime TOUTES les données existantes de la collection cible avant d'écrire.",
+        },
+      },
+      required: ["collectionId"],
+    },
+  };
+  renderInspector(node, opEntry);
+  expect(
+    screen.getByText("\"replace\" supprime TOUTES les données existantes de la collection cible avant d'écrire."),
+  ).toBeInTheDocument();
+});
+
+test("a field without a description renders no helper text", () => {
+  const node: PipelineNode = { id: "f1", kind: "transform", op: "transform.filter", x: 0, y: 0, params: { expr: "" } };
+  const opEntry: PipelineOpEntry = { kind: "transform", paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] } };
+  renderInspector(node, opEntry);
+  // Aucun <p> superflu (pas de texte d'aide vide) quand le champ ne porte
+  // pas de description — seuls les <p role="alert"> d'erreurs en portent,
+  // absents ici (errors=[]).
+  expect(document.body.querySelectorAll("p")).toHaveLength(0);
+});
+
 test("passed-in errors render as alerts", () => {
   const node: PipelineNode = { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {} };
   const opEntry: PipelineOpEntry = { kind: "reader", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } };

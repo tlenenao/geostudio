@@ -97,7 +97,21 @@ export function PipelineNodeInspector({
     onChange(newParams);
   }
 
+  // Rendu générique de prop.description (JSON schema) sous le contrôle,
+  // quel que soit son type — pas de branche spécifique à un champ nommé
+  // "mode" : tout futur champ portant une description en bénéficiera.
   function renderField(name: string, prop: PipelineOpParamProperty) {
+    const control = renderControl(name, prop);
+    if (!prop.description) return control;
+    return (
+      <div key={name} className="flex flex-col gap-1">
+        {control}
+        <p className="text-xs text-slate-500">{prop.description}</p>
+      </div>
+    );
+  }
+
+  function renderControl(name: string, prop: PipelineOpParamProperty) {
     if (prop.format === "collection-id") {
       return (
         <CollectionParamSelect
