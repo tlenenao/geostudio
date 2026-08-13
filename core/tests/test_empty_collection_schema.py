@@ -31,3 +31,9 @@ def test_geometry_type_and_srid_default_to_none():
     payload = EmptyCollectionCreate(title="t", columns=[])
     assert payload.geometryType is None
     assert payload.srid is None
+
+
+@pytest.mark.parametrize("reserved_name", ["id", "tenant_id", "geom"])
+def test_rejects_a_reserved_column_name(reserved_name):
+    with pytest.raises(ValidationError):
+        EmptyCollectionColumn(name=reserved_name, sqlType="text")
