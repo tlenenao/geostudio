@@ -174,4 +174,42 @@ describe("decompilePipelineToWizardState", () => {
       },
     });
   });
+
+  test("transform.select non reconnu s'il n'est pas immédiatement avant le writer -> null", () => {
+    const pipeline = compileVisualQueryToPipeline(baseState(), BASE, null, "query_out", "dataset-1");
+    // baseState() compile en: [reader, select(output), writer]
+    // avec edges: reader->select, select->writer
+
+    const outputSelect = pipeline.nodes.find((n) => n.op === "transform.select")!;
+    const reader = pipeline.nodes.find((n) => n.op === "reader.collection")!;
+
+    // Crée un nœud transform.select intermédiaire
+    const customSelect = {
+      id: "custom-select",
+      kind: "transform" as const,
+      op: "transform.select",
+      x: 0,
+      y: 0,
+      params: { columns: { commune: null } },
+    };
+
+    // Ajoute le nœud
+    pipeline.nodes.push(customSelect);
+
+    // Récupère l'arête reader->select
+    const readerToSelectEdge = pipeline.edges.find((e) => e.from === reader.id && e.to === outputSelect.id)!;
+
+    // Crée la chaîne: reader -> customSelect -> outputSelect -> writer
+    readerToSelectEdge.to = customSelect.id;
+
+    pipeline.edges.push({
+      id: "e-custom-to-output",
+      from: customSelect.id,
+      to: outputSelect.id,
+      role: null,
+    });
+
+    // Le customSelect n'est pas immédiatement avant le writer
+    expect(decompilePipelineToWizardState(pipeline)).toBeNull();
+  });
 });

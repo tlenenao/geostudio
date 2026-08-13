@@ -181,7 +181,12 @@ export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
       // Étape de sortie ajoutée par compileVisualQueryToPipeline (SP-14o,
       // fix I1) — garantit la cohérence schéma-destination/écriture-réelle.
       // Ne porte aucune information de filtre/jointure/résumé à elle seule ;
-      // on la traverse sans rien en extraire.
+      // on la traverse sans rien en extraire. Position vérifiée : ce nœud
+      // n'est reconnu que juste avant le writer (seule position où
+      // compileVisualQueryToPipeline le place jamais) — sinon repli null,
+      // comme tout autre nœud non reconnu (revue finale SP-14o, fix du fix I1).
+      const after = pipeline.edges.filter((e) => e.from === next.id && e.role !== "secondary");
+      if (after.length !== 1 || after[0].to !== writerNodes[0].id) return null;
       currentId = next.id;
       continue;
     }
