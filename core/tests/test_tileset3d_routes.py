@@ -140,3 +140,83 @@ def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
     r = client.get("/tileset3d/uploads/does-not-exist")
     assert r.status_code == 404
+
+
+import io
+import json
+import zipfile
+
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig, Tileset3DPayload
+
+
+def _valid_zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr("tiles/0.b3dm", b"\x00" * 16)
+    return buf.getvalue()
+
+
+def _seed_hosted_tileset_item(session, *, tenant_id, owner_id, fake_s3, key="tenant/x/city.zip"):
+    fake_s3.objects[key] = _valid_zip_bytes()
+    from app.items import repository as items_repo
+    item = items_repo.create_item(
+        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="tileset3d", title="Ville",
+    )
+    config = BuilderConfig(
+        kind="tileset3d",
+        tileset3d=Tileset3DPayload(sourceKey=key, tilesetJsonPath="tileset.json", totalBytes=100, entryCount=2),
+    )
+    configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
+    return item.id
+
+
+def test_read_tileset3d_entry_returns_tileset_json(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/json")
+    assert json.loads(r.content)["asset"]["version"] == "1.0"
+
+
+def test_read_tileset3d_entry_returns_tile_binary(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tiles/0.b3dm")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/octet-stream"
+    assert r.content == b"\x00" * 16
+
+
+def test_read_tileset3d_entry_404_for_missing_entry(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/does-not-exist.b3dm")
+    assert r.status_code == 404
+
+
+def test_read_tileset3d_entry_404_for_unknown_item(env):
+    client, *_ = env
+    r = client.get("/tileset3d/does-not-exist/tileset.json")
+    assert r.status_code == 404
+
+
+def test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
+            email=None, first_name="", last_name="",
+        )
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=bob.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    assert r.status_code == 404

@@ -5,24 +5,46 @@ l'app, même patron que app.pipelines/app.export). Le proxy de lecture
 (GET /tileset3d/{item_id}/{path}) est ajouté dans ce même module en Task 6."""
 import os
 import uuid
+import zipfile
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
+from app.items import repository as items_repo
+from app.sharing.authorization import can
 from app.tileset3d import repository as repo
 from app.tileset3d.schemas import (
     Tileset3DCompleteRequest, Tileset3DJobStatus, Tileset3DPartPresignResponse,
     Tileset3DUploadCreate, Tileset3DUploadCreated,
 )
+from app.tileset3d.storage import S3RangeFile
 from app.users.models import User
 
 router = APIRouter()
+
+_CONTENT_TYPES = {
+    ".json": "application/json",
+    ".gltf": "application/json",
+    ".b3dm": "application/octet-stream",
+    ".i3dm": "application/octet-stream",
+    ".pnts": "application/octet-stream",
+    ".cmpt": "application/octet-stream",
+    ".glb": "application/octet-stream",
+}
+
+
+def _content_type_for(path: str) -> str:
+    for ext, content_type in _CONTENT_TYPES.items():
+        if path.endswith(ext):
+            return content_type
+    return "application/octet-stream"
 
 
 def get_tileset3d_bucket() -> str:
@@ -118,3 +140,32 @@ def get_tileset3d_upload_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return Tileset3DJobStatus(status=job.status, errorMessage=job.error_message, itemId=job.item_id)
+
+
+@router.get("/tileset3d/{item_id}/{path:path}")
+def read_tileset3d_entry(
+    item_id: str, path: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_tileset3d_bucket),
+) -> Response:
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    config = configs_repo.get_config_by_item(session, item_id)
+    if config is None or config.config.tileset3d is None:
+        raise HTTPException(status_code=404, detail="tileset not found")
+    payload = config.config.tileset3d
+
+    range_file = S3RangeFile(s3, bucket=bucket, key=payload.sourceKey)
+    try:
+        with zipfile.ZipFile(range_file) as zf:
+            data = zf.read(path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="entry not found") from exc
+
+    return Response(
+        content=data, media_type=_content_type_for(path),
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
