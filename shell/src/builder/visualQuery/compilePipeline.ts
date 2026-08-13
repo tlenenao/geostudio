@@ -119,6 +119,7 @@ function decompileMetrics(metrics: Record<string, string>): MetricConfig[] | nul
 // PipelineBuilderPage, pas une erreur.
 export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
   baseCollectionId: string; filters: FilterRow[]; join: JoinConfig | null; summary: SummaryConfig | null;
+  outputCollectionId: string; datasetItemId: string;
 } | null {
   const byId = new Map(pipeline.nodes.map((n) => [n.id, n]));
   const readerNodes = pipeline.nodes.filter((n) => n.kind === "reader");
@@ -193,5 +194,9 @@ export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
     return null;
   }
 
-  return { baseCollectionId: String(primaryReader.params.collectionId), filters, join, summary };
+  return {
+    baseCollectionId: String(primaryReader.params.collectionId), filters, join, summary,
+    outputCollectionId: String(writerNodes[0].params.collectionId),
+    datasetItemId: String(writerNodes[0].params.datasetId),
+  };
 }

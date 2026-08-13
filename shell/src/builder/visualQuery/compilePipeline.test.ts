@@ -133,6 +133,8 @@ describe("decompilePipelineToWizardState", () => {
       filters: [{ column: "gravite", operator: "gt", value: "3" }],
       join: { collectionId: "communes", on: "commune", how: "inner" },
       summary: null,
+      outputCollectionId: "query_out",
+      datasetItemId: "dataset-1",
     });
   });
 
@@ -172,6 +174,8 @@ describe("decompilePipelineToWizardState", () => {
           { alias: "total", function: "sum", sourceColumn: "gravite" },
         ],
       },
+      outputCollectionId: "query_out",
+      datasetItemId: "dataset-1",
     });
   });
 
