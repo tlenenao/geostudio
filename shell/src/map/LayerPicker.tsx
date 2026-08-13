@@ -26,6 +26,9 @@ function toMapLayer(source: LayerSource): MapLayer {
       opacity: 1,
     };
   }
+  if (source.kind === "tiles3d") {
+    return { id, title: source.title, visible: true, kind: "tiles3d", url: source.url ?? "" };
+  }
   return { id, title: source.title, visible: true, kind: "feature", url: source.url ?? "" };
 }
 
