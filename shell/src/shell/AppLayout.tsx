@@ -5,6 +5,7 @@ import { useInstanceInfo, useMe } from "../api/hooks";
 import { Button } from "../ui/button";
 import { NewItemButton } from "./NewItemButton";
 import { ImportFileButton } from "./ImportFileButton";
+import { Tileset3DUploadButton } from "./Tileset3DUploadButton";
 import { useIsExportRender } from "./useIsExportRender";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +13,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const meQuery = useMe();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
+  const tileset3dEnabled = instanceQuery.data?.tileset3dEnabled === true;
   const isExportRender = useIsExportRender();
 
   // Playwright's export capture (Task 6, core/app/export/jobs.py) navigates
@@ -48,6 +50,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3 text-sm">
           <NewItemButton />
           <ImportFileButton />
+          {tileset3dEnabled && <Tileset3DUploadButton />}
           <span>{username}</span>
           <Button size="sm" variant="outline" onClick={signOut}>
             Déconnexion
