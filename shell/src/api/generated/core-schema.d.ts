@@ -1331,7 +1331,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert" | "report";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -1351,6 +1351,7 @@ export interface components {
             theme?: {
                 [key: string]: unknown;
             };
+            tileset3d?: components["schemas"]["Tileset3DPayload"] | null;
             /** Variables */
             variables?: components["schemas"]["Variable"][];
             /**
@@ -2176,6 +2177,17 @@ export interface components {
         SqlQueryBody: {
             /** Sql */
             sql: string;
+        };
+        /** Tileset3DPayload */
+        Tileset3DPayload: {
+            /** Entrycount */
+            entryCount: number;
+            /** Sourcekey */
+            sourceKey: string;
+            /** Tilesetjsonpath */
+            tilesetJsonPath: string;
+            /** Totalbytes */
+            totalBytes: number;
         };
         /** UserAdminPatch */
         UserAdminPatch: {
