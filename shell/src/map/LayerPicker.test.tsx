@@ -117,3 +117,44 @@ test("has a search field that calls listLayerSources with q", async () => {
     expect(client.listLayerSources).toHaveBeenLastCalledWith({ q: "commun" });
   });
 });
+
+test("adds a tiles3d layer from the manual URL form", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
+  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "tiles3d",
+    title: "Bâtiments",
+    visible: true,
+    url: "https://example.test/tileset.json",
+  });
+  expect(typeof layer.id).toBe("string");
+  expect(layer.id.length).toBeGreaterThan(0);
+});
+
+test("disables the tiles3d add button until both title and URL are filled", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const button = screen.getByRole("button", { name: "Ajouter le tileset 3D" });
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  expect(button).toBeEnabled();
+});
+
+test("clears the tiles3d form after adding", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const titleInput = screen.getByLabelText("Titre du tileset 3D") as HTMLInputElement;
+  const urlInput = screen.getByLabelText("URL du tileset.json") as HTMLInputElement;
+  await userEvent.type(titleInput, "Bâtiments");
+  await userEvent.type(urlInput, "https://example.test/tileset.json");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
+  expect(titleInput.value).toBe("");
+  expect(urlInput.value).toBe("");
+});
