@@ -226,6 +226,7 @@ def delete_feature(session: Session, info: TableInfo, *, fid: str) -> bool:
     return r.rowcount == 1
 
 
-def delete_all_features(session: Session, info: TableInfo) -> None:
+def delete_all_features(session: Session, info: TableInfo) -> int:
     t = quote_ident(session, info.table_name)
-    session.execute(text(f"DELETE FROM public.{t}"))
+    result = session.execute(text(f"DELETE FROM public.{t}"))
+    return result.rowcount

@@ -502,9 +502,10 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
     reserved_on_write = {info.pk_column, "tenant_id"}
 
     count = 0
+    deleted: int | None = None
     with rls_scope(session, tenant_id):
         if p.mode == "replace":
-            delete_all_features(session, info)
+            deleted = delete_all_features(session, info)
         for raw in rows:
             row = dict(zip(cols, raw))
             geometry = json.loads(row.pop("geometry")) if has_geometry and row.get("geometry") is not None else None
@@ -517,6 +518,18 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
                 raise PipelineRuntimeError(f"writer.collection: invalid row: {errors}")
             insert_feature(session, info, properties=properties, geometry=geometry)
             count += 1
+    # write_audit APRÈS la sortie de rls_scope (RESET ROLE) : audit_log
+    # n'est pas grantée au rôle borné gis_rls (cf. docstring de rls_scope),
+    # écrire ici en aurait été un bug (permission denied), pas seulement au
+    # sens strict du texte littéral du brief — même patron que les
+    # write_audit(...) de _write_dataset ci-dessous, qui s'exécutent tous
+    # hors de tout rls_scope.
+    if deleted is not None:
+        write_audit(
+            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
+            action="collection.replace_purge", object_type="collection", object_id=collection.id,
+            payload={"pipelineNodeId": node.id, "deletedRows": deleted},
+        )
     return NodeStat(node.id, node.op, count)
 
 

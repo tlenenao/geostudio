@@ -554,6 +554,7 @@ export type PipelineOpParamProperty = {
   enum?: string[];
   default?: unknown;
   items?: { type?: string };
+  description?: string;
 };
 
 export type PipelineOpEntry = {
