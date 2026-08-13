@@ -20,6 +20,9 @@ export class HexagonLayer extends MockDeckLayer {
 export class ColumnLayer extends MockDeckLayer {
   static typeName = "ColumnLayer";
 }
+export class Tile3DLayer extends MockDeckLayer {
+  static typeName = "Tile3DLayer";
+}
 
 export class MockMapboxOverlay {
   props: { layers: MockDeckLayer[] };
