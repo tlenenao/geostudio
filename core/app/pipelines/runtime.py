@@ -43,7 +43,7 @@ from app.collections.introspection import TableInfo, TableNotFound, UnsupportedT
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DatasetPayload, PipelineNode, PipelinePayload
-from app.features.repository import insert_feature
+from app.features.repository import delete_all_features, insert_feature
 from app.features.rls import rls_scope
 from app.features.validation import validate_feature
 from app.items import repository as items_repo
@@ -503,6 +503,8 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
 
     count = 0
     with rls_scope(session, tenant_id):
+        if p.mode == "replace":
+            delete_all_features(session, info)
         for raw in rows:
             row = dict(zip(cols, raw))
             geometry = json.loads(row.pop("geometry")) if has_geometry and row.get("geometry") is not None else None
@@ -529,7 +531,8 @@ def _write_dataset(
     # ainsi que _write_collection retrouve la bonne entrée de view_by_node
     # (posée par l'appelant, run_pipeline, avant le dispatch).
     collection_node = PipelineNode(
-        id=node.id, kind="writer", op="writer.collection", params={"collectionId": p.collectionId},
+        id=node.id, kind="writer", op="writer.collection",
+        params={"collectionId": p.collectionId, "mode": p.mode},
     )
     write_stat = _write_collection(
         session, conn, node=collection_node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,

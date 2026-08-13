@@ -91,7 +91,7 @@ export function compileVisualQueryToPipeline(
   }
 
   const writerNode = addNode("writer", "writer.dataset", {
-    collectionId: outputCollectionId, datasetId: datasetItemId,
+    collectionId: outputCollectionId, datasetId: datasetItemId, mode: "replace",
   });
   addEdge(mainTail, writerNode);
 

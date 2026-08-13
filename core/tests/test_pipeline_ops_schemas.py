@@ -375,3 +375,37 @@ def test_binary_ops_set_matches_catalog_flag():
     assert BINARY_OPS == {
         "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
     }
+
+
+def test_writer_collection_mode_defaults_to_append():
+    params = parse_op_params("writer.collection", {"collectionId": "c1"})
+    assert params.mode == "append"
+
+
+def test_writer_collection_mode_accepts_replace():
+    params = parse_op_params("writer.collection", {"collectionId": "c1", "mode": "replace"})
+    assert params.mode == "replace"
+
+
+def test_writer_collection_mode_rejects_unknown_value():
+    with pytest.raises(ValidationError):
+        parse_op_params("writer.collection", {"collectionId": "c1", "mode": "overwrite"})
+
+
+def test_writer_dataset_mode_defaults_to_append():
+    params = parse_op_params("writer.dataset", {"collectionId": "c1", "title": "My dataset"})
+    assert params.mode == "append"
+
+
+def test_writer_dataset_mode_accepts_replace():
+    params = parse_op_params(
+        "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "replace"},
+    )
+    assert params.mode == "replace"
+
+
+def test_writer_dataset_mode_rejects_unknown_value():
+    with pytest.raises(ValidationError):
+        parse_op_params(
+            "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "overwrite"},
+        )

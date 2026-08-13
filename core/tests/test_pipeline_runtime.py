@@ -327,6 +327,171 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
         ))
 
 
+@pytest.mark.postgis
+def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_engine, monkeypatch, tmp_path):
+    # Régression finding I2 (revue finale SP-14o) : sans mode="replace", un
+    # re-run (manuel ou, à terme, planifié) accumule indéfiniment la sortie.
+    # Ce test pré-remplit la collection cible d'une ligne parasite, exécute
+    # le pipeline deux fois de suite, et vérifie qu'après le 2e run la
+    # collection ne contient exactement que les lignes de cette exécution —
+    # ni la ligne parasite, ni un doublon des lignes du 1er run.
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable, "
+            "created_at, updated_at) "
+            "VALUES ('villes_replace', :t, :o, 'villes_replace', 'Villes replace', "
+            "'', 'id', 'geometry', false, true, now(), now())"
+        ), {"t": tenant.id, "o": user.id})
+        s.execute(text(
+            "CREATE TABLE villes_replace (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+        ))
+        apply_collection_ddl(s, "villes_replace")
+        # Ligne parasite pré-existante : doit disparaître dès le 1er run en
+        # mode replace (pas seulement le 2e).
+        s.execute(text(
+            "INSERT INTO villes_replace (tenant_id, region, pop, geometry) "
+            "VALUES (:t, 'Parasite', 999, ST_SetSRID(ST_MakePoint(9.0, 9.0), 4326))"
+        ), {"t": tenant.id})
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
+        ])
+
+        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        from app.configs.schemas import PipelinePayload
+        payload = PipelinePayload.model_validate({
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection",
+                 "params": {"collectionId": "villes_replace", "mode": "replace"}},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        })
+
+        runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        count_after_first = s.execute(text("SELECT count(*) FROM villes_replace")).scalar()
+        assert count_after_first == 2
+        parasite_after_first = s.execute(
+            text("SELECT count(*) FROM villes_replace WHERE region = 'Parasite'")
+        ).scalar()
+        assert parasite_after_first == 0
+
+        # 2e run, même source : si mode="replace" purge bien avant d'insérer,
+        # le compte reste à 2 (pas d'accumulation à 4).
+        runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        count_after_second = s.execute(text("SELECT count(*) FROM villes_replace")).scalar()
+        assert count_after_second == 2
+        regions = {
+            row[0] for row in s.execute(text("SELECT region FROM villes_replace")).fetchall()
+        }
+        assert regions == {"Nord", "Sud"}
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE villes_replace; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
+
+
+@pytest.mark.postgis
+def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(pg_engine, monkeypatch, tmp_path):
+    # Comportement historique inchangé : sans mode (ou mode="append"
+    # explicite), deux runs consécutifs accumulent les lignes — c'est ce que
+    # les pipelines SP-15 existants attendent toujours (pas de régression).
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        s.execute(text(
+            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+            "description, pk_column, geometry_column, is_public, editable, "
+            "created_at, updated_at) "
+            "VALUES ('villes_append', :t, :o, 'villes_append', 'Villes append', "
+            "'', 'id', 'geometry', false, true, now(), now())"
+        ), {"t": tenant.id, "o": user.id})
+        s.execute(text(
+            "CREATE TABLE villes_append (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+        ))
+        apply_collection_ddl(s, "villes_append")
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
+        ])
+
+        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
+        monkeypatch.setattr(
+            runtime, "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        from app.configs.schemas import PipelinePayload
+        # Pas de champ "mode" : vérifie le défaut "append", pas seulement un
+        # mode="append" explicite.
+        payload = PipelinePayload.model_validate({
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+                {"id": "w1", "kind": "writer", "op": "writer.collection",
+                 "params": {"collectionId": "villes_append"}},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        })
+
+        runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+        runtime.run_pipeline(
+            s, payload=payload, tenant_id=tenant.id, user=user,
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            base_uri=str(tmp_path),
+        )
+        s.commit()
+
+        count = s.execute(text("SELECT count(*) FROM villes_append")).scalar()
+        assert count == 4  # 2 + 2 : accumulation, comportement historique
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(
+            "DROP TABLE villes_append; "
+            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+        ))
+
+
 def _table_info_srid(collection_id: str, srid: int) -> TableInfo:
     return dataclasses.replace(TABLE_INFO, table_name=collection_id, srid=srid)
 
