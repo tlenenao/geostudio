@@ -16,6 +16,8 @@ const sources: LayerSource[] = [
     url: "https://core.test/collections/public.legacy/items", featureCount: null },
   { id: "ext-ortho", title: "Orthophoto (WMS)", service: "external", kind: "raster",
     tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}" },
+  { id: "t1", title: "Ville hébergée", service: "tileset3d", kind: "tiles3d",
+    url: "https://core.test/tileset3d/t1/tileset.json" },
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
@@ -71,6 +73,18 @@ test("emits a raster MapLayer for an external source", async () => {
     title: "Orthophoto (WMS)",
     visible: true,
     tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}",
+  });
+});
+
+test("clicking a hosted tileset3d source emits a tiles3d MapLayer with its proxy url", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const btn = await screen.findByRole("button", { name: /Ville hébergée/ });
+  await userEvent.click(btn);
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "tiles3d", url: "https://core.test/tileset3d/t1/tileset.json", visible: true,
   });
 });
 
