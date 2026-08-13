@@ -90,7 +90,7 @@ export function ExplorerDrawer() {
       </div>
       <div className="h-48 shrink-0">
         <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
-          <MapView ref={mapHandle} config={mapConfig} />
+          <MapView ref={mapHandle} config={mapConfig} getAuthToken={client.getAuthToken} />
         </Suspense>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto p-2 text-xs">

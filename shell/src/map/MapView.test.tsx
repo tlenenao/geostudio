@@ -570,3 +570,33 @@ test("waits for every visible tiles3d tileset before onReady", () => {
   fireTilesetLoad(1);
   expect(onReady).toHaveBeenCalledTimes(1);
 });
+
+test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://core.test/tileset3d/item-1/tileset.json" }],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "secret-token"} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers[0].props.loadOptions).toEqual({ fetch: { headers: { Authorization: "Bearer secret-token" } } });
+});
+
+test("does not attach a bearer token to an external tiles3d layer even when getAuthToken is provided", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "secret-token"} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers[0].props.loadOptions).toBeUndefined();
+});
+
+test("does not attach a header for a hosted tileset when getAuthToken is absent", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://core.test/tileset3d/item-1/tileset.json" }],
+  };
+  render(<MapView config={cfg} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers[0].props.loadOptions).toBeUndefined();
+});

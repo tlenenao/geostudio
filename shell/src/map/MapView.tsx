@@ -12,6 +12,10 @@ import { MapLegend } from "./MapLegend";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
+// Path segment distinguishing a hosted tileset (served by our authenticated
+// proxy, design §4) from an externally-hosted tileset.json — the latter
+// must never receive our session's bearer token.
+const HOSTED_TILESET3D_PATH = "/tileset3d/";
 
 export type MapViewHandle = {
   flyTo: (opts: { center: [number, number]; zoom?: number; pitch?: number; bearing?: number }) => void;
@@ -115,11 +119,17 @@ function tilesetKey(layer: Tiles3DMapLayer) {
   return `${layer.id}\n${layer.url}`;
 }
 
-function buildTiles3DLayer(layer: Tiles3DMapLayer, onTilesetLoad?: (key: string) => void) {
+function buildTiles3DLayer(
+  layer: Tiles3DMapLayer,
+  onTilesetLoad?: (key: string) => void,
+  getAuthToken?: () => string | undefined,
+) {
+  const token = layer.url.includes(HOSTED_TILESET3D_PATH) ? getAuthToken?.() : undefined;
   return new Tile3DLayer({
     id: layer.id,
     data: layer.url,
     loader: Tiles3DLoader,
+    loadOptions: token ? { fetch: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
     // Fired once the root tileset has loaded. Deck.gl loads 3D Tiles entirely
     // outside MapLibre's knowledge, so this is the only signal that tells the
     // export worker the tileset is actually on screen (see onReady below).
@@ -131,13 +141,14 @@ function applyDeckLayers(
   overlay: MapboxOverlay,
   layers: MapConfig["layers"],
   onTilesetLoad?: (key: string) => void,
+  getAuthToken?: () => string | undefined,
 ) {
   const deckLayers = layers
     .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
     .map(buildDeckLayer);
   const tiles3dLayers = layers
     .filter((l): l is Tiles3DMapLayer => l.visible && l.kind === "tiles3d")
-    .map((l) => buildTiles3DLayer(l, onTilesetLoad));
+    .map((l) => buildTiles3DLayer(l, onTilesetLoad, getAuthToken));
   overlay.setProps({ layers: [...deckLayers, ...tiles3dLayers] });
 }
 
@@ -180,8 +191,13 @@ export const MapView = forwardRef<
     // hide the legend from a capture (this MapLegend would still render
     // underneath it, and both would duplicate when showLegend is true).
     hideLegend?: boolean;
+    // Authenticates Tile3DLayer requests against a hosted (design
+    // /tileset3d/) tileset's proxy route — never sent for external tileset
+    // URLs (see HOSTED_TILESET3D_PATH check in buildTiles3DLayer). Absent by
+    // default: a MapView with no hosted tiles3d layer needs no auth plumbing.
+    getAuthToken?: () => string | undefined;
   }
->(function MapView({ config, onViewChange, onFeatureClick, onReady, hideLegend }, ref) {
+>(function MapView({ config, onViewChange, onFeatureClick, onReady, hideLegend, getAuthToken }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
@@ -204,6 +220,7 @@ export const MapView = forwardRef<
   const onViewChangeRef = useRef(onViewChange);
   const onFeatureClickRef = useRef(onFeatureClick);
   const onReadyRef = useRef(onReady);
+  const getAuthTokenRef = useRef(getAuthToken);
   const layersRef = useRef(config.layers);
   const terrainRef = useRef(config.terrain);
   useEffect(() => {
@@ -215,6 +232,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     onReadyRef.current = onReady;
   }, [onReady]);
+  useEffect(() => {
+    getAuthTokenRef.current = getAuthToken;
+  }, [getAuthToken]);
   useEffect(() => {
     layersRef.current = config.layers;
   });
@@ -262,7 +282,7 @@ export const MapView = forwardRef<
       map.addSource(HIGHLIGHT_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
       applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-      applyDeckLayers(overlay, layersRef.current, handleTilesetLoad);
+      applyDeckLayers(overlay, layersRef.current, handleTilesetLoad, getAuthTokenRef.current);
       applyTerrain(map, terrainRef.current);
       map.once("idle", () => {
         idleRef.current = true;
@@ -295,7 +315,7 @@ export const MapView = forwardRef<
     const overlay = overlayRef.current;
     if (!map || !styleLoadedRef.current || !overlay) return;
     applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-    applyDeckLayers(overlay, config.layers, handleTilesetLoad);
+    applyDeckLayers(overlay, config.layers, handleTilesetLoad, getAuthTokenRef.current);
   }, [config.layers, handleTilesetLoad]);
 
   useEffect(() => {
