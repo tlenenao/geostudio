@@ -22,6 +22,8 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
     case "deck":
       return { ...base, kind: "deck", deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
         dataUrl: l.dataUrl ?? "", ...(l.props ? { props: l.props } : {}) };
+    case "tiles3d":
+      return { ...base, kind: "tiles3d", url: l.url ?? "" };
     case "feature":
     default:
       return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
@@ -603,7 +605,12 @@ export function createItemClient(opts: {
       // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
       const data = await request<{
         config?: {
-          map?: { basemap: { style: string }; view: { center: [number, number]; zoom: number }; layers: RawMapLayer[] } | null;
+          map?: {
+            basemap: { style: string };
+            view: { center: [number, number]; zoom: number; pitch?: number | null; bearing?: number | null };
+            layers: RawMapLayer[];
+            terrain?: { tilesUrl: string; encoding: "terrarium"; exaggeration?: number | null } | null;
+          } | null;
           printLayout?: PrintLayoutConfig | null;
         };
       }>("GET", `/configs/by-item/${pk}`);
@@ -611,9 +618,21 @@ export function createItemClient(opts: {
       if (!map) throw new Error("getMapConfig: config has no map payload");
       return {
         basemap: map.basemap,
-        view: map.view,
+        view: {
+          center: map.view.center,
+          zoom: map.view.zoom,
+          ...(map.view.pitch != null ? { pitch: map.view.pitch } : {}),
+          ...(map.view.bearing != null ? { bearing: map.view.bearing } : {}),
+        },
         layers: (map.layers ?? []).map(toFrontLayer),
         printLayout: data.config?.printLayout ?? null,
+        terrain: map.terrain
+          ? {
+              tilesUrl: map.terrain.tilesUrl,
+              encoding: map.terrain.encoding,
+              ...(map.terrain.exaggeration != null ? { exaggeration: map.terrain.exaggeration } : {}),
+            }
+          : null,
       };
     },
 
