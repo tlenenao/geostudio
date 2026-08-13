@@ -185,6 +185,25 @@ describe("VisualQueryWizardPage", () => {
     // jointure toujours incomplète (aucune collection choisie) -> reste désactivé
     expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
   });
+
+  test("revue finale #2, Important 2 : un run en échec réaffiche le formulaire avec un message d'erreur, au lieu de rester bloqué", async () => {
+    const client = renderWizard({
+      getPipelineRuns: vi.fn().mockResolvedValue([
+        { id: "run-1", status: "failed", startedAt: null, finishedAt: null, error: "message d'échec explicite", nodeStats: {} },
+      ]),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+    await waitFor(() => expect(client.runPipeline).toHaveBeenCalled());
+    // L'écran de run laisse place au formulaire (Titre à nouveau visible) et
+    // le message d'erreur du run s'affiche, au lieu de rester bloqué sur
+    // "Exécution de la requête…" indéfiniment.
+    expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("message d'échec explicite");
+  });
 });
 
 describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)", () => {
@@ -231,6 +250,81 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     // Round 2, Important 2 : le renommage tapé par l'utilisateur doit être
     // persisté sur l'item dataset (le Pipeline lui-même ne porte pas de titre).
     expect(client.updateItem).toHaveBeenCalledWith("dataset-1", { title: "Ma requête modifiée" });
+  });
+
+  test("revue finale #2, Important 1 : bloque la soumission si le schéma recompilé ne correspond plus à la sortie déjà provisionnée", async () => {
+    // "query_out" (la collection de sortie décompilée depuis EXISTING_PIPELINE)
+    // renvoie un schéma cohérent avec la sortie de EXISTING_STATE non modifiée
+    // (une seule colonne "commune") — pour que la régression "pas de
+    // changement -> pas de blocage" soit vérifiable dans le même test.
+    const getCollectionSchema = vi.fn().mockImplementation((collectionId: string) =>
+      Promise.resolve(
+        collectionId === "query_out"
+          ? { collection: "query_out", pk: "id", geometry: null, fields: [{ name: "commune", type: "string" as const, required: true }] }
+          : BASE_SCHEMA,
+      ),
+    );
+    renderWizardEdit({ getCollectionSchema });
+
+    await screen.findByText("Modifier la requête");
+    await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    await screen.findByText("Filtrer");
+
+    // Pas de changement de la requête : pas de faux positif de blocage.
+    const button = await screen.findByRole("button", { name: "Mettre à jour" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    expect(screen.queryByText(/La structure de sortie a changé/)).not.toBeInTheDocument();
+
+    // Ajouter un résumé (métrique "count") change les colonnes projetées
+    // ("commune" -> "metrique_1") : le schéma recompilé ne correspond plus à
+    // la collection de sortie déjà provisionnée.
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un résumé" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Mettre à jour" })).toBeDisabled());
+    expect(screen.getByText(/La structure de sortie a changé/)).toBeInTheDocument();
+  });
+
+  test("revue finale #2, Important 3 : changer la collection de base réinitialise filtre/jointure/résumé", async () => {
+    const collections: CollectionAdmin[] = [
+      ...COLLECTIONS,
+      { id: "other", title: "Autre collection", description: "", tableName: "other", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 5, owner: "alice" },
+    ];
+    const client = renderWizard({ listCollections: () => Promise.resolve(collections) });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter une jointure" }));
+    expect(screen.getByText("Supprimer la jointure")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "other");
+    // La jointure posée sur l'ancienne collection de base a disparu : le
+    // bouton "Ajouter une jointure" doit réapparaître (au lieu du picker).
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ajouter une jointure" })).toBeInTheDocument());
+    expect(screen.queryByText("Supprimer la jointure")).not.toBeInTheDocument();
+    expect(client.getCollectionSchema).toBeDefined();
+  });
+
+  test("revue finale #2, Important 4 : \"Ajouter une jointure\"/\"Ajouter un résumé\" sont réversibles", async () => {
+    renderWizard();
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter une jointure" }));
+    expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Supprimer la jointure" }));
+    expect(screen.getByRole("button", { name: "Ajouter une jointure" })).toBeInTheDocument();
+    // Plus de jointure incomplète en attente : le bouton redevient activable.
+    expect(screen.getByRole("button", { name: "Créer" })).not.toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un résumé" }));
+    // Un résumé vide (ni groupBy ni métrique) est lui aussi incomplet.
+    expect(screen.getByRole("button", { name: "Créer" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Supprimer le résumé" }));
+    expect(screen.getByRole("button", { name: "Ajouter un résumé" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Créer" })).not.toBeDisabled();
   });
 
   test("round 2, Important 1 : un titre tapé avant que le fetch de l'item dataset ne résolve n'est pas écrasé", async () => {

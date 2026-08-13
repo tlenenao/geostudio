@@ -15,8 +15,20 @@ import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEdit
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { inferOutputColumns } from "../builder/visualQuery/inferSchema";
 import { FilterRow, isFilterRowValueValid } from "../builder/visualQuery/compileFilter";
-import { JoinConfig, SummaryConfig } from "../builder/visualQuery/inferSchema";
+import { InferredSchema, JoinConfig, SummaryConfig } from "../builder/visualQuery/inferSchema";
 import { VisualQueryState, compileVisualQueryToPipeline, decompilePipelineToWizardState } from "../builder/visualQuery/compilePipeline";
+
+// Compare le schéma de sortie recompilé (déduit de l'état courant du
+// formulaire) au schéma réel de la collection de sortie déjà provisionnée,
+// pour bloquer une modification en mode édition qui rendrait tout run futur
+// silencieusement en échec (Important 1, revue finale d'intégration SP-14o).
+function outputSchemaMatches(inferred: InferredSchema, existing: CollectionSchema): boolean {
+  const existingNames = new Set(existing.fields.map((f) => f.name));
+  const inferredNames = new Set(inferred.columns.map((c) => c.name));
+  if (existingNames.size !== inferredNames.size) return false;
+  for (const name of inferredNames) if (!existingNames.has(name)) return false;
+  return (existing.geometry !== null) === (inferred.geometryType !== null);
+}
 
 export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk: string | null; initialTitle?: string }) {
   const navigate = useNavigate();
@@ -56,6 +68,14 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     queryFn: () => client.getItem(existingOutput!.datasetItemId),
     enabled: Boolean(existingOutput?.datasetItemId),
   });
+  // Schéma réel de la collection de sortie déjà provisionnée (mode édition
+  // seulement) — sert de référence pour détecter une incompatibilité de
+  // schéma avant soumission (Important 1).
+  const existingOutputSchemaQuery = useQuery({
+    queryKey: ["collection-schema", existingOutput?.collectionId],
+    queryFn: () => client.getCollectionSchema(existingOutput!.collectionId),
+    enabled: Boolean(existingOutput?.collectionId),
+  });
 
   useEffect(() => {
     if (pipelinePk === null || !existingPipelineQuery.data) return;
@@ -89,7 +109,14 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
         if (cancelled) return;
         const latest = runs[0];
         if (latest && latest.status !== "queued" && latest.status !== "running") {
-          if (latest.status === "succeeded") navigate(`/datasets/${createdDatasetPk}/edit`);
+          if (latest.status === "succeeded") { navigate(`/datasets/${createdDatasetPk}/edit`); return; }
+          // Run terminé en échec (ou tout autre statut terminal non
+          // "succeeded") : ne pas laisser l'écran "Exécution de la
+          // requête…" affiché indéfiniment — revenir au formulaire avec un
+          // message d'erreur explicite (Important 2).
+          setError(latest.error ?? "L'exécution du pipeline a échoué.");
+          setCreatedPipelinePk(null);
+          setCreatedDatasetPk(null);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -111,6 +138,19 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
 
   const baseSchema: CollectionSchema | undefined = baseSchemaQuery.data;
 
+  // Calculé une fois pour être réutilisé à la fois par le garde-fou
+  // ci-dessous et par la branche création de handleCreate (évite de
+  // dupliquer l'appel à inferOutputColumns).
+  const inferredOutput: InferredSchema | null = baseSchema
+    ? inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary)
+    : null;
+  // Incompatibilité de schéma de sortie, mode édition seulement (Important
+  // 1) : bloque la soumission tant que le schéma recompilé ne correspond
+  // plus à la collection de sortie déjà provisionnée.
+  const outputSchemaMismatch =
+    pipelinePk !== null && inferredOutput !== null && existingOutputSchemaQuery.data !== undefined
+    && !outputSchemaMatches(inferredOutput, existingOutputSchemaQuery.data);
+
   async function handleCreate() {
     if (!baseSchema) return;
     setError(null);
@@ -131,7 +171,9 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
         await client.savePipelineConfig(pipelinePk, pipeline);
         await client.updateItem(datasetPk, { title });
       } else {
-        const inferred = inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary);
+        // baseSchema est garanti défini ici (contrôle en tête de fonction),
+        // donc inferredOutput (calculé à partir de baseSchema) l'est aussi.
+        const inferred = inferredOutput!;
         const { id: newCollectionId } = await client.createEmptyCollection({
           title: `${title} (données)`,
           columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
@@ -193,7 +235,19 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           aria-label="Collection de base"
           className="h-9 rounded-md border border-slate-300 px-3 text-sm"
           value={baseCollectionId}
-          onChange={(e) => setBaseCollectionId(e.target.value)}
+          onChange={(e) => {
+            // Important 3 : un changement direct de collection de base
+            // invalide filtres/jointure/résumé (colonnes qui n'existent
+            // plus forcément dans la nouvelle collection) — réinitialiser
+            // pour éviter un état validé à tort qui échouerait à
+            // l'exécution. Le useEffect de décompilation (chargement d'une
+            // requête existante) pose ces mêmes champs ensemble et n'a pas
+            // besoin de ce garde : ce n'est pas une interaction utilisateur.
+            setBaseCollectionId(e.target.value);
+            setFilters([]);
+            setJoin(null);
+            setSummary(null);
+          }}
         >
           <option value="">Choisir…</option>
           {(collectionsQuery.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
@@ -208,10 +262,15 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">Joindre</p>
             {join ? (
-              <QueryJoinPicker
-                baseSchema={baseSchema} joinedSchema={joinedSchemaQuery.data ?? null}
-                collections={collectionsQuery.data ?? []} value={join} onChange={setJoin}
-              />
+              <div className="flex flex-col gap-2">
+                <QueryJoinPicker
+                  baseSchema={baseSchema} joinedSchema={joinedSchemaQuery.data ?? null}
+                  collections={collectionsQuery.data ?? []} value={join} onChange={setJoin}
+                />
+                <Button type="button" size="sm" variant="outline" onClick={() => setJoin(null)}>
+                  Supprimer la jointure
+                </Button>
+              </div>
             ) : (
               <Button type="button" size="sm" variant="outline" onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}>
                 Ajouter une jointure
@@ -221,7 +280,12 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">Résumer</p>
             {summary ? (
-              <QuerySummaryBuilder schema={baseSchema} value={summary} onChange={setSummary} />
+              <div className="flex flex-col gap-2">
+                <QuerySummaryBuilder schema={baseSchema} value={summary} onChange={setSummary} />
+                <Button type="button" size="sm" variant="outline" onClick={() => setSummary(null)}>
+                  Supprimer le résumé
+                </Button>
+              </div>
             ) : (
               <Button type="button" size="sm" variant="outline" onClick={() => setSummary({ groupBy: [], metrics: [] })}>
                 Ajouter un résumé
@@ -234,12 +298,19 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           </div>
         </>
       )}
+      {pipelinePk !== null && outputSchemaMismatch && (
+        <p role="alert" className="text-sm text-red-600">
+          La structure de sortie a changé (colonnes ou géométrie) : cette
+          modification ne peut pas être enregistrée sur la requête existante.
+          Créez une nouvelle requête à la place.
+        </p>
+      )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <Button
         size="sm" className="w-fit"
         disabled={
           submitting || !title.trim() || !baseCollectionId || !filtersValid || !joinValid || !summaryValid
-          || (pipelinePk !== null && !existingOutput)
+          || (pipelinePk !== null && !existingOutput) || outputSchemaMismatch
         }
         onClick={handleCreate}
       >
