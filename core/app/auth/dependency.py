@@ -41,6 +41,15 @@ def is_export_enabled() -> bool:
     return os.environ.get("CORE_EXPORT_ENABLED", "false").lower() == "true"
 
 
+def is_tileset3d_enabled() -> bool:
+    """CORE_TILESET3D_ENABLED — capacité instance-wide optionnelle, même
+    convention que is_export_enabled : lue à chaque appel, sans cache.
+    Défaut false : une instance qui monte en version ne provisionne rien de
+    nouveau (bucket S3 dédié, route proxy) tant qu'elle n'a pas explicitement
+    activé la capacité (design hébergement tileset3d §6)."""
+    return os.environ.get("CORE_TILESET3D_ENABLED", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par
