@@ -36,6 +36,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   const [createdPipelinePk, setCreatedPipelinePk] = useState<string | null>(null);
   const [createdDatasetPk, setCreatedDatasetPk] = useState<string | null>(null);
   const [unrecognizedShape, setUnrecognizedShape] = useState(false);
+  const [existingOutput, setExistingOutput] = useState<{ collectionId: string; datasetItemId: string } | null>(null);
 
   const baseSchemaQuery = useQuery({
     queryKey: ["collection-schema", baseCollectionId],
@@ -57,6 +58,7 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     setJoin(decompiled.join);
     setSummary(decompiled.summary);
     setRefreshPolicy(existingPipelineQuery.data.refreshPolicy ?? null);
+    setExistingOutput({ collectionId: decompiled.outputCollectionId, datasetItemId: decompiled.datasetItemId });
   }, [pipelinePk, existingPipelineQuery.data]);
 
   useEffect(() => {
@@ -96,30 +98,48 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     setSubmitting(true);
     try {
       const state: VisualQueryState = { title, baseCollectionId, filters, join, summary, refreshPolicy };
-      const inferred = inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary);
-      const { id: outputCollectionId } = await client.createEmptyCollection({
-        title: `${title} (données)`,
-        columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
-        geometryType: inferred.geometryType, srid: inferred.srid,
-      });
-      const datasetItem = await client.createDatasetItem({
-        title, owner: username ?? "", source: "collection", collectionId: outputCollectionId,
-      });
-      const pipeline = compileVisualQueryToPipeline(
-        state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetItem.pk,
-      );
-      const pipelineItem = await client.createPipelineItem({
-        title: `Requête — ${title}`, owner: username ?? "", pipeline,
-      });
-      await client.saveDatasetConfig(datasetItem.pk, {
-        source: "collection", collectionId: outputCollectionId, columns: {},
-        sourcePipelineId: pipelineItem.pk,
-      });
-      await client.runPipeline(pipelineItem.pk);
-      setCreatedPipelinePk(pipelineItem.pk);
-      setCreatedDatasetPk(datasetItem.pk);
+      let outputCollectionId: string;
+      let datasetPk: string;
+      let pipelinePkToRun: string;
+
+      if (pipelinePk !== null && existingOutput) {
+        outputCollectionId = existingOutput.collectionId;
+        datasetPk = existingOutput.datasetItemId;
+        pipelinePkToRun = pipelinePk;
+        const pipeline = compileVisualQueryToPipeline(
+          state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetPk,
+        );
+        await client.savePipelineConfig(pipelinePk, pipeline);
+      } else {
+        const inferred = inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary);
+        const { id: newCollectionId } = await client.createEmptyCollection({
+          title: `${title} (données)`,
+          columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
+          geometryType: inferred.geometryType, srid: inferred.srid,
+        });
+        outputCollectionId = newCollectionId;
+        const datasetItem = await client.createDatasetItem({
+          title, owner: username ?? "", source: "collection", collectionId: outputCollectionId,
+        });
+        datasetPk = datasetItem.pk;
+        const pipeline = compileVisualQueryToPipeline(
+          state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetPk,
+        );
+        const pipelineItem = await client.createPipelineItem({
+          title: `Requête — ${title}`, owner: username ?? "", pipeline,
+        });
+        pipelinePkToRun = pipelineItem.pk;
+        await client.saveDatasetConfig(datasetPk, {
+          source: "collection", collectionId: outputCollectionId, columns: {},
+          sourcePipelineId: pipelinePkToRun,
+        });
+      }
+
+      await client.runPipeline(pipelinePkToRun);
+      setCreatedPipelinePk(pipelinePkToRun);
+      setCreatedDatasetPk(datasetPk);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Échec de la création.");
+      setError(e instanceof Error ? e.message : "Échec de l'enregistrement.");
     } finally {
       setSubmitting(false);
     }
@@ -140,7 +160,9 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-xl font-semibold">Nouvelle requête visuelle</h2>
+      <h2 className="text-xl font-semibold">
+        {pipelinePk !== null ? "Modifier la requête" : "Nouvelle requête visuelle"}
+      </h2>
       <label className="flex flex-col gap-1 text-sm">
         Titre
         <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -195,10 +217,13 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <Button
         size="sm" className="w-fit"
-        disabled={submitting || !title.trim() || !baseCollectionId || !filtersValid || !joinValid || !summaryValid}
+        disabled={
+          submitting || !title.trim() || !baseCollectionId || !filtersValid || !joinValid || !summaryValid
+          || (pipelinePk !== null && !existingOutput)
+        }
         onClick={handleCreate}
       >
-        Créer
+        {pipelinePk !== null ? "Mettre à jour" : "Créer"}
       </Button>
     </div>
   );
