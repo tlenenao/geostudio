@@ -85,6 +85,7 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
     createPipelineItem: vi.fn().mockResolvedValue({ pk: "should-not-be-created", resourceType: "pipeline", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-y", isPublished: false }),
     savePipelineConfig: vi.fn().mockResolvedValue(undefined),
     saveDatasetConfig: vi.fn().mockResolvedValue(undefined),
+    updateItem: vi.fn().mockResolvedValue({ pk: "dataset-1", resourceType: "dataset", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false }),
     runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
     getPipelineRuns: vi.fn().mockResolvedValue([{ id: "run-1", status: "succeeded", startedAt: null, finishedAt: null, error: null, nodeStats: {} }]),
     ...overrides,
@@ -226,5 +227,40 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     expect(client.saveDatasetConfig).not.toHaveBeenCalled();
 
     expect(client.runPipeline).toHaveBeenCalledWith("pipeline-1");
+
+    // Round 2, Important 2 : le renommage tapé par l'utilisateur doit être
+    // persisté sur l'item dataset (le Pipeline lui-même ne porte pas de titre).
+    expect(client.updateItem).toHaveBeenCalledWith("dataset-1", { title: "Ma requête modifiée" });
+  });
+
+  test("round 2, Important 1 : un titre tapé avant que le fetch de l'item dataset ne résolve n'est pas écrasé", async () => {
+    let resolveGetItem!: (value: { pk: string; resourceType: "dataset"; title: string; abstract: string; owner: string; thumbnailUrl: null; date: string; configId: string; isPublished: boolean }) => void;
+    const delayedGetItem = vi.fn().mockImplementation(
+      () => new Promise((resolve) => { resolveGetItem = resolve; }),
+    );
+    const client = renderWizardEdit({ getItem: delayedGetItem });
+
+    // La "Collection de base" apparaît dès la décompilation du pipeline
+    // (premier aller-retour) — avant que getItem (second aller-retour) ne
+    // résolve. C'est exactement la fenêtre décrite par le finding : on tape
+    // un titre pendant cette fenêtre, sans attendre le second fetch — on
+    // vérifie juste que la requête est partie (invoquée), pas qu'elle a
+    // résolu.
+    await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    await waitFor(() => expect(client.getItem).toHaveBeenCalled());
+    await userEvent.clear(screen.getByLabelText("Titre"));
+    await userEvent.type(screen.getByLabelText("Titre"), "Titre tapé par l'utilisateur");
+
+    // Le second fetch résout seulement maintenant, avec un titre serveur
+    // différent : il ne doit pas écraser la saisie utilisateur.
+    await act(async () => {
+      resolveGetItem({ pk: "dataset-1", resourceType: "dataset", title: "Titre serveur (ne doit pas apparaître)", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false });
+      // Laisser toutes les promesses/microtâches en attente se résoudre
+      // (react-query doit relire la donnée résolue et l'effet de
+      // pré-remplissage doit avoir eu l'occasion de s'exécuter).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByLabelText("Titre")).toHaveValue("Titre tapé par l'utilisateur");
   });
 });
