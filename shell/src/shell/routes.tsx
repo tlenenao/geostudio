@@ -61,6 +61,10 @@ function useOpenItem() {
       navigate(`/reports/${pk}/edit`);
       return;
     }
+    if (type === "tileset3d") {
+      navigate(`/items/${pk}`);
+      return;
+    }
     navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
   };
   return { onOpenItem, openError };
