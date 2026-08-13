@@ -1073,5 +1073,6 @@ export function createItemClient(opts: {
     },
 
     getAuthToken: getToken,
+    getCoreUrl: () => coreUrl,
   };
 }

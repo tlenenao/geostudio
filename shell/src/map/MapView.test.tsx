@@ -576,7 +576,7 @@ test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests
     ...config,
     layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://core.test/tileset3d/item-1/tileset.json" }],
   };
-  render(<MapView config={cfg} getAuthToken={() => "secret-token"} />);
+  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
   const layers = overlayInstances[0].props.layers;
   expect(layers[0].props.loadOptions).toEqual({ fetch: { headers: { Authorization: "Bearer secret-token" } } });
 });
@@ -586,7 +586,17 @@ test("does not attach a bearer token to an external tiles3d layer even when getA
     ...config,
     layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
   };
-  render(<MapView config={cfg} getAuthToken={() => "secret-token"} />);
+  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers[0].props.loadOptions).toBeUndefined();
+});
+
+test("does not attach a bearer token when the URL merely contains /tileset3d/ on a different origin", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://attacker.test/x/tileset3d/y/tileset.json" }],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
   const layers = overlayInstances[0].props.layers;
   expect(layers[0].props.loadOptions).toBeUndefined();
 });
