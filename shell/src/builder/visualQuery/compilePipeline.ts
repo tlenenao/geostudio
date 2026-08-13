@@ -2,7 +2,7 @@
 import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRefreshPolicy, CollectionSchema } from "../../api/types";
 import { genEdgeId, genNodeId } from "../pipeline/graphOps";
 import { FilterRow, compileFilterRowsToSql, decompileSqlToFilterRows, quoteIdent } from "./compileFilter";
-import { JoinConfig, MetricConfig, SummaryConfig } from "./inferSchema";
+import { JoinConfig, MetricConfig, SummaryConfig, inferOutputColumns } from "./inferSchema";
 
 export type VisualQueryState = {
   title: string;
@@ -71,6 +71,23 @@ export function compileVisualQueryToPipeline(
     });
     addEdge(mainTail, aggregateNode);
     mainTail = aggregateNode;
+  } else {
+    // Garantit par construction que le schéma de la collection de sortie
+    // (pré-calculé par inferOutputColumns AVANT que ce pipeline n'existe,
+    // pour provisionner la collection de destination) et ce que ce pipeline
+    // écrit réellement restent identiques. Sans cette projection finale,
+    // une colonne de type "unsupported" ou le pk de la collection source
+    // (s'il ne s'appelle pas "id") fuiraient jusqu'au writer et feraient
+    // échouer validate_feature avec une "unknown property" — trouvé en
+    // revue finale (SP-14o, I1). transform.aggregate (branche ci-dessus)
+    // fait déjà lui-même une projection exacte, inutile de la dupliquer ici.
+    const inferred = inferOutputColumns(baseSchema, state.join, joinedSchema, null);
+    const outputColumns: Record<string, string | null> = {};
+    for (const c of inferred.columns) outputColumns[c.name] = null;
+    if (inferred.geometryType) outputColumns.geometry = null;
+    const outputSelect = addNode("transform", "transform.select", { columns: outputColumns });
+    addEdge(mainTail, outputSelect);
+    mainTail = outputSelect;
   }
 
   const writerNode = addNode("writer", "writer.dataset", {
@@ -157,6 +174,14 @@ export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
       const metrics = decompileMetrics(params.metrics ?? {});
       if (metrics === null) return null;
       summary = { groupBy: params.groupBy ?? [], metrics };
+      currentId = next.id;
+      continue;
+    }
+    if (next.op === "transform.select" && !summary) {
+      // Étape de sortie ajoutée par compileVisualQueryToPipeline (SP-14o,
+      // fix I1) — garantit la cohérence schéma-destination/écriture-réelle.
+      // Ne porte aucune information de filtre/jointure/résumé à elle seule ;
+      // on la traverse sans rien en extraire.
       currentId = next.id;
       continue;
     }

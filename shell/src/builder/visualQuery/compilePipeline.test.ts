@@ -24,32 +24,63 @@ describe("compileVisualQueryToPipeline", () => {
   test("filtre seul : reader -> filter -> writer.dataset", () => {
     const state = baseState({ filters: [{ column: "gravite", operator: "gt", value: "3" }] });
     const pipeline = compileVisualQueryToPipeline(state, BASE, null, "query_out", "dataset-1");
-    expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "transform.filter", "writer.dataset"]);
+    expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "transform.filter", "transform.select", "writer.dataset"]);
     const writer = pipeline.nodes.find((n) => n.op === "writer.dataset")!;
     expect(writer.params).toEqual({ collectionId: "query_out", datasetId: "dataset-1" });
-    expect(pipeline.edges).toHaveLength(2);
+    expect(pipeline.edges).toHaveLength(3);
     expect(pipeline.edges.every((e) => e.role == null)).toBe(true);
   });
 
-  test("aucune étape optionnelle : reader -> writer.dataset directement", () => {
+  test("aucune étape optionnelle : reader -> select -> writer.dataset", () => {
     const pipeline = compileVisualQueryToPipeline(baseState(), BASE, null, "query_out", "dataset-1");
-    expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "writer.dataset"]);
+    expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "transform.select", "writer.dataset"]);
   });
 
   test("jointure : deux readers, un select implicite sur la branche jointe, arête secondaire", () => {
     const state = baseState({ join: { collectionId: "communes", on: "commune", how: "inner" } });
     const pipeline = compileVisualQueryToPipeline(state, BASE, JOINED, "query_out", "dataset-1");
     const ops = pipeline.nodes.map((n) => n.op);
-    expect(ops).toEqual(["reader.collection", "reader.collection", "transform.select", "transform.join", "writer.dataset"]);
+    expect(ops).toEqual(["reader.collection", "reader.collection", "transform.select", "transform.join", "transform.select", "writer.dataset"]);
     const joinNode = pipeline.nodes.find((n) => n.op === "transform.join")!;
     expect(joinNode.params).toEqual({ on: "commune", how: "inner" });
     const secondaryEdge = pipeline.edges.find((e) => e.role === "secondary")!;
-    const selectNode = pipeline.nodes.find((n) => n.op === "transform.select")!;
-    expect(secondaryEdge.from).toBe(selectNode.id);
+    // Il y a maintenant deux nœuds transform.select (jointe + sortie finale) :
+    // le premier trouvé dans l'ordre d'insertion est celui de la branche jointe.
+    const joinedSelectNode = pipeline.nodes.filter((n) => n.op === "transform.select")[0];
+    expect(secondaryEdge.from).toBe(joinedSelectNode.id);
     expect(secondaryEdge.to).toBe(joinNode.id);
-    // La colonne de jointure est gardée telle quelle (null = pas de renommage) ;
-    // "population" ne collide pas avec BASE, gardée telle quelle aussi.
-    expect(selectNode.params).toEqual({ columns: { commune: null, population: null } });
+    expect(joinedSelectNode.params).toEqual({ columns: { commune: null, population: null } });
+    const outputSelectNode = pipeline.nodes.filter((n) => n.op === "transform.select")[1];
+    expect(outputSelectNode.params).toEqual({ columns: { commune: null, gravite: null, population: null } });
+  });
+
+  test("étape de sortie finale : exclut une colonne de type unsupported, inclut la géométrie", () => {
+    const baseWithUnsupported: CollectionSchema = {
+      collection: "incidents", pk: "id", geometry: { column: "geom", type: "Point", srid: 4326 },
+      fields: [
+        { name: "commune", type: "string", required: true },
+        { name: "brut", type: "unsupported", required: false },
+      ],
+    };
+    const pipeline = compileVisualQueryToPipeline(baseState(), baseWithUnsupported, null, "query_out", "dataset-1");
+    const ops = pipeline.nodes.map((n) => n.op);
+    expect(ops).toEqual(["reader.collection", "transform.select", "writer.dataset"]);
+    const outputSelect = pipeline.nodes.find((n) => n.op === "transform.select")!;
+    expect(outputSelect.params).toEqual({ columns: { commune: null, geometry: null } });
+  });
+
+  test("étape de sortie finale : absente pour un résumé (transform.aggregate projette déjà exactement)", () => {
+    const state = baseState({
+      summary: { groupBy: ["commune"], metrics: [{ alias: "nb", function: "count", sourceColumn: null }] },
+    });
+    const pipeline = compileVisualQueryToPipeline(state, BASE, null, "query_out", "dataset-1");
+    expect(pipeline.nodes.map((n) => n.op)).toEqual(["reader.collection", "transform.aggregate", "writer.dataset"]);
+  });
+
+  test("étape de sortie finale : présente mais sans clé geometry quand la collection de base n'en a pas", () => {
+    const pipeline = compileVisualQueryToPipeline(baseState(), BASE, null, "query_out", "dataset-1");
+    const outputSelect = pipeline.nodes.find((n) => n.op === "transform.select");
+    expect(outputSelect!.params).toEqual({ columns: { commune: null, gravite: null } });
   });
 
   test("jointure avec collision de nom hors colonne de jointure : renommage joined_<nom>", () => {
