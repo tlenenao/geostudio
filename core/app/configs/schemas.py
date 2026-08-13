@@ -61,6 +61,8 @@ class Variable(BaseModel):
 class MapView(BaseModel):
     center: tuple[float, float]
     zoom: float
+    pitch: float | None = None
+    bearing: float | None = None
 
 
 class BaseMap(BaseModel):
@@ -71,7 +73,7 @@ class MapLayer(BaseModel):
     id: str
     title: str
     visible: bool = True
-    kind: Literal["vector", "raster", "feature", "deck"]
+    kind: Literal["vector", "raster", "feature", "deck", "tiles3d"]
     tilesUrl: str | None = None
     sourceLayer: str | None = None
     url: str | None = None
@@ -82,10 +84,17 @@ class MapLayer(BaseModel):
     props: dict | None = None
 
 
+class MapTerrain(BaseModel):
+    tilesUrl: str
+    encoding: Literal["terrarium"] = "terrarium"
+    exaggeration: float | None = None
+
+
 class MapConfig(BaseModel):
     basemap: BaseMap
     view: MapView
     layers: list[MapLayer] = Field(default_factory=list)
+    terrain: MapTerrain | None = None
 
 
 class DatasetColumnMeta(BaseModel):

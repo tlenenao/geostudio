@@ -2165,6 +2165,16 @@
             "title": "Layers",
             "type": "array"
           },
+          "terrain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapTerrain"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "view": {
             "$ref": "#/components/schemas/MapView"
           }
@@ -2209,7 +2219,8 @@
               "vector",
               "raster",
               "feature",
-              "deck"
+              "deck",
+              "tiles3d"
             ],
             "title": "Kind",
             "type": "string"
@@ -2300,8 +2311,49 @@
         "title": "MapLayer",
         "type": "object"
       },
+      "MapTerrain": {
+        "properties": {
+          "encoding": {
+            "const": "terrarium",
+            "default": "terrarium",
+            "title": "Encoding",
+            "type": "string"
+          },
+          "exaggeration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exaggeration"
+          },
+          "tilesUrl": {
+            "title": "Tilesurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tilesUrl"
+        ],
+        "title": "MapTerrain",
+        "type": "object"
+      },
       "MapView": {
         "properties": {
+          "bearing": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing"
+          },
           "center": {
             "maxItems": 2,
             "minItems": 2,
@@ -2315,6 +2367,17 @@
             ],
             "title": "Center",
             "type": "array"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
           },
           "zoom": {
             "title": "Zoom",
