@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
@@ -108,17 +108,36 @@ function buildDeckLayer(layer: DeckLayer) {
   }
 }
 
-function buildTiles3DLayer(layer: Tiles3DMapLayer) {
-  return new Tile3DLayer({ id: layer.id, data: layer.url, loader: Tiles3DLoader });
+// Identity of a *tileset*, not of a layer: re-pointing the same layer id at a
+// different tileset URL must invalidate the "already loaded" bookkeeping used
+// by the export-readiness gate below.
+function tilesetKey(layer: Tiles3DMapLayer) {
+  return `${layer.id}\n${layer.url}`;
 }
 
-function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
+function buildTiles3DLayer(layer: Tiles3DMapLayer, onTilesetLoad?: (key: string) => void) {
+  return new Tile3DLayer({
+    id: layer.id,
+    data: layer.url,
+    loader: Tiles3DLoader,
+    // Fired once the root tileset has loaded. Deck.gl loads 3D Tiles entirely
+    // outside MapLibre's knowledge, so this is the only signal that tells the
+    // export worker the tileset is actually on screen (see onReady below).
+    onTilesetLoad: () => onTilesetLoad?.(tilesetKey(layer)),
+  });
+}
+
+function applyDeckLayers(
+  overlay: MapboxOverlay,
+  layers: MapConfig["layers"],
+  onTilesetLoad?: (key: string) => void,
+) {
   const deckLayers = layers
     .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
     .map(buildDeckLayer);
   const tiles3dLayers = layers
     .filter((l): l is Tiles3DMapLayer => l.visible && l.kind === "tiles3d")
-    .map(buildTiles3DLayer);
+    .map((l) => buildTiles3DLayer(l, onTilesetLoad));
   overlay.setProps({ layers: [...deckLayers, ...tiles3dLayers] });
 }
 
@@ -129,7 +148,10 @@ function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
 function applyTerrain(map: maplibregl.Map, terrain: MapConfig["terrain"] | null | undefined) {
   map.setTerrain(null);
   if (map.getSource(TERRAIN_SOURCE_ID)) map.removeSource(TERRAIN_SOURCE_ID);
-  if (!terrain) return;
+  // A blank URL is the transient state right after the author ticks "Activer
+  // le terrain 3D" (TerrainPanel emits tilesUrl: "" first). Building a
+  // raster-dem source on it fires doomed tile requests for nothing.
+  if (!terrain || !terrain.tilesUrl.trim()) return;
   map.addSource(TERRAIN_SOURCE_ID, {
     type: "raster-dem",
     tiles: [terrain.tilesUrl],
@@ -146,9 +168,11 @@ export const MapView = forwardRef<
     onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number]; pitch: number; bearing: number }) => void;
     onFeatureClick?: (record: DataRecord) => void;
     // Fired once the map has settled after its first load (MapLibre "idle":
-    // no pending tiles/style/sprite loads) — the real "ready to capture"
-    // signal for exportRender mode (SP-17a Task 10), as opposed to a fixed
-    // delay.
+    // no pending tiles/style/sprite loads) *and* every visible tiles3d layer's
+    // root tileset has loaded — the real "ready to capture" signal for
+    // exportRender mode (SP-17a Task 10), as opposed to a fixed delay.
+    // MapLibre knows nothing about deck.gl's Tile3DLayer streaming, so "idle"
+    // on its own would let a capture happen with the tileset still missing.
     onReady?: () => void;
     // Suppresses the built-in interactive legend. Used by exportRender mode
     // (MapEditorPage), which renders its own legend overlay driven by
@@ -163,6 +187,18 @@ export const MapView = forwardRef<
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const appliedRef = useRef<Set<string>>(new Set());
   const clickHandlersRef = useRef<Map<string, (e: maplibregl.MapLayerMouseEvent) => void>>(new Map());
+  // The style's *initial* load — the only real precondition of addSource /
+  // addLayer / setTerrain. `map.isStyleLoaded()` was used here before and is a
+  // different question ("is nothing loading right now?"): a single in-flight
+  // tile request made it return false, and every config update that landed in
+  // that window was silently dropped with nothing to retry it.
+  const styleLoadedRef = useRef(false);
+  // Export readiness (onReady) = MapLibre idle AND every visible tiles3d
+  // tileset loaded. Deck.gl's Tile3DLayer streams outside MapLibre, so "idle"
+  // alone can fire while a tileset is still missing from the capture.
+  const idleRef = useRef(false);
+  const readyFiredRef = useRef(false);
+  const loadedTilesetsRef = useRef<Set<string>>(new Set());
   // Keep the latest callback/layers reachable from the mount-time closures so
   // the async "load" and "moveend" handlers never read stale values.
   const onViewChangeRef = useRef(onViewChange);
@@ -186,6 +222,24 @@ export const MapView = forwardRef<
     terrainRef.current = config.terrain;
   });
 
+  const maybeFireReady = useCallback(() => {
+    if (readyFiredRef.current || !idleRef.current) return;
+    const pending = layersRef.current.some(
+      (l) => l.visible && l.kind === "tiles3d" && !loadedTilesetsRef.current.has(tilesetKey(l)),
+    );
+    if (pending) return;
+    readyFiredRef.current = true;
+    onReadyRef.current?.();
+  }, []);
+
+  const handleTilesetLoad = useCallback(
+    (key: string) => {
+      loadedTilesetsRef.current.add(key);
+      maybeFireReady();
+    },
+    [maybeFireReady],
+  );
+
   useEffect(() => {
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
@@ -197,16 +251,23 @@ export const MapView = forwardRef<
       bearing: config.view.bearing ?? 0,
     });
     mapRef.current = map;
-    const overlay = new MapboxOverlay({ layers: [] });
+    // interleaved: deck.gl layers are inserted into MapLibre's own layer stack
+    // and share its WebGL2 context + depth buffer, so 3D Tiles are correctly
+    // occluded by the terrain instead of always drawing on top.
+    const overlay = new MapboxOverlay({ layers: [], interleaved: true });
     overlayRef.current = overlay;
     map.addControl(overlay);
     map.on("load", () => {
+      styleLoadedRef.current = true;
       map.addSource(HIGHLIGHT_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
       applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-      applyDeckLayers(overlay, layersRef.current);
+      applyDeckLayers(overlay, layersRef.current, handleTilesetLoad);
       applyTerrain(map, terrainRef.current);
-      map.once("idle", () => onReadyRef.current?.());
+      map.once("idle", () => {
+        idleRef.current = true;
+        maybeFireReady();
+      });
     });
     map.on("moveend", () => {
       const cb = onViewChangeRef.current;
@@ -220,6 +281,10 @@ export const MapView = forwardRef<
       map.remove();
       mapRef.current = null;
       overlayRef.current = null;
+      styleLoadedRef.current = false;
+      idleRef.current = false;
+      readyFiredRef.current = false;
+      loadedTilesetsRef.current.clear();
     };
     // Initialize once; style/view changes are out of scope for this phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -228,14 +293,14 @@ export const MapView = forwardRef<
   useEffect(() => {
     const map = mapRef.current;
     const overlay = overlayRef.current;
-    if (!map || !map.isStyleLoaded() || !overlay) return;
+    if (!map || !styleLoadedRef.current || !overlay) return;
     applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-    applyDeckLayers(overlay, config.layers);
-  }, [config.layers]);
+    applyDeckLayers(overlay, config.layers, handleTilesetLoad);
+  }, [config.layers, handleTilesetLoad]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleLoadedRef.current) return;
     applyTerrain(map, config.terrain);
   }, [config.terrain]);
 

@@ -26,7 +26,11 @@ export class Tile3DLayer extends MockDeckLayer {
 
 export class MockMapboxOverlay {
   props: { layers: MockDeckLayer[] };
-  constructor(props: { layers?: MockDeckLayer[] } = {}) {
+  // Kept verbatim so tests can assert on construction-time options that are
+  // not layer props (e.g. `interleaved`).
+  constructorProps: Record<string, unknown>;
+  constructor(props: { layers?: MockDeckLayer[] } & Record<string, unknown> = {}) {
+    this.constructorProps = props;
     this.props = { layers: props.layers ?? [] };
     overlayInstances.push(this);
   }

@@ -29,7 +29,7 @@ vi.mock("@deck.gl/geo-layers", async () => {
   const { Tile3DLayer } = await import("../test/MockDeckgl");
   return { Tile3DLayer };
 });
-vi.mock("@loaders.gl/tiles", async () => {
+vi.mock("@loaders.gl/3d-tiles", async () => {
   const { Tiles3DLoader } = await import("../test/MockLoadersGl");
   return { Tiles3DLoader };
 });

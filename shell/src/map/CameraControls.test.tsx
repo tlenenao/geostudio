@@ -24,6 +24,19 @@ test("moving the bearing slider reports the new bearing and keeps pitch", () => 
   expect(onChange).toHaveBeenCalledWith({ pitch: 30, bearing: 200 });
 });
 
+test("normalizes a negative bearing from MapLibre into [0, 360) for display", () => {
+  // map.getBearing() returns (-180, 180]: rotating past north yields -170,
+  // which the [0, 360] slider would clamp to 0 while the label printed -170.
+  render(<CameraControls pitch={0} bearing={-170} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Orientation de la caméra")).toHaveValue("190");
+  expect(screen.getByText(/Orientation \(bearing\)/)).toHaveTextContent("190°");
+});
+
+test("normalizes a bearing beyond a full turn for display", () => {
+  render(<CameraControls pitch={0} bearing={400} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Orientation de la caméra")).toHaveValue("40");
+});
+
 test("the reset button reports pitch 0 and bearing 0", async () => {
   const onChange = vi.fn();
   render(<CameraControls pitch={30} bearing={120} onChange={onChange} />);
