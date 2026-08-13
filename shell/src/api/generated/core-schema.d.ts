@@ -1823,6 +1823,7 @@ export interface components {
             basemap: components["schemas"]["BaseMap"];
             /** Layers */
             layers?: components["schemas"]["MapLayer"][];
+            terrain?: components["schemas"]["MapTerrain"] | null;
             view: components["schemas"]["MapView"];
         };
         /** MapLayer */
@@ -1837,7 +1838,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "vector" | "raster" | "feature" | "deck";
+            kind: "vector" | "raster" | "feature" | "deck" | "tiles3d";
             /** Opacity */
             opacity?: number | null;
             /** Paint */
@@ -1862,13 +1863,30 @@ export interface components {
              */
             visible: boolean;
         };
+        /** MapTerrain */
+        MapTerrain: {
+            /**
+             * Encoding
+             * @default terrarium
+             * @constant
+             */
+            encoding: "terrarium";
+            /** Exaggeration */
+            exaggeration?: number | null;
+            /** Tilesurl */
+            tilesUrl: string;
+        };
         /** MapView */
         MapView: {
+            /** Bearing */
+            bearing?: number | null;
             /** Center */
             center: [
                 number,
                 number
             ];
+            /** Pitch */
+            pitch?: number | null;
             /** Zoom */
             zoom: number;
         };

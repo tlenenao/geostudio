@@ -54,13 +54,15 @@ export type Sharing = {
   groups: { groupId: string; role: ShareRole }[];
 };
 
-export type MapViewport = { center: [number, number]; zoom: number };
+export type MapViewport = { center: [number, number]; zoom: number; pitch?: number; bearing?: number };
 export type BaseMap = { style: string };
 export type MapLayer =
   | { id: string; title: string; visible: boolean; kind: "vector"; tilesUrl: string; sourceLayer: string; paint?: Record<string, unknown> }
   | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
   | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
-  | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> };
+  | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> }
+  | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
+export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
 export type PrintLayoutConfig = {
   pageSize?: "a4" | "a3";
   orientation?: "portrait" | "landscape";
@@ -71,7 +73,13 @@ export type PrintLayoutConfig = {
   cartouche?: string | null;
 };
 
-export type MapConfig = { basemap: BaseMap; view: MapViewport; layers: MapLayer[]; printLayout?: PrintLayoutConfig | null };
+export type MapConfig = {
+  basemap: BaseMap;
+  view: MapViewport;
+  layers: MapLayer[];
+  printLayout?: PrintLayoutConfig | null;
+  terrain?: MapTerrainConfig | null;
+};
 
 export type LayerSource = {
   id: string;
