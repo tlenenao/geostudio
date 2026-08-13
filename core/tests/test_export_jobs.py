@@ -68,8 +68,36 @@ class _FakePage:
     def screenshot(self, *, full_page: bool) -> bytes:
         return b"PNGDATA"
 
-    def pdf(self, *, format: str, landscape: bool, print_background: bool) -> bytes:
+    def pdf(self, **kwargs) -> bytes:
+        # **kwargs (not a fixed display_header_footer/footer_template
+        # signature) mirrors RenderPage.pdf's evolving kwarg set (SP-17b
+        # Task 5 added display_header_footer/footer_template on top of
+        # format/landscape/print_background) without needing another edit
+        # here next time it grows — see test_export_rendering.py's _FakePage
+        # for the same convention.
+        self.pdf_kwargs = kwargs
         return b"PDFDATA"
+
+
+class _FakeUploadS3Client:
+    """Minimal S3 fake for tests that only care about the render/URL path,
+    not upload details — render_export_task always uploads after a
+    successful render, so any test asserting status == "done" needs this
+    (or a real MinIO) or it fails downstream with EndpointConnectionError
+    against the unreachable http://minio.test placeholder, for a reason
+    unrelated to what the test is actually exercising."""
+
+    def create_bucket(self, *, Bucket):
+        pass
+
+    def put_bucket_cors(self, *, Bucket, CORSConfiguration):
+        pass
+
+    def put_object(self, *, Bucket, Key, Body, ContentType):
+        pass
+
+    def generate_presigned_url(self, *args, **kwargs):
+        return "https://minio.test/presigned"
 
 
 def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
@@ -101,7 +129,7 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
         def generate_presigned_url(self, *args, **kwargs):
             return "https://minio.test/presigned"
 
-    monkeypatch.setattr(export_jobs, "_s3_client_from_env", lambda: _FakeS3Client())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeS3Client())
 
     # Appel direct de la fonction tâche (pas .defer() + run_worker) : teste
     # l'orchestration synchrone, pas la file — pas besoin d'InMemoryConnector
@@ -168,6 +196,66 @@ def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_se
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "error"
     assert "navigation timeout" in refreshed.error
+
+
+def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    captured_urls = []
+
+    def fake_launch_and_navigate(url):
+        captured_urls.append(url)
+        return _FakePage()
+
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", fake_launch_and_navigate)
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
+        page_id="page-2", ctx="abc123",
+    )
+    session.commit()
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    # db_session's item is a "map" config (kind="map"), so route == "maps"
+    # (see render_export_task's `route = "maps" if config.kind == "map" ...`)
+    # — not "apps" as in the brief's illustrative (app) example.
+    assert len(captured_urls) == 1
+    assert f"/maps/{item.id}/page-2?exportToken=" in captured_urls[0]
+    assert captured_urls[0].endswith("&ctx=abc123")
+
+    # Guards against a regression where the PDF render itself blows up after
+    # the URL is already captured (e.g. _FakePage.pdf() rejecting a kwarg
+    # RenderPage.pdf now requires) — the exception would be swallowed by
+    # render_export_task's catch-all and silently flip the job to "error"
+    # while this test kept asserting green on captured_urls alone.
+    session.expire_all()
+    refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert refreshed.status == "done"
+
+
+def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    captured_urls = []
+    monkeypatch.setattr(
+        export_jobs, "_launch_and_navigate",
+        lambda url: captured_urls.append(url) or _FakePage(),
+    )
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
+    session.commit()
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    assert len(captured_urls) == 1
+    assert f"/maps/{item.id}?exportToken=" in captured_urls[0]
+    assert "ctx=" not in captured_urls[0]
+
+    # See the identical comment in
+    # test_render_export_task_builds_url_with_page_id_and_ctx: without this,
+    # a broken _FakePage.pdf() would still leave this test green.
+    session.expire_all()
+    refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert refreshed.status == "done"
 
 
 def test_render_export_task_missing_job_is_a_noop(db_session):

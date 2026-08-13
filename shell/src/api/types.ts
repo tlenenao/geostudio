@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -158,6 +158,10 @@ export interface ItemClient {
   saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
   getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]>;
+  createReportScheduleItem(input: { title: string; owner: string; report: ReportSchedulePayload }): Promise<Item>;
+  getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload>;
+  saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void>;
+  getReportRuns(pk: string): Promise<ReportRunStatus[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;
@@ -502,6 +506,21 @@ export interface AlertEvaluation {
   state: "pending" | "ok" | "firing" | "error";
   transitioned: boolean;
   error: string | null;
+  createdAt: string;
+}
+
+export interface ReportSchedulePayload {
+  bookmarkItemId: string;
+  refreshPolicy: PipelineRefreshPolicy; // réutilisé tel quel, même forme que la planification pipeline/alerte
+  channels: AlertChannel[]; // réutilisé tel quel depuis AlertRule (SP-16b)
+}
+
+export interface ReportRunStatus {
+  id: string;
+  status: "pending" | "running" | "done" | "error" | "unknown";
+  resultUrl: string | null;
+  error: string | null;
+  notifiedAt: string | null;
   createdAt: string;
 }
 

@@ -6,6 +6,7 @@ via Chromium headless. Tourne dans le conteneur export-worker dédié (queue
 en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
 import logging
 import os
+from urllib.parse import quote
 
 from app.auth.dependency import is_export_enabled
 from app.auth.export_tokens import mint_export_token
@@ -26,7 +27,7 @@ def _session_factory():
     return make_session_factory(engine)
 
 
-def _s3_client_from_env():
+def s3_client_from_env():
     return make_s3_client(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
         access_key=os.environ["S3_ACCESS_KEY"],
@@ -76,16 +77,10 @@ def _launch_and_navigate(url: str) -> RenderPage:
     return page
 
 
-# TODO(SP-17a fix round, I7): export_repo.reclaim_stuck_jobs exists and is
-# tested (tests/test_export_repository.py) but has no periodic caller yet —
-# unlike app.pipelines/app.alerts, which each wire their reclaim-by-age logic
-# into a procrastinate periodic sweep task (run_pipeline_sweep_task,
-# run_alert_sweep_task). A job whose export-worker crashed mid-render (e.g.
-# OOM-killed Chromium) stays "running" in the DB until a future sweep task is
-# added. Scope tradeoff, not an oversight: wiring a full periodic task was
-# judged too large for this fix round on top of the other 10 findings: the
-# shell-side poll cap (ExportPanel, finding I7) already bounds the
-# user-visible symptom (infinite polling) even without server-side reclaim.
+# export_repo.reclaim_stuck_jobs (un job "running" trop vieux — export-worker
+# ou Chromium tué en cours de rendu) est appelé à la fin de chaque tick de
+# app.reports.jobs._trigger_due_reports depuis SP-17b, comme
+# run_pipeline_sweep_task le fait pour app.pipelines.
 @app.task(queue="export")
 def render_export_task(job_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
@@ -102,6 +97,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             return
         export_repo.mark_running(session, job_id=job_id)
         item_id, user_id, export_format = job.item_id, job.user_id, job.format
+        page_id, ctx = job.page_id, job.ctx
 
     try:
         with request_scoped_session(session_factory) as session:
@@ -112,7 +108,12 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
 
         token = mint_export_token(tenant_id=tenant_id, user_id=user_id, job_id=job_id)
         route = "maps" if config.kind == "map" else "apps"
-        target_url = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}?exportToken={token}&exportRender=1"
+        base = f"{os.environ['SHELL_BASE_URL']}/{route}/{item_id}"
+        if page_id:
+            base = f"{base}/{quote(page_id, safe='')}"
+        target_url = f"{base}?exportToken={token}&exportRender=1"
+        if ctx:
+            target_url = f"{target_url}&ctx={ctx}"
 
         browser_page = _launch_and_navigate(target_url)
         try:
@@ -135,7 +136,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
 
         result_key = f"renders/{job_id}.{export_format}"
         bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
-        s3_client = _s3_client_from_env()
+        s3_client = s3_client_from_env()
         # Sur un MinIO tout neuf, "geostudio-exports" n'existe pas encore —
         # contrairement à app/ingestion/routes.py, app/cdc/storage.py et
         # app/items/storage.py, ce module appelait put_object directement,

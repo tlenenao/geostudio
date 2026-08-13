@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useDeleteItem, useUpdateItem, useUploadThumbnail } from "../api/hooks";
+import { useNavigate } from "react-router-dom";
+import { useDeleteItem, useInstanceInfo, useUpdateItem, useUploadThumbnail } from "../api/hooks";
 import type { Item } from "../api/types";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -12,11 +13,17 @@ import { ShareDialog } from "./ShareDialog";
 type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
+  const navigate = useNavigate();
   const [panel, setPanel] = useState<Panel>(null);
   const update = useUpdateItem(item.pk);
   const publish = useUpdateItem(item.pk);
   const thumbnail = useUploadThumbnail(item.pk);
   const remove = useDeleteItem();
+  // Même garde que NewItemButton sur l'option « Pipeline »/etlEnabled : la
+  // création d'un ReportSchedule est refusée en 403 par le cœur quand la
+  // capacité export est coupée (revue finale SP-17b, I3), autant ne pas
+  // proposer l'entrée.
+  const exportEnabled = useInstanceInfo().data?.exportEnabled === true;
 
   async function save(v: { title: string; abstract: string; keywords: string[] }) {
     try {
@@ -57,6 +64,17 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("edit")}>
             Modifier
           </button>
+          {item.resourceType === "bookmark" && exportEnabled && (
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => {
+                setPanel(null);
+                navigate("/reports/new", { state: { bookmarkItemId: item.pk } });
+              }}
+            >
+              Programmer un rapport
+            </button>
+          )}
           <button
             className="px-3 py-1 text-left hover:bg-slate-100"
             onClick={async () => {

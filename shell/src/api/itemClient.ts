@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ReportRunStatus, ReportSchedulePayload, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
@@ -733,6 +733,35 @@ export function createItemClient(opts: {
 
     async getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]> {
       return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
+    },
+
+    async createReportScheduleItem(input: { title: string; owner: string; report: ReportSchedulePayload }): Promise<Item> {
+      const config = { version: 1, kind: "report", report: input.report };
+      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
+        "POST", `/configs`, { title: input.title, config },
+      );
+      if (!data.itemId) throw new Error("createReportScheduleItem: core returned no itemId");
+      return {
+        pk: String(data.itemId), resourceType: "report", title: input.title, abstract: "",
+        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        isPublished: false,
+      };
+    },
+
+    async getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload> {
+      const data = await request<{ config?: { report?: ReportSchedulePayload } }>(
+        "GET", `/configs/by-item/${pk}`,
+      );
+      if (!data.config?.report) throw new Error("getReportScheduleConfig: config has no report payload");
+      return data.config.report;
+    },
+
+    async saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void> {
+      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "report", report: payload });
+    },
+
+    async getReportRuns(pk: string): Promise<ReportRunStatus[]> {
+      return request<ReportRunStatus[]>("GET", `/reports/${pk}/runs`);
     },
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {

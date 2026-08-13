@@ -418,6 +418,56 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   Docker réel de `export-worker` réussi (Chromium/FFmpeg/Chrome Headless
   Shell téléchargés et installés). Suivis non bloquants restants : voir
   `### Suivis non bloquants ouverts`.
+- **SP-17b** — `ReportSchedule` (9e kind `BuilderConfig`) : un `Bookmark`
+  (app + page + contexte analytique figé) rendu en PDF sur cron via le
+  worker d'export Playwright de SP-17a, notifié par webhook/email (canaux
+  `AlertChannel` réutilisés tels quels de SP-16b) avec un lien de
+  téléchargement présigné — jamais de pièce jointe, jamais de fusion PDF,
+  jamais rejoué au tick suivant même en échec. Nouveau module
+  `core/app/reports/` (au-dessus d'`app.alerts` dans le contrat de
+  couches) : modèle `report_runs`, repository (CRUD + balayage cross-
+  tenant `list_due_reports`/`list_unnotified_runs`), `encode_analytics_context`
+  (miroir octet-compatible du format `?ctx=` du shell), une seule tâche
+  procrastinate périodique à deux étapes (déclencher les planifications
+  dues en créant une ligne `export_jobs` avec les nouvelles colonnes
+  `page_id`/`ctx` puis en déférant `render_export_task` existant,
+  notifier les runs dont le job joint est terminé), une route REST
+  bespoke (`GET /reports/{item_id}/runs`), un outil MCP
+  `explain_report_schedule`. `app.export` gagne deux colonnes nullable
+  (`page_id`, `ctx`) et un pied de page PDF (date de génération) sur tout
+  export, pas seulement les rapports. Shell : `ReportScheduleEditor`
+  (formulaire contrôlé, miroir d'`AlertRuleEditor`), `ReportRunPanel`
+  (historique en lecture seule, miroir de `PipelineRunPanel` moins le
+  bouton d'exécution manuelle — un rapport ne se déclenche que par cron),
+  `ReportEditPage` (create/edit `pk: string | null`, miroir de
+  `PipelineBuilderPage`), point d'entrée « Programmer un rapport » sur les
+  lignes de signet, E2E complet. Exécution en subagent-driven-development :
+  19 tâches, plusieurs défauts réels trouvés/corrigés en revue par tâche
+  (dont un bug de format `?ctx=` **dans le texte littéral du plan
+  lui-même** — `entry.model_dump()` sans `by_alias=True` aurait cassé le
+  décodage JS pour toute valeur `crossFilter` de type plage imbriquée ;
+  un test manquant sur la branche « accès app perdu » de la double
+  vérification de droits au déclenchement), puis **une revue finale de
+  branche** (2 Critical + 5 Important, 0 non résolu après une passe de
+  fix unique + re-revue) : spec OpenAPI/types TS jamais régénérés (aurait
+  cassé `api-types-drift` en CI, reproduit empiriquement) ; pas de filet
+  d'exception large sur l'étape de notification — une erreur inattendue
+  (pas `NotifyError`) bloquait la notification de **tous les tenants pour
+  toujours** au lieu d'un seul run, violant la contrainte « jamais rejoué »
+  par un autre mécanisme que prévu ; même défaut sur l'étape de
+  déclenchement (un échec inattendu tuait le reste du tick) ; un
+  déclenchement en échec ne créait aucune ligne `report_runs`, donc un
+  rapport en échec permanent se re-déclenchait toutes les 5 minutes pour
+  toujours au lieu de respecter son propre cron (migration 0024,
+  `report_runs.export_job_id` devient nullable) ; `CORE_EXPORT_ENABLED=false`
+  laissait les jobs `pending` pour toujours (`export-worker` non démarré
+  par défaut, `reclaim_stuck_jobs` ignore `pending`) — corrigé par un
+  double verrou (création bloquée + échec rapide dans le balayage,
+  décision explicite avec Tanguy) ; lien présigné de notification à durée
+  de vie de 1h (mail du dimanche soir mort avant lundi) — étendu à 7
+  jours sur le chemin notification uniquement (décision explicite) ;
+  `ReportRunPanel` sondait indéfiniment sans jamais s'arrêter et avalait
+  les échecs réseau en un état indiscernable de « aucun run ».
 
 ### À venir
 
@@ -445,11 +495,13 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   `ReportSchedule`/rapports planifiés/PDF de dashboards paginés
   entièrement dans **SP-17**, où le socle export CSV/XLSX/GeoJSON/GPKG de
   SP-16a sera réutilisé tel quel plutôt que reconstruit.
-- **SP-17** — le socle export (worker Playwright + `PrintLayout`, SP-17a)
-  est livré (cf. `### Fait`). Reste `ReportSchedule` (rapports planifiés,
-  PDF de dashboards paginés, réutilisant ce socle) en plus du périmètre
-  restant à cadrer (cf. feuille de route, ordre SP-12/SP-14/SP-16/SP-17 à
-  arbitrer avant lancement).
+- **SP-17** — clos sous le périmètre exécuté (SP-17a socle export + SP-17b
+  `ReportSchedule`, cf. `### Fait`) : le socle export (worker Playwright +
+  `PrintLayout`) et les rapports planifiés PDF sont livrés. La 3D
+  (deck.gl `Tile3DLayer` + terrain raster-dem), qui faisait partie du
+  périmètre « 3D & impression » d'origine de la feuille de route, n'a
+  **pas** été exécutée sous ce nom de SP — elle reste dans le reste de la
+  vision post-v0.1 (bullet suivant), non planifiée, non numérotée.
 - Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
   Autoporté/Statique, dépend de SP-11). Jalon M15.
@@ -480,7 +532,24 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   `showNorthArrow` retirés du panneau d'édition (contrôles inertes, jamais
   rendus — cf. Fait) ; `POST /export` n'valide pas le kind de l'item
   (dataset/pipeline accepté, échoue après 30s au lieu d'un 422 immédiat) ;
-  `export_repo.reclaim_stuck_jobs` existe (testé) mais aucune tâche
-  périodique ne l'appelle encore, TODO explicite dans `jobs.py` ;
   `export-worker` sans instrumentation OTel contrairement à `core`/
   `worker`/`cdc-worker`.
+- SP-17b, Minor résiduels (non bloquants, trouvés en re-revue finale de
+  branche après la passe de fix) : le filet d'exception large de l'étape
+  de notification (`_notify_pending_reports`) ne fait pas
+  `session.rollback()` avant son `finally` — une erreur côté base de
+  données (hors les causes réalistes déjà couvertes : `S3_ENDPOINT_URL`
+  manquant, échec AES-GCM) pourrait encore faire échapper
+  `mark_notified`, contrairement à `_record_trigger_failure` qui, lui,
+  fait le rollback en premier ; un échec transitoire de déclenchement
+  consomme désormais un créneau de cron entier au lieu de se retenter au
+  tick suivant (compromis délibéré, parité avec `AlertRule`, non signalé
+  comme tel dans le rapport de fix d'origine) ; chemin très étroit où un
+  échec *dans* le nouveau gestionnaire d'échec de `defer()` peut produire
+  deux lignes `report_runs` pour un même tick (inoffensif, la cadence se
+  base sur la plus récente) ; `downgrade()` de la migration 0024
+  échouerait sur une base avec des lignes de déclenchement en échec (`SET
+  NOT NULL` sur des `NULL` existants) — CI teste sur base vide, passe ; à
+  savoir avant un rollback réel ; `stopped`-ref partagé entre exécutions
+  d'effet dans `ReportRunPanel` (pré-existant au patron des panneaux de
+  poll, non introduit par SP-17b).

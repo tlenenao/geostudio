@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AlertRulePayload, AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, Sharing, UpdatePatch } from "./types";
+import type { AlertRulePayload, AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, ReportSchedulePayload, Sharing, UpdatePatch } from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -333,6 +333,30 @@ export function useCreateAlertRule() {
     onSuccess: (_item, variables) => {
       queryClient.invalidateQueries({ queryKey: ["alert-rules", variables.alert.datasetItemId] });
     },
+  });
+}
+
+export function useCreateReportSchedule() {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: (input: { title: string; owner: string; report: ReportSchedulePayload }) =>
+      client.createReportScheduleItem(input),
+  });
+}
+
+export function useReportScheduleConfig(pk: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["report-schedule", pk],
+    queryFn: () => client.getReportScheduleConfig(pk),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useSaveReportSchedule(pk: string) {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: (payload: ReportSchedulePayload) => client.saveReportScheduleConfig(pk, payload),
   });
 }
 
