@@ -468,6 +468,18 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   jours sur le chemin notification uniquement (décision explicite) ;
   `ReportRunPanel` sondait indéfiniment sans jamais s'arrêter et avalait
   les échecs réseau en un état indiscernable de « aucun run ».
+- **3D (rendu)** — reste non planifié de la vision post-v0.1 (feuille de
+  route §SP-17, A24) exécuté hors tout numéro de SP : nouveau `kind:
+  "tiles3d"` sur `MapLayer` (deck.gl `Tile3DLayer` + loaders.gl, rendu par
+  le même `MapboxOverlay` déjà utilisé par les couches `deck` — pas de
+  deuxième moteur cartographique) et `MapConfig.terrain` (MapLibre
+  `raster-dem` natif, encodage `terrarium` uniquement) ; caméra pitch/
+  bearing sur `MapViewport`, persistée via le même round-trip `moveend`/
+  `flyTo` que center/zoom. Périmètre resserré par rapport à l'A24
+  d'origine (décidé en brainstorm 2026-08-13) : rendu seul — tileset 3D
+  Tiles et terrain pointent vers des URL externes déjà hébergées, aucun
+  pipeline d'upload/hébergement (zip→S3→item), aucun terrain servi par
+  notre propre TiTiler, aucun outil MCP dédié.
 
 ### À venir
 
@@ -502,7 +514,11 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   périmètre « 3D & impression » d'origine de la feuille de route, n'a
   **pas** été exécutée sous ce nom de SP — elle reste dans le reste de la
   vision post-v0.1 (bullet suivant), non planifiée, non numérotée.
-- Reste de la vision post-v0.1 : 3D (deck.gl `Tile3DLayer` + terrain raster-dem).
+- Reste de la vision post-v0.1, 3D — rendu livré (cf. `### Fait`) ;
+  restent non planifiés : hébergement de tilesets 3D Tiles uploadés
+  (zip→S3→item), terrain servi par notre propre TiTiler depuis un DEM COG
+  hébergé chez nous, encodage terrain `mapbox` en plus de `terrarium`,
+  conversion 3D (py3dtiles, nuages de points).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
   Autoporté/Statique, dépend de SP-11). Jalon M15.
 - **SP-19** — undo/redo général du builder (pile d'instantanés de config,
