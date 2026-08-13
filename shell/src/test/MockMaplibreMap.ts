@@ -102,8 +102,14 @@ export class MockMap {
   loaded() {
     return true;
   }
+  // Real MapLibre's isStyleLoaded() answers "is nothing loading right now?",
+  // so a single in-flight (or failing) tile request flips it to false long
+  // after the style's initial load. Tests flip `styleSettled` to reproduce
+  // that window; MapView must not use it as a precondition for applying
+  // config updates.
+  styleSettled = true;
   isStyleLoaded() {
-    return true;
+    return this.styleSettled;
   }
   addControl(control: unknown) {
     this.controls.push(control);

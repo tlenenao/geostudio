@@ -18,6 +18,16 @@ export function TerrainPanel({
     onChange({ ...value, ...partial });
   }
 
+  // `Number("") === 0`: clearing the field must not silently flatten the
+  // terrain. An empty (or otherwise unparseable) input leaves the current
+  // exaggeration untouched.
+  function patchExaggeration(raw: string) {
+    if (raw.trim() === "") return;
+    const next = Number(raw);
+    if (!Number.isFinite(next)) return;
+    patch({ exaggeration: next });
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Terrain 3D</p>
@@ -50,7 +60,7 @@ export function TerrainPanel({
               step={0.1}
               min={0}
               value={value.exaggeration ?? 1}
-              onChange={(e) => patch({ exaggeration: Number(e.target.value) })}
+              onChange={(e) => patchExaggeration(e.target.value)}
             />
           </label>
         </>
