@@ -24,6 +24,14 @@ vi.mock("@deck.gl/layers", async () => {
   const { ColumnLayer } = await import("../test/MockDeckgl");
   return { ColumnLayer };
 });
+vi.mock("@deck.gl/geo-layers", async () => {
+  const { Tile3DLayer } = await import("../test/MockDeckgl");
+  return { Tile3DLayer };
+});
+vi.mock("@loaders.gl/3d-tiles", async () => {
+  const { Tiles3DLoader } = await import("../test/MockLoadersGl");
+  return { Tiles3DLoader };
+});
 
 const { MapView } = await import("./MapView");
 
@@ -141,7 +149,7 @@ test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
   mapInstances[0].fire("moveend");
-  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [0, 0, 0, 0] });
+  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [0, 0, 0, 0], pitch: 0, bearing: 0 });
 });
 
 test("onViewChange includes the current bbox from the map bounds", () => {
@@ -149,7 +157,15 @@ test("onViewChange includes the current bbox from the map bounds", () => {
   render(<MapView config={config} onViewChange={onViewChange} />);
   mapInstances[0].bounds = [[1, 2], [3, 4]];
   mapInstances[0].fire("moveend");
-  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [1, 2, 3, 4] });
+  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [1, 2, 3, 4], pitch: 0, bearing: 0 });
+});
+
+test("onViewChange reports the map's current pitch and bearing", () => {
+  const onViewChange = vi.fn();
+  const cfg: MapConfig = { ...config, view: { center: [2.35, 48.85], zoom: 5, pitch: 40, bearing: 200 } };
+  render(<MapView config={cfg} onViewChange={onViewChange} />);
+  mapInstances[0].fire("moveend");
+  expect(onViewChange).toHaveBeenCalledWith(expect.objectContaining({ pitch: 40, bearing: 200 }));
 });
 
 test("renders a legend of visible layers", () => {
@@ -346,4 +362,84 @@ test("detaches the old layer's click handler when config.layers replaces it", ()
   expect(onFeatureClick).not.toHaveBeenCalled();
   map.fireOnLayer("click", "b", { features: [{ id: 2, properties: {}, geometry: null }] });
   expect(onFeatureClick).toHaveBeenCalledWith({ id: 2, properties: {}, geometry: null });
+});
+
+test("initializes the map with pitch and bearing from the view", () => {
+  const cfg: MapConfig = { ...config, view: { center: [2.35, 48.85], zoom: 5, pitch: 30, bearing: 120 } };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].opts.pitch).toBe(30);
+  expect(mapInstances[0].opts.bearing).toBe(120);
+});
+
+test("defaults pitch and bearing to 0 when absent from the view", () => {
+  render(<MapView config={config} />);
+  expect(mapInstances[0].opts.pitch).toBe(0);
+  expect(mapInstances[0].opts.bearing).toBe(0);
+});
+
+test("mounts a Tile3DLayer for a visible tiles3d layer", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+  };
+  render(<MapView config={cfg} />);
+  const layers = overlayInstances[0].props.layers;
+  expect(layers).toHaveLength(1);
+  expect(layers[0].deckType).toBe("Tile3DLayer");
+  expect(layers[0].props).toMatchObject({ id: "bldg", data: "https://example.test/tileset.json" });
+});
+
+test("excludes a hidden tiles3d layer from the overlay", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: false, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+  };
+  render(<MapView config={cfg} />);
+  expect(overlayInstances[0].props.layers).toHaveLength(0);
+});
+
+test("skips tiles3d layers in the MapLibre-native layer path", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+  };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].getLayer("bldg")).toBeUndefined();
+});
+
+test("shows a tiles3d layer's title in the legend", () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+  };
+  render(<MapView config={cfg} />);
+  expect(document.body.textContent).toContain("Bâtiments");
+});
+
+test("enables terrain on load when config.terrain is present", () => {
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+  };
+  render(<MapView config={cfg} />);
+  const map = mapInstances[0];
+  expect(map.getSource("__terrain__")).toMatchObject({
+    spec: { type: "raster-dem", tiles: ["https://example.test/dem/{z}/{x}/{y}.png"], encoding: "terrarium" },
+  });
+  expect(map.terrain).toEqual({ source: "__terrain__", exaggeration: 1.5 });
+});
+
+test("defaults terrain exaggeration to 1 when not specified", () => {
+  const cfg: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" } };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].terrain).toEqual({ source: "__terrain__", exaggeration: 1 });
+});
+
+test("removes terrain when config.terrain is cleared", () => {
+  const withTerrain: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" } };
+  const { rerender } = render(<MapView config={withTerrain} />);
+  expect(mapInstances[0].terrain).not.toBeNull();
+  rerender(<MapView config={{ ...config, terrain: null }} />);
+  expect(mapInstances[0].terrain).toBeNull();
+  expect(mapInstances[0].getSource("__terrain__")).toBeUndefined();
 });

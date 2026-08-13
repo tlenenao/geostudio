@@ -5,13 +5,16 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
+import { Tile3DLayer } from "@deck.gl/geo-layers";
+import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
 import type { DataRecord, MapConfig } from "../api/types";
 import { MapLegend } from "./MapLegend";
 
 const HIGHLIGHT_ID = "__highlight__";
+const TERRAIN_SOURCE_ID = "__terrain__";
 
 export type MapViewHandle = {
-  flyTo: (opts: { center: [number, number]; zoom?: number }) => void;
+  flyTo: (opts: { center: [number, number]; zoom?: number; pitch?: number; bearing?: number }) => void;
   highlight: (geometry: unknown | null) => void;
 };
 
@@ -34,7 +37,7 @@ function applyLayers(
   applied.clear();
 
   for (const layer of layers) {
-    if (!layer.visible || layer.kind === "deck") continue;
+    if (!layer.visible || layer.kind === "deck" || layer.kind === "tiles3d") continue;
     try {
       if (layer.kind === "vector") {
         map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
@@ -86,6 +89,7 @@ function applyLayers(
 }
 
 type DeckLayer = Extract<MapConfig["layers"][number], { kind: "deck" }>;
+type Tiles3DMapLayer = Extract<MapConfig["layers"][number], { kind: "tiles3d" }>;
 
 function buildDeckLayer(layer: DeckLayer) {
   // Canonical fields last so user props can't shadow the id Deck.gl uses for
@@ -104,18 +108,42 @@ function buildDeckLayer(layer: DeckLayer) {
   }
 }
 
+function buildTiles3DLayer(layer: Tiles3DMapLayer) {
+  return new Tile3DLayer({ id: layer.id, data: layer.url, loader: Tiles3DLoader });
+}
+
 function applyDeckLayers(overlay: MapboxOverlay, layers: MapConfig["layers"]) {
   const deckLayers = layers
     .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
     .map(buildDeckLayer);
-  overlay.setProps({ layers: deckLayers });
+  const tiles3dLayers = layers
+    .filter((l): l is Tiles3DMapLayer => l.visible && l.kind === "tiles3d")
+    .map(buildTiles3DLayer);
+  overlay.setProps({ layers: [...deckLayers, ...tiles3dLayers] });
+}
+
+// Full teardown-then-rebuild on every apply, mirroring applyLayers' pattern
+// for the MapLibre-native layer array — simpler than diffing, and the only
+// way to pick up a changed tilesUrl (MapLibre raster-dem sources are
+// immutable once created).
+function applyTerrain(map: maplibregl.Map, terrain: MapConfig["terrain"] | null | undefined) {
+  map.setTerrain(null);
+  if (map.getSource(TERRAIN_SOURCE_ID)) map.removeSource(TERRAIN_SOURCE_ID);
+  if (!terrain) return;
+  map.addSource(TERRAIN_SOURCE_ID, {
+    type: "raster-dem",
+    tiles: [terrain.tilesUrl],
+    tileSize: 256,
+    encoding: terrain.encoding,
+  });
+  map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: terrain.exaggeration ?? 1 });
 }
 
 export const MapView = forwardRef<
   MapViewHandle,
   {
     config: MapConfig;
-    onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number] }) => void;
+    onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number]; pitch: number; bearing: number }) => void;
     onFeatureClick?: (record: DataRecord) => void;
     // Fired once the map has settled after its first load (MapLibre "idle":
     // no pending tiles/style/sprite loads) — the real "ready to capture"
@@ -141,6 +169,7 @@ export const MapView = forwardRef<
   const onFeatureClickRef = useRef(onFeatureClick);
   const onReadyRef = useRef(onReady);
   const layersRef = useRef(config.layers);
+  const terrainRef = useRef(config.terrain);
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
   }, [onViewChange]);
@@ -153,6 +182,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     layersRef.current = config.layers;
   });
+  useEffect(() => {
+    terrainRef.current = config.terrain;
+  });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -161,6 +193,8 @@ export const MapView = forwardRef<
       style: config.basemap.style,
       center: config.view.center,
       zoom: config.view.zoom,
+      pitch: config.view.pitch ?? 0,
+      bearing: config.view.bearing ?? 0,
     });
     mapRef.current = map;
     const overlay = new MapboxOverlay({ layers: [] });
@@ -171,6 +205,7 @@ export const MapView = forwardRef<
       map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
       applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
       applyDeckLayers(overlay, layersRef.current);
+      applyTerrain(map, terrainRef.current);
       map.once("idle", () => onReadyRef.current?.());
     });
     map.on("moveend", () => {
@@ -178,7 +213,7 @@ export const MapView = forwardRef<
       if (!cb) return;
       const c = map.getCenter();
       const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
-      cb({ center: [c.lng, c.lat], zoom: map.getZoom(), bbox: bounds });
+      cb({ center: [c.lng, c.lat], zoom: map.getZoom(), bbox: bounds, pitch: map.getPitch(), bearing: map.getBearing() });
     });
     return () => {
       map.removeControl(overlay);
@@ -197,6 +232,12 @@ export const MapView = forwardRef<
     applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
     applyDeckLayers(overlay, config.layers);
   }, [config.layers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    applyTerrain(map, config.terrain);
+  }, [config.terrain]);
 
   useImperativeHandle(ref, () => ({
     flyTo: (opts) => {
