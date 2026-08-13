@@ -225,6 +225,11 @@ export interface ItemClient {
   // cast via `as unknown as ItemClient`). Used by MapView to authenticate
   // Tile3DLayer requests against a hosted tileset's proxy route (design §4).
   getAuthToken?(): string | undefined;
+  // Exposes the core API's base URL so MapView can verify a tiles3d layer's
+  // URL actually belongs to our own authenticated proxy before attaching a
+  // bearer token — never trust a bare "/tileset3d/" substring match, since
+  // layer URLs are freeform (an author can type any external URL).
+  getCoreUrl?(): string;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";

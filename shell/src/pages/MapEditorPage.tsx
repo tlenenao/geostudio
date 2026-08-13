@@ -64,7 +64,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <MapView config={draft} onReady={markExportReady} hideLegend getAuthToken={client.getAuthToken} />
+        <MapView config={draft} onReady={markExportReady} hideLegend getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
         {draft.printLayout?.title && (
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
@@ -103,7 +103,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         )}
       </aside>
       <div className="relative flex-1">
-        <MapView ref={mapViewRef} config={draft} onViewChange={setView} getAuthToken={client.getAuthToken} />
+        <MapView ref={mapViewRef} config={draft} onViewChange={setView} getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
       </div>
     </div>
   );

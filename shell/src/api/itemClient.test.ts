@@ -2110,3 +2110,8 @@ test("getAuthToken exposes the client's current token", () => {
   const client = makeClient("secret-token");
   expect(client.getAuthToken?.()).toBe("secret-token");
 });
+
+test("getCoreUrl exposes the client's configured core API origin", () => {
+  const client = makeClient("secret-token");
+  expect(client.getCoreUrl?.()).toBe("https://core.test");
+});
