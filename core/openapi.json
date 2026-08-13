@@ -1101,6 +1101,17 @@
             "title": "Source",
             "type": "string"
           },
+          "sourcePipelineId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepipelineid"
+          },
           "timeField": {
             "anyOf": [
               {
@@ -1117,6 +1128,86 @@
           "source"
         ],
         "title": "DatasetPayload",
+        "type": "object"
+      },
+      "EmptyCollectionColumn": {
+        "properties": {
+          "name": {
+            "maxLength": 59,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "sqlType": {
+            "enum": [
+              "text",
+              "integer",
+              "bigint",
+              "double precision",
+              "boolean",
+              "date",
+              "timestamptz"
+            ],
+            "title": "Sqltype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sqlType"
+        ],
+        "title": "EmptyCollectionColumn",
+        "type": "object"
+      },
+      "EmptyCollectionCreate": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/EmptyCollectionColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "geometryType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Point",
+                  "MultiPoint",
+                  "LineString",
+                  "MultiLineString",
+                  "Polygon",
+                  "MultiPolygon"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometrytype"
+          },
+          "srid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Srid"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "EmptyCollectionCreate",
         "type": "object"
       },
       "EvaluationStatus": {
@@ -3393,6 +3484,54 @@
           }
         },
         "summary": "List Candidate Tables"
+      }
+    },
+    "/collections/empty": {
+      "post": {
+        "operationId": "create_empty_collection_route_collections_empty_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCollectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Empty Collection Route"
       }
     },
     "/collections/{collection_id}": {

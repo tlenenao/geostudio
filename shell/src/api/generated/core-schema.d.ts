@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/collections/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Empty Collection Route */
+        post: operations["create_empty_collection_route_collections_empty_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/collections/{collection_id}": {
         parameters: {
             query?: never;
@@ -1484,8 +1501,31 @@ export interface components {
              * @enum {string}
              */
             source: "collection" | "arcgis";
+            /** Sourcepipelineid */
+            sourcePipelineId?: string | null;
             /** Timefield */
             timeField?: string | null;
+        };
+        /** EmptyCollectionColumn */
+        EmptyCollectionColumn: {
+            /** Name */
+            name: string;
+            /**
+             * Sqltype
+             * @enum {string}
+             */
+            sqlType: "text" | "integer" | "bigint" | "double precision" | "boolean" | "date" | "timestamptz";
+        };
+        /** EmptyCollectionCreate */
+        EmptyCollectionCreate: {
+            /** Columns */
+            columns?: components["schemas"]["EmptyCollectionColumn"][];
+            /** Geometrytype */
+            geometryType?: ("Point" | "MultiPoint" | "LineString" | "MultiLineString" | "Polygon" | "MultiPolygon") | null;
+            /** Srid */
+            srid?: number | null;
+            /** Title */
+            title: string;
         };
         /** EvaluationStatus */
         EvaluationStatus: {
@@ -2337,6 +2377,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_empty_collection_route_collections_empty_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyCollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
