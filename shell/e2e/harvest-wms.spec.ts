@@ -61,7 +61,16 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   });
 
   await page.route("https://core.test/items*", async (route) => {
-    const items = Array.from(harvestedById.values());
+    const url = new URL(route.request().url());
+    const type = url.searchParams.get("type");
+    // LayerPicker also fires a hosted-tileset3d lookup (`?type=tileset3d`,
+    // Task 10) against this same generic /items endpoint — without this
+    // filter it would answer with the harvested WMS item too (resourceType
+    // "external"), producing a phantom tiles3d entry with the same title as
+    // the real raster source and a strict-mode-ambiguous button below.
+    const items = Array.from(harvestedById.values()).filter(
+      (item) => !type || item.resourceType === type,
+    );
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
 
