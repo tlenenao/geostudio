@@ -132,6 +132,12 @@ services:
       # dans `worker` : les trois plafonds de VALIDATION ci-dessous
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
+      CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      S3_TERRAIN3D_BUCKET: geostudio-terrain3d
+      # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
+      # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
+      # exposé au navigateur.
+      TITILER_URL: ${TITILER_URL:-http://titiler:8000}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -144,7 +150,7 @@ services:
     ports:
       - "8200:8200"
     networks: [gis-net]
-    depends_on: [pgbouncer, minio]
+    depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
     labels:
       - traefik.enable=true

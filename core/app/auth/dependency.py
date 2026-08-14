@@ -50,6 +50,16 @@ def is_tileset3d_enabled() -> bool:
     return os.environ.get("CORE_TILESET3D_ENABLED", "false").lower() == "true"
 
 
+def is_terrain3d_enabled() -> bool:
+    """CORE_TERRAIN3D_ENABLED — capacité instance-wide optionnelle, même
+    convention que is_tileset3d_enabled : lue à chaque appel, sans cache.
+    Défaut false : une instance qui monte en version ne provisionne rien de
+    nouveau (bucket S3 dédié, dépendances rasterio/rio-cogeo côté worker,
+    route proxy) tant qu'elle n'a pas explicitement activé la capacité
+    (design terrain hébergé §6)."""
+    return os.environ.get("CORE_TERRAIN3D_ENABLED", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par
