@@ -63,11 +63,17 @@ _READ_CHUNK_BYTES = 1024 * 1024  # 1 Mio
 
 def _read_entry_bounded(zf: zipfile.ZipFile, path: str, *, max_bytes: int) -> bytes:
     """Lit une entrée par tranches, en s'arrêtant net dès que le cumul
-    décompressé dépasse le plafond. `zf.read(path)` décompresserait tout le
-    flux réel en mémoire d'abord : `info.file_size` du répertoire central est
-    une métadonnée contrôlée par l'auteur du zip, jamais vérifiée
-    indépendamment — un zip-bomb passerait la validation puis exploserait la
-    mémoire du cœur à la première lecture."""
+    décompressé dépasse le plafond, au lieu de matérialiser l'entrée entière
+    en mémoire comme `zf.read(path)`.
+
+    Précision vérifiée expérimentalement (revue finale, C2) : zipfile borne
+    déjà sa décompression sur `file_size` du répertoire central, donc un zip
+    qui SOUS-déclare une entrée ne fait pas exploser la mémoire — il échoue
+    le contrôle CRC (BadZipFile, rattrapé par l'appelant). Le vrai risque
+    était l'absence de tout plafond À LA LECTURE : une entrée déclarant
+    jusqu'à CORE_TILESET3D_MAX_ENTRY_BYTES (2 Gio par défaut) était
+    intégralement chargée en mémoire à chaque requête du proxy. Mesuré sur
+    une entrée de 64 Mio : ~141 Mio de tas avec `zf.read()`, ~2,2 Mio ici."""
     with zf.open(path) as f:
         chunks: list[bytes] = []
         total = 0
