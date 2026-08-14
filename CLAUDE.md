@@ -173,8 +173,52 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   deux endpoints serveur (DuckDB aggregate + OGC API Features, ce dernier non
   câblé côté shell par choix), résolution dans `derivePatch`, capture de
   géométrie au clic (carte/liste/table), UI d'auteur `CrossFilterLinkEditor`
-  dans `DatasetEditPage`. **SP-14 fonctionnellement complet modulo la requête
-  visuelle** (cf. « À venir »).
+  dans `DatasetEditPage`.
+- **SP-14o** — Requête visuelle (dernière pièce de SP-14, **jalon M11
+  atteint**) : assistant no-code Filtrer→Joindre→Résumer sur une collection ;
+  provisionne une collection de sortie dédiée (`create_empty_collection`,
+  précédent SP-6a réutilisé, route non-admin) + un item dataset + un
+  `Pipeline` SP-15 contraint (`writer.dataset`) compilé et exécuté par
+  l'assistant lui-même (aucune route bespoke, `/configs` générique) ;
+  réouverture (« Modifier la requête ») avec vraie mise à jour en place
+  (`savePipelineConfig` réutilisant les objets existants, pas de recréation).
+  **SP-14 fonctionnellement complet.** Deux revues finales de branche (10
+  commits de correction) : 1re revue (C1 Critical + 6 Important) — OpenAPI/TS
+  jamais régénérés (4e occurrence du même oubli sur ce dépôt) ; schéma de
+  sortie recompilé pas garanti cohérent avec l'écriture réelle (projection
+  finale `transform.select` ajoutée au compilateur, avec vérification de
+  position côté décompilation) ; pas de mode replace → un re-run (manuel ou
+  planifié) dupliquait la sortie indéfiniment (`mode: "append"|"replace"`
+  ajouté à `writer.collection`/`writer.dataset`, purge RLS-scopée avant
+  réinsertion, défaut `"append"` non régressif pour SP-15) ; « Modifier la
+  requête » ne modifiait rien (vraie mise à jour en place, avec titre
+  restauré/protégé contre une course d'écrasement et persisté au
+  renommage) ; 500 non catché sur nom de colonne réservé
+  (`id`/`tenant_id`/`geom`) ; mitigation supposée absente entre deux tâches
+  liées ; pas de validation de complétude avant écriture irréversible. 2e
+  revue (focus intégration — croisement des fixes I1×I2×I3 avec le reste du
+  système, invisible à une revue par tâche) — 4 défauts supplémentaires :
+  le mode édition ne revalidait jamais le schéma de sortie recompilé contre
+  la collection déjà provisionnée (une requête modifiée + planifiée pouvait
+  se sauvegarder puis échouer à chaque tick de cron sans aucun signal —
+  garde-fou bloquant ajouté) ; un run en échec laissait l'assistant bloqué
+  indéfiniment sans erreur visible (poll désormais surface `status:
+  "failed"` et repasse au formulaire) ; changer la collection de base ne
+  réinitialisait pas filtre/jointure/résumé (références de colonnes
+  obsolètes validées à tort) ; « Ajouter une jointure »/« Ajouter un
+  résumé » étaient des portes sans retour (régression d'un fix de la 1re
+  revue — boutons de suppression ajoutés) ; plus 1 défaut de gouvernance :
+  `mode: "replace"` exposé sans avertissement dans l'inspecteur générique du
+  canvas classique (n'importe quelle collection écrivable peut être ciblée)
+  et sa purge n'écrivait aucune entrée `audit_log`, contraire à la règle
+  CLAUDE.md — `write_audit` ajouté sur la purge (bug du brief lui-même
+  auto-corrigé : l'appel initial à l'intérieur de `rls_scope` levait
+  `permission denied for table audit_log`, `gis_rls` n'ayant pas ce grant),
+  `description` Pydantic en français sur le champ + rendu générique des
+  descriptions de champ dans `PipelineNodeInspector` (pas de cas spécial).
+  0 Critical/Important non résolu au merge sur les deux revues. Reste non
+  bloquant : croissance non bornée du journal CDC sous replace planifié
+  (cf. `### Suivis non bloquants ouverts`).
 - **SP-15** (a, c, d, e, f, g, h) — Pipeline no-code « équivalent FME » (A39) :
   - **SP-15a** — socle headless : nouveau document déclaratif `Pipeline`
     (`BuilderConfig.kind="pipeline"`), catalogue de 8 opérations data-only
@@ -551,14 +595,7 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 
 ### À venir
 
-- **SP-14** — seule reste la **requête visuelle** (Filtrer → Joindre →
-  Résumer → Trier compilant vers l'API analytique) ; le moteur qu'elle
-  consommera est désormais livré (SP-15a, A39), la requête visuelle elle-même
-  reste à construire par-dessus — toujours pas livrée. Toutes les autres
-  sous-parties (datasets, contexte global, cross-filter y compris
-  inter-datasets, widgets, SQL Lab, source arcgis, MCP, bookmarks) sont
-  livrées. Jalon M11 non atteint tant que la requête visuelle n'est pas
-  livrée.
+- **SP-14** — clos (jalon M11 atteint, cf. SP-14o dans `### Fait`).
 - **SP-15** — reste : événements/déclencheurs durables au-delà de la
   planification cron simple (livrée SP-15h) — non planifié, non numéroté ;
   vérification réelle des 5 tests `@pytest.mark.qgis` de SP-15d (sidecar +
@@ -585,8 +622,8 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - Reste de la vision post-v0.1, 3D — rendu et hébergement de tilesets
   uploadés livrés (cf. `### Fait`) ; restent non planifiés : terrain servi
   par notre propre TiTiler depuis un DEM COG hébergé chez nous, encodage
-  terrain `mapbox` en plus de `terrarium`,
-  conversion 3D (py3dtiles, nuages de points).
+  terrain `mapbox` en plus de `terrarium`, conversion 3D (py3dtiles,
+  nuages de points).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
   Autoporté/Statique, dépend de SP-11). Jalon M15.
 - **SP-19** — undo/redo général du builder (pile d'instantanés de config,
@@ -637,3 +674,14 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   savoir avant un rollback réel ; `stopped`-ref partagé entre exécutions
   d'effet dans `ReportRunPanel` (pré-existant au patron des panneaux de
   poll, non introduit par SP-17b).
+- SP-14o, suivi non bloquant (trouvé en revue finale d'intégration) : le
+  mode replace (writer.collection/writer.dataset) fait grossir le journal
+  CDC d'environ 2x par run (tombstones + inserts, jamais purgés —
+  `app/cdc/compaction.py` est explicitement append-only en sortie) ; une
+  requête visuelle planifiée quotidiennement accumule un journal non borné
+  sur une donnée de sortie qui, elle, reste de taille constante — dégrade
+  progressivement la latence de `_dedup_cte`. Combinaison SP-15h
+  (planification) × SP-14o (mode replace) qui n'apparaît nulle part dans le
+  plan/la spec d'origine ; append seul aurait eu le même problème en pire
+  (données fausses en plus). Pas de fix de code décidé pour l'instant — à
+  surveiller si l'usage réel de requêtes visuelles planifiées se généralise.
