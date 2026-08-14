@@ -50,29 +50,37 @@ class _FakeBody:
             yield chunk
 
 
+BUCKET = "geostudio-terrain3d"
+
+
 class _FakeS3Client:
-    def __init__(self, objects: dict[str, bytes]):
+    """Indexé par (Bucket, Key), jamais par Key seule : un faux qui ignore le
+    bucket laisse passer une lecture/écriture dans le mauvais bucket (défaut
+    C2 de la revue finale — le shell présignait vers geostudio-uploads tandis
+    que le worker faisait son head_object sur geostudio-terrain3d)."""
+
+    def __init__(self, objects: dict[tuple[str, str], bytes]):
         self.objects = objects
-        self.deleted: list[str] = []
+        self.deleted: list[tuple[str, str]] = []
 
     def head_object(self, Bucket, Key):  # noqa: N803
-        return {"ContentLength": len(self.objects[Key])}
+        return {"ContentLength": len(self.objects[(Bucket, Key)])}
 
     def get_object(self, Bucket, Key):  # noqa: N803
-        return {"Body": _FakeBody(self.objects[Key])}
+        return {"Body": _FakeBody(self.objects[(Bucket, Key)])}
 
     def upload_file(self, Filename, Bucket, Key):  # noqa: N803
         with open(Filename, "rb") as f:
-            self.objects[Key] = f.read()
+            self.objects[(Bucket, Key)] = f.read()
 
     def delete_object(self, Bucket, Key):  # noqa: N803
-        self.deleted.append(Key)
-        self.objects.pop(Key, None)
+        self.deleted.append((Bucket, Key))
+        self.objects.pop((Bucket, Key), None)
 
 
 @pytest.fixture()
 def env(monkeypatch, tmp_path):
-    monkeypatch.setenv("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
+    monkeypatch.setenv("S3_TERRAIN3D_BUCKET", BUCKET)
     monkeypatch.setattr(terrain3d_jobs, "_TERRAIN3D_SCRATCH_ROOT", str(tmp_path))
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
@@ -99,7 +107,7 @@ def _make_job(Session, tenant, alice, *, source_key: str, title: str = "Relief")
 
 def test_convert_success_creates_item_and_config_and_purges_raw_upload(env, monkeypatch):
     Session, tenant, alice = env
-    fake_s3 = _FakeS3Client({f"{tenant.id}/x/dem.tif": _write_test_geotiff_bytes()})
+    fake_s3 = _FakeS3Client({(BUCKET, f"{tenant.id}/x/dem.tif"): _write_test_geotiff_bytes()})
     monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", lambda: fake_s3)
     monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
 
@@ -120,13 +128,13 @@ def test_convert_success_creates_item_and_config_and_purges_raw_upload(env, monk
         assert config.config.terrain3d.sourceKey == job.converted_key
         assert config.config.terrain3d.originalFilename == "dem.tif"
 
-    assert f"{tenant.id}/x/dem.tif" not in fake_s3.objects  # raw upload purged
-    assert job.converted_key in fake_s3.objects  # converted COG present
+    assert (BUCKET, f"{tenant.id}/x/dem.tif") not in fake_s3.objects  # raw upload purged
+    assert (BUCKET, job.converted_key) in fake_s3.objects  # converted COG present
 
 
 def test_convert_failure_marks_error_and_purges_raw_upload_never_creates_item(env, monkeypatch):
     Session, tenant, alice = env
-    fake_s3 = _FakeS3Client({f"{tenant.id}/x/dem.tif": b"not a geotiff at all"})
+    fake_s3 = _FakeS3Client({(BUCKET, f"{tenant.id}/x/dem.tif"): b"not a geotiff at all"})
     monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", lambda: fake_s3)
     monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
 
@@ -139,8 +147,8 @@ def test_convert_failure_marks_error_and_purges_raw_upload_never_creates_item(en
         assert job.item_id is None
         assert job.error_message
 
-    assert f"{tenant.id}/x/dem.tif" not in fake_s3.objects  # purged even on rejection
-    assert fake_s3.deleted == [f"{tenant.id}/x/dem.tif"]
+    assert (BUCKET, f"{tenant.id}/x/dem.tif") not in fake_s3.objects  # purged even on rejection
+    assert fake_s3.deleted == [(BUCKET, f"{tenant.id}/x/dem.tif")]
 
 
 def test_convert_cleans_up_scratch_files_on_success_and_failure(env, monkeypatch, tmp_path):
@@ -151,14 +159,14 @@ def test_convert_cleans_up_scratch_files_on_success_and_failure(env, monkeypatch
             not any(p.iterdir()) for p in tmp_path.iterdir() if p.is_dir()
         )
 
-    fake_s3_ok = _FakeS3Client({f"{tenant.id}/x/dem.tif": _write_test_geotiff_bytes()})
+    fake_s3_ok = _FakeS3Client({(BUCKET, f"{tenant.id}/x/dem.tif"): _write_test_geotiff_bytes()})
     monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", lambda: fake_s3_ok)
     monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
     job_id = _make_job(Session, tenant, alice, source_key=f"{tenant.id}/x/dem.tif", title="OK")
     terrain3d_jobs.convert_terrain3d_task(job_id=job_id, tenant_id=tenant.id)
     assert_scratch_empty_after()
 
-    fake_s3_bad = _FakeS3Client({f"{tenant.id}/y/dem.tif": b"garbage"})
+    fake_s3_bad = _FakeS3Client({(BUCKET, f"{tenant.id}/y/dem.tif"): b"garbage"})
     monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", lambda: fake_s3_bad)
     job_id_2 = _make_job(Session, tenant, alice, source_key=f"{tenant.id}/y/dem.tif", title="Bad")
     terrain3d_jobs.convert_terrain3d_task(job_id=job_id_2, tenant_id=tenant.id)
@@ -204,7 +212,7 @@ def test_purge_raw_upload_never_raises_when_audit_write_fails(env, monkeypatch):
     # except Exception, and downgrade an already-committed "done" job back
     # to "error" even though the item/config/COG were all genuinely fine.
     Session, tenant, alice = env
-    fake_s3 = _FakeS3Client({f"{tenant.id}/x/dem.tif": b"whatever"})
+    fake_s3 = _FakeS3Client({(BUCKET, f"{tenant.id}/x/dem.tif"): b"whatever"})
 
     def _boom_write_audit(*args, **kwargs):
         raise RuntimeError("transient db error")
@@ -215,18 +223,18 @@ def test_purge_raw_upload_never_raises_when_audit_write_fails(env, monkeypatch):
 
     # Must not raise despite delete_object succeeding and write_audit failing.
     terrain3d_jobs._purge_raw_upload(
-        fake_s3, bucket="geostudio-terrain3d", source_key=f"{tenant.id}/x/dem.tif",
+        fake_s3, bucket=BUCKET, source_key=f"{tenant.id}/x/dem.tif",
         tenant_id=tenant.id, job_id=job_id, session_factory=Session,
     )
 
-    assert f"{tenant.id}/x/dem.tif" not in fake_s3.objects  # delete still happened
-    assert fake_s3.deleted == [f"{tenant.id}/x/dem.tif"]
+    assert (BUCKET, f"{tenant.id}/x/dem.tif") not in fake_s3.objects  # delete still happened
+    assert fake_s3.deleted == [(BUCKET, f"{tenant.id}/x/dem.tif")]
 
 
 def test_convert_rejects_upload_over_max_bytes_without_downloading(env, monkeypatch):
     Session, tenant, alice = env
     oversized = _write_test_geotiff_bytes() * 1000  # comfortably over the 1-byte cap set below
-    fake_s3 = _FakeS3Client({f"{tenant.id}/x/dem.tif": oversized})
+    fake_s3 = _FakeS3Client({(BUCKET, f"{tenant.id}/x/dem.tif"): oversized})
     monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", lambda: fake_s3)
     monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
     monkeypatch.setattr(terrain3d_jobs, "_max_upload_bytes", lambda: 1)
@@ -244,3 +252,25 @@ def test_convert_rejects_upload_over_max_bytes_without_downloading(env, monkeypa
         assert job.status == "error"
         assert "volumineux" in job.error_message
     assert download_calls == []  # rejected before streaming a single byte
+
+
+def test_convert_marks_error_when_the_scratch_dir_cannot_be_created(env, monkeypatch):
+    # M1 (revue finale) : os.makedirs/tempfile.mkdtemp tournaient avant le
+    # try/finally — un disque plein ou une permission manquante laissait le
+    # job zombie en "converting", sans message, exactement la classe de bug
+    # déjà corrigée pour s3_client_from_env().
+    Session, tenant, alice = env
+    monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
+
+    def _boom(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(terrain3d_jobs.tempfile, "mkdtemp", _boom)
+
+    job_id = _make_job(Session, tenant, alice, source_key=f"{tenant.id}/x/dem.tif")
+    terrain3d_jobs.convert_terrain3d_task(job_id=job_id, tenant_id=tenant.id)
+
+    with Session() as s:
+        job = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert job.status == "error"
+        assert job.error_message

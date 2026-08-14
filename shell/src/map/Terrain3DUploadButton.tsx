@@ -66,7 +66,14 @@ export function Terrain3DUploadButton({
     setPhase("uploading");
     setError("");
     try {
-      const { uploadUrl, key } = await client.presignUpload(file.name, "application/octet-stream");
+      // Route dédiée (jamais presignUpload générique) : elle signe dans le
+      // bucket terrain3d, le seul que le worker de conversion lit. Le type
+      // est celui que le navigateur enverra réellement — fetch(PUT, body:
+      // File) envoie File.type, et un type signé différent fait échouer S3
+      // en 403 SignatureDoesNotMatch (même traitement qu'ImportFileButton).
+      const { uploadUrl, key } = await client.presignTerrain3DUpload(
+        file.name, file.type || "application/octet-stream",
+      );
       await client.uploadToPresignedUrl(uploadUrl, file);
       setPhase("converting");
       const { jobId } = await client.createTerrain3DUpload({ key, filename: file.name, title: title.trim() });

@@ -231,6 +231,12 @@ export interface ItemClient {
   // layer URLs are freeform (an author can type any external URL).
   getCoreUrl?(): string;
   listHostedTerrain3DSources(q?: string): Promise<{ id: string; title: string }[]>;
+  // Dédiée, jamais presignUpload() : la générique signe dans
+  // S3_UPLOADS_BUCKET alors que le worker de conversion lit le DEM brut dans
+  // S3_TERRAIN3D_BUCKET (et n'y purgerait jamais l'upload brut).
+  presignTerrain3DUpload(
+    filename: string, contentType: string,
+  ): Promise<{ uploadUrl: string; key: string }>;
   createTerrain3DUpload(input: { key: string; filename: string; title: string }): Promise<{ jobId: string }>;
   getTerrain3DUploadJob(jobId: string): Promise<{
     status: "uploaded" | "converting" | "done" | "error";

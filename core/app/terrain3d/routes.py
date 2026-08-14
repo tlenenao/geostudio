@@ -52,7 +52,10 @@ def presign_terrain3d_upload(
 ) -> Terrain3DPresignResponse:
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
-    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type="application/octet-stream")
+    url = generate_presigned_put_url(
+        s3, bucket=bucket, key=key,
+        content_type=body.contentType or "application/octet-stream",
+    )
     return Terrain3DPresignResponse(uploadUrl=url, key=key)
 
 
@@ -124,6 +127,15 @@ def read_terrain3d_tile(
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="terrain tile service unavailable") from exc
 
+    # TiTiler répond 404 (TileOutsideBounds) pour toute tuile hors de
+    # l'emprise du DEM — cas parfaitement normal : une source raster-dem
+    # MapLibre demande les tuiles de tout le viewport, donc un DEM régional
+    # en génère un flux continu. Les traduire en 502 ferait passer le
+    # fonctionnement nominal pour une panne serveur. 502 reste réservé à
+    # l'indisponibilité réelle (except httpx.HTTPError ci-dessus) et aux
+    # statuts vraiment inattendus.
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="tile not found")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="terrain tile service error")
 

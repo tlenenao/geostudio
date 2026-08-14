@@ -7,7 +7,9 @@ async function mockTerrain3DUploadFlow(page: Page) {
   await page.route("https://core.test/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, terrain3dEnabled: true } });
   });
-  await page.route("**/uploads/presign", async (route) => {
+  // Route dédiée terrain3d (jamais la générique **/uploads/presign) : c'est
+  // la seule qui signe dans le bucket que le worker de conversion lit.
+  await page.route("**/terrain3d/uploads/presign", async (route) => {
     await route.fulfill({ json: { uploadUrl: "https://minio.test/terrain3d-raw", key: "t-mock/x/dem.tif" } });
   });
   await page.route("https://minio.test/terrain3d-raw", async (route) => {
