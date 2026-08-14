@@ -8,6 +8,7 @@
 // lèverait sinon faute d'<AuthProvider> ancêtre.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { enableMockAuth } from "../auth/useAuth";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -18,6 +19,11 @@ import "../index.css";
 
 enableMockAuth();
 registerBuiltinWidgets();
+// DataContext (builder/DataContext.tsx) appelle useQueries (@tanstack/react-query),
+// tout comme App.tsx en mode normal — sans ce provider, tout widget de données
+// (table/list/chart/…) fait planter React avec "No QueryClient set" avant même
+// le premier rendu, indépendamment du choix de widget.
+const queryClient = new QueryClient();
 
 async function bootstrap() {
   const root = document.getElementById("root");
@@ -28,11 +34,13 @@ async function bootstrap() {
   const client = createStaticItemClient(config);
   createRoot(root).render(
     <StrictMode>
-      <ItemClientProvider client={client}>
-        <div className="h-screen w-screen">
-          <AppRenderer config={config} mode="runtime" pageId={config.pages?.[0]?.id} />
-        </div>
-      </ItemClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <div className="h-screen w-screen">
+            <AppRenderer config={config} mode="runtime" pageId={config.pages?.[0]?.id} />
+          </div>
+        </ItemClientProvider>
+      </QueryClientProvider>
     </StrictMode>,
   );
 }
