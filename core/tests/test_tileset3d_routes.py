@@ -195,6 +195,22 @@ def test_read_tileset3d_entry_returns_tile_binary(env):
     assert r.content == b"\x00" * 16
 
 
+def test_read_tileset3d_entry_sets_content_length_to_the_entry_size(env):
+    """Revue finale, round 3, Important : Content-Length permet à tout client/
+    proxy HTTP de détecter un corps tronqué (corruption CRC détectée en cours
+    de flux) comme un short-read propre plutôt que d'accepter silencieusement
+    une réponse incomplète. Doit correspondre exactement à la taille réelle de
+    l'entrée décompressée."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tiles/0.b3dm")
+    assert r.status_code == 200
+    assert r.headers["content-length"] == str(len(b"\x00" * 16))
+    assert r.headers["content-length"] == str(len(r.content))
+
+
 def test_read_tileset3d_entry_404_for_missing_entry(env):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     with Session() as s:

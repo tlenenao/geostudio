@@ -259,5 +259,14 @@ def read_tileset3d_entry(
 
     return StreamingResponse(
         _iter_entry(), media_type=_content_type_for(path),
-        headers={"Cache-Control": "private, max-age=3600"},
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            # Taille déclarée et déjà validée (<= max_bytes ci-dessus) : une
+            # corruption CRC détectée en cours de flux (cf. commentaire de
+            # _iter_entry) coupe la connexion avant d'avoir tout émis. Avec ce
+            # Content-Length, tout client/proxy HTTP peut détecter ce
+            # short-read sans ambiguïté au lieu d'accepter silencieusement un
+            # corps tronqué (revue finale, round 3, Important).
+            "Content-Length": str(info.file_size),
+        },
     )
