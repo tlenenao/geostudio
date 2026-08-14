@@ -90,12 +90,24 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
         # Le zip rejeté n'est référencé par rien (aucun item, aucun config) :
         # le purger tout de suite, sinon plusieurs Go restent dans le bucket
         # pour toujours. Un échec de purge ne doit jamais masquer l'erreur de
-        # validation destinée à l'utilisateur — d'où le try/except large.
+        # validation destinée à l'utilisateur — d'où le try/except large. La
+        # purge est une écriture destructive : audit_log obligatoire quand
+        # elle réussit (précédent SP-14o, purge du mode "replace"), jamais
+        # quand elle échoue (pas de faux enregistrement d'un événement qui
+        # n'a pas eu lieu).
+        purged = False
         try:
             s3_client_from_env().delete_object(Bucket=_tileset3d_bucket(), Key=source_key)
+            purged = True
         except Exception:
             logger.exception("tileset3d job %s : échec de la purge du zip rejeté (%s)", job_id, source_key)
         with request_scoped_session(session_factory) as session:
+            if purged:
+                write_audit(
+                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
+                    action="tileset3d.purge", object_type="tileset3d_upload", object_id=job_id,
+                    payload={"sourceKey": source_key, "reason": str(exc)},
+                )
             tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("tileset3d job %s : erreur inattendue", job_id)

@@ -6,7 +6,9 @@ import zipfile
 
 import pytest
 from botocore.exceptions import ClientError
+from sqlalchemy import select
 
+from app.audit.models import AuditLog
 from app.configs import repository as configs_repo
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
@@ -161,6 +163,56 @@ def test_finalize_task_marks_error_on_invalid_zip_without_creating_an_item(env, 
     # sinon plusieurs Go y restent pour toujours (revue finale, I4).
     assert fake_s3.deleted == [(tileset3d_jobs._tileset3d_bucket(), "k")]
     assert "k" not in fake_s3.objects
+    # Écriture destructive → audit_log obligatoire (règle CLAUDE.md, précédent
+    # SP-14o) ; écrite dans la même transaction que mark_error.
+    with request_scoped_session(real_session_factory) as s:
+        log = s.execute(select(AuditLog).where(AuditLog.action == "tileset3d.purge")).scalar_one()
+        assert log.tenant_id == tenant.id
+        assert log.object_type == "tileset3d_upload"
+        assert log.object_id == job_id
+        assert log.actor_kind == "agent"
+        assert log.actor_id is None
+        assert log.payload["sourceKey"] == "k"
+        assert "zip invalide" in log.payload["reason"]
+
+
+def test_finalize_task_does_not_audit_a_purge_that_failed(env, monkeypatch, tmp_path):
+    """Une purge en échec ne doit produire AUCUNE ligne d'audit : un audit
+    inconditionnel enregistrerait une suppression qui n'a pas eu lieu."""
+    Session, tenant, alice = env
+    db_path = _make_engine_conn_env(monkeypatch, tmp_path)
+    engine = make_engine(f"sqlite+pysqlite:///{db_path}")
+    init_db(engine)
+    real_session_factory = make_session_factory(engine)
+    with request_scoped_session(real_session_factory) as s:
+        get_or_create_default_tenant(s)
+        real_alice = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
+            email=None, first_name="", last_name="",
+        )
+        job = tileset3d_repo.create_job(
+            s, tenant_id=tenant.id, created_by=real_alice.id, source_key="k",
+            upload_id="mpu-1", filename="bad.zip", title="Cassé",
+        )
+        s.commit()
+        job_id = job.id
+
+    class _FailingDeleteS3(_FakeS3Client):
+        def delete_object(self, Bucket, Key):  # noqa: N803
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "nope"}}, "DeleteObject")
+
+    fake_s3 = _FailingDeleteS3({"k": b"not a zip"})
+    monkeypatch.setattr(tileset3d_jobs, "s3_client_from_env", lambda: fake_s3)
+
+    tileset3d_jobs.finalize_tileset3d_task(job_id=job_id, tenant_id=tenant.id)
+
+    with request_scoped_session(real_session_factory) as s:
+        # L'échec de purge ne masque jamais l'erreur de validation…
+        job = tileset3d_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert job.status == "error"
+        assert "zip invalide" in job.error_message
+        # …et n'écrit aucun faux enregistrement de suppression.
+        assert s.execute(select(AuditLog).where(AuditLog.action == "tileset3d.purge")).all() == []
 
 
 def test_finalize_task_is_a_noop_for_an_unknown_job(env, monkeypatch, tmp_path, caplog):
