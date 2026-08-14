@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app import db, observability
 from app.alerts import routes as alerts_routes
+from app.appexport import routes as appexport_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
-    is_etl_enabled, is_export_enabled, is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
+    is_appexport_enabled, is_etl_enabled, is_export_enabled, is_read_only_mode,
+    is_terrain3d_enabled, is_tileset3d_enabled,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
@@ -113,6 +115,8 @@ def create_app() -> FastAPI:
         app.include_router(pipelines_routes.router)
     if is_export_enabled():
         app.include_router(export_routes.router)
+    if is_appexport_enabled():
+        app.include_router(appexport_routes.router)
     if is_tileset3d_enabled():
         app.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
@@ -144,6 +148,8 @@ def create_app() -> FastAPI:
         # diffère, donc seul get_exports_bucket a besoin de son propre
         # override ici (revue SP-17a, finding Important task 7, fix round 1).
         app.dependency_overrides[export_routes.get_exports_bucket] = lambda: s3_exports_bucket
+        s3_appexports_bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+        app.dependency_overrides[appexport_routes.get_appexports_bucket] = lambda: s3_appexports_bucket
         s3_tileset3d_bucket = os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
         app.dependency_overrides[tileset3d_routes.get_tileset3d_bucket] = lambda: s3_tileset3d_bucket
         s3_terrain3d_bucket = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")

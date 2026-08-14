@@ -50,8 +50,8 @@ def test_instance_reports_etl_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "tileset3dEnabled": False,
-        "terrain3dEnabled": False,
+        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False,
     }
 
 
@@ -60,6 +60,6 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {
-        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "tileset3dEnabled": False,
-        "terrain3dEnabled": False,
+        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "appExportEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False,
     }
