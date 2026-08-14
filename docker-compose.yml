@@ -179,7 +179,7 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d,terrain3d"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -195,6 +195,11 @@ services:
       CORE_TILESET3D_MAX_ENTRIES: ${CORE_TILESET3D_MAX_ENTRIES:-20000}
       CORE_TILESET3D_MAX_TOTAL_BYTES: ${CORE_TILESET3D_MAX_TOTAL_BYTES:-21474836480}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
+      S3_TERRAIN3D_BUCKET: geostudio-terrain3d
+      # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —
+      # s'exécutent dans ce process (`worker`).
+      CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
+      CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
