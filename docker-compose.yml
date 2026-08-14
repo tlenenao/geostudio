@@ -126,6 +126,7 @@ services:
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
+      CORE_TILESET3D_ENABLED: ${CORE_TILESET3D_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -134,6 +135,7 @@ services:
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
+      S3_TILESET3D_BUCKET: geostudio-tileset3d
     ports:
       - "8200:8200"
     networks: [gis-net]
@@ -166,7 +168,7 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -174,6 +176,7 @@ services:
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
+      S3_TILESET3D_BUCKET: geostudio-tileset3d
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
