@@ -202,6 +202,9 @@ def test_read_tileset3d_entry_404_for_missing_entry(env):
         s.commit()
     r = client.get(f"/tileset3d/{item_id}/does-not-exist.b3dm")
     assert r.status_code == 404
+    # Détecté avant que le flux ne commence : corps JSON d'erreur complet, pas
+    # une réponse 200 tronquée (revue finale, C2 round 2).
+    assert r.json()["detail"] == "entry not found"
 
 
 def test_read_tileset3d_entry_404_for_unknown_item(env):
@@ -218,18 +221,23 @@ def _zip_with_compressible_entry(size: int) -> bytes:
     return buf.getvalue()
 
 
-def test_read_tileset3d_entry_413_when_the_decompressed_entry_exceeds_the_cap(env, monkeypatch):
-    """Revue finale de branche, C2 : la lecture est bornée par tranches et
-    s'arrête net au plafond, au lieu de tout décompresser en mémoire d'abord.
-    Un zip de 65 Kio (8 Mio de zéros compressés) suffit à le prouver : mesuré
-    hors test, zf.read() sur une entrée de 64 Mio culmine à ~141 Mio de tas,
-    la lecture bornée à ~2 Mio."""
+def test_read_tileset3d_entry_413_when_the_decompressed_entry_exceeds_the_proxy_cap(env, monkeypatch):
+    """Revue finale de branche, C2 round 2 : le plafond de SERVICE est une
+    variable distincte de celle de la VALIDATION. L'entrée de 8 Mio construite
+    ici passerait la validation (CORE_TILESET3D_MAX_ENTRY_BYTES vaut 2 Gio par
+    défaut, et le zip qui la contient fait ~65 Kio) : c'est bien le plafond de
+    service, plus bas, qui la refuse — sinon la branche 413 était morte."""
     client, Session, tenant, alice, _deferred, fake_s3 = env
-    monkeypatch.setenv("CORE_TILESET3D_MAX_ENTRY_BYTES", "1024")
+    monkeypatch.setenv("CORE_TILESET3D_MAX_PROXY_READ_BYTES", "1024")
+    # Aucune surcharge de CORE_TILESET3D_MAX_ENTRY_BYTES : le défaut de
+    # validation (2 Gio) reste actif et laisserait passer cette entrée.
+    monkeypatch.delenv("CORE_TILESET3D_MAX_ENTRY_BYTES", raising=False)
     with Session() as s:
         item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
         s.commit()
-    fake_s3.objects["tenant/x/city.zip"] = _zip_with_compressible_entry(8 * 1024 * 1024)
+    zip_bytes = _zip_with_compressible_entry(8 * 1024 * 1024)
+    assert len(zip_bytes) < 128 * 1024  # zip minuscule, entrée honnêtement déclarée
+    fake_s3.objects["tenant/x/city.zip"] = zip_bytes
 
     r = client.get(f"/tileset3d/{item_id}/tiles/big.b3dm")
 
@@ -237,6 +245,42 @@ def test_read_tileset3d_entry_413_when_the_decompressed_entry_exceeds_the_cap(en
     assert r.json()["detail"] == "entry too large"
     # Une entrée sous le plafond passe toujours par le même chemin.
     assert client.get(f"/tileset3d/{item_id}/tileset.json").status_code == 200
+
+
+def test_read_tileset3d_entry_413_is_independent_of_the_validation_cap(env, monkeypatch):
+    """Le plafond de validation, même très généreux, ne relâche pas le plafond
+    de service : preuve que les deux variables sont bien découplées."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    monkeypatch.setenv("CORE_TILESET3D_MAX_ENTRY_BYTES", str(2 * 1024 * 1024 * 1024))
+    monkeypatch.setenv("CORE_TILESET3D_MAX_PROXY_READ_BYTES", "1024")
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    fake_s3.objects["tenant/x/city.zip"] = _zip_with_compressible_entry(8 * 1024 * 1024)
+
+    assert client.get(f"/tileset3d/{item_id}/tiles/big.b3dm").status_code == 413
+
+
+def test_read_tileset3d_entry_streams_a_multi_chunk_entry_byte_for_byte(env, monkeypatch):
+    """Le passage en StreamingResponse ne doit pas altérer le corps : une
+    entrée plus grosse qu'une tranche de lecture (donc réellement servie en
+    plusieurs morceaux) doit ressortir octet pour octet."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    monkeypatch.setattr(tileset3d_routes, "_READ_CHUNK_BYTES", 4096)
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    body = bytes(range(256)) * 400  # 102 400 octets, 25 tranches
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr("tiles/multi.b3dm", body)
+    fake_s3.objects["tenant/x/city.zip"] = buf.getvalue()
+
+    r = client.get(f"/tileset3d/{item_id}/tiles/multi.b3dm")
+
+    assert r.status_code == 200, r.text
+    assert r.content == body
 
 
 def _zip_with_understated_entry_size() -> bytes:

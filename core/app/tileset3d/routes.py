@@ -3,12 +3,14 @@
 quand CORE_TILESET3D_ENABLED est actif (app.main, à la construction de
 l'app, même patron que app.pipelines/app.export). Le proxy de lecture
 (GET /tileset3d/{item_id}/{path}) est ajouté dans ce même module en Task 6."""
+import logging
 import os
 import uuid
 import zipfile
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -26,6 +28,8 @@ from app.tileset3d.schemas import (
 )
 from app.tileset3d.storage import S3RangeFile
 from app.users.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,41 +55,21 @@ def get_tileset3d_bucket() -> str:
     return os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
 
 
-def _max_entry_bytes() -> int:
-    # Même variable et même défaut que app.tileset3d.jobs._max_entry_bytes :
-    # le plafond appliqué à la validation doit être celui appliqué à la
-    # lecture, sinon la validation ne protège rien à la lecture.
-    return int(os.environ.get("CORE_TILESET3D_MAX_ENTRY_BYTES", str(2 * 1024 * 1024 * 1024)))
+def _max_proxy_read_bytes() -> int:
+    # Plafond DÉCOUPLÉ de CORE_TILESET3D_MAX_ENTRY_BYTES (validation, 2 Gio
+    # par défaut, app.tileset3d.jobs) : un zip peut déclarer honnêtement une
+    # entrée aussi grosse que le plafond de validation (zipfile borne sa
+    # décompression sur file_size, donc pas besoin de mentir) — servir cette
+    # taille intégralement en mémoire à chaque requête proxy resterait un
+    # déni de service même sans aucune métadonnée mensongère (revue finale,
+    # C2, round 2). Une entrée 3D Tiles réelle (.b3dm/.i3dm/.pnts/.cmpt/.glb)
+    # fait typiquement quelques Mio ; ce plafond n'a donc pas besoin
+    # d'approcher le plafond de validation pour rester généreux en usage
+    # légitime.
+    return int(os.environ.get("CORE_TILESET3D_MAX_PROXY_READ_BYTES", str(128 * 1024 * 1024)))
 
 
 _READ_CHUNK_BYTES = 1024 * 1024  # 1 Mio
-
-
-def _read_entry_bounded(zf: zipfile.ZipFile, path: str, *, max_bytes: int) -> bytes:
-    """Lit une entrée par tranches, en s'arrêtant net dès que le cumul
-    décompressé dépasse le plafond, au lieu de matérialiser l'entrée entière
-    en mémoire comme `zf.read(path)`.
-
-    Précision vérifiée expérimentalement (revue finale, C2) : zipfile borne
-    déjà sa décompression sur `file_size` du répertoire central, donc un zip
-    qui SOUS-déclare une entrée ne fait pas exploser la mémoire — il échoue
-    le contrôle CRC (BadZipFile, rattrapé par l'appelant). Le vrai risque
-    était l'absence de tout plafond À LA LECTURE : une entrée déclarant
-    jusqu'à CORE_TILESET3D_MAX_ENTRY_BYTES (2 Gio par défaut) était
-    intégralement chargée en mémoire à chaque requête du proxy. Mesuré sur
-    une entrée de 64 Mio : ~141 Mio de tas avec `zf.read()`, ~2,2 Mio ici."""
-    with zf.open(path) as f:
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = f.read(_READ_CHUNK_BYTES)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_bytes:
-                raise HTTPException(status_code=413, detail="entry too large")
-            chunks.append(chunk)
-        return b"".join(chunks)
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
@@ -195,12 +179,17 @@ def read_tileset3d_entry(
         raise HTTPException(status_code=404, detail="tileset not found")
     payload = config.config.tileset3d
 
+    # L'entrée est servie en flux : les tranches partent vers la réponse ASGI
+    # au fur et à mesure, l'entrée décompressée n'est jamais matérialisée
+    # entièrement dans le processus (au plus une tranche de _READ_CHUNK_BYTES
+    # à la fois). Tout ce qui peut encore devenir un statut HTTP propre est
+    # fait AVANT de construire la StreamingResponse : une fois le flux
+    # commencé, les en-têtes sont partis et plus aucun code de statut n'est
+    # négociable.
+    max_bytes = _max_proxy_read_bytes()
     range_file = S3RangeFile(s3, bucket=bucket, key=payload.sourceKey)
     try:
-        with zipfile.ZipFile(range_file) as zf:
-            data = _read_entry_bounded(zf, path, max_bytes=_max_entry_bytes())
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="entry not found") from exc
+        zf = zipfile.ZipFile(range_file)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         # Archive stockée corrompue/tronquée (BadZipFile), entrée chiffrée
         # (RuntimeError « File is encrypted ») ou méthode de compression non
@@ -208,7 +197,67 @@ def read_tileset3d_entry(
         # non typé du gestionnaire par défaut de FastAPI.
         raise HTTPException(status_code=422, detail="cannot read entry") from exc
 
-    return Response(
-        content=data, media_type=_content_type_for(path),
+    try:
+        # `file_size` du répertoire central est le plafond que zipfile
+        # applique lui-même à la décompression : une entrée qui le SUR-déclare
+        # rend moins d'octets, une entrée qui le SOUS-déclare est tronquée
+        # puis échoue le contrôle CRC (BadZipFile). Le comparer au plafond de
+        # service permet donc de rendre un 413 propre avant d'avoir décompressé
+        # le moindre octet, plutôt qu'en cours de flux.
+        info = zf.getinfo(path)
+        entry = zf.open(path)
+    except KeyError as exc:
+        zf.close()
+        raise HTTPException(status_code=404, detail="entry not found") from exc
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        zf.close()
+        raise HTTPException(status_code=422, detail="cannot read entry") from exc
+
+    if info.file_size > max_bytes:
+        entry.close()
+        zf.close()
+        raise HTTPException(status_code=413, detail="entry too large")
+
+    try:
+        # Première tranche lue synchronement : c'est elle qui déclenche la
+        # décompression réelle, donc les erreurs d'archive détectables tôt
+        # (CRC d'une entrée courte, méthode non supportée) redeviennent un 422
+        # propre au lieu d'un flux coupé en plein vol.
+        first_chunk = entry.read(_READ_CHUNK_BYTES)
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        entry.close()
+        zf.close()
+        raise HTTPException(status_code=422, detail="cannot read entry") from exc
+    except BaseException:
+        entry.close()
+        zf.close()
+        raise
+
+    def _iter_entry():
+        total = len(first_chunk)
+        try:
+            yield first_chunk
+            while True:
+                chunk = entry.read(_READ_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    # Inatteignable tant que zipfile borne sa décompression sur
+                    # `file_size` (déjà comparé au plafond ci-dessus) : filet de
+                    # sécurité. Les en-têtes sont déjà partis, il n'y a plus de
+                    # 413 possible — on coupe la connexion et on trace.
+                    logger.error(
+                        "tileset3d : entrée %s (item %s) dépasse %d octets en cours de flux",
+                        path, item_id, max_bytes,
+                    )
+                    raise RuntimeError("tileset3d entry exceeded the proxy read cap mid-stream")
+                yield chunk
+        finally:
+            entry.close()
+            zf.close()
+
+    return StreamingResponse(
+        _iter_entry(), media_type=_content_type_for(path),
         headers={"Cache-Control": "private, max-age=3600"},
     )
