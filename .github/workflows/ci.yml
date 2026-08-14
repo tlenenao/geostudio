@@ -47,7 +47,8 @@ jobs:
           docker run -d --name ci-postgres \
             -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_test \
             -p 5432:5432 geostudio-postgis-ci:latest \
-            -c wal_level=logical
+            -c wal_level=logical \
+            -c output_plugin_libraries=wal2json,pgoutput,test_decoding
           for i in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
