@@ -66,14 +66,20 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
         terrain3d_repo.mark_converting(session, job_id=job_id)
         session.commit()
 
-    os.makedirs(_TERRAIN3D_SCRATCH_ROOT, exist_ok=True)
-    scratch_dir = tempfile.mkdtemp(dir=_TERRAIN3D_SCRATCH_ROOT, prefix=f"terrain3d-{job_id}-")
-    raw_path = os.path.join(scratch_dir, "raw")
-    cog_path = os.path.join(scratch_dir, "cog.tif")
+    # Tout ce qui peut lever doit être dans le try : le job est déjà marqué
+    # "converting", une exception qui s'échappe ici le laisserait zombie dans
+    # cet état sans message d'erreur (même critère que le fix Task 5 pour
+    # s3_client_from_env()/_terrain3d_bucket() — makedirs/mkdtemp peuvent
+    # échouer pour disque plein ou permission).
+    scratch_dir = None
     s3 = None
     bucket = None
 
     try:
+        os.makedirs(_TERRAIN3D_SCRATCH_ROOT, exist_ok=True)
+        scratch_dir = tempfile.mkdtemp(dir=_TERRAIN3D_SCRATCH_ROOT, prefix=f"terrain3d-{job_id}-")
+        raw_path = os.path.join(scratch_dir, "raw")
+        cog_path = os.path.join(scratch_dir, "cog.tif")
         s3 = s3_client_from_env()
         bucket = _terrain3d_bucket()
         content_length = s3.head_object(Bucket=bucket, Key=source_key)["ContentLength"]
@@ -116,7 +122,8 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
         if s3 is not None:
             _purge_raw_upload(s3, bucket=bucket, source_key=source_key, tenant_id=tenant_id, job_id=job_id, session_factory=session_factory)
     finally:
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        if scratch_dir is not None:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def _purge_raw_upload(s3, *, bucket: str, source_key: str, tenant_id: str, job_id: str, session_factory) -> None:
