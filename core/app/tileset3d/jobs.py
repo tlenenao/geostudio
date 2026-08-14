@@ -38,7 +38,7 @@ def _tileset3d_bucket() -> str:
 
 
 def _max_entries() -> int:
-    return int(os.environ.get("CORE_TILESET3D_MAX_ENTRIES", "200000"))
+    return int(os.environ.get("CORE_TILESET3D_MAX_ENTRIES", "20000"))
 
 
 def _max_total_bytes() -> int:
@@ -87,6 +87,14 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
             tileset3d_repo.mark_done(session, job_id=job_id, item_id=item.id)
     except Tileset3DValidationError as exc:
+        # Le zip rejeté n'est référencé par rien (aucun item, aucun config) :
+        # le purger tout de suite, sinon plusieurs Go restent dans le bucket
+        # pour toujours. Un échec de purge ne doit jamais masquer l'erreur de
+        # validation destinée à l'utilisateur — d'où le try/except large.
+        try:
+            s3_client_from_env().delete_object(Bucket=_tileset3d_bucket(), Key=source_key)
+        except Exception:
+            logger.exception("tileset3d job %s : échec de la purge du zip rejeté (%s)", job_id, source_key)
         with request_scoped_session(session_factory) as session:
             tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie

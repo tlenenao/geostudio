@@ -19,6 +19,12 @@ from app.users.repository import get_or_create_user
 class _FakeS3Client:
     def __init__(self, objects: dict[str, bytes]):
         self.objects = objects
+        self.deleted: list[tuple[str, str]] = []
+
+    def delete_object(self, Bucket, Key):  # noqa: N803
+        self.deleted.append((Bucket, Key))
+        self.objects.pop(Key, None)
+        return {}
 
     def head_object(self, Bucket, Key):  # noqa: N803
         if Key not in self.objects:
@@ -151,6 +157,10 @@ def test_finalize_task_marks_error_on_invalid_zip_without_creating_an_item(env, 
         assert job.status == "error"
         assert "zip invalide" in job.error_message
         assert job.item_id is None
+    # Le zip rejeté n'est référencé par rien : il doit être purgé du bucket,
+    # sinon plusieurs Go y restent pour toujours (revue finale, I4).
+    assert fake_s3.deleted == [(tileset3d_jobs._tileset3d_bucket(), "k")]
+    assert "k" not in fake_s3.objects
 
 
 def test_finalize_task_is_a_noop_for_an_unknown_job(env, monkeypatch, tmp_path, caplog):
