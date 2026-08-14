@@ -1,178 +1,197 @@
-### Task 3: `app/configs/alert_validation.py` — dataset reference check, wired into `/configs`
+### Task 3: `itemClient.ts` — wire mapping for `tiles3d`/`terrain`/camera
 
 **Files:**
-- Create: `core/app/configs/alert_validation.py`
-- Modify: `core/app/configs/routes.py`
-- Test: `core/tests/test_alert_validation.py`
+- Modify: `shell/src/api/itemClient.ts:6-29` (`RawMapLayer`, `toFrontLayer`), `shell/src/api/itemClient.ts:601-618` (`getMapConfig`)
+- Test: `shell/src/api/itemClient.test.ts`
 
 **Interfaces:**
-- Consumes: `app.items.repository.{get_access_facts, get_item}`, `app.sharing.authorization.can` (all existing).
-- Produces: `validate_alert_payload(session, config, *, user) -> None` (raises `HTTPException(422)`), called from `create_config`/`update_config`/`update_config_by_item` in `configs/routes.py`, mirroring the 3 existing `_validate_*_payload` calls.
+- Consumes: `MapLayer`, `MapConfig`, `MapTerrainConfig` (Task 2).
+- Produces: `getMapConfig(pk): Promise<MapConfig>` now also returns `terrain` and `view.pitch`/`view.bearing` when present; `toFrontLayer` handles `kind: "tiles3d"`. `saveMapConfig` needs **no code change** — `terrain` and `view.pitch/bearing` are structural parts of the `MapConfig`/`MapViewport` objects already spread into the PUT body via `const { printLayout, ...map } = config`.
 
 - [ ] **Step 1: Write the failing tests**
 
-```python
-# core/tests/test_alert_validation.py
-# SPDX-License-Identifier: Apache-2.0
-from fastapi.testclient import TestClient
+Add to `shell/src/api/itemClient.test.ts`, near the existing `getMapConfig`/`saveMapConfig` tests (after the `saveMapConfig PUTs the map config by item` test, around line 340):
 
-from app.db import init_db, make_engine, make_session_factory
-from app.items import repository as items_repo
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
-
-
-def _client_and_user(monkeypatch, tmp_path):
-    db_url = f"sqlite+pysqlite:///{tmp_path / 'alert_validation.db'}"
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
-    app = create_app()
-    engine = make_engine(db_url)
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        s.commit()
-    client = TestClient(app)
-    client.headers["Authorization"] = "Bearer mock:alice"
-    return client, tenant, user, Session
-
-
-def _alert_body(dataset_item_id: str) -> dict:
-    return {
-        "title": "High counts",
-        "config": {
-            "kind": "alert",
-            "alert": {
-                "datasetItemId": dataset_item_id,
-                "query": {"agg": "count"},
-                "condition": {"expr": "value > 100"},
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
+```ts
+test("getMapConfig maps a tiles3d layer", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              { id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json",
+                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+            ],
+          },
         },
-    }
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" });
+});
 
+test("getMapConfig reads terrain and camera pitch/bearing", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8, pitch: 40, bearing: 200 },
+            layers: [],
+            terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.view.pitch).toBe(40);
+  expect(cfg.view.bearing).toBe(200);
+  expect(cfg.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 });
+});
 
-def test_create_alert_rule_rejects_a_nonexistent_dataset(monkeypatch, tmp_path):
-    client, *_ = _client_and_user(monkeypatch, tmp_path)
-    resp = client.post("/configs", json=_alert_body("does-not-exist"))
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "dataset not found"
+test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1", itemId: "77", kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8, pitch: null, bearing: null },
+            layers: [],
+            terrain: null,
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.view.pitch).toBeUndefined();
+  expect(cfg.view.bearing).toBeUndefined();
+  expect(cfg.terrain).toBeNull();
+});
 
-
-def test_create_alert_rule_rejects_a_non_dataset_item(monkeypatch, tmp_path):
-    client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
-    with Session() as s:
-        item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Not a dataset",
-        )
-        s.commit()
-        other_item_id = item.id
-    resp = client.post("/configs", json=_alert_body(other_item_id))
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "dataset not found"
-
-
-def test_create_alert_rule_succeeds_against_a_readable_dataset(monkeypatch, tmp_path):
-    client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
-    with Session() as s:
-        item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="My dataset",
-        )
-        s.commit()
-        dataset_item_id = item.id
-    resp = client.post("/configs", json=_alert_body(dataset_item_id))
-    assert resp.status_code == 201
-    assert resp.json()["kind"] == "alert"
+test("saveMapConfig sends terrain nested under map, not at the top level (unlike printLayout)", async () => {
+  let body: any;
+  server.use(
+    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  await makeClient().saveMapConfig("77", {
+    basemap: { style: "s" },
+    view: { center: [0, 0], zoom: 1, pitch: 30, bearing: 60 },
+    layers: [],
+    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
+  });
+  expect(body.map.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" });
+  expect(body.map.view).toEqual({ center: [0, 0], zoom: 1, pitch: 30, bearing: 60 });
+  expect(body.terrain).toBeUndefined();
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_validation.py`
-Expected: FAIL — the first two currently return `201` (no validation exists yet), the third fails for an unrelated reason or passes by accident; all three should fail against the intended assertions.
+Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
+Expected: FAIL — `toFrontLayer` falls through the `default: case "feature"` branch for `kind: "tiles3d"` (returns a `feature`-shaped object instead), and `getMapConfig`'s inline raw type doesn't read `terrain`/`pitch`/`bearing` (the returned `cfg.terrain`/`cfg.view.pitch` are `undefined` in the first three tests; the 4th test passes accidentally since it saves `terrain` through the existing generic spread — verify by running the full set and reading actual failures, not assuming which ones fail).
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Implement**
 
-```python
-# core/app/configs/alert_validation.py
-# SPDX-License-Identifier: Apache-2.0
-"""Direct kind="alert" validation for app.configs. Mirrors
-app.configs.bookmark_validation exactly: datasetItemId always refers to an
-item of resourceType "dataset", and app.configs already imports app.items
-(routes.py's _require_access), so there is no forbidden cross-module
-dependency to route around. The condition expression itself is already
-validated at the Pydantic level (AlertCondition._require_valid_expr,
-Task 2) — nothing to re-check here."""
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+In `shell/src/api/itemClient.ts`, replace the `RawMapLayer`/`toFrontLayer` block (lines 6-29):
 
-from app.configs.schemas import BuilderConfig
-from app.items import repository as items_repo
-from app.sharing.authorization import can
-from app.users.models import User
+```ts
+type RawMapLayer = {
+  id: string; title: string; visible: boolean; kind: string;
+  tilesUrl?: string | null; sourceLayer?: string | null; url?: string | null;
+  opacity?: number | null; deckType?: string | null; dataUrl?: string | null;
+  paint?: Record<string, unknown> | null; props?: Record<string, unknown> | null;
+};
 
-
-def validate_alert_payload(session: Session, config: BuilderConfig, *, user: User) -> None:
-    if config.kind != "alert":
-        return
-    payload = config.alert
-    assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
-
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.datasetItemId)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        # Same message for not-found and not-readable: don't leak dataset
-        # existence, same convention as app.configs.bookmark_validation.
-        raise HTTPException(status_code=422, detail="dataset not found")
-
-    target = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=payload.datasetItemId)
-    assert target is not None  # get_access_facts just confirmed it exists
-    if target.resourceType != "dataset":
-        raise HTTPException(status_code=422, detail="dataset not found")
+function toFrontLayer(l: RawMapLayer): MapLayer {
+  const base = { id: l.id, title: l.title, visible: l.visible };
+  switch (l.kind) {
+    case "vector":
+      return { ...base, kind: "vector", tilesUrl: l.tilesUrl ?? "", sourceLayer: l.sourceLayer ?? "",
+        ...(l.paint ? { paint: l.paint } : {}) };
+    case "raster":
+      return { ...base, kind: "raster", tilesUrl: l.tilesUrl ?? "",
+        ...(l.opacity != null ? { opacity: l.opacity } : {}) };
+    case "deck":
+      return { ...base, kind: "deck", deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
+        dataUrl: l.dataUrl ?? "", ...(l.props ? { props: l.props } : {}) };
+    case "tiles3d":
+      return { ...base, kind: "tiles3d", url: l.url ?? "" };
+    case "feature":
+    default:
+      return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
+  }
+}
 ```
 
-Wire it into `core/app/configs/routes.py`:
+Then replace `getMapConfig` (lines 601-618):
 
-```python
-# Add to the import block:
-from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
+```ts
+    async getMapConfig(pk: string): Promise<MapConfig> {
+      // ConfigRead nests the builder config under "config"; the map is config.map,
+      // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
+      const data = await request<{
+        config?: {
+          map?: {
+            basemap: { style: string };
+            view: { center: [number, number]; zoom: number; pitch?: number | null; bearing?: number | null };
+            layers: RawMapLayer[];
+            terrain?: { tilesUrl: string; encoding: "terrarium"; exaggeration?: number | null } | null;
+          } | null;
+          printLayout?: PrintLayoutConfig | null;
+        };
+      }>("GET", `/configs/by-item/${pk}`);
+      const map = data.config?.map;
+      if (!map) throw new Error("getMapConfig: config has no map payload");
+      return {
+        basemap: map.basemap,
+        view: {
+          center: map.view.center,
+          zoom: map.view.zoom,
+          ...(map.view.pitch != null ? { pitch: map.view.pitch } : {}),
+          ...(map.view.bearing != null ? { bearing: map.view.bearing } : {}),
+        },
+        layers: (map.layers ?? []).map(toFrontLayer),
+        printLayout: data.config?.printLayout ?? null,
+        terrain: map.terrain
+          ? {
+              tilesUrl: map.terrain.tilesUrl,
+              encoding: map.terrain.encoding,
+              ...(map.terrain.exaggeration != null ? { exaggeration: map.terrain.exaggeration } : {}),
+            }
+          : null,
+      };
+    },
 ```
 
-```python
-# In create_config, alongside the other three _validate_*_payload calls:
-    _validate_alert_payload(session, request.config, user=user)
-```
-
-```python
-# In update_config, alongside the other three:
-    _validate_alert_payload(session, config, user=user)
-```
-
-```python
-# In update_config_by_item, alongside the other three:
-    _validate_alert_payload(session, config, user=user)
-```
+`saveMapConfig` (lines 620-623) is unchanged — `terrain` and `view.pitch/bearing` are already part of `MapConfig`/`MapViewport` and flow through `const { printLayout, ...map } = config` automatically.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_validation.py`
-Expected: `3 passed`
-
-Run the full configs-routes regression suite:
-
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_configs_models.py`
-Expected: unchanged, all passing.
+Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
+Expected: PASS, all tests in the file green (existing + 4 new).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/configs/alert_validation.py core/app/configs/routes.py core/tests/test_alert_validation.py
-git commit -m "feat(core): SP-16b — validate AlertRule.datasetItemId on /configs writes"
+git add shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
+git commit -m "feat(shell): itemClient mappe tiles3d, terrain et pitch/bearing"
 ```
 
 ---

@@ -1,296 +1,203 @@
-### Task 5: `app/alerts/repository.py`
+### Task 5: `LayerPicker.tsx` — add a 3D Tiles layer by URL
 
 **Files:**
-- Create: `core/app/alerts/repository.py`
-- Test: `core/tests/test_alert_repository.py`
+- Modify: `shell/src/map/LayerPicker.tsx` (full file)
+- Test: `shell/src/map/LayerPicker.test.tsx`
 
 **Interfaces:**
-- Consumes: `app.configs.repository.list_configs_by_kind` (existing), `AlertEvaluation` (Task 4).
-- Produces: `create_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation`, `mark_evaluated(session, *, evaluation_id, value, state, transitioned, error=None) -> None`, `get_latest_evaluation(session, *, tenant_id, alert_rule_item_id) -> AlertEvaluation | None`, `list_evaluations(session, *, tenant_id, alert_rule_item_id) -> list[AlertEvaluation]`, `list_due_rules(session) -> list[tuple[str, str]]` (item_id, tenant_id). Consumed by Task 9 (`app.alerts.jobs`) and Task 10 (`app.alerts.routes`).
+- Consumes: `MapLayer` (Task 2, `kind: "tiles3d"` variant), `Button` from `shell/src/ui/button.tsx`.
+- Produces: no new exports — `LayerPicker`'s existing `onAdd` prop is now also called with a `tiles3d` layer from the new inline form.
 
 - [ ] **Step 1: Write the failing tests**
 
-```python
-# core/tests/test_alert_repository.py
-# SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta, timezone
+Add to `shell/src/map/LayerPicker.test.tsx` (after the last existing test, `"has a search field that calls listLayerSources with q"`):
 
-from app.alerts import repository as alerts_repo
-from app.configs import repository as configs_repo
-from app.configs.schemas import BuilderConfig
-from app.db import init_db, make_engine, make_session_factory
-from app.items import repository as items_repo
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+```ts
+test("adds a tiles3d layer from the manual URL form", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
+  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "tiles3d",
+    title: "Bâtiments",
+    visible: true,
+    url: "https://example.test/tileset.json",
+  });
+  expect(typeof layer.id).toBe("string");
+  expect(layer.id.length).toBeGreaterThan(0);
+});
 
+test("disables the tiles3d add button until both title and URL are filled", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const button = screen.getByRole("button", { name: "Ajouter le tileset 3D" });
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  expect(button).toBeEnabled();
+});
 
-def _make_session():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    return make_session_factory(engine)
-
-
-def _alert_body(dataset_item_id: str, *, refresh_policy=None) -> dict:
-    body = {
-        "kind": "alert",
-        "alert": {
-            "datasetItemId": dataset_item_id,
-            "query": {"agg": "count"},
-            "condition": {"expr": "value > 100"},
-            "refreshPolicy": refresh_policy or {"enabled": True, "cron": "*/5 * * * *"},
-            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-        },
-    }
-    return body
-
-
-def _seed_alert_rule(session, *, tenant_id, owner_id, dataset_item_id="ds-1", refresh_policy=None):
-    item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="alert", title="Rule",
-    )
-    config = BuilderConfig.model_validate(_alert_body(dataset_item_id, refresh_policy=refresh_policy))
-    configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
-    return item.id
-
-
-def test_create_and_mark_evaluated_round_trip():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
-        s.commit()
-
-        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        assert evaluation.state == "pending"
-        alerts_repo.mark_evaluated(
-            s, evaluation_id=evaluation.id, value=150.0, state="firing", transitioned=True,
-        )
-        s.commit()
-
-        latest = alerts_repo.get_latest_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        assert latest is not None
-        assert latest.state == "firing"
-        assert latest.value == 150.0
-
-
-def test_list_due_rules_includes_a_rule_with_no_prior_evaluation():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
-        s.commit()
-
-        due = alerts_repo.list_due_rules(s)
-        assert (rule_id, tenant.id) in due
-
-
-def test_list_due_rules_excludes_a_disabled_rule():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        _seed_alert_rule(
-            s, tenant_id=tenant.id, owner_id=user.id,
-            refresh_policy={"enabled": False, "cron": "*/5 * * * *"},
-        )
-        s.commit()
-
-        assert alerts_repo.list_due_rules(s) == []
-
-
-def test_list_due_rules_excludes_a_rule_evaluated_within_its_cron_interval():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
-        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        alerts_repo.mark_evaluated(s, evaluation_id=evaluation.id, value=1.0, state="ok", transitioned=False)
-        s.commit()
-
-        assert alerts_repo.list_due_rules(s) == []
-
-
-def test_list_due_rules_reclaims_a_stuck_pending_evaluation():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
-        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        # Simulate a stuck evaluation: created long ago, never marked.
-        evaluation.created_at = datetime.now(timezone.utc) - timedelta(minutes=120)
-        s.commit()
-
-        assert (rule_id, tenant.id) in alerts_repo.list_due_rules(s)
-
-
-def test_list_evaluations_orders_most_recent_first():
-    Session = _make_session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
-        )
-        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
-        first = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        alerts_repo.mark_evaluated(s, evaluation_id=first.id, value=1.0, state="ok", transitioned=False)
-        second = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        alerts_repo.mark_evaluated(s, evaluation_id=second.id, value=2.0, state="firing", transitioned=True)
-        s.commit()
-
-        rows = alerts_repo.list_evaluations(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        assert [r.id for r in rows] == [second.id, first.id]
+test("clears the tiles3d form after adding", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const titleInput = screen.getByLabelText("Titre du tileset 3D") as HTMLInputElement;
+  const urlInput = screen.getByLabelText("URL du tileset.json") as HTMLInputElement;
+  await userEvent.type(titleInput, "Bâtiments");
+  await userEvent.type(urlInput, "https://example.test/tileset.json");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
+  expect(titleInput.value).toBe("");
+  expect(urlInput.value).toBe("");
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_repository.py`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.repository'`
+Run: `cd shell && npm run test -- src/map/LayerPicker.test.tsx`
+Expected: FAIL — no element with label "Titre du tileset 3D"/"URL du tileset.json" or button "Ajouter le tileset 3D" exists yet.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Implement**
 
-```python
-# core/app/alerts/repository.py
-# SPDX-License-Identifier: Apache-2.0
-"""Mirrors app.pipelines.repository (SP-15a/h) exactly: "last evaluation"
-is always derived from alert_evaluations (never a duplicated column on the
-config), and list_due_rules reuses the same reclaim-by-age discipline as
-list_due_pipelines — a "pending" evaluation older than
-_PENDING_RECLAIM_MINUTES is presumed stuck and becomes eligible again."""
-import uuid
-from datetime import datetime, timedelta, timezone
+Replace the full contents of `shell/src/map/LayerPicker.tsx`:
 
-import croniter
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
+import { useLayerSources } from "../api/hooks";
+import type { LayerSource, MapLayer } from "../api/types";
+import { Button } from "../ui/button";
 
-from app.alerts.models import AlertEvaluation
-from app.configs import repository as configs_repo
+function toMapLayer(source: LayerSource): MapLayer {
+  const id = crypto.randomUUID();
+  if (source.kind === "vector") {
+    return {
+      id,
+      title: source.title,
+      visible: true,
+      kind: "vector",
+      tilesUrl: source.tilesUrl ?? "",
+      sourceLayer: source.sourceLayer ?? "",
+    };
+  }
+  if (source.kind === "raster") {
+    return {
+      id,
+      title: source.title,
+      visible: true,
+      kind: "raster",
+      tilesUrl: source.tilesUrl ?? "",
+      opacity: 1,
+    };
+  }
+  return { id, title: source.title, visible: true, kind: "feature", url: source.url ?? "" };
+}
 
-_PENDING_RECLAIM_MINUTES = 60
+export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
+  const [q, setQ] = useState("");
+  const [tiles3dTitle, setTiles3dTitle] = useState("");
+  const [tiles3dUrl, setTiles3dUrl] = useState("");
+  const { data, isLoading, isError, refetch } = useLayerSources({ q: q || undefined });
 
+  function addTiles3D() {
+    if (!tiles3dTitle.trim() || !tiles3dUrl.trim()) return;
+    onAdd({ id: crypto.randomUUID(), title: tiles3dTitle, visible: true, kind: "tiles3d", url: tiles3dUrl });
+    setTiles3dTitle("");
+    setTiles3dUrl("");
+  }
 
-def create_evaluation(session: Session, *, tenant_id: str, alert_rule_item_id: str) -> AlertEvaluation:
-    evaluation = AlertEvaluation(
-        id=uuid.uuid4().hex, tenant_id=tenant_id, alert_rule_item_id=alert_rule_item_id,
-        state="pending",
-    )
-    session.add(evaluation)
-    session.flush()
-    session.refresh(evaluation)
-    return evaluation
-
-
-def mark_evaluated(
-    session: Session, *, evaluation_id: str, value: float | None, state: str, transitioned: bool,
-    error: str | None = None,
-) -> None:
-    evaluation = session.get(AlertEvaluation, evaluation_id)
-    if evaluation is None:
-        return
-    evaluation.value = value
-    evaluation.state = state
-    evaluation.transitioned = transitioned
-    evaluation.error = error
-    session.flush()
-
-
-def get_evaluation(session: Session, *, tenant_id: str, evaluation_id: str) -> AlertEvaluation | None:
-    return session.execute(
-        select(AlertEvaluation).where(
-            AlertEvaluation.id == evaluation_id, AlertEvaluation.tenant_id == tenant_id,
-        )
-    ).scalar_one_or_none()
-
-
-def get_latest_evaluation(
-    session: Session, *, tenant_id: str, alert_rule_item_id: str,
-) -> AlertEvaluation | None:
-    return session.execute(
-        select(AlertEvaluation)
-        .where(
-            AlertEvaluation.tenant_id == tenant_id,
-            AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
-        )
-        .order_by(AlertEvaluation.created_at.desc())
-        .limit(1)
-    ).scalars().first()
-
-
-def list_evaluations(
-    session: Session, *, tenant_id: str, alert_rule_item_id: str,
-) -> list[AlertEvaluation]:
-    rows = session.execute(
-        select(AlertEvaluation)
-        .where(
-            AlertEvaluation.tenant_id == tenant_id,
-            AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
-        )
-        .order_by(AlertEvaluation.created_at.desc())
-    ).scalars().all()
-    return list(rows)
-
-
-def list_due_rules(session: Session) -> list[tuple[str, str]]:
-    """Cross-tenant sweep, consumed by sweep_alert_rules_task (app.alerts.jobs,
-    Task 9). Never exposed via a route (same discipline as
-    list_due_pipelines): the tuple carries tenant_id in clear."""
-    now = datetime.now(timezone.utc)
-    due: list[tuple[str, str]] = []
-    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert"):
-        payload = config.alert
-        if payload is None:
-            continue
-        policy = payload.refreshPolicy
-        if not policy.enabled:
-            continue
-        latest = get_latest_evaluation(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
-        if latest is None:
-            due.append((item_id, tenant_id))
-            continue
-        created_at = latest.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        if latest.state == "pending":
-            if (now - created_at) < timedelta(minutes=_PENDING_RECLAIM_MINUTES):
-                continue
-            due.append((item_id, tenant_id))
-            continue
-        next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
-        if next_tick <= now:
-            due.append((item_id, tenant_id))
-    return due
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="search"
+        role="searchbox"
+        aria-label="Rechercher une source de couche"
+        placeholder="Rechercher…"
+        className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {isLoading && <p className="text-sm text-slate-500">Chargement des sources…</p>}
+      {isError && (
+        <div className="text-sm text-red-600">
+          <p role="alert">Impossible de charger les sources de couches.</p>
+          <button type="button" className="underline" onClick={() => refetch()}>
+            Réessayer
+          </button>
+        </div>
+      )}
+      {!isLoading && !isError && (!data || data.length === 0) && (
+        <p className="text-sm text-slate-500">Aucune source disponible.</p>
+      )}
+      {!isLoading && !isError && data && data.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {data.map((source) => (
+            <li key={`${source.service}:${source.id}`}>
+              <button
+                type="button"
+                className="w-full rounded-md px-2 py-1 text-left text-sm hover:bg-slate-100"
+                onClick={() => onAdd(toMapLayer(source))}
+              >
+                {source.title}
+                <span className="ml-2 text-xs text-slate-400">{source.kind}</span>
+                {typeof source.featureCount === "number" && (
+                  <span className="ml-2 text-xs text-slate-400">
+                    {source.featureCount} entités
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="border-t pt-2">
+        <p className="mb-1 text-xs font-medium text-slate-500">Ajouter un tileset 3D par URL</p>
+        <div className="flex flex-col gap-1">
+          <input
+            aria-label="Titre du tileset 3D"
+            type="text"
+            placeholder="Titre"
+            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            value={tiles3dTitle}
+            onChange={(e) => setTiles3dTitle(e.target.value)}
+          />
+          <input
+            aria-label="URL du tileset.json"
+            type="text"
+            placeholder="https://…/tileset.json"
+            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            value={tiles3dUrl}
+            onChange={(e) => setTiles3dUrl(e.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            className="w-fit"
+            disabled={!tiles3dTitle.trim() || !tiles3dUrl.trim()}
+            onClick={addTiles3D}
+          >
+            Ajouter le tileset 3D
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_repository.py`
-Expected: `6 passed`
+Run: `cd shell && npm run test -- src/map/LayerPicker.test.tsx`
+Expected: PASS, all tests in the file green (existing + 3 new).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/alerts/repository.py core/tests/test_alert_repository.py
-git commit -m "feat(core): SP-16b — app.alerts.repository (evaluations CRUD, list_due_rules)"
+git add shell/src/map/LayerPicker.tsx shell/src/map/LayerPicker.test.tsx
+git commit -m "feat(shell): LayerPicker permet d'ajouter un tileset 3D par URL"
 ```
 
 ---
