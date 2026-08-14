@@ -64,17 +64,50 @@ def test_convert_to_cog_rejects_a_raster_without_a_crs(tmp_path):
 
 
 def test_convert_to_cog_raises_on_timeout(tmp_path, monkeypatch):
+    # Le timeout s'appuie sur un process fils forké (jamais signal.alarm, qui
+    # lève ValueError hors du thread principal — un worker procrastinate
+    # n'exécute jamais ses tâches sync dans le thread principal). Le fork
+    # hérite du monkeypatch ci-dessous ; le marqueur écrit *par le fils*
+    # prouve que c'est bien la version lente qui a tourné (sans lui, un
+    # cog_translate réel — ~0,3s sur ce raster — finirait avant le délai et
+    # le test passerait pour la mauvaise raison).
     import time
 
     from app.terrain3d import conversion
 
     src = tmp_path / "raw.tif"
     dst = tmp_path / "cog.tif"
+    marker = tmp_path / "child-ran"
     _write_test_geotiff(str(src))
 
     def _slow_cog_translate(*args, **kwargs):
-        time.sleep(2)
+        marker.write_text("stub")
+        time.sleep(30)
 
     monkeypatch.setattr(conversion, "cog_translate", _slow_cog_translate)
+    started = time.monotonic()
     with pytest.raises(Terrain3DConversionError, match="interrompue"):
         convert_to_cog(str(src), str(dst), timeout_seconds=1)
+    elapsed = time.monotonic() - started
+
+    assert marker.exists()  # le monkeypatch a bien été hérité par le fils
+    assert elapsed < 20  # le fils a été tué, pas attendu jusqu'à ses 30s
+    assert not dst.exists()  # aucun COG produit
+
+
+def test_convert_to_cog_surfaces_a_child_process_failure(tmp_path, monkeypatch):
+    # L'échec survient maintenant dans un autre process : sans le canal de
+    # retour, il ressortirait en "processus interrompu" opaque (ou pire, en
+    # succès silencieux).
+    from app.terrain3d import conversion
+
+    src = tmp_path / "raw.tif"
+    dst = tmp_path / "cog.tif"
+    _write_test_geotiff(str(src))
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("GDAL a explosé")
+
+    monkeypatch.setattr(conversion, "cog_translate", _boom)
+    with pytest.raises(Terrain3DConversionError, match="GDAL a explosé"):
+        convert_to_cog(str(src), str(dst), timeout_seconds=30)
