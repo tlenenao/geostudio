@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: Apache-2.0
+// Même patron de poll que shell/src/builder/print/ExportPanel.tsx (SP-17a) :
+// boucle récursive manuelle via le client, jamais un refetchInterval
+// react-query — cf. plan Global Constraints (superpowers writing-plans).
+// Même patron de dialogue de choix de mode qu'ExportPanel (PNG/PDF) : un
+// seul mode existe pour l'instant ("static"), le mode "Connecté" arrive en
+// SP-18b — le dialogue reste donc pertinent dès aujourd'hui plutôt qu'une
+// paire de boutons inertes.
+import { useEffect, useRef, useState } from "react";
+import { useItemClient } from "../../api/ItemClientProvider";
+import type { AppConfig, AppExportJobStatus, AppExportMode } from "../../api/types";
+import { Button } from "../../ui/button";
+import { Dialog } from "../../ui/dialog";
+import { collectWidgetTypes, WRITE_CAPABLE_WIDGET_TYPES } from "./collectWidgetTypes";
+
+const POLL_INTERVAL_MS = 1500;
+const MAX_POLL_ATTEMPTS = 200;
+
+export function AppExportPanel({ itemId, config }: { itemId: string; config: AppConfig }) {
+  const client = useItemClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [job, setJob] = useState<AppExportJobStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [showWriteWarning, setShowWriteWarning] = useState(false);
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  async function poll(jobId: string, attempt = 0): Promise<void> {
+    if (!mountedRef.current) return;
+    const latest = await client.getAppExportJob(itemId, jobId);
+    if (!mountedRef.current) return;
+    setJob(latest);
+    if (latest.status !== "pending" && latest.status !== "running") return;
+    if (attempt + 1 >= MAX_POLL_ATTEMPTS) {
+      setError("Export toujours en cours, réessayer plus tard.");
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      timerRef.current = setTimeout(resolve, POLL_INTERVAL_MS);
+    });
+    if (!mountedRef.current) return;
+    await poll(jobId, attempt + 1);
+  }
+
+  async function runExport(mode: AppExportMode) {
+    setShowWriteWarning(false);
+    setDialogOpen(false);
+    setRunning(true);
+    setError(null);
+    setJob(null);
+    try {
+      const { jobId } = await client.createAppExport(itemId, mode);
+      await poll(jobId);
+    } catch {
+      if (mountedRef.current) setError("Échec de l'export.");
+    } finally {
+      if (mountedRef.current) setRunning(false);
+    }
+  }
+
+  // Le choix de mode ne déclenche l'export réel que si la config ne
+  // contient aucun widget d'écriture (formulaire) — sinon on bloque sur un
+  // avertissement explicite, franchissable seulement par un second clic
+  // conscient ("Exporter quand même").
+  function onChooseMode(mode: AppExportMode) {
+    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
+    if (hasWriteWidget) {
+      setDialogOpen(false);
+      setShowWriteWarning(true);
+      return;
+    }
+    void runExport(mode);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)} disabled={running}>
+        Exporter
+      </Button>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Choisir le mode d'export">
+        <div className="flex justify-end gap-2">
+          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
+            Statique
+          </Button>
+        </div>
+      </Dialog>
+      {showWriteWarning && (
+        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
+          <p>
+            Cette app contient un widget Formulaire — toute écriture sera
+            désactivée dans l&apos;export statique faute de backend.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => runExport("static")}>
+              Exporter quand même
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowWriteWarning(false)}>
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+      {job?.status === "done" && job.resultUrl && (
+        <a href={job.resultUrl} download className="text-sm text-blue-600 underline">
+          Télécharger le bundle
+        </a>
+      )}
+      {(error || job?.status === "error") && (
+        <p role="alert" className="text-sm text-red-600">
+          {error ?? job?.error ?? "Échec de l'export."}
+        </p>
+      )}
+    </div>
+  );
+}
