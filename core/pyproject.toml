@@ -154,4 +154,5 @@ ignore_imports = [
     "app.db -> app.tileset3d.models",
     "app.db -> app.terrain3d.models",
     "app.db -> app.reports.models",
+    "app.db -> app.appexport.models",
 ]
