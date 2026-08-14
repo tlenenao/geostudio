@@ -1,124 +1,156 @@
-### Task 1: `app/configs/alert_condition.py` — bounded scalar condition expression
+### Task 1: Core schema — `tiles3d` layer kind, `terrain`, camera pitch/bearing
 
 **Files:**
-- Create: `core/app/configs/alert_condition.py`
-- Test: `core/tests/test_alert_condition.py`
+- Modify: `core/app/configs/schemas.py:61-88` (`MapView`, `MapLayer`, `MapConfig` classes)
+- Test: `core/tests/test_routes.py`
 
 **Interfaces:**
-- Consumes: `app.analytics.sql_sandbox.{parse_ast, validate_select_only, collect_table_refs, SqlSandboxError}` (existing, layer-free).
-- Produces: `validate_condition_expr(conn: duckdb.DuckDBPyConnection, expr: str) -> None` (raises `SqlSandboxError` on an invalid/unbounded expression) and `evaluate_condition(conn: duckdb.DuckDBPyConnection, expr: str, value: float) -> bool`, both consumed by Task 2 (schema validator) and Task 9 (`app.alerts.jobs`).
+- Produces: `MapLayer.kind` Literal including `"tiles3d"` (reuses existing `url: str | None` field, no new field); `MapTerrain(tilesUrl: str, encoding: Literal["terrarium"] = "terrarium", exaggeration: float | None = None)`; `MapConfig.terrain: MapTerrain | None = None`; `MapView.pitch: float | None = None`, `MapView.bearing: float | None = None`. These exact JSON field names are consumed by shell Task 2/3 (`MapLayer`/`MapConfig`/`MapViewport` TS types and `itemClient.ts` wire mapping).
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-```python
-# core/tests/test_alert_condition.py
-# SPDX-License-Identifier: Apache-2.0
-import duckdb
-import pytest
-
-from app.alerts_test_helpers import NOTHING  # placeholder import removed in step 3 — see note below
-```
-
-Replace that draft with the real test file (no placeholder import — written directly):
+Add to `core/tests/test_routes.py` (near the existing `_map_config`/`test_map_config_*` tests, e.g. after `test_put_config_by_item_404_when_missing`):
 
 ```python
-# core/tests/test_alert_condition.py
-# SPDX-License-Identifier: Apache-2.0
-import duckdb
-import pytest
+def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
+    created = client.post(
+        "/configs",
+        json={
+            "title": "Carte 3D",
+            "config": {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "https://demo/style.json"},
+                    "view": {"center": [2.35, 48.85], "zoom": 5, "pitch": 45, "bearing": 90},
+                    "layers": [
+                        {"id": "bldg", "title": "Bâtiments", "visible": True,
+                         "kind": "tiles3d", "url": "https://example.test/tileset.json"},
+                    ],
+                    "terrain": {
+                        "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
+                        "encoding": "terrarium",
+                        "exaggeration": 1.5,
+                    },
+                },
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["itemId"]
 
-from app.analytics.sql_sandbox import SqlSandboxError
-from app.configs.alert_condition import evaluate_condition, validate_condition_expr
+    by_item = client.get(f"/configs/by-item/{item_id}")
+    assert by_item.status_code == 200
+    body = by_item.json()["config"]["map"]
+    assert body["view"]["pitch"] == 45
+    assert body["view"]["bearing"] == 90
+    assert body["layers"][0] == {
+        "id": "bldg", "title": "Bâtiments", "visible": True, "kind": "tiles3d",
+        "tilesUrl": None, "sourceLayer": None, "url": "https://example.test/tileset.json",
+        "opacity": None, "deckType": None, "dataUrl": None, "paint": None, "props": None,
+    }
+    assert body["terrain"] == {
+        "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
+        "encoding": "terrarium",
+        "exaggeration": 1.5,
+    }
 
 
-@pytest.fixture
-def conn():
-    c = duckdb.connect(":memory:")
-    yield c
-    c.close()
-
-
-def test_validate_condition_expr_accepts_a_bounded_comparison(conn):
-    validate_condition_expr(conn, "value > 100")  # must not raise
-
-
-def test_validate_condition_expr_rejects_a_table_reference(conn):
-    with pytest.raises(SqlSandboxError):
-        validate_condition_expr(conn, "(SELECT count(*) FROM some_table)")
-
-
-def test_validate_condition_expr_rejects_invalid_sql(conn):
-    with pytest.raises(SqlSandboxError):
-        validate_condition_expr(conn, "value >")
-
-
-def test_evaluate_condition_returns_true_when_condition_holds(conn):
-    assert evaluate_condition(conn, "value > 100", 150.0) is True
-
-
-def test_evaluate_condition_returns_false_when_condition_does_not_hold(conn):
-    assert evaluate_condition(conn, "value > 100", 50.0) is False
-
-
-def test_evaluate_condition_supports_compound_expressions(conn):
-    assert evaluate_condition(conn, "value >= 10 AND value <= 20", 15.0) is True
-    assert evaluate_condition(conn, "value >= 10 AND value <= 20", 25.0) is False
+def test_map_config_defaults_pitch_bearing_terrain_when_absent(client):
+    created = client.post(
+        "/configs",
+        json={
+            "title": "Carte plate",
+            "config": {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "https://demo/style.json"},
+                    "view": {"center": [0, 0], "zoom": 1},
+                    "layers": [],
+                },
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["itemId"]
+    body = client.get(f"/configs/by-item/{item_id}").json()["config"]["map"]
+    assert body["view"]["pitch"] is None
+    assert body["view"]["bearing"] is None
+    assert body["terrain"] is None
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_condition.py`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.configs.alert_condition'`
+Run: `cd core && uv run pytest tests/test_routes.py -k "tiles3d_layer_terrain_and_camera or defaults_pitch_bearing_terrain" -v`
+Expected: FAIL — `tiles3d` rejected as an invalid `kind` (Pydantic validation error, response not 201), and `terrain`/`pitch`/`bearing` unrecognized/absent from the response body.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Implement the schema changes**
+
+In `core/app/configs/schemas.py`, replace the `MapView`, `MapLayer`, `MapConfig` classes (currently lines 61-88):
 
 ```python
-# core/app/configs/alert_condition.py
-# SPDX-License-Identifier: Apache-2.0
-"""Bounded scalar SQL condition expression for kind="alert" (design SP-16b
-§4). Lives in app.configs, not app.alerts, deliberately: app.alerts sits
-ABOVE app.secrets in the import-linter layer contract (Global Constraints),
-so if this lived in app.alerts, app.configs (a lower layer, needed for the
-save-time Pydantic validator in schemas.py) could not import it back. The
-function has no alert-specific knowledge — it is a generic "one bounded
-scalar SQL expression, no table references" helper, same restriction as
-app.pipelines.expr_validation.validate_bounded_expr but placed where both
-the save-time validator (app.configs) and the run-time evaluator
-(app.alerts, Task 9) can import it downward without crossing the contract.
-"""
-import duckdb
-
-from app.analytics.sql_sandbox import collect_table_refs, parse_ast, validate_select_only, SqlSandboxError
+class MapView(BaseModel):
+    center: tuple[float, float]
+    zoom: float
+    pitch: float | None = None
+    bearing: float | None = None
 
 
-def validate_condition_expr(conn: duckdb.DuckDBPyConnection, expr: str) -> None:
-    ast = parse_ast(conn, f"SELECT ({expr})")
-    validate_select_only(ast)
-    if collect_table_refs(ast):
-        raise SqlSandboxError("condition expression must not reference a table")
+class BaseMap(BaseModel):
+    style: str
 
 
-def evaluate_condition(conn: duckdb.DuckDBPyConnection, expr: str, value: float) -> bool:
-    # `value` is bound as a real column of a derived table rather than
-    # string-substituted into expr — avoids any risk of a naive text
-    # replace corrupting the expression (e.g. "value" appearing inside a
-    # string literal), and lets DuckDB's own SQL scoping resolve the bare
-    # identifier normally.
-    validate_condition_expr(conn, expr)
-    row = conn.execute(f"SELECT ({expr}) FROM (SELECT ? AS value) t", [value]).fetchone()
-    return bool(row[0])
+class MapLayer(BaseModel):
+    id: str
+    title: str
+    visible: bool = True
+    kind: Literal["vector", "raster", "feature", "deck", "tiles3d"]
+    tilesUrl: str | None = None
+    sourceLayer: str | None = None
+    url: str | None = None
+    opacity: float | None = None
+    deckType: str | None = None
+    dataUrl: str | None = None
+    paint: dict | None = None
+    props: dict | None = None
+
+
+class MapTerrain(BaseModel):
+    tilesUrl: str
+    encoding: Literal["terrarium"] = "terrarium"
+    exaggeration: float | None = None
+
+
+class MapConfig(BaseModel):
+    basemap: BaseMap
+    view: MapView
+    layers: list[MapLayer] = Field(default_factory=list)
+    terrain: MapTerrain | None = None
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_condition.py`
-Expected: `6 passed`
+Run: `cd core && uv run pytest tests/test_routes.py -k "tiles3d_layer_terrain_and_camera or defaults_pitch_bearing_terrain" -v`
+Expected: PASS (2 passed).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the full core suite for regressions**
+
+Run: `cd core && uv run pytest -q`
+Expected: all passing, same count as before plus the 2 new tests (no existing map-config test broken — `pitch`/`bearing`/`terrain` are all optional/defaulted).
+
+- [ ] **Step 6: Regenerate `openapi.json`**
+
+Run:
+```bash
+cd core
+PYTHONPATH=. CORE_SECRETS_MASTER_KEY="AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" uv run python scripts/export_openapi.py openapi.json
+```
+Expected: `core/openapi.json` is rewritten; `git diff --stat core/openapi.json` shows changes reflecting the new `tiles3d` enum value, `MapTerrain` schema, and `pitch`/`bearing` fields.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/configs/alert_condition.py core/tests/test_alert_condition.py
-git commit -m "feat(core): SP-16b — bounded scalar condition expression (app.configs.alert_condition)"
+git add core/app/configs/schemas.py core/tests/test_routes.py core/openapi.json
+git commit -m "feat(core): ajoute le kind tiles3d, le terrain et pitch/bearing à MapConfig"
 ```
 
 ---

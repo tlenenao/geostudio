@@ -1,158 +1,190 @@
-### Task 6: `app/alerts/egress.py` — SSRF guard for webhooks
+### Task 6: Core read/proxy route
 
 **Files:**
-- Create: `core/app/alerts/egress.py`
-- Modify: `.env.example`
-- Test: `core/tests/test_alert_egress.py`
+- Modify: `core/app/tileset3d/routes.py` (add the read endpoint)
+- Test: `core/tests/test_tileset3d_routes.py` (extend)
 
 **Interfaces:**
-- Produces: `assert_egress_allowed(url: str) -> None` (raises `EgressBlockedError`), consumed by Task 8 (`app.alerts.notify`).
+- Consumes: `app.items.repository.get_access_facts`; `app.sharing.authorization.can`; `app.configs.repository.get_config_by_item`; `S3RangeFile` (Task 3).
+- Produces: `GET /tileset3d/{item_id}/{path:path}` → entry bytes with a guessed `Content-Type`, `404` if the item doesn't exist/isn't readable by the caller or the entry doesn't exist in the zip.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
+
+Append to `core/tests/test_tileset3d_routes.py` (reuses the `env` fixture and `_FakeS3Client` already defined in that file):
 
 ```python
-# core/tests/test_alert_egress.py
-# SPDX-License-Identifier: Apache-2.0
-import pytest
+import io
+import json
+import zipfile
 
-from app.alerts.egress import EgressBlockedError, assert_egress_allowed
-
-
-def test_blocks_a_loopback_url():
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("http://127.0.0.1:8080/hook")
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig, Tileset3DPayload
+from app.items import repository as items_repo
 
 
-def test_blocks_a_private_range_url():
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("http://10.0.0.5/hook")
+def _valid_zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr("tiles/0.b3dm", b"\x00" * 16)
+    return buf.getvalue()
 
 
-def test_blocks_a_non_http_scheme():
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("file:///etc/passwd")
+def _seed_hosted_tileset_item(session, *, tenant_id, owner_id, fake_s3, key="tenant/x/city.zip"):
+    fake_s3.objects[key] = _valid_zip_bytes()
+    item = items_repo.create_item(
+        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="tileset3d", title="Ville",
+    )
+    config = BuilderConfig(
+        kind="tileset3d",
+        tileset3d=Tileset3DPayload(sourceKey=key, tilesetJsonPath="tileset.json", totalBytes=100, entryCount=2),
+    )
+    configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
+    return item.id
 
 
-def test_allows_a_public_https_url():
-    assert_egress_allowed("https://example.test/hook") is None
+def test_read_tileset3d_entry_returns_tileset_json(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/json")
+    assert json.loads(r.content)["asset"]["version"] == "1.0"
 
 
-def test_allowlist_restricts_to_named_hosts(monkeypatch):
-    monkeypatch.setenv("CORE_ALERTS_EGRESS_ALLOWLIST", "allowed.example.test")
-    with pytest.raises(EgressBlockedError):
-        assert_egress_allowed("https://not-allowed.example.test/hook")
+def test_read_tileset3d_entry_returns_tile_binary(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tiles/0.b3dm")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/octet-stream"
+    assert r.content == b"\x00" * 16
+
+
+def test_read_tileset3d_entry_404_for_missing_entry(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/does-not-exist.b3dm")
+    assert r.status_code == 404
+
+
+def test_read_tileset3d_entry_404_for_unknown_item(env):
+    client, *_ = env
+    r = client.get("/tileset3d/does-not-exist/tileset.json")
+    assert r.status_code == 404
+
+
+def test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
+            email=None, first_name="", last_name="",
+        )
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=bob.id, fake_s3=fake_s3)
+        s.commit()
+    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    assert r.status_code == 404
 ```
+
+No new import is needed for this test — `core/tests/test_tileset3d_routes.py` already imports `get_or_create_user` (Task 4, used by its `env` fixture to create `alice`); this test's `bob = get_or_create_user(...)` reuses that same import.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.alerts.egress'`
+Run: `cd core && uv run pytest tests/test_tileset3d_routes.py -k read_tileset3d_entry -v`
+Expected: FAIL — 404 on every request (no `/tileset3d/{item_id}/{path}` route registered yet).
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Implement the read route**
+
+Add to `core/app/tileset3d/routes.py` — new imports at the top:
 
 ```python
-# core/app/alerts/egress.py
-# SPDX-License-Identifier: Apache-2.0
-"""SSRF egress guard for AlertRule webhook delivery (design SP-16b §5) —
-deliberate duplication of app.pipelines.egress/app.harvest.egress: the
-webhook URL is user-supplied per rule (unlike the SMTP secret, which is
-admin-configured, cf. Global Constraints), same threat model as the two
-existing guards. Own CORE_ALERTS_EGRESS_ALLOWLIST env var, distinct from
-CORE_PIPELINES_EGRESS_ALLOWLIST/CORE_HARVEST_EGRESS_ALLOWLIST — same
-duplication rationale as the guard itself."""
-import ipaddress
-import logging
-import os
-import socket
-from urllib.parse import urlparse
+from fastapi import Response
 
-import requests
+from app.configs import repository as configs_repo
+from app.items import repository as items_repo
+from app.sharing.authorization import can
+from app.tileset3d.storage import S3RangeFile
+```
 
-logger = logging.getLogger(__name__)
+New module-level constant and helper, placed above the route functions:
 
-_ALLOWLIST_ENV = "CORE_ALERTS_EGRESS_ALLOWLIST"
-
-
-class EgressBlockedError(Exception):
-    """Cible réseau interdite (plage interne ou hors allowlist)."""
+```python
+_CONTENT_TYPES = {
+    ".json": "application/json",
+    ".gltf": "application/json",
+    ".b3dm": "application/octet-stream",
+    ".i3dm": "application/octet-stream",
+    ".pnts": "application/octet-stream",
+    ".cmpt": "application/octet-stream",
+    ".glb": "application/octet-stream",
+}
 
 
-def _allowlist() -> set[str]:
-    raw = os.environ.get(_ALLOWLIST_ENV, "")
-    return {h.strip() for h in raw.split(",") if h.strip()}
+def _content_type_for(path: str) -> str:
+    for ext, content_type in _CONTENT_TYPES.items():
+        if path.endswith(ext):
+            return content_type
+    return "application/octet-stream"
+```
 
+New route, appended at the end of the file:
 
-def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_loopback
-        or ip.is_private
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+```python
+@router.get("/tileset3d/{item_id}/{path:path}")
+def read_tileset3d_entry(
+    item_id: str, path: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_tileset3d_bucket),
+) -> Response:
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        raise HTTPException(status_code=404, detail="item not found")
+    config = configs_repo.get_config_by_item(session, item_id)
+    if config is None or config.config.tileset3d is None:
+        raise HTTPException(status_code=404, detail="tileset not found")
+    payload = config.config.tileset3d
 
+    import zipfile
 
-def assert_egress_allowed(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise EgressBlockedError(f"schéma d'egress interdit : {parsed.scheme!r}")
-    host = parsed.hostname
-    if not host:
-        raise EgressBlockedError(f"hôte d'egress absent dans l'URL : {url!r}")
-
+    range_file = S3RangeFile(s3, bucket=bucket, key=payload.sourceKey)
     try:
-        addresses = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, None)
-        except socket.gaierror as exc:
-            raise EgressBlockedError(f"hôte non résoluble : {host!r}") from exc
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
+        with zipfile.ZipFile(range_file) as zf:
+            data = zf.read(path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="entry not found") from exc
 
-    for ip in addresses:
-        if _is_internal(ip):
-            raise EgressBlockedError(f"cible réseau interne bloquée : {host!r} → {ip}")
-
-    allowlist = _allowlist()
-    if allowlist and host not in allowlist:
-        raise EgressBlockedError(f"hôte hors allowlist d'egress : {host!r}")
-
-
-class _GuardedHTTPAdapter(requests.adapters.HTTPAdapter):
-    def send(self, request, **kwargs):
-        assert_egress_allowed(request.url)
-        return super().send(request, **kwargs)
-
-
-def build_guarded_session() -> requests.Session:
-    session = requests.Session()
-    adapter = _GuardedHTTPAdapter()
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+    return Response(
+        content=data, media_type=_content_type_for(path),
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 ```
 
-Add to `.env.example`, next to the existing egress allowlist entries:
-
-```bash
-# Allowlist d'hôtes pour la garde d'egress SSRF des webhooks d'alerte
-# (AlertRule, SP-16b) — liste séparée par des virgules ; vide (défaut) =
-# seules les plages réseau internes/privées sont bloquées, aucune
-# restriction d'hôte supplémentaire.
-CORE_ALERTS_EGRESS_ALLOWLIST=
-```
+(The `import zipfile` is placed inline in the function rather than at module top only to keep the diff local to this step — move it to the top-level imports alongside the others added in this step; either placement is fine, top-level is the repo's usual convention, so put it there in the final file.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
-Expected: `5 passed`
+Run: `cd core && uv run pytest tests/test_tileset3d_routes.py -v`
+Expected: PASS (all tests, including the ones from Task 4).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the full core suite**
+
+Run: `cd core && uv run pytest -q`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add core/app/alerts/egress.py .env.example core/tests/test_alert_egress.py
-git commit -m "feat(core): SP-16b — app.alerts.egress SSRF guard for webhook delivery"
+cd core && git add app/tileset3d/routes.py tests/test_tileset3d_routes.py
+git commit -m "feat(core): tileset3d read/proxy route"
 ```
 
 ---
