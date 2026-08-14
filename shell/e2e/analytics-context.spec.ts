@@ -1962,5 +1962,8 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
   );
   await page.getByRole("cell", { name: "Brive" }).click();
   await filteredReq;
-  await expect(page.getByText("2")).toBeVisible();
+  // exact: true — une fois le cross-filter actif, l'indicateur analytics
+  // context affiche aussi "→ dataset-2" (chip de propagation), un match
+  // substring ambigu avec la valeur "2" de la KPI.
+  await expect(page.getByText("2", { exact: true })).toBeVisible();
 });

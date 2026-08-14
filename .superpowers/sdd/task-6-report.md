@@ -1,147 +1,155 @@
-# Task 6 report — `app.alerts.egress` SSRF guard for webhooks
+# Task 6 Report: Core read/proxy route
 
-## What I implemented
+**Date:** 2026-08-14  
+**Status:** DONE  
+**Commit:** `d7c6bf6`
 
-- `core/app/alerts/egress.py` (new): `assert_egress_allowed(url) -> None` raising
-  `EgressBlockedError`, plus `build_guarded_session()` returning a `requests.Session`
-  whose transport calls the guard before every send. Blocks non-http(s) schemes,
-  unresolvable hosts, and IPs that are loopback/private/link-local/reserved/
-  multicast/unspecified; optional allowlist via `CORE_ALERTS_EGRESS_ALLOWLIST`
-  (comma-separated hostnames).
-- `.env.example` (repo root): added the `CORE_ALERTS_EGRESS_ALLOWLIST` entry,
-  placed directly after `CORE_PIPELINES_EGRESS_ALLOWLIST` per the brief.
-- `core/tests/test_alert_egress.py` (new): 5 tests per the brief's intent
-  (loopback block, private-range block, non-http scheme block, public-https
-  allow, allowlist restriction) — see "Deviation from brief" below for one
-  fix required in the test file.
+## Summary
 
-This is a deliberate third instance of the SSRF-guard pattern already present
-as `app.pipelines.egress` (SP-15f) and `app.harvest.egress`, per the task's
-Global Constraints (webhook URLs are user-supplied per alert rule, unlike the
-admin-configured SMTP secret, which is explicitly not egress-guarded).
-Confirmed by direct diff against `app/pipelines/egress.py`: identical from the
-module docstring's closing line onward except the allowlist env var name
-(`CORE_ALERTS_EGRESS_ALLOWLIST` vs `CORE_PIPELINES_EGRESS_ALLOWLIST`) and one
-explanatory comment line above `_ALLOWLIST_ENV` that `pipelines/egress.py`
-carries and the brief's dictated code omits (the same explanation is present
-instead in `alerts/egress.py`'s module docstring, so nothing is lost).
+Successfully implemented the authenticated read/proxy route `GET /tileset3d/{item_id}/{path:path}` that serves individual zip entries on demand via ranged S3 reads. This is the final core-side piece of the tileset3d hosting feature before OpenAPI regeneration. All tests passing, full suite green.
 
-## Deviation from the brief: test file DNS dependency (fixed)
+## Execution
 
-The brief's dictated `test_allows_a_public_https_url` and
-`test_allowlist_restricts_to_named_hosts` use bare hostnames under the
-`.test` TLD (`example.test`, `not-allowed.example.test`, `allowed.example.test`)
-with no DNS mocking. `.test` is a TLD reserved by RFC 2606 specifically so it
-*never* resolves in real DNS — confirmed locally
-(`socket.getaddrinfo('example.test', None)` raises `gaierror` in this
-environment). As dictated, `test_allows_a_public_https_url` would fail (it
-asserts no exception, but `assert_egress_allowed` correctly raises
-`EgressBlockedError` for "hôte non résoluble") — this is a bug in the plan's
-test code, not the implementation.
+### Step 1: Write Failing Tests
+Appended 5 test cases to `core/tests/test_tileset3d_routes.py`:
+- `test_read_tileset3d_entry_returns_tileset_json` — JSON extraction with correct content-type
+- `test_read_tileset3d_entry_returns_tile_binary` — Binary extraction with octet-stream type
+- `test_read_tileset3d_entry_404_for_missing_entry` — 404 for non-existent entry path
+- `test_read_tileset3d_entry_404_for_unknown_item` — 404 for unknown item ID
+- `test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user` — 404 for access denied
 
-The sibling guards' test suites (`tests/test_pipeline_egress.py`,
-`tests/test_harvest_egress.py`) already solve exactly this by monkeypatching
-`socket.getaddrinfo` to return a known-public IP, rather than depending on
-live DNS. I applied the same fix here: both hostname-based tests now
-monkeypatch `socket.getaddrinfo` to resolve to `93.184.216.34` (the same
-public IP the sibling tests use), so `test_allows_a_public_https_url`
-genuinely exercises the "public → allowed" path, and
-`test_allowlist_restricts_to_named_hosts` genuinely exercises the allowlist
-mismatch (not an incidental DNS failure that also happens to raise
-`EgressBlockedError`). Test names, count (5), and coverage intent from the
-brief are unchanged; only the DNS-resolution mechanics were fixed to match
-the established, working pattern in this codebase.
+Also added helper functions:
+- `_valid_zip_bytes()` — creates minimal tileset zip (tileset.json + tiles/0.b3dm)
+- `_seed_hosted_tileset_item()` — seeds S3 fake, creates item, creates tileset3d config
 
-## What I tested and results
+### Step 2: Verify Tests Fail
+Ran: `cd core && uv run pytest tests/test_tileset3d_routes.py -k read_tileset3d_entry -v`
 
-- `PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_alert_egress.py`
-  → **RED** before implementation: `ModuleNotFoundError: No module named
-  'app.alerts.egress'` (1 error during collection), as the brief predicted.
-- After implementing `app/alerts/egress.py` with the brief's dictated test
-  file verbatim: 4 passed, 1 failed
-  (`test_allows_a_public_https_url` — the DNS issue above).
-- After fixing the test file's DNS mocking: **GREEN** — `5 passed in 0.06s`.
-- Cross-check: ran `test_alert_egress.py` alongside the two sibling suites
-  (`test_pipeline_egress.py`, `test_harvest_egress.py`) together — `32 passed`,
-  no interference between the three allowlist env vars.
-- Confirmed `app.alerts.egress` imports cleanly standalone
-  (`uv run python -c "import app.alerts.egress"`).
-- `ruff` is not installed/configured in this project (no `ruff` binary, no
-  ruff/black config in `pyproject.toml`) — skipped, not a project convention
-  here.
-
-## TDD evidence
-
-RED:
+Result:
 ```
-ERROR tests/test_alert_egress.py
-E   ModuleNotFoundError: No module named 'app.alerts.egress'
-1 error in 0.10s
+FAILED test_read_tileset3d_entry_returns_tileset_json (404, expected 200)
+FAILED test_read_tileset3d_entry_returns_tile_binary (404, expected 200)
+PASSED test_read_tileset3d_entry_404_for_missing_entry
+PASSED test_read_tileset3d_entry_404_for_unknown_item
+PASSED test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user
 ```
 
-Intermediate (brief's test file verbatim, after implementation — caught the
-DNS bug):
+✓ Expected failure: route doesn't exist yet, happy-path tests return 404 instead of 200
+
+### Step 3: Implement the Route
+Added to `core/app/tileset3d/routes.py`:
+- Imports: `zipfile`, `Response`, `configs_repo`, `items_repo`, `can`, `S3RangeFile`
+- Content type mapping `_CONTENT_TYPES` (7 file extensions)
+- Helper `_content_type_for(path: str)` — guesses MIME type from extension
+- Route handler `read_tileset3d_entry()`:
+  - Authorization via `items_repo.get_access_facts()` + `can()` → 404 if denied
+  - Config lookup via `configs_repo.get_config_by_item()` → 404 if missing
+  - S3RangeFile for efficient byte-range reads
+  - Zip entry extraction via `ZipFile.read(path)` → 404 if KeyError
+  - Content-Type guessing via `_content_type_for(path)`
+  - Cache-Control header: "private, max-age=3600"
+
+### Step 4: Verify Tests Pass
+Ran: `cd core && uv run pytest tests/test_tileset3d_routes.py -v`
+
+Result:
 ```
-FAILED tests/test_alert_egress.py::test_allows_a_public_https_url
-E   app.alerts.egress.EgressBlockedError: hôte non résoluble : 'example.test'
-1 failed, 4 passed in 0.15s
+12 passed in 3.88s
 ```
 
-GREEN (after fixing the test file's DNS mocking):
+✓ All tests passing (7 existing + 5 new)
+
+### Step 5: Run Full Suite
+Ran: `cd core && uv run pytest -q`
+
+Result:
 ```
-.....                                                                    [100%]
-5 passed in 0.06s
+1432 passed, 145 skipped in 99.36s
 ```
 
-## Files changed
+✓ Full suite green, no regressions
 
-- `core/app/alerts/egress.py` (new)
-- `core/tests/test_alert_egress.py` (new)
-- `.env.example` (repo root; +1 entry, `CORE_ALERTS_EGRESS_ALLOWLIST`)
+### Step 6: Commit
+```bash
+git add core/app/tileset3d/routes.py core/tests/test_tileset3d_routes.py
+git commit -m "feat(core): tileset3d read/proxy route"
+```
 
-Commit: `d744f0e feat(core): SP-16b — app.alerts.egress SSRF guard for webhook delivery`
-(3 files changed, 127 insertions(+); only the three intended files staged —
-verified `git status --short` showed no incidental `.superpowers/sdd/*`
-tracking-file changes pulled into this commit).
+**Commit hash:** `d7c6bf6`  
+**Staged files:** 2 (routes.py + test file)  
+**Status output:**
+```
+[dev d7c6bf6] feat(core): tileset3d read/proxy route
+ 2 files changed, 132 insertions(+)
+```
 
-## Self-review findings
+## Files Changed
 
-- **Completeness**: 5/5 tests passing, matching the brief's required coverage
-  (loopback, private range, non-http scheme, public allow, allowlist
-  restriction).
-- **Quality**: implementation is byte-for-byte identical to
-  `app/pipelines/egress.py` from the docstring's end onward, except the
-  allowlist env var name — verified via `diff`. French docstrings/comments
-  preserved (`EgressBlockedError` docstring, module docstring, inline
-  comments). English identifiers throughout, per repo convention.
-- **Discipline**: no attempt to "improve" or share code across the
-  `app.alerts`/`app.pipelines`/`app.harvest` boundary — duplication is
-  intentional and preserved, per the task's explicit instruction. The only
-  change from the brief's literal text is the test-file DNS-mocking fix
-  described above, which was necessary for correctness, not a stylistic
-  preference.
-- **Testing depth**: `test_blocks_a_private_range_url` and
-  `test_blocks_a_loopback_url` use IP literals directly (no DNS involved),
-  so they genuinely exercise `_is_internal()`'s private/loopback branches,
-  not just the scheme check. The two hostname-based tests now genuinely
-  exercise the resolution + allowlist code paths via mocked
-  `socket.getaddrinfo`, matching the rigor of the sibling test suites.
-- **Import-linter contract**: `app.alerts` is already declared as a layer in
-  `core/pyproject.toml`'s `[tool.importlinter]` contracts (line ~104,
-  `"app.alerts"`); `egress.py` imports only stdlib + `requests`, so it
-  introduces no new cross-layer dependency and needs no contract change.
-- **Known residual risk, not re-flagged as new**: DNS-rebinding TOCTOU gap
-  (resolve-then-connect race) applies here by construction, identically to
-  the two sibling guards — already documented in `CLAUDE.md`'s "Suivis non
-  bloquants ouverts" as accepted/deferred. Not raised as a new finding.
+1. **`core/app/tileset3d/routes.py`** (+64 lines)
+   - Added imports: zipfile, Response, configs_repo, items_repo, can, S3RangeFile
+   - Added `_CONTENT_TYPES` dict (extension → MIME type mapping)
+   - Added `_content_type_for(path)` helper
+   - Added `read_tileset3d_entry(item_id, path, ...)` route (GET /tileset3d/{item_id}/{path:path})
 
-## Issues or concerns
+2. **`core/tests/test_tileset3d_routes.py`** (+68 lines)
+   - Added imports: io, json, zipfile, BuilderConfig, Tileset3DPayload, configs_repo
+   - Added `_valid_zip_bytes()` helper
+   - Added `_seed_hosted_tileset_item()` helper
+   - Added 5 test cases for read route (json, binary, missing entry, unknown item, auth denied)
 
-None blocking. The one substantive finding — the brief's dictated test file
-had a DNS-dependency bug (`.test` TLD never resolves) — was caught during RED
-verification, root-caused against RFC 2606 and confirmed by direct
-`getaddrinfo` reproduction, and fixed by adopting the exact mocking pattern
-already used by the two sibling guard test suites in this same repo. No
-change was needed to the brief's dictated implementation code
-(`app/alerts/egress.py`) or to the `.env.example` entry — both were faithful
-and correct as dictated.
+## Technical Details
+
+**Route Signature:**
+```python
+@router.get("/tileset3d/{item_id}/{path:path}")
+def read_tileset3d_entry(
+    item_id: str, path: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_tileset3d_bucket),
+) -> Response
+```
+
+**Authorization Logic:**
+1. Fetch access facts via `items_repo.get_access_facts()`
+2. Check `can(session, user_id, action="read", item=facts)`
+3. Return 404 if facts is None or authorization fails (hiding item existence)
+
+**Content Delivery Logic:**
+1. Get tileset3d config via `configs_repo.get_config_by_item()`
+2. Return 404 if config missing or not tileset3d kind
+3. Create `S3RangeFile` for byte-range reads
+4. Open zip and extract entry via `ZipFile.read(path)`
+5. Return 404 if entry not found (KeyError)
+6. Return Response with guessed content-type and cache header
+
+**Content-Type Mapping:**
+- `.json` / `.gltf` → `application/json`
+- `.b3dm` / `.i3dm` / `.pnts` / `.cmpt` / `.glb` → `application/octet-stream`
+- Default → `application/octet-stream`
+
+## Quality Checks
+
+✓ All 5 new read tests passing  
+✓ All 7 existing tileset3d tests still passing  
+✓ Full test suite green (1432 passed)  
+✓ Authorization properly enforced (can() check)  
+✓ Config validation (kind="tileset3d")  
+✓ Proper 404 handling for 3 error cases (item, config, entry)  
+✓ Content-Type guessing extensible (new extensions easily added)  
+✓ S3RangeFile correctly used for efficient ranged reads  
+✓ Scope discipline: only 2 files changed (routes + test)  
+✓ Code follows brief exactly (no deviations)
+
+## Integration Notes
+
+This route completes the core-side tileset3d hosting feature. Ready for:
+- **Task 7**: OpenAPI spec regeneration (spec will now include this new route)
+- **Task 8-13**: Shell integration (types, itemClient, layer picker, map view, upload UI, E2E)
+
+The route integrates cleanly with existing dependency injection patterns and follows authorization conventions established in `app.sharing`.
+
+## Concerns
+
+None. Route is complete as specified, all tests pass, ready for downstream tasks.

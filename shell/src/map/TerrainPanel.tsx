@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useEffect, useState } from "react";
 import type { MapTerrainConfig } from "../api/types";
+import { useInstanceInfo, useItemClient } from "../api/hooks";
+import { Terrain3DUploadButton } from "./Terrain3DUploadButton";
 
 export function TerrainPanel({
   value, onChange,
@@ -8,6 +11,28 @@ export function TerrainPanel({
   onChange: (next: MapTerrainConfig | null) => void;
 }) {
   const enabled = value != null;
+  const client = useItemClient();
+  const instanceQuery = useInstanceInfo();
+  // Gate the hosted picker + upload button behind the capability flag, not
+  // just the routes: an instance with CORE_TERRAIN3D_ENABLED=false must not
+  // even offer UI that would hit a 404'd /terrain3d/* route (same discipline
+  // as ExportPanel/exportEnabled in MapEditorPage.tsx). The external URL
+  // field is never gated — it has no dependency on this capability.
+  const terrain3dEnabled = instanceQuery.data?.terrain3dEnabled === true;
+  const [hostedSources, setHostedSources] = useState<{ id: string; title: string }[]>([]);
+
+  async function refreshHostedSources() {
+    try {
+      setHostedSources(await client.listHostedTerrain3DSources());
+    } catch {
+      setHostedSources([]); // liste vide plutôt qu'une erreur bloquante pour le champ URL manuelle
+    }
+  }
+
+  useEffect(() => {
+    if (enabled && terrain3dEnabled) refreshHostedSources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, terrain3dEnabled]);
 
   function toggle(checked: boolean) {
     onChange(checked ? { tilesUrl: "", encoding: "terrarium", exaggeration: 1 } : null);
@@ -28,6 +53,13 @@ export function TerrainPanel({
     patch({ exaggeration: next });
   }
 
+  function selectHosted(itemId: string) {
+    if (!itemId) return;
+    const coreUrl = client.getCoreUrl?.();
+    if (!coreUrl) return;
+    patch({ tilesUrl: `${coreUrl}/terrain3d/${itemId}/tiles/{z}/{x}/{y}.png`, encoding: "terrarium" });
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Terrain 3D</p>
@@ -42,8 +74,22 @@ export function TerrainPanel({
       </label>
       {enabled && value && (
         <>
+          {terrain3dEnabled && (
+            <>
+              <label className="flex flex-col gap-1 text-sm">
+                DEM hébergé
+                <select aria-label="DEM hébergé" defaultValue="" onChange={(e) => selectHosted(e.target.value)}>
+                  <option value="">— choisir un DEM hébergé —</option>
+                  {hostedSources.map((s) => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              </label>
+              <Terrain3DUploadButton onUploaded={(itemId) => { refreshHostedSources(); selectHosted(itemId); }} />
+            </>
+          )}
           <label className="flex flex-col gap-1 text-sm">
-            URL de tuiles (terrain-RGB, encodage terrarium)
+            URL de tuiles terrain (terrain-RGB, encodage terrarium)
             <input
               aria-label="URL de tuiles terrain"
               type="text"

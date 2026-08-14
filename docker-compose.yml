@@ -36,6 +36,7 @@ services:
         -c random_page_cost=1.1
         -c max_parallel_workers_per_gather=4
         -c wal_level=logical
+        -c output_plugin_libraries=wal2json,pgoutput,test_decoding
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
@@ -97,6 +98,15 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
       AWS_ENDPOINT_URL: http://minio:9000
+      # rio-tiler ouvre `s3://…` via le driver /vsis3/ de GDAL, qui ne lit
+      # PAS AWS_ENDPOINT_URL (nom boto3/AWS SDK) mais ses propres variables :
+      # AWS_S3_ENDPOINT au format host:port SANS schéma, plus AWS_HTTPS pour
+      # dire que MinIO est en clair sur le réseau interne et
+      # AWS_VIRTUAL_HOSTING=FALSE pour l'adressage path-style (MinIO ne sert
+      # pas bucket.host). Sans elles, /vsis3/ vise le vrai s3.amazonaws.com.
+      AWS_S3_ENDPOINT: minio:9000
+      AWS_HTTPS: "NO"
+      AWS_VIRTUAL_HOSTING: "FALSE"
     ports:
       - "8000:8000"
     networks: [gis-net]
@@ -132,6 +142,12 @@ services:
       # dans `worker` : les trois plafonds de VALIDATION ci-dessous
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
+      CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      S3_TERRAIN3D_BUCKET: geostudio-terrain3d
+      # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
+      # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
+      # exposé au navigateur.
+      TITILER_URL: ${TITILER_URL:-http://titiler:8000}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -144,7 +160,7 @@ services:
     ports:
       - "8200:8200"
     networks: [gis-net]
-    depends_on: [pgbouncer, minio]
+    depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
     labels:
       - traefik.enable=true
@@ -173,7 +189,7 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d,terrain3d"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -189,6 +205,11 @@ services:
       CORE_TILESET3D_MAX_ENTRIES: ${CORE_TILESET3D_MAX_ENTRIES:-20000}
       CORE_TILESET3D_MAX_TOTAL_BYTES: ${CORE_TILESET3D_MAX_TOTAL_BYTES:-21474836480}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
+      S3_TERRAIN3D_BUCKET: geostudio-terrain3d
+      # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —
+      # s'exécutent dans ce process (`worker`).
+      CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
+      CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker

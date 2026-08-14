@@ -1,150 +1,157 @@
-# Task 4 report — `AlertEvaluation` model + migration
+# Task 4 report — `MapView.tsx`: render `Tile3DLayer`, terrain, and persist camera
 
-## What was implemented
+## Status: DONE
 
-- `core/app/alerts/__init__.py` (empty, SPDX header only) — new package.
-- `core/app/alerts/models.py` — `AlertEvaluation` ORM model (table
-  `alert_evaluations`), exactly as dictated in the brief: `id`, `tenant_id`
-  (FK `tenants.id`), `alert_rule_item_id` (FK `items.id`), `value` (nullable
-  float), `state`, `transitioned` (bool, default False), `error` (nullable
-  string), `created_at` (default `_now()`). Style matches the sibling
-  `app/pipelines/models.py` (same `_now()` helper pattern, same import
-  layout).
-- `core/alembic/versions/0020_alert_evaluations.py` — migration matching the
-  model column-for-column, same shape as `0018_pipeline_runs.py`/
-  `0019_connector_secrets.py` (added the SPDX header line the brief's
-  snippet omitted, to match every other file in `alembic/versions/`).
-- `core/tests/test_alert_models.py` — the round-trip test verbatim from the
-  brief.
+## Summary
 
-### Addendum 1 (user-approved): import-linter layers contract
+Implemented Task 4 of the 3D Tiles + terrain plan exactly per the brief
+(`.superpowers/sdd/task-4-brief.md`), with one necessary correction (see
+"Deviation from the brief" below). Followed TDD: dependencies → test doubles
+→ failing tests (RED) → full-file `MapView.tsx` replacement → passing tests
+(GREEN) → type-check → commit.
 
-Added `"app.alerts"` to `core/pyproject.toml`'s `[tool.importlinter]`
-`layers` list, between `"app.pipelines"` and `"app.secrets"`, per the plan's
-Global Constraints. Ran `uv run lint-imports` — first run **broke** two
-different ways (see Self-review below), fixed, then confirmed 0 broken
-contracts.
+## Steps executed
 
-### Addendum 2 (found during verification, not in the brief): `app.db` registration
+1. **Dependencies** (`shell/package.json`): added `@deck.gl/geo-layers` and
+   `@loaders.gl/core` at `^9.0.0`/`^4.3.0` per the brief. Ran `npm ls
+   @deck.gl/core` first — installed version is `9.3.5` (not `9.0.x`), but
+   `npm install` with the brief's ranges resolved cleanly with no peer
+   conflicts (`@deck.gl/geo-layers@9.3.10`, `@loaders.gl/core@4.4.3`).
 
-While verifying the brief's code against the current codebase, I checked
-how other model modules become known to `Base.metadata` outside of the
-test's own `from app.alerts.models import AlertEvaluation` import line.
-`app/db.py::core_table_names()` explicitly imports every model module
-(`app.audit.models`, `app.pipelines.models`, `app.secrets.models`, etc.) —
-this is documented in its own docstring as "Source de vérité de la denylist
-du registre de collections" and is exactly what `init_db()` relies on to
-populate `Base.metadata` before `create_all()` on the SQLite path, and what
-`app/collections/routes.py` uses as the denylist so a user-created
-collection can't collide with a core table name.
+2. **Test doubles**:
+   - `shell/src/test/MockDeckgl.ts`: added `Tile3DLayer` mock class, verbatim.
+   - `shell/src/test/MockLoadersGl.ts`: created, verbatim.
+   - `shell/src/test/MockMaplibreMap.ts`: added `pitch?`/`bearing?` to
+     `opts` type, added `terrain: unknown = null` field, added
+     `getPitch()`/`getBearing()`/`setTerrain(spec)` methods — verbatim.
 
-The brief's test would still pass without this fix, because the test module
-itself does `from app.alerts.models import AlertEvaluation` at import time,
-which registers the model on `Base.metadata` as a side effect before
-`init_db()` runs. But in any code path that reaches `init_db()`/
-`core_table_names()` without first importing `app.alerts.models` directly
-(any other test, any app startup path, the collections denylist check),
-`alert_evaluations` would have been silently invisible — not created by
-`create_all()` on SQLite, and not excluded from collection names. This is
-the same class of "looks right in isolation, wrong once wired into the
-whole app" gap the brief warned about for prior tasks (DuckDB sandbox
-bypass in Task 1, discriminated-union gap in Task 2).
+3. **Failing tests** (`shell/src/map/MapView.test.tsx`): added the two new
+   `vi.mock` blocks (adjusted per the deviation below), replaced the two
+   existing moveend tests with the three brief-specified versions
+   (pitch/bearing in payload), and appended the 8 new tests (pitch/bearing
+   init/default, tiles3d mount/hide/legend/no-native-layer, terrain
+   enable/default-exaggeration/clear) — all verbatim from the brief.
+   Confirmed RED: `npm run test -- src/map/MapView.test.tsx` → 9 failed, 26
+   passed (the 26 were pre-existing tests unaffected by the new assertions).
 
-Fix: added `from app.alerts import models as alerts_models  # noqa: F401`
-to `core_table_names()` in `app/db.py`, alphabetically before `app.audit`
-(matches the existing alphabetical-ish ordering of that import block).
+4. **Implementation** (`shell/src/map/MapView.tsx`): replaced the full file
+   with the brief's Step 5 content verbatim, with one import path fix (see
+   deviation below). All existing functionality (highlight, onFeatureClick,
+   onReady/hideLegend for export-render mode, layer isolation try/catch) was
+   preserved as-is since the brief's replacement already contained it.
 
-## What was tested and results
+5. **GREEN**: `npm run test -- src/map/MapView.test.tsx` → 35/35 passed.
 
-- RED: `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q tests/test_alert_models.py`
-  → `ModuleNotFoundError: No module named 'app.alerts'` (collection error,
-  1 error), confirmed before writing any implementation code.
-- GREEN (same command after implementation): `1 passed in 0.41s`.
-- Full non-postgis suite after all changes:
-  `PYTHONPATH=. CORE_SECRETS_MASTER_KEY=... uv run pytest -q -m "not postgis"`
-  → `1236 passed, 6 skipped, 125 deselected in 83.45s`. No regressions from
-  the `app/db.py` edit.
-- `uv run alembic heads` before writing the migration: `0019 (head)`,
-  matching the brief and the dispatcher's confirmation. After adding the
-  migration: `uv run alembic heads` → `0020 (head)`.
-- `uv run lint-imports`: first run after adding `"app.alerts"` to `layers`
-  **broke** 6+ contracts (`app.items`/`app.extensions`/`app.auth`/
-  `app.sharing`/`app.features`/`app.stac` "not allowed to import
-  app.alerts", all routed through `app.db -> app.alerts.models`) — because
-  `core_table_names()` now imports `app.alerts.models`, and every module
-  transitively imports `app.db`. This exact pattern already exists for
-  every other model module (`app.db -> app.pipelines.models`, `app.db ->
-  app.secrets.models`, etc.) via an `ignore_imports` allowlist. Added
-  `"app.db -> app.alerts.models"` to that list. Re-ran: `Contracts: 1 kept,
-  0 broken.`
-- Real Postgres migration apply: `docker compose ps` showed no running
-  containers (no `.env`, all vars defaulting blank, no services listed) —
-  did not start new services per instructions. Not run; covered by the
-  `postgis`-marked CI job per the brief's stated caveat, same as prior
-  migrations in this repo.
+6. **Type-check**: `npx tsc --noEmit` → exit 0, no errors.
 
-## TDD Evidence
+7. **Full suite regression check** (not in the brief's steps, done for
+   safety given concurrent unrelated work in the tree): `npm run test` →
+   137 test files, 1118 tests, all passed.
 
-RED:
-```
-ImportError while importing test module '.../tests/test_alert_models.py'.
-E   ModuleNotFoundError: No module named 'app.alerts'
-1 error in 0.10s
-```
+8. **Commit**: staged exactly the 7 files listed in the brief's Step 8 git
+   add command, individually (never `-A`/`-a`), verified via `git status
+   --short` before and after staging that no unrelated file (e.g.
+   `shell/src/pages/VisualQueryWizardPage.tsx`, `core/app/pipelines/*`,
+   `shell/src/builder/pipeline/PipelineNodeInspector.tsx`, the `.superpowers/sdd/*`
+   docs) was included. Commit: `661383c` — "feat(shell): MapView rend les
+   couches tiles3d et le terrain, persiste pitch/bearing".
 
-GREEN:
-```
-tests/test_alert_models.py .                                          [100%]
-1 passed in 0.41s
-```
+## Deviation from the brief (and why)
 
-## Files changed
+The brief's Step 1/3/5 specify `@loaders.gl/tiles` as the package exporting
+`Tiles3DLoader`. This is incorrect for the installed loaders.gl 4.4.x line:
+`Tiles3DLoader` is exported by **`@loaders.gl/3d-tiles`**, not
+`@loaders.gl/tiles`. Verified two ways:
 
-- `core/app/alerts/__init__.py` (new)
-- `core/app/alerts/models.py` (new)
-- `core/alembic/versions/0020_alert_evaluations.py` (new)
-- `core/tests/test_alert_models.py` (new)
-- `core/app/db.py` (1-line addition: register `app.alerts.models` in
-  `core_table_names()`)
-- `core/pyproject.toml` (2-line addition: `"app.alerts"` in the layers list;
-  `"app.db -> app.alerts.models"` in `ignore_imports`)
+- `grep -rl "Tiles3DLoader" node_modules/@loaders.gl/*/dist/*.d.ts` shows it
+  only in `@loaders.gl/3d-tiles/dist/tiles-3d-loader.d.ts` (re-exported from
+  `@loaders.gl/3d-tiles/dist/index.d.ts`), not in `@loaders.gl/tiles`.
+- deck.gl's own `Tile3DLayer` type declaration
+  (`node_modules/@deck.gl/geo-layers/dist/tile-3d-layer/tile-3d-layer.d.ts`)
+  itself does `import { Tiles3DLoader } from '@loaders.gl/3d-tiles';` and
+  types its `loader?` prop as `typeof Tiles3DLoader` from that package.
 
-## Self-review findings
+Using the brief's exact package name (`@loaders.gl/tiles`) would have
+compiled the mocked test suite (since the vi.mock intercepts the import
+before resolution) but failed `tsc --noEmit` with `TS2305: Module
+"@loaders.gl/tiles" has no exported member 'Tiles3DLoader'` — confirmed this
+by running tsc with the brief's exact wording first, saw the error, then
+applied the fix.
 
-- **Model vs. migration**: column-for-column match confirmed by inspection
-  (types, nullability, FKs, default handling — `transitioned` uses
-  `server_default=sa.false()` in the migration matching the Python-side
-  `default=False`, same pattern as no other boolean column in this repo
-  needed to diverge from).
-- **Style**: matches `app/pipelines/models.py` (`_now()` helper, import
-  ordering, `Mapped`/`mapped_column` conventions). No fields added beyond
-  the brief.
-- **Discipline**: did not add anything beyond the brief's model/migration
-  except the two addenda explicitly scoped (import-linter layers entry,
-  user-approved; `app.db` registration, self-found and justified above).
-  Did not touch `app/alerts/repository.py` or anything belonging to Task 5.
-- **Testing**: the test genuinely exercises persistence — two separate
-  `Session()` contexts (write-then-commit, then a fresh session to reload
-  by primary key), not just in-memory construction. Confirmed it fails for
-  the right reason (`ModuleNotFoundError`, not some unrelated setup error)
-  before implementing.
-- **Import-linter**: verified the *before* state of `pyproject.toml` matched
-  the dispatch description exactly before editing, and verified the
-  contract still holds (`1 kept, 0 broken`) after — not just "no error",
-  actually inspected the failure output on the first attempt to understand
-  *why* it broke rather than reflexively adding an ignore rule.
+**Fix applied** (three small edits, all other content unchanged):
+- `shell/package.json`: dependency is `"@loaders.gl/3d-tiles": "^4.3.0"`
+  instead of `"@loaders.gl/tiles": "^4.3.0"` (alphabetically before
+  `@loaders.gl/core`, since `3` < `c`). `@loaders.gl/core` is unchanged.
+- `shell/src/map/MapView.tsx`: `import { Tiles3DLoader } from
+  "@loaders.gl/3d-tiles";` instead of `"@loaders.gl/tiles"`.
+- `shell/src/map/MapView.test.tsx`: `vi.mock("@loaders.gl/3d-tiles", ...)`
+  instead of `vi.mock("@loaders.gl/tiles", ...)`.
 
-## Issues or concerns
+`shell/src/test/MockLoadersGl.ts` content is unchanged (still exports the
+same `Tiles3DLoader` mock object) — only which real module path it's mocked
+under changed. `@loaders.gl/tiles` remains present in the dependency tree
+as a transitive dependency of `@deck.gl/geo-layers` (used for tileset
+traversal, not directly imported by this file), so nothing regresses; it's
+just not a direct `package.json` dependency since `MapView.tsx` doesn't
+import anything from it directly.
 
-- None blocking. The one non-trivial judgment call was fixing the
-  `core_table_names()` gap (Addendum 2) — it wasn't in the brief or the
-  dispatcher's explicit addendum, but leaving it out would have produced a
-  model that passes its own test while being invisible to the rest of the
-  app's table-name bookkeeping. Flagging clearly here in case a reviewer
-  disagrees with in-scope-ness; it's a 1-line, low-risk, immediately
-  necessary correctness fix and easy to revert independently if desired
-  (`core/app/db.py`, one `noqa: F401` import line).
-- Real-Postgres `alembic upgrade head` was not exercised (no stack running,
-  consistent with the brief's stated caveat and the existing CLAUDE.md note
-  that this repo's default compose Postgres volume has a pre-existing,
-  unrelated `alembic_version` stamping problem).
+## Verification evidence
+
+- `npm ls @deck.gl/geo-layers @loaders.gl/core @loaders.gl/3d-tiles` →
+  `@deck.gl/geo-layers@9.3.10`, `@loaders.gl/core@4.4.3` (deduped),
+  `@loaders.gl/3d-tiles@4.4.4` (both direct and deduped-under-geo-layers).
+- RED: `npm run test -- src/map/MapView.test.tsx` → 9 failed / 26 passed
+  (before implementation).
+- GREEN: `npm run test -- src/map/MapView.test.tsx` → 35/35 passed (after
+  implementation and the `@loaders.gl/3d-tiles` fix).
+- `npx tsc --noEmit` → exit 0.
+- `npm run test` (full shell suite) → 137 files / 1118 tests, all passed.
+- `git status --short` reviewed before and after `git add` — confirmed only
+  the 7 target files moved to staged; all pre-existing unrelated
+  modifications (`core/app/pipelines/*`, `core/tests/test_pipeline_*`,
+  `shell/src/api/types.ts`, `shell/src/builder/pipeline/
+  PipelineNodeInspector.*`, `shell/src/pages/VisualQueryWizardPage.*`, the
+  `.superpowers/sdd/*` docs) remained untouched/unstaged.
+
+## Files changed (this task's commit `661383c`)
+
+- `shell/package.json` — added `@deck.gl/geo-layers`, `@loaders.gl/3d-tiles`
+  (not `@loaders.gl/tiles` — see deviation), `@loaders.gl/core`.
+- `shell/package-lock.json` — regenerated by `npm install`.
+- `shell/src/map/MapView.tsx` — full-file replacement per brief Step 5
+  (with the one import-path fix), adds `tiles3d` layer rendering via the
+  deck.gl overlay, `applyTerrain()` (MapLibre native `setTerrain`/raster-dem
+  source), pitch/bearing on map init, `onViewChange` payload gains
+  `pitch`/`bearing`, `MapViewHandle.flyTo` accepts optional
+  `pitch`/`bearing`.
+- `shell/src/map/MapView.test.tsx` — two new `vi.mock` blocks (one for
+  `@deck.gl/geo-layers`, one for `@loaders.gl/3d-tiles`), rewritten moveend
+  tests, 8 new tests appended.
+- `shell/src/test/MockDeckgl.ts` — added `Tile3DLayer` mock class.
+- `shell/src/test/MockLoadersGl.ts` — new file, `Tiles3DLoader` mock const.
+- `shell/src/test/MockMaplibreMap.ts` — `opts.pitch`/`opts.bearing`,
+  `terrain` field, `getPitch()`/`getBearing()`/`setTerrain()`.
+
+## Interfaces produced (for Task 7 consumption)
+
+- `MapView` renders `tiles3d`-kind `MapLayer`s via the existing deck.gl
+  `MapboxOverlay` (alongside `deck`-kind layers), skipping them in the
+  MapLibre-native `applyLayers` path.
+- `MapView` applies/clears `map.setTerrain(...)` + a `raster-dem` source
+  (`__terrain__`) from `MapConfig.terrain` (`MapTerrainConfig | null`),
+  reactively on `config.terrain` changes.
+- `MapViewHandle.flyTo` now accepts optional `pitch`/`bearing`.
+- `onViewChange` payload now includes `pitch: number; bearing: number`
+  (read live from `map.getPitch()`/`map.getBearing()`).
+- Map is initialized with `pitch: config.view.pitch ?? 0` and
+  `bearing: config.view.bearing ?? 0`.
+
+## Concerns for downstream tasks
+
+- None functional. The one thing worth flagging explicitly to whoever
+  reviews the branch as a whole: `@loaders.gl/tiles` (brief's originally
+  named package) is **not** a direct dependency of `shell/package.json` in
+  the final state — `@loaders.gl/3d-tiles` is. If any later task's brief
+  text also references `@loaders.gl/tiles` by name expecting `Tiles3DLoader`
+  from it, that reference has the same error and should be read as meaning
+  `@loaders.gl/3d-tiles`.

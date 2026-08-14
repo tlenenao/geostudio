@@ -1331,7 +1331,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
+            kind: "app" | "dashboard" | "map" | "site" | "dataset" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d" | "terrain3d";
             layout?: components["schemas"]["Layout"] | null;
             map?: components["schemas"]["MapConfig"] | null;
             /** Messages */
@@ -1347,6 +1347,7 @@ export interface components {
             pipeline?: components["schemas"]["PipelinePayload"] | null;
             printLayout?: components["schemas"]["PrintLayout"] | null;
             report?: components["schemas"]["ReportSchedulePayload"] | null;
+            terrain3d?: components["schemas"]["Terrain3DPayload"] | null;
             /** Theme */
             theme?: {
                 [key: string]: unknown;
@@ -2177,6 +2178,13 @@ export interface components {
         SqlQueryBody: {
             /** Sql */
             sql: string;
+        };
+        /** Terrain3DPayload */
+        Terrain3DPayload: {
+            /** Originalfilename */
+            originalFilename: string;
+            /** Sourcekey */
+            sourceKey: string;
         };
         /** Tileset3DPayload */
         Tileset3DPayload: {

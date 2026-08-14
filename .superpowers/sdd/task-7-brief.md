@@ -1,81 +1,48 @@
-### Task 7: `SmtpCredentialsPayload` secret kind
+### Task 7: Regenerate OpenAPI spec and shell generated types
 
 **Files:**
-- Modify: `core/app/secrets/schemas.py`
-- Modify: `core/tests/test_secrets_schemas.py`
+- Modify: `core/openapi.json` (regenerated, not hand-edited)
+- Modify: `shell/src/api/generated/core-schema.d.ts` (regenerated, not hand-edited)
 
-**Interfaces:**
-- Produces: `SmtpCredentialsPayload` variant added to the `SecretPayload` union, consumed by Task 8 (`app.alerts.notify`).
+**Interfaces:** none (mechanical regeneration — CLAUDE.md flags forgetting this step as a recurring, multi-occurrence mistake on this repo).
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Enable the capability flag and regenerate `openapi.json`**
 
-Add to `core/tests/test_secrets_schemas.py` (open the file first to match its existing style — it parametrizes over the 5 existing kinds; add a 6th case rather than a new file, since this is additive to the existing union test suite):
-
-```python
-def test_smtp_credentials_payload_round_trips():
-    from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
-
-    payload = SmtpCredentialsPayload(
-        host="smtp.example.test", port=587, username="alerts@example.test",
-        password="s3cret", useTls=True, fromAddress="alerts@example.test",
-    )
-    dumped = SECRET_PAYLOAD_ADAPTER.dump_python(payload)
-    assert dumped["kind"] == "smtp"
-    restored = SECRET_PAYLOAD_ADAPTER.validate_python(dumped)
-    assert isinstance(restored, SmtpCredentialsPayload)
-    assert restored.host == "smtp.example.test"
-    assert restored.useTls is True
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py -k smtp`
-Expected: FAIL with `ImportError: cannot import name 'SmtpCredentialsPayload'`
-
-- [ ] **Step 3: Write the implementation**
-
-```python
-# Add to core/app/secrets/schemas.py, alongside PostgresDsnPayload:
-class SmtpCredentialsPayload(BaseModel):
-    """SMTP credentials for AlertRule email delivery (SP-16b §5). Unlike
-    the webhook channel's URL, this comes from an admin-only secret
-    (POST /secrets is admin-only, SP-15e) rather than arbitrary per-rule
-    user input — no egress guard applies to it (Global Constraints,
-    SP-16b plan), same trust model as postgres_dsn."""
-    kind: Literal["smtp"] = "smtp"
-    host: str
-    port: int
-    username: str
-    password: str
-    useTls: bool = True
-    fromAddress: str
-```
-
-```python
-# Change the SecretPayload union:
-SecretPayload = Annotated[
-    ApiKeyPayload | BearerTokenPayload | BasicAuthPayload
-    | OAuth2ClientCredentialsPayload | PostgresDsnPayload | SmtpCredentialsPayload,
-    Field(discriminator="kind"),
-]
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_schemas.py`
-Expected: all passing, including the new `test_smtp_credentials_payload_round_trips`.
-
-Also run the full secrets suite to confirm the union change doesn't break existing routes/repository tests:
-
-Run: `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="$(head -c32 /dev/zero | base64)" uv run pytest -q tests/test_secrets_routes.py tests/test_secrets_repository.py tests/test_secrets_models.py`
-Expected: unchanged, all passing.
-
-- [ ] **Step 5: Commit**
+Run:
 
 ```bash
-git add core/app/secrets/schemas.py core/tests/test_secrets_schemas.py
-git commit -m "feat(core): SP-16b — SmtpCredentialsPayload secret kind (additive)"
+cd core && CORE_TILESET3D_ENABLED=true CORE_EXPORT_ENABLED=false CORE_ETL_ENABLED=false uv run python scripts/export_openapi.py openapi.json
 ```
+
+Expected: `core/openapi.json` changes, purely additively (new `/tileset3d/...` paths and `Tileset3DPayload`/`Tileset3DUploadCreate`/etc. schemas appear; nothing existing is removed or changed in an incompatible way).
+
+- [ ] **Step 2: Verify the diff is additive**
+
+Run: `cd core && git diff --stat openapi.json`
+Expected: only additions (new lines), review with `git diff openapi.json` that no existing path/schema was modified or removed.
+
+**Important:** this repo's CI generates `openapi.json` with `CORE_TILESET3D_ENABLED` (and `CORE_ETL_ENABLED`/`CORE_EXPORT_ENABLED`) **unset** (matching the established precedent documented in CLAUDE.md for `app.pipelines`/`app.export` — the committed `openapi.json` reflects the default-disabled surface, not every capability flag turned on at once). Re-run Step 1 **without** setting `CORE_TILESET3D_ENABLED=true` before committing, so the checked-in file matches what CI regenerates:
+
+```bash
+cd core && uv run python scripts/export_openapi.py openapi.json
+git diff --stat openapi.json
+```
+
+Expected: this second run shows **no diff** relative to the pre-Task-7 committed file — the new `/tileset3d/...` routes are gated behind the flag and CI never enables it, exactly like `/pipelines/...` and `/export/...` already aren't in the committed spec today. Confirm with `grep -c tileset3d openapi.json` — expect `0`.
+
+- [ ] **Step 3: Regenerate the shell's generated TypeScript types**
+
+Run: `cd shell && npm run gen:api-types`
+Expected: `shell/src/api/generated/core-schema.d.ts` is unchanged (since `openapi.json` itself is unchanged after Step 2 — the flag-gated routes never reach the committed spec). Confirm with `git status --short shell/src/api/generated/core-schema.d.ts` — expect no output.
+
+- [ ] **Step 4: Confirm nothing needs committing**
+
+Run: `git status --short core/openapi.json shell/src/api/generated/core-schema.d.ts`
+Expected: no output — this task is a verification step (proving the capability-flag discipline holds) rather than a code change. If either file *does* show a diff at this point, stop and investigate before continuing to Task 8 — it means something in Task 4–6 leaked into the always-on route surface.
+
+- [ ] **Step 5: No commit needed**
+
+This task intentionally produces no diff to commit — it exists to catch the exact class of mistake CLAUDE.md flags repeatedly on this repo (forgetting to regenerate, or regenerating with the wrong flags on). If Step 4 found a diff and you fixed the root cause, commit that fix under its own message; otherwise move on to Task 8.
 
 ---
 

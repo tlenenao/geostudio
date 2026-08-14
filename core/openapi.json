@@ -607,7 +607,8 @@
               "pipeline",
               "alert",
               "report",
-              "tileset3d"
+              "tileset3d",
+              "terrain3d"
             ],
             "title": "Kind",
             "type": "string"
@@ -679,6 +680,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ReportSchedulePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "terrain3d": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Terrain3DPayload"
               },
               {
                 "type": "null"
@@ -3170,6 +3181,24 @@
           "sql"
         ],
         "title": "SqlQueryBody",
+        "type": "object"
+      },
+      "Terrain3DPayload": {
+        "properties": {
+          "originalFilename": {
+            "title": "Originalfilename",
+            "type": "string"
+          },
+          "sourceKey": {
+            "title": "Sourcekey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceKey",
+          "originalFilename"
+        ],
+        "title": "Terrain3DPayload",
         "type": "object"
       },
       "Tileset3DPayload": {
