@@ -78,12 +78,23 @@ export function Tileset3DUploadButton() {
 
   const busy = phase === "uploading" || phase === "finalizing";
 
+  // Closing mid-upload would leave the background submit()/poll() chain
+  // running unabandoned: it would eventually call close() again (silently
+  // discarding whatever the user started in a since-reopened dialog) or
+  // setPhase("error") (overwriting that session's state). Block Escape,
+  // backdrop click, and the Annuler button alike while busy — Dialog's
+  // onClose is the single funnel for all three.
+  function requestClose() {
+    if (busy) return;
+    close();
+  }
+
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         Nouveau tileset 3D
       </Button>
-      <Dialog open={open} onClose={close} title="Nouveau tileset 3D">
+      <Dialog open={open} onClose={requestClose} title="Nouveau tileset 3D">
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Archive du tileset (.zip)
@@ -110,7 +121,7 @@ export function Tileset3DUploadButton() {
             <p role="alert" className="text-sm text-red-600">{error}</p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={close}>
+            <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
               Annuler
             </Button>
             <Button type="submit" size="sm" disabled={busy || !file || !title.trim()}>
