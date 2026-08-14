@@ -70,10 +70,12 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
     scratch_dir = tempfile.mkdtemp(dir=_TERRAIN3D_SCRATCH_ROOT, prefix=f"terrain3d-{job_id}-")
     raw_path = os.path.join(scratch_dir, "raw")
     cog_path = os.path.join(scratch_dir, "cog.tif")
-    s3 = s3_client_from_env()
-    bucket = _terrain3d_bucket()
+    s3 = None
+    bucket = None
 
     try:
+        s3 = s3_client_from_env()
+        bucket = _terrain3d_bucket()
         content_length = s3.head_object(Bucket=bucket, Key=source_key)["ContentLength"]
         if content_length > _max_upload_bytes():
             raise Terrain3DConversionError(
@@ -105,12 +107,14 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
     except Terrain3DConversionError as exc:
         with request_scoped_session(session_factory) as session:
             terrain3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
-        _purge_raw_upload(s3, bucket=bucket, source_key=source_key, tenant_id=tenant_id, job_id=job_id, session_factory=session_factory)
+        if s3 is not None:
+            _purge_raw_upload(s3, bucket=bucket, source_key=source_key, tenant_id=tenant_id, job_id=job_id, session_factory=session_factory)
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("terrain3d job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
             terrain3d_repo.mark_error(session, job_id=job_id, error_message=f"erreur interne : {exc}")
-        _purge_raw_upload(s3, bucket=bucket, source_key=source_key, tenant_id=tenant_id, job_id=job_id, session_factory=session_factory)
+        if s3 is not None:
+            _purge_raw_upload(s3, bucket=bucket, source_key=source_key, tenant_id=tenant_id, job_id=job_id, session_factory=session_factory)
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
@@ -127,9 +131,15 @@ def _purge_raw_upload(s3, *, bucket: str, source_key: str, tenant_id: str, job_i
     except Exception:
         logger.exception("terrain3d job %s : échec de la purge de l'upload brut (%s)", job_id, source_key)
     if purged:
-        with request_scoped_session(session_factory) as session:
-            write_audit(
-                session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                action="terrain3d.purge_raw_upload", object_type="terrain3d_job", object_id=job_id,
-                payload={"sourceKey": source_key},
+        try:
+            with request_scoped_session(session_factory) as session:
+                write_audit(
+                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
+                    action="terrain3d.purge_raw_upload", object_type="terrain3d_job", object_id=job_id,
+                    payload={"sourceKey": source_key},
+                )
+        except Exception:
+            logger.exception(
+                "terrain3d job %s : échec de l'écriture d'audit pour la purge de l'upload brut (%s)",
+                job_id, source_key,
             )

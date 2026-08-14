@@ -171,6 +171,58 @@ def test_convert_missing_job_is_a_noop(env, monkeypatch):
     terrain3d_jobs.convert_terrain3d_task(job_id="does-not-exist", tenant_id=tenant.id)  # must not raise
 
 
+def test_convert_marks_error_and_cleans_scratch_when_s3_client_creation_fails(env, monkeypatch, tmp_path):
+    # Finding 1: s3_client_from_env()/_terrain3d_bucket() used to run before
+    # the try/finally — a KeyError from a missing S3 env var would propagate
+    # straight out of the task, leaving the job stuck "converting" and the
+    # scratch dir never cleaned up.
+    Session, tenant, alice = env
+    monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
+
+    def _boom():
+        raise KeyError("S3_ENDPOINT_URL")
+
+    monkeypatch.setattr(terrain3d_jobs, "s3_client_from_env", _boom)
+
+    job_id = _make_job(Session, tenant, alice, source_key=f"{tenant.id}/x/dem.tif")
+    terrain3d_jobs.convert_terrain3d_task(job_id=job_id, tenant_id=tenant.id)
+
+    with Session() as s:
+        job = repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert job.status == "error"
+        assert job.item_id is None
+
+    # scratch dir created for this job must not survive the failure
+    assert list(tmp_path.iterdir()) == [] or all(
+        not any(p.iterdir()) for p in tmp_path.iterdir() if p.is_dir()
+    )
+
+
+def test_purge_raw_upload_never_raises_when_audit_write_fails(env, monkeypatch):
+    # Finding 2: a DB error during the purge's write_audit() used to
+    # propagate out of _purge_raw_upload, get caught by the caller's generic
+    # except Exception, and downgrade an already-committed "done" job back
+    # to "error" even though the item/config/COG were all genuinely fine.
+    Session, tenant, alice = env
+    fake_s3 = _FakeS3Client({f"{tenant.id}/x/dem.tif": b"whatever"})
+
+    def _boom_write_audit(*args, **kwargs):
+        raise RuntimeError("transient db error")
+
+    monkeypatch.setattr(terrain3d_jobs, "write_audit", _boom_write_audit)
+
+    job_id = _make_job(Session, tenant, alice, source_key=f"{tenant.id}/x/dem.tif")
+
+    # Must not raise despite delete_object succeeding and write_audit failing.
+    terrain3d_jobs._purge_raw_upload(
+        fake_s3, bucket="geostudio-terrain3d", source_key=f"{tenant.id}/x/dem.tif",
+        tenant_id=tenant.id, job_id=job_id, session_factory=Session,
+    )
+
+    assert f"{tenant.id}/x/dem.tif" not in fake_s3.objects  # delete still happened
+    assert fake_s3.deleted == [f"{tenant.id}/x/dem.tif"]
+
+
 def test_convert_rejects_upload_over_max_bytes_without_downloading(env, monkeypatch):
     Session, tenant, alice = env
     oversized = _write_test_geotiff_bytes() * 1000  # comfortably over the 1-byte cap set below
