@@ -4,7 +4,14 @@ export type Recorded = { id: string; spec: unknown };
 export const mapInstances: MockMap[] = [];
 
 export class MockMap {
-  opts: { style: string; center: [number, number]; zoom: number; pitch?: number; bearing?: number };
+  opts: {
+    style: string;
+    center: [number, number];
+    zoom: number;
+    pitch?: number;
+    bearing?: number;
+    transformRequest?: (url: string, resourceType?: string) => { url: string; headers?: Record<string, string> };
+  };
   handlers: Record<string, Array<() => void>> = {};
   layerHandlers: Record<string, Array<(e: unknown) => void>> = {};
   sources: Recorded[] = [];

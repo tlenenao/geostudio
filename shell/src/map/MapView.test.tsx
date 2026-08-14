@@ -610,3 +610,45 @@ test("does not attach a header for a hosted tileset when getAuthToken is absent"
   const layers = overlayInstances[0].props.layers;
   expect(layers[0].props.loadOptions).toBeUndefined();
 });
+
+test("transformRequest attaches a bearer token to a hosted (/terrain3d/) terrain tile request", () => {
+  const getAuthToken = () => "secret-token";
+  const getCoreUrl = () => "https://core.test";
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://core.test/terrain3d/item-1/tiles/{z}/{x}/{y}.png", encoding: "terrarium" },
+  };
+  render(<MapView config={cfg} getAuthToken={getAuthToken} getCoreUrl={getCoreUrl} />);
+  const transformRequest = mapInstances[0].opts.transformRequest!;
+  const result = transformRequest("https://core.test/terrain3d/item-1/tiles/5/10/12.png", "Tile");
+  expect(result).toEqual({
+    url: "https://core.test/terrain3d/item-1/tiles/5/10/12.png",
+    headers: { Authorization: "Bearer secret-token" },
+  });
+});
+
+test("transformRequest does not attach a bearer token to an external terrain URL", () => {
+  const getAuthToken = () => "secret-token";
+  const getCoreUrl = () => "https://core.test";
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://terrain.example/{z}/{x}/{y}.png", encoding: "terrarium" },
+  };
+  render(<MapView config={cfg} getAuthToken={getAuthToken} getCoreUrl={getCoreUrl} />);
+  const transformRequest = mapInstances[0].opts.transformRequest!;
+  const result = transformRequest("https://terrain.example/5/10/12.png", "Tile");
+  expect(result).toEqual({ url: "https://terrain.example/5/10/12.png" });
+});
+
+test("transformRequest does not leak the token when the URL merely contains /terrain3d/ on a different origin", () => {
+  const getAuthToken = () => "secret-token";
+  const getCoreUrl = () => "https://core.test";
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://attacker.test/x/terrain3d/y/tiles/{z}/{x}/{y}.png", encoding: "terrarium" },
+  };
+  render(<MapView config={cfg} getAuthToken={getAuthToken} getCoreUrl={getCoreUrl} />);
+  const transformRequest = mapInstances[0].opts.transformRequest!;
+  const result = transformRequest("https://attacker.test/x/terrain3d/y/tiles/5/10/12.png", "Tile");
+  expect(result).toEqual({ url: "https://attacker.test/x/terrain3d/y/tiles/5/10/12.png" });
+});
