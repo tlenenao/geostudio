@@ -12,28 +12,39 @@ import { MapLegend } from "./MapLegend";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
-// Path segment distinguishing a hosted tileset (served by our authenticated
-// proxy, design §4) from an externally-hosted tileset.json — the latter
-// must never receive our session's bearer token.
+// Path segments distinguishing our own authenticated proxies (served by
+// core, design docs §4) from an externally-hosted resource at the same-
+// looking path — the latter must never receive our session's bearer token.
 const HOSTED_TILESET3D_PATH = "/tileset3d/";
+const HOSTED_TERRAIN3D_PATH = "/terrain3d/";
 
-// Real "is this hosted" check: a substring match on the URL is not enough —
-// layer URLs are freeform (an author can type any external URL via
-// LayerPicker), so an attacker-controlled URL like
-// "https://attacker.example/x/tileset3d/y/tileset.json" would otherwise
-// pass a bare `.includes(HOSTED_TILESET3D_PATH)` check and leak the
-// session's bearer token cross-origin. A URL only counts as hosted when its
-// origin matches the configured core API's origin AND its pathname starts
-// with the proxy route's path segment.
-function isHostedTilesetUrl(url: string, coreUrl: string | undefined): boolean {
+// Real "is this hosted by us" check: a substring match on the URL is not
+// enough — layer/terrain URLs are freeform (an author can type any external
+// URL via LayerPicker/TerrainPanel), so an attacker-controlled URL like
+// "https://attacker.example/x/terrain3d/y/tiles/0/0/0.png" would otherwise
+// pass a bare `.includes(pathPrefix)` check and leak the session's bearer
+// token cross-origin. A URL only counts as hosted when its origin matches
+// the configured core API's origin AND its pathname starts with the proxy
+// route's own path segment. Shared by both the tileset3d (deck.gl
+// Tile3DLayer, see buildTiles3DLayer) and terrain3d (MapLibre
+// transformRequest, see below) call sites — never duplicate this check.
+function isHostedCoreUrl(url: string, coreUrl: string | undefined, pathPrefix: string): boolean {
   if (!coreUrl) return false;
   try {
     const target = new URL(url);
     const core = new URL(coreUrl);
-    return target.origin === core.origin && target.pathname.startsWith(HOSTED_TILESET3D_PATH);
+    return target.origin === core.origin && target.pathname.startsWith(pathPrefix);
   } catch {
     return false;
   }
+}
+
+function isHostedTilesetUrl(url: string, coreUrl: string | undefined): boolean {
+  return isHostedCoreUrl(url, coreUrl, HOSTED_TILESET3D_PATH);
+}
+
+function isHostedTerrainUrl(url: string, coreUrl: string | undefined): boolean {
+  return isHostedCoreUrl(url, coreUrl, HOSTED_TERRAIN3D_PATH);
 }
 
 export type MapViewHandle = {
@@ -299,6 +310,13 @@ export const MapView = forwardRef<
       zoom: config.view.zoom,
       pitch: config.view.pitch ?? 0,
       bearing: config.view.bearing ?? 0,
+      transformRequest: (url: string) => {
+        if (isHostedTerrainUrl(url, getCoreUrlRef.current?.())) {
+          const token = getAuthTokenRef.current?.();
+          if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
+        }
+        return { url };
+      },
     });
     mapRef.current = map;
     // interleaved: deck.gl layers are inserted into MapLibre's own layer stack
