@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d" | "terrain3d";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -230,6 +230,13 @@ export interface ItemClient {
   // bearer token — never trust a bare "/tileset3d/" substring match, since
   // layer URLs are freeform (an author can type any external URL).
   getCoreUrl?(): string;
+  listHostedTerrain3DSources(q?: string): Promise<{ id: string; title: string }[]>;
+  createTerrain3DUpload(input: { key: string; filename: string; title: string }): Promise<{ jobId: string }>;
+  getTerrain3DUploadJob(jobId: string): Promise<{
+    status: "uploaded" | "converting" | "done" | "error";
+    errorMessage: string | null;
+    itemId: string | null;
+  }>;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";
