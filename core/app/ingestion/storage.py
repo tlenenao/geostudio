@@ -9,6 +9,11 @@ _CORS_CONFIGURATION = {
         "AllowedMethods": ["PUT"],
         "AllowedOrigins": ["*"],
         "AllowedHeaders": ["*"],
+        # ETag n'est PAS un en-tête de réponse safelisté CORS : sans cette
+        # ligne, un PUT présigné multipart lancé depuis le navigateur ne peut
+        # pas relire res.headers.get("ETag"), et /complete reçoit un etag vide
+        # (422 systématique contre un vrai S3/MinIO).
+        "ExposeHeaders": ["ETag"],
         "MaxAgeSeconds": 3000,
     }]
 }
