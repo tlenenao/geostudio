@@ -105,7 +105,7 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             if purged:
                 write_audit(
                     session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                    action="tileset3d.purge", object_type="tileset3d_upload", object_id=job_id,
+                    action="tileset3d.purge", object_type="tileset3d_job", object_id=job_id,
                     payload={"sourceKey": source_key, "reason": str(exc)},
                 )
             tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))

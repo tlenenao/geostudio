@@ -168,7 +168,7 @@ def test_finalize_task_marks_error_on_invalid_zip_without_creating_an_item(env, 
     with request_scoped_session(real_session_factory) as s:
         log = s.execute(select(AuditLog).where(AuditLog.action == "tileset3d.purge")).scalar_one()
         assert log.tenant_id == tenant.id
-        assert log.object_type == "tileset3d_upload"
+        assert log.object_type == "tileset3d_job"
         assert log.object_id == job_id
         assert log.actor_kind == "agent"
         assert log.actor_id is None
