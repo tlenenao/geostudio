@@ -70,9 +70,40 @@ def test_read_tile_404_for_unknown_item(env):
     assert r.status_code == 404
 
 
-def test_read_tile_502_when_titiler_unreachable(env):
-    client, item_id, *_ = env
-    # Aucun handler enregistré sur httpserver pour cette route -> 404 côté
-    # TiTiler simulé, que le proxy doit traduire en 502 (pas un 500 opaque).
+def test_read_tile_passes_through_titiler_404_for_a_tile_out_of_bounds(env):
+    client, item_id, _tenant, httpserver = env
+    # TiTiler répond 404 (TileOutsideBounds) pour toute tuile hors emprise du
+    # DEM. Une source raster-dem MapLibre demande les tuiles de tout le
+    # viewport : un DEM régional en produit un flux continu, qui doit rester
+    # un 404 et jamais devenir un 502 (erreur serveur).
+    httpserver.expect_request("/cog/tiles/99/99/99.png").respond_with_json(
+        {"detail": "Tile(x=99, y=99, z=99) is outside bounds"}, status=404,
+    )
+
     r = client.get(f"/terrain3d/{item_id}/tiles/99/99/99.png")
+    assert r.status_code == 404
+
+
+def test_read_tile_502_on_an_unexpected_titiler_status(env):
+    client, item_id, *_ = env
+    # Aucun handler enregistré pour cette route : pytest-httpserver répond
+    # 500, statut qui n'a rien de nominal -> 502, pas un 500 opaque.
+    r = client.get(f"/terrain3d/{item_id}/tiles/7/7/7.png")
+    assert r.status_code == 502
+
+
+def test_read_tile_502_when_titiler_unreachable(env, monkeypatch):
+    client, item_id, *_ = env
+    # Vraie panne de transport (rien n'écoute sur ce port), donc la branche
+    # `except httpx.HTTPError` — pas un statut d'erreur applicatif.
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        dead_port = s.getsockname()[1]
+    client.app.dependency_overrides[terrain3d_routes.get_titiler_url] = (
+        lambda: f"http://127.0.0.1:{dead_port}"
+    )
+
+    r = client.get(f"/terrain3d/{item_id}/tiles/5/10/12.png")
     assert r.status_code == 502

@@ -97,6 +97,15 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
       AWS_ENDPOINT_URL: http://minio:9000
+      # rio-tiler ouvre `s3://…` via le driver /vsis3/ de GDAL, qui ne lit
+      # PAS AWS_ENDPOINT_URL (nom boto3/AWS SDK) mais ses propres variables :
+      # AWS_S3_ENDPOINT au format host:port SANS schéma, plus AWS_HTTPS pour
+      # dire que MinIO est en clair sur le réseau interne et
+      # AWS_VIRTUAL_HOSTING=FALSE pour l'adressage path-style (MinIO ne sert
+      # pas bucket.host). Sans elles, /vsis3/ vise le vrai s3.amazonaws.com.
+      AWS_S3_ENDPOINT: minio:9000
+      AWS_HTTPS: "NO"
+      AWS_VIRTUAL_HOSTING: "FALSE"
     ports:
       - "8000:8000"
     networks: [gis-net]

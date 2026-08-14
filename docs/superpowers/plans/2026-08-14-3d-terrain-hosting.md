@@ -2955,6 +2955,7 @@ Before flipping `CORE_TERRAIN3D_ENABLED=true` in any real environment, run once 
 
 1. Convert a real-world DEM (a few hundred MB) and confirm conversion time/memory stay within acceptable bounds for the `worker` container's resource limits.
 2. Load a hosted terrain in the map viewer and pan/zoom across it, confirming tile requests resolve promptly under the core→TiTiler proxy hop (no CDN, per design §1/§8 — this is the accepted v1 cost, not a bug to chase here).
+3. **Confirm TiTiler can actually read `s3://` from MinIO** (final-branch-review finding I3, defensive fix, never exercised end-to-end): the `titiler` service now also carries `AWS_S3_ENDPOINT=minio:9000`, `AWS_HTTPS=NO`, `AWS_VIRTUAL_HOSTING=FALSE` in `docker-compose.yml`. `AWS_ENDPOINT_URL` alone is a boto3/AWS-SDK name that GDAL's `/vsis3/` driver — what `rasterio.open("s3://…")` inside rio-tiler ultimately uses — does not read. Request one tile through `GET /terrain3d/{item_id}/tiles/{z}/{x}/{y}.png` against a real stack and confirm a 200 (a mis-resolved endpoint surfaces as a 502 from the proxy, not a 404).
 
 ---
 
