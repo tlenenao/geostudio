@@ -32,7 +32,7 @@ function renderButton(onUploaded: () => void) {
 
 test("uploads a DEM and calls onUploaded once the conversion job is done", async () => {
   server.use(
-    http.post(`${CORE_URL}/uploads/presign`, () =>
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
@@ -55,7 +55,7 @@ test("uploads a DEM and calls onUploaded once the conversion job is done", async
 
 test("shows the conversion error message and does not call onUploaded", async () => {
   server.use(
-    http.post(`${CORE_URL}/uploads/presign`, () =>
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
@@ -79,7 +79,7 @@ test("shows the conversion error message and does not call onUploaded", async ()
 
 test("blocks Annuler/Escape/backdrop while an upload is in flight", async () => {
   server.use(
-    http.post(`${CORE_URL}/uploads/presign`, () =>
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new Promise(() => {})), // never resolves: stays "uploading"
@@ -93,4 +93,35 @@ test("blocks Annuler/Escape/backdrop while an upload is in flight", async () => 
   await userEvent.click(screen.getByRole("button", { name: /importer/i }));
 
   await waitFor(() => expect(screen.getByRole("button", { name: /annuler/i })).toBeDisabled());
+});
+
+test("presigns on the terrain3d route with the file's real content type", async () => {
+  // C2/C3 (revue finale) : la route générique /uploads/presign signe dans le
+  // bucket d'ingestion, que le worker de conversion ne lit jamais ; et un
+  // Content-Type signé en dur ne correspond pas à celui que fetch(PUT, body:
+  // File) enverra (File.type), ce qui fait échouer S3 en 403
+  // SignatureDoesNotMatch.
+  let presignBody: unknown = null;
+  server.use(
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, async ({ request }) => {
+      presignBody = await request.json();
+      return HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" });
+    }),
+    http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
+    http.post(`${CORE_URL}/terrain3d/uploads`, () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
+    ),
+  );
+  const onUploaded = vi.fn();
+  renderButton(onUploaded);
+
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  const file = new File([new Uint8Array(16)], "dem.tif", { type: "image/tiff" });
+  await userEvent.upload(screen.getByLabelText(/fichier dem/i), file);
+  await userEvent.type(screen.getByLabelText(/titre/i), "Relief");
+  await userEvent.click(screen.getByRole("button", { name: /importer/i }));
+
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledWith("t-1"));
+  expect(presignBody).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
 });

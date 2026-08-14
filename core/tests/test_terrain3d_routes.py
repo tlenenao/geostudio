@@ -13,6 +13,9 @@ from app.users.repository import get_or_create_user
 
 
 class _FakeS3Client:
+    def __init__(self):
+        self.presign_params: list[dict] = []
+
     def create_bucket(self, Bucket):  # noqa: N803
         pass
 
@@ -20,6 +23,7 @@ class _FakeS3Client:
         pass
 
     def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
+        self.presign_params.append(dict(Params))
         return f"https://minio.test/{Params['Bucket']}/{Params['Key']}"
 
 
@@ -44,13 +48,14 @@ def env(monkeypatch):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: alice
-    app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: _FakeS3Client()
+    fake_s3 = _FakeS3Client()
+    app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: fake_s3
     deferred: list[tuple[str, str]] = []
     app.dependency_overrides[terrain3d_routes.get_task_deferrer] = (
         lambda: (lambda job_id, tenant_id: deferred.append((job_id, tenant_id)))
     )
     client = TestClient(app)
-    return client, Session, tenant, alice, deferred
+    return client, Session, tenant, alice, deferred, fake_s3
 
 
 def test_presign_returns_upload_url_and_tenant_scoped_key(env):
@@ -62,8 +67,31 @@ def test_presign_returns_upload_url_and_tenant_scoped_key(env):
     assert body["key"].startswith(f"{tenant.id}/")
 
 
+def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, monkeypatch):
+    # Le type est signé dans l'URL (X-Amz-SignedHeaders) : si on signait
+    # "application/octet-stream" en dur alors que le navigateur envoie
+    # File.type ("image/tiff" pour un .tif), S3 répondrait 403
+    # SignatureDoesNotMatch. Et le bucket doit être celui que le worker lit
+    # (S3_TERRAIN3D_BUCKET), pas celui de l'ingestion générique.
+    client, _, _tenant, _alice, _deferred, fake_s3 = env
+    r = client.post(
+        "/terrain3d/uploads/presign", json={"filename": "dem.tif", "contentType": "image/tiff"},
+    )
+    assert r.status_code == 200, r.text
+    params = fake_s3.presign_params[-1]
+    assert params["ContentType"] == "image/tiff"
+    assert params["Bucket"] == "geostudio-terrain3d"
+
+
+def test_presign_falls_back_to_octet_stream_when_no_content_type_is_given(env):
+    client, _, _tenant, _alice, _deferred, fake_s3 = env
+    r = client.post("/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    assert r.status_code == 200, r.text
+    assert fake_s3.presign_params[-1]["ContentType"] == "application/octet-stream"
+
+
 def test_create_upload_job_defers_conversion_task(env):
-    client, _, tenant, _, deferred = env
+    client, _, tenant, _, deferred, _fake_s3 = env
     presigned = client.post("/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
     r = client.post(
         "/terrain3d/uploads",

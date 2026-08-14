@@ -1088,6 +1088,12 @@ export function createItemClient(opts: {
       return fetchHostedTerrain3dSources(q);
     },
 
+    async presignTerrain3DUpload(filename: string, contentType: string) {
+      return request<{ uploadUrl: string; key: string }>(
+        "POST", "/terrain3d/uploads/presign", { filename, contentType },
+      );
+    },
+
     async createTerrain3DUpload(input: { key: string; filename: string; title: string }) {
       return request<{ jobId: string }>("POST", "/terrain3d/uploads", input);
     },

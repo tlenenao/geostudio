@@ -2096,6 +2096,19 @@ test("listHostedTerrain3DSources lists terrain3d items via /items", async () => 
   expect(sources).toEqual([{ id: "t-1", title: "Relief du massif" }]);
 });
 
+test("presignTerrain3DUpload posts to the terrain3d-specific presign route", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/terrain3d/uploads/presign", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ uploadUrl: "https://minio.test/put", key: "tenant/x/dem.tif" });
+    }),
+  );
+  const result = await makeClient("abc").presignTerrain3DUpload("dem.tif", "image/tiff");
+  expect(result).toEqual({ uploadUrl: "https://minio.test/put", key: "tenant/x/dem.tif" });
+  expect(body).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
+});
+
 test("createTerrain3DUpload posts key/filename/title and returns jobId", async () => {
   let body: unknown;
   server.use(
