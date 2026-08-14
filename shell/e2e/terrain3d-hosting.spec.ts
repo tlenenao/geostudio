@@ -58,6 +58,11 @@ test("upload a DEM, select it as hosted terrain, tiles resolve", async ({ page }
 
   await page.getByLabel("Activer le terrain 3D").check();
   await page.getByRole("button", { name: "Nouveau DEM" }).click();
+  // Scoped to the dialog (unlike the plan's literal `page.getByLabel(...)`):
+  // the map editor's tileset3d panel also has a "Titre du tileset 3D" field
+  // (a non-exact substring match) plus another bare "Titre" field elsewhere
+  // on the page, so an unscoped lookup hits a strict-mode violation — same
+  // disambiguation rationale tileset3d.spec.ts documents for "Importer".
   const demDialog = page.getByRole("dialog", { name: "Nouveau DEM" });
   await demDialog.getByLabel("Fichier DEM (GeoTIFF)").setInputFiles({
     name: "dem.tif", mimeType: "application/octet-stream", buffer: Buffer.from("fake dem bytes"),
