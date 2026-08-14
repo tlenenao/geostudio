@@ -248,6 +248,12 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getExportJob(..._args: unknown[]) {
       return unsupported();
     },
+    async createAppExport(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getAppExportJob(..._args: unknown[]) {
+      return unsupported();
+    },
     async createTileset3DUpload(..._args: unknown[]) {
       return unsupported();
     },

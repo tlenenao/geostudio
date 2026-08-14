@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -213,6 +213,8 @@ export interface ItemClient {
   runAnalyticsSql(sql: string): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
   createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
+  createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;
+  getAppExportJob(itemId: string, jobId: string): Promise<AppExportJobStatus>;
   createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
   presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>;
   completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>;
@@ -601,6 +603,9 @@ export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
 export type ExportFormat = "png" | "pdf";
 export type ExportJobStatus = "pending" | "running" | "done" | "error";
 export type ExportJob = { id: string; status: ExportJobStatus; resultUrl: string | null; error: string | null };
+
+export type AppExportMode = "static";
+export type AppExportJobStatus = { id: string; status: string; resultUrl: string | null; error: string | null };
 
 export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
 
