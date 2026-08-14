@@ -43,7 +43,9 @@ from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
-_EXPORT_PATH_RE = re.compile(r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$")
+_EXPORT_PATH_RE = re.compile(
+    r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
+)
 
 
 def create_app() -> FastAPI:

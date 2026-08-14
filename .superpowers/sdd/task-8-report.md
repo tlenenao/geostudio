@@ -1,61 +1,193 @@
-# Task 8: Shell types report
+# Task 8 report: REST routes + wiring (main.py, instance flag)
 
-## Status: DONE
+## What was implemented
 
-## Summary
+- `core/app/appexport/routes.py` (new): `POST /app-exports` and
+  `GET /app-exports/jobs/{job_id}`, byte-for-byte mirroring
+  `app/export/routes.py`'s structure (swapping `format` → `mode`,
+  `/export` → `/app-exports`, `export_repo`/`render_export_task` →
+  `appexport_repo`/`build_app_export_task`, bucket env var
+  `S3_APPEXPORTS_BUCKET` defaulting to `geostudio-appexports`).
+  `_SUPPORTED_MODES = {"static"}` gates `mode`, returning 422 for anything
+  else (SP-18a only builds the static bundle; connected/standalone are
+  future SP-18b/c).
+- `core/app/main.py`: imported `appexport_routes` and `is_appexport_enabled`;
+  mounted the router conditionally (`if is_appexport_enabled(): ...`),
+  right after the existing `export_routes` block; added the
+  `S3_APPEXPORTS_BUCKET` dependency override next to `export_routes`'s,
+  inside the existing `if s3_endpoint and s3_access_key and s3_secret_key:`
+  block.
+- `core/app/instance/routes.py`: imported `is_appexport_enabled`, added
+  `"appExportEnabled": is_appexport_enabled()` to the `/instance` response
+  dict.
+- `core/tests/test_appexport_routes.py` (new): 6 tests mirroring
+  `test_export_routes.py`'s fixture pattern (`_FakeS3Client`,
+  `_fake_deferrer`, `env` fixture with `app.dependency_overrides` for
+  `db.get_session`, `ingestion_routes.get_s3_client`,
+  `appexport_routes.get_task_deferrer`).
 
-All 4 type edits to `shell/src/api/types.ts` completed successfully. The build now fails in the expected way (missing 4 required ItemClient methods that Task 9 will implement).
+## Deviation from the brief (found during RED, not guessed from memory)
 
-## Implementation
+The brief's test fixture built the seed `app`-kind config as
+`BuilderConfig(kind="app", dataSources=[], pages=[])`. Running it (Step 2)
+surfaced a real `pydantic.ValidationError`, not the expected
+`ModuleNotFoundError` — before `routes.py` even existed, the fixture itself
+was broken: `BuilderConfig`'s `_require_kind_payload` validator
+(`app/configs/schemas.py:390-391`) requires a top-level `layout` for
+`kind in ("app", "dashboard", "site")`. `test_export_routes.py` doesn't hit
+this because it seeds a `kind="map"` config instead. I checked how other
+tests in this same plan build a minimal `app`-kind config
+(`tests/test_create_bookmark.py`, `tests/test_mcp_tools_bookmark_create.py`,
+`tests/test_configs_schemas.py`) and added the same minimal payload:
+`layout={"type": "grid", "breakpoints": {}, "items": []}`. After that the
+6 tests ran exactly as specified with no further changes needed.
 
-Made exactly the 4 edits specified in the brief:
+## TDD evidence
 
-1. **ResourceType** (line 2): Added `"tileset3d"` to the union
-2. **LayerSource** (lines 84-93): Added `"tileset3d"` to service union and `"tiles3d"` to kind union
-3. **InstanceInfo** (line 35): Added `tileset3dEnabled: boolean` field
-4. **ItemClient** (lines 213-227): Added 4 required methods + 1 optional method:
-   - `createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>`
-   - `presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>`
-   - `completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>`
-   - `getTileset3DUploadJob(jobId: string): Promise<...>`
-   - `getAuthToken?(): string | undefined` (optional)
-
-## Build Verification
-
-**Step 1 (Baseline):** PASS ✓
+**RED** (`cd core && uv run pytest tests/test_appexport_routes.py -v`,
+before `routes.py` existed):
 ```
-dist/index.html                     0.44 kB │ gzip:   0.28 kB
-dist/assets/index-BZ529637.css    103.25 kB │ gzip:  16.53 kB
-dist/assets/EChart-B2XkyCBj.js    825.07 kB │ gzip: 276.48 kB
-dist/assets/index-Br4m-UiB.js   2,971.88 kB │ gzip: 844.22 kB
-✓ built in 14.83s
+ImportError: cannot import name 'routes' from 'app.appexport'
+1 error in 0.32s
+```
+(then, after creating `routes.py` but before the `BuilderConfig` fixture
+fix — this is the real RED that matters, since the import error is trivial):
+```
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for BuilderConfig
+E     Value error, app config requires a layout [type=value_error, ...]
+6 errors in 1.96s (procrastinate AppNotOpen noise in captured logs is a
+red herring — it's a swallowed embedding-enqueue side effect, not the
+actual test failure)
 ```
 
-**Step 6 (After edits):** FAIL (Expected) ✓
+**GREEN** (`cd core && uv run pytest tests/test_appexport_routes.py -v`,
+after adding `layout=...` to the fixture):
 ```
-src/api/itemClient.ts(328,3): error TS2739: Type '{ listItems(...); ... }' 
-is missing the following properties from type 'ItemClient': 
-createTileset3DUpload, presignTileset3DUploadPart, completeTileset3DUpload, 
-getTileset3DUploadJob
+tests/test_appexport_routes.py::test_post_app_export_requires_flag_enabled PASSED
+tests/test_appexport_routes.py::test_post_app_export_creates_job_and_returns_202 PASSED
+tests/test_appexport_routes.py::test_post_app_export_denies_user_without_read_access PASSED
+tests/test_appexport_routes.py::test_post_app_export_rejects_invalid_mode PASSED
+tests/test_appexport_routes.py::test_get_app_export_job_reports_status PASSED
+tests/test_appexport_routes.py::test_get_app_export_job_done_status_includes_result_url PASSED
+6 passed in 2.76s
 ```
 
-The error confirms the 4 required methods are missing from `itemClient.ts`'s implementation, which is exactly what the brief expects. Task 9 will implement these methods and restore a green build.
+## Full suite run
 
-## Commit
+`cd core && uv run pytest -q`
 
-- **Commit:** `09bcce1` — `feat(shell): types for hosted tileset3d items and upload client`
-- **File changed:** `shell/src/api/types.ts` (+16 lines, -4 lines)
+First run surfaced 5 pre-existing regressions — all strict `response.json()
+== {...}` equality assertions against `/instance` in
+`tests/test_etl_enabled_flag.py` (2), `tests/test_export_enabled_flag.py`
+(1), `tests/test_read_only_mode.py` (2) — that didn't anticipate the new
+`appExportEnabled` key. Fixed by adding `"appExportEnabled": False` (all
+five assertions run with the flag unset/default) to each expected dict, in
+the same position as `exportEnabled`/`tileset3dEnabled` etc. (`tests/test_tileset3d_enabled_flag.py`
+and `tests/test_terrain3d_enabled_flag.py` don't use strict dict equality,
+so they needed no change.)
 
-## Self-Review
+Command: `cd core && uv run pytest -q`
+```
+1508 passed, 148 skipped in 109.18s (0:01:49)
+```
+No collection errors. The 148 skipped are the existing postgis-marked tests
+(need docker), unrelated to this task.
 
-✓ Completeness: All 4 edits made exactly as specified
-✓ Quality: Types match brief verbatim (exact union members, optional/required markers)
-✓ Discipline: Only `types.ts` edited, no extra fields or changes outside the brief
-✓ Build check: Failure message correctly names all 4 required ItemClient methods as missing
-✓ No concerns
+Also ran `uv run lint-imports` (import-linter, per CLAUDE.md's "frontières
+de modules outillées"): `Contracts: 1 kept, 0 broken.`
 
-## Notes
+## Files changed
 
-- `getAuthToken` is optional and does not appear in the build error (correct behavior)
-- The build failure is the intended sequencing; Task 9 implements the missing methods
-- No changes to any other files; no modifications to test files or documentation
+- `core/app/appexport/routes.py` (new)
+- `core/app/main.py` (modified: import + conditional router mount + bucket
+  dependency override)
+- `core/app/instance/routes.py` (modified: import + `appExportEnabled` key)
+- `core/tests/test_appexport_routes.py` (new)
+- `core/tests/test_etl_enabled_flag.py` (modified: 2 assertions)
+- `core/tests/test_export_enabled_flag.py` (modified: 1 assertion)
+- `core/tests/test_read_only_mode.py` (modified: 2 assertions)
+
+## Self-review (against the 4 points asked)
+
+1. **Router only mounted when `is_appexport_enabled()` is true, 404 when
+   disabled.** Confirmed: `main.py` has `if is_appexport_enabled():
+   app.include_router(appexport_routes.router)`, mirroring
+   `is_export_enabled()`/`export_routes`. Test
+   `test_post_app_export_requires_flag_enabled` verifies 404 (not the
+   FastAPI-default 405) when the flag is off, since the route simply
+   doesn't exist on that app instance.
+2. **Read-access via `can()`/`get_access_facts`, 404 (not 403) for both
+   "doesn't exist" and "no read access".** Confirmed:
+   `_require_export_read_access` (verbatim copy of
+   `export.routes._require_export_read_access`) does
+   `facts = items_repo.get_access_facts(...)`, then
+   `if facts is None or not can(..., action="read", ...): raise
+   HTTPException(404, ...)` — single branch, single status code, no
+   distinction leaked to the caller. Test
+   `test_post_app_export_denies_user_without_read_access` confirms 404 for
+   the "item exists but stranger has no access" case; the "job id doesn't
+   exist" case for GET is exercised by `_require_export_read_access` never
+   even being reached (job lookup itself 404s first) — same shape as
+   `export.routes.get_export_job_route`.
+3. **`session.commit()` before `defer_task()`.** Confirmed in
+   `create_app_export_route`: `session.commit()` is the line immediately
+   before `defer_task(job.id, user.tenant_id)`, with the same inline
+   rationale comment as `export_routes`/`run_pipeline_route`.
+4. **Full suite passes with no collection errors.** Confirmed: `1508
+   passed, 148 skipped`, 0 failed, 0 errors, 0 collection errors.
+   Import-linter contract also kept.
+
+## Concerns
+
+- None blocking. One judgment call worth flagging: `/app-exports` was
+  **not** added to `main.py`'s `_EXPORT_PATH_RE` (the regex that exempts
+  export-family POST routes from the read-only demo guard). The brief
+  doesn't mention this, and no test in the brief's spec covers it. By the
+  same reasoning used for `/export` (SP-16a: "export is a read action for
+  the source app, doesn't write business data"), `/app-exports` arguably
+  deserves the same exemption — it writes only an `AppExportJob` audit-ish
+  row, not business data. I left this out of scope since it wasn't in the
+  brief and no test demanded it; flagging it here in case Task 14 (branch
+  review) or Task 9-13 (shell wiring) need the demo mode to support
+  triggering an app export.
+- The `test_appexport_routes.py` fixture fix (adding `layout=...`) is a
+  genuine correction to the brief's guessed code, not a guess of my own —
+  it was forced by an actual pydantic `ValidationError` at RED time, then
+  cross-checked against 3 other real tests in the same plan/repo that
+  build minimal `app`-kind `BuilderConfig`s the same way.
+
+## Fix: read-only-mode exemption
+
+**What changed and why.** `POST /app-exports` (SP-18a, `core/app/appexport/routes.py`)
+was not exempted from the `read_only_guard` middleware in `core/app/main.py`,
+unlike its sibling `/export` (SP-17a). The guard's `_EXPORT_PATH_RE` regex
+(`core/app/main.py:46`) matched `/export`, `/collections/{id}/export[/items]`,
+and `/datasets/{id}/arcgis/export[/items]` but not `/app-exports` — so on a
+read-only demo instance, triggering an app export got a spurious 403 before
+ever reaching the appexport router, even though (same as `/export`) it only
+packages/renders existing public data and writes no business data. Extended
+the regex to also match `^/app-exports$`:
+
+```python
+_EXPORT_PATH_RE = re.compile(
+    r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
+)
+```
+
+**TDD evidence.**
+- RED: added `test_post_app_export_allowed_in_read_only_demo_mode` to
+  `core/tests/test_appexport_routes.py` (mirrors
+  `test_post_export_allowed_in_read_only_demo_mode` in
+  `test_export_routes.py`, same `env` fixture/dependency-override pattern).
+  Run against the unfixed regex: `POST /app-exports` returned `403
+  Forbidden` (`"Mode démo : lecture seule, écritures désactivées."`)
+  instead of the expected `202` — 1 failed.
+- GREEN: after the regex fix, `uv run pytest tests/test_appexport_routes.py -q`
+  → `7 passed`.
+
+**Full suite run.** `cd core && uv run pytest -q` →
+`1509 passed, 148 skipped` in 107.37s. No regressions; read-only-mode
+tests (`test_read_only_mode.py`, `test_export_routes.py`,
+`test_appexport_routes.py`) all green.
+
+**Commit.** See below (created after this report was appended).
