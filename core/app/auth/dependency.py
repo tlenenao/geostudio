@@ -41,6 +41,15 @@ def is_export_enabled() -> bool:
     return os.environ.get("CORE_EXPORT_ENABLED", "false").lower() == "true"
 
 
+def is_appexport_enabled() -> bool:
+    """CORE_APPEXPORT_ENABLED (SP-18a) — capacité instance-wide optionnelle,
+    même convention que is_export_enabled : lue à chaque appel, sans cache.
+    Défaut false : construire un bundle statique d'app exige le runtime
+    export prébâti (deploy/appexport-runtime-builder), jamais requis pour le
+    reste de la plateforme."""
+    return os.environ.get("CORE_APPEXPORT_ENABLED", "false").lower() == "true"
+
+
 def is_tileset3d_enabled() -> bool:
     """CORE_TILESET3D_ENABLED — capacité instance-wide optionnelle, même
     convention que is_export_enabled : lue à chaque appel, sans cache.
