@@ -127,6 +127,11 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
       CORE_TILESET3D_ENABLED: ${CORE_TILESET3D_ENABLED:-false}
+      # Plafond de lecture du proxy tileset3d (read_tileset3d_entry,
+      # app/tileset3d/routes.py) — s'exécute dans ce process (`core`), pas
+      # dans `worker` : les trois plafonds de VALIDATION ci-dessous
+      # n'appartiennent qu'à `worker` (cf. ce service plus bas).
+      CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
@@ -177,6 +182,13 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
+      # Plafonds de validation tileset3d (finalize_tileset3d_task,
+      # app/tileset3d/jobs.py) — s'exécutent dans ce process (`worker`), pas
+      # dans `core` : le plafond de LECTURE du proxy est côté `core` (cf. ce
+      # service plus haut), pas ici.
+      CORE_TILESET3D_MAX_ENTRIES: ${CORE_TILESET3D_MAX_ENTRIES:-20000}
+      CORE_TILESET3D_MAX_TOTAL_BYTES: ${CORE_TILESET3D_MAX_TOTAL_BYTES:-21474836480}
+      CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: geostudio-worker
