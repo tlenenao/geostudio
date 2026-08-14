@@ -51,6 +51,37 @@ def get_tileset3d_bucket() -> str:
     return os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
 
 
+def _max_entry_bytes() -> int:
+    # Même variable et même défaut que app.tileset3d.jobs._max_entry_bytes :
+    # le plafond appliqué à la validation doit être celui appliqué à la
+    # lecture, sinon la validation ne protège rien à la lecture.
+    return int(os.environ.get("CORE_TILESET3D_MAX_ENTRY_BYTES", str(2 * 1024 * 1024 * 1024)))
+
+
+_READ_CHUNK_BYTES = 1024 * 1024  # 1 Mio
+
+
+def _read_entry_bounded(zf: zipfile.ZipFile, path: str, *, max_bytes: int) -> bytes:
+    """Lit une entrée par tranches, en s'arrêtant net dès que le cumul
+    décompressé dépasse le plafond. `zf.read(path)` décompresserait tout le
+    flux réel en mémoire d'abord : `info.file_size` du répertoire central est
+    une métadonnée contrôlée par l'auteur du zip, jamais vérifiée
+    indépendamment — un zip-bomb passerait la validation puis exploserait la
+    mémoire du cœur à la première lecture."""
+    with zf.open(path) as f:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = f.read(_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise HTTPException(status_code=413, detail="entry too large")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         from app.tileset3d.jobs import finalize_tileset3d_task
@@ -161,9 +192,15 @@ def read_tileset3d_entry(
     range_file = S3RangeFile(s3, bucket=bucket, key=payload.sourceKey)
     try:
         with zipfile.ZipFile(range_file) as zf:
-            data = zf.read(path)
+            data = _read_entry_bounded(zf, path, max_bytes=_max_entry_bytes())
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="entry not found") from exc
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        # Archive stockée corrompue/tronquée (BadZipFile), entrée chiffrée
+        # (RuntimeError « File is encrypted ») ou méthode de compression non
+        # supportée (NotImplementedError) : réponse propre plutôt qu'un 500
+        # non typé du gestionnaire par défaut de FastAPI.
+        raise HTTPException(status_code=422, detail="cannot read entry") from exc
 
     return Response(
         content=data, media_type=_content_type_for(path),

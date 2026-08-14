@@ -144,6 +144,7 @@ def test_get_upload_job_404_for_unknown_job(env):
 
 import io
 import json
+import struct
 import zipfile
 
 from app.configs import repository as configs_repo
@@ -207,6 +208,64 @@ def test_read_tileset3d_entry_404_for_unknown_item(env):
     client, *_ = env
     r = client.get("/tileset3d/does-not-exist/tileset.json")
     assert r.status_code == 404
+
+
+def _zip_with_compressible_entry(size: int) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr("tiles/big.b3dm", b"\x00" * size)
+    return buf.getvalue()
+
+
+def test_read_tileset3d_entry_413_when_the_decompressed_entry_exceeds_the_cap(env, monkeypatch):
+    """Revue finale de branche, C2 : la lecture est bornée par tranches et
+    s'arrête net au plafond, au lieu de tout décompresser en mémoire d'abord.
+    Un zip de 65 Kio (8 Mio de zéros compressés) suffit à le prouver : mesuré
+    hors test, zf.read() sur une entrée de 64 Mio culmine à ~141 Mio de tas,
+    la lecture bornée à ~2 Mio."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    monkeypatch.setenv("CORE_TILESET3D_MAX_ENTRY_BYTES", "1024")
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    fake_s3.objects["tenant/x/city.zip"] = _zip_with_compressible_entry(8 * 1024 * 1024)
+
+    r = client.get(f"/tileset3d/{item_id}/tiles/big.b3dm")
+
+    assert r.status_code == 413, r.text
+    assert r.json()["detail"] == "entry too large"
+    # Une entrée sous le plafond passe toujours par le même chemin.
+    assert client.get(f"/tileset3d/{item_id}/tileset.json").status_code == 200
+
+
+def _zip_with_understated_entry_size() -> bytes:
+    """Zip dont le répertoire central ment sur la taille décompressée d'une
+    entrée (8 Mio réels annoncés comme 10 octets). zipfile borne sa
+    décompression sur cette métadonnée puis échoue le contrôle CRC —
+    BadZipFile, que l'ancien `except KeyError` seul ne rattrapait pas."""
+    raw = bytearray(_zip_with_compressible_entry(8 * 1024 * 1024))
+    # En-tête de répertoire central : sig(4) ver(2) verneed(2) flag(2)
+    # method(2) time(2) date(2) crc(4) csize(4) usize(4) → usize à +24.
+    idx = raw.rfind(b"PK\x01\x02")
+    raw[idx + 24:idx + 28] = struct.pack("<I", 10)
+    return bytes(raw)
+
+
+def test_read_tileset3d_entry_422_for_a_corrupt_entry(env):
+    """Revue finale de branche, M1 : BadZipFile/RuntimeError (entrée
+    chiffrée)/NotImplementedError (compression non supportée) remontaient en
+    500 non typé. Réponse propre attendue."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3)
+        s.commit()
+    fake_s3.objects["tenant/x/city.zip"] = _zip_with_understated_entry_size()
+
+    r = client.get(f"/tileset3d/{item_id}/tiles/big.b3dm")
+
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == "cannot read entry"
 
 
 def test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user(env):
