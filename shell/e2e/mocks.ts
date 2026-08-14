@@ -56,11 +56,15 @@ export async function mockCore(page: Page) {
   await page.route("**/items*", async (route) => {
     const url = new URL(route.request().url());
     const scope = url.searchParams.get("scope");
-    const visible = ALL.filter((r) => !deleted.has(r.pk));
-    // Fixture reality: every item in ALL is owned by "alice"; the mock auth
-    // user is "mockuser" (see useAuth.ts's MOCK_STATE) — so scope=mine is
-    // always empty for this fixture, matching the pre-migration mock's
-    // behavior for the "mockuser" case.
+    const type = url.searchParams.get("type");
+    // Honour `type` (revue finale de branche, M2). LayerPicker fires a
+    // hosted-tileset3d lookup (`?type=tileset3d`) against this same generic
+    // endpoint whenever it renders; answering it with every fixture item
+    // regardless of type conjures phantom LayerSources sharing another
+    // source's title — exactly what broke harvest-wms.spec.ts, which had to
+    // patch its own local override the same way. Fixed here so the default
+    // handler stops being armed for the next spec.
+    const visible = ALL.filter((r) => !deleted.has(r.pk) && (!type || r.resourceType === type));
     const items = scope === "mine" ? [] : visible;
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });

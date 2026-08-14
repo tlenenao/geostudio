@@ -268,10 +268,12 @@ test("listLayerSources passes q to /collections and filters Martin sources clien
   expect(sources.find((s) => s.id === "c1")).toBeDefined();
 });
 
-test("listLayerSources throws when both services fail", async () => {
+test("listLayerSources throws when all services fail", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/collections", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/harvest/layers", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/items", () => new HttpResponse(null, { status: 500 })),
   );
   await expect(makeClient().listLayerSources()).rejects.toThrow();
 });
@@ -2038,4 +2040,78 @@ test("createEmptyCollection posts to /collections/empty and returns the created 
     geometryType: null, srid: null,
   });
   expect(result).toEqual({ id: "query_abc123" });
+});
+
+test("createTileset3DUpload posts filename/title and returns jobId", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/tileset3d/uploads", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
+    }),
+  );
+  const result = await makeClient("abc").createTileset3DUpload({ filename: "city.zip", title: "Ville" });
+  expect(result).toEqual({ jobId: "job-1" });
+  expect(body).toEqual({ filename: "city.zip", title: "Ville" });
+});
+
+test("presignTileset3DUploadPart posts to the job/part route and returns an upload URL", async () => {
+  server.use(
+    http.post("https://core.test/tileset3d/uploads/job-1/parts/2/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-2" })),
+  );
+  const result = await makeClient("abc").presignTileset3DUploadPart("job-1", 2);
+  expect(result).toEqual({ uploadUrl: "https://minio.test/part-2" });
+});
+
+test("completeTileset3DUpload posts the parts list", async () => {
+  let body: unknown;
+  server.use(
+    http.post("https://core.test/tileset3d/uploads/job-1/complete", async ({ request }) => {
+      body = await request.json();
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient("abc").completeTileset3DUpload("job-1", [{ partNumber: 1, etag: "\"abc\"" }]);
+  expect(body).toEqual({ parts: [{ partNumber: 1, etag: "\"abc\"" }] });
+});
+
+test("getTileset3DUploadJob returns the job status", async () => {
+  server.use(
+    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" })),
+  );
+  const result = await makeClient("abc").getTileset3DUploadJob("job-1");
+  expect(result).toEqual({ status: "done", errorMessage: null, itemId: "item-1" });
+});
+
+test("listLayerSources includes hosted tileset3d items", async () => {
+  server.use(
+    http.get("https://martin.test/catalog", () => HttpResponse.json({ tiles: {} })),
+    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/items", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("type")).toBe("tileset3d");
+      return HttpResponse.json({
+        items: [{ pk: "t1", resourceType: "tileset3d", title: "Ville", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
+        total: 1, page: 1, pageSize: 200,
+      });
+    }),
+  );
+  const sources = await makeClient("abc").listLayerSources();
+  const hosted = sources.find((s) => s.id === "t1");
+  expect(hosted).toMatchObject({
+    title: "Ville", service: "tileset3d", kind: "tiles3d",
+    url: "https://core.test/tileset3d/t1/tileset.json",
+  });
+});
+
+test("getAuthToken exposes the client's current token", () => {
+  const client = makeClient("secret-token");
+  expect(client.getAuthToken?.()).toBe("secret-token");
+});
+
+test("getCoreUrl exposes the client's configured core API origin", () => {
+  const client = makeClient("secret-token");
+  expect(client.getCoreUrl?.()).toBe("https://core.test");
 });

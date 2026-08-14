@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report";
+export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -32,7 +32,7 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -84,8 +84,8 @@ export type MapConfig = {
 export type LayerSource = {
   id: string;
   title: string;
-  service: "martin" | "core" | "external";
-  kind: "vector" | "feature" | "raster";
+  service: "martin" | "core" | "external" | "tileset3d";
+  kind: "vector" | "feature" | "raster" | "tiles3d";
   tilesUrl?: string;
   sourceLayer?: string;
   url?: string;
@@ -213,6 +213,23 @@ export interface ItemClient {
   runAnalyticsSql(sql: string): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
   createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
+  createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
+  presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>;
+  completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>;
+  getTileset3DUploadJob(jobId: string): Promise<{
+    status: "pending" | "finalizing" | "done" | "error";
+    errorMessage: string | null;
+    itemId: string | null;
+  }>;
+  // Optional: absent on any ItemClient that doesn't need it (e.g. test mocks
+  // cast via `as unknown as ItemClient`). Used by MapView to authenticate
+  // Tile3DLayer requests against a hosted tileset's proxy route (design §4).
+  getAuthToken?(): string | undefined;
+  // Exposes the core API's base URL so MapView can verify a tiles3d layer's
+  // URL actually belongs to our own authenticated proxy before attaching a
+  // bearer token — never trust a bare "/tileset3d/" substring match, since
+  // layer URLs are freeform (an author can type any external URL).
+  getCoreUrl?(): string;
 }
 
 export type RenderMode = "edit" | "preview" | "runtime";

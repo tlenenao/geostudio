@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
 import { useInstanceInfo, useMapConfig, useSaveMap } from "../api/hooks";
+import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
 import { MapView, type MapViewHandle } from "../map/MapView";
 import { LayersPanel } from "../map/LayersPanel";
@@ -14,6 +15,7 @@ import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 
 export function MapEditorPage({ pk }: { pk: string }) {
+  const client = useItemClient();
   const query = useMapConfig(pk);
   const save = useSaveMap(pk);
   const [draft, setDraft] = useState<MapConfig | null>(null);
@@ -62,7 +64,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <MapView config={draft} onReady={markExportReady} hideLegend />
+        <MapView config={draft} onReady={markExportReady} hideLegend getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
         {draft.printLayout?.title && (
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
@@ -101,7 +103,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         )}
       </aside>
       <div className="relative flex-1">
-        <MapView ref={mapViewRef} config={draft} onViewChange={setView} />
+        <MapView ref={mapViewRef} config={draft} onViewChange={setView} getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
       </div>
     </div>
   );

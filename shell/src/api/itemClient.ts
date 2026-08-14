@@ -325,6 +325,21 @@ export function createItemClient(opts: {
     }));
   }
 
+  async function fetchHostedTileset3dSources(q?: string): Promise<LayerSource[]> {
+    const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
+    if (q) query.set("q", q);
+    const token = getToken();
+    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    const data = (await res.json()) as { items?: { pk: string; title: string }[] };
+    return (data.items ?? []).map((item) => ({
+      id: item.pk, title: item.title, service: "tileset3d" as const, kind: "tiles3d" as const,
+      url: `${coreUrl}/tileset3d/${item.pk}/tileset.json`,
+    }));
+  }
+
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
@@ -457,6 +472,7 @@ export function createItemClient(opts: {
         fetchMartinSources(params?.q),
         fetchCoreCollections(params?.q),
         fetchExternalRasterSources(params?.q),
+        fetchHostedTileset3dSources(params?.q),
       ]);
       const fulfilled = results.filter(
         (r): r is PromiseFulfilledResult<LayerSource[]> => r.status === "fulfilled",
@@ -1033,5 +1049,30 @@ export function createItemClient(opts: {
     async runAnalyticsSql(sql: string) {
       return requestAnalyticsSql(coreUrl, getToken(), sql);
     },
+
+    async createTileset3DUpload(input: { filename: string; title: string }) {
+      return request<{ jobId: string }>("POST", "/tileset3d/uploads", input);
+    },
+
+    async presignTileset3DUploadPart(jobId: string, partNumber: number) {
+      return request<{ uploadUrl: string }>(
+        "POST", `/tileset3d/uploads/${jobId}/parts/${partNumber}/presign`,
+      );
+    },
+
+    async completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]) {
+      await request<void>("POST", `/tileset3d/uploads/${jobId}/complete`, { parts });
+    },
+
+    async getTileset3DUploadJob(jobId: string) {
+      return request<{
+        status: "pending" | "finalizing" | "done" | "error";
+        errorMessage: string | null;
+        itemId: string | null;
+      }>("GET", `/tileset3d/uploads/${jobId}`);
+    },
+
+    getAuthToken: getToken,
+    getCoreUrl: () => coreUrl,
   };
 }

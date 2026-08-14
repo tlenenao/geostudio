@@ -175,6 +175,8 @@ export function registerMapWidget(): void {
             <MapView
               ref={handle}
               config={config}
+              getAuthToken={client.getAuthToken}
+              getCoreUrl={client.getCoreUrl}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
                 setExtent(v.bbox);

@@ -339,6 +339,13 @@ class ReportSchedulePayload(BaseModel):
         return self
 
 
+class Tileset3DPayload(BaseModel):
+    sourceKey: str
+    tilesetJsonPath: str
+    totalBytes: int
+    entryCount: int
+
+
 class PrintLayout(BaseModel):
     pageSize: Literal["a4", "a3"] = "a4"
     orientation: Literal["portrait", "landscape"] = "portrait"
@@ -354,7 +361,7 @@ class BuilderConfig(BaseModel):
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report", "tileset3d"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -369,6 +376,7 @@ class BuilderConfig(BaseModel):
     pipeline: PipelinePayload | None = None
     alert: AlertRulePayload | None = None
     report: ReportSchedulePayload | None = None
+    tileset3d: Tileset3DPayload | None = None
     printLayout: PrintLayout | None = None
 
     @model_validator(mode="after")
@@ -387,4 +395,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("alert config requires an alert payload")
         if self.kind == "report" and self.report is None:
             raise ValueError("report config requires a report payload")
+        if self.kind == "tileset3d" and self.tileset3d is None:
+            raise ValueError("tileset3d config requires a tileset3d payload")
         return self
