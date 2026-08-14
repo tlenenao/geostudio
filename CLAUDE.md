@@ -480,6 +480,74 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   Tiles et terrain pointent vers des URL externes déjà hébergées, aucun
   pipeline d'upload/hébergement (zip→S3→item), aucun terrain servi par
   notre propre TiTiler, aucun outil MCP dédié.
+- **3D (hébergement de tilesets uploadés)** — reste non planifié de la
+  vision post-v0.1 exécuté hors tout numéro de SP, suite directe du "3D
+  (rendu)" ci-dessus : un auteur peut uploader un zip contenant un
+  tileset 3D Tiles (`tileset.json` + binaires, jusqu'à plusieurs Go /
+  dizaines de milliers de fichiers), GeoStudio le stocke et l'expose comme
+  item de catalogue cherchable/partageable, et un auteur de carte le
+  choisit depuis `LayerPicker` au lieu de taper une URL externe. Le zip
+  reste un objet S3 unique pour toute sa durée de vie — jamais extrait
+  côté serveur : nouveau module `core/app/tileset3d/` (table transitoire
+  `tileset3d_jobs` pour le cycle de vie de l'upload multipart seulement,
+  aucune nouvelle table pour les métadonnées du tileset — elles vivent
+  dans `BuilderConfig.tileset3d`, 10e kind), upload multipart direct
+  navigateur→S3 (le cœur ne voit jamais les octets, arbitrage A6), tâche
+  procrastinate de finalisation validant le zip par lecture par plage
+  (`S3RangeFile` + stdlib `zipfile`, ne lit que l'EOCD + la table
+  centrale — coût constant), proxy de lecture authentifié
+  (`GET /tileset3d/{item_id}/{path}`, même porte `can()` que tout autre
+  item — pas de bucket public, pas de CDN), le tout derrière
+  `CORE_TILESET3D_ENABLED` (défaut désactivé). Shell : bouton d'upload
+  (dialogue fichier+titre → upload multipart chunké avec progression →
+  poll jusqu'à `done`/`error`), source hébergée dans `LayerPicker`, jeton
+  de session attaché aux requêtes `Tile3DLayer` de deck.gl pour un
+  tileset hébergé (jamais pour une URL externe). Exécution en
+  subagent-driven-development, 13 tâches puis revue finale de branche en
+  **3 rounds** (0 Critical/Important non résolu au merge à l'issue du 3e) :
+  **1re revue par tâche** (1 Critical + 1 Important, invisibles à
+  l'auteur du plan lui-même) — fuite du jeton de session vers un hôte
+  externe si l'URL du tileset contenait la sous-chaîne `/tileset3d/` sans
+  être réellement hébergée chez nous (vérification d'origine réelle
+  ajoutée, `getCoreUrl` sur `ItemClient`) ; fermeture du dialogue d'upload
+  pendant un envoi en cours pouvant corrompre l'état d'un 2e upload
+  démarré ensuite (fermeture bloquée tant que `busy`) ; **revue finale de
+  branche, round 1** (3 Critical + 4 Important + 5 Minor supplémentaires,
+  invisibles à une revue par tâche) — worker ne consommant jamais la
+  file procrastinate `tileset3d`, `CORE_TILESET3D_ENABLED` absent de
+  l'environnement du service `core` dans `docker-compose.yml` (feature
+  inopérante dans la stack packagée, 3e occurrence de cette classe de
+  bug après SP-17a/SP-17b) ; upload multipart navigateur ne pouvant pas
+  aboutir contre un vrai S3/MinIO (CORS du bucket n'exposait pas
+  `ETag`) ; aucun validateur de payload sur `kind="tileset3d"` côté
+  `/configs`, permettant à un utilisateur quelconque de s'approprier un
+  `sourceKey` S3 arbitraire et de lire les données d'un tileset d'un
+  autre tenant via son propre item (nouveau
+  `core/app/configs/tileset3d_validation.py`, rejet inconditionnel — seul
+  `finalize_tileset3d_task` produit légitimement ce kind, par appel
+  direct au repository) ; poll infini du job de finalisation composé
+  avec le garde de fermeture ajouté en revue par tâche (Task 12) pouvant
+  rendre le dialogue définitivement infermable (délai de 5 min ajouté) ;
+  zip d'un upload rejeté jamais purgé du bucket (purge ajoutée, avec
+  `write_audit` conditionnel au succès réel de la suppression — la 1re
+  passe de fix de ce round avait elle-même oublié cet audit, contraire à
+  la règle CLAUDE.md, corrigé au round 2). **Round 2** a trouvé que le fix du
+  plafond anti-déni-de-service (lecture d'une entrée du zip) réutilisait
+  la même variable que le plafond de *validation* — la branche de rejet
+  ne pouvait donc jamais se déclencher pour une archive déjà validée,
+  laissant un zip de quelques Mo pouvoir forcer plusieurs Gio d'allocation
+  mémoire par requête proxy via un taux de compression légitimement élevé
+  (pas besoin de mentir sur les métadonnées) ; corrigé par un plafond de
+  lecture indépendant et plus bas (`CORE_TILESET3D_MAX_PROXY_READ_BYTES`,
+  128 Mio) vérifié contre la taille déclarée avant toute décompression,
+  réponse convertie en vrai `StreamingResponse` (fini le `b"".join()` en
+  mémoire). **Round 3** a trouvé que la conversion en streaming
+  déplaçait la détection d'une corruption CRC (jamais vérifiée par la
+  validation d'upload) après le point de non-retour HTTP pour une entrée
+  de plus d'1 Mio — corps tronqué silencieusement au lieu d'un 422 propre
+  (régression réelle par rapport au round 1, qui matérialisait l'entrée
+  avant de répondre) ; mitigé par un en-tête `Content-Length` rendant le
+  short-read détectable sans ambiguïté par tout client/proxy HTTP.
 
 ### À venir
 
@@ -514,10 +582,10 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   périmètre « 3D & impression » d'origine de la feuille de route, n'a
   **pas** été exécutée sous ce nom de SP — elle reste dans le reste de la
   vision post-v0.1 (bullet suivant), non planifiée, non numérotée.
-- Reste de la vision post-v0.1, 3D — rendu livré (cf. `### Fait`) ;
-  restent non planifiés : hébergement de tilesets 3D Tiles uploadés
-  (zip→S3→item), terrain servi par notre propre TiTiler depuis un DEM COG
-  hébergé chez nous, encodage terrain `mapbox` en plus de `terrarium`,
+- Reste de la vision post-v0.1, 3D — rendu et hébergement de tilesets
+  uploadés livrés (cf. `### Fait`) ; restent non planifiés : terrain servi
+  par notre propre TiTiler depuis un DEM COG hébergé chez nous, encodage
+  terrain `mapbox` en plus de `terrarium`,
   conversion 3D (py3dtiles, nuages de points).
 - **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
   Autoporté/Statique, dépend de SP-11). Jalon M15.
