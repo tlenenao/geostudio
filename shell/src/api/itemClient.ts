@@ -340,6 +340,18 @@ export function createItemClient(opts: {
     }));
   }
 
+  async function fetchHostedTerrain3dSources(q?: string): Promise<{ id: string; title: string }[]> {
+    const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
+    if (q) query.set("q", q);
+    const token = getToken();
+    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
+    const data = (await res.json()) as { items?: { pk: string; title: string }[] };
+    return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
+  }
+
   return {
     async listItems(params: ListItemsParams = {}): Promise<ItemPage> {
       const q = new URLSearchParams();
@@ -1070,6 +1082,22 @@ export function createItemClient(opts: {
         errorMessage: string | null;
         itemId: string | null;
       }>("GET", `/tileset3d/uploads/${jobId}`);
+    },
+
+    async listHostedTerrain3DSources(q?: string) {
+      return fetchHostedTerrain3dSources(q);
+    },
+
+    async createTerrain3DUpload(input: { key: string; filename: string; title: string }) {
+      return request<{ jobId: string }>("POST", "/terrain3d/uploads", input);
+    },
+
+    async getTerrain3DUploadJob(jobId: string) {
+      return request<{
+        status: "uploaded" | "converting" | "done" | "error";
+        errorMessage: string | null;
+        itemId: string | null;
+      }>("GET", `/terrain3d/uploads/${jobId}`);
     },
 
     getAuthToken: getToken,
