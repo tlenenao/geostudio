@@ -45,6 +45,7 @@ def core_table_names() -> frozenset[str]:
     ``Base.metadata`` ne connaît que les modèles déjà importés. Source de
     vérité de la denylist du registre de collections."""
     from app.alerts import models as alerts_models  # noqa: F401
+    from app.appexport import models as appexport_models  # noqa: F401
     from app.audit import models as audit_models  # noqa: F401
     from app.collections import models as collections_models  # noqa: F401
     from app.configs import models  # noqa: F401
