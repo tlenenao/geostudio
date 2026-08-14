@@ -42,6 +42,13 @@ dependencies = [
     "procrastinate>=2.0",
     "pyogrio>=0.9",
     "pyproj>=3.6",
+    "rasterio>=1.3",  # terrain3d : lecture/écriture GeoTIFF (GDAL embarqué
+                      # dans la wheel, pas de dépendance système séparée à
+                      # installer) ; wheel comparable en poids à pyogrio,
+                      # déjà présent — pas un sidecar comme qgis-worker.
+    "rio-cogeo>=5.3",  # terrain3d : cog_translate/cog_validate — conversion
+                       # d'un GeoTIFF brut en Cloud Optimized GeoTIFF et
+                       # validation structurelle du résultat.
     "defusedxml>=0.7",  # SP-12e : parsing XML sûr (XXE + billion-laughs) des GetCapabilities OGC
     "geopandas>=0.14",  # SP-11a : GeoDataFrame.to_parquet gère nativement les
                         # métadonnées GeoParquet 1.0 ; s'appuie sur shapely,
