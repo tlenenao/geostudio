@@ -346,6 +346,11 @@ class Tileset3DPayload(BaseModel):
     entryCount: int
 
 
+class Terrain3DPayload(BaseModel):
+    sourceKey: str  # clé S3 du COG converti — jamais celle de l'upload brut
+    originalFilename: str
+
+
 class PrintLayout(BaseModel):
     pageSize: Literal["a4", "a3"] = "a4"
     orientation: Literal["portrait", "landscape"] = "portrait"
@@ -361,7 +366,7 @@ class BuilderConfig(BaseModel):
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report", "tileset3d"]
+    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report", "tileset3d", "terrain3d"]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None
@@ -377,6 +382,7 @@ class BuilderConfig(BaseModel):
     alert: AlertRulePayload | None = None
     report: ReportSchedulePayload | None = None
     tileset3d: Tileset3DPayload | None = None
+    terrain3d: Terrain3DPayload | None = None
     printLayout: PrintLayout | None = None
 
     @model_validator(mode="after")
@@ -397,4 +403,6 @@ class BuilderConfig(BaseModel):
             raise ValueError("report config requires a report payload")
         if self.kind == "tileset3d" and self.tileset3d is None:
             raise ValueError("tileset3d config requires a tileset3d payload")
+        if self.kind == "terrain3d" and self.terrain3d is None:
+            raise ValueError("terrain3d config requires a terrain3d payload")
         return self

@@ -14,6 +14,7 @@ from app.configs.pipeline_validation import validate_pipeline_payload as _valida
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
+from app.configs.terrain3d_validation import validate_terrain3d_payload as _validate_terrain3d_payload
 from app.configs.tileset3d_validation import validate_tileset3d_payload as _validate_tileset3d_payload
 from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
 from app.db import get_session
@@ -100,6 +101,7 @@ def create_config(
     _validate_alert_payload(session, request.config, user=user)
     _validate_report_payload(session, request.config, user=user)
     _validate_tileset3d_payload(session, request.config, user=user)
+    _validate_terrain3d_payload(session, request.config, user=user)
     try:
         item = items_repo.create_item(
             session, tenant_id=user.tenant_id, owner_id=user.id,
@@ -157,6 +159,7 @@ def update_config(
     _validate_alert_payload(session, config, user=user)
     _validate_report_payload(session, config, user=user)
     _validate_tileset3d_payload(session, config, user=user)
+    _validate_terrain3d_payload(session, config, user=user)
 
     result = repo.update_config(session, config_id, config, tenant_id=user.tenant_id)
     if result is None:
@@ -263,6 +266,7 @@ def update_config_by_item(
     _validate_alert_payload(session, config, user=user)
     _validate_report_payload(session, config, user=user)
     _validate_tileset3d_payload(session, config, user=user)
+    _validate_terrain3d_payload(session, config, user=user)
     result = repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
