@@ -5,6 +5,7 @@ app.pipelines/app.tileset3d). Inclut le proxy de lecture authentifié
 (GET /terrain3d/{item_id}/tiles/{z}/{x}/{y}.png), qui vérifie can() puis
 relaie vers TiTiler (réseau interne, jamais une URL fournie par
 l'appelant)."""
+import logging
 import os
 import uuid
 from collections.abc import Callable
@@ -27,6 +28,8 @@ from app.terrain3d.schemas import (
     Terrain3DUploadCreate, Terrain3DUploadCreated,
 )
 from app.users.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -135,6 +138,12 @@ def read_terrain3d_tile(
     # l'indisponibilité réelle (except httpx.HTTPError ci-dessus) et aux
     # statuts vraiment inattendus.
     if resp.status_code == 404:
+        # TiTiler renvoie aussi 404 pour un endpoint /vsis3/ mal résolu (GDAL
+        # ne distingue pas "hors emprise" de "objet S3 introuvable/injoignable")
+        # — loggé pour permettre de distinguer les deux cas en observabilité,
+        # sans changer le code HTTP renvoyé au client (cf. Manual acceptance
+        # checks du plan, point 3).
+        logger.warning("terrain3d tile proxy: TiTiler a répondu 404 pour %s (item %s)", source_key, item_id)
         raise HTTPException(status_code=404, detail="tile not found")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="terrain tile service error")
