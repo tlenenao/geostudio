@@ -75,6 +75,8 @@ l'instantané.
 
 
 def build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> bytes:
+    if not os.path.isdir(snapshot_dir):
+        raise FileNotFoundError(f"snapshot directory not found at {snapshot_dir}")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("data/geostudio-app-config.json", config.model_dump_json(by_alias=True))
