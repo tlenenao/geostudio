@@ -51,12 +51,39 @@ _EXPORT_PATH_RE = re.compile(
 # Connecté appelle en direct depuis un domaine tiers arbitraire — jamais
 # toute l'API. Wildcard origin sûr ici précisément parce qu'aucune
 # credential/cookie ne traverse cette frontière (Bearer-ou-rien).
+#
+# Path-only : sert uniquement à décider si une requête OPTIONS de preflight
+# doit recevoir un 204 CORS. Un navigateur envoie toujours OPTIONS pour
+# précéder une requête réelle qu'il ne connaît pas encore (méthode incluse) :
+# le preflight ne doit donc être gated que par chemin, jamais par méthode —
+# c'est la requête réelle qui, elle, est gated par méthode+chemin ci-dessous
+# (_APPEXPORT_CORS_RULES) pour ne jamais exposer les endpoints d'écriture ou
+# admin-only qui partagent le même préfixe de chemin (ex. POST /collections,
+# GET /collections/candidates, PATCH/DELETE /collections/{id}).
 _APPEXPORT_CORS_PATH_RE = re.compile(
     r"^/collections(/[^/]+)?$"
     r"|^/collections/[^/]+/schema$"
     r"|^/collections/[^/]+/items(/[^/]+)?$"
     r"|^/collections/[^/]+/aggregate$"
     r"|^/extensions$"
+)
+
+# Méthode+chemin exacts pour les requêtes réelles (non-preflight) : c'est ce
+# qui empêche effectivement POST /collections, GET /collections/candidates,
+# PATCH/DELETE /collections/{id} et les écritures sous .../items de recevoir
+# Access-Control-Allow-Origin, même si leur chemin matche le regex path-only
+# ci-dessus. "candidates" est explicitement exclu de la branche {id} : c'est
+# un chemin statique admin-only (GET /collections/candidates,
+# app/collections/routes.py) qui partage la même forme /collections/<segment>
+# qu'un id de collection réel.
+_APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^/collections$"), "GET"),
+    (re.compile(r"^/collections/(?!candidates$)[^/]+$"), "GET"),
+    (re.compile(r"^/collections/[^/]+/schema$"), "GET"),
+    (re.compile(r"^/collections/[^/]+/items$"), "GET"),
+    (re.compile(r"^/collections/[^/]+/items/[^/]+$"), "GET"),
+    (re.compile(r"^/collections/[^/]+/aggregate$"), "POST"),
+    (re.compile(r"^/extensions$"), "GET"),
 )
 
 
@@ -105,9 +132,10 @@ def create_app() -> FastAPI:
     if is_appexport_enabled():
         @app.middleware("http")
         async def appexport_cors(request: Request, call_next):
-            if not _APPEXPORT_CORS_PATH_RE.match(request.url.path):
-                return await call_next(request)
+            path = request.url.path
             if request.method == "OPTIONS":
+                if not _APPEXPORT_CORS_PATH_RE.match(path):
+                    return await call_next(request)
                 return Response(
                     status_code=204,
                     headers={
@@ -116,6 +144,11 @@ def create_app() -> FastAPI:
                         "Access-Control-Allow-Headers": "Content-Type",
                     },
                 )
+            if not any(
+                method == request.method and regex.match(path)
+                for regex, method in _APPEXPORT_CORS_RULES
+            ):
+                return await call_next(request)
             response = await call_next(request)
             response.headers["Access-Control-Allow-Origin"] = "*"
             return response
