@@ -10,7 +10,7 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-def _setup(monkeypatch, tmp_path, *, with_private_source=False):
+def _setup(monkeypatch, tmp_path, *, with_private_source=False, mode="static"):
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     runtime_dir = tmp_path / "runtime"
     runtime_dir.mkdir()
@@ -47,7 +47,7 @@ def _setup(monkeypatch, tmp_path, *, with_private_source=False):
             ))],
         )
         configs_repo.create_config(s, config, item.id, tenant_id=tenant.id)
-        job = appexport_repo.create_job(s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode="static")
+        job = appexport_repo.create_job(s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode=mode)
         s.commit()
     return Session, tenant.id, job.id
 
@@ -90,6 +90,41 @@ def test_job_succeeds_and_marks_done(monkeypatch, tmp_path):
 
 def test_job_guard_rejection_marks_error(monkeypatch, tmp_path):
     Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "publique" in job.error
+
+
+def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="connected")
+    monkeypatch.setenv("CORE_BASE_URL", "https://core.example.org")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+
+    captured: dict = {}
+    real_build_bundle_zip = __import__("app.appexport.jobs", fromlist=["build_bundle_zip"]).build_bundle_zip
+
+    def spy_build_bundle_zip(config, **kwargs):
+        captured["connection"] = kwargs.get("connection")
+        captured["config"] = config
+        return real_build_bundle_zip(config, **kwargs)
+
+    monkeypatch.setattr("app.appexport.jobs.build_bundle_zip", spy_build_bundle_zip)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done"
+    assert captured["connection"] == {"coreUrl": "https://core.example.org"}
+
+
+def test_connected_job_with_private_source_marks_error(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="connected")
     monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
     monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
     build_app_export_task(job_id=job_id, tenant_id=tenant_id)
