@@ -604,7 +604,7 @@ export type ExportFormat = "png" | "pdf";
 export type ExportJobStatus = "pending" | "running" | "done" | "error";
 export type ExportJob = { id: string; status: ExportJobStatus; resultUrl: string | null; error: string | null };
 
-export type AppExportMode = "static" | "connected";
+export type AppExportMode = "static" | "connected" | "standalone";
 export type AppExportJobStatus = { id: string; status: string; resultUrl: string | null; error: string | null };
 
 export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
