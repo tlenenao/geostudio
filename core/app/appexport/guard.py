@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Garde d'export (SP-18a/b) : refuse tout export dont une DataSource
+"""Garde d'export (SP-18a/b/c) : refuse tout export dont une DataSource
 référence une collection non publique. Le mode Statique (SP-18a) refuse en
 plus les sources "statistics" (rien à figer côté serveur) et tout widget
 hors de l'allowlist builtin (rien n'est bundlé au runtime, un widget tiers
@@ -8,7 +8,13 @@ restrictions : "statistics" appelle /collections/{id}/aggregate en direct
 au runtime (déjà anonyme-capable côté serveur pour une collection publique,
 cf. app/features/routes.py's get_current_user_optional), et un widget tiers
 charge son JS depuis son URL d'origine exactement comme dans le shell
-normal — rien n'est bundlé, donc rien à interdire."""
+normal — rien n'est bundlé, donc rien à interdire. Le mode Autoporté
+(SP-18c) combine les deux axes indépendamment : is_public lenient comme
+Connecté ("statistics" pleinement supporté, figé dans l'instantané et
+interrogé via /aggregate par le mini-serveur), MAIS allowlist de widgets
+stricte comme Statique (rien n'est bundlé ici non plus — décision prise en
+session 2026-08-15, cf. design SP-18c §3.3 : aucune tentative de bundling
+offline de widgets tiers)."""
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -21,13 +27,15 @@ from app.configs.schemas import BuilderConfig
 # sliderFilter,tabs,modal,drawer,filter,mapWidget,indicator}.tsx — à tenir
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
-# Uniquement pertinent en mode Statique (mode="static") — cf. docstring.
+# Pertinent pour mode="static" ET mode="standalone" — cf. docstring.
 _SUPPORTED_WIDGET_TYPES = frozenset({
     "text", "image", "button", "table", "list", "map", "indicator", "chart",
     "pivot", "nav", "form", "hero", "richSection", "gallery", "datasetCard",
     "dateRangeFilter", "selectFilter", "sliderFilter", "tabs", "modal",
     "drawer", "filter",
 })
+
+_STRICT_WIDGET_MODES = frozenset({"static", "standalone"})
 
 
 @dataclass
@@ -68,10 +76,11 @@ def check_export_guard(
         if source.type not in ("features", "statistics"):
             reasons.append(f"source '{source.id}' : type '{source.type}' non supporté")
             continue
-        # "features" (les deux modes) et "statistics" en mode connecté :
-        # même garde is_public — le mode connecté appelle
-        # /collections/{id}/aggregate en direct au runtime au lieu de figer
-        # un résultat côté serveur.
+        # "features" (tous modes) et "statistics" en mode connecté/autoporté :
+        # même garde is_public — connecté appelle /collections/{id}/aggregate
+        # en direct au runtime, autoporté le fige dans l'instantané et le
+        # sert depuis le mini-serveur ; aucun des deux n'a besoin de figer
+        # un résultat au moment de l'export lui-même.
         collection_id = source.layer
         col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
         if col is None:
@@ -83,11 +92,11 @@ def check_export_guard(
                 f"source '{source.id}' : collection '{collection_id}' n'est pas partagée publiquement"
             )
 
-    if mode == "static":
+    if mode in _STRICT_WIDGET_MODES:
         unsupported = _collect_widget_types(config) - _SUPPORTED_WIDGET_TYPES
         for widget_type in sorted(unsupported):
             reasons.append(
-                f"widget '{widget_type}' non supporté par l'export statique "
+                f"widget '{widget_type}' non supporté par ce mode d'export "
                 "(extension tierce, non prise en charge)"
             )
 

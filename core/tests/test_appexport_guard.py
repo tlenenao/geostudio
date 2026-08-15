@@ -188,3 +188,57 @@ def test_third_party_widget_is_allowed_in_connected_mode():
         result = check_export_guard(s, tenant_id="t1", config=config, mode="connected")
     assert result.allowed is True
     assert result.reasons == []
+
+
+# --- Autoporté (SP-18c) : leniency d'is_public de "connected", allowlist de widgets de "static" ---
+
+
+def test_statistics_source_on_public_collection_is_allowed_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        tenant_id, col = _public_collection(s)
+        config = _app_config(data_sources=[
+            DataSource(id="s1", type="statistics", service="core", layer=col.id, query={}),
+        ])
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
+    assert result.allowed is True
+
+
+def test_statistics_source_on_non_public_collection_is_blocked_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        tenant_id, col = _private_collection(s)
+        config = _app_config(data_sources=[
+            DataSource(id="s1", type="statistics", service="core", layer=col.id, query={}),
+        ])
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
+    assert result.allowed is False
+    assert any(col.id in r and "publique" in r for r in result.reasons)
+
+
+def test_features_source_on_non_public_collection_is_still_blocked_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        tenant_id, col = _private_collection(s)
+        config = _app_config(data_sources=[
+            DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
+        ])
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
+    assert result.allowed is False
+
+
+def test_unsupported_widget_type_is_blocked_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[], widget_types=("text", "acme-widget"))
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="standalone")
+    assert result.allowed is False
+    assert any("acme-widget" in r for r in result.reasons)
+
+
+def test_builtin_widgets_only_is_allowed_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[], widget_types=("text", "table", "map"))
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="standalone")
+    assert result.allowed is True
