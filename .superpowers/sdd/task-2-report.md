@@ -1,112 +1,122 @@
-# Task 2 Report: `duckdb_conn.open_local_connection()`
+# Task 2 Report: `useUndoableDraft` React Hook
 
 ## Summary
 
-Successfully implemented `open_local_connection()` helper for the SP-18c standalone mini-server (Tasks 5/6), following TDD discipline.
+Successfully implemented `useUndoableDraft`, a React hook that wraps the pure `UndoStack` module (Task 1) to provide debounced undo/redo state management for the AppBuilder's AppConfig draft. The hook collapses rapid bursts of changes into single undo steps via a 400ms coalesce window, while supporting the same call signature as the plain `useState` setter it replaces (both value and updater function forms).
 
-## What I Did
+## What Was Implemented
 
-### Step 1: Write the Failing Test
-Appended the test `test_open_local_connection_installs_and_loads_spatial_only` to `core/tests/test_analytics_duckdb_conn.py` exactly as specified in the brief. The test verifies that:
-- `INSTALL spatial` and `LOAD spatial` are executed
-- `httpfs` is NOT loaded
-- `s3_` settings are NOT configured
+### Files Created
 
-### Step 2: Verify Test Fails
-Ran the test and confirmed it failed with the expected `ImportError`:
+1. **`shell/src/builder/useUndoableDraft.test.tsx`** — 8 comprehensive tests:
+   - `seedDraft` sets initial draft without creating undo step
+   - `seedDraft` never overwrites already-seeded draft
+   - `canUndo` flips true once coalesce window elapses
+   - `undo` restores pre-edit config and flushes pending burst immediately
+   - Rapid burst of `setDraft` calls collapses into one undo step
+   - `redo` restores what undo reverted
+   - New edit after undo purges redo branch
+   - `setDraft` supports functional-updater form
+
+2. **`shell/src/builder/useUndoableDraft.ts`** — Hook implementation with:
+   - `UndoableDraft` type defining public API
+   - `useUndoableDraft()` hook function
+   - Debounced pending baseline capture (400ms idle flush)
+   - Proper cleanup of timers on flush/undo/redo
+   - Support for both value and functional updater forms in `setDraft`
+   - `seedDraft` that sets initial config without affecting history
+   - Full undo/redo state management via `canUndo`/`canRedo` flags
+
+### Key Implementation Details
+
+- **Coalesce window**: First `setDraft` within a burst captures the pre-burst config as pending baseline; subsequent calls within 400ms extend the burst without re-capturing
+- **Immediate flush on undo/redo**: Both operations call `flush()` synchronously first, so Ctrl+Z works mid-burst without waiting for the timer
+- **Seed bypass**: `seedDraft` uses `prev ?? value` to set initial config without creating history, preserving the original AppBuilderPage behavior
+- **Exact signature compatibility**: `setDraft` accepts both direct values and updater functions, identical to `useState` signature for seamless replacement
+- **Timer cleanup**: Properly clears pending timeout when flushing or taking any action
+
+## Test Results
+
+### TDD Verification
+
+**RED (failing tests before implementation):**
 ```
-ImportError: cannot import name 'open_local_connection' from 'app.analytics.duckdb_conn'
+Exit code 1
+FAIL  src/builder/useUndoableDraft.test.tsx
+Error: Failed to resolve import "./useUndoableDraft" from "src/builder/useUndoableDraft.test.tsx".
+Does the file exist?
 ```
 
-### Step 3: Implement the Function
-Added `open_local_connection()` to `core/app/analytics/duckdb_conn.py` after `open_spatial_connection()` with:
-- Correct signature: `() -> duckdb.DuckDBPyConnection`
-- French docstring explaining the purpose: used exclusively by the mini-server (SP-18c) reading local GeoParquet snapshots
-- Implementation: creates an in-process DuckDB connection and loads only the spatial extension
-- Identical pattern to `open_spatial_connection()` but with its own purpose statement
-
-### Step 4: Verify Tests Pass
-Ran full test suite on `tests/test_analytics_duckdb_conn.py`:
+**GREEN (all tests passing):**
 ```
-============================= test session starts ==============================
-collected 5 items
+ ✓ src/builder/useUndoableDraft.test.tsx (8 tests) 46ms
 
-tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_httpfs_and_spatial PASSED [ 20%]
-tests/test_analytics_duckdb_conn.py::test_open_connection_configures_s3_settings_from_endpoint PASSED [ 40%]
-tests/test_analytics_duckdb_conn.py::test_open_connection_detects_https_endpoint PASSED [ 60%]
-tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_h3 PASSED [ 80%]
-tests/test_analytics_duckdb_conn.py::test_open_local_connection_installs_and_loads_spatial_only PASSED [100%]
-
-============================== 5 passed in 0.42s ===============================
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
 ```
 
-All 5 tests pass (the brief said "expect 6 tests" — see Deviations below).
+All 8 tests verify:
+- Initial state and seeding behavior
+- Debounce coalescing across multiple rapid edits
+- State restoration on undo/redo
+- History truncation on new edits after undo
+- Functional updater syntax support
 
-### Step 5: Commit
-Created commit with the exact message from the brief:
-```bash
-git commit -m "feat(core): open_local_connection for the standalone mini-server (SP-18c)"
+## Files Changed
+
+- **Created**: `shell/src/builder/useUndoableDraft.ts` (105 lines)
+- **Created**: `shell/src/builder/useUndoableDraft.test.tsx` (135 lines)
+
+## Commit Created
+
 ```
-Commit hash: `4f75c88`
+fa614ad feat(shell): useUndoableDraft — debounced undo/redo for the builder config (SP-19)
+```
 
-## Diff Summary
+## Self-Review Findings
 
-**Files modified:** 2
-- `core/app/analytics/duckdb_conn.py` — added 10 lines (1 blank + 1 def line + 1 docstring opening + 3 docstring lines + 1 conn creation + 1 execute + 1 return)
-- `core/tests/test_analytics_duckdb_conn.py` — added 17 lines (test function with setup and assertions)
+### Completeness ✓
+- All 8 tests from brief implemented verbatim
+- Full implementation from brief transcribed exactly
+- All imports correct (AppConfig type, undoStack exports)
+- Commit message matches brief specification
 
-**Lines added:** 27 total, all non-invasive (no existing code touched)
+### Code Quality ✓
+- Follows React hooks best practices (useCallback, useRef, useState)
+- Proper dependency arrays on all useCallback hooks
+- Timer cleanup implemented in flush() to prevent memory leaks
+- No direct state mutations; all state updates via proper React patterns
+- TypeScript types correctly applied throughout
 
-## Deviations from Brief
+### Testing ✓
+- Tests use vitest fake timers correctly
+- beforeEach/afterEach restore real timers after each test
+- act() wraps all state changes
+- Tests verify both synchronous and asynchronous behavior
+- Burst coalescing verified with multiple sequential advanceTimersByTime calls
+- Edge cases covered: empty undo, redo after undo, new edit clearing redo
 
-The brief stated "Expected: PASS (6 tests)" after adding the new test. The actual result is 5 passing tests (4 existing + 1 new). This suggests the brief's count was either an estimate or based on a different test file state. However:
-- All tests pass ✓
-- The new test is correctly implemented and verifies the requirements ✓
-- No regression in existing tests ✓
-- The test file remains pure DuckDB with no database dependency ✓
+### Architecture Alignment ✓
+- Hook maintains exact `useState` call signature for `setDraft` — seamless Task 3 replacement
+- `seedDraft` preserves original session start semantics (never overwrites)
+- Debouncing hides keystroke bursts from undo stack as designed
+- Immediate flush on undo/redo ensures Ctrl+Z responsiveness
+- No changes needed to caller code (AppBuilderPage)
 
-No code changes were needed to address this discrepancy — the count is a documentation observation only.
+### No Concerns
 
-## Self-Review Notes
+- Implementation follows brief specification precisely
+- All tests pass without modification
+- No linting issues (SPDX header present, code style matches project)
+- Ready for Task 3 integration with AppBuilderPage
 
-### Correctness
-- **Function implementation:** Identical pattern to `open_spatial_connection()`, correctly inherits DuckDB best practices already established in the codebase
-- **Test coverage:** Positively checks spatial is loaded (assertions 1+2), negatively checks httpfs and s3_ are NOT present (assertions 3+4) — comprehensive
-- **Docstring:** French, clear purpose statement, references SP-18c and mini-server usage, lists expected spatial functions (ST_Intersects, ST_MakeEnvelope, ST_AsGeoJSON, ST_GeomFromGeoJSON), explains why other extensions aren't needed
+## Verification Steps
 
-### Non-invasiveness
-- `open_spatial_connection()` remains unchanged
-- `open_connection()` remains unchanged
-- Existing tests all pass
-- New function is append-only to the module
+1. ✓ Created test file (Step 1)
+2. ✓ Verified tests fail without implementation (Step 2)
+3. ✓ Created implementation file from brief (Step 3)
+4. ✓ Verified all 8 tests pass (Step 4)
+5. ✓ Committed with exact message (Step 5)
+6. ✓ Self-reviewed completeness, quality, discipline
 
-### Integration Readiness
-- Function is importable as expected by the test
-- Signature matches the interface spec: no parameters, returns `duckdb.DuckDBPyConnection`
-- Positioned correctly after `open_spatial_connection()` (logical grouping of mini-process helpers)
-- Ready for Tasks 5/6 (mini-server bootstrap — not yet implemented, out of scope for this task)
-
-### Minor Notes
-- No environment variables required (by design — mini-server is self-contained)
-- No S3 configuration needed (by design — local-only file reading)
-- Connection is ephemeral per-call (matches existing pattern in module docstring)
-
-## Test Execution Details
-
-The test uses the `_RecordingConnection` helper (already present in the test file) to intercept DuckDB statements without requiring network connectivity. This allows us to verify the setup sequence without a real S3 endpoint or MinIO instance.
-
-All assertions are straightforward:
-1. `"INSTALL spatial" in joined` — verifies the command was executed
-2. `"LOAD spatial" in joined` — verifies the extension was loaded
-3. `"httpfs" not in joined` — negative test: httpfs extension is not loaded
-4. `"s3_" not in joined` — negative test: no S3 configuration is set
-
-## Completion Status
-
-✓ Step 1: Test written
-✓ Step 2: Test fails (expected ImportError)
-✓ Step 3: Function implemented
-✓ Step 4: All tests pass (5/5)
-✓ Step 5: Committed with correct message
-
-**Ready for review and merge.**
+Ready for Task 3: Integration with AppBuilderPage.
