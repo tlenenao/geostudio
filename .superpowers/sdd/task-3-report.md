@@ -1,112 +1,117 @@
-# Task 3 Report: `itemClient.ts` — wire mapping for `tiles3d`/`terrain`/camera
+# Task 3 Report: `build_app_export_task` branches on `mode`
 
-**Date:** 2026-08-13
-**Branch:** dev
-**Commit:** 973a8a7
+## What Was Implemented
 
-## Summary
+Task 3 is the integration point for SP-18b where the `build_app_export_task` procrastinate job now properly handles two distinct modes:
 
-Successfully implemented 3D Tiles and terrain support in the shell's `itemClient.ts` API client by:
-1. Extending the `toFrontLayer` function to recognize and map `tiles3d` layer kind
-2. Updating `getMapConfig` to read and correctly serialize `terrain`, camera `pitch`, and `bearing` fields from the core API response
-3. Verifying that `saveMapConfig` transparently handles the new fields via existing structural spreading
+1. **Static mode** (default, unchanged from SP-18a): Calls `freeze_config()` to materialize all data sources, then passes `connection=None` to the bundler.
+2. **Connected mode** (new): Skips `freeze_config()`, keeps the config live, and passes `connection={"coreUrl": ...}` constructed from the `CORE_BASE_URL` environment variable (default `http://localhost:8200`).
 
-## TDD Execution
+The fix integrates Task 1's `check_export_guard(..., mode=...)` requirement and Task 2's `build_bundle_zip(..., connection=...)` parameter.
 
-### Step 1: Write Failing Tests ✓
-Added 4 new test cases to `shell/src/api/itemClient.test.ts` (after line 340):
-- `getMapConfig maps a tiles3d layer` — verifies layer kind mapping
-- `getMapConfig reads terrain and camera pitch/bearing` — verifies full 3D config read with optional exaggeration
-- `getMapConfig defaults terrain to null and omits pitch/bearing when absent` — verifies null/undefined handling
-- `saveMapConfig sends terrain nested under map, not at the top level` — verifies write roundtrip and structural placement
+### Implementation Details
 
-### Step 2: Confirm RED ✓
-Ran: `cd shell && npm run test -- src/api/itemClient.test.ts`
-- **Result:** 3 failed (as expected)
-  - Test 1 failed: `toFrontLayer` defaulted `tiles3d` to `feature` kind (fell through default case)
-  - Test 2 failed: `cfg.terrain` was `undefined` (function didn't read it)
-  - Test 3 failed: `cfg.view.pitch` was `null` instead of `undefined` (included null values instead of omitting)
+1. **Added `BuilderConfig` import** to the jobs module.
+2. **Created `_prepare_bundle_inputs()` helper function** that branches on mode:
+   - For `"connected"`: returns original config + `{"coreUrl": core_url}` dict
+   - For `"static"`: returns frozen config + `None`
+3. **Updated `build_app_export_task()`** to:
+   - Read `mode` from the persisted job (line 67: `mode = job.mode`)
+   - Pass `mode=mode` to `check_export_guard()` call (line 74)
+   - Call `_prepare_bundle_inputs()` to branch on mode (lines 75–78)
+   - Pass the resulting `connection` dict to `build_bundle_zip()` (line 81)
 
-### Step 3: Implement ✓
-Modified `shell/src/api/itemClient.ts` in two sections:
+## TDD Evidence
 
-#### 3a. `toFrontLayer` function (lines 13–29)
-Added new case for `tiles3d`:
-```ts
-case "tiles3d":
-  return { ...base, kind: "tiles3d", url: l.url ?? "" };
+### RED Phase (Before Implementation)
+
 ```
-This case returns a `Tile3dLayer` frontend object with `kind`, `id`, `title`, `visible`, and `url`.
+tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done FAILED
+tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error FAILED
+tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url FAILED
+tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error FAILED
 
-#### 3b. `getMapConfig` method (lines 601–631)
-- Extended the request type signature to include optional `pitch`/`bearing` in view and optional `terrain` object
-- Restructured view serialization to conditionally include pitch/bearing only when non-null
-- Added terrain deserialization logic that:
-  - Returns `null` if terrain is falsy
-  - Returns a typed terrain object with `tilesUrl`, `encoding`, and optional `exaggeration` (omitted if null)
-- Uses the same spread-if-present pattern as the existing view fields
-
-**`saveMapConfig` (lines 620–623):** No changes required — the structural spread `const { printLayout, ...map } = config` automatically includes `terrain` and `view.pitch/bearing` because they are part of the `MapConfig`/`MapViewport` objects.
-
-### Step 4: Confirm GREEN ✓
-Ran: `cd shell && npm run test -- src/api/itemClient.test.ts`
-- **Result:** All 132 tests pass (129 existing + 4 new)
-  - ✓ `getMapConfig maps a tiles3d layer`
-  - ✓ `getMapConfig reads terrain and camera pitch/bearing`
-  - ✓ `getMapConfig defaults terrain to null and omits pitch/bearing when absent`
-  - ✓ `saveMapConfig sends terrain nested under map, not at the top level`
-
-### Step 5: Commit ✓
-Staged only the two required files:
-```bash
-git add shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
+Error: TypeError: check_export_guard() missing 1 required keyword-only argument: 'mode'
 ```
 
-Verified staging with `git status --short` to ensure pre-existing WIP files (`VisualQueryWizardPage.*`) were NOT accidentally included.
+The job's call to `check_export_guard(session, tenant_id=tenant_id, config=config_read.config)` was missing the `mode=` kwarg entirely, causing all tests to fail. The exception handler caught this and marked jobs as "error" status.
 
-Committed:
+### GREEN Phase (After Implementation)
+
 ```
-git commit -m "feat(shell): itemClient mappe tiles3d, terrain et pitch/bearing"
-[dev 973a8a7] 2 files changed, 109 insertions(+), 2 deletions(-)
+tests/test_appexport_jobs.py::test_job_disabled_flag_marks_error PASSED  [ 20%]
+tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done PASSED    [ 40%]
+tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error PASSED [ 60%]
+tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url PASSED [ 80%]
+tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error PASSED [100%]
+
+============================== 5 passed in 0.69s ===============================
 ```
 
-## Technical Details
+All 5 tests pass consistently.
 
-### Changes to `RawMapLayer`
-No explicit type change needed — the existing type already included all required fields (`url`, `tilesUrl`, `sourceLayer`, `opacity`, `deckType`, `dataUrl`, `paint`, `props`). The `tiles3d` layer only uses `url` and the base fields (`id`, `title`, `visible`).
+## Files Changed
 
-### Terrain Structure
-The terrain object structure from core:
-```ts
-{
-  tilesUrl: string;
-  encoding: "terrarium";
-  exaggeration?: number | null;
-}
+- **`core/app/appexport/jobs.py`** (94 lines → 96 lines)
+  - Updated docstring: "SP-18a" → "SP-18a/b"
+  - Added `BuilderConfig` import
+  - Added `_prepare_bundle_inputs()` helper function (7 lines)
+  - Modified `build_app_export_task()` to read `mode` from job and call helper function
+  - Updated call to `check_export_guard()` to pass `mode=mode` kwarg
+  - Updated `build_bundle_zip()` call to pass `connection` parameter
+
+- **`core/tests/test_appexport_jobs.py`** (100 → 146 lines)
+  - Modified `_setup()` function signature: added `mode="static"` parameter
+  - Modified `_setup()` function body: changed `create_job()` to pass `mode=mode` instead of hardcoded `"static"`
+  - Added `test_connected_job_skips_freezing_and_embeds_core_base_url()` test
+  - Added `test_connected_job_with_private_source_marks_error()` test
+
+## Commit
+
 ```
-- `exaggeration` is optional and defaults to 1.0 on the map runtime
-- Null values are filtered out during deserialization to prevent bloat
+commit 17608be: feat(core): app export job branches on mode — connected skips freezing (SP-18b)
+```
 
-### Pitch and Bearing Serialization
-Both are optional camera fields in the view:
-- Included in the returned `MapViewport` only if non-null
-- Values flow through `saveMapConfig` unchanged due to structural spreading
-- Correctly round-trip (save → read) with type safety
+## Self-Review Findings
 
-## Test Coverage
-- **4 new tests:** Cover layer mapping, terrain read, null handling, and write placement
-- **129 existing tests:** All pass, confirming no regression
-- **Total:** 132/132 green
+### Correctness
 
-## Integration Notes
-Task 3 completes the `itemClient` side of the 3D Tiles + terrain feature. The frontend types (`MapLayer` with `kind: "tiles3d"`, `MapTerrainConfig`, `MapViewport` with `pitch`/`bearing`) were wired in Tasks 1–2; this task wires the API client read/write paths that consume and produce those types.
+- ✅ The implementation exactly matches the plan text and satisfies all three test assertions
+- ✅ `check_export_guard()` now receives the required `mode=` kwarg
+- ✅ `freeze_config()` is properly skipped for connected mode
+- ✅ The `connection` dict is correctly constructed from `CORE_BASE_URL` env var with proper default
+- ✅ The mode is read from `job.mode` (field set at job creation time, not modified here)
+- ✅ All three pre-existing tests continue to pass with the default `mode="static"`
+- ✅ Both new tests verify the branching behavior correctly:
+  - One asserts that `connection` is properly embedded for connected mode
+  - One asserts that connected mode still respects the guard (rejects private sources)
 
-## Files Modified
-- `shell/src/api/itemClient.ts` — 107 insertions, 2 deletions
-- `shell/src/api/itemClient.test.ts` — 67 insertions, 2 deletions
+### Code Quality
 
-**Total scope:** 2 files, 109 lines changed (new tests + implementation, 0 refactoring debt)
+- ✅ `_prepare_bundle_inputs()` is a clean, testable abstraction that encapsulates the mode branching logic
+- ✅ No breaking changes to public signatures
+- ✅ The exception handling remains unchanged (broad catch-all still marks job as "error")
+- ✅ Docstring updated to reflect the new dual-mode behavior
+- ✅ Import of `BuilderConfig` is necessary and correct
+
+### Testing
+
+- ✅ Tests demonstrate both modes work correctly (static freezes, connected embeds URL)
+- ✅ Tests confirm the guard still rejects private sources in both modes
+- ✅ Spy pattern on `build_bundle_zip()` in new test correctly captures the `connection` argument
+- ✅ No test fixtures were broken
+- ✅ Test isolation is clean (each test gets its own database session)
+
+### Environment
+
+- ✅ Default `CORE_BASE_URL` value matches the pattern used elsewhere in the codebase (`http://localhost:8200`)
+- ✅ New env var read is optional with proper fallback
 
 ## Concerns
 
-None. Implementation matches the brief exactly, all 132 tests pass (including 4 new ones), scope discipline maintained (only 2 intended files committed), no regressions in existing test suite.
+None. The implementation is complete, correct, and well-tested. All requirements from the plan are satisfied.
+
+---
+
+**Status**: DONE  
+**Execution Time**: ~3 minutes (all 5 tests pass in 0.69s)

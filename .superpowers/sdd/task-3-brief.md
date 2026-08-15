@@ -1,197 +1,190 @@
-### Task 3: `itemClient.ts` — wire mapping for `tiles3d`/`terrain`/camera
+### Task 3: `build_app_export_task` branches on `mode`
 
 **Files:**
-- Modify: `shell/src/api/itemClient.ts:6-29` (`RawMapLayer`, `toFrontLayer`), `shell/src/api/itemClient.ts:601-618` (`getMapConfig`)
-- Test: `shell/src/api/itemClient.test.ts`
+- Modify: `core/app/appexport/jobs.py`
+- Modify: `core/tests/test_appexport_jobs.py`
 
 **Interfaces:**
-- Consumes: `MapLayer`, `MapConfig`, `MapTerrainConfig` (Task 2).
-- Produces: `getMapConfig(pk): Promise<MapConfig>` now also returns `terrain` and `view.pitch`/`view.bearing` when present; `toFrontLayer` handles `kind: "tiles3d"`. `saveMapConfig` needs **no code change** — `terrain` and `view.pitch/bearing` are structural parts of the `MapConfig`/`MapViewport` objects already spread into the PUT body via `const { printLayout, ...map } = config`.
+- Consumes: `check_export_guard(..., mode=...)` (Task 1), `build_bundle_zip(..., connection=...)` (Task 2).
+- Produces: unchanged public signature `build_app_export_task(job_id: str, tenant_id: str) -> None`. For `mode="connected"`: skips `freeze_config`, reads `CORE_BASE_URL` (default `http://localhost:8200`, same default used elsewhere in this codebase for the same variable) and passes it as `connection={"coreUrl": ...}` to the bundler.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `shell/src/api/itemClient.test.ts`, near the existing `getMapConfig`/`saveMapConfig` tests (after the `saveMapConfig PUTs the map config by item` test, around line 340):
+Append to `core/tests/test_appexport_jobs.py` (existing three tests and
+`_setup`/`_fake_s3` stay as-is; add a `mode` parameter to `_setup` with
+default `"static"` so existing calls — which pass none — keep testing
+static mode unchanged):
 
-```ts
-test("getMapConfig maps a tiles3d layer", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8 },
-            layers: [
-              { id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json",
-                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
-            ],
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.layers[0]).toEqual({ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" });
-});
+Modify `_setup`'s signature and the `create_job` call inside it:
 
-test("getMapConfig reads terrain and camera pitch/bearing", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8, pitch: 40, bearing: 200 },
-            layers: [],
-            terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.view.pitch).toBe(40);
-  expect(cfg.view.bearing).toBe(200);
-  expect(cfg.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 });
-});
-
-test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8, pitch: null, bearing: null },
-            layers: [],
-            terrain: null,
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.view.pitch).toBeUndefined();
-  expect(cfg.view.bearing).toBeUndefined();
-  expect(cfg.terrain).toBeNull();
-});
-
-test("saveMapConfig sends terrain nested under map, not at the top level (unlike printLayout)", async () => {
-  let body: any;
-  server.use(
-    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
-      body = await request.json();
-      return HttpResponse.json({});
-    }),
-  );
-  await makeClient().saveMapConfig("77", {
-    basemap: { style: "s" },
-    view: { center: [0, 0], zoom: 1, pitch: 30, bearing: 60 },
-    layers: [],
-    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
-  });
-  expect(body.map.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" });
-  expect(body.map.view).toEqual({ center: [0, 0], zoom: 1, pitch: 30, bearing: 60 });
-  expect(body.terrain).toBeUndefined();
-});
+```python
+def _setup(monkeypatch, tmp_path, *, with_private_source=False, mode="static"):
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
-Expected: FAIL — `toFrontLayer` falls through the `default: case "feature"` branch for `kind: "tiles3d"` (returns a `feature`-shaped object instead), and `getMapConfig`'s inline raw type doesn't read `terrain`/`pitch`/`bearing` (the returned `cfg.terrain`/`cfg.view.pitch` are `undefined` in the first three tests; the 4th test passes accidentally since it saves `terrain` through the existing generic spread — verify by running the full set and reading actual failures, not assuming which ones fail).
-
-- [ ] **Step 3: Implement**
-
-In `shell/src/api/itemClient.ts`, replace the `RawMapLayer`/`toFrontLayer` block (lines 6-29):
-
-```ts
-type RawMapLayer = {
-  id: string; title: string; visible: boolean; kind: string;
-  tilesUrl?: string | null; sourceLayer?: string | null; url?: string | null;
-  opacity?: number | null; deckType?: string | null; dataUrl?: string | null;
-  paint?: Record<string, unknown> | null; props?: Record<string, unknown> | null;
-};
-
-function toFrontLayer(l: RawMapLayer): MapLayer {
-  const base = { id: l.id, title: l.title, visible: l.visible };
-  switch (l.kind) {
-    case "vector":
-      return { ...base, kind: "vector", tilesUrl: l.tilesUrl ?? "", sourceLayer: l.sourceLayer ?? "",
-        ...(l.paint ? { paint: l.paint } : {}) };
-    case "raster":
-      return { ...base, kind: "raster", tilesUrl: l.tilesUrl ?? "",
-        ...(l.opacity != null ? { opacity: l.opacity } : {}) };
-    case "deck":
-      return { ...base, kind: "deck", deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
-        dataUrl: l.dataUrl ?? "", ...(l.props ? { props: l.props } : {}) };
-    case "tiles3d":
-      return { ...base, kind: "tiles3d", url: l.url ?? "" };
-    case "feature":
-    default:
-      return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
-  }
-}
+```python
+        job = appexport_repo.create_job(s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode=mode)
 ```
 
-Then replace `getMapConfig` (lines 601-618):
+(only those two lines change in `_setup`; everything else in the function body is untouched)
 
-```ts
-    async getMapConfig(pk: string): Promise<MapConfig> {
-      // ConfigRead nests the builder config under "config"; the map is config.map,
-      // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
-      const data = await request<{
-        config?: {
-          map?: {
-            basemap: { style: string };
-            view: { center: [number, number]; zoom: number; pitch?: number | null; bearing?: number | null };
-            layers: RawMapLayer[];
-            terrain?: { tilesUrl: string; encoding: "terrarium"; exaggeration?: number | null } | null;
-          } | null;
-          printLayout?: PrintLayoutConfig | null;
-        };
-      }>("GET", `/configs/by-item/${pk}`);
-      const map = data.config?.map;
-      if (!map) throw new Error("getMapConfig: config has no map payload");
-      return {
-        basemap: map.basemap,
-        view: {
-          center: map.view.center,
-          zoom: map.view.zoom,
-          ...(map.view.pitch != null ? { pitch: map.view.pitch } : {}),
-          ...(map.view.bearing != null ? { bearing: map.view.bearing } : {}),
-        },
-        layers: (map.layers ?? []).map(toFrontLayer),
-        printLayout: data.config?.printLayout ?? null,
-        terrain: map.terrain
-          ? {
-              tilesUrl: map.terrain.tilesUrl,
-              encoding: map.terrain.encoding,
-              ...(map.terrain.exaggeration != null ? { exaggeration: map.terrain.exaggeration } : {}),
-            }
-          : null,
-      };
-    },
+Then append these new tests at the end of the file:
+
+```python
+
+
+def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="connected")
+    monkeypatch.setenv("CORE_BASE_URL", "https://core.example.org")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+
+    captured: dict = {}
+    real_build_bundle_zip = __import__("app.appexport.jobs", fromlist=["build_bundle_zip"]).build_bundle_zip
+
+    def spy_build_bundle_zip(config, **kwargs):
+        captured["connection"] = kwargs.get("connection")
+        captured["config"] = config
+        return real_build_bundle_zip(config, **kwargs)
+
+    monkeypatch.setattr("app.appexport.jobs.build_bundle_zip", spy_build_bundle_zip)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done"
+    assert captured["connection"] == {"coreUrl": "https://core.example.org"}
+
+
+def test_connected_job_with_private_source_marks_error(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="connected")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "publique" in job.error
 ```
 
-`saveMapConfig` (lines 620-623) is unchanged — `terrain` and `view.pitch/bearing` are already part of `MapConfig`/`MapViewport` and flow through `const { printLayout, ...map } = config` automatically.
+- [ ] **Step 2: Run to verify the new tests fail**
 
-- [ ] **Step 4: Run tests to verify they pass**
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: `test_connected_job_skips_freezing_and_embeds_core_base_url` FAILS
+(`check_export_guard() missing 1 required keyword-only argument: 'mode'` —
+`jobs.py` doesn't pass `mode` yet). `test_connected_job_with_private_source_marks_error`
+fails the same way. The three pre-existing tests (now implicitly
+`mode="static"` via `_setup`'s default) also fail for the same reason since
+`jobs.py`'s call to `check_export_guard` has no `mode=` kwarg at all yet.
 
-Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
-Expected: PASS, all tests in the file green (existing + 4 new).
+- [ ] **Step 3: Update `jobs.py`**
+
+Replace the full contents of `core/app/appexport/jobs.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Tâche procrastinate (SP-18a/b) : guard → (statique : gèle les
+DataSources ; connecté : garde la config telle quelle + embarque l'URL du
+cœur) → assemble le zip → upload S3. Tourne sur le worker partagé (queue
+`appexport`, pas de Chromium/Node ici). Toute erreur marque le job "error",
+jamais un job bloqué en "running" (même critère que
+app.export.jobs/app.pipelines.jobs)."""
+import logging
+import os
+
+from app.appexport import repository as appexport_repo
+from app.appexport.bundler import build_bundle_zip
+from app.appexport.freeze import freeze_config
+from app.appexport.guard import check_export_guard
+from app.auth.dependency import is_appexport_enabled
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
+from app.db import make_engine, make_session_factory, request_scoped_session
+from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.jobs import app
+
+logger = logging.getLogger(__name__)
+
+
+def _session_factory():
+    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
+    return make_session_factory(engine)
+
+
+def s3_client_from_env():
+    return make_s3_client(
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        access_key=os.environ["S3_ACCESS_KEY"],
+        secret_key=os.environ["S3_SECRET_KEY"],
+    )
+
+
+def _prepare_bundle_inputs(
+    session, *, tenant_id: str, mode: str, config: BuilderConfig,
+) -> tuple[BuilderConfig, dict | None]:
+    if mode == "connected":
+        core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
+        return config, {"coreUrl": core_url}
+    return freeze_config(session, tenant_id=tenant_id, config=config), None
+
+
+@app.task(queue="appexport")
+def build_app_export_task(job_id: str, tenant_id: str) -> None:
+    session_factory = _session_factory()
+
+    if not is_appexport_enabled():
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
+        return
+
+    with request_scoped_session(session_factory) as session:
+        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
+            return
+        appexport_repo.mark_running(session, job_id=job_id)
+        item_id = job.item_id
+        mode = job.mode
+
+    try:
+        with request_scoped_session(session_factory) as session:
+            config_read = configs_repo.get_config_by_item(session, item_id)
+            if config_read is None:
+                raise ValueError(f"app export item '{item_id}' not found")
+            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
+            if not guard_result.allowed:
+                raise ValueError("; ".join(guard_result.reasons))
+            bundle_config, connection = _prepare_bundle_inputs(
+                session, tenant_id=tenant_id, mode=mode, config=config_read.config,
+            )
+
+        runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
+        zip_bytes = build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+
+        result_key = f"appexports/{job_id}.zip"
+        bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+        s3_client = s3_client_from_env()
+        ensure_uploads_bucket(s3_client, bucket)
+        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
+
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+        logger.exception("app export job %s : erreur inattendue", job_id)
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
-git commit -m "feat(shell): itemClient mappe tiles3d, terrain et pitch/bearing"
+git add core/app/appexport/jobs.py core/tests/test_appexport_jobs.py
+git commit -m "feat(core): app export job branches on mode — connected skips freezing (SP-18b)"
 ```
 
 ---

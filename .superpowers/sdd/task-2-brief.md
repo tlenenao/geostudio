@@ -1,66 +1,114 @@
-### Task 2: Shell types — `tiles3d`, `terrain`, camera in `MapConfig`
+### Task 2: `build_bundle_zip` gains an optional `connection` payload
 
 **Files:**
-- Modify: `shell/src/api/types.ts:57-74` (`MapViewport`, `MapLayer`, `MapConfig`)
-- Modify: `shell/src/api/generated/core-schema.d.ts` (regenerated, not hand-edited)
+- Modify: `core/app/appexport/bundler.py`
+- Modify: `core/tests/test_appexport_bundler.py`
 
 **Interfaces:**
-- Consumes: Task 1's `core/openapi.json`.
-- Produces: `MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number }`; `MapLayer` union gains `{ kind: "tiles3d"; id; title; visible; url: string }`; `MapViewport` gains `pitch?: number; bearing?: number`; `MapConfig` gains `terrain?: MapTerrainConfig | null`. Consumed by Task 3 (`itemClient.ts`), Task 4 (`MapView.tsx`), Task 5 (`LayerPicker.tsx`), Task 6 (`TerrainPanel.tsx`), Task 7 (`CameraControls.tsx`, `MapEditorPage.tsx`).
+- Consumes: unchanged.
+- Produces: `build_bundle_zip(config: BuilderConfig, *, runtime_dir: str, connection: dict | None = None) -> bytes`. When `connection` is provided, the zip additionally contains `geostudio-connection.json` (plain `json.dumps(connection)`) at the zip root. Default `None` preserves SP-18a's exact existing behavior byte-for-byte (no such file, existing tests untouched).
 
-- [ ] **Step 1: Edit the types**
+- [ ] **Step 1: Write the failing test**
 
-In `shell/src/api/types.ts`, replace lines 57-74:
+Append to `core/tests/test_appexport_bundler.py` (existing two tests stay exactly as-is above this):
 
-```ts
-export type MapViewport = { center: [number, number]; zoom: number; pitch?: number; bearing?: number };
-export type BaseMap = { style: string };
-export type MapLayer =
-  | { id: string; title: string; visible: boolean; kind: "vector"; tilesUrl: string; sourceLayer: string; paint?: Record<string, unknown> }
-  | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
-  | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> }
-  | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
-export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
-export type PrintLayoutConfig = {
-  pageSize?: "a4" | "a3";
-  orientation?: "portrait" | "landscape";
-  title?: string | null;
-  showLegend?: boolean;
-  showScaleBar?: boolean;
-  showNorthArrow?: boolean;
-  cartouche?: string | null;
-};
+```python
 
-export type MapConfig = {
-  basemap: BaseMap;
-  view: MapViewport;
-  layers: MapLayer[];
-  printLayout?: PrintLayoutConfig | null;
-  terrain?: MapTerrainConfig | null;
-};
+
+def test_bundle_includes_connection_json_when_provided(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    (runtime_dir / "index.export.html").write_text("<html></html>")
+
+    zip_bytes = build_bundle_zip(
+        _config(), runtime_dir=str(runtime_dir), connection={"coreUrl": "https://core.example.org"},
+    )
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert "geostudio-connection.json" in zf.namelist()
+        payload = zf.read("geostudio-connection.json").decode("utf-8")
+        assert '"coreUrl"' in payload and "https://core.example.org" in payload
+
+
+def test_bundle_omits_connection_json_by_default(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    (runtime_dir / "index.export.html").write_text("<html></html>")
+
+    zip_bytes = build_bundle_zip(_config(), runtime_dir=str(runtime_dir))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert "geostudio-connection.json" not in zf.namelist()
 ```
 
-- [ ] **Step 2: Type-check (expect errors in files not yet updated)**
+- [ ] **Step 2: Run to verify the new test fails**
 
-Run: `cd shell && npx tsc --noEmit`
-Expected: FAIL — errors in `itemClient.ts` (the `toFrontLayer` switch doesn't handle `"tiles3d"` in a way that satisfies the new union yet — actually this alone won't error since `toFrontLayer`'s `default` branch still returns a valid `feature`-shaped object; expect this step to otherwise PASS with no new errors). If it passes cleanly, that's fine — proceed; the real coverage gap is closed by Task 3's tests, not the type checker.
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: `test_bundle_includes_connection_json_when_provided` FAILS with
+`TypeError: build_bundle_zip() got an unexpected keyword argument
+'connection'`. `test_bundle_omits_connection_json_by_default` passes already
+(current behavior already omits the file — kept as an explicit regression
+guard for this task, not a new failure).
 
-- [ ] **Step 3: Regenerate `core-schema.d.ts`**
+- [ ] **Step 3: Update `bundler.py`**
 
-Run: `cd shell && npm run gen:api-types`
-Expected: `shell/src/api/generated/core-schema.d.ts` is rewritten to reflect Task 1's `core/openapi.json` (new `tiles3d` enum value, `MapTerrain` schema, `pitch`/`bearing` fields visible in the diff).
+Replace the full contents of `core/app/appexport/bundler.py`:
 
-- [ ] **Step 4: Type-check again**
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Assemble le zip d'export : runtime prébâti (jamais reconstruit par ce
+job) + config sérialisée en JSON, lue au runtime par
+shell/src/staticExport/entry.tsx via un fetch relatif — aucune invocation
+Node/Vite ici.
 
-Run: `cd shell && npx tsc --noEmit`
-Expected: PASS, no errors.
+Mode Statique (SP-18a) : `connection=None`, le fichier geostudio-app-
+config.json contient la config déjà gelée (freeze_config) par l'appelant.
+Mode Connecté (SP-18b) : `connection={"coreUrl": ...}`, la config passée
+n'est PAS gelée (elle garde ses DataSources "features"/"statistics"
+d'origine) — un second fichier geostudio-connection.json embarque l'URL du
+cœur d'origine ; sa présence/absence dans le zip est le seul signal dont
+entry.tsx a besoin pour choisir createItemClient (réseau réel) vs
+createStaticItemClient (aucun réseau)."""
+import io
+import json
+import os
+import zipfile
+
+from app.configs.schemas import BuilderConfig
+
+
+def build_bundle_zip(
+    config: BuilderConfig, *, runtime_dir: str, connection: dict | None = None,
+) -> bytes:
+    entry_path = os.path.join(runtime_dir, "index.export.html")
+    if not os.path.isfile(entry_path):
+        raise FileNotFoundError(f"export runtime not found at {entry_path}")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with open(entry_path, "rb") as f:
+            zf.writestr("index.html", f.read())
+        assets_dir = os.path.join(runtime_dir, "assets")
+        if os.path.isdir(assets_dir):
+            for name in os.listdir(assets_dir):
+                with open(os.path.join(assets_dir, name), "rb") as f:
+                    zf.writestr(f"assets/{name}", f.read())
+        zf.writestr("geostudio-app-config.json", config.model_dump_json(by_alias=True))
+        if connection is not None:
+            zf.writestr("geostudio-connection.json", json.dumps(connection))
+    return buf.getvalue()
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: PASS (4 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/api/types.ts shell/src/api/generated/core-schema.d.ts
-git commit -m "feat(shell): ajoute tiles3d, terrain et pitch/bearing aux types MapConfig"
+git add core/app/appexport/bundler.py core/tests/test_appexport_bundler.py
+git commit -m "feat(core): bundler embeds an optional geostudio-connection.json (SP-18b)"
 ```
 
 ---

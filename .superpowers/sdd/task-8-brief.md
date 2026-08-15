@@ -1,82 +1,202 @@
-### Task 8: Shell types — `ResourceType`, `LayerSource`, `InstanceInfo`, `ItemClient`
+### Task 8: second "Connecté" button + fix the write-warning mode bug
 
 **Files:**
-- Modify: `shell/src/api/types.ts`
+- Modify: `shell/src/builder/appexport/AppExportPanel.tsx`
+- Modify: `shell/src/builder/appexport/AppExportPanel.test.tsx`
 
 **Interfaces:**
-- Produces: `ResourceType` gains `"tileset3d"`; `LayerSource.service` gains `"tileset3d"`, `.kind` gains `"tiles3d"`; `InstanceInfo` gains `tileset3dEnabled: boolean`; `ItemClient` gains `createTileset3DUpload`, `presignTileset3DUploadPart`, `completeTileset3DUpload`, `getTileset3DUploadJob`, `getAuthToken?`. Consumed by Task 9 (`itemClient.ts` implementation), Task 10 (`LayerPicker`), Task 11 (`MapView`), Task 12 (`Tileset3DUploadButton`).
+- Produces: same public component signature. Internally, `showWriteWarning:
+  boolean` is replaced by `pendingWarningMode: AppExportMode | null` — this
+  also fixes a latent bug in the SP-18a code: the "Exporter quand même"
+  confirm button always called `runExport("static")` regardless of which
+  mode's button had triggered the warning; with only one mode that bug was
+  invisible, but it would silently export Static instead of Connecté the
+  moment a second button existed.
 
-This task is a type-only change with no runtime behavior — `tsc --noEmit` is the verification, no new test file.
+- [ ] **Step 1: Write the failing tests**
 
-- [ ] **Step 1: Verify the baseline compiles**
+Append to `shell/src/builder/appexport/AppExportPanel.test.tsx` (the
+existing two tests stay as-is, but the second one's `getByRole("button", {
+name: /statique/i })` click now also has a sibling "Connecté" button to
+disambiguate from — no change needed there since `/statique/i` still
+matches only one button):
 
-Run: `cd shell && npm run build`
-Expected: PASS (establishes the pre-change baseline before editing).
+```tsx
 
-- [ ] **Step 2: Extend `ResourceType`**
 
-In `shell/src/api/types.ts`, line 2:
+  it("triggers a connected export and shows a download link once done", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
+    expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected");
+  });
 
-```ts
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
+  it("confirms the write warning with the mode that actually triggered it", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config(true)} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
+    expect(screen.getByText(/écriture.*désactivée/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /quand même/i }));
+    await waitFor(() => expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected"));
+  });
 ```
 
-- [ ] **Step 3: Extend `LayerSource`**
+- [ ] **Step 2: Run to verify the new tests fail**
 
-Replace the `LayerSource` type (currently lines 84-93):
+Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
+Expected: both new tests FAIL — no "Connecté" button exists yet
+(`getByRole("button", { name: /connect/i })` throws), and the confirm
+button always sends `"static"`.
 
-```ts
-export type LayerSource = {
-  id: string;
-  title: string;
-  service: "martin" | "core" | "external" | "tileset3d";
-  kind: "vector" | "feature" | "raster" | "tiles3d";
-  tilesUrl?: string;
-  sourceLayer?: string;
-  url?: string;
-  featureCount?: number | null;
-};
+- [ ] **Step 3: Update `AppExportPanel.tsx`**
+
+In `shell/src/builder/appexport/AppExportPanel.tsx`, replace the
+`showWriteWarning` state declaration:
+
+```tsx
+  const [showWriteWarning, setShowWriteWarning] = useState(false);
 ```
 
-- [ ] **Step 4: Extend `InstanceInfo`**
+with:
 
-Line 35:
-
-```ts
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean };
+```tsx
+  const [pendingWarningMode, setPendingWarningMode] = useState<AppExportMode | null>(null);
 ```
 
-- [ ] **Step 5: Extend `ItemClient`**
+Replace `runExport`'s first line:
 
-In the `ItemClient` interface, insert before the closing `}` (currently line 216, right after `getExportJob(jobId: string): Promise<ExportJob>;`):
-
-```ts
-  createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
-  presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>;
-  completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>;
-  getTileset3DUploadJob(jobId: string): Promise<{
-    status: "pending" | "finalizing" | "done" | "error";
-    errorMessage: string | null;
-    itemId: string | null;
-  }>;
-  // Optional: absent on any ItemClient that doesn't need it (e.g. test mocks
-  // cast via `as unknown as ItemClient`). Used by MapView to authenticate
-  // Tile3DLayer requests against a hosted tileset's proxy route (design §4).
-  getAuthToken?(): string | undefined;
+```tsx
+  async function runExport(mode: AppExportMode) {
+    setShowWriteWarning(false);
 ```
 
-- [ ] **Step 6: Verify it still compiles**
+with:
 
-Run: `cd shell && npm run build`
-Expected: FAIL — `createItemClient`'s returned object (in `itemClient.ts`) doesn't yet implement the four new required `ItemClient` methods (`getAuthToken` is optional, so it alone wouldn't fail the build, but the four upload/job methods are required).
+```tsx
+  async function runExport(mode: AppExportMode) {
+    setPendingWarningMode(null);
+```
 
-This confirms the type change is wired correctly; Task 9 implements the missing methods.
+Replace `onChooseMode`:
 
-- [ ] **Step 7: Commit**
+```tsx
+  function onChooseMode(mode: AppExportMode) {
+    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
+    if (hasWriteWidget) {
+      setDialogOpen(false);
+      setShowWriteWarning(true);
+      return;
+    }
+    void runExport(mode);
+  }
+```
+
+with:
+
+```tsx
+  function onChooseMode(mode: AppExportMode) {
+    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
+    if (hasWriteWidget) {
+      setDialogOpen(false);
+      setPendingWarningMode(mode);
+      return;
+    }
+    void runExport(mode);
+  }
+```
+
+Replace the dialog's button row:
+
+```tsx
+        <div className="flex justify-end gap-2">
+          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
+            Statique
+          </Button>
+        </div>
+```
+
+with:
+
+```tsx
+        <div className="flex justify-end gap-2">
+          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
+            Statique
+          </Button>
+          <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
+            Connecté
+          </Button>
+        </div>
+```
+
+Replace the warning block:
+
+```tsx
+      {showWriteWarning && (
+        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
+          <p>
+            Cette app contient un widget Formulaire — toute écriture sera
+            désactivée dans l&apos;export statique faute de backend.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => runExport("static")}>
+              Exporter quand même
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowWriteWarning(false)}>
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+```
+
+with:
+
+```tsx
+      {pendingWarningMode && (
+        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
+          <p>
+            Cette app contient un widget Formulaire — toute écriture sera
+            désactivée dans l&apos;export faute de session authentifiée.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => runExport(pendingWarningMode)}>
+              Exporter quand même
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Commit**
 
 ```bash
-cd shell && git add src/api/types.ts
-git commit -m "feat(shell): types for hosted tileset3d items and upload client"
+git add shell/src/builder/appexport/AppExportPanel.tsx shell/src/builder/appexport/AppExportPanel.test.tsx
+git commit -m "feat(shell): AppExportPanel gains a Connecté button, fixes write-warning mode bug (SP-18b)"
 ```
 
 ---

@@ -1,48 +1,119 @@
-### Task 7: Regenerate OpenAPI spec and shell generated types
+### Task 7: export entry becomes mode-aware at load
 
 **Files:**
-- Modify: `core/openapi.json` (regenerated, not hand-edited)
-- Modify: `shell/src/api/generated/core-schema.d.ts` (regenerated, not hand-edited)
+- Modify: `shell/src/staticExport/entry.tsx`
 
-**Interfaces:** none (mechanical regeneration — CLAUDE.md flags forgetting this step as a recurring, multi-occurrence mistake on this repo).
+**Interfaces:**
+- Consumes: `createItemClient` (`shell/src/api/itemClient.ts`, unchanged —
+  already accepts `{coreUrl, getToken}` as plain params, no rewrite needed),
+  `createStaticItemClient` (unchanged, Task 6's `AppExportMode` type is not
+  referenced here — this file branches on the *presence* of
+  `geostudio-connection.json`, not on a mode string).
+- Produces: same bootstrap behavior for Statique as before; for Connecté
+  (when `geostudio-connection.json` is present in the served bundle),
+  constructs a live, anonymous `ItemClient` pointed at the embedded
+  `coreUrl`.
 
-- [ ] **Step 1: Enable the capability flag and regenerate `openapi.json`**
+- [ ] **Step 1: Update `entry.tsx`**
 
-Run:
+Replace the full contents of `shell/src/staticExport/entry.tsx`:
 
-```bash
-cd core && CORE_TILESET3D_ENABLED=true CORE_EXPORT_ENABLED=false CORE_ETL_ENABLED=false uv run python scripts/export_openapi.py openapi.json
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+// Point d'entrée Vite du bundle d'export (SP-18a Statique + SP-18b
+// Connecté) : un seul runtime prébâti pour les deux modes, mode détecté au
+// chargement par la présence de geostudio-connection.json (core/app/
+// appexport/bundler.py). Jamais de redirection OIDC ici — enableMockAuth()
+// avant le premier rendu, dans les deux modes : AppRenderer appelle
+// useAuth() (via ActionConditionBridge) et ce hook lit `mockMode` avant de
+// toucher react-oidc-context, qui lèverait sinon faute d'<AuthProvider>
+// ancêtre — INDÉPENDANT du getToken passé à createItemClient ci-dessous.
+//
+// Piège découvert en conception SP-18b, à ne pas réintroduire :
+// enableMockAuth() fait retourner "mock-token" à useAuth().getAccessToken —
+// si ce token était câblé dans createItemClient's getToken, chaque requête
+// anonyme casserait (get_current_user_optional traite tout Authorization
+// présent comme "doit être valide", jamais de repli anonyme sur un token
+// invalide). Le getToken du mode Connecté est donc un () => undefined
+// codé en dur, jamais relié à useAuth().
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { enableMockAuth } from "../auth/useAuth";
+import { createItemClient } from "../api/itemClient";
+import { ItemClientProvider } from "../api/ItemClientProvider";
+import { AppRenderer } from "../builder/AppRenderer";
+import { registerBuiltinWidgets } from "../builder/widgets";
+import { createStaticItemClient } from "./StaticItemClient";
+import type { AppConfig, ItemClient } from "../api/types";
+import "../index.css";
+
+enableMockAuth();
+registerBuiltinWidgets();
+// DataContext (builder/DataContext.tsx) appelle useQueries (@tanstack/react-query),
+// tout comme App.tsx en mode normal — sans ce provider, tout widget de données
+// (table/list/chart/…) fait planter React avec "No QueryClient set" avant même
+// le premier rendu, indépendamment du choix de widget.
+const queryClient = new QueryClient();
+
+async function loadConnection(): Promise<{ coreUrl: string } | null> {
+  const response = await fetch("./geostudio-connection.json");
+  if (!response.ok) return null;
+  return (await response.json()) as { coreUrl: string };
+}
+
+function buildClient(config: AppConfig, connection: { coreUrl: string } | null): ItemClient {
+  if (connection) {
+    return createItemClient({ coreUrl: connection.coreUrl, getToken: () => undefined });
+  }
+  return createStaticItemClient(config);
+}
+
+async function bootstrap() {
+  const root = document.getElementById("root");
+  if (!root) throw new Error("export entry: #root introuvable");
+  const response = await fetch("./geostudio-app-config.json");
+  if (!response.ok) throw new Error("export entry: geostudio-app-config.json introuvable");
+  const config = (await response.json()) as AppConfig;
+  const connection = await loadConnection();
+  const client = buildClient(config, connection);
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <div className="h-screen w-screen">
+            {/* No `pageId`/`onNavigate` here: leaving `pageId` undefined lets
+                AppRenderer's own internal state drive navigation (nav
+                widgets, tabs, story mode) — a fixed `pageId` prop pins the
+                active page forever since it always wins over internal state
+                (SP-18a review, C3). */}
+            <AppRenderer config={config} mode="runtime" />
+          </div>
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+bootstrap().catch((err) => {
+  const root = document.getElementById("root");
+  if (root) root.textContent = `Erreur de chargement : ${(err as Error).message}`;
+});
 ```
 
-Expected: `core/openapi.json` changes, purely additively (new `/tileset3d/...` paths and `Tileset3DPayload`/`Tileset3DUploadCreate`/etc. schemas appear; nothing existing is removed or changed in an incompatible way).
+- [ ] **Step 2: Build the export runtime and typecheck**
 
-- [ ] **Step 2: Verify the diff is additive**
+Run: `cd shell && npm run build:export-runtime`
+Expected: PASS (builds `dist-export/`, no TS errors — `createItemClient`'s
+`{coreUrl, getToken}` shape and `ItemClient` are both already exported from
+`../api/itemClient` and `../api/types` respectively).
 
-Run: `cd core && git diff --stat openapi.json`
-Expected: only additions (new lines), review with `git diff openapi.json` that no existing path/schema was modified or removed.
-
-**Important:** this repo's CI generates `openapi.json` with `CORE_TILESET3D_ENABLED` (and `CORE_ETL_ENABLED`/`CORE_EXPORT_ENABLED`) **unset** (matching the established precedent documented in CLAUDE.md for `app.pipelines`/`app.export` — the committed `openapi.json` reflects the default-disabled surface, not every capability flag turned on at once). Re-run Step 1 **without** setting `CORE_TILESET3D_ENABLED=true` before committing, so the checked-in file matches what CI regenerates:
+- [ ] **Step 3: Commit**
 
 ```bash
-cd core && uv run python scripts/export_openapi.py openapi.json
-git diff --stat openapi.json
+git add shell/src/staticExport/entry.tsx
+git commit -m "feat(shell): export runtime detects Connecté mode via geostudio-connection.json (SP-18b)"
 ```
-
-Expected: this second run shows **no diff** relative to the pre-Task-7 committed file — the new `/tileset3d/...` routes are gated behind the flag and CI never enables it, exactly like `/pipelines/...` and `/export/...` already aren't in the committed spec today. Confirm with `grep -c tileset3d openapi.json` — expect `0`.
-
-- [ ] **Step 3: Regenerate the shell's generated TypeScript types**
-
-Run: `cd shell && npm run gen:api-types`
-Expected: `shell/src/api/generated/core-schema.d.ts` is unchanged (since `openapi.json` itself is unchanged after Step 2 — the flag-gated routes never reach the committed spec). Confirm with `git status --short shell/src/api/generated/core-schema.d.ts` — expect no output.
-
-- [ ] **Step 4: Confirm nothing needs committing**
-
-Run: `git status --short core/openapi.json shell/src/api/generated/core-schema.d.ts`
-Expected: no output — this task is a verification step (proving the capability-flag discipline holds) rather than a code change. If either file *does* show a diff at this point, stop and investigate before continuing to Task 8 — it means something in Task 4–6 leaked into the always-on route surface.
-
-- [ ] **Step 5: No commit needed**
-
-This task intentionally produces no diff to commit — it exists to catch the exact class of mistake CLAUDE.md flags repeatedly on this repo (forgetting to regenerate, or regenerating with the wrong flags on). If Step 4 found a diff and you fixed the root cause, commit that fix under its own message; otherwise move on to Task 8.
 
 ---
 
