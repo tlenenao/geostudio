@@ -727,6 +727,37 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   0 Critical/Important trouvé.
 - **SP-18** — clos : les trois modes d'export (Statique SP-18a, Connecté
   SP-18b, Autoporté SP-18c) sont livrés. **Jalon M15 atteint.**
+- **SP-19** — undo/redo général du builder (`shell/src/pages/AppBuilderPage.tsx`)
+  : `Ctrl+Z`/`Ctrl+Shift+Z` + boutons « Annuler »/« Rétablir », pile
+  éphémère unique d'instantanés `AppConfig` complets (past/future,
+  plafond 50), derrière un seul hook `useUndoableDraft` qui remplace le
+  `useState` de `draft` — aucun panneau/widget individuel modifié
+  (vérifié contre le code réel : tous funnellent déjà par ce seul
+  `setDraft`). **Correction de spec actée au moment du plan (2026-08-15,
+  avec Tanguy)** : l'hypothèse initiale (panneaux bufferisant localement
+  la saisie avant commit) était fausse pour ce dépôt — tous les champs
+  texte appellent `setDraft` à chaque frappe, sans état local — remplacée
+  par un **coalescing centralisé par minuterie d'inactivité (400ms)**
+  dans le hook seul, pas par un buffer par panneau (§3/§4 de la spec
+  amendées en conséquence). Raccourci clavier ignoré tant que le focus
+  est dans un champ texte (préserve l'undo natif du navigateur).
+  Exécution en subagent-driven-development, 4 tâches (0 Critical/Important
+  en revue de tâche) + **revue finale de branche** : **2 Critical**
+  invisibles à la revue par tâche — `undo()`/`redo()` mutaient des refs
+  à l'intérieur d'un updater `useState`, cassé sous `<StrictMode>` (donc
+  en `npm run dev`, jamais en E2E qui tourne contre un build de prod où
+  le double-invoke DEV est compilé) : un seul edit puis `Ctrl+Z` ne
+  faisait rien tout en affichant `canUndo=false` comme si l'undo avait
+  réussi ; `activePageId` (state hors pile undo) devenait orphelin après
+  annulation d'un « Ajouter une page », `setPageLayout` no-opant alors
+  silencieusement tout edit suivant (« Enregistrer » sauvegardait sans
+  erreur ni changement) — corrigés en une passe (`draftRef` synchrone
+  remplaçant toute mutation de ref dans un updater ; `activePage` dérivé
+  et validé contre `draft.pages` à chaque render), plus 1 Important
+  (timer de coalescing non nettoyé au démontage) et 1 Minor de même
+  classe (`selectedId` non réconcilié). Re-revue : 0 Critical/Important
+  résiduel, E2E re-exécuté par le contrôleur (2/2). **Prérequis de SP-20
+  rempli.**
 
 ### À venir
 
@@ -760,12 +791,11 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   terrain `mapbox` en plus de `terrarium`, conversion 3D (py3dtiles,
   nuages de points).
 - **SP-18** — clos, jalon M15 atteint (cf. `### Fait`).
-- **SP-19** — undo/redo général du builder (pile d'instantanés de config,
-  prérequis de SP-20). Aucune dépendance amont.
+- **SP-19** — clos (cf. `### Fait`).
 - **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
   MCP orchestrés en loopback réel, micro-actions sur la config en cours
-  d'édition). Dépend de SP-19. Jalon M16. Arbitrages A32/A40, brainstorm
-  2026-08-05 ; specs :
+  d'édition). Dépendance amont (SP-19) livrée. Jalon M16. Arbitrages
+  A32/A40, brainstorm 2026-08-05 ; specs :
   `docs/superpowers/specs/2026-08-05-undo-redo-builder-design.md` et
   `docs/superpowers/specs/2026-08-05-copilote-embarque-design.md`.
 
