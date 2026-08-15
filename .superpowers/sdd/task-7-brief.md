@@ -1,118 +1,142 @@
-### Task 7: export entry becomes mode-aware at load
+### Task 7: `build_standalone_bundle_zip`
 
 **Files:**
-- Modify: `shell/src/staticExport/entry.tsx`
+- Modify: `core/app/appexport/bundler.py`
+- Modify: `core/tests/test_appexport_bundler.py`
 
 **Interfaces:**
-- Consumes: `createItemClient` (`shell/src/api/itemClient.ts`, unchanged —
-  already accepts `{coreUrl, getToken}` as plain params, no rewrite needed),
-  `createStaticItemClient` (unchanged, Task 6's `AppExportMode` type is not
-  referenced here — this file branches on the *presence* of
-  `geostudio-connection.json`, not on a mode string).
-- Produces: same bootstrap behavior for Statique as before; for Connecté
-  (when `geostudio-connection.json` is present in the served bundle),
-  constructs a live, anonymous `ItemClient` pointed at the embedded
-  `coreUrl`.
+- Produces: `build_standalone_bundle_zip(config: BuilderConfig, *,
+  snapshot_dir: str) -> bytes` — zips `config` as `data/geostudio-app-config.json`,
+  every file under `snapshot_dir` (manifest.json + snapshot/...) as
+  `data/...`, plus a generated `docker-compose.yml` and `README.md` at the
+  zip root. Consumed by Task 8's job.
 
-- [ ] **Step 1: Update `entry.tsx`**
+- [ ] **Step 1: Write the failing test**
 
-Replace the full contents of `shell/src/staticExport/entry.tsx`:
+Append to `core/tests/test_appexport_bundler.py` (existing content stays as-is above this):
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-// Point d'entrée Vite du bundle d'export (SP-18a Statique + SP-18b
-// Connecté) : un seul runtime prébâti pour les deux modes, mode détecté au
-// chargement par la présence de geostudio-connection.json (core/app/
-// appexport/bundler.py). Jamais de redirection OIDC ici — enableMockAuth()
-// avant le premier rendu, dans les deux modes : AppRenderer appelle
-// useAuth() (via ActionConditionBridge) et ce hook lit `mockMode` avant de
-// toucher react-oidc-context, qui lèverait sinon faute d'<AuthProvider>
-// ancêtre — INDÉPENDANT du getToken passé à createItemClient ci-dessous.
-//
-// Piège découvert en conception SP-18b, à ne pas réintroduire :
-// enableMockAuth() fait retourner "mock-token" à useAuth().getAccessToken —
-// si ce token était câblé dans createItemClient's getToken, chaque requête
-// anonyme casserait (get_current_user_optional traite tout Authorization
-// présent comme "doit être valide", jamais de repli anonyme sur un token
-// invalide). Le getToken du mode Connecté est donc un () => undefined
-// codé en dur, jamais relié à useAuth().
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { enableMockAuth } from "../auth/useAuth";
-import { createItemClient } from "../api/itemClient";
-import { ItemClientProvider } from "../api/ItemClientProvider";
-import { AppRenderer } from "../builder/AppRenderer";
-import { registerBuiltinWidgets } from "../builder/widgets";
-import { createStaticItemClient } from "./StaticItemClient";
-import type { AppConfig, ItemClient } from "../api/types";
-import "../index.css";
+```python
 
-enableMockAuth();
-registerBuiltinWidgets();
-// DataContext (builder/DataContext.tsx) appelle useQueries (@tanstack/react-query),
-// tout comme App.tsx en mode normal — sans ce provider, tout widget de données
-// (table/list/chart/…) fait planter React avec "No QueryClient set" avant même
-// le premier rendu, indépendamment du choix de widget.
-const queryClient = new QueryClient();
 
-async function loadConnection(): Promise<{ coreUrl: string } | null> {
-  const response = await fetch("./geostudio-connection.json");
-  if (!response.ok) return null;
-  return (await response.json()) as { coreUrl: string };
-}
+def _write_snapshot_fixture(tmp_path):
+    snapshot_src = tmp_path / "snapshot-src"
+    parquet_dir = snapshot_src / "snapshot" / "tenant_id=t1" / "collection_id=col1" / "dt=snapshot"
+    parquet_dir.mkdir(parents=True)
+    (parquet_dir / "data.parquet").write_bytes(b"fake-parquet-bytes")
+    (snapshot_src / "manifest.json").write_text('{"collections": []}')
+    return snapshot_src
 
-function buildClient(config: AppConfig, connection: { coreUrl: string } | null): ItemClient {
-  if (connection) {
-    return createItemClient({ coreUrl: connection.coreUrl, getToken: () => undefined });
-  }
-  return createStaticItemClient(config);
-}
 
-async function bootstrap() {
-  const root = document.getElementById("root");
-  if (!root) throw new Error("export entry: #root introuvable");
-  const response = await fetch("./geostudio-app-config.json");
-  if (!response.ok) throw new Error("export entry: geostudio-app-config.json introuvable");
-  const config = (await response.json()) as AppConfig;
-  const connection = await loadConnection();
-  const client = buildClient(config, connection);
-  createRoot(root).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ItemClientProvider client={client}>
-          <div className="h-screen w-screen">
-            {/* No `pageId`/`onNavigate` here: leaving `pageId` undefined lets
-                AppRenderer's own internal state drive navigation (nav
-                widgets, tabs, story mode) — a fixed `pageId` prop pins the
-                active page forever since it always wins over internal state
-                (SP-18a review, C3). */}
-            <AppRenderer config={config} mode="runtime" />
-          </div>
-        </ItemClientProvider>
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-}
+def test_standalone_bundle_contains_data_manifest_and_compose(tmp_path):
+    snapshot_src = _write_snapshot_fixture(tmp_path)
 
-bootstrap().catch((err) => {
-  const root = document.getElementById("root");
-  if (root) root.textContent = `Erreur de chargement : ${(err as Error).message}`;
-});
+    zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = set(zf.namelist())
+        assert "data/geostudio-app-config.json" in names
+        assert "data/manifest.json" in names
+        assert "data/snapshot/tenant_id=t1/collection_id=col1/dt=snapshot/data.parquet" in names
+        assert "docker-compose.yml" in names
+        assert "README.md" in names
+
+        config_payload = zf.read("data/geostudio-app-config.json").decode("utf-8")
+        assert '"kind"' in config_payload and '"app"' in config_payload
+
+        compose = zf.read("docker-compose.yml").decode("utf-8")
+        assert "ghcr.io/tlenenao/geostudio-appexport-standalone:latest" in compose
+        assert "./data:/data:ro" in compose
+
+
+def test_standalone_bundle_with_empty_snapshot_dir(tmp_path):
+    snapshot_src = tmp_path / "empty-snapshot"
+    snapshot_src.mkdir()
+    (snapshot_src / "manifest.json").write_text('{"collections": []}')
+
+    zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = set(zf.namelist())
+        assert "data/manifest.json" in names
+        assert "data/geostudio-app-config.json" in names
 ```
 
-- [ ] **Step 2: Build the export runtime and typecheck**
+Add the import at the top of the file:
 
-Run: `cd shell && npm run build:export-runtime`
-Expected: PASS (builds `dist-export/`, no TS errors — `createItemClient`'s
-`{coreUrl, getToken}` shape and `ItemClient` are both already exported from
-`../api/itemClient` and `../api/types` respectively).
+```python
+from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
+```
 
-- [ ] **Step 3: Commit**
+(replacing the existing `from app.appexport.bundler import build_bundle_zip` line)
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: FAIL with `ImportError: cannot import name 'build_standalone_bundle_zip'`
+
+- [ ] **Step 3: Add `build_standalone_bundle_zip` to `bundler.py`**
+
+In `core/app/appexport/bundler.py`, append after `build_bundle_zip`:
+
+```python
+
+
+_STANDALONE_COMPOSE = """\
+services:
+  app:
+    image: ghcr.io/tlenenao/geostudio-appexport-standalone:latest
+    ports:
+      - "8090:8000"
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped
+"""
+
+_STANDALONE_README = """\
+# App GeoStudio exportée (mode Autoporté)
+
+## Démarrer
+
+    docker compose up -d
+
+Puis ouvrir http://localhost:8090
+
+## Contenu
+
+- `data/geostudio-app-config.json` : configuration de l'app (figée à l'export).
+- `data/manifest.json` : métadonnées des collections figées.
+- `data/snapshot/` : instantané des données au format GeoParquet.
+
+Le conteneur est strictement en lecture seule : aucune donnée n'est jamais
+écrite. Un ré-export manuel depuis GeoStudio est nécessaire pour rafraîchir
+l'instantané.
+"""
+
+
+def build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data/geostudio-app-config.json", config.model_dump_json(by_alias=True))
+        for root, _dirs, files in os.walk(snapshot_dir):
+            for name in files:
+                full = os.path.join(root, name)
+                rel = os.path.relpath(full, snapshot_dir)
+                zf.write(full, arcname=f"data/{rel}")
+        zf.writestr("docker-compose.yml", _STANDALONE_COMPOSE)
+        zf.writestr("README.md", _STANDALONE_README)
+    return buf.getvalue()
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/staticExport/entry.tsx
-git commit -m "feat(shell): export runtime detects Connecté mode via geostudio-connection.json (SP-18b)"
+git add core/app/appexport/bundler.py core/tests/test_appexport_bundler.py
+git commit -m "feat(core): build_standalone_bundle_zip — data+compose bundle (SP-18c)"
 ```
 
 ---

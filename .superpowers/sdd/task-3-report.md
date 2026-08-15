@@ -1,117 +1,118 @@
-# Task 3 Report: `build_app_export_task` branches on `mode`
+# Task 3 Report: `app.appexport.manifest` — shared snapshot manifest shape
 
-## What Was Implemented
+**Status:** DONE  
+**Commit:** 7ecc571  
+**Date:** 2026-08-15
 
-Task 3 is the integration point for SP-18b where the `build_app_export_task` procrastinate job now properly handles two distinct modes:
+## Summary
 
-1. **Static mode** (default, unchanged from SP-18a): Calls `freeze_config()` to materialize all data sources, then passes `connection=None` to the bundler.
-2. **Connected mode** (new): Skips `freeze_config()`, keeps the config live, and passes `connection={"coreUrl": ...}` constructed from the `CORE_BASE_URL` environment variable (default `http://localhost:8200`).
+Implemented a new shared JSON manifest module (`app.appexport.manifest`) that serializes/deserializes the interface contract between the Autoporté export job (Task 4, full core with Postgres) and the slim mini-server (Task 6, no database). This module is the sole bridge between the two separate Docker processes — no Python imports or network calls cross this boundary at runtime, only a JSON file on disk.
 
-The fix integrates Task 1's `check_export_guard(..., mode=...)` requirement and Task 2's `build_bundle_zip(..., connection=...)` parameter.
+## What Was Done
 
-### Implementation Details
+### 1. Test-Driven Development (TDD)
 
-1. **Added `BuilderConfig` import** to the jobs module.
-2. **Created `_prepare_bundle_inputs()` helper function** that branches on mode:
-   - For `"connected"`: returns original config + `{"coreUrl": core_url}` dict
-   - For `"static"`: returns frozen config + `None`
-3. **Updated `build_app_export_task()`** to:
-   - Read `mode` from the persisted job (line 67: `mode = job.mode`)
-   - Pass `mode=mode` to `check_export_guard()` call (line 74)
-   - Call `_prepare_bundle_inputs()` to branch on mode (lines 75–78)
-   - Pass the resulting `connection` dict to `build_bundle_zip()` (line 81)
+Following TDD discipline:
+- **Step 1:** Created `core/tests/test_appexport_manifest.py` with the exact test code from the brief
+- **Step 2:** Ran tests and confirmed `ModuleNotFoundError: No module named 'app.appexport.manifest'` ✓
+- **Step 3:** Created `core/app/appexport/manifest.py` with the exact module code from the brief
+- **Step 4:** Re-ran tests and confirmed both tests pass ✓
 
-## TDD Evidence
+### 2. Module Implementation
 
-### RED Phase (Before Implementation)
+Created `/core/app/appexport/manifest.py` (72 lines) with:
 
-```
-tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done FAILED
-tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error FAILED
-tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url FAILED
-tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error FAILED
+- **`CollectionSnapshotEntry` dataclass**: A frozen dataclass holding the snapshot of a single collection:
+  - `id: str` — collection identifier
+  - `tenant_id: str` — tenant scope
+  - `collection_json: dict` — full collection metadata as stored
+  - `schema_json: dict` — collection schema
+  - `table_info: TableInfo` — reused directly from `app.collections.introspection` (no duplication of shape)
 
-Error: TypeError: check_export_guard() missing 1 required keyword-only argument: 'mode'
-```
+- **`write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`**: Serializes a list of collection snapshots to JSON file on disk
+  - Converts Python snake_case field names to camelCase for the JSON envelope
+  - Uses `asdict()` for nested `ColumnInfo` objects
+  - Preserves all metadata for round-trip fidelity
 
-The job's call to `check_export_guard(session, tenant_id=tenant_id, config=config_read.config)` was missing the `mode=` kwarg entirely, causing all tests to fail. The exception handler caught this and marked jobs as "error" status.
+- **`read_manifest(path: str) -> list[CollectionSnapshotEntry]`**: Deserializes JSON file back to Python dataclasses
+  - Reconstructs `TableInfo` and `ColumnInfo` objects from JSON
+  - Converts camelCase JSON keys back to snake_case Python fields
+  - Returns empty list if file contains empty collections array
 
-### GREEN Phase (After Implementation)
+### 3. Key Design Decisions
 
-```
-tests/test_appexport_jobs.py::test_job_disabled_flag_marks_error PASSED  [ 20%]
-tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done PASSED    [ 40%]
-tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error PASSED [ 60%]
-tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url PASSED [ 80%]
-tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error PASSED [100%]
+- **No dataclass duplication**: The module reuses `TableInfo` and `ColumnInfo` from `app.collections.introspection` unchanged, rather than creating parallel shapes. These classes have no runtime dependency on Postgres (Session is only a non-executed type alias), and the standalone mini-server only needs `sqlalchemy` package installed (never a driver or connection).
 
-============================== 5 passed in 0.69s ===============================
-```
+- **Snake-to-camelCase transformation**: Field names use snake_case in Python (`table_name`, `pk_column`, `geometry_column`, `tenant_id`) but camelCase in JSON (`tableName`, `pkColumn`, `geometryColumn`, `tenantId`). This follows REST API conventions for the JSON envelope while keeping Python code idiomatic.
 
-All 5 tests pass consistently.
+- **Frozen dataclass**: `CollectionSnapshotEntry` is immutable (`frozen=True`), appropriate for a serialized snapshot that should not be modified in place.
 
-## Files Changed
-
-- **`core/app/appexport/jobs.py`** (94 lines → 96 lines)
-  - Updated docstring: "SP-18a" → "SP-18a/b"
-  - Added `BuilderConfig` import
-  - Added `_prepare_bundle_inputs()` helper function (7 lines)
-  - Modified `build_app_export_task()` to read `mode` from job and call helper function
-  - Updated call to `check_export_guard()` to pass `mode=mode` kwarg
-  - Updated `build_bundle_zip()` call to pass `connection` parameter
-
-- **`core/tests/test_appexport_jobs.py`** (100 → 146 lines)
-  - Modified `_setup()` function signature: added `mode="static"` parameter
-  - Modified `_setup()` function body: changed `create_job()` to pass `mode=mode` instead of hardcoded `"static"`
-  - Added `test_connected_job_skips_freezing_and_embeds_core_base_url()` test
-  - Added `test_connected_job_with_private_source_marks_error()` test
-
-## Commit
+## Test Output
 
 ```
-commit 17608be: feat(core): app export job branches on mode — connected skips freezing (SP-18b)
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/lenen/projets/geostudio/core
+collected 2 items
+
+tests/test_appexport_manifest.py::test_write_then_read_manifest_round_trips PASSED [ 50%]
+tests/test_appexport_manifest.py::test_write_manifest_with_no_entries PASSED [100%]
+
+============================== 2 passed in 0.05s ===============================
 ```
 
-## Self-Review Findings
+**All assertions passed:**
+- Round-trip preservation: full fidelity on write/read cycle
+- Empty manifest: correctly handles zero entries
+- All field types preserved: strings, dicts, nested dataclasses, integers
 
-### Correctness
+## Deviations from Brief
 
-- ✅ The implementation exactly matches the plan text and satisfies all three test assertions
-- ✅ `check_export_guard()` now receives the required `mode=` kwarg
-- ✅ `freeze_config()` is properly skipped for connected mode
-- ✅ The `connection` dict is correctly constructed from `CORE_BASE_URL` env var with proper default
-- ✅ The mode is read from `job.mode` (field set at job creation time, not modified here)
-- ✅ All three pre-existing tests continue to pass with the default `mode="static"`
-- ✅ Both new tests verify the branching behavior correctly:
-  - One asserts that `connection` is properly embedded for connected mode
-  - One asserts that connected mode still respects the guard (rejects private sources)
+**None.** The implementation follows the brief exactly:
+- Test code copied verbatim
+- Module code copied verbatim
+- Commit message copied verbatim
+- No changes to existing files
+
+## Self-Review Notes
+
+### Strengths
+1. **Isolation**: Module is completely self-contained; no external dependencies beyond what's already in core (sqlalchemy for types only, json/dataclasses from stdlib).
+2. **Round-trip fidelity**: Binary symmetric serialization (write + read preserves all data exactly).
+3. **No database required**: Pure JSON I/O, no queries. Both processes (full core and slim mini-server) can use identical code.
+4. **Type safety**: Frozen dataclass and explicit type annotations make the contract unambiguous.
+5. **Tested thoroughly**: Two tests cover the happy path (round-trip) and edge case (empty list).
+
+### Potential Future Considerations (not blocking)
+- Versioning: The manifest format has no version field. If the shape evolves in future tasks, a version number in the JSON envelope would enable forward compatibility.
+- Error handling: `read_manifest()` will raise `KeyError` if the JSON is malformed. For robustness in Task 4/6, consider wrapping calls with try/except and providing readable error messages.
+- Bytes/non-serializable fields: The current implementation assumes `collection_json` and `schema_json` are JSON-serializable dicts. If these ever contain bytes or other non-serializable types, explicit handling will be needed.
 
 ### Code Quality
+- Follows SPDX license header convention.
+- Docstring explains the module's role in SP-18c architecture (shared boundary between processes).
+- Consistent with existing codebase style (PEP 8, type hints).
+- Tests are minimal but sufficient for a pure I/O module.
 
-- ✅ `_prepare_bundle_inputs()` is a clean, testable abstraction that encapsulates the mode branching logic
-- ✅ No breaking changes to public signatures
-- ✅ The exception handling remains unchanged (broad catch-all still marks job as "error")
-- ✅ Docstring updated to reflect the new dual-mode behavior
-- ✅ Import of `BuilderConfig` is necessary and correct
+## Commit Details
 
-### Testing
+```
+commit 7ecc571
+Author: Claude <noreply@anthropic.com>
+Date:   2026-08-15
 
-- ✅ Tests demonstrate both modes work correctly (static freezes, connected embeds URL)
-- ✅ Tests confirm the guard still rejects private sources in both modes
-- ✅ Spy pattern on `build_bundle_zip()` in new test correctly captures the `connection` argument
-- ✅ No test fixtures were broken
-- ✅ Test isolation is clean (each test gets its own database session)
+    feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)
+    
+    - Create CollectionSnapshotEntry dataclass for snapshot metadata
+    - Implement write_manifest() and read_manifest() for JSON round-trip
+    - Reuse TableInfo/ColumnInfo from app.collections.introspection
+    - Pure I/O, no database required; shared between export job and mini-server
+```
 
-### Environment
+## Dependencies
 
-- ✅ Default `CORE_BASE_URL` value matches the pattern used elsewhere in the codebase (`http://localhost:8200`)
-- ✅ New env var read is optional with proper fallback
+This module satisfies the interface requirements for:
+- **Task 4** (export job, full core): Will call `write_manifest()` to serialize collection snapshots to disk
+- **Task 6** (mini-server, slim image): Will call `read_manifest()` to deserialize and serve the data
 
-## Concerns
-
-None. The implementation is complete, correct, and well-tested. All requirements from the plan are satisfied.
-
----
-
-**Status**: DONE  
-**Execution Time**: ~3 minutes (all 5 tests pass in 0.69s)
+No external consumers yet on this codebase; the module is ready for both downstream tasks.
