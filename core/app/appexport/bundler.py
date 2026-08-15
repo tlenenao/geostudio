@@ -40,3 +40,51 @@ def build_bundle_zip(
         if connection is not None:
             zf.writestr("geostudio-connection.json", json.dumps(connection))
     return buf.getvalue()
+
+
+_STANDALONE_COMPOSE = """\
+services:
+  app:
+    image: ghcr.io/tlenenao/geostudio-appexport-standalone:latest
+    ports:
+      - "8090:8000"
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped
+"""
+
+_STANDALONE_README = """\
+# App GeoStudio exportée (mode Autoporté)
+
+## Démarrer
+
+    docker compose up -d
+
+Puis ouvrir http://localhost:8090
+
+## Contenu
+
+- `data/geostudio-app-config.json` : configuration de l'app (figée à l'export).
+- `data/manifest.json` : métadonnées des collections figées.
+- `data/snapshot/` : instantané des données au format GeoParquet.
+
+Le conteneur est strictement en lecture seule : aucune donnée n'est jamais
+écrite. Un ré-export manuel depuis GeoStudio est nécessaire pour rafraîchir
+l'instantané.
+"""
+
+
+def build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> bytes:
+    if not os.path.isdir(snapshot_dir):
+        raise FileNotFoundError(f"snapshot directory not found at {snapshot_dir}")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data/geostudio-app-config.json", config.model_dump_json(by_alias=True))
+        for root, _dirs, files in os.walk(snapshot_dir):
+            for name in files:
+                full = os.path.join(root, name)
+                rel = os.path.relpath(full, snapshot_dir)
+                zf.write(full, arcname=f"data/{rel}")
+        zf.writestr("docker-compose.yml", _STANDALONE_COMPOSE)
+        zf.writestr("README.md", _STANDALONE_README)
+    return buf.getvalue()

@@ -1,48 +1,143 @@
-### Task 7: Regenerate OpenAPI spec and shell generated types
+### Task 7: `build_standalone_bundle_zip`
 
 **Files:**
-- Modify: `core/openapi.json` (regenerated, not hand-edited)
-- Modify: `shell/src/api/generated/core-schema.d.ts` (regenerated, not hand-edited)
+- Modify: `core/app/appexport/bundler.py`
+- Modify: `core/tests/test_appexport_bundler.py`
 
-**Interfaces:** none (mechanical regeneration — CLAUDE.md flags forgetting this step as a recurring, multi-occurrence mistake on this repo).
+**Interfaces:**
+- Produces: `build_standalone_bundle_zip(config: BuilderConfig, *,
+  snapshot_dir: str) -> bytes` — zips `config` as `data/geostudio-app-config.json`,
+  every file under `snapshot_dir` (manifest.json + snapshot/...) as
+  `data/...`, plus a generated `docker-compose.yml` and `README.md` at the
+  zip root. Consumed by Task 8's job.
 
-- [ ] **Step 1: Enable the capability flag and regenerate `openapi.json`**
+- [ ] **Step 1: Write the failing test**
 
-Run:
+Append to `core/tests/test_appexport_bundler.py` (existing content stays as-is above this):
 
-```bash
-cd core && CORE_TILESET3D_ENABLED=true CORE_EXPORT_ENABLED=false CORE_ETL_ENABLED=false uv run python scripts/export_openapi.py openapi.json
+```python
+
+
+def _write_snapshot_fixture(tmp_path):
+    snapshot_src = tmp_path / "snapshot-src"
+    parquet_dir = snapshot_src / "snapshot" / "tenant_id=t1" / "collection_id=col1" / "dt=snapshot"
+    parquet_dir.mkdir(parents=True)
+    (parquet_dir / "data.parquet").write_bytes(b"fake-parquet-bytes")
+    (snapshot_src / "manifest.json").write_text('{"collections": []}')
+    return snapshot_src
+
+
+def test_standalone_bundle_contains_data_manifest_and_compose(tmp_path):
+    snapshot_src = _write_snapshot_fixture(tmp_path)
+
+    zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = set(zf.namelist())
+        assert "data/geostudio-app-config.json" in names
+        assert "data/manifest.json" in names
+        assert "data/snapshot/tenant_id=t1/collection_id=col1/dt=snapshot/data.parquet" in names
+        assert "docker-compose.yml" in names
+        assert "README.md" in names
+
+        config_payload = zf.read("data/geostudio-app-config.json").decode("utf-8")
+        assert '"kind"' in config_payload and '"app"' in config_payload
+
+        compose = zf.read("docker-compose.yml").decode("utf-8")
+        assert "ghcr.io/tlenenao/geostudio-appexport-standalone:latest" in compose
+        assert "./data:/data:ro" in compose
+
+
+def test_standalone_bundle_with_empty_snapshot_dir(tmp_path):
+    snapshot_src = tmp_path / "empty-snapshot"
+    snapshot_src.mkdir()
+    (snapshot_src / "manifest.json").write_text('{"collections": []}')
+
+    zip_bytes = build_standalone_bundle_zip(_config(), snapshot_dir=str(snapshot_src))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = set(zf.namelist())
+        assert "data/manifest.json" in names
+        assert "data/geostudio-app-config.json" in names
 ```
 
-Expected: `core/openapi.json` changes, purely additively (new `/tileset3d/...` paths and `Tileset3DPayload`/`Tileset3DUploadCreate`/etc. schemas appear; nothing existing is removed or changed in an incompatible way).
+Add the import at the top of the file:
 
-- [ ] **Step 2: Verify the diff is additive**
-
-Run: `cd core && git diff --stat openapi.json`
-Expected: only additions (new lines), review with `git diff openapi.json` that no existing path/schema was modified or removed.
-
-**Important:** this repo's CI generates `openapi.json` with `CORE_TILESET3D_ENABLED` (and `CORE_ETL_ENABLED`/`CORE_EXPORT_ENABLED`) **unset** (matching the established precedent documented in CLAUDE.md for `app.pipelines`/`app.export` — the committed `openapi.json` reflects the default-disabled surface, not every capability flag turned on at once). Re-run Step 1 **without** setting `CORE_TILESET3D_ENABLED=true` before committing, so the checked-in file matches what CI regenerates:
-
-```bash
-cd core && uv run python scripts/export_openapi.py openapi.json
-git diff --stat openapi.json
+```python
+from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
 ```
 
-Expected: this second run shows **no diff** relative to the pre-Task-7 committed file — the new `/tileset3d/...` routes are gated behind the flag and CI never enables it, exactly like `/pipelines/...` and `/export/...` already aren't in the committed spec today. Confirm with `grep -c tileset3d openapi.json` — expect `0`.
+(replacing the existing `from app.appexport.bundler import build_bundle_zip` line)
 
-- [ ] **Step 3: Regenerate the shell's generated TypeScript types**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd shell && npm run gen:api-types`
-Expected: `shell/src/api/generated/core-schema.d.ts` is unchanged (since `openapi.json` itself is unchanged after Step 2 — the flag-gated routes never reach the committed spec). Confirm with `git status --short shell/src/api/generated/core-schema.d.ts` — expect no output.
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: FAIL with `ImportError: cannot import name 'build_standalone_bundle_zip'`
 
-- [ ] **Step 4: Confirm nothing needs committing**
+- [ ] **Step 3: Add `build_standalone_bundle_zip` to `bundler.py`**
 
-Run: `git status --short core/openapi.json shell/src/api/generated/core-schema.d.ts`
-Expected: no output — this task is a verification step (proving the capability-flag discipline holds) rather than a code change. If either file *does* show a diff at this point, stop and investigate before continuing to Task 8 — it means something in Task 4–6 leaked into the always-on route surface.
+In `core/app/appexport/bundler.py`, append after `build_bundle_zip`:
 
-- [ ] **Step 5: No commit needed**
+```python
 
-This task intentionally produces no diff to commit — it exists to catch the exact class of mistake CLAUDE.md flags repeatedly on this repo (forgetting to regenerate, or regenerating with the wrong flags on). If Step 4 found a diff and you fixed the root cause, commit that fix under its own message; otherwise move on to Task 8.
+
+_STANDALONE_COMPOSE = """\
+services:
+  app:
+    image: ghcr.io/tlenenao/geostudio-appexport-standalone:latest
+    ports:
+      - "8090:8000"
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped
+"""
+
+_STANDALONE_README = """\
+# App GeoStudio exportée (mode Autoporté)
+
+## Démarrer
+
+    docker compose up -d
+
+Puis ouvrir http://localhost:8090
+
+## Contenu
+
+- `data/geostudio-app-config.json` : configuration de l'app (figée à l'export).
+- `data/manifest.json` : métadonnées des collections figées.
+- `data/snapshot/` : instantané des données au format GeoParquet.
+
+Le conteneur est strictement en lecture seule : aucune donnée n'est jamais
+écrite. Un ré-export manuel depuis GeoStudio est nécessaire pour rafraîchir
+l'instantané.
+"""
+
+
+def build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data/geostudio-app-config.json", config.model_dump_json(by_alias=True))
+        for root, _dirs, files in os.walk(snapshot_dir):
+            for name in files:
+                full = os.path.join(root, name)
+                rel = os.path.relpath(full, snapshot_dir)
+                zf.write(full, arcname=f"data/{rel}")
+        zf.writestr("docker-compose.yml", _STANDALONE_COMPOSE)
+        zf.writestr("README.md", _STANDALONE_README)
+    return buf.getvalue()
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_appexport_bundler.py -v`
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/app/appexport/bundler.py core/tests/test_appexport_bundler.py
+git commit -m "feat(core): build_standalone_bundle_zip — data+compose bundle (SP-18c)"
+```
 
 ---
 

@@ -94,6 +94,9 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
           <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
             Connecté
           </Button>
+          <Button type="button" size="sm" onClick={() => onChooseMode("standalone")}>
+            Autoporté
+          </Button>
         </div>
       </Dialog>
       {pendingWarningMode && (

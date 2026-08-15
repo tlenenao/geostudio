@@ -1,155 +1,199 @@
-# Task 6 Report: Core read/proxy route
+# Task 6 report: `app.appexport.miniserver.main`
 
-**Date:** 2026-08-14  
-**Status:** DONE  
-**Commit:** `d7c6bf6`
+## What I did
 
-## Summary
+Followed TDD as instructed by the brief:
 
-Successfully implemented the authenticated read/proxy route `GET /tileset3d/{item_id}/{path:path}` that serves individual zip entries on demand via ranged S3 reads. This is the final core-side piece of the tileset3d hosting feature before OpenAPI regeneration. All tests passing, full suite green.
+1. Read the full brief (`.superpowers/sdd/task-6-brief.md`).
+2. Verified the actual current signatures of the four dependencies before writing
+   any code, since the brief predates Task 5's review fix:
+   - `core/app/appexport/miniserver/items.py` — confirmed `select_features`/
+     `get_feature` signatures match the brief exactly, and confirmed the new
+     `MissingGeometryColumn` exception: raised by `_build_where` when `bbox` or
+     `geom_intersects` is passed against a `TableInfo` with `geometry_column is
+     None`.
+   - `core/app/appexport/manifest.py` — `read_manifest`/`CollectionSnapshotEntry`
+     match the brief.
+   - `core/app/analytics/aggregate.py` — `run_collection_aggregate` signature
+     matches the brief (`conn, *, base_uri, tenant_id, collection_id, table_info,
+     request`).
+   - `core/app/analytics/duckdb_conn.py` — `open_local_connection()` exists
+     exactly as the brief expects (spatial extension only, no S3 config).
+3. Wrote `core/tests/test_appexport_miniserver_main.py` with the brief's 12
+   tests verbatim, plus one additional test for the deviation
+   (`test_list_items_bbox_on_non_spatial_collection_is_400`).
+4. Ran the test file to confirm it failed with `ModuleNotFoundError` (13
+   failures, all on the same import line) — matches the brief's expected Step 2
+   outcome.
+5. Created `core/app/appexport/miniserver/main.py` using the brief's Step 3
+   content verbatim, with one deviation (see below): imported
+   `MissingGeometryColumn` from `app.appexport.miniserver.items` and wrapped the
+   `select_features` call in `list_items` with a nested `try/except` that raises
+   `HTTPException(status_code=400, detail=str(exc))`.
+6. Ran the test file again: all 13 passed.
+7. Ran the three dependency test suites (Tasks 2, 3, 5): all 14 passed,
+   confirming no regression.
+8. Self-reviewed the diff (`git status`/`git diff --stat`) — confirmed only the
+   two intended files are new/untracked; all other modified files in the
+   working tree are pre-existing `.superpowers/sdd/*` scratch/bookkeeping files
+   belonging to the controller's session, left untouched.
+9. Staged only `core/app/appexport/miniserver/main.py` and
+   `core/tests/test_appexport_miniserver_main.py` explicitly (no `-A`/`.`/`-a`)
+   and committed.
 
-## Execution
+## Test output
 
-### Step 1: Write Failing Tests
-Appended 5 test cases to `core/tests/test_tileset3d_routes.py`:
-- `test_read_tileset3d_entry_returns_tileset_json` — JSON extraction with correct content-type
-- `test_read_tileset3d_entry_returns_tile_binary` — Binary extraction with octet-stream type
-- `test_read_tileset3d_entry_404_for_missing_entry` — 404 for non-existent entry path
-- `test_read_tileset3d_entry_404_for_unknown_item` — 404 for unknown item ID
-- `test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user` — 404 for access denied
+### `pytest tests/test_appexport_miniserver_main.py -v`
 
-Also added helper functions:
-- `_valid_zip_bytes()` — creates minimal tileset zip (tileset.json + tiles/0.b3dm)
-- `_seed_hosted_tileset_item()` — seeds S3 fake, creates item, creates tileset3d config
+Before creating `main.py` (Step 2, expected failure):
 
-### Step 2: Verify Tests Fail
-Ran: `cd core && uv run pytest tests/test_tileset3d_routes.py -k read_tileset3d_entry -v`
-
-Result:
 ```
-FAILED test_read_tileset3d_entry_returns_tileset_json (404, expected 200)
-FAILED test_read_tileset3d_entry_returns_tile_binary (404, expected 200)
-PASSED test_read_tileset3d_entry_404_for_missing_entry
-PASSED test_read_tileset3d_entry_404_for_unknown_item
-PASSED test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user
-```
-
-✓ Expected failure: route doesn't exist yet, happy-path tests return 404 instead of 200
-
-### Step 3: Implement the Route
-Added to `core/app/tileset3d/routes.py`:
-- Imports: `zipfile`, `Response`, `configs_repo`, `items_repo`, `can`, `S3RangeFile`
-- Content type mapping `_CONTENT_TYPES` (7 file extensions)
-- Helper `_content_type_for(path: str)` — guesses MIME type from extension
-- Route handler `read_tileset3d_entry()`:
-  - Authorization via `items_repo.get_access_facts()` + `can()` → 404 if denied
-  - Config lookup via `configs_repo.get_config_by_item()` → 404 if missing
-  - S3RangeFile for efficient byte-range reads
-  - Zip entry extraction via `ZipFile.read(path)` → 404 if KeyError
-  - Content-Type guessing via `_content_type_for(path)`
-  - Cache-Control header: "private, max-age=3600"
-
-### Step 4: Verify Tests Pass
-Ran: `cd core && uv run pytest tests/test_tileset3d_routes.py -v`
-
-Result:
-```
-12 passed in 3.88s
-```
-
-✓ All tests passing (7 existing + 5 new)
-
-### Step 5: Run Full Suite
-Ran: `cd core && uv run pytest -q`
-
-Result:
-```
-1432 passed, 145 skipped in 99.36s
-```
-
-✓ Full suite green, no regressions
-
-### Step 6: Commit
-```bash
-git add core/app/tileset3d/routes.py core/tests/test_tileset3d_routes.py
-git commit -m "feat(core): tileset3d read/proxy route"
+collected 13 items
+... (all 13 FAILED)
+tests/test_appexport_miniserver_main.py:57: ModuleNotFoundError: No module named 'app.appexport.miniserver.main'
+=========================== short test summary info ============================
+FAILED tests/test_appexport_miniserver_main.py::test_geostudio_app_config_is_served
+FAILED tests/test_appexport_miniserver_main.py::test_geostudio_connection_echoes_request_origin
+FAILED tests/test_appexport_miniserver_main.py::test_list_collections_returns_manifest_entries
+FAILED tests/test_appexport_miniserver_main.py::test_get_collection_includes_links
+FAILED tests/test_appexport_miniserver_main.py::test_get_collection_missing_is_404
+FAILED tests/test_appexport_miniserver_main.py::test_get_schema_returns_manifest_schema
+FAILED tests/test_appexport_miniserver_main.py::test_list_items_reads_snapshot
+FAILED tests/test_appexport_miniserver_main.py::test_get_single_item
+FAILED tests/test_appexport_miniserver_main.py::test_get_single_item_missing_is_404
+FAILED tests/test_appexport_miniserver_main.py::test_aggregate_counts_rows
+FAILED tests/test_appexport_miniserver_main.py::test_aggregate_unknown_collection_is_404
+FAILED tests/test_appexport_miniserver_main.py::test_static_runtime_is_served_at_root
+FAILED tests/test_appexport_miniserver_main.py::test_list_items_bbox_on_non_spatial_collection_is_400
+============================== 13 failed in 0.80s ==============================
 ```
 
-**Commit hash:** `d7c6bf6`  
-**Staged files:** 2 (routes.py + test file)  
-**Status output:**
+After creating `main.py` (Step 4, expected pass):
+
 ```
-[dev d7c6bf6] feat(core): tileset3d read/proxy route
- 2 files changed, 132 insertions(+)
-```
+collected 13 items
 
-## Files Changed
+tests/test_appexport_miniserver_main.py::test_geostudio_app_config_is_served PASSED [  7%]
+tests/test_appexport_miniserver_main.py::test_geostudio_connection_echoes_request_origin PASSED [ 15%]
+tests/test_appexport_miniserver_main.py::test_list_collections_returns_manifest_entries PASSED [ 23%]
+tests/test_appexport_miniserver_main.py::test_get_collection_includes_links PASSED [ 30%]
+tests/test_appexport_miniserver_main.py::test_get_collection_missing_is_404 PASSED [ 38%]
+tests/test_appexport_miniserver_main.py::test_get_schema_returns_manifest_schema PASSED [ 46%]
+tests/test_appexport_miniserver_main.py::test_list_items_reads_snapshot PASSED [ 53%]
+tests/test_appexport_miniserver_main.py::test_get_single_item PASSED     [ 61%]
+tests/test_appexport_miniserver_main.py::test_get_single_item_missing_is_404 PASSED [ 69%]
+tests/test_appexport_miniserver_main.py::test_aggregate_counts_rows PASSED [ 76%]
+tests/test_appexport_miniserver_main.py::test_aggregate_unknown_collection_is_404 PASSED [ 84%]
+tests/test_appexport_miniserver_main.py::test_static_runtime_is_served_at_root PASSED [ 92%]
+tests/test_appexport_miniserver_main.py::test_list_items_bbox_on_non_spatial_collection_is_400 PASSED [100%]
 
-1. **`core/app/tileset3d/routes.py`** (+64 lines)
-   - Added imports: zipfile, Response, configs_repo, items_repo, can, S3RangeFile
-   - Added `_CONTENT_TYPES` dict (extension → MIME type mapping)
-   - Added `_content_type_for(path)` helper
-   - Added `read_tileset3d_entry(item_id, path, ...)` route (GET /tileset3d/{item_id}/{path:path})
-
-2. **`core/tests/test_tileset3d_routes.py`** (+68 lines)
-   - Added imports: io, json, zipfile, BuilderConfig, Tileset3DPayload, configs_repo
-   - Added `_valid_zip_bytes()` helper
-   - Added `_seed_hosted_tileset_item()` helper
-   - Added 5 test cases for read route (json, binary, missing entry, unknown item, auth denied)
-
-## Technical Details
-
-**Route Signature:**
-```python
-@router.get("/tileset3d/{item_id}/{path:path}")
-def read_tileset3d_entry(
-    item_id: str, path: str,
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
-    s3=Depends(get_s3_client),
-    bucket: str = Depends(get_tileset3d_bucket),
-) -> Response
+============================== 13 passed in 1.06s ==============================
 ```
 
-**Authorization Logic:**
-1. Fetch access facts via `items_repo.get_access_facts()`
-2. Check `can(session, user_id, action="read", item=facts)`
-3. Return 404 if facts is None or authorization fails (hiding item existence)
+Note: the brief's own prose says "Expected: PASS (11 tests)" but the brief's
+literal test-file code block actually contains 12 test functions (I counted
+them individually: app_config, connection, list_collections, collection_links,
+collection_missing_404, schema, list_items, single_item, single_item_missing_404,
+aggregate_counts, aggregate_unknown_404, static_runtime = 12). This is a minor
+miscount in the brief's own narrative text, not a code defect — my task
+instructions said "11 from the brief + your 1 new one = 12" for the same
+reason, and the actual total is 12 (brief) + 1 (mine) = 13, all passing. Not
+treated as a deviation requiring action, just documented here for the
+controller's awareness.
 
-**Content Delivery Logic:**
-1. Get tileset3d config via `configs_repo.get_config_by_item()`
-2. Return 404 if config missing or not tileset3d kind
-3. Create `S3RangeFile` for byte-range reads
-4. Open zip and extract entry via `ZipFile.read(path)`
-5. Return 404 if entry not found (KeyError)
-6. Return Response with guessed content-type and cache header
+### `pytest tests/test_appexport_miniserver_items.py tests/test_analytics_duckdb_conn.py tests/test_appexport_manifest.py -v`
 
-**Content-Type Mapping:**
-- `.json` / `.gltf` → `application/json`
-- `.b3dm` / `.i3dm` / `.pnts` / `.cmpt` / `.glb` → `application/octet-stream`
-- Default → `application/octet-stream`
+```
+collected 14 items
 
-## Quality Checks
+tests/test_appexport_miniserver_items.py::test_select_features_reads_snapshot PASSED [  7%]
+tests/test_appexport_miniserver_items.py::test_select_features_paginates PASSED [ 14%]
+tests/test_appexport_miniserver_items.py::test_select_features_missing_collection_returns_empty_page PASSED [ 21%]
+tests/test_appexport_miniserver_items.py::test_get_feature_returns_single_row PASSED [ 28%]
+tests/test_appexport_miniserver_items.py::test_get_feature_missing_returns_none PASSED [ 35%]
+tests/test_appexport_miniserver_items.py::test_select_features_bbox_on_non_spatial_raises_error PASSED [ 42%]
+tests/test_appexport_miniserver_items.py::test_select_features_geom_intersects_on_non_spatial_raises_error PASSED [ 50%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_httpfs_and_spatial PASSED [ 57%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_configures_s3_settings_from_endpoint PASSED [ 64%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_detects_https_endpoint PASSED [ 71%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_h3 PASSED [ 78%]
+tests/test_analytics_duckdb_conn.py::test_open_local_connection_installs_and_loads_spatial_only PASSED [ 85%]
+tests/test_appexport_manifest.py::test_write_then_read_manifest_round_trips PASSED [ 92%]
+tests/test_appexport_manifest.py::test_write_manifest_with_no_entries PASSED [100%]
 
-✓ All 5 new read tests passing  
-✓ All 7 existing tileset3d tests still passing  
-✓ Full test suite green (1432 passed)  
-✓ Authorization properly enforced (can() check)  
-✓ Config validation (kind="tileset3d")  
-✓ Proper 404 handling for 3 error cases (item, config, entry)  
-✓ Content-Type guessing extensible (new extensions easily added)  
-✓ S3RangeFile correctly used for efficient ranged reads  
-✓ Scope discipline: only 2 files changed (routes + test)  
-✓ Code follows brief exactly (no deviations)
+============================== 14 passed in 1.24s ==============================
+```
 
-## Integration Notes
+No regressions in Task 2 (`app.analytics.duckdb_conn`), Task 3
+(`app.appexport.manifest`), or Task 5 (`app.appexport.miniserver.items`).
 
-This route completes the core-side tileset3d hosting feature. Ready for:
-- **Task 7**: OpenAPI spec regeneration (spec will now include this new route)
-- **Task 8-13**: Shell integration (types, itemClient, layer picker, map view, upload UI, E2E)
+## Deviation from the brief (instructed)
 
-The route integrates cleanly with existing dependency injection patterns and follows authorization conventions established in `app.sharing`.
+The brief's literal Step 3 `list_items` route does not catch
+`MissingGeometryColumn`, because that exception did not exist when this task's
+brief was drafted — it was introduced by a Task 5 review fix afterward. Per the
+controller's explicit instruction, I:
 
-## Concerns
+1. Read `core/app/appexport/miniserver/items.py` first and confirmed the
+   current signature: `select_features(..., bbox=None, geom_intersects=None)`
+   raises `MissingGeometryColumn("collection has no geometry column")` from
+   `_build_where` when `bbox is not None or geom_intersects is not None` and
+   `table_info.geometry_column is None`.
+2. In `list_items` (the route accepting `bbox: str | None = None`), added
+   `from app.appexport.miniserver.items import MissingGeometryColumn,
+   get_feature, select_features` (extending the brief's import line) and
+   wrapped the `select_features` call in a nested `try/except
+   MissingGeometryColumn as exc: raise HTTPException(status_code=400,
+   detail=str(exc))`, still inside the existing outer `try/finally: conn.close()`
+   — so the connection is always closed before the exception propagates.
+3. Added a 13th test, `test_list_items_bbox_on_non_spatial_collection_is_400`,
+   using the existing `_client`/`_build_data_dir` fixtures from the brief
+   unchanged: `col1`'s `TableInfo` already has `geometry_column=None` (visible
+   directly in `_build_data_dir`), so no second manifest fixture was needed —
+   I just issued a `bbox` query against the existing non-spatial `col1` and
+   asserted `400`.
 
-None. Route is complete as specified, all tests pass, ready for downstream tasks.
+This is the only code deviation from the brief's literal Step 3 content. All
+other code, including route ordering, response shapes, the static mount
+placement as the last registered route, and the docstring, is copied verbatim
+from the brief.
+
+## Other deviations
+
+None. File paths, module names, env var names
+(`APPEXPORT_STANDALONE_DATA_DIR`/`APPEXPORT_STANDALONE_RUNTIME_DIR`), the
+import-time (not per-request) read of `DATA_DIR`/`RUNTIME_DIR`, and the commit
+message all match the brief.
+
+## Self-review notes
+
+- `git status --short` on the two target files showed `??` (untracked) before
+  staging, confirming they are genuinely new files, not modifications.
+- `git diff --stat` (unstaged, full working tree) showed only pre-existing
+  modifications under `.superpowers/sdd/*` (controller's session bookkeeping,
+  dated/versioned brief and report files for tasks 1-6) — none of which I
+  touched or staged.
+- Staged explicitly with `git add core/app/appexport/miniserver/main.py
+  core/tests/test_appexport_miniserver_main.py` (no `-A`, `.`, or `-a`).
+  Post-stage `git status --short` confirmed exactly those two files as `A`
+  (added) and all `.superpowers/sdd/*` files remained `M` (unstaged modified),
+  correctly excluded from this commit.
+- Reviewed `main.py` logic once more end-to-end: route registration order
+  keeps the catch-all static mount last (required by Starlette matching
+  order, per the brief's own comment); every DuckDB connection opened in a
+  route is closed in a `finally` block including on the new
+  `MissingGeometryColumn` 400 path and the pre-existing
+  `UnknownAggregateField` 400 path in `aggregate`; `_get_entry` correctly
+  raises 404 before any DuckDB connection is opened for unknown collection
+  IDs test coverage: `test_get_collection_missing_is_404`,
+  `test_aggregate_unknown_collection_is_404`.
+- No other files were modified; this task only creates new files as scoped.
+
+## Commit
+
+`d7f8f48` — `feat(core): standalone mini-server FastAPI app (SP-18c)` (plus a
+body line documenting the `MissingGeometryColumn` deviation).
+
+Files touched:
+- `core/app/appexport/miniserver/main.py` (new)
+- `core/tests/test_appexport_miniserver_main.py` (new)

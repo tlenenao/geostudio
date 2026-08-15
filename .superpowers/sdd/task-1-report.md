@@ -1,113 +1,121 @@
-# Task 1 Report: Core schema — `tiles3d` layer kind, `terrain`, camera pitch/bearing
+# SP-18c Task 1 Report: `check_export_guard` gains `mode="standalone"`
 
 **Status:** DONE
 
-**Commit Hash:** 28e946b
+**Commit Hash:** f4c5508
 
-**Test Summary:** 1392 passed, 145 skipped (including 2 new tests)
+**Test Summary:** 17 passed (all modes tested: static + connected + standalone)
 
 ---
 
-## Summary
+## What Was Implemented
 
-Successfully implemented the core schema extensions for 3D tiles and terrain support in GeoStudio's MapConfig. All changes are schema-only at the core level, with no database migrations required (Pydantic serialization only).
+Extended the export guard to support a third "standalone" (autoporté) export mode that combines:
+- **is_public leniency** from "connected" mode: statistics sources allowed on public collections
+- **widget allowlist strictness** from "static" mode: builtin-widget-only allowlist enforced
 
-## Changes Made
+The three modes now work as follows:
+- **mode="static"** (SP-18a): Public collections only, no statistics, builtin widgets only
+- **mode="connected"** (SP-18b): Public collections only, statistics allowed, any widgets allowed
+- **mode="standalone"** (SP-18c): Public collections only, statistics allowed, builtin widgets only
 
-### 1. Schema Extensions (`core/app/configs/schemas.py`)
+## Files Changed
 
-#### MapView (lines 61-65)
-- Added `pitch: float | None = None` — camera pitch angle for 3D tilt
-- Added `bearing: float | None = None` — camera bearing/rotation angle for 3D orientation
+1. **`core/app/appexport/guard.py`** — Updated to support "standalone" mode:
+   - Updated docstring from "(SP-18a/b)" to "(SP-18a/b/c)" with full explanation of autoporté mode
+   - Added `_STRICT_WIDGET_MODES = frozenset({"static", "standalone"})` constant
+   - Updated widget allowlist comment: "Pertinent pour mode="static" ET mode="standalone""
+   - Refactored widget check from `if mode == "static":` to `if mode in _STRICT_WIDGET_MODES:`
+   - Updated error message to be generic: "ce mode d'export" instead of "l'export statique"
+   - Updated is_public guard comment to clarify all three modes' handling of "statistics" sources
 
-#### MapLayer (line 74)
-- Extended `kind` Literal from `["vector", "raster", "feature", "deck"]` to include `"tiles3d"`
-- Reuses existing `url: str | None` field for tileset URL
-
-#### MapTerrain (NEW — lines 123-126)
-New class with:
-- `tilesUrl: str` — required URL pattern for DEM tiles (e.g., `{z}/{x}/{y}.png`)
-- `encoding: Literal["terrarium"] = "terrarium"` — default terrain encoding
-- `exaggeration: float | None = None` — optional vertical exaggeration multiplier
-
-#### MapConfig (line 131)
-- Added `terrain: MapTerrain | None = None` — optional terrain layer attached to the map
-
-### 2. Tests (`core/tests/test_routes.py`)
-
-Added two comprehensive round-trip tests after `test_put_config_by_item_404_when_missing`:
-
-#### test_map_config_round_trips_tiles3d_layer_terrain_and_camera
-- Creates a map config with:
-  - `tiles3d` layer pointing to a tileset
-  - Terrain with DEM URL, encoding, and exaggeration
-  - Camera pitch (45°) and bearing (90°)
-- Verifies full round-trip via POST /configs and GET /configs/by-item
-- Asserts exact JSON field match on response
-
-#### test_map_config_defaults_pitch_bearing_terrain_when_absent
-- Creates a map config without new optional fields
-- Verifies fields default to `None` in response
-- Ensures backward compatibility
-
-### 3. OpenAPI Specification (`core/openapi.json`)
-
-Regenerated with `CORE_SECRETS_MASTER_KEY` env var per brief.
-
-Changes (64 insertions, 1 deletion):
-- MapConfig schema: added `terrain` field (anyOf MapTerrain or null)
-- MapLayer schema: extended `kind` enum with `"tiles3d"`
-- MapView schema: added `pitch` and `bearing` fields (both optional)
-- New MapTerrain schema definition
-
-All changes **purely additive** — no breaking changes.
+2. **`core/tests/test_appexport_guard.py`** — Added comprehensive standalone mode tests:
+   - `test_statistics_source_on_public_collection_is_allowed_in_standalone_mode`
+   - `test_statistics_source_on_non_public_collection_is_blocked_in_standalone_mode`
+   - `test_features_source_on_non_public_collection_is_still_blocked_in_standalone_mode`
+   - `test_unsupported_widget_type_is_blocked_in_standalone_mode`
+   - `test_builtin_widgets_only_is_allowed_in_standalone_mode`
 
 ## TDD Evidence
 
-### Phase 1: RED (2 tests fail before implementation)
+### Step 1: Tests written and verified to fail
+Initial test run showed 1 failure as expected:
+- `test_unsupported_widget_type_is_blocked_in_standalone_mode` — FAILED (widget allowlist not yet enforced)
+- Other standalone tests mostly passed (they only test is_public guard which was already lenient for "connected")
+
+### Step 2: Implementation applied
+Guard updated with `_STRICT_WIDGET_MODES` constant and conditional logic refactor.
+
+### Step 3: All tests pass
 ```
-- tiles3d rejected as invalid kind (Pydantic validation error)
-- pitch/bearing/terrain missing from schema (KeyError in test assertions)
+============================== 17 passed in 0.61s ==============================
 ```
+- 12 original tests (8 static-mode + 4 connected-mode): PASSED
+- 5 new standalone-mode tests: PASSED
+- 0 failures, 0 regressions
 
-### Phase 2: GREEN (2 tests pass after implementation)
-```
-test_map_config_round_trips_tiles3d_layer_terrain_and_camera PASSED
-test_map_config_defaults_pitch_bearing_terrain_when_absent PASSED
-```
+## Self-Review
 
-### Phase 3: Full Regression Suite
-```
-1392 passed, 145 skipped (0 new failures)
-```
+### Mode Behavior Correctness:
+✅ **Static mode** — unchanged from prior implementation:
+  - Line 73-76: Blocks `statistics` sources
+  - Line 97-100: Enforces widget allowlist
+  - Line 88-89: Enforces is_public for all sources
 
-## Test Coverage
+✅ **Connected mode** — unchanged from prior implementation:
+  - Line 73-76: Allows `statistics` if public (conditional skips rejection)
+  - Line 97-100: No widget allowlist check
+  - Line 88-89: Enforces is_public for all sources
 
-**New tests:** 2
-- Full round-trip serialization with all 3D fields
-- Default NULL behavior for optional fields
-- All required field validation (tilesUrl)
+✅ **Standalone mode** (new):
+  - Allows `statistics` if public (same as connected)
+  - Enforces widget allowlist (same as static)
+  - Enforces is_public for all sources (same as both)
 
-**Regression:** Full core suite green with no regressions
+### Implementation Quality:
+✅ Minimal, focused change: only 24 lines modified/added in guard.py
+✅ Uses `_STRICT_WIDGET_MODES` set to clearly express mode grouping
+✅ No changes to function signature or public interfaces
+✅ Backward compatible with "static" and "connected" mode callers
+✅ Error messages updated to be mode-agnostic
 
-## Design Rationale
+### Test Coverage:
+✅ 5 new standalone tests cover all key scenarios:
+  - Statistics on public collections (allowed)
+  - Statistics on private collections (blocked)
+  - Features on private collections (still blocked)
+  - Third-party widgets (blocked)
+  - Builtin widgets (allowed)
+✅ All test assertions verify correct behavior
+✅ Test names clearly document the expected behavior
 
-- **URL field reuse:** `tiles3d` layer kind reuses existing `url` field (pattern used by other layer kinds)
-- **Map-level terrain:** Terrain attached to MapConfig, not individual layers (global rendering concern)
-- **Extensible encoding:** Literal allows future formats without schema migration
-- **Backward compatible:** Optional fields maintain compatibility with existing 2D configs
+### Code Quality:
+✅ Docstring expanded with clear explanation of autoporté mode behavior
+✅ Comments updated to document all three modes' handling of statistics
+✅ Widget allowlist comment correctly states applicability to both "static" and "standalone"
+✅ No type errors, no linting issues
 
-## Completion Checklist
+## Key Design Decisions
 
-- [x] Tests written first (RED)
-- [x] Schema changes implemented (GREEN)
-- [x] Full core test suite passes (1392 passed, 145 skipped)
-- [x] openapi.json regenerated with exact env var from brief
-- [x] Git diff --stat shows purely additive changes only
-- [x] Conventional commit message used
-- [x] No concerns or issues
+1. **`_STRICT_WIDGET_MODES` constant** — Groups "static" and "standalone" modes for readability and future extensibility. Single source of truth for which modes enforce widget allowlist.
+
+2. **Generic error message** — Changed from "l'export statique" to "ce mode d'export" to support multiple modes without code duplication.
+
+3. **is_public leniency** — Both "connected" and "standalone" allow statistics sources on public collections. This reflects the architecture decision that:
+   - Connected mode calls `/aggregate` at runtime (already anonymously capable)
+   - Standalone mode freezes aggregates in the snapshot and serves them from the mini-server (also anonymously callable)
+   - Neither requires figuring out the aggregate at export time itself
+
+4. **Widget allowlist strictness** — Both "static" and "standalone" reject third-party widgets because:
+   - Static bundles everything; third-party widgets can't be bundled
+   - Standalone also bundles; same constraint applies
+   - Connected mode loads widgets from external URLs, so no bundling needed
+
+## Concerns
+
+None. Implementation follows TDD discipline, passes all tests, and matches brief specification exactly.
 
 ---
 
-**Completed:** 2026-08-13  
-**Next Task:** Task 2 (Shell TypeScript types and itemClient mapping)
+**Completed:** 2026-08-15  
+**Next Task:** Task 2 (update jobs.py to handle mode parameter)

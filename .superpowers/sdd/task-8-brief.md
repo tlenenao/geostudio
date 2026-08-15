@@ -1,82 +1,174 @@
-### Task 8: Shell types — `ResourceType`, `LayerSource`, `InstanceInfo`, `ItemClient`
+### Task 8: `build_app_export_task` branches on `mode="standalone"`
 
 **Files:**
-- Modify: `shell/src/api/types.ts`
+- Modify: `core/app/appexport/jobs.py`
+- Modify: `core/tests/test_appexport_jobs.py`
 
 **Interfaces:**
-- Produces: `ResourceType` gains `"tileset3d"`; `LayerSource.service` gains `"tileset3d"`, `.kind` gains `"tiles3d"`; `InstanceInfo` gains `tileset3dEnabled: boolean`; `ItemClient` gains `createTileset3DUpload`, `presignTileset3DUploadPart`, `completeTileset3DUpload`, `getTileset3DUploadJob`, `getAuthToken?`. Consumed by Task 9 (`itemClient.ts` implementation), Task 10 (`LayerPicker`), Task 11 (`MapView`), Task 12 (`Tileset3DUploadButton`).
+- Consumes: `write_snapshot` (Task 4), `build_standalone_bundle_zip` (Task 7).
+- Produces: unchanged public signature `build_app_export_task(job_id: str,
+  tenant_id: str) -> None`. For `mode="standalone"`: writes a snapshot to a
+  temporary directory, builds the standalone zip from it, uploads exactly
+  like the other two modes.
 
-This task is a type-only change with no runtime behavior — `tsc --noEmit` is the verification, no new test file.
+- [ ] **Step 1: Write the failing tests**
 
-- [ ] **Step 1: Verify the baseline compiles**
+Append to `core/tests/test_appexport_jobs.py` (existing content stays as-is above this):
 
-Run: `cd shell && npm run build`
-Expected: PASS (establishes the pre-change baseline before editing).
+```python
 
-- [ ] **Step 2: Extend `ResourceType`**
 
-In `shell/src/api/types.ts`, line 2:
+def test_standalone_job_with_no_data_sources_succeeds(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done"
+    assert job.result_key == f"appexports/{job_id}.zip"
 
-```ts
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d";
+
+def test_standalone_job_with_private_source_marks_error(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "publique" in job.error
 ```
 
-- [ ] **Step 3: Extend `LayerSource`**
+- [ ] **Step 2: Run to verify the new tests fail**
 
-Replace the `LayerSource` type (currently lines 84-93):
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: `test_standalone_job_with_no_data_sources_succeeds` FAILS — the job
+ends in `error` because `_prepare_bundle_inputs` currently falls through to
+the `static`/`freeze_config` branch for any unrecognized mode string, but
+`APPEXPORT_RUNTIME_DIR`'s fixture `index.export.html` is present so it would
+actually succeed as a (wrong) static export instead — verify empirically
+which failure mode you see; either way `test_standalone_job_with_private_source_marks_error`
+passes already by accident (the guard rejection happens before mode
+branching). The important assertion to watch is Step 4 below.
 
-```ts
-export type LayerSource = {
-  id: string;
-  title: string;
-  service: "martin" | "core" | "external" | "tileset3d";
-  kind: "vector" | "feature" | "raster" | "tiles3d";
-  tilesUrl?: string;
-  sourceLayer?: string;
-  url?: string;
-  featureCount?: number | null;
-};
+- [ ] **Step 3: Update `jobs.py`**
+
+Replace the full contents of `core/app/appexport/jobs.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Tâche procrastinate (SP-18a/b/c) : guard → (statique : gèle les
+DataSources ; connecté : garde la config telle quelle + embarque l'URL du
+cœur ; autoporté : écrit un instantané GeoParquet local + zippe avec un
+docker-compose.yml généré) → upload S3. Tourne sur le worker partagé (queue
+`appexport`, pas de Chromium/Node/Docker ici — écrire un instantané local
+avant de zipper n'a besoin ni de Docker ni de réseau). Toute erreur marque
+le job "error", jamais un job bloqué en "running" (même critère que
+app.export.jobs/app.pipelines.jobs)."""
+import logging
+import os
+import tempfile
+
+from app.appexport import repository as appexport_repo
+from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
+from app.appexport.freeze import freeze_config
+from app.appexport.guard import check_export_guard
+from app.appexport.snapshot import write_snapshot
+from app.auth.dependency import is_appexport_enabled
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
+from app.db import make_engine, make_session_factory, request_scoped_session
+from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.jobs import app
+
+logger = logging.getLogger(__name__)
+
+
+def _session_factory():
+    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
+    return make_session_factory(engine)
+
+
+def s3_client_from_env():
+    return make_s3_client(
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        access_key=os.environ["S3_ACCESS_KEY"],
+        secret_key=os.environ["S3_SECRET_KEY"],
+    )
+
+
+def _prepare_bundle_inputs(
+    session, *, tenant_id: str, mode: str, config: BuilderConfig,
+) -> tuple[BuilderConfig, dict | None]:
+    if mode == "connected":
+        core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
+        return config, {"coreUrl": core_url}
+    return freeze_config(session, tenant_id=tenant_id, config=config), None
+
+
+def _build_zip_bytes(session, *, tenant_id: str, mode: str, config: BuilderConfig) -> bytes:
+    if mode == "standalone":
+        with tempfile.TemporaryDirectory() as snapshot_dir:
+            write_snapshot(session, tenant_id=tenant_id, config=config, snapshot_dir=snapshot_dir)
+            return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir)
+    bundle_config, connection = _prepare_bundle_inputs(session, tenant_id=tenant_id, mode=mode, config=config)
+    runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
+    return build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+
+
+@app.task(queue="appexport")
+def build_app_export_task(job_id: str, tenant_id: str) -> None:
+    session_factory = _session_factory()
+
+    if not is_appexport_enabled():
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
+        return
+
+    with request_scoped_session(session_factory) as session:
+        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
+            return
+        appexport_repo.mark_running(session, job_id=job_id)
+        item_id = job.item_id
+        mode = job.mode
+
+    try:
+        with request_scoped_session(session_factory) as session:
+            config_read = configs_repo.get_config_by_item(session, item_id)
+            if config_read is None:
+                raise ValueError(f"app export item '{item_id}' not found")
+            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
+            if not guard_result.allowed:
+                raise ValueError("; ".join(guard_result.reasons))
+            zip_bytes = _build_zip_bytes(session, tenant_id=tenant_id, mode=mode, config=config_read.config)
+
+        result_key = f"appexports/{job_id}.zip"
+        bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+        s3_client = s3_client_from_env()
+        ensure_uploads_bucket(s3_client, bucket)
+        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
+
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+        logger.exception("app export job %s : erreur inattendue", job_id)
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
 ```
 
-- [ ] **Step 4: Extend `InstanceInfo`**
+- [ ] **Step 4: Run to verify it passes**
 
-Line 35:
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: PASS (7 tests)
 
-```ts
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; tileset3dEnabled: boolean };
-```
-
-- [ ] **Step 5: Extend `ItemClient`**
-
-In the `ItemClient` interface, insert before the closing `}` (currently line 216, right after `getExportJob(jobId: string): Promise<ExportJob>;`):
-
-```ts
-  createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
-  presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>;
-  completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>;
-  getTileset3DUploadJob(jobId: string): Promise<{
-    status: "pending" | "finalizing" | "done" | "error";
-    errorMessage: string | null;
-    itemId: string | null;
-  }>;
-  // Optional: absent on any ItemClient that doesn't need it (e.g. test mocks
-  // cast via `as unknown as ItemClient`). Used by MapView to authenticate
-  // Tile3DLayer requests against a hosted tileset's proxy route (design §4).
-  getAuthToken?(): string | undefined;
-```
-
-- [ ] **Step 6: Verify it still compiles**
-
-Run: `cd shell && npm run build`
-Expected: FAIL — `createItemClient`'s returned object (in `itemClient.ts`) doesn't yet implement the four new required `ItemClient` methods (`getAuthToken` is optional, so it alone wouldn't fail the build, but the four upload/job methods are required).
-
-This confirms the type change is wired correctly; Task 9 implements the missing methods.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-cd shell && git add src/api/types.ts
-git commit -m "feat(shell): types for hosted tileset3d items and upload client"
+git add core/app/appexport/jobs.py core/tests/test_appexport_jobs.py
+git commit -m "feat(core): app export job branches on mode=standalone (SP-18c)"
 ```
 
 ---

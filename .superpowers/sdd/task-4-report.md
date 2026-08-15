@@ -1,157 +1,165 @@
-# Task 4 report — `MapView.tsx`: render `Tile3DLayer`, terrain, and persist camera
+# Task 4 report — `app.appexport.snapshot.write_snapshot`
 
-## Status: DONE
+## What I did
 
-## Summary
+Followed TDD exactly per the brief (`.superpowers/sdd/task-4-brief.md`):
 
-Implemented Task 4 of the 3D Tiles + terrain plan exactly per the brief
-(`.superpowers/sdd/task-4-brief.md`), with one necessary correction (see
-"Deviation from the brief" below). Followed TDD: dependencies → test doubles
-→ failing tests (RED) → full-file `MapView.tsx` replacement → passing tests
-(GREEN) → type-check → commit.
+1. Read the full brief, including the exact test file and module content
+   provided verbatim.
+2. Verified the interfaces the brief claims exist, actually exist and match
+   the signatures used in the brief's code, before writing anything:
+   - `app/appexport/manifest.py` — `CollectionSnapshotEntry`, `write_manifest`,
+     `read_manifest` (Task 3 output, already present on disk).
+   - `app/appexport/freeze.py` — confirmed the same
+     `introspect_table` + `select_features` under `rls_scope` in-process
+     pattern this task's module reuses.
+   - `app/cdc/parquet_writer.py` — `ChangeRow` dataclass fields
+     (`op, lsn, ts, pk_column, pk_value, columns, geometry_column,
+     geometry_wkb_hex`) and `write_geoparquet(rows, *, srid, path)`.
+   - `app/collections/schema_json.py` — `table_info_to_schema(info) -> dict`.
+   - `app/features/repository.py` — `select_features(session, info, *, limit,
+     offset, bbox=None, geom_intersects=None, filters=None) -> FeaturePage`.
+   - `app/collections/repository.py` — `get_collection(session, *, tenant_id,
+     collection_id)`.
+   All matched the brief exactly — no adjustments needed.
+3. Created `core/tests/test_appexport_snapshot.py` verbatim from the brief
+   (4 `@pytest.mark.postgis` tests: empty data sources, a features source
+   written as GeoParquet + manifest, a zero-row collection producing no
+   parquet file, and the same collection referenced by two DataSources
+   being written only once).
+4. Ran the test with `CORE_TEST_DATABASE_URL` set — confirmed it failed with
+   `ModuleNotFoundError: No module named 'app.appexport.snapshot'` (a real
+   collection error, not a skip — proof the env var was reaching pytest and
+   postgis fixtures were engaging, since `app.main` import logged
+   procrastinate task registration).
+5. Created `core/app/appexport/snapshot.py` verbatim from the brief.
+6. Re-ran the test — all 4 passed for real (2.37s) against Postgres.
+7. Sanity-checked the skip/pass gating by re-running with the env var
+   unset — all 4 correctly SKIPPED, confirming the pass in step 6 was a
+   genuine real-database run and not a coincidence of some other default.
+8. Self-reviewed the diff (`git diff --cached --stat`): only the two new
+   files, 278 insertions, 0 modifications to any existing file — matches the
+   brief's stated scope exactly.
+9. Committed with the exact message from the brief's Step 5.
 
-## Steps executed
+## Full test output
 
-1. **Dependencies** (`shell/package.json`): added `@deck.gl/geo-layers` and
-   `@loaders.gl/core` at `^9.0.0`/`^4.3.0` per the brief. Ran `npm ls
-   @deck.gl/core` first — installed version is `9.3.5` (not `9.0.x`), but
-   `npm install` with the brief's ranges resolved cleanly with no peer
-   conflicts (`@deck.gl/geo-layers@9.3.10`, `@loaders.gl/core@4.4.3`).
+### Step 2 — before creating the module (env var set, expect ModuleNotFoundError, not skip)
 
-2. **Test doubles**:
-   - `shell/src/test/MockDeckgl.ts`: added `Tile3DLayer` mock class, verbatim.
-   - `shell/src/test/MockLoadersGl.ts`: created, verbatim.
-   - `shell/src/test/MockMaplibreMap.ts`: added `pitch?`/`bearing?` to
-     `opts` type, added `terrain: unknown = null` field, added
-     `getPitch()`/`getBearing()`/`setTerrain(spec)` methods — verbatim.
+```
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/lenen/projets/geostudio/core
+configfile: pyproject.toml
+plugins: anyio-4.14.1, pytest_httpserver-1.1.5
+collecting ... collected 0 items / 1 error
 
-3. **Failing tests** (`shell/src/map/MapView.test.tsx`): added the two new
-   `vi.mock` blocks (adjusted per the deviation below), replaced the two
-   existing moveend tests with the three brief-specified versions
-   (pitch/bearing in payload), and appended the 8 new tests (pitch/bearing
-   init/default, tiles3d mount/hide/legend/no-native-layer, terrain
-   enable/default-exaggeration/clear) — all verbatim from the brief.
-   Confirmed RED: `npm run test -- src/map/MapView.test.tsx` → 9 failed, 26
-   passed (the 26 were pre-existing tests unaffected by the new assertions).
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_appexport_snapshot.py _______________
+ImportError while importing test module '/home/lenen/projets/geostudio/core/tests/test_appexport_snapshot.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_appexport_snapshot.py:12: in <module>
+    from app.appexport.snapshot import write_snapshot
+E   ModuleNotFoundError: No module named 'app.appexport.snapshot'
+------------------------------- Captured stdout --------------------------------
+{"timestamp": "2026-08-15T19:24:53", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
+{"timestamp": "2026-08-15T19:24:53", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
+{"timestamp": "2026-08-15T19:24:54", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+=========================== short test summary info ============================
+ERROR tests/test_appexport_snapshot.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 1.86s ===============================
+```
 
-4. **Implementation** (`shell/src/map/MapView.tsx`): replaced the full file
-   with the brief's Step 5 content verbatim, with one import path fix (see
-   deviation below). All existing functionality (highlight, onFeatureClick,
-   onReady/hideLegend for export-render mode, layer isolation try/catch) was
-   preserved as-is since the brief's replacement already contained it.
+### Step 4 — after creating the module (env var set, expect PASS for real)
 
-5. **GREEN**: `npm run test -- src/map/MapView.test.tsx` → 35/35 passed.
+```
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/lenen/projets/geostudio/core
+configfile: pyproject.toml
+plugins: anyio-4.14.1, pytest_httpserver-1.1.5
+collecting ... collected 4 items
 
-6. **Type-check**: `npx tsc --noEmit` → exit 0, no errors.
+tests/test_appexport_snapshot.py::test_no_data_sources_writes_empty_manifest PASSED [ 25%]
+tests/test_appexport_snapshot.py::test_features_source_is_written_as_geoparquet PASSED [ 50%]
+tests/test_appexport_snapshot.py::test_collection_with_no_rows_writes_no_parquet_file PASSED [ 75%]
+tests/test_appexport_snapshot.py::test_same_collection_referenced_twice_is_written_once PASSED [100%]
 
-7. **Full suite regression check** (not in the brief's steps, done for
-   safety given concurrent unrelated work in the tree): `npm run test` →
-   137 test files, 1118 tests, all passed.
+============================== 4 passed in 2.37s ===============================
+```
 
-8. **Commit**: staged exactly the 7 files listed in the brief's Step 8 git
-   add command, individually (never `-A`/`-a`), verified via `git status
-   --short` before and after staging that no unrelated file (e.g.
-   `shell/src/pages/VisualQueryWizardPage.tsx`, `core/app/pipelines/*`,
-   `shell/src/builder/pipeline/PipelineNodeInspector.tsx`, the `.superpowers/sdd/*`
-   docs) was included. Commit: `661383c` — "feat(shell): MapView rend les
-   couches tiles3d et le terrain, persiste pitch/bearing".
+### Sanity check — env var unset (expect all 4 SKIPPED, confirming step 4 was genuinely a real-DB run)
 
-## Deviation from the brief (and why)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/lenen/projets/geostudio/core
+configfile: pyproject.toml
+plugins: anyio-4.14.1, pytest_httpserver-1.1.5
+collecting ... collected 4 items
 
-The brief's Step 1/3/5 specify `@loaders.gl/tiles` as the package exporting
-`Tiles3DLoader`. This is incorrect for the installed loaders.gl 4.4.x line:
-`Tiles3DLoader` is exported by **`@loaders.gl/3d-tiles`**, not
-`@loaders.gl/tiles`. Verified two ways:
+tests/test_appexport_snapshot.py::test_no_data_sources_writes_empty_manifest SKIPPED [ 25%]
+tests/test_appexport_snapshot.py::test_features_source_is_written_as_geoparquet SKIPPED [ 50%]
+tests/test_appexport_snapshot.py::test_collection_with_no_rows_writes_no_parquet_file SKIPPED [ 75%]
+tests/test_appexport_snapshot.py::test_same_collection_referenced_twice_is_written_once SKIPPED [100%]
 
-- `grep -rl "Tiles3DLoader" node_modules/@loaders.gl/*/dist/*.d.ts` shows it
-  only in `@loaders.gl/3d-tiles/dist/tiles-3d-loader.d.ts` (re-exported from
-  `@loaders.gl/3d-tiles/dist/index.d.ts`), not in `@loaders.gl/tiles`.
-- deck.gl's own `Tile3DLayer` type declaration
-  (`node_modules/@deck.gl/geo-layers/dist/tile-3d-layer/tile-3d-layer.d.ts`)
-  itself does `import { Tiles3DLoader } from '@loaders.gl/3d-tiles';` and
-  types its `loader?` prop as `typeof Tiles3DLoader` from that package.
+============================== 4 skipped in 1.74s ==============================
+```
 
-Using the brief's exact package name (`@loaders.gl/tiles`) would have
-compiled the mocked test suite (since the vi.mock intercepts the import
-before resolution) but failed `tsc --noEmit` with `TS2305: Module
-"@loaders.gl/tiles" has no exported member 'Tiles3DLoader'` — confirmed this
-by running tsc with the brief's exact wording first, saw the error, then
-applied the fix.
+## Deviations from the brief
 
-**Fix applied** (three small edits, all other content unchanged):
-- `shell/package.json`: dependency is `"@loaders.gl/3d-tiles": "^4.3.0"`
-  instead of `"@loaders.gl/tiles": "^4.3.0"` (alphabetically before
-  `@loaders.gl/core`, since `3` < `c`). `@loaders.gl/core` is unchanged.
-- `shell/src/map/MapView.tsx`: `import { Tiles3DLoader } from
-  "@loaders.gl/3d-tiles";` instead of `"@loaders.gl/tiles"`.
-- `shell/src/map/MapView.test.tsx`: `vi.mock("@loaders.gl/3d-tiles", ...)`
-  instead of `vi.mock("@loaders.gl/tiles", ...)`.
+None. Both the test file and `snapshot.py` were created exactly as specified
+in the brief's Step 1 and Step 3 code blocks, verbatim. All interfaces the
+brief assumed (`CollectionSnapshotEntry`/`write_manifest` from Task 3,
+`ChangeRow`/`write_geoparquet`, `table_info_to_schema`, `select_features`,
+`rls_scope`, `collections_repo.get_collection`) were verified against the
+real, current signatures in the codebase before use and matched without any
+adjustment needed.
 
-`shell/src/test/MockLoadersGl.ts` content is unchanged (still exports the
-same `Tiles3DLoader` mock object) — only which real module path it's mocked
-under changed. `@loaders.gl/tiles` remains present in the dependency tree
-as a transitive dependency of `@deck.gl/geo-layers` (used for tileset
-traversal, not directly imported by this file), so nothing regresses; it's
-just not a direct `package.json` dependency since `MapView.tsx` doesn't
-import anything from it directly.
+## Self-review notes
 
-## Verification evidence
+- `git diff --cached --stat` confirms the change is scoped to exactly the
+  two files named in the brief: `core/app/appexport/snapshot.py` (106 lines)
+  and `core/tests/test_appexport_snapshot.py` (172 lines), 278 insertions,
+  0 deletions, 0 other files touched. No existing file was modified.
+- Confirmed the `ModuleNotFoundError` failure in Step 2 was a genuine
+  collection-time error (not a skip) — the captured stdout shows
+  `app.main` import succeeding (procrastinate periodic tasks registered),
+  which only happens when the postgis fixtures/session machinery is
+  actually engaging, i.e. `CORE_TEST_DATABASE_URL` was correctly reaching
+  pytest.
+- Confirmed the inverse: with the env var unset, all 4 tests SKIP rather
+  than error or pass — this rules out the possibility that the PASS in
+  Step 4 was accidentally running against SQLite or some other fallback
+  instead of real Postgres.
+- Logic sanity-checked against the module's own docstring claims:
+  - Zero-row collections produce no parquet file (`if rows:` guard) but
+    still get a manifest entry with `featureCount: 0` — matches
+    `test_collection_with_no_rows_writes_no_parquet_file`.
+  - Same collection referenced by two DataSources (one `"features"`, one
+    `"statistics"`) is deduplicated via the `seen` set keyed by
+    `collection_id` — matches
+    `test_same_collection_referenced_twice_is_written_once`.
+  - Every row gets `op="insert"`, `lsn=0` — the CDC-shaped
+    "a snapshot is a change-log of nothing but inserts" framing that lets
+    `run_collection_aggregate`'s existing hive-partition glob/CTE
+    dedup logic read snapshot partitions unmodified.
+  - Partition path exactly matches
+    `{snapshot_dir}/snapshot/tenant_id=.../collection_id=.../dt=snapshot/data.parquet`
+    as asserted by the test and required by
+    `app.analytics.aggregate.run_collection_aggregate`'s expected layout.
+- No full test suite run — per the task scope, this task only adds two new
+  files and touches nothing existing, so the scoped run
+  (`tests/test_appexport_snapshot.py`) is sufficient evidence.
 
-- `npm ls @deck.gl/geo-layers @loaders.gl/core @loaders.gl/3d-tiles` →
-  `@deck.gl/geo-layers@9.3.10`, `@loaders.gl/core@4.4.3` (deduped),
-  `@loaders.gl/3d-tiles@4.4.4` (both direct and deduped-under-geo-layers).
-- RED: `npm run test -- src/map/MapView.test.tsx` → 9 failed / 26 passed
-  (before implementation).
-- GREEN: `npm run test -- src/map/MapView.test.tsx` → 35/35 passed (after
-  implementation and the `@loaders.gl/3d-tiles` fix).
-- `npx tsc --noEmit` → exit 0.
-- `npm run test` (full shell suite) → 137 files / 1118 tests, all passed.
-- `git status --short` reviewed before and after `git add` — confirmed only
-  the 7 target files moved to staged; all pre-existing unrelated
-  modifications (`core/app/pipelines/*`, `core/tests/test_pipeline_*`,
-  `shell/src/api/types.ts`, `shell/src/builder/pipeline/
-  PipelineNodeInspector.*`, `shell/src/pages/VisualQueryWizardPage.*`, the
-  `.superpowers/sdd/*` docs) remained untouched/unstaged.
+## Commit
 
-## Files changed (this task's commit `661383c`)
-
-- `shell/package.json` — added `@deck.gl/geo-layers`, `@loaders.gl/3d-tiles`
-  (not `@loaders.gl/tiles` — see deviation), `@loaders.gl/core`.
-- `shell/package-lock.json` — regenerated by `npm install`.
-- `shell/src/map/MapView.tsx` — full-file replacement per brief Step 5
-  (with the one import-path fix), adds `tiles3d` layer rendering via the
-  deck.gl overlay, `applyTerrain()` (MapLibre native `setTerrain`/raster-dem
-  source), pitch/bearing on map init, `onViewChange` payload gains
-  `pitch`/`bearing`, `MapViewHandle.flyTo` accepts optional
-  `pitch`/`bearing`.
-- `shell/src/map/MapView.test.tsx` — two new `vi.mock` blocks (one for
-  `@deck.gl/geo-layers`, one for `@loaders.gl/3d-tiles`), rewritten moveend
-  tests, 8 new tests appended.
-- `shell/src/test/MockDeckgl.ts` — added `Tile3DLayer` mock class.
-- `shell/src/test/MockLoadersGl.ts` — new file, `Tiles3DLoader` mock const.
-- `shell/src/test/MockMaplibreMap.ts` — `opts.pitch`/`opts.bearing`,
-  `terrain` field, `getPitch()`/`getBearing()`/`setTerrain()`.
-
-## Interfaces produced (for Task 7 consumption)
-
-- `MapView` renders `tiles3d`-kind `MapLayer`s via the existing deck.gl
-  `MapboxOverlay` (alongside `deck`-kind layers), skipping them in the
-  MapLibre-native `applyLayers` path.
-- `MapView` applies/clears `map.setTerrain(...)` + a `raster-dem` source
-  (`__terrain__`) from `MapConfig.terrain` (`MapTerrainConfig | null`),
-  reactively on `config.terrain` changes.
-- `MapViewHandle.flyTo` now accepts optional `pitch`/`bearing`.
-- `onViewChange` payload now includes `pitch: number; bearing: number`
-  (read live from `map.getPitch()`/`map.getBearing()`).
-- Map is initialized with `pitch: config.view.pitch ?? 0` and
-  `bearing: config.view.bearing ?? 0`.
-
-## Concerns for downstream tasks
-
-- None functional. The one thing worth flagging explicitly to whoever
-  reviews the branch as a whole: `@loaders.gl/tiles` (brief's originally
-  named package) is **not** a direct dependency of `shell/package.json` in
-  the final state — `@loaders.gl/3d-tiles` is. If any later task's brief
-  text also references `@loaders.gl/tiles` by name expecting `Tiles3DLoader`
-  from it, that reference has the same error and should be read as meaning
-  `@loaders.gl/3d-tiles`.
+`5009aaf` — `feat(core): write_snapshot — GeoParquet snapshot per collection (SP-18c)`

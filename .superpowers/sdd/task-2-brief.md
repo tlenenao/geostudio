@@ -1,66 +1,72 @@
-### Task 2: Shell types — `tiles3d`, `terrain`, camera in `MapConfig`
+### Task 2: `duckdb_conn.open_local_connection()`
 
 **Files:**
-- Modify: `shell/src/api/types.ts:57-74` (`MapViewport`, `MapLayer`, `MapConfig`)
-- Modify: `shell/src/api/generated/core-schema.d.ts` (regenerated, not hand-edited)
+- Modify: `core/app/analytics/duckdb_conn.py`
+- Modify: `core/tests/test_analytics_duckdb_conn.py`
 
 **Interfaces:**
-- Consumes: Task 1's `core/openapi.json`.
-- Produces: `MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number }`; `MapLayer` union gains `{ kind: "tiles3d"; id; title; visible; url: string }`; `MapViewport` gains `pitch?: number; bearing?: number`; `MapConfig` gains `terrain?: MapTerrainConfig | null`. Consumed by Task 3 (`itemClient.ts`), Task 4 (`MapView.tsx`), Task 5 (`LayerPicker.tsx`), Task 6 (`TerrainPanel.tsx`), Task 7 (`CameraControls.tsx`, `MapEditorPage.tsx`).
+- Produces: `open_local_connection() -> duckdb.DuckDBPyConnection` — loads
+  only the `spatial` extension (no `httpfs`, no `h3`, no S3 `SET`
+  statements). Used exclusively by the mini-server (Tasks 5/6), which only
+  ever reads local files.
 
-- [ ] **Step 1: Edit the types**
+- [ ] **Step 1: Write the failing test**
 
-In `shell/src/api/types.ts`, replace lines 57-74:
+Append to `core/tests/test_analytics_duckdb_conn.py` (existing content and
+`_RecordingConnection` stay as-is above this):
 
-```ts
-export type MapViewport = { center: [number, number]; zoom: number; pitch?: number; bearing?: number };
-export type BaseMap = { style: string };
-export type MapLayer =
-  | { id: string; title: string; visible: boolean; kind: "vector"; tilesUrl: string; sourceLayer: string; paint?: Record<string, unknown> }
-  | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
-  | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> }
-  | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
-export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
-export type PrintLayoutConfig = {
-  pageSize?: "a4" | "a3";
-  orientation?: "portrait" | "landscape";
-  title?: string | null;
-  showLegend?: boolean;
-  showScaleBar?: boolean;
-  showNorthArrow?: boolean;
-  cartouche?: string | null;
-};
+```python
 
-export type MapConfig = {
-  basemap: BaseMap;
-  view: MapViewport;
-  layers: MapLayer[];
-  printLayout?: PrintLayoutConfig | null;
-  terrain?: MapTerrainConfig | null;
-};
+
+def test_open_local_connection_installs_and_loads_spatial_only(monkeypatch):
+    import duckdb
+
+    from app.analytics.duckdb_conn import open_local_connection
+
+    real_conn = duckdb.connect(":memory:")
+    recording = _RecordingConnection(real_conn)
+    monkeypatch.setattr(duckdb, "connect", lambda *_a, **_kw: recording)
+
+    open_local_connection()
+
+    joined = "\n".join(recording.statements)
+    assert "INSTALL spatial" in joined and "LOAD spatial" in joined
+    assert "httpfs" not in joined
+    assert "s3_" not in joined
 ```
 
-- [ ] **Step 2: Type-check (expect errors in files not yet updated)**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd shell && npx tsc --noEmit`
-Expected: FAIL — errors in `itemClient.ts` (the `toFrontLayer` switch doesn't handle `"tiles3d"` in a way that satisfies the new union yet — actually this alone won't error since `toFrontLayer`'s `default` branch still returns a valid `feature`-shaped object; expect this step to otherwise PASS with no new errors). If it passes cleanly, that's fine — proceed; the real coverage gap is closed by Task 3's tests, not the type checker.
+Run: `cd core && uv run pytest tests/test_analytics_duckdb_conn.py -v`
+Expected: FAIL with `ImportError: cannot import name 'open_local_connection'`
 
-- [ ] **Step 3: Regenerate `core-schema.d.ts`**
+- [ ] **Step 3: Add `open_local_connection` to `duckdb_conn.py`**
 
-Run: `cd shell && npm run gen:api-types`
-Expected: `shell/src/api/generated/core-schema.d.ts` is rewritten to reflect Task 1's `core/openapi.json` (new `tiles3d` enum value, `MapTerrain` schema, `pitch`/`bearing` fields visible in the diff).
+In `core/app/analytics/duckdb_conn.py`, append after `open_spatial_connection`:
 
-- [ ] **Step 4: Type-check again**
+```python
 
-Run: `cd shell && npx tsc --noEmit`
-Expected: PASS, no errors.
+
+def open_local_connection() -> duckdb.DuckDBPyConnection:
+    """Connexion DuckDB in-process pour le mini-serveur autoporté (SP-18c) :
+    lit un instantané GeoParquet local (jamais S3/MinIO) — seule l'extension
+    spatial est nécessaire (ST_Intersects/ST_MakeEnvelope/ST_AsGeoJSON/
+    ST_GeomFromGeoJSON), aucune configuration s3_* requise."""
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    return conn
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cd core && uv run pytest tests/test_analytics_duckdb_conn.py -v`
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/api/types.ts shell/src/api/generated/core-schema.d.ts
-git commit -m "feat(shell): ajoute tiles3d, terrain et pitch/bearing aux types MapConfig"
+git add core/app/analytics/duckdb_conn.py core/tests/test_analytics_duckdb_conn.py
+git commit -m "feat(core): open_local_connection for the standalone mini-server (SP-18c)"
 ```
 
 ---

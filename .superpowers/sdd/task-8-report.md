@@ -1,193 +1,132 @@
-# Task 8 report: REST routes + wiring (main.py, instance flag)
+# Task 8 report — `build_app_export_task` branches on `mode="standalone"`
 
-## What was implemented
+## What I did
 
-- `core/app/appexport/routes.py` (new): `POST /app-exports` and
-  `GET /app-exports/jobs/{job_id}`, byte-for-byte mirroring
-  `app/export/routes.py`'s structure (swapping `format` → `mode`,
-  `/export` → `/app-exports`, `export_repo`/`render_export_task` →
-  `appexport_repo`/`build_app_export_task`, bucket env var
-  `S3_APPEXPORTS_BUCKET` defaulting to `geostudio-appexports`).
-  `_SUPPORTED_MODES = {"static"}` gates `mode`, returning 422 for anything
-  else (SP-18a only builds the static bundle; connected/standalone are
-  future SP-18b/c).
-- `core/app/main.py`: imported `appexport_routes` and `is_appexport_enabled`;
-  mounted the router conditionally (`if is_appexport_enabled(): ...`),
-  right after the existing `export_routes` block; added the
-  `S3_APPEXPORTS_BUCKET` dependency override next to `export_routes`'s,
-  inside the existing `if s3_endpoint and s3_access_key and s3_secret_key:`
-  block.
-- `core/app/instance/routes.py`: imported `is_appexport_enabled`, added
-  `"appExportEnabled": is_appexport_enabled()` to the `/instance` response
-  dict.
-- `core/tests/test_appexport_routes.py` (new): 6 tests mirroring
-  `test_export_routes.py`'s fixture pattern (`_FakeS3Client`,
-  `_fake_deferrer`, `env` fixture with `app.dependency_overrides` for
-  `db.get_session`, `ingestion_routes.get_s3_client`,
-  `appexport_routes.get_task_deferrer`).
+Followed TDD per the brief:
 
-## Deviation from the brief (found during RED, not guessed from memory)
+1. Read `core/app/appexport/jobs.py` and `core/tests/test_appexport_jobs.py`
+   to confirm current state before editing (the file to be replaced starts
+   with an "SP-18a/b" docstring, no `standalone` mode support yet).
+2. Verified the exact signatures of the two consumed functions against the
+   real (already-merged) source:
+   - `write_snapshot(session, *, tenant_id, config, snapshot_dir, max_records_per_source=50_000) -> list[CollectionSnapshotEntry]`
+     in `core/app/appexport/snapshot.py`.
+   - `build_standalone_bundle_zip(config: BuilderConfig, *, snapshot_dir: str) -> bytes`
+     in `core/app/appexport/bundler.py`.
+   Both match the brief's call sites verbatim.
+3. **Step 1** — Appended the two new tests
+   (`test_standalone_job_with_no_data_sources_succeeds`,
+   `test_standalone_job_with_private_source_marks_error`) to
+   `core/tests/test_appexport_jobs.py`, verbatim from the brief.
+4. **Step 2** — Ran `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+   *before* touching `jobs.py`. Result: all 7 tests passed, including both
+   new ones — this is the empirical outcome the brief explicitly flagged as
+   possible (the "wrong" static-fallback path succeeds for the no-sources
+   case, and the private-source case is rejected by the guard before mode
+   branching regardless of implementation). No regression signal expected
+   at this point; the real check is Step 4.
+5. **Step 3** — Replaced the full contents of `core/app/appexport/jobs.py`
+   with the brief's verbatim text (via `Write`, after `Read`).
+6. **Step 4** — Re-ran the same test file. All 7 passed again, this time
+   exercising the real `mode == "standalone"` branch (`_build_zip_bytes`
+   → `tempfile.TemporaryDirectory()` → `write_snapshot` →
+   `build_standalone_bundle_zip`).
+7. Ran the three dependency suites (Tasks 1/4/7) with a real Postgres to
+   confirm imports pulled in by the full-file replacement of `jobs.py`
+   still resolve and nothing broke:
+   `CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:5432/gis_test" uv run pytest tests/test_appexport_guard.py tests/test_appexport_snapshot.py tests/test_appexport_bundler.py -v`
+   — found a locally running `ci-postgres` container already exposing
+   `gis`/`gis`/`gis_test` on `localhost:5432` (matched the brief's fallback
+   value exactly), used it instead of starting a new container.
+8. Self-reviewed `git diff` for both files — matches the brief's intended
+   change exactly, no stray edits.
+9. Staged **only** `core/app/appexport/jobs.py` and
+   `core/tests/test_appexport_jobs.py` explicitly (verified via
+   `git status --short` before and after `git add` that no
+   `.superpowers/sdd/*` scratch files were swept in — those were already
+   modified in the working tree before I started, from the controller's
+   session bookkeeping, and I left them untouched).
+10. Committed as `1c13c7e`.
 
-The brief's test fixture built the seed `app`-kind config as
-`BuilderConfig(kind="app", dataSources=[], pages=[])`. Running it (Step 2)
-surfaced a real `pydantic.ValidationError`, not the expected
-`ModuleNotFoundError` — before `routes.py` even existed, the fixture itself
-was broken: `BuilderConfig`'s `_require_kind_payload` validator
-(`app/configs/schemas.py:390-391`) requires a top-level `layout` for
-`kind in ("app", "dashboard", "site")`. `test_export_routes.py` doesn't hit
-this because it seeds a `kind="map"` config instead. I checked how other
-tests in this same plan build a minimal `app`-kind config
-(`tests/test_create_bookmark.py`, `tests/test_mcp_tools_bookmark_create.py`,
-`tests/test_configs_schemas.py`) and added the same minimal payload:
-`layout={"type": "grid", "breakpoints": {}, "items": []}`. After that the
-6 tests ran exactly as specified with no further changes needed.
+## Test output
 
-## TDD evidence
+### Run 1 — `core/tests/test_appexport_jobs.py` (sqlite in-memory, no
+Postgres env needed — `_setup` uses `sqlite+pysqlite:///:memory:` directly)
 
-**RED** (`cd core && uv run pytest tests/test_appexport_routes.py -v`,
-before `routes.py` existed):
+Pre-implementation (Step 2, tests appended, `jobs.py` untouched):
 ```
-ImportError: cannot import name 'routes' from 'app.appexport'
-1 error in 0.32s
+tests/test_appexport_jobs.py::test_job_disabled_flag_marks_error PASSED
+tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done PASSED
+tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error PASSED
+tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url PASSED
+tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error PASSED
+tests/test_appexport_jobs.py::test_standalone_job_with_no_data_sources_succeeds PASSED
+tests/test_appexport_jobs.py::test_standalone_job_with_private_source_marks_error PASSED
+============================== 7 passed in 0.99s ===============================
 ```
-(then, after creating `routes.py` but before the `BuilderConfig` fixture
-fix — this is the real RED that matters, since the import error is trivial):
+Both new tests passed *before* the implementation change — the empirical
+outcome the brief called out as possible (unrecognized `mode` string falls
+through to the `static`/`freeze_config` branch, which succeeds trivially
+with no data sources present, and the guard rejects the private-source case
+before mode branching is ever reached). Not a red flag; matches the brief's
+Step 2 guidance exactly.
+
+Post-implementation (Step 4, `jobs.py` replaced):
 ```
-E   pydantic_core._pydantic_core.ValidationError: 1 validation error for BuilderConfig
-E     Value error, app config requires a layout [type=value_error, ...]
-6 errors in 1.96s (procrastinate AppNotOpen noise in captured logs is a
-red herring — it's a swallowed embedding-enqueue side effect, not the
-actual test failure)
+tests/test_appexport_jobs.py::test_job_disabled_flag_marks_error PASSED
+tests/test_appexport_jobs.py::test_job_succeeds_and_marks_done PASSED
+tests/test_appexport_jobs.py::test_job_guard_rejection_marks_error PASSED
+tests/test_appexport_jobs.py::test_connected_job_skips_freezing_and_embeds_core_base_url PASSED
+tests/test_appexport_jobs.py::test_connected_job_with_private_source_marks_error PASSED
+tests/test_appexport_jobs.py::test_standalone_job_with_no_data_sources_succeeds PASSED
+tests/test_appexport_jobs.py::test_standalone_job_with_private_source_marks_error PASSED
+============================== 7 passed in 1.08s ===============================
 ```
+All 7 passing, now genuinely exercising `write_snapshot` +
+`build_standalone_bundle_zip` for the standalone mode.
 
-**GREEN** (`cd core && uv run pytest tests/test_appexport_routes.py -v`,
-after adding `layout=...` to the fixture):
+### Run 2 — dependency suites (Tasks 1/4/7), real Postgres
+
+`CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:5432/gis_test" uv run pytest tests/test_appexport_guard.py tests/test_appexport_snapshot.py tests/test_appexport_bundler.py -v`
+
 ```
-tests/test_appexport_routes.py::test_post_app_export_requires_flag_enabled PASSED
-tests/test_appexport_routes.py::test_post_app_export_creates_job_and_returns_202 PASSED
-tests/test_appexport_routes.py::test_post_app_export_denies_user_without_read_access PASSED
-tests/test_appexport_routes.py::test_post_app_export_rejects_invalid_mode PASSED
-tests/test_appexport_routes.py::test_get_app_export_job_reports_status PASSED
-tests/test_appexport_routes.py::test_get_app_export_job_done_status_includes_result_url PASSED
-6 passed in 2.76s
+28 passed in 3.19s
 ```
+All of `test_appexport_guard.py` (17), `test_appexport_snapshot.py` (4),
+and `test_appexport_bundler.py` (7) pass — confirms the imports pulled into
+the fully-replaced `jobs.py` (`build_standalone_bundle_zip`, `write_snapshot`)
+still resolve correctly and nothing in those modules regressed.
 
-## Full suite run
+## Deviations from the brief
 
-`cd core && uv run pytest -q`
+None. Test code, implementation file content, and commit message are all
+verbatim from the brief. The only judgment call was choosing to use the
+already-running `ci-postgres` container (credentials `gis`/`gis`/`gis_test`
+on `localhost:5432`, matching the brief's suggested
+`CORE_TEST_DATABASE_URL` value exactly) instead of starting a new container
+— purely an environment convenience, no effect on test content or code.
 
-First run surfaced 5 pre-existing regressions — all strict `response.json()
-== {...}` equality assertions against `/instance` in
-`tests/test_etl_enabled_flag.py` (2), `tests/test_export_enabled_flag.py`
-(1), `tests/test_read_only_mode.py` (2) — that didn't anticipate the new
-`appExportEnabled` key. Fixed by adding `"appExportEnabled": False` (all
-five assertions run with the flag unset/default) to each expected dict, in
-the same position as `exportEnabled`/`tileset3dEnabled` etc. (`tests/test_tileset3d_enabled_flag.py`
-and `tests/test_terrain3d_enabled_flag.py` don't use strict dict equality,
-so they needed no change.)
+## Self-review notes
 
-Command: `cd core && uv run pytest -q`
-```
-1508 passed, 148 skipped in 109.18s (0:01:49)
-```
-No collection errors. The 148 skipped are the existing postgis-marked tests
-(need docker), unrelated to this task.
+- Full-file `Write` diff (`git diff`) shows exactly the expected delta:
+  docstring update (SP-18a/b → SP-18a/b/c, mentions standalone/GeoParquet/
+  docker-compose.yml), new `tempfile` import and `write_snapshot`/
+  `build_standalone_bundle_zip` imports, new `_build_zip_bytes` helper
+  centralizing the mode dispatch, and the call site in
+  `build_app_export_task` simplified to call `_build_zip_bytes` — no
+  incidental changes to error handling, job status transitions, or the
+  disabled-flag/missing-job early-return paths.
+- `git status --short` before and after `git add` confirms the commit
+  contains exactly `core/app/appexport/jobs.py` and
+  `core/tests/test_appexport_jobs.py` — none of the pre-existing modified
+  `.superpowers/sdd/*.md` bookkeeping files were staged or committed.
+- Public signature of `build_app_export_task(job_id: str, tenant_id: str) -> None`
+  unchanged, as required by the brief's "Produces" contract.
+- No `@pytest.mark.postgis` marker was needed for
+  `test_appexport_jobs.py` since its `_setup` fixture uses an in-memory
+  sqlite engine directly, consistent with the brief's guidance to check
+  fixture DB usage before assuming Postgres is required.
 
-Also ran `uv run lint-imports` (import-linter, per CLAUDE.md's "frontières
-de modules outillées"): `Contracts: 1 kept, 0 broken.`
+## Commit
 
-## Files changed
-
-- `core/app/appexport/routes.py` (new)
-- `core/app/main.py` (modified: import + conditional router mount + bucket
-  dependency override)
-- `core/app/instance/routes.py` (modified: import + `appExportEnabled` key)
-- `core/tests/test_appexport_routes.py` (new)
-- `core/tests/test_etl_enabled_flag.py` (modified: 2 assertions)
-- `core/tests/test_export_enabled_flag.py` (modified: 1 assertion)
-- `core/tests/test_read_only_mode.py` (modified: 2 assertions)
-
-## Self-review (against the 4 points asked)
-
-1. **Router only mounted when `is_appexport_enabled()` is true, 404 when
-   disabled.** Confirmed: `main.py` has `if is_appexport_enabled():
-   app.include_router(appexport_routes.router)`, mirroring
-   `is_export_enabled()`/`export_routes`. Test
-   `test_post_app_export_requires_flag_enabled` verifies 404 (not the
-   FastAPI-default 405) when the flag is off, since the route simply
-   doesn't exist on that app instance.
-2. **Read-access via `can()`/`get_access_facts`, 404 (not 403) for both
-   "doesn't exist" and "no read access".** Confirmed:
-   `_require_export_read_access` (verbatim copy of
-   `export.routes._require_export_read_access`) does
-   `facts = items_repo.get_access_facts(...)`, then
-   `if facts is None or not can(..., action="read", ...): raise
-   HTTPException(404, ...)` — single branch, single status code, no
-   distinction leaked to the caller. Test
-   `test_post_app_export_denies_user_without_read_access` confirms 404 for
-   the "item exists but stranger has no access" case; the "job id doesn't
-   exist" case for GET is exercised by `_require_export_read_access` never
-   even being reached (job lookup itself 404s first) — same shape as
-   `export.routes.get_export_job_route`.
-3. **`session.commit()` before `defer_task()`.** Confirmed in
-   `create_app_export_route`: `session.commit()` is the line immediately
-   before `defer_task(job.id, user.tenant_id)`, with the same inline
-   rationale comment as `export_routes`/`run_pipeline_route`.
-4. **Full suite passes with no collection errors.** Confirmed: `1508
-   passed, 148 skipped`, 0 failed, 0 errors, 0 collection errors.
-   Import-linter contract also kept.
-
-## Concerns
-
-- None blocking. One judgment call worth flagging: `/app-exports` was
-  **not** added to `main.py`'s `_EXPORT_PATH_RE` (the regex that exempts
-  export-family POST routes from the read-only demo guard). The brief
-  doesn't mention this, and no test in the brief's spec covers it. By the
-  same reasoning used for `/export` (SP-16a: "export is a read action for
-  the source app, doesn't write business data"), `/app-exports` arguably
-  deserves the same exemption — it writes only an `AppExportJob` audit-ish
-  row, not business data. I left this out of scope since it wasn't in the
-  brief and no test demanded it; flagging it here in case Task 14 (branch
-  review) or Task 9-13 (shell wiring) need the demo mode to support
-  triggering an app export.
-- The `test_appexport_routes.py` fixture fix (adding `layout=...`) is a
-  genuine correction to the brief's guessed code, not a guess of my own —
-  it was forced by an actual pydantic `ValidationError` at RED time, then
-  cross-checked against 3 other real tests in the same plan/repo that
-  build minimal `app`-kind `BuilderConfig`s the same way.
-
-## Fix: read-only-mode exemption
-
-**What changed and why.** `POST /app-exports` (SP-18a, `core/app/appexport/routes.py`)
-was not exempted from the `read_only_guard` middleware in `core/app/main.py`,
-unlike its sibling `/export` (SP-17a). The guard's `_EXPORT_PATH_RE` regex
-(`core/app/main.py:46`) matched `/export`, `/collections/{id}/export[/items]`,
-and `/datasets/{id}/arcgis/export[/items]` but not `/app-exports` — so on a
-read-only demo instance, triggering an app export got a spurious 403 before
-ever reaching the appexport router, even though (same as `/export`) it only
-packages/renders existing public data and writes no business data. Extended
-the regex to also match `^/app-exports$`:
-
-```python
-_EXPORT_PATH_RE = re.compile(
-    r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
-)
-```
-
-**TDD evidence.**
-- RED: added `test_post_app_export_allowed_in_read_only_demo_mode` to
-  `core/tests/test_appexport_routes.py` (mirrors
-  `test_post_export_allowed_in_read_only_demo_mode` in
-  `test_export_routes.py`, same `env` fixture/dependency-override pattern).
-  Run against the unfixed regex: `POST /app-exports` returned `403
-  Forbidden` (`"Mode démo : lecture seule, écritures désactivées."`)
-  instead of the expected `202` — 1 failed.
-- GREEN: after the regex fix, `uv run pytest tests/test_appexport_routes.py -q`
-  → `7 passed`.
-
-**Full suite run.** `cd core && uv run pytest -q` →
-`1509 passed, 148 skipped` in 107.37s. No regressions; read-only-mode
-tests (`test_read_only_mode.py`, `test_export_routes.py`,
-`test_appexport_routes.py`) all green.
-
-**Commit.** See below (created after this report was appended).
+`1c13c7e` — `feat(core): app export job branches on mode=standalone (SP-18c)`

@@ -1,197 +1,162 @@
-### Task 3: `itemClient.ts` — wire mapping for `tiles3d`/`terrain`/camera
+### Task 3: `app.appexport.manifest` — shared snapshot manifest shape
 
 **Files:**
-- Modify: `shell/src/api/itemClient.ts:6-29` (`RawMapLayer`, `toFrontLayer`), `shell/src/api/itemClient.ts:601-618` (`getMapConfig`)
-- Test: `shell/src/api/itemClient.test.ts`
+- Create: `core/app/appexport/manifest.py`
+- Create: `core/tests/test_appexport_manifest.py`
 
 **Interfaces:**
-- Consumes: `MapLayer`, `MapConfig`, `MapTerrainConfig` (Task 2).
-- Produces: `getMapConfig(pk): Promise<MapConfig>` now also returns `terrain` and `view.pitch`/`view.bearing` when present; `toFrontLayer` handles `kind: "tiles3d"`. `saveMapConfig` needs **no code change** — `terrain` and `view.pitch/bearing` are structural parts of the `MapConfig`/`MapViewport` objects already spread into the PUT body via `const { printLayout, ...map } = config`.
+- Consumes: `TableInfo`/`ColumnInfo` (`app.collections.introspection`, unchanged).
+- Produces: `CollectionSnapshotEntry` dataclass (`id: str`, `tenant_id: str`,
+  `collection_json: dict`, `schema_json: dict`, `table_info: TableInfo`),
+  `write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`,
+  `read_manifest(path: str) -> list[CollectionSnapshotEntry]`. This is the
+  contract Task 4 (writer, full core) and Task 6 (reader, slim mini-server
+  image) both depend on — the JSON on disk is the only thing that ever
+  crosses between them, never a Python import across the image boundary.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-Add to `shell/src/api/itemClient.test.ts`, near the existing `getMapConfig`/`saveMapConfig` tests (after the `saveMapConfig PUTs the map config by item` test, around line 340):
+Create `core/tests/test_appexport_manifest.py`:
 
-```ts
-test("getMapConfig maps a tiles3d layer", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8 },
-            layers: [
-              { id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json",
-                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
-            ],
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.layers[0]).toEqual({ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" });
-});
+```python
+# SPDX-License-Identifier: Apache-2.0
+from app.appexport.manifest import CollectionSnapshotEntry, read_manifest, write_manifest
+from app.collections.introspection import ColumnInfo, TableInfo
 
-test("getMapConfig reads terrain and camera pitch/bearing", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8, pitch: 40, bearing: 200 },
-            layers: [],
-            terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.view.pitch).toBe(40);
-  expect(cfg.view.bearing).toBe(200);
-  expect(cfg.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 });
-});
 
-test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
-  server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
-        config: {
-          kind: "map",
-          map: {
-            basemap: { style: "https://demo/s.json" },
-            view: { center: [1, 47], zoom: 8, pitch: null, bearing: null },
-            layers: [],
-            terrain: null,
-          },
-        },
-      }),
-    ),
-  );
-  const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.view.pitch).toBeUndefined();
-  expect(cfg.view.bearing).toBeUndefined();
-  expect(cfg.terrain).toBeNull();
-});
+def _entry() -> CollectionSnapshotEntry:
+    table_info = TableInfo(
+        table_name="t_x", pk_column="id", geometry_column="geom",
+        geometry_type="point", srid=4326,
+        columns=[ColumnInfo(name="name", type="string", required=False)],
+    )
+    return CollectionSnapshotEntry(
+        id="col1", tenant_id="t1",
+        collection_json={"id": "col1", "title": "X"},
+        schema_json={"collection": "t_x", "pk": "id", "geometry": None, "fields": []},
+        table_info=table_info,
+    )
 
-test("saveMapConfig sends terrain nested under map, not at the top level (unlike printLayout)", async () => {
-  let body: any;
-  server.use(
-    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
-      body = await request.json();
-      return HttpResponse.json({});
-    }),
-  );
-  await makeClient().saveMapConfig("77", {
-    basemap: { style: "s" },
-    view: { center: [0, 0], zoom: 1, pitch: 30, bearing: 60 },
-    layers: [],
-    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
-  });
-  expect(body.map.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" });
-  expect(body.map.view).toEqual({ center: [0, 0], zoom: 1, pitch: 30, bearing: 60 });
-  expect(body.terrain).toBeUndefined();
-});
+
+def test_write_then_read_manifest_round_trips(tmp_path):
+    path = str(tmp_path / "manifest.json")
+    write_manifest([_entry()], path)
+
+    entries = read_manifest(path)
+
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.id == "col1"
+    assert e.tenant_id == "t1"
+    assert e.collection_json == {"id": "col1", "title": "X"}
+    assert e.schema_json == {"collection": "t_x", "pk": "id", "geometry": None, "fields": []}
+    assert e.table_info.table_name == "t_x"
+    assert e.table_info.pk_column == "id"
+    assert e.table_info.geometry_column == "geom"
+    assert e.table_info.srid == 4326
+    assert e.table_info.columns[0].name == "name"
+    assert e.table_info.columns[0].type == "string"
+
+
+def test_write_manifest_with_no_entries(tmp_path):
+    path = str(tmp_path / "manifest.json")
+    write_manifest([], path)
+    assert read_manifest(path) == []
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
-Expected: FAIL — `toFrontLayer` falls through the `default: case "feature"` branch for `kind: "tiles3d"` (returns a `feature`-shaped object instead), and `getMapConfig`'s inline raw type doesn't read `terrain`/`pitch`/`bearing` (the returned `cfg.terrain`/`cfg.view.pitch` are `undefined` in the first three tests; the 4th test passes accidentally since it saves `terrain` through the existing generic spread — verify by running the full set and reading actual failures, not assuming which ones fail).
+Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.manifest'`
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Create `manifest.py`**
 
-In `shell/src/api/itemClient.ts`, replace the `RawMapLayer`/`toFrontLayer` block (lines 6-29):
+Create `core/app/appexport/manifest.py`:
 
-```ts
-type RawMapLayer = {
-  id: string; title: string; visible: boolean; kind: string;
-  tilesUrl?: string | null; sourceLayer?: string | null; url?: string | null;
-  opacity?: number | null; deckType?: string | null; dataUrl?: string | null;
-  paint?: Record<string, unknown> | null; props?: Record<string, unknown> | null;
-};
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Manifeste d'instantané autoporté (SP-18c) : forme partagée entre le job
+d'export (app.appexport.snapshot, tourne dans le worker complet, tous les
+paquets core disponibles) et le mini-serveur (app.appexport.miniserver,
+tourne dans une image Docker séparée et volontairement minimale) — les deux
+processus lisent/écrivent le même fichier manifest.json sur disque, jamais
+d'appel réseau ni d'import Python entre eux à l'exécution.
 
-function toFrontLayer(l: RawMapLayer): MapLayer {
-  const base = { id: l.id, title: l.title, visible: l.visible };
-  switch (l.kind) {
-    case "vector":
-      return { ...base, kind: "vector", tilesUrl: l.tilesUrl ?? "", sourceLayer: l.sourceLayer ?? "",
-        ...(l.paint ? { paint: l.paint } : {}) };
-    case "raster":
-      return { ...base, kind: "raster", tilesUrl: l.tilesUrl ?? "",
-        ...(l.opacity != null ? { opacity: l.opacity } : {}) };
-    case "deck":
-      return { ...base, kind: "deck", deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
-        dataUrl: l.dataUrl ?? "", ...(l.props ? { props: l.props } : {}) };
-    case "tiles3d":
-      return { ...base, kind: "tiles3d", url: l.url ?? "" };
-    case "feature":
-    default:
-      return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
-  }
-}
-```
+Réutilise TableInfo/ColumnInfo tels quels (app.collections.introspection)
+plutôt qu'une forme dupliquée : ces deux dataclasses n'ont aucune dépendance
+d'exécution réelle à Postgres (Session n'y sert que de type non exécuté
+dans un alias inutilisé ici) — seul le paquet sqlalchemy doit être installé
+pour l'import, jamais un driver ni une connexion réelle (cf.
+deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
+psycopg2-binary)."""
+import json
+from dataclasses import asdict, dataclass
 
-Then replace `getMapConfig` (lines 601-618):
+from app.collections.introspection import ColumnInfo, TableInfo
 
-```ts
-    async getMapConfig(pk: string): Promise<MapConfig> {
-      // ConfigRead nests the builder config under "config"; the map is config.map,
-      // printLayout is a sibling top-level field (core/app/configs/schemas.py::BuilderConfig).
-      const data = await request<{
-        config?: {
-          map?: {
-            basemap: { style: string };
-            view: { center: [number, number]; zoom: number; pitch?: number | null; bearing?: number | null };
-            layers: RawMapLayer[];
-            terrain?: { tilesUrl: string; encoding: "terrarium"; exaggeration?: number | null } | null;
-          } | null;
-          printLayout?: PrintLayoutConfig | null;
-        };
-      }>("GET", `/configs/by-item/${pk}`);
-      const map = data.config?.map;
-      if (!map) throw new Error("getMapConfig: config has no map payload");
-      return {
-        basemap: map.basemap,
-        view: {
-          center: map.view.center,
-          zoom: map.view.zoom,
-          ...(map.view.pitch != null ? { pitch: map.view.pitch } : {}),
-          ...(map.view.bearing != null ? { bearing: map.view.bearing } : {}),
-        },
-        layers: (map.layers ?? []).map(toFrontLayer),
-        printLayout: data.config?.printLayout ?? null,
-        terrain: map.terrain
-          ? {
-              tilesUrl: map.terrain.tilesUrl,
-              encoding: map.terrain.encoding,
-              ...(map.terrain.exaggeration != null ? { exaggeration: map.terrain.exaggeration } : {}),
+
+@dataclass(frozen=True)
+class CollectionSnapshotEntry:
+    id: str
+    tenant_id: str
+    collection_json: dict
+    schema_json: dict
+    table_info: TableInfo
+
+
+def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
+    payload = {
+        "collections": [
+            {
+                "id": e.id,
+                "tenantId": e.tenant_id,
+                "collectionJson": e.collection_json,
+                "schemaJson": e.schema_json,
+                "tableInfo": {
+                    "tableName": e.table_info.table_name,
+                    "pkColumn": e.table_info.pk_column,
+                    "geometryColumn": e.table_info.geometry_column,
+                    "geometryType": e.table_info.geometry_type,
+                    "srid": e.table_info.srid,
+                    "columns": [asdict(c) for c in e.table_info.columns],
+                },
             }
-          : null,
-      };
-    },
+            for e in entries
+        ]
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+
+
+def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+    entries: list[CollectionSnapshotEntry] = []
+    for raw in payload["collections"]:
+        ti = raw["tableInfo"]
+        table_info = TableInfo(
+            table_name=ti["tableName"], pk_column=ti["pkColumn"],
+            geometry_column=ti["geometryColumn"], geometry_type=ti["geometryType"],
+            srid=ti["srid"], columns=[ColumnInfo(**c) for c in ti["columns"]],
+        )
+        entries.append(CollectionSnapshotEntry(
+            id=raw["id"], tenant_id=raw["tenantId"],
+            collection_json=raw["collectionJson"], schema_json=raw["schemaJson"],
+            table_info=table_info,
+        ))
+    return entries
 ```
 
-`saveMapConfig` (lines 620-623) is unchanged — `terrain` and `view.pitch/bearing` are already part of `MapConfig`/`MapViewport` and flow through `const { printLayout, ...map } = config` automatically.
+- [ ] **Step 4: Run to verify it passes**
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npm run test -- src/api/itemClient.test.ts`
-Expected: PASS, all tests in the file green (existing + 4 new).
+Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
+Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts
-git commit -m "feat(shell): itemClient mappe tiles3d, terrain et pitch/bearing"
+git add core/app/appexport/manifest.py core/tests/test_appexport_manifest.py
+git commit -m "feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)"
 ```
 
 ---

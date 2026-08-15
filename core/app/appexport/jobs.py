@@ -1,17 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tâche procrastinate (SP-18a/b) : guard → (statique : gèle les
+"""Tâche procrastinate (SP-18a/b/c) : guard → (statique : gèle les
 DataSources ; connecté : garde la config telle quelle + embarque l'URL du
-cœur) → assemble le zip → upload S3. Tourne sur le worker partagé (queue
-`appexport`, pas de Chromium/Node ici). Toute erreur marque le job "error",
-jamais un job bloqué en "running" (même critère que
+cœur ; autoporté : écrit un instantané GeoParquet local + zippe avec un
+docker-compose.yml généré) → upload S3. Tourne sur le worker partagé (queue
+`appexport`, pas de Chromium/Node/Docker ici — écrire un instantané local
+avant de zipper n'a besoin ni de Docker ni de réseau). Toute erreur marque
+le job "error", jamais un job bloqué en "running" (même critère que
 app.export.jobs/app.pipelines.jobs)."""
 import logging
 import os
+import tempfile
 
 from app.appexport import repository as appexport_repo
-from app.appexport.bundler import build_bundle_zip
+from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
 from app.appexport.freeze import freeze_config
 from app.appexport.guard import check_export_guard
+from app.appexport.snapshot import write_snapshot
 from app.auth.dependency import is_appexport_enabled
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
@@ -44,6 +48,16 @@ def _prepare_bundle_inputs(
     return freeze_config(session, tenant_id=tenant_id, config=config), None
 
 
+def _build_zip_bytes(session, *, tenant_id: str, mode: str, config: BuilderConfig) -> bytes:
+    if mode == "standalone":
+        with tempfile.TemporaryDirectory() as snapshot_dir:
+            write_snapshot(session, tenant_id=tenant_id, config=config, snapshot_dir=snapshot_dir)
+            return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir)
+    bundle_config, connection = _prepare_bundle_inputs(session, tenant_id=tenant_id, mode=mode, config=config)
+    runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
+    return build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+
+
 @app.task(queue="appexport")
 def build_app_export_task(job_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
@@ -70,12 +84,7 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
             if not guard_result.allowed:
                 raise ValueError("; ".join(guard_result.reasons))
-            bundle_config, connection = _prepare_bundle_inputs(
-                session, tenant_id=tenant_id, mode=mode, config=config_read.config,
-            )
-
-        runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
-        zip_bytes = build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+            zip_bytes = _build_zip_bytes(session, tenant_id=tenant_id, mode=mode, config=config_read.config)
 
         result_key = f"appexports/{job_id}.zip"
         bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")

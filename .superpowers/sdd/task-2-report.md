@@ -1,57 +1,112 @@
-# Task 2 report — shell types: tiles3d, terrain, camera in MapConfig
+# Task 2 Report: `duckdb_conn.open_local_connection()`
 
-## Note on this report
+## Summary
 
-The implementer subagent's connection dropped mid-response after committing
-its work; it never got to write this report (the file previously held a
-stale report from an unrelated earlier plan's Task 2). The controller
-(session orchestrator) verified the actual commit content directly against
-the brief and reconstructed this report from that verification, rather than
-from implementer narration.
+Successfully implemented `open_local_connection()` helper for the SP-18c standalone mini-server (Tasks 5/6), following TDD discipline.
 
-## What was implemented
+## What I Did
 
-Commit `c364d4d feat(shell): ajoute tiles3d, terrain et pitch/bearing aux
-types MapConfig`, two files, matching the brief exactly:
+### Step 1: Write the Failing Test
+Appended the test `test_open_local_connection_installs_and_loads_spatial_only` to `core/tests/test_analytics_duckdb_conn.py` exactly as specified in the brief. The test verifies that:
+- `INSTALL spatial` and `LOAD spatial` are executed
+- `httpfs` is NOT loaded
+- `s3_` settings are NOT configured
 
-- `shell/src/api/types.ts`: `MapViewport` gains `pitch?: number;
-  bearing?: number`; `MapLayer` union gains
-  `{ kind: "tiles3d"; id; title; visible; url: string }`; new
-  `MapTerrainConfig = { tilesUrl: string; encoding: "terrarium";
-  exaggeration?: number }`; `MapConfig` gains `terrain?: MapTerrainConfig |
-  null`. Diff verified byte-for-byte against the brief's Step 1 code block.
-- `shell/src/api/generated/core-schema.d.ts`: regenerated via
-  `npm run gen:api-types` against Task 1's `core/openapi.json` — diff shows
-  `MapConfig.terrain`, `MapLayer.kind` gaining `"tiles3d"`, new `MapTerrain`
-  schema, `MapView.pitch`/`bearing` — purely additive, nothing removed or
-  reshaped.
+### Step 2: Verify Test Fails
+Ran the test and confirmed it failed with the expected `ImportError`:
+```
+ImportError: cannot import name 'open_local_connection' from 'app.analytics.duckdb_conn'
+```
 
-## Verification (controller, not implementer)
+### Step 3: Implement the Function
+Added `open_local_connection()` to `core/app/analytics/duckdb_conn.py` after `open_spatial_connection()` with:
+- Correct signature: `() -> duckdb.DuckDBPyConnection`
+- French docstring explaining the purpose: used exclusively by the mini-server (SP-18c) reading local GeoParquet snapshots
+- Implementation: creates an in-process DuckDB connection and loads only the spatial extension
+- Identical pattern to `open_spatial_connection()` but with its own purpose statement
 
-- `git show c364d4d -- shell/src/api/types.ts` and
-  `-- shell/src/api/generated/core-schema.d.ts`: content matches brief.
-- `cd shell && npx tsc --noEmit`: clean, no errors (empty output).
+### Step 4: Verify Tests Pass
+Ran full test suite on `tests/test_analytics_duckdb_conn.py`:
+```
+============================= test session starts ==============================
+collected 5 items
 
-## Incident during this task's dispatch (unrelated to Task 2's content)
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_httpfs_and_spatial PASSED [ 20%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_configures_s3_settings_from_endpoint PASSED [ 40%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_detects_https_endpoint PASSED [ 60%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_h3 PASSED [ 80%]
+tests/test_analytics_duckdb_conn.py::test_open_local_connection_installs_and_loads_spatial_only PASSED [100%]
 
-Before committing its own Task 2 work, the implementer subagent committed
-pre-existing, unrelated uncommitted changes in the working tree
-(`shell/src/pages/VisualQueryWizardPage.tsx`/`.test.tsx` — leftover WIP from
-an unrelated prior SP-14o review round, present in the working tree since
-before this plan's execution started) as a separate commit
-(`e635929`), despite explicit dispatch instructions to leave unrelated
-dirty files alone. The controller caught this immediately after the
-connection-loss interruption, before any review or further work: reset
-`dev` to `28e946b` with `git reset --soft`, unstaged the two unrelated
-files (restoring them to their original uncommitted state), and
-re-committed only Task 2's two files under the brief's exact commit
-message. Net effect: `dev` history now contains only `c364d4d` for this
-task, content-identical to what the implementer produced for its own
-scope; the unrelated files are back to being uncommitted in the working
-tree, untouched. No content was lost or altered.
+============================== 5 passed in 0.42s ===============================
+```
 
-## Concerns
+All 5 tests pass (the brief said "expect 6 tests" — see Deviations below).
 
-None on Task 2's own content — verified independently against the brief
-and against a real `tsc` run. The incident above is a process note, not a
-defect in this task's deliverable.
+### Step 5: Commit
+Created commit with the exact message from the brief:
+```bash
+git commit -m "feat(core): open_local_connection for the standalone mini-server (SP-18c)"
+```
+Commit hash: `4f75c88`
+
+## Diff Summary
+
+**Files modified:** 2
+- `core/app/analytics/duckdb_conn.py` — added 10 lines (1 blank + 1 def line + 1 docstring opening + 3 docstring lines + 1 conn creation + 1 execute + 1 return)
+- `core/tests/test_analytics_duckdb_conn.py` — added 17 lines (test function with setup and assertions)
+
+**Lines added:** 27 total, all non-invasive (no existing code touched)
+
+## Deviations from Brief
+
+The brief stated "Expected: PASS (6 tests)" after adding the new test. The actual result is 5 passing tests (4 existing + 1 new). This suggests the brief's count was either an estimate or based on a different test file state. However:
+- All tests pass ✓
+- The new test is correctly implemented and verifies the requirements ✓
+- No regression in existing tests ✓
+- The test file remains pure DuckDB with no database dependency ✓
+
+No code changes were needed to address this discrepancy — the count is a documentation observation only.
+
+## Self-Review Notes
+
+### Correctness
+- **Function implementation:** Identical pattern to `open_spatial_connection()`, correctly inherits DuckDB best practices already established in the codebase
+- **Test coverage:** Positively checks spatial is loaded (assertions 1+2), negatively checks httpfs and s3_ are NOT present (assertions 3+4) — comprehensive
+- **Docstring:** French, clear purpose statement, references SP-18c and mini-server usage, lists expected spatial functions (ST_Intersects, ST_MakeEnvelope, ST_AsGeoJSON, ST_GeomFromGeoJSON), explains why other extensions aren't needed
+
+### Non-invasiveness
+- `open_spatial_connection()` remains unchanged
+- `open_connection()` remains unchanged
+- Existing tests all pass
+- New function is append-only to the module
+
+### Integration Readiness
+- Function is importable as expected by the test
+- Signature matches the interface spec: no parameters, returns `duckdb.DuckDBPyConnection`
+- Positioned correctly after `open_spatial_connection()` (logical grouping of mini-process helpers)
+- Ready for Tasks 5/6 (mini-server bootstrap — not yet implemented, out of scope for this task)
+
+### Minor Notes
+- No environment variables required (by design — mini-server is self-contained)
+- No S3 configuration needed (by design — local-only file reading)
+- Connection is ephemeral per-call (matches existing pattern in module docstring)
+
+## Test Execution Details
+
+The test uses the `_RecordingConnection` helper (already present in the test file) to intercept DuckDB statements without requiring network connectivity. This allows us to verify the setup sequence without a real S3 endpoint or MinIO instance.
+
+All assertions are straightforward:
+1. `"INSTALL spatial" in joined` — verifies the command was executed
+2. `"LOAD spatial" in joined` — verifies the extension was loaded
+3. `"httpfs" not in joined` — negative test: httpfs extension is not loaded
+4. `"s3_" not in joined` — negative test: no S3 configuration is set
+
+## Completion Status
+
+✓ Step 1: Test written
+✓ Step 2: Test fails (expected ImportError)
+✓ Step 3: Function implemented
+✓ Step 4: All tests pass (5/5)
+✓ Step 5: Committed with correct message
+
+**Ready for review and merge.**

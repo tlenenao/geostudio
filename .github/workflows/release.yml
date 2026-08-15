@@ -79,10 +79,16 @@ jobs:
         include:
           - image: geostudio-core
             context: ./core
+            dockerfile: Dockerfile
           - image: geostudio-shell
             context: ./shell
+            dockerfile: Dockerfile
           - image: geostudio-postgis
             context: ./deploy/postgis
+            dockerfile: Dockerfile
+          - image: geostudio-appexport-standalone
+            context: .
+            dockerfile: deploy/appexport-standalone/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +103,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           push: true
           tags: |
             ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
