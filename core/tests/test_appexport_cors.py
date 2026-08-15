@@ -91,3 +91,24 @@ def test_cors_preflight_still_204_on_write_paths_when_enabled(monkeypatch):
     response = client.options("/collections/col1/items")
     assert response.status_code == 204
     assert response.headers.get("access-control-allow-origin") == "*"
+
+
+def test_cors_header_present_on_public_items_when_enabled(monkeypatch):
+    # GET /public/items (core/app/public/routes.py) is fully anonymous —
+    # no auth dependency at all — and is what the builtin Gallery widget
+    # calls at runtime via client.listPublicItems(). It was missing from
+    # the SP-18b allowlist (review finding I3), so a Connecté export
+    # containing a Gallery widget got CORS-blocked and rendered empty.
+    monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
+    client = TestClient(create_app())
+    response = client.get("/public/items")
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "*"
+
+
+def test_cors_preflight_responds_on_public_items_when_enabled(monkeypatch):
+    monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
+    client = TestClient(create_app())
+    response = client.options("/public/items")
+    assert response.status_code == 204
+    assert response.headers.get("access-control-allow-origin") == "*"

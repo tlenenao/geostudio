@@ -66,6 +66,7 @@ _APPEXPORT_CORS_PATH_RE = re.compile(
     r"|^/collections/[^/]+/items(/[^/]+)?$"
     r"|^/collections/[^/]+/aggregate$"
     r"|^/extensions$"
+    r"|^/public/items$"
 )
 
 # Méthode+chemin exacts pour les requêtes réelles (non-preflight) : c'est ce
@@ -84,6 +85,7 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^/collections/[^/]+/items/[^/]+$"), "GET"),
     (re.compile(r"^/collections/[^/]+/aggregate$"), "POST"),
     (re.compile(r"^/extensions$"), "GET"),
+    (re.compile(r"^/public/items$"), "GET"),
 )
 
 
