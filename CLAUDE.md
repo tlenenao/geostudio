@@ -660,9 +660,73 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   aucune donnée n'est mal exposée (agit comme si aucun filtre n'était posé),
   mais l'expérience est trompeuse ; reste en suivi non bloquant, nécessite
   un choix produit (honorer `query` à la congélation vs. étendre
-  l'avertissement d'export aux widgets de filtre). Jalon M15 non atteint
-  sous ce seul périmètre : Connecté et Autoporté restent des plans séparés
-  (SP-18b/c, non datés).
+  l'avertissement d'export aux widgets de filtre).
+- **SP-18b** — export d'apps : mode Connecté (deuxième des trois modes de
+  SP-18) : réutilise quasi tel quel le mécanisme SP-18a (garde/job/route/
+  panneau) — `check_export_guard` gagne un paramètre `mode` requis, sans
+  défaut (tous les sites d'appel existants mis à jour explicitement) : en
+  mode `"connected"` la restriction sur les sources `"statistics"` et
+  l'allowlist de types de widgets disparaissent toutes deux (rien n'est
+  figé côté serveur, `/collections/{id}/aggregate` est déjà anonyme-capable
+  pour une collection publique ; un widget tiers charge son JS depuis sa
+  propre origine, exactement comme dans le shell normal). `build_app_export_task`
+  saute `freeze_config` pour ce mode (données vivantes) et embarque un
+  `geostudio-connection.json` (`{"coreUrl": ...}`, sourcé de `CORE_BASE_URL`,
+  déjà utilisé pour le même usage par le serveur MCP) dans le zip aux côtés
+  de la config **non gelée**. Le runtime prébâti existant (un seul, partagé
+  avec le mode Statique) devient sensible au mode au chargement : la
+  présence de `geostudio-connection.json` bascule `createItemClient` (vrai
+  réseau, `getToken` codé en dur à `() => undefined` — jamais câblé sur
+  `useAuth()`, un piège identifié en conception : `enableMockAuth()` fait
+  retourner `"mock-token"` à `getAccessToken()`, et le cœur traite tout
+  `Authorization` présent comme devant être valide, sans repli anonyme sur
+  un jeton invalide) au lieu de `createStaticItemClient`. Nouveau middleware
+  CORS étroit et capacity-gated dans `core/app/main.py` (origine wildcard —
+  sûr ici puisqu'aucune credential/cookie ne traverse cette frontière,
+  Bearer-ou-rien — mais allowlist de chemins stricte : uniquement les
+  endpoints déjà anonymes-capables qu'un bundle Connecté appelle). Exécution
+  en subagent-driven-development, 9 tâches ; **revue finale de branche** (4
+  Important, invisibles à une revue par tâche) : `loadConnection()` laissait
+  une erreur de parse JSON se propager et casser le mode Statique déjà livré
+  sur tout hôte statique à repli SPA (nginx `try_files`, Netlify, Firebase
+  Hosting répondent 200+HTML sur un chemin non trouvé) — traité désormais
+  comme « pas de fichier de connexion », repli sur Statique ; les extensions
+  tierces actives n'étaient jamais enregistrées en mode Connecté (le garde
+  les autorise sur la prémisse qu'elles chargent leur propre JS, mais rien
+  ne les enregistrait — rendu en « Widget inconnu ») ; le widget Galerie
+  builtin appelle `GET /public/items`, absent de l'allowlist CORS (bloqué) ;
+  `.env.example` ne documentait ni la surface CORS wildcard ni l'obligation
+  de régler `CORE_BASE_URL` en URL externe réelle pour un déploiement
+  reverse-proxyé. Une passe de fix + **2 re-revues** ont trouvé et corrigé
+  2 défauts supplémentaires introduits par le premier fix lui-même :
+  `listActiveExtensions()` non gardé pouvait faire planter toute la page sur
+  un 404/erreur réseau/CORS même pour une app sans widget tiers (try/catch
+  ajouté) ; le try/catch, trop large dans sa première forme, avalait aussi
+  les bugs réels de `registerExtensionWidget` — resserré au seul `fetch`.
+  0 Critical/Important non résolu au merge sur les 3 rounds cumulés.
+- **SP-18c** — export d'apps : mode Autoporté/standalone (troisième et
+  dernier mode de SP-18, **jalon M15 atteint**) : contrairement aux modes
+  Statique (données figées) et Connecté (cœur GeoStudio d'origine requis en
+  ligne), l'Autoporté embarque données **et** un mini-serveur dans un seul
+  conteneur Docker distribuable sans dépendance à une instance GeoStudio.
+  Cœur : `write_snapshot` (un GeoParquet par collection référencée,
+  réutilise le CTE de dédoublonnage CDC de SP-11b), `app.appexport.manifest`
+  (forme partagée du manifeste de snapshot), `open_local_connection` +
+  listing d'entités DuckDB-backed pour le mini-serveur, `build_standalone_bundle_zip`
+  (bundle données+compose), une app FastAPI mini-serveur autonome, job
+  d'export qui bascule sur `mode="standalone"`, `POST /app-exports` accepte
+  ce mode. Déploiement : image Docker mini-serveur dédiée, publiée sur
+  `ghcr.io` (`geostudio-appexport-standalone`) par la CI de release. Shell :
+  `AppExportMode` gagne `"standalone"`, bouton « Autoporté » sur
+  `AppExportPanel`. E2E : le conteneur standalone sert l'app depuis un vrai
+  snapshot. Exécution en subagent-driven-development, 14 tâches (2 défauts
+  trouvés et corrigés en revue de tâche : `build_standalone_bundle_zip` ne
+  levait pas d'erreur claire sur un `snapshot_dir` manquant ; le listing
+  d'entités du mini-serveur ne gardait pas contre un filtre spatial posé sur
+  une collection non spatiale) + **1 round de revue finale de branche** :
+  0 Critical/Important trouvé.
+- **SP-18** — clos : les trois modes d'export (Statique SP-18a, Connecté
+  SP-18b, Autoporté SP-18c) sont livrés. **Jalon M15 atteint.**
 
 ### À venir
 
@@ -695,11 +759,7 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   par notre propre TiTiler depuis un DEM COG hébergé chez nous, encodage
   terrain `mapbox` en plus de `terrarium`, conversion 3D (py3dtiles,
   nuages de points).
-- **SP-18** — export d'apps déployables sans GeoStudio (dépend de SP-11).
-  SP-18a (mécanisme commun + mode Statique) livré, cf. `### Fait`. Restent
-  non planifiés, non datés : SP-18b (mode Connecté) et SP-18c (mode
-  Autoporté). Jalon M15 non atteint tant que les trois modes ne sont pas
-  livrés.
+- **SP-18** — clos, jalon M15 atteint (cf. `### Fait`).
 - **SP-19** — undo/redo général du builder (pile d'instantanés de config,
   prérequis de SP-20). Aucune dépendance amont.
 - **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
