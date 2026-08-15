@@ -132,3 +132,25 @@ def test_connected_job_with_private_source_marks_error(monkeypatch, tmp_path):
         job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
     assert job.status == "error"
     assert "publique" in job.error
+
+
+def test_standalone_job_with_no_data_sources_succeeds(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done"
+    assert job.result_key == f"appexports/{job_id}.zip"
+
+
+def test_standalone_job_with_private_source_marks_error(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "publique" in job.error
