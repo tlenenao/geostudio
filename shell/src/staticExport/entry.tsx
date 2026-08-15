@@ -30,7 +30,7 @@ import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { createStaticItemClient } from "./StaticItemClient";
-import type { AppConfig, ItemClient } from "../api/types";
+import type { AppConfig, ExtensionManifest, ItemClient } from "../api/types";
 import "../index.css";
 
 enableMockAuth();
@@ -99,11 +99,16 @@ async function bootstrap() {
     // de `listActiveExtensions()` (404, réseau, CORS…) ne doit jamais faire
     // échouer tout le bootstrap — les widgets builtin doivent quand même
     // s'afficher même si le catalogue d'extensions est indisponible.
+    // Fetch narrowly (SP-18b re-review, fix round 3) : registerExtensionWidget
+    // bugs must propagate (eg malformed manifest), only the network call is
+    // tolerated.
+    let extensions: ExtensionManifest[] = [];
     try {
-      (await client.listActiveExtensions()).forEach(registerExtensionWidget);
+      extensions = await client.listActiveExtensions();
     } catch {
       // Extensions indisponibles : on continue sans elles.
     }
+    extensions.forEach(registerExtensionWidget);
   }
   createRoot(root).render(
     <StrictMode>
