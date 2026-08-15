@@ -10,6 +10,11 @@ import { fileURLToPath, URL } from "node:url";
 import { resolve } from "node:path";
 
 export default defineConfig({
+  // Relative base: the bundle is unzipped under an arbitrary sub-path
+  // (GitHub Pages project site, S3 prefix, …), never guaranteed to be
+  // served from the domain root — "/" would make every asset URL absolute
+  // from the host root and 404 anywhere else (SP-18a review, C1).
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
