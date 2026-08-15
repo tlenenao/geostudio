@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Garde d'export (SP-18a) : refuse tout export dont une DataSource
-référence une collection non publique, ou qui contient un widget non
-supporté par le mode Statique. Voir le plan §Global Constraints pour la
-justification de is_public (pas can()) et du scan par-DataSource (pas par
-widget câblé)."""
+"""Garde d'export (SP-18a/b) : refuse tout export dont une DataSource
+référence une collection non publique. Le mode Statique (SP-18a) refuse en
+plus les sources "statistics" (rien à figer côté serveur) et tout widget
+hors de l'allowlist builtin (rien n'est bundlé au runtime, un widget tiers
+serait introuvable). Le mode Connecté (SP-18b) n'a besoin d'aucune des deux
+restrictions : "statistics" appelle /collections/{id}/aggregate en direct
+au runtime (déjà anonyme-capable côté serveur pour une collection publique,
+cf. app/features/routes.py's get_current_user_optional), et un widget tiers
+charge son JS depuis son URL d'origine exactement comme dans le shell
+normal — rien n'est bundlé, donc rien à interdire."""
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -16,6 +21,7 @@ from app.configs.schemas import BuilderConfig
 # sliderFilter,tabs,modal,drawer,filter,mapWidget,indicator}.tsx — à tenir
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
+# Uniquement pertinent en mode Statique (mode="static") — cf. docstring.
 _SUPPORTED_WIDGET_TYPES = frozenset({
     "text", "image", "button", "table", "list", "map", "indicator", "chart",
     "pivot", "nav", "form", "hero", "richSection", "gallery", "datasetCard",
@@ -45,21 +51,27 @@ def _collect_widget_types(config: BuilderConfig) -> set[str]:
     return types
 
 
-def check_export_guard(session: Session, *, tenant_id: str, config: BuilderConfig) -> ExportGuardResult:
+def check_export_guard(
+    session: Session, *, tenant_id: str, config: BuilderConfig, mode: str,
+) -> ExportGuardResult:
     reasons: list[str] = []
 
     for source in config.dataSources:
         if source.type == "static":
             continue
-        if source.type == "statistics":
+        if source.type == "statistics" and mode == "static":
             reasons.append(
                 f"source '{source.id}' : l'export statique ne supporte pas encore "
                 "les sources de type agrégat (statistics)"
             )
             continue
-        if source.type != "features":
+        if source.type not in ("features", "statistics"):
             reasons.append(f"source '{source.id}' : type '{source.type}' non supporté")
             continue
+        # "features" (les deux modes) et "statistics" en mode connecté :
+        # même garde is_public — le mode connecté appelle
+        # /collections/{id}/aggregate en direct au runtime au lieu de figer
+        # un résultat côté serveur.
         collection_id = source.layer
         col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
         if col is None:
@@ -71,11 +83,12 @@ def check_export_guard(session: Session, *, tenant_id: str, config: BuilderConfi
                 f"source '{source.id}' : collection '{collection_id}' n'est pas partagée publiquement"
             )
 
-    unsupported = _collect_widget_types(config) - _SUPPORTED_WIDGET_TYPES
-    for widget_type in sorted(unsupported):
-        reasons.append(
-            f"widget '{widget_type}' non supporté par l'export statique "
-            "(extension tierce, non prise en charge)"
-        )
+    if mode == "static":
+        unsupported = _collect_widget_types(config) - _SUPPORTED_WIDGET_TYPES
+        for widget_type in sorted(unsupported):
+            reasons.append(
+                f"widget '{widget_type}' non supporté par l'export statique "
+                "(extension tierce, non prise en charge)"
+            )
 
     return ExportGuardResult(allowed=not reasons, reasons=reasons)
