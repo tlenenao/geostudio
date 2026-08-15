@@ -103,6 +103,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run test
+      - run: npm run build:export-runtime
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
       - run: npm run build
