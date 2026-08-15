@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app import db, observability
@@ -45,6 +45,18 @@ from app.tileset3d import routes as tileset3d_routes
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
     r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
+)
+# CORS narrow allowlist (SP-18b) : uniquement les endpoints déjà
+# anonymes-capables (get_current_user_optional) qu'un bundle d'export
+# Connecté appelle en direct depuis un domaine tiers arbitraire — jamais
+# toute l'API. Wildcard origin sûr ici précisément parce qu'aucune
+# credential/cookie ne traverse cette frontière (Bearer-ou-rien).
+_APPEXPORT_CORS_PATH_RE = re.compile(
+    r"^/collections(/[^/]+)?$"
+    r"|^/collections/[^/]+/schema$"
+    r"|^/collections/[^/]+/items(/[^/]+)?$"
+    r"|^/collections/[^/]+/aggregate$"
+    r"|^/extensions$"
 )
 
 
@@ -89,6 +101,24 @@ def create_app() -> FastAPI:
                 content={"detail": "Mode démo : lecture seule, écritures désactivées."},
             )
         return await call_next(request)
+
+    if is_appexport_enabled():
+        @app.middleware("http")
+        async def appexport_cors(request: Request, call_next):
+            if not _APPEXPORT_CORS_PATH_RE.match(request.url.path):
+                return await call_next(request)
+            if request.method == "OPTIONS":
+                return Response(
+                    status_code=204,
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                        "Access-Control-Allow-Headers": "Content-Type",
+                    },
+                )
+            response = await call_next(request)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            return response
 
     def get_session() -> Iterator[Session]:
         with request_scoped_session(session_factory) as session:
