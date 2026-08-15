@@ -23,3 +23,25 @@ test("create an App → add a Text widget → save → runtime shows it", async 
   await page.goto("/apps/9");
   await expect(page.getByText("Bonjour le monde")).toBeVisible();
 });
+
+test("undo/redo: adding a widget can be undone and redone", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
+  await dialog.getByLabel("Type").selectOption("app");
+  await page.getByLabel("Titre").fill("Mon app");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/apps\/9\/edit$/);
+
+  await page.getByRole("button", { name: "Texte" }).click();
+  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+
+  await page.keyboard.press("Control+z");
+  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Annuler" })).toBeDisabled();
+
+  await page.keyboard.press("Control+Shift+z");
+  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+});
