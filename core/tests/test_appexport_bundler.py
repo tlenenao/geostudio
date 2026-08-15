@@ -40,3 +40,29 @@ def test_bundle_raises_clearly_when_runtime_dir_missing(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         build_bundle_zip(_config(), runtime_dir=str(tmp_path / "does-not-exist"))
+
+
+def test_bundle_includes_connection_json_when_provided(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    (runtime_dir / "index.export.html").write_text("<html></html>")
+
+    zip_bytes = build_bundle_zip(
+        _config(), runtime_dir=str(runtime_dir), connection={"coreUrl": "https://core.example.org"},
+    )
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert "geostudio-connection.json" in zf.namelist()
+        payload = zf.read("geostudio-connection.json").decode("utf-8")
+        assert '"coreUrl"' in payload and "https://core.example.org" in payload
+
+
+def test_bundle_omits_connection_json_by_default(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    (runtime_dir / "index.export.html").write_text("<html></html>")
+
+    zip_bytes = build_bundle_zip(_config(), runtime_dir=str(runtime_dir))
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert "geostudio-connection.json" not in zf.namelist()
