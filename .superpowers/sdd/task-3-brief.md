@@ -1,190 +1,162 @@
-### Task 3: `build_app_export_task` branches on `mode`
+### Task 3: `app.appexport.manifest` — shared snapshot manifest shape
 
 **Files:**
-- Modify: `core/app/appexport/jobs.py`
-- Modify: `core/tests/test_appexport_jobs.py`
+- Create: `core/app/appexport/manifest.py`
+- Create: `core/tests/test_appexport_manifest.py`
 
 **Interfaces:**
-- Consumes: `check_export_guard(..., mode=...)` (Task 1), `build_bundle_zip(..., connection=...)` (Task 2).
-- Produces: unchanged public signature `build_app_export_task(job_id: str, tenant_id: str) -> None`. For `mode="connected"`: skips `freeze_config`, reads `CORE_BASE_URL` (default `http://localhost:8200`, same default used elsewhere in this codebase for the same variable) and passes it as `connection={"coreUrl": ...}` to the bundler.
+- Consumes: `TableInfo`/`ColumnInfo` (`app.collections.introspection`, unchanged).
+- Produces: `CollectionSnapshotEntry` dataclass (`id: str`, `tenant_id: str`,
+  `collection_json: dict`, `schema_json: dict`, `table_info: TableInfo`),
+  `write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`,
+  `read_manifest(path: str) -> list[CollectionSnapshotEntry]`. This is the
+  contract Task 4 (writer, full core) and Task 6 (reader, slim mini-server
+  image) both depend on — the JSON on disk is the only thing that ever
+  crosses between them, never a Python import across the image boundary.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-Append to `core/tests/test_appexport_jobs.py` (existing three tests and
-`_setup`/`_fake_s3` stay as-is; add a `mode` parameter to `_setup` with
-default `"static"` so existing calls — which pass none — keep testing
-static mode unchanged):
-
-Modify `_setup`'s signature and the `create_job` call inside it:
-
-```python
-def _setup(monkeypatch, tmp_path, *, with_private_source=False, mode="static"):
-```
-
-```python
-        job = appexport_repo.create_job(s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode=mode)
-```
-
-(only those two lines change in `_setup`; everything else in the function body is untouched)
-
-Then append these new tests at the end of the file:
-
-```python
-
-
-def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_path):
-    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="connected")
-    monkeypatch.setenv("CORE_BASE_URL", "https://core.example.org")
-    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
-
-    captured: dict = {}
-    real_build_bundle_zip = __import__("app.appexport.jobs", fromlist=["build_bundle_zip"]).build_bundle_zip
-
-    def spy_build_bundle_zip(config, **kwargs):
-        captured["connection"] = kwargs.get("connection")
-        captured["config"] = config
-        return real_build_bundle_zip(config, **kwargs)
-
-    monkeypatch.setattr("app.appexport.jobs.build_bundle_zip", spy_build_bundle_zip)
-    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
-
-    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
-
-    with Session() as s:
-        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
-    assert job.status == "done"
-    assert captured["connection"] == {"coreUrl": "https://core.example.org"}
-
-
-def test_connected_job_with_private_source_marks_error(monkeypatch, tmp_path):
-    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="connected")
-    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
-    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
-    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
-    with Session() as s:
-        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
-    assert job.status == "error"
-    assert "publique" in job.error
-```
-
-- [ ] **Step 2: Run to verify the new tests fail**
-
-Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
-Expected: `test_connected_job_skips_freezing_and_embeds_core_base_url` FAILS
-(`check_export_guard() missing 1 required keyword-only argument: 'mode'` —
-`jobs.py` doesn't pass `mode` yet). `test_connected_job_with_private_source_marks_error`
-fails the same way. The three pre-existing tests (now implicitly
-`mode="static"` via `_setup`'s default) also fail for the same reason since
-`jobs.py`'s call to `check_export_guard` has no `mode=` kwarg at all yet.
-
-- [ ] **Step 3: Update `jobs.py`**
-
-Replace the full contents of `core/app/appexport/jobs.py`:
+Create `core/tests/test_appexport_manifest.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Tâche procrastinate (SP-18a/b) : guard → (statique : gèle les
-DataSources ; connecté : garde la config telle quelle + embarque l'URL du
-cœur) → assemble le zip → upload S3. Tourne sur le worker partagé (queue
-`appexport`, pas de Chromium/Node ici). Toute erreur marque le job "error",
-jamais un job bloqué en "running" (même critère que
-app.export.jobs/app.pipelines.jobs)."""
-import logging
-import os
-
-from app.appexport import repository as appexport_repo
-from app.appexport.bundler import build_bundle_zip
-from app.appexport.freeze import freeze_config
-from app.appexport.guard import check_export_guard
-from app.auth.dependency import is_appexport_enabled
-from app.configs import repository as configs_repo
-from app.configs.schemas import BuilderConfig
-from app.db import make_engine, make_session_factory, request_scoped_session
-from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
-from app.jobs import app
-
-logger = logging.getLogger(__name__)
+from app.appexport.manifest import CollectionSnapshotEntry, read_manifest, write_manifest
+from app.collections.introspection import ColumnInfo, TableInfo
 
 
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
-
-
-def s3_client_from_env():
-    return make_s3_client(
-        endpoint_url=os.environ["S3_ENDPOINT_URL"],
-        access_key=os.environ["S3_ACCESS_KEY"],
-        secret_key=os.environ["S3_SECRET_KEY"],
+def _entry() -> CollectionSnapshotEntry:
+    table_info = TableInfo(
+        table_name="t_x", pk_column="id", geometry_column="geom",
+        geometry_type="point", srid=4326,
+        columns=[ColumnInfo(name="name", type="string", required=False)],
+    )
+    return CollectionSnapshotEntry(
+        id="col1", tenant_id="t1",
+        collection_json={"id": "col1", "title": "X"},
+        schema_json={"collection": "t_x", "pk": "id", "geometry": None, "fields": []},
+        table_info=table_info,
     )
 
 
-def _prepare_bundle_inputs(
-    session, *, tenant_id: str, mode: str, config: BuilderConfig,
-) -> tuple[BuilderConfig, dict | None]:
-    if mode == "connected":
-        core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
-        return config, {"coreUrl": core_url}
-    return freeze_config(session, tenant_id=tenant_id, config=config), None
+def test_write_then_read_manifest_round_trips(tmp_path):
+    path = str(tmp_path / "manifest.json")
+    write_manifest([_entry()], path)
+
+    entries = read_manifest(path)
+
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.id == "col1"
+    assert e.tenant_id == "t1"
+    assert e.collection_json == {"id": "col1", "title": "X"}
+    assert e.schema_json == {"collection": "t_x", "pk": "id", "geometry": None, "fields": []}
+    assert e.table_info.table_name == "t_x"
+    assert e.table_info.pk_column == "id"
+    assert e.table_info.geometry_column == "geom"
+    assert e.table_info.srid == 4326
+    assert e.table_info.columns[0].name == "name"
+    assert e.table_info.columns[0].type == "string"
 
 
-@app.task(queue="appexport")
-def build_app_export_task(job_id: str, tenant_id: str) -> None:
-    session_factory = _session_factory()
+def test_write_manifest_with_no_entries(tmp_path):
+    path = str(tmp_path / "manifest.json")
+    write_manifest([], path)
+    assert read_manifest(path) == []
+```
 
-    if not is_appexport_enabled():
-        with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
-        return
+- [ ] **Step 2: Run to verify it fails**
 
-    with request_scoped_session(session_factory) as session:
-        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
-        if job is None:
-            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
-            return
-        appexport_repo.mark_running(session, job_id=job_id)
-        item_id = job.item_id
-        mode = job.mode
+Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.manifest'`
 
-    try:
-        with request_scoped_session(session_factory) as session:
-            config_read = configs_repo.get_config_by_item(session, item_id)
-            if config_read is None:
-                raise ValueError(f"app export item '{item_id}' not found")
-            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
-            if not guard_result.allowed:
-                raise ValueError("; ".join(guard_result.reasons))
-            bundle_config, connection = _prepare_bundle_inputs(
-                session, tenant_id=tenant_id, mode=mode, config=config_read.config,
-            )
+- [ ] **Step 3: Create `manifest.py`**
 
-        runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
-        zip_bytes = build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
+Create `core/app/appexport/manifest.py`:
 
-        result_key = f"appexports/{job_id}.zip"
-        bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
-        s3_client = s3_client_from_env()
-        ensure_uploads_bucket(s3_client, bucket)
-        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Manifeste d'instantané autoporté (SP-18c) : forme partagée entre le job
+d'export (app.appexport.snapshot, tourne dans le worker complet, tous les
+paquets core disponibles) et le mini-serveur (app.appexport.miniserver,
+tourne dans une image Docker séparée et volontairement minimale) — les deux
+processus lisent/écrivent le même fichier manifest.json sur disque, jamais
+d'appel réseau ni d'import Python entre eux à l'exécution.
 
-        with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
-    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
-        logger.exception("app export job %s : erreur inattendue", job_id)
-        with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
+Réutilise TableInfo/ColumnInfo tels quels (app.collections.introspection)
+plutôt qu'une forme dupliquée : ces deux dataclasses n'ont aucune dépendance
+d'exécution réelle à Postgres (Session n'y sert que de type non exécuté
+dans un alias inutilisé ici) — seul le paquet sqlalchemy doit être installé
+pour l'import, jamais un driver ni une connexion réelle (cf.
+deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
+psycopg2-binary)."""
+import json
+from dataclasses import asdict, dataclass
+
+from app.collections.introspection import ColumnInfo, TableInfo
+
+
+@dataclass(frozen=True)
+class CollectionSnapshotEntry:
+    id: str
+    tenant_id: str
+    collection_json: dict
+    schema_json: dict
+    table_info: TableInfo
+
+
+def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
+    payload = {
+        "collections": [
+            {
+                "id": e.id,
+                "tenantId": e.tenant_id,
+                "collectionJson": e.collection_json,
+                "schemaJson": e.schema_json,
+                "tableInfo": {
+                    "tableName": e.table_info.table_name,
+                    "pkColumn": e.table_info.pk_column,
+                    "geometryColumn": e.table_info.geometry_column,
+                    "geometryType": e.table_info.geometry_type,
+                    "srid": e.table_info.srid,
+                    "columns": [asdict(c) for c in e.table_info.columns],
+                },
+            }
+            for e in entries
+        ]
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+
+
+def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+    entries: list[CollectionSnapshotEntry] = []
+    for raw in payload["collections"]:
+        ti = raw["tableInfo"]
+        table_info = TableInfo(
+            table_name=ti["tableName"], pk_column=ti["pkColumn"],
+            geometry_column=ti["geometryColumn"], geometry_type=ti["geometryType"],
+            srid=ti["srid"], columns=[ColumnInfo(**c) for c in ti["columns"]],
+        )
+        entries.append(CollectionSnapshotEntry(
+            id=raw["id"], tenant_id=raw["tenantId"],
+            collection_json=raw["collectionJson"], schema_json=raw["schemaJson"],
+            table_info=table_info,
+        ))
+    return entries
 ```
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
-Expected: PASS (5 tests)
+Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
+Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/appexport/jobs.py core/tests/test_appexport_jobs.py
-git commit -m "feat(core): app export job branches on mode — connected skips freezing (SP-18b)"
+git add core/app/appexport/manifest.py core/tests/test_appexport_manifest.py
+git commit -m "feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)"
 ```
 
 ---

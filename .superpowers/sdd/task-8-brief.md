@@ -1,202 +1,174 @@
-### Task 8: second "Connecté" button + fix the write-warning mode bug
+### Task 8: `build_app_export_task` branches on `mode="standalone"`
 
 **Files:**
-- Modify: `shell/src/builder/appexport/AppExportPanel.tsx`
-- Modify: `shell/src/builder/appexport/AppExportPanel.test.tsx`
+- Modify: `core/app/appexport/jobs.py`
+- Modify: `core/tests/test_appexport_jobs.py`
 
 **Interfaces:**
-- Produces: same public component signature. Internally, `showWriteWarning:
-  boolean` is replaced by `pendingWarningMode: AppExportMode | null` — this
-  also fixes a latent bug in the SP-18a code: the "Exporter quand même"
-  confirm button always called `runExport("static")` regardless of which
-  mode's button had triggered the warning; with only one mode that bug was
-  invisible, but it would silently export Static instead of Connecté the
-  moment a second button existed.
+- Consumes: `write_snapshot` (Task 4), `build_standalone_bundle_zip` (Task 7).
+- Produces: unchanged public signature `build_app_export_task(job_id: str,
+  tenant_id: str) -> None`. For `mode="standalone"`: writes a snapshot to a
+  temporary directory, builds the standalone zip from it, uploads exactly
+  like the other two modes.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `shell/src/builder/appexport/AppExportPanel.test.tsx` (the
-existing two tests stay as-is, but the second one's `getByRole("button", {
-name: /statique/i })` click now also has a sibling "Connecté" button to
-disambiguate from — no change needed there since `/statique/i` still
-matches only one button):
+Append to `core/tests/test_appexport_jobs.py` (existing content stays as-is above this):
 
-```tsx
+```python
 
 
-  it("triggers a connected export and shows a download link once done", async () => {
-    const client = makeClient({
-      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
-    });
-    render(
-      <ItemClientProvider client={client}>
-        <AppExportPanel itemId="item1" config={config()} />
-      </ItemClientProvider>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
-    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
-    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
-    expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected");
-  });
+def test_standalone_job_with_no_data_sources_succeeds(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "done"
+    assert job.result_key == f"appexports/{job_id}.zip"
 
-  it("confirms the write warning with the mode that actually triggered it", async () => {
-    const client = makeClient({
-      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
-    });
-    render(
-      <ItemClientProvider client={client}>
-        <AppExportPanel itemId="item1" config={config(true)} />
-      </ItemClientProvider>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
-    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
-    expect(screen.getByText(/écriture.*désactivée/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /quand même/i }));
-    await waitFor(() => expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected"));
-  });
+
+def test_standalone_job_with_private_source_marks_error(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="standalone")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "publique" in job.error
 ```
 
 - [ ] **Step 2: Run to verify the new tests fail**
 
-Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
-Expected: both new tests FAIL — no "Connecté" button exists yet
-(`getByRole("button", { name: /connect/i })` throws), and the confirm
-button always sends `"static"`.
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: `test_standalone_job_with_no_data_sources_succeeds` FAILS — the job
+ends in `error` because `_prepare_bundle_inputs` currently falls through to
+the `static`/`freeze_config` branch for any unrecognized mode string, but
+`APPEXPORT_RUNTIME_DIR`'s fixture `index.export.html` is present so it would
+actually succeed as a (wrong) static export instead — verify empirically
+which failure mode you see; either way `test_standalone_job_with_private_source_marks_error`
+passes already by accident (the guard rejection happens before mode
+branching). The important assertion to watch is Step 4 below.
 
-- [ ] **Step 3: Update `AppExportPanel.tsx`**
+- [ ] **Step 3: Update `jobs.py`**
 
-In `shell/src/builder/appexport/AppExportPanel.tsx`, replace the
-`showWriteWarning` state declaration:
+Replace the full contents of `core/app/appexport/jobs.py`:
 
-```tsx
-  const [showWriteWarning, setShowWriteWarning] = useState(false);
-```
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Tâche procrastinate (SP-18a/b/c) : guard → (statique : gèle les
+DataSources ; connecté : garde la config telle quelle + embarque l'URL du
+cœur ; autoporté : écrit un instantané GeoParquet local + zippe avec un
+docker-compose.yml généré) → upload S3. Tourne sur le worker partagé (queue
+`appexport`, pas de Chromium/Node/Docker ici — écrire un instantané local
+avant de zipper n'a besoin ni de Docker ni de réseau). Toute erreur marque
+le job "error", jamais un job bloqué en "running" (même critère que
+app.export.jobs/app.pipelines.jobs)."""
+import logging
+import os
+import tempfile
 
-with:
+from app.appexport import repository as appexport_repo
+from app.appexport.bundler import build_bundle_zip, build_standalone_bundle_zip
+from app.appexport.freeze import freeze_config
+from app.appexport.guard import check_export_guard
+from app.appexport.snapshot import write_snapshot
+from app.auth.dependency import is_appexport_enabled
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
+from app.db import make_engine, make_session_factory, request_scoped_session
+from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.jobs import app
 
-```tsx
-  const [pendingWarningMode, setPendingWarningMode] = useState<AppExportMode | null>(null);
-```
+logger = logging.getLogger(__name__)
 
-Replace `runExport`'s first line:
 
-```tsx
-  async function runExport(mode: AppExportMode) {
-    setShowWriteWarning(false);
-```
+def _session_factory():
+    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
+    return make_session_factory(engine)
 
-with:
 
-```tsx
-  async function runExport(mode: AppExportMode) {
-    setPendingWarningMode(null);
-```
+def s3_client_from_env():
+    return make_s3_client(
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        access_key=os.environ["S3_ACCESS_KEY"],
+        secret_key=os.environ["S3_SECRET_KEY"],
+    )
 
-Replace `onChooseMode`:
 
-```tsx
-  function onChooseMode(mode: AppExportMode) {
-    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
-    if (hasWriteWidget) {
-      setDialogOpen(false);
-      setShowWriteWarning(true);
-      return;
-    }
-    void runExport(mode);
-  }
-```
+def _prepare_bundle_inputs(
+    session, *, tenant_id: str, mode: str, config: BuilderConfig,
+) -> tuple[BuilderConfig, dict | None]:
+    if mode == "connected":
+        core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
+        return config, {"coreUrl": core_url}
+    return freeze_config(session, tenant_id=tenant_id, config=config), None
 
-with:
 
-```tsx
-  function onChooseMode(mode: AppExportMode) {
-    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
-    if (hasWriteWidget) {
-      setDialogOpen(false);
-      setPendingWarningMode(mode);
-      return;
-    }
-    void runExport(mode);
-  }
-```
+def _build_zip_bytes(session, *, tenant_id: str, mode: str, config: BuilderConfig) -> bytes:
+    if mode == "standalone":
+        with tempfile.TemporaryDirectory() as snapshot_dir:
+            write_snapshot(session, tenant_id=tenant_id, config=config, snapshot_dir=snapshot_dir)
+            return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir)
+    bundle_config, connection = _prepare_bundle_inputs(session, tenant_id=tenant_id, mode=mode, config=config)
+    runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
+    return build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
 
-Replace the dialog's button row:
 
-```tsx
-        <div className="flex justify-end gap-2">
-          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
-            Statique
-          </Button>
-        </div>
-```
+@app.task(queue="appexport")
+def build_app_export_task(job_id: str, tenant_id: str) -> None:
+    session_factory = _session_factory()
 
-with:
+    if not is_appexport_enabled():
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
+        return
 
-```tsx
-        <div className="flex justify-end gap-2">
-          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
-            Statique
-          </Button>
-          <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
-            Connecté
-          </Button>
-        </div>
-```
+    with request_scoped_session(session_factory) as session:
+        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
+            return
+        appexport_repo.mark_running(session, job_id=job_id)
+        item_id = job.item_id
+        mode = job.mode
 
-Replace the warning block:
+    try:
+        with request_scoped_session(session_factory) as session:
+            config_read = configs_repo.get_config_by_item(session, item_id)
+            if config_read is None:
+                raise ValueError(f"app export item '{item_id}' not found")
+            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
+            if not guard_result.allowed:
+                raise ValueError("; ".join(guard_result.reasons))
+            zip_bytes = _build_zip_bytes(session, tenant_id=tenant_id, mode=mode, config=config_read.config)
 
-```tsx
-      {showWriteWarning && (
-        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
-          <p>
-            Cette app contient un widget Formulaire — toute écriture sera
-            désactivée dans l&apos;export statique faute de backend.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => runExport("static")}>
-              Exporter quand même
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowWriteWarning(false)}>
-              Annuler
-            </Button>
-          </div>
-        </div>
-      )}
-```
+        result_key = f"appexports/{job_id}.zip"
+        bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+        s3_client = s3_client_from_env()
+        ensure_uploads_bucket(s3_client, bucket)
+        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
 
-with:
-
-```tsx
-      {pendingWarningMode && (
-        <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
-          <p>
-            Cette app contient un widget Formulaire — toute écriture sera
-            désactivée dans l&apos;export faute de session authentifiée.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => runExport(pendingWarningMode)}>
-              Exporter quand même
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>
-              Annuler
-            </Button>
-          </div>
-        </div>
-      )}
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+        logger.exception("app export job %s : erreur inattendue", job_id)
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
 ```
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
-Expected: PASS (4 tests)
+Run: `cd core && uv run pytest tests/test_appexport_jobs.py -v`
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add shell/src/builder/appexport/AppExportPanel.tsx shell/src/builder/appexport/AppExportPanel.test.tsx
-git commit -m "feat(shell): AppExportPanel gains a Connecté button, fixes write-warning mode bug (SP-18b)"
+git add core/app/appexport/jobs.py core/tests/test_appexport_jobs.py
+git commit -m "feat(core): app export job branches on mode=standalone (SP-18c)"
 ```
 
 ---

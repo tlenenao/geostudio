@@ -1,76 +1,112 @@
-# Task 2 Report: `build_bundle_zip` gains an optional `connection` payload
+# Task 2 Report: `duckdb_conn.open_local_connection()`
 
-## What Was Implemented
+## Summary
 
-Task 2 of SP-18b plan: Added an optional `connection: dict | None = None` keyword parameter to `build_bundle_zip()` function. When provided, a `geostudio-connection.json` file (containing `json.dumps(connection)`) is embedded in the export zip at the root level. When omitted (the default), behavior is byte-for-byte identical to SP-18a (regression verified by explicit test).
+Successfully implemented `open_local_connection()` helper for the SP-18c standalone mini-server (Tasks 5/6), following TDD discipline.
 
-**Files modified:**
-1. `core/app/appexport/bundler.py` — Added import `json`, updated function signature, added conditional write of `geostudio-connection.json`
-2. `core/tests/test_appexport_bundler.py` — Appended two new test functions
+## What I Did
 
-## TDD Evidence
+### Step 1: Write the Failing Test
+Appended the test `test_open_local_connection_installs_and_loads_spatial_only` to `core/tests/test_analytics_duckdb_conn.py` exactly as specified in the brief. The test verifies that:
+- `INSTALL spatial` and `LOAD spatial` are executed
+- `httpfs` is NOT loaded
+- `s3_` settings are NOT configured
 
-### RED Phase (Before Implementation)
+### Step 2: Verify Test Fails
+Ran the test and confirmed it failed with the expected `ImportError`:
 ```
-test_bundle_includes_connection_json_when_provided FAILED [ 75%]
-TypeError: build_bundle_zip() got an unexpected keyword argument 'connection'
-test_bundle_omits_connection_json_by_default PASSED [100%]
-
-1 failed, 3 passed
-```
-
-**Key observation:** The regression guard test (`test_bundle_omits_connection_json_by_default`) already passed before implementation, confirming that the default behavior (no connection parameter) preserved SP-18a's byte-for-byte exact behavior.
-
-### GREEN Phase (After Implementation)
-```
-test_bundle_contains_runtime_assets_and_frozen_config PASSED [ 25%]
-test_bundle_raises_clearly_when_runtime_dir_missing PASSED [ 50%]
-test_bundle_includes_connection_json_when_provided PASSED [ 75%]
-test_bundle_omits_connection_json_by_default PASSED [100%]
-
-4 passed in 0.13s
+ImportError: cannot import name 'open_local_connection' from 'app.analytics.duckdb_conn'
 ```
 
-**All tests pass**, including both:
-- New test verifying connection JSON is embedded when provided
-- Regression guard verifying connection JSON is omitted by default (SP-18a compatibility preserved)
+### Step 3: Implement the Function
+Added `open_local_connection()` to `core/app/analytics/duckdb_conn.py` after `open_spatial_connection()` with:
+- Correct signature: `() -> duckdb.DuckDBPyConnection`
+- French docstring explaining the purpose: used exclusively by the mini-server (SP-18c) reading local GeoParquet snapshots
+- Implementation: creates an in-process DuckDB connection and loads only the spatial extension
+- Identical pattern to `open_spatial_connection()` but with its own purpose statement
 
-## Files Changed
-
-1. **`core/app/appexport/bundler.py`** — Full file replacement
-   - Added `import json` (line 16)
-   - Updated function signature: `build_bundle_zip(..., connection: dict | None = None)` (line 25)
-   - Added conditional write: lines 40-41 (writes `geostudio-connection.json` only if `connection is not None`)
-   - Updated docstring to clarify SP-18a vs SP-18b modes (lines 2-13)
-
-2. **`core/tests/test_appexport_bundler.py`** — Appended two functions
-   - `test_bundle_includes_connection_json_when_provided()` — verifies JSON file is present when connection dict provided
-   - `test_bundle_omits_connection_json_by_default()` — regression guard verifying SP-18a behavior
-
-## Self-Review Findings
-
-1. **Parameter semantics clear**: The `connection: dict | None = None` default makes backward compatibility explicit at the callsite — existing code requires no changes.
-
-2. **Test coverage complete**: Four scenarios now covered:
-   - Existing behavior with assets and config (pre-existing test, unmodified)
-   - Error handling on missing runtime (pre-existing test, unmodified)
-   - New: Connection JSON present when provided
-   - New: Connection JSON omitted by default (regression guard)
-
-3. **JSON serialization**: Uses `json.dumps(connection)` per the brief specification, not `model_dump_json()` — correct, since `connection` is a plain dict, not a Pydantic model.
-
-4. **Zip entry naming**: Entry is `"geostudio-connection.json"` at root of zip, matching the naming convention of `"geostudio-app-config.json"` (both plain JSON files at root, not nested).
-
-5. **Conditional logic correct**: The `if connection is not None:` guard means an empty dict `{}` *would* write the file (correct), only an explicit `None` omits it (correct).
-
-6. **Docstring reflects both modes**: Updated docstring now documents both SP-18a (Statique) and SP-18b (Connecté) modes, explaining the role of `connection` parameter and `geostudio-connection.json` in the mode selection logic downstream in shell's `entry.tsx`.
-
-## Concerns
-
-None. All tests pass, regression guard in place, implementation is minimal and correct.
-
-## Commit
-
+### Step 4: Verify Tests Pass
+Ran full test suite on `tests/test_analytics_duckdb_conn.py`:
 ```
-3a6b4c4 feat(core): bundler embeds an optional geostudio-connection.json (SP-18b)
+============================= test session starts ==============================
+collected 5 items
+
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_httpfs_and_spatial PASSED [ 20%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_configures_s3_settings_from_endpoint PASSED [ 40%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_detects_https_endpoint PASSED [ 60%]
+tests/test_analytics_duckdb_conn.py::test_open_connection_installs_and_loads_h3 PASSED [ 80%]
+tests/test_analytics_duckdb_conn.py::test_open_local_connection_installs_and_loads_spatial_only PASSED [100%]
+
+============================== 5 passed in 0.42s ===============================
 ```
+
+All 5 tests pass (the brief said "expect 6 tests" — see Deviations below).
+
+### Step 5: Commit
+Created commit with the exact message from the brief:
+```bash
+git commit -m "feat(core): open_local_connection for the standalone mini-server (SP-18c)"
+```
+Commit hash: `4f75c88`
+
+## Diff Summary
+
+**Files modified:** 2
+- `core/app/analytics/duckdb_conn.py` — added 10 lines (1 blank + 1 def line + 1 docstring opening + 3 docstring lines + 1 conn creation + 1 execute + 1 return)
+- `core/tests/test_analytics_duckdb_conn.py` — added 17 lines (test function with setup and assertions)
+
+**Lines added:** 27 total, all non-invasive (no existing code touched)
+
+## Deviations from Brief
+
+The brief stated "Expected: PASS (6 tests)" after adding the new test. The actual result is 5 passing tests (4 existing + 1 new). This suggests the brief's count was either an estimate or based on a different test file state. However:
+- All tests pass ✓
+- The new test is correctly implemented and verifies the requirements ✓
+- No regression in existing tests ✓
+- The test file remains pure DuckDB with no database dependency ✓
+
+No code changes were needed to address this discrepancy — the count is a documentation observation only.
+
+## Self-Review Notes
+
+### Correctness
+- **Function implementation:** Identical pattern to `open_spatial_connection()`, correctly inherits DuckDB best practices already established in the codebase
+- **Test coverage:** Positively checks spatial is loaded (assertions 1+2), negatively checks httpfs and s3_ are NOT present (assertions 3+4) — comprehensive
+- **Docstring:** French, clear purpose statement, references SP-18c and mini-server usage, lists expected spatial functions (ST_Intersects, ST_MakeEnvelope, ST_AsGeoJSON, ST_GeomFromGeoJSON), explains why other extensions aren't needed
+
+### Non-invasiveness
+- `open_spatial_connection()` remains unchanged
+- `open_connection()` remains unchanged
+- Existing tests all pass
+- New function is append-only to the module
+
+### Integration Readiness
+- Function is importable as expected by the test
+- Signature matches the interface spec: no parameters, returns `duckdb.DuckDBPyConnection`
+- Positioned correctly after `open_spatial_connection()` (logical grouping of mini-process helpers)
+- Ready for Tasks 5/6 (mini-server bootstrap — not yet implemented, out of scope for this task)
+
+### Minor Notes
+- No environment variables required (by design — mini-server is self-contained)
+- No S3 configuration needed (by design — local-only file reading)
+- Connection is ephemeral per-call (matches existing pattern in module docstring)
+
+## Test Execution Details
+
+The test uses the `_RecordingConnection` helper (already present in the test file) to intercept DuckDB statements without requiring network connectivity. This allows us to verify the setup sequence without a real S3 endpoint or MinIO instance.
+
+All assertions are straightforward:
+1. `"INSTALL spatial" in joined` — verifies the command was executed
+2. `"LOAD spatial" in joined` — verifies the extension was loaded
+3. `"httpfs" not in joined` — negative test: httpfs extension is not loaded
+4. `"s3_" not in joined` — negative test: no S3 configuration is set
+
+## Completion Status
+
+✓ Step 1: Test written
+✓ Step 2: Test fails (expected ImportError)
+✓ Step 3: Function implemented
+✓ Step 4: All tests pass (5/5)
+✓ Step 5: Committed with correct message
+
+**Ready for review and merge.**

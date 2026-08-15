@@ -1,4 +1,4 @@
-### Task 1: `check_export_guard` becomes mode-aware
+### Task 1: `check_export_guard` gains `mode="standalone"`
 
 **Files:**
 - Modify: `core/app/appexport/guard.py`
@@ -6,211 +6,78 @@
 
 **Interfaces:**
 - Consumes: unchanged (`app.collections.repository`, `app.configs.schemas.BuilderConfig`).
-- Produces: `check_export_guard(session, *, tenant_id: str, config: BuilderConfig, mode: str) -> ExportGuardResult` — `mode` is now a **required** keyword-only parameter (was absent before). For `mode="connected"`: `statistics`-type sources are checked against the same `is_public` gate as `features` (not rejected outright), and the widget-type allowlist is skipped entirely. `mode="static"` behavior is byte-for-byte unchanged from SP-18a.
+- Produces: `check_export_guard(session, *, tenant_id, config, mode)` — `mode="standalone"` behaves like `mode="connected"` for the `is_public` check on `features`/`statistics` sources (statistics fully supported), but like `mode="static"` for the widget-type allowlist (builtin-only, no third-party widgets).
 
-- [ ] **Step 1: Update every existing test call site to pass `mode="static"`, write the failing new-mode tests**
+- [ ] **Step 1: Write the failing tests**
 
-Replace the full contents of `core/tests/test_appexport_guard.py`:
+Append to `core/tests/test_appexport_guard.py` (every existing test/helper stays as-is above this):
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-from app.appexport.guard import check_export_guard
-from app.collections.repository import create_collection
-from app.configs.schemas import BuilderConfig, DataSource, Layout, LayoutItem, Page
-from app.db import init_db, make_engine, make_session_factory
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
 
 
-def _session():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    return make_session_factory(engine)
+# --- Autoporté (SP-18c) : leniency d'is_public de "connected", allowlist de widgets de "static" ---
 
 
-def _app_config(*, data_sources, widget_types=("text",)) -> BuilderConfig:
-    items = [
-        LayoutItem(id=f"w{i}", widget=t, x=0, y=i, w=4, h=2)
-        for i, t in enumerate(widget_types)
-    ]
-    return BuilderConfig(
-        kind="app", dataSources=data_sources,
-        layout=Layout(type="grid", items=[]),
-        pages=[Page(id="p1", name="Page 1", layout=Layout(type="grid", items=items))],
-    )
-
-
-def _public_collection(s):
-    tenant = get_or_create_default_tenant(s)
-    owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
-    )
-    col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_x",
-        title="X", description="", is_public=True,
-        pk_column="id", geometry_column=None, geometry_type="point", srid=4326,
-    )
-    s.commit()
-    return tenant.id, col
-
-
-def _private_collection(s):
-    tenant = get_or_create_default_tenant(s)
-    owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
-    )
-    col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_x",
-        title="X", description="", is_public=False,
-        pk_column="id", geometry_column=None, geometry_type="point", srid=4326,
-    )
-    s.commit()
-    return tenant.id, col
-
-
-def test_no_data_sources_and_only_builtin_widgets_is_allowed():
-    Session = _session()
-    with Session() as s:
-        result = check_export_guard(s, tenant_id="t1", config=_app_config(data_sources=[]), mode="static")
-    assert result.allowed is True
-    assert result.reasons == []
-
-
-def test_static_source_needs_no_check():
-    Session = _session()
-    with Session() as s:
-        config = _app_config(data_sources=[
-            DataSource(id="s1", type="static", service="core", layer="", query={"records": []}),
-        ])
-        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
-    assert result.allowed is True
-
-
-def test_features_source_on_non_public_collection_is_blocked():
-    Session = _session()
-    with Session() as s:
-        tenant_id, col = _private_collection(s)
-        config = _app_config(data_sources=[
-            DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
-        ])
-        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="static")
-    assert result.allowed is False
-    assert any(col.id in r and "publique" in r for r in result.reasons)
-
-
-def test_features_source_on_public_collection_is_allowed():
-    Session = _session()
-    with Session() as s:
-        tenant_id, col = _public_collection(s)
-        config = _app_config(data_sources=[
-            DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
-        ])
-        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="static")
-    assert result.allowed is True
-
-
-def test_features_source_on_missing_collection_is_blocked():
-    Session = _session()
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        config = _app_config(data_sources=[
-            DataSource(id="s1", type="features", service="core", layer="ghost", query={}),
-        ])
-        result = check_export_guard(s, tenant_id=tenant.id, config=config, mode="static")
-    assert result.allowed is False
-    assert any("introuvable" in r for r in result.reasons)
-
-
-def test_statistics_source_is_blocked_in_static_mode():
-    Session = _session()
-    with Session() as s:
-        config = _app_config(data_sources=[
-            DataSource(id="s1", type="statistics", service="core", layer="x", query={}),
-        ])
-        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
-    assert result.allowed is False
-    assert any("agrégat" in r for r in result.reasons)
-
-
-def test_unsupported_widget_type_is_blocked_in_static_mode():
-    Session = _session()
-    with Session() as s:
-        config = _app_config(data_sources=[], widget_types=("text", "acme-widget"))
-        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
-    assert result.allowed is False
-    assert any("acme-widget" in r for r in result.reasons)
-
-
-def test_unsupported_widget_in_top_level_layout_is_blocked_in_static_mode():
-    Session = _session()
-    with Session() as s:
-        config = BuilderConfig(
-            kind="app",
-            dataSources=[],
-            layout=Layout(type="grid", items=[
-                LayoutItem(id="w0", widget="acme-widget", x=0, y=0, w=4, h=2),
-            ]),
-            pages=[],
-        )
-        result = check_export_guard(s, tenant_id="t1", config=config, mode="static")
-    assert result.allowed is False
-    assert any("acme-widget" in r for r in result.reasons)
-
-
-# --- Connecté (SP-18b) : mêmes cas, comportement différent sur deux axes ---
-
-
-def test_statistics_source_on_public_collection_is_allowed_in_connected_mode():
+def test_statistics_source_on_public_collection_is_allowed_in_standalone_mode():
     Session = _session()
     with Session() as s:
         tenant_id, col = _public_collection(s)
         config = _app_config(data_sources=[
             DataSource(id="s1", type="statistics", service="core", layer=col.id, query={}),
         ])
-        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="connected")
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
     assert result.allowed is True
 
 
-def test_statistics_source_on_non_public_collection_is_blocked_in_connected_mode():
+def test_statistics_source_on_non_public_collection_is_blocked_in_standalone_mode():
     Session = _session()
     with Session() as s:
         tenant_id, col = _private_collection(s)
         config = _app_config(data_sources=[
             DataSource(id="s1", type="statistics", service="core", layer=col.id, query={}),
         ])
-        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="connected")
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
     assert result.allowed is False
     assert any(col.id in r and "publique" in r for r in result.reasons)
 
 
-def test_features_source_on_non_public_collection_is_still_blocked_in_connected_mode():
+def test_features_source_on_non_public_collection_is_still_blocked_in_standalone_mode():
     Session = _session()
     with Session() as s:
         tenant_id, col = _private_collection(s)
         config = _app_config(data_sources=[
             DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
         ])
-        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="connected")
+        result = check_export_guard(s, tenant_id=tenant_id, config=config, mode="standalone")
     assert result.allowed is False
 
 
-def test_third_party_widget_is_allowed_in_connected_mode():
+def test_unsupported_widget_type_is_blocked_in_standalone_mode():
     Session = _session()
     with Session() as s:
         config = _app_config(data_sources=[], widget_types=("text", "acme-widget"))
-        result = check_export_guard(s, tenant_id="t1", config=config, mode="connected")
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="standalone")
+    assert result.allowed is False
+    assert any("acme-widget" in r for r in result.reasons)
+
+
+def test_builtin_widgets_only_is_allowed_in_standalone_mode():
+    Session = _session()
+    with Session() as s:
+        config = _app_config(data_sources=[], widget_types=("text", "table", "map"))
+        result = check_export_guard(s, tenant_id="t1", config=config, mode="standalone")
     assert result.allowed is True
-    assert result.reasons == []
 ```
 
-- [ ] **Step 2: Run to verify the connected-mode tests fail**
+- [ ] **Step 2: Run to verify the new tests fail**
 
 Run: `cd core && uv run pytest tests/test_appexport_guard.py -v`
-Expected: the four `*_connected_mode` tests FAIL with `TypeError:
-check_export_guard() missing 1 required keyword-only argument: 'mode'` (the
-other tests, which now also pass `mode="static"`, fail the same way).
+Expected: the five new `*_standalone_mode` tests FAIL — `mode="standalone"`
+currently falls through `check_export_guard`'s `if mode == "static":` branch
+as false (so the widget allowlist is never applied, `test_unsupported_widget_type_is_blocked_in_standalone_mode`
+fails) and the `statistics` early-rejection is also skipped as false-for-static
+only (so those pass by accident already) — actually verify empirically, the
+important one to see fail is the widget-allowlist test.
 
 - [ ] **Step 3: Update `guard.py`**
 
@@ -218,7 +85,7 @@ Replace the full contents of `core/app/appexport/guard.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Garde d'export (SP-18a/b) : refuse tout export dont une DataSource
+"""Garde d'export (SP-18a/b/c) : refuse tout export dont une DataSource
 référence une collection non publique. Le mode Statique (SP-18a) refuse en
 plus les sources "statistics" (rien à figer côté serveur) et tout widget
 hors de l'allowlist builtin (rien n'est bundlé au runtime, un widget tiers
@@ -227,7 +94,13 @@ restrictions : "statistics" appelle /collections/{id}/aggregate en direct
 au runtime (déjà anonyme-capable côté serveur pour une collection publique,
 cf. app/features/routes.py's get_current_user_optional), et un widget tiers
 charge son JS depuis son URL d'origine exactement comme dans le shell
-normal — rien n'est bundlé, donc rien à interdire."""
+normal — rien n'est bundlé, donc rien à interdire. Le mode Autoporté
+(SP-18c) combine les deux axes indépendamment : is_public lenient comme
+Connecté ("statistics" pleinement supporté, figé dans l'instantané et
+interrogé via /aggregate par le mini-serveur), MAIS allowlist de widgets
+stricte comme Statique (rien n'est bundlé ici non plus — décision prise en
+session 2026-08-15, cf. design SP-18c §3.3 : aucune tentative de bundling
+offline de widgets tiers)."""
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -240,13 +113,15 @@ from app.configs.schemas import BuilderConfig
 # sliderFilter,tabs,modal,drawer,filter,mapWidget,indicator}.tsx — à tenir
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
-# Uniquement pertinent en mode Statique (mode="static") — cf. docstring.
+# Pertinent pour mode="static" ET mode="standalone" — cf. docstring.
 _SUPPORTED_WIDGET_TYPES = frozenset({
     "text", "image", "button", "table", "list", "map", "indicator", "chart",
     "pivot", "nav", "form", "hero", "richSection", "gallery", "datasetCard",
     "dateRangeFilter", "selectFilter", "sliderFilter", "tabs", "modal",
     "drawer", "filter",
 })
+
+_STRICT_WIDGET_MODES = frozenset({"static", "standalone"})
 
 
 @dataclass
@@ -287,10 +162,11 @@ def check_export_guard(
         if source.type not in ("features", "statistics"):
             reasons.append(f"source '{source.id}' : type '{source.type}' non supporté")
             continue
-        # "features" (les deux modes) et "statistics" en mode connecté :
-        # même garde is_public — le mode connecté appelle
-        # /collections/{id}/aggregate en direct au runtime au lieu de figer
-        # un résultat côté serveur.
+        # "features" (tous modes) et "statistics" en mode connecté/autoporté :
+        # même garde is_public — connecté appelle /collections/{id}/aggregate
+        # en direct au runtime, autoporté le fige dans l'instantané et le
+        # sert depuis le mini-serveur ; aucun des deux n'a besoin de figer
+        # un résultat au moment de l'export lui-même.
         collection_id = source.layer
         col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
         if col is None:
@@ -302,11 +178,11 @@ def check_export_guard(
                 f"source '{source.id}' : collection '{collection_id}' n'est pas partagée publiquement"
             )
 
-    if mode == "static":
+    if mode in _STRICT_WIDGET_MODES:
         unsupported = _collect_widget_types(config) - _SUPPORTED_WIDGET_TYPES
         for widget_type in sorted(unsupported):
             reasons.append(
-                f"widget '{widget_type}' non supporté par l'export statique "
+                f"widget '{widget_type}' non supporté par ce mode d'export "
                 "(extension tierce, non prise en charge)"
             )
 
@@ -316,13 +192,13 @@ def check_export_guard(
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `cd core && uv run pytest tests/test_appexport_guard.py -v`
-Expected: PASS (13 tests)
+Expected: PASS (18 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add core/app/appexport/guard.py core/tests/test_appexport_guard.py
-git commit -m "feat(core): export guard becomes mode-aware — connected lifts statistics/widget restrictions (SP-18b)"
+git commit -m "feat(core): export guard gains mode=standalone — connected leniency, static widget allowlist (SP-18c)"
 ```
 
 ---
