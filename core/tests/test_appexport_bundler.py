@@ -109,3 +109,10 @@ def test_standalone_bundle_with_empty_snapshot_dir(tmp_path):
         names = set(zf.namelist())
         assert "data/manifest.json" in names
         assert "data/geostudio-app-config.json" in names
+
+
+def test_standalone_bundle_raises_clearly_when_snapshot_dir_missing(tmp_path):
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        build_standalone_bundle_zip(_config(), snapshot_dir=str(tmp_path / "does-not-exist"))
