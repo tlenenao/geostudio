@@ -56,15 +56,33 @@ le surcoût mémoire d'un instantané complet est négligeable.
   que soit le panneau d'origine — c'est le seul endroit modifié : avant
   d'appliquer un nouveau `BuilderConfig`, il appelle `pushSnapshot` avec la
   version précédente. Aucun panneau individuel n'est touché.
-- **Granularité des actions continues.** Glisser-déposer/redimensionnement
-  dans `GridCanvas` et saisie de texte dans les champs des panneaux
-  maintiennent déjà un état local « en cours » distinct de la config commitée
-  (React state du composant, pas encore remonté au setter central) — le
-  `pushSnapshot` n'est donc déclenché qu'au relâchement du drag ou au blur du
-  champ, jamais à chaque frappe ou pixel de déplacement. Si un panneau ne
-  respecte pas encore cette séparation, corriger cela fait partie du plan
-  d'exécution (c'est une condition du bon fonctionnement de l'undo, pas une
-  amélioration optionnelle).
+- **Granularité des actions continues — corrigé au moment du plan
+  (2026-08-15), contre le code réel.** L'hypothèse d'origine ci-dessus
+  (panneaux gardant déjà un état local « en cours » séparé de la config
+  commitée) est fausse pour ce dépôt : `GridCanvas` n'a pas de glisser-
+  déposer (déplacement par boutons flèche discrets, un clic = un cran, déjà
+  un commit atomique correct, rien à changer) ; en revanche **tous** les
+  champs texte du builder (les ~20 `PropsPanel` de widgets sous
+  `shell/src/builder/widgets/`, plus `PropsPanel`'s `visibleWhen`,
+  `ThemePanel`, `VariablesPanel`, `ActionsPanel`, `NavigationPanel`,
+  `DataSourcePanel`) appellent `onChange` — donc `setDraft` — à chaque
+  frappe, sans aucun état local. Pousser une capture undo à chaque appel
+  ferait exploser la pile (un pas par caractère) ; boucler un état local +
+  commit au blur sur chacun de ces ~20-25 fichiers est un diff invasif
+  disproportionné et régresserait l'aperçu live pendant la frappe.
+  **Décision (arbitrage tranché avec Tanguy au moment du plan) : coalescing
+  centralisé par minuterie d'inactivité**, implémenté une seule fois dans le
+  point de commit unique (jamais dans les panneaux individuels) : le premier
+  `setDraft` d'une rafale capture la config d'avant-rafale comme candidat de
+  `pushSnapshot` ; les appels suivants dans la même rafale ne recapturent
+  rien ; un minuteur d'inactivité (~400ms sans nouvel appel) déclenche le
+  push effectif. `draft` lui-même continue de se mettre à jour à chaque
+  frappe (aucune régression de l'aperçu live) — seul le moment du
+  `pushSnapshot` est différé. Ceci **remplace** le mécanisme « blur du champ »
+  décrit ci-dessus (aucun champ n'a besoin d'être modifié) et **abroge**
+  explicitement l'exclusion de la fusion par proximité temporelle en §4
+  ci-dessous, dont la justification d'origine ne tenait plus une fois
+  l'hypothèse de bufferisation locale invalidée.
 - **UI.** Boutons Annuler/Rétablir dans la barre d'outils du builder
   (`GridCanvas` ou le conteneur qui l'englobe), désactivés selon
   `canUndo`/`canRedo`. Raccourcis clavier `Ctrl+Z` / `Ctrl+Shift+Z`
@@ -81,10 +99,11 @@ le surcoût mémoire d'un instantané complet est négligeable.
   pile).
 - Undo/redo qui traverserait plusieurs items différents (un seul builder
   ouvert = une seule pile, portée à l'item en cours d'édition).
-- Fusion intelligente de pas consécutifs proches dans le temps au-delà de la
-  séparation drag-en-cours/commit déjà prévue (ex. grouper deux éditions de
-  props successives en un seul pas) — non nécessaire tant que la granularité
-  « un pas par action commitée » reste correcte.
+- ~~Fusion intelligente de pas consécutifs proches dans le temps~~ —
+  **abrogé, cf. §3** : c'est devenu le mécanisme central de granularité
+  (minuterie d'inactivité ~400ms), pas une amélioration optionnelle, une
+  fois l'hypothèse de bufferisation locale par champ invalidée contre le
+  code réel.
 - Indicateur visuel du contenu de chaque pas (type de changement, diff) —
   les boutons Annuler/Rétablir restent muets sur ce qu'ils vont faire au-delà
   du contexte déjà visible à l'écran (v1 minimal, à enrichir si le besoin est
