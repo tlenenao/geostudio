@@ -39,3 +39,13 @@ def open_spatial_connection() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL spatial; LOAD spatial;")
     return conn
+
+
+def open_local_connection() -> duckdb.DuckDBPyConnection:
+    """Connexion DuckDB in-process pour le mini-serveur autoporté (SP-18c) :
+    lit un instantané GeoParquet local (jamais S3/MinIO) — seule l'extension
+    spatial est nécessaire (ST_Intersects/ST_MakeEnvelope/ST_AsGeoJSON/
+    ST_GeomFromGeoJSON), aucune configuration s3_* requise."""
+    conn = duckdb.connect(":memory:")
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    return conn
