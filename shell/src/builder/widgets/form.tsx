@@ -297,7 +297,14 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   });
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
-  const canWrite = (permissionQuery.data ?? true) && !readOnly;
+  // Defaulting to `true` while the permission query is still loading
+  // (`data === undefined`, `isError === false`) avoids a flash of
+  // disabled UI in the common case. But a genuinely failed query (e.g.
+  // StaticItemClient's zero-backend `unsupported()` rejection in a static
+  // export) also leaves `data === undefined` — `?? true` alone can't tell
+  // those apart and would fail open, rendering the form as writable when
+  // it can never actually write (SP-18a review, I5).
+  const canWrite = (permissionQuery.isError ? false : (permissionQuery.data ?? true)) && !readOnly;
 
   const write = useMutation({
     mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
