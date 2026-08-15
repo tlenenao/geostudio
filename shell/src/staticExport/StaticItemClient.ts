@@ -30,8 +30,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
       return (source.query.records as DataRecord[] | undefined) ?? [];
     },
+    // Must NOT throw: unlike every other method here, this one has a
+    // non-Promise signature and can be called synchronously during render
+    // (e.g. ExplorerDrawer.tsx builds a MapConfig on every render whenever
+    // the Explorer is open) — a throw there unmounts the whole tree with no
+    // recovery. "about:blank" is an inert placeholder MapView's
+    // maplibregl geojson source can fail to fetch asynchronously (logged,
+    // layer skipped) rather than crash synchronously (SP-18a review, I6).
     featuresUrl(): string {
-      throw new Error(UNSUPPORTED);
+      return "about:blank";
     },
     async createFeature(_collectionId: string, _feature: GeoJSONFeatureInput) {
       return unsupported();
