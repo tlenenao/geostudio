@@ -1,121 +1,179 @@
-# SP-18c Task 1 Report: `check_export_guard` gains `mode="standalone"`
+# Task 1: Pure Undo/Redo Stack Module — Report
 
+**Date:** 2026-08-16  
+**Task:** SP-19 Task 1 — pure undo/redo stack module  
 **Status:** DONE
-
-**Commit Hash:** f4c5508
-
-**Test Summary:** 17 passed (all modes tested: static + connected + standalone)
 
 ---
 
-## What Was Implemented
+## Summary
 
-Extended the export guard to support a third "standalone" (autoporté) export mode that combines:
-- **is_public leniency** from "connected" mode: statistics sources allowed on public collections
-- **widget allowlist strictness** from "static" mode: builtin-widget-only allowlist enforced
+Implemented a framework-free TypeScript module `shell/src/builder/undoStack.ts` providing a pure past/future stack data structure for undo/redo functionality. All 7 unit tests pass. Implementation is complete, tested, and committed.
 
-The three modes now work as follows:
-- **mode="static"** (SP-18a): Public collections only, no statistics, builtin widgets only
-- **mode="connected"** (SP-18b): Public collections only, statistics allowed, any widgets allowed
-- **mode="standalone"** (SP-18c): Public collections only, statistics allowed, builtin widgets only
+---
+
+## Implementation Details
+
+### What Was Implemented
+
+**Module:** `shell/src/builder/undoStack.ts`  
+**Tests:** `shell/src/builder/undoStack.test.ts`
+
+#### Exports
+
+1. **`UndoStack<T>` type** — Generic stack structure with `past: T[]` and `future: T[]`
+2. **`UNDO_STACK_MAX_DEPTH` constant** — Set to 50, maximum stack depth
+3. **`createUndoStack<T>()`** — Factory function returning an empty stack
+4. **`pushUndo<T>(stack, snapshot)`** — Appends snapshot to past, clears future, caps at max depth
+5. **`applyUndo<T>(stack, current)`** — Pops past, pushes current to future, returns value + new stack or null
+6. **`applyRedo<T>(stack, current)`** — Pops future, pushes current to past, returns value + new stack or null
+
+#### Key Design
+
+- **Pure functions:** All functions return new objects, no mutations
+- **Type-safe:** Full TypeScript generics, strict typing
+- **No dependencies:** Framework-free, zero external dependencies
+- **FIFO behavior:** `past` is newest-first, `future` is oldest-first
+- **Depth capping:** Oldest entry dropped when `past` exceeds `UNDO_STACK_MAX_DEPTH`
+- **Null returns:** Undo/redo return null when no action is possible (empty past/future)
+
+---
+
+## Test Results
+
+### TDD Evidence
+
+#### RED (Failing Test)
+
+Command: `cd shell && npx vitest run src/builder/undoStack.test.ts`
+
+```
+Error: Failed to resolve import "./undoStack" from "src/builder/undoStack.test.ts". 
+Does the file exist?
+```
+
+**Status:** Test file created, module not yet implemented → FAIL ✓
+
+#### GREEN (Passing Test)
+
+Command: `cd shell && npx vitest run src/builder/undoStack.test.ts`
+
+```
+✓ src/builder/undoStack.test.ts (7 tests) 9ms
+
+Test Files  1 passed (1)
+Tests  7 passed (7)
+```
+
+**Status:** All 7 tests passing → PASS ✓
+
+### Test Coverage
+
+| Test | Status | Description |
+|------|--------|-------------|
+| `a fresh stack has empty past and future` | ✓ | Initial state correct |
+| `pushUndo appends to past and clears future` | ✓ | Push overwrites future |
+| `pushUndo caps past at 50, dropping the oldest` | ✓ | Depth capping works |
+| `applyUndo returns null when past is empty` | ✓ | Null handling on empty past |
+| `applyUndo pops the last past entry and pushes current onto future` | ✓ | Undo state transition correct |
+| `applyRedo returns null when future is empty` | ✓ | Null handling on empty future |
+| `applyRedo pops the first future entry and pushes current onto past` | ✓ | Redo state transition correct |
+
+---
 
 ## Files Changed
 
-1. **`core/app/appexport/guard.py`** — Updated to support "standalone" mode:
-   - Updated docstring from "(SP-18a/b)" to "(SP-18a/b/c)" with full explanation of autoporté mode
-   - Added `_STRICT_WIDGET_MODES = frozenset({"static", "standalone"})` constant
-   - Updated widget allowlist comment: "Pertinent pour mode="static" ET mode="standalone""
-   - Refactored widget check from `if mode == "static":` to `if mode in _STRICT_WIDGET_MODES:`
-   - Updated error message to be generic: "ce mode d'export" instead of "l'export statique"
-   - Updated is_public guard comment to clarify all three modes' handling of "statistics" sources
+### Created
 
-2. **`core/tests/test_appexport_guard.py`** — Added comprehensive standalone mode tests:
-   - `test_statistics_source_on_public_collection_is_allowed_in_standalone_mode`
-   - `test_statistics_source_on_non_public_collection_is_blocked_in_standalone_mode`
-   - `test_features_source_on_non_public_collection_is_still_blocked_in_standalone_mode`
-   - `test_unsupported_widget_type_is_blocked_in_standalone_mode`
-   - `test_builtin_widgets_only_is_allowed_in_standalone_mode`
+1. **`shell/src/builder/undoStack.ts`** (44 lines)
+   - Pure implementation of undo/redo stack
+   - SPDX-License-Identifier header included
+   - No dependencies
 
-## TDD Evidence
+2. **`shell/src/builder/undoStack.test.ts`** (54 lines)
+   - Complete test suite (7 tests)
+   - Uses vitest framework already in project
+   - SPDX-License-Identifier header included
 
-### Step 1: Tests written and verified to fail
-Initial test run showed 1 failure as expected:
-- `test_unsupported_widget_type_is_blocked_in_standalone_mode` — FAILED (widget allowlist not yet enforced)
-- Other standalone tests mostly passed (they only test is_public guard which was already lenient for "connected")
+### Commit
 
-### Step 2: Implementation applied
-Guard updated with `_STRICT_WIDGET_MODES` constant and conditional logic refactor.
-
-### Step 3: All tests pass
 ```
-============================== 17 passed in 0.61s ==============================
+[dev 82357a0] feat(shell): pure undo/redo stack module (SP-19)
+ 2 files changed, 98 insertions(+)
+ create mode 100644 shell/src/builder/undoStack.test.ts
+ create mode 100644 shell/src/builder/undoStack.ts
 ```
-- 12 original tests (8 static-mode + 4 connected-mode): PASSED
-- 5 new standalone-mode tests: PASSED
-- 0 failures, 0 regressions
 
-## Self-Review
-
-### Mode Behavior Correctness:
-✅ **Static mode** — unchanged from prior implementation:
-  - Line 73-76: Blocks `statistics` sources
-  - Line 97-100: Enforces widget allowlist
-  - Line 88-89: Enforces is_public for all sources
-
-✅ **Connected mode** — unchanged from prior implementation:
-  - Line 73-76: Allows `statistics` if public (conditional skips rejection)
-  - Line 97-100: No widget allowlist check
-  - Line 88-89: Enforces is_public for all sources
-
-✅ **Standalone mode** (new):
-  - Allows `statistics` if public (same as connected)
-  - Enforces widget allowlist (same as static)
-  - Enforces is_public for all sources (same as both)
-
-### Implementation Quality:
-✅ Minimal, focused change: only 24 lines modified/added in guard.py
-✅ Uses `_STRICT_WIDGET_MODES` set to clearly express mode grouping
-✅ No changes to function signature or public interfaces
-✅ Backward compatible with "static" and "connected" mode callers
-✅ Error messages updated to be mode-agnostic
-
-### Test Coverage:
-✅ 5 new standalone tests cover all key scenarios:
-  - Statistics on public collections (allowed)
-  - Statistics on private collections (blocked)
-  - Features on private collections (still blocked)
-  - Third-party widgets (blocked)
-  - Builtin widgets (allowed)
-✅ All test assertions verify correct behavior
-✅ Test names clearly document the expected behavior
-
-### Code Quality:
-✅ Docstring expanded with clear explanation of autoporté mode behavior
-✅ Comments updated to document all three modes' handling of statistics
-✅ Widget allowlist comment correctly states applicability to both "static" and "standalone"
-✅ No type errors, no linting issues
-
-## Key Design Decisions
-
-1. **`_STRICT_WIDGET_MODES` constant** — Groups "static" and "standalone" modes for readability and future extensibility. Single source of truth for which modes enforce widget allowlist.
-
-2. **Generic error message** — Changed from "l'export statique" to "ce mode d'export" to support multiple modes without code duplication.
-
-3. **is_public leniency** — Both "connected" and "standalone" allow statistics sources on public collections. This reflects the architecture decision that:
-   - Connected mode calls `/aggregate` at runtime (already anonymously capable)
-   - Standalone mode freezes aggregates in the snapshot and serves them from the mini-server (also anonymously callable)
-   - Neither requires figuring out the aggregate at export time itself
-
-4. **Widget allowlist strictness** — Both "static" and "standalone" reject third-party widgets because:
-   - Static bundles everything; third-party widgets can't be bundled
-   - Standalone also bundles; same constraint applies
-   - Connected mode loads widgets from external URLs, so no bundling needed
-
-## Concerns
-
-None. Implementation follows TDD discipline, passes all tests, and matches brief specification exactly.
+**Commit hash:** `82357a0`  
+**Branch:** `dev`
 
 ---
 
-**Completed:** 2026-08-15  
-**Next Task:** Task 2 (update jobs.py to handle mode parameter)
+## Self-Review
+
+### Completeness
+
+✓ All interfaces from brief implemented exactly  
+✓ All 7 tests from brief transcribed verbatim and passing  
+✓ Implementation follows brief code exactly  
+✓ SPDX license headers present on both files  
+✓ Commit message matches brief specification  
+✓ Code discipline maintained (no overbuilding, no changes beyond brief)
+
+### Code Quality
+
+✓ TypeScript strict mode compatible  
+✓ Zero external dependencies (framework-free as required)  
+✓ Pure functions (no mutations)  
+✓ Generic types used correctly  
+✓ Comments preserved from brief  
+✓ Consistent with project style (2-space indentation, semicolons, etc.)
+
+### Testing
+
+✓ All tests pass (7/7)  
+✓ Test file runnable with `npx vitest run`  
+✓ No skipped tests  
+✓ No test output warnings or errors  
+✓ Tests cover:
+  - Initial state
+  - Push behavior and depth capping
+  - Undo state transitions and null handling
+  - Redo state transitions and null handling
+
+### Discipline
+
+✓ Followed TDD rigorously (test first, RED → GREEN)  
+✓ No changes to other files  
+✓ No temporary files or debug code  
+✓ Code matches brief verbatim (transcription verified)  
+✓ Commit matches brief specification exactly
+
+---
+
+## Issues and Concerns
+
+### None
+
+No issues or concerns identified. Implementation is complete, tested, and ready for Task 2 (React hook layer).
+
+---
+
+## Next Steps
+
+This module is ready to be wrapped by a React hook (`useUndoableDraft`) in Task 2, which will handle:
+- State management and debouncing of snapshots
+- Integration with AppBuilder form state
+- UI bindings for undo/redo buttons
+
+The pure stack module provides a solid, tested foundation for that higher-level functionality.
+
+---
+
+## Sign-Off
+
+**Implementation:** Complete  
+**Tests:** All passing (7/7)  
+**Code Review:** Self-review passed  
+**Commit:** Created and pushed to `dev`  
+**Ready for:** Task 2

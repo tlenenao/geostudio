@@ -1,162 +1,233 @@
-### Task 3: `app.appexport.manifest` — shared snapshot manifest shape
+### Task 3: wire into `AppBuilderPage`
 
 **Files:**
-- Create: `core/app/appexport/manifest.py`
-- Create: `core/tests/test_appexport_manifest.py`
+- Modify: `shell/src/pages/AppBuilderPage.tsx`
+- Modify: `shell/src/pages/AppBuilderPage.test.tsx`
 
 **Interfaces:**
-- Consumes: `TableInfo`/`ColumnInfo` (`app.collections.introspection`, unchanged).
-- Produces: `CollectionSnapshotEntry` dataclass (`id: str`, `tenant_id: str`,
-  `collection_json: dict`, `schema_json: dict`, `table_info: TableInfo`),
-  `write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`,
-  `read_manifest(path: str) -> list[CollectionSnapshotEntry]`. This is the
-  contract Task 4 (writer, full core) and Task 6 (reader, slim mini-server
-  image) both depend on — the JSON on disk is the only thing that ever
-  crosses between them, never a Python import across the image boundary.
+- Consumes: `useUndoableDraft` (Task 2, `../builder/useUndoableDraft`).
+- Produces: two new toolbar buttons with visible text "Annuler" and
+  "Rétablir" (accessible name = visible text, no separate aria-label
+  needed), disabled per `canUndo`/`canRedo`. Global `Ctrl+Z`/`Cmd+Z` (undo)
+  and `Ctrl+Shift+Z`/`Cmd+Shift+Z` (redo) keyboard shortcuts, ignored when
+  `document.activeElement` is a text-editing element.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_appexport_manifest.py`:
+Append to `shell/src/pages/AppBuilderPage.test.tsx` (all existing tests stay
+as-is above this):
 
-```python
-# SPDX-License-Identifier: Apache-2.0
-from app.appexport.manifest import CollectionSnapshotEntry, read_manifest, write_manifest
-from app.collections.introspection import ColumnInfo, TableInfo
+```tsx
 
 
-def _entry() -> CollectionSnapshotEntry:
-    table_info = TableInfo(
-        table_name="t_x", pk_column="id", geometry_column="geom",
-        geometry_type="point", srid=4326,
-        columns=[ColumnInfo(name="name", type="string", required=False)],
-    )
-    return CollectionSnapshotEntry(
-        id="col1", tenant_id="t1",
-        collection_json={"id": "col1", "title": "X"},
-        schema_json={"collection": "t_x", "pk": "id", "geometry": None, "fields": []},
-        table_info=table_info,
-    )
+test("a GridCanvas move can be undone with Ctrl+Z", async () => {
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
 
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
 
-def test_write_then_read_manifest_round_trips(tmp_path):
-    path = str(tmp_path / "manifest.json")
-    write_manifest([_entry()], path)
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
 
-    entries = read_manifest(path)
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.layout.items[0].x).toBe(0);
+});
 
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.id == "col1"
-    assert e.tenant_id == "t1"
-    assert e.collection_json == {"id": "col1", "title": "X"}
-    assert e.schema_json == {"collection": "t_x", "pk": "id", "geometry": None, "fields": []}
-    assert e.table_info.table_name == "t_x"
-    assert e.table_info.pk_column == "id"
-    assert e.table_info.geometry_column == "geom"
-    assert e.table_info.srid == 4326
-    assert e.table_info.columns[0].name == "name"
-    assert e.table_info.columns[0].type == "string"
+test("Ctrl+Shift+Z redoes an undone GridCanvas move", async () => {
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
 
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
 
-def test_write_manifest_with_no_entries(tmp_path):
-    path = str(tmp_path / "manifest.json")
-    write_manifest([], path)
-    assert read_manifest(path) == []
+  await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.layout.items[0].x).toBe(1);
+});
+
+test("a burst of keystrokes in visibleWhen collapses into one undo step once blurred", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
+  await userEvent.type(area, "vars.x == 'a'");
+  // Move focus to a non-text element — tabbing would only land in the "text"
+  // widget's own textarea just below visibleWhen in the same panel, still a
+  // text field, so it wouldn't actually exercise the "focus left every text
+  // field" path the keyboard shortcut check depends on.
+  await userEvent.click(screen.getByRole("button", { name: "Édition" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(area).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+});
+
+test("Ctrl+Z while focus is in a text field does not trigger the builder's undo", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
+  await userEvent.type(area, "vars.x");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+
+  await userEvent.type(area, "{Control>}z{/Control}"); // focus stays in `area`
+  expect(area).toHaveValue("vars.x");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled();
+});
+
+test("Annuler and Rétablir start disabled and stay disabled with no edits", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await screen.findByRole("button", { name: "Texte" });
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+});
 ```
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.manifest'`
+Run: `cd shell && npx vitest run src/pages/AppBuilderPage.test.tsx`
+Expected: FAIL — no element with role `button` and name `Annuler`/`Rétablir`
+exists yet.
 
-- [ ] **Step 3: Create `manifest.py`**
+- [ ] **Step 3: Update `AppBuilderPage.tsx`**
 
-Create `core/app/appexport/manifest.py`:
+Change the import block — replace:
 
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Manifeste d'instantané autoporté (SP-18c) : forme partagée entre le job
-d'export (app.appexport.snapshot, tourne dans le worker complet, tous les
-paquets core disponibles) et le mini-serveur (app.appexport.miniserver,
-tourne dans une image Docker séparée et volontairement minimale) — les deux
-processus lisent/écrivent le même fichier manifest.json sur disque, jamais
-d'appel réseau ni d'import Python entre eux à l'exécution.
-
-Réutilise TableInfo/ColumnInfo tels quels (app.collections.introspection)
-plutôt qu'une forme dupliquée : ces deux dataclasses n'ont aucune dépendance
-d'exécution réelle à Postgres (Session n'y sert que de type non exécuté
-dans un alias inutilisé ici) — seul le paquet sqlalchemy doit être installé
-pour l'import, jamais un driver ni une connexion réelle (cf.
-deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
-psycopg2-binary)."""
-import json
-from dataclasses import asdict, dataclass
-
-from app.collections.introspection import ColumnInfo, TableInfo
-
-
-@dataclass(frozen=True)
-class CollectionSnapshotEntry:
-    id: str
-    tenant_id: str
-    collection_json: dict
-    schema_json: dict
-    table_info: TableInfo
-
-
-def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
-    payload = {
-        "collections": [
-            {
-                "id": e.id,
-                "tenantId": e.tenant_id,
-                "collectionJson": e.collection_json,
-                "schemaJson": e.schema_json,
-                "tableInfo": {
-                    "tableName": e.table_info.table_name,
-                    "pkColumn": e.table_info.pk_column,
-                    "geometryColumn": e.table_info.geometry_column,
-                    "geometryType": e.table_info.geometry_type,
-                    "srid": e.table_info.srid,
-                    "columns": [asdict(c) for c in e.table_info.columns],
-                },
-            }
-            for e in entries
-        ]
-    }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f)
-
-
-def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
-    with open(path, encoding="utf-8") as f:
-        payload = json.load(f)
-    entries: list[CollectionSnapshotEntry] = []
-    for raw in payload["collections"]:
-        ti = raw["tableInfo"]
-        table_info = TableInfo(
-            table_name=ti["tableName"], pk_column=ti["pkColumn"],
-            geometry_column=ti["geometryColumn"], geometry_type=ti["geometryType"],
-            srid=ti["srid"], columns=[ColumnInfo(**c) for c in ti["columns"]],
-        )
-        entries.append(CollectionSnapshotEntry(
-            id=raw["id"], tenant_id=raw["tenantId"],
-            collection_json=raw["collectionJson"], schema_json=raw["schemaJson"],
-            table_info=table_info,
-        ))
-    return entries
+```tsx
+import { useEffect, useMemo, useRef, useState } from "react";
 ```
+
+with:
+
+```tsx
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUndoableDraft } from "../builder/useUndoableDraft";
+```
+
+Replace the `draft`/`selectedId` state declarations:
+
+```tsx
+  const [draft, setDraft] = useState<AppConfig | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+```
+
+with:
+
+```tsx
+  const { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo } = useUndoableDraft();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+```
+
+Replace the seeding effect:
+
+```tsx
+  useEffect(() => {
+    // Seed the draft once on first load. Re-seeding on every query.data change
+    // (e.g. the refetch after a save) would clobber in-flight local edits.
+    if (query.data) setDraft((d) => d ?? query.data);
+  }, [query.data]);
+```
+
+with:
+
+```tsx
+  useEffect(() => {
+    // Seed the draft once on first load. Re-seeding on every query.data change
+    // (e.g. the refetch after a save) would clobber in-flight local edits.
+    // seedDraft (not setDraft) — this is the session's starting point, not
+    // an edit, and must not create an undo step (SP-19).
+    if (query.data) seedDraft(query.data);
+  }, [query.data, seedDraft]);
+```
+
+Add the keyboard shortcut effect right after it (still before the
+`query.isLoading` early return, alongside the other hooks):
+
+```tsx
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = document.activeElement;
+      const isTextField = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
+```
+
+Add the toolbar buttons — replace:
+
+```tsx
+          <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
+          <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+          <div className="ml-2 flex items-center gap-1">
+```
+
+with:
+
+```tsx
+          <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
+          <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+          <div className="ml-2 flex items-center gap-1">
+            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>Annuler</Button>
+            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>Rétablir</Button>
+          </div>
+          <div className="ml-2 flex items-center gap-1">
+```
+
+(This introduces a second `ml-2` group right after the first — matching the
+existing breakpoint-buttons group's own styling, just placed before it.)
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
-Expected: PASS (2 tests)
+Run: `cd shell && npx vitest run src/pages/AppBuilderPage.test.tsx`
+Expected: PASS (all tests, existing + 5 new)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the full shell unit suite to confirm nothing broke**
+
+Run: `cd shell && npm run test`
+Expected: PASS (no regressions elsewhere — `AppRenderer`'s own `onChange`
+prop type is unchanged, still `(config: AppConfig) => void`, satisfied by
+the hook's `setDraft`).
+
+- [ ] **Step 6: Typecheck**
+
+Run: `cd shell && npx tsc --noEmit`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/appexport/manifest.py core/tests/test_appexport_manifest.py
-git commit -m "feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)"
+git add shell/src/pages/AppBuilderPage.tsx shell/src/pages/AppBuilderPage.test.tsx
+git commit -m "feat(shell): AppBuilderPage gains undo/redo — Ctrl+Z/Ctrl+Shift+Z + toolbar buttons (SP-19)"
 ```
 
 ---
