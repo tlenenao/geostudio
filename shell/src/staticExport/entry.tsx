@@ -94,7 +94,16 @@ async function bootstrap() {
     // but nothing here ever registered them until now. StaticItemClient
     // doesn't support listActiveExtensions and doesn't need to: nothing
     // extension-related can be bundled statically.
-    (await client.listActiveExtensions()).forEach(registerExtensionWidget);
+    //
+    // Tolérant par construction (SP-18b re-review, fix round 2) : un échec
+    // de `listActiveExtensions()` (404, réseau, CORS…) ne doit jamais faire
+    // échouer tout le bootstrap — les widgets builtin doivent quand même
+    // s'afficher même si le catalogue d'extensions est indisponible.
+    try {
+      (await client.listActiveExtensions()).forEach(registerExtensionWidget);
+    } catch {
+      // Extensions indisponibles : on continue sans elles.
+    }
   }
   createRoot(root).render(
     <StrictMode>
