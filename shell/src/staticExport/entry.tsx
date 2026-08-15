@@ -37,7 +37,12 @@ async function bootstrap() {
       <QueryClientProvider client={queryClient}>
         <ItemClientProvider client={client}>
           <div className="h-screen w-screen">
-            <AppRenderer config={config} mode="runtime" pageId={config.pages?.[0]?.id} />
+            {/* No `pageId`/`onNavigate` here: leaving `pageId` undefined lets
+                AppRenderer's own internal state drive navigation (nav
+                widgets, tabs, story mode) — a fixed `pageId` prop pins the
+                active page forever since it always wins over internal state
+                (SP-18a review, C3). */}
+            <AppRenderer config={config} mode="runtime" />
           </div>
         </ItemClientProvider>
       </QueryClientProvider>
