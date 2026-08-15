@@ -592,6 +592,77 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   (régression réelle par rapport au round 1, qui matérialisait l'entrée
   avant de répondre) ; mitigé par un en-tête `Content-Length` rendant le
   short-read détectable sans ambiguïté par tout client/proxy HTTP.
+- **SP-18a** — export d'apps : mécanisme commun + mode Statique (premier des
+  trois modes de SP-18, dépend de SP-11). Nouveau module `core/app.appexport`
+  (`models`/`repository`/`guard`/`freeze`/`bundler`/`jobs`/`routes`, table
+  `app_export_jobs`, capacité `CORE_APPEXPORT_ENABLED` défaut désactivé) :
+  `POST /app-exports` garde chaque `DataSource` (collection sous-jacente
+  `is_public=true` obligatoire — pas seulement `can()`-lisible, puisque le
+  bundle tourne sans session authentifiée — et allowlist des 22 widgets
+  builtin), gèle les sources `"features"` en `"static"` (lignes réellement
+  requêtées in-process via `introspect_table`/`select_features`, RLS-scopées,
+  même patron qu'`app/mcp/tools.py`), zippe le résultat avec un runtime
+  générique prébâti (jamais reconstruit par export) et l'upload sur S3.
+  Shell : `StaticItemClient` (les ~83 méthodes non optionnelles d'`ItemClient`
+  écrites explicitement, sans cast d'échappement — TypeScript prouve
+  qu'aucune n'a été oubliée), entrée Vite dédiée (`vite.export.config.ts` →
+  `shell/dist-export/`), image Docker one-shot qui bâtit ce runtime une fois
+  et le dépose dans un volume partagé avec `worker`, `AppExportPanel` dans le
+  builder (déclenche/sonde/télécharge, avertissement si un widget Formulaire
+  est présent), E2E prouvant que le bundle tourne avec zéro cœur GeoStudio
+  dans la boucle (serveur HTTP jetable dédié, jamais `mockCore`).
+  Exécution en subagent-driven-development, revue par tâche systématique :
+  plusieurs corrections réelles trouvées et appliquées **avant** dispatch de
+  l'implémenteur (signatures devinées par le plan vérifiées contre le code
+  réel) — notamment un bug RLS dans le texte même du plan (`freeze.py`
+  n'enveloppait pas `select_features` dans `rls_scope`, corrigé pour
+  miroiter `app/mcp/tools.py` exactement) et un test conçu pour SQLite alors
+  qu'`introspect_table` exige des catalogues système Postgres réels (réécrit
+  en `pytest.mark.postgis` + vraie `CREATE TABLE`+`apply_collection_ddl`).
+  Un Important trouvé et corrigé en revue de tâche (Task 8) : `POST
+  /app-exports` non exempté du garde 403 mode démo lecture-seule,
+  contrairement à son analogue `/export` (SP-17a) — aucune tâche suivante
+  du plan ne touchait `main.py`, donc rien n'aurait rattrapé ça sans la
+  revue par tâche. Câblage `docker-compose.yml` vérifié **par valeur**
+  contre `docker compose config` résolu (pas seulement "ça parse") dès la
+  revue de tâche — rompt le motif des 3 incidents précédents
+  (SP-17a/SP-17b/tileset3d) où ce type de câblage n'était découvert cassé
+  qu'en revue finale de branche. Régénération OpenAPI/TS correctement
+  prédite comme un diff **vide** (le routeur n'est monté que si le flag est
+  actif, jamais en CI) — même précédent que `CORE_ETL_ENABLED`, pas une 5e
+  occurrence de l'oubli de régénération.
+  **Revue finale de branche** (invisible à toute revue par tâche, la classe
+  de bug que ce niveau de revue existe pour attraper) : 3 Critical + 6
+  Important + 8 Minor. C1 — bundle cassé hors racine de domaine
+  (`vite.export.config.ts` sans `base`, assets en chemins absolus `/assets/…`
+  au lieu de relatifs) ; C2 — le garde de widgets et l'avertissement
+  Formulaire étaient des no-op pour toute app mono-page (le cas courant : une
+  config sans second `pages[]` garde ses widgets dans `layout` top-level,
+  jamais scanné par le garde ni par `collectWidgetTypes`) ; C3 — navigation
+  morte dans un export multi-pages (`entry.tsx` passait un `pageId` figé sans
+  `onNavigate`, verrouillant `AppRenderer` sur la première page pour
+  toujours). Plus 6 Important : preuve E2E jamais exécutée en CI (`npm run
+  e2e` sans `build:export-runtime` au préalable, skip silencieux permanent) ;
+  `CORE_APPEXPORT_ENABLED` non documenté dans `.env.example` ;
+  `appexport-runtime-builder` sans profil compose, bloquant `worker` au
+  démarrage pour une capacité désactivée par défaut (**décision explicite
+  avec Tanguy** : profil `appexport`, même convention que
+  `qgis-worker`/`export-worker`, dépendance dure retirée de `worker`) ;
+  formulaire qui échouait *ouvert* en export statique (`canWrite` retombait
+  à `true` quand la requête de permission échouait, au lieu de `false`) ;
+  `featuresUrl()` levant une exception synchrone capable de faire planter
+  tout le rendu si l'Explorer est ouvert (`interactions: "auto"`). Une
+  passe de fix unique (suivant la discipline « un seul agent, pas un
+  fixeur par trouvaille ») + re-revue complète : **0 Critical/Important non
+  résolu au merge**. Écarté explicitement du périmètre de cette passe (pas
+  un oubli) : filtres interactifs (`filter`/`selectFilter`/…) silencieusement
+  inertes sur une source gelée — `freeze_config` ignore `DataSource.query`,
+  aucune donnée n'est mal exposée (agit comme si aucun filtre n'était posé),
+  mais l'expérience est trompeuse ; reste en suivi non bloquant, nécessite
+  un choix produit (honorer `query` à la congélation vs. étendre
+  l'avertissement d'export aux widgets de filtre). Jalon M15 non atteint
+  sous ce seul périmètre : Connecté et Autoporté restent des plans séparés
+  (SP-18b/c, non datés).
 
 ### À venir
 
@@ -624,8 +695,11 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   par notre propre TiTiler depuis un DEM COG hébergé chez nous, encodage
   terrain `mapbox` en plus de `terrarium`, conversion 3D (py3dtiles,
   nuages de points).
-- **SP-18** — export d'apps déployables sans GeoStudio (modes Connecté/
-  Autoporté/Statique, dépend de SP-11). Jalon M15.
+- **SP-18** — export d'apps déployables sans GeoStudio (dépend de SP-11).
+  SP-18a (mécanisme commun + mode Statique) livré, cf. `### Fait`. Restent
+  non planifiés, non datés : SP-18b (mode Connecté) et SP-18c (mode
+  Autoporté). Jalon M15 non atteint tant que les trois modes ne sont pas
+  livrés.
 - **SP-19** — undo/redo général du builder (pile d'instantanés de config,
   prérequis de SP-20). Aucune dépendance amont.
 - **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
@@ -685,3 +759,23 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   plan/la spec d'origine ; append seul aurait eu le même problème en pire
   (données fausses en plus). Pas de fix de code décidé pour l'instant — à
   surveiller si l'usage réel de requêtes visuelles planifiées se généralise.
+- SP-18a, suivis non bloquants : widgets de filtre interactifs
+  (`filter`/`selectFilter`/`dateRangeFilter`/`sliderFilter`) silencieusement
+  inertes sur une source `"static"` gelée — `freeze_config` ignore
+  `DataSource.query`, aucun risque de fuite de données mais expérience
+  trompeuse (décision produit à trancher : honorer `query` à la congélation
+  vs. étendre l'avertissement d'export existant). `reclaim_stuck_jobs`
+  d'`app.appexport.repository` est du code mort (aucune tâche périodique ne
+  l'appelle, contrairement à `app.export`/`app.reports` — un job dont le
+  worker meurt en cours de route reste `running` indéfiniment ; nécessite
+  une vraie tâche procrastinate périodique pour être branché, pas un fix
+  d'une ligne). `bundler.py` copie `assets/` en non récursif (un sous-dossier
+  généré par un futur changement Vite disparaîtrait silencieusement du
+  bundle). `POST /app-exports` ne valide pas le `kind` de l'item (un item
+  `map`/`dataset`/`pipeline` produit un job "done" avec un bundle
+  inexploitable, plutôt qu'un 422 immédiat — même classe que le suivi
+  SP-17a déjà noté, mais ici en échec silencieusement "réussi"). Fenêtre de
+  quelques secondes où un widget Formulaire affiche encore "Enregistrer"
+  dans un export avant que le `QueryClient` par défaut (3 retries,
+  backoff exponentiel) ne marque la requête de permission en erreur —
+  `retry: false` sur `entry.tsx`'s `QueryClient` réglerait ça proprement.

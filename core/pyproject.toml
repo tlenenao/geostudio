@@ -119,6 +119,7 @@ layers = [
     "app.reports",
     "app.alerts",
     "app.export",
+    "app.appexport",
     "app.tileset3d",
     "app.terrain3d",
     "app.secrets",
@@ -154,4 +155,5 @@ ignore_imports = [
     "app.db -> app.tileset3d.models",
     "app.db -> app.terrain3d.models",
     "app.db -> app.reports.models",
+    "app.db -> app.appexport.models",
 ]

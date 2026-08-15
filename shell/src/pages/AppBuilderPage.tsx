@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
-import { useAppConfig, useCreateDataset, useSaveApp, useUploadThumbnail } from "../api/hooks";
+import { useAppConfig, useCreateDataset, useInstanceInfo, useSaveApp, useUploadThumbnail } from "../api/hooks";
 import type { AppConfig, PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
+import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
@@ -34,6 +35,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const thumbnail = useUploadThumbnail(pk);
+  const instanceQuery = useInstanceInfo();
+  const appExportEnabled = instanceQuery.data?.appExportEnabled === true;
   const { username } = useAuth();
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
@@ -262,6 +265,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               <ThemePanel theme={draft.theme} onChange={setTheme} />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Impression</p>
               <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+              {appExportEnabled && (
+                <>
+                  <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Export standalone</p>
+                  <AppExportPanel itemId={pk} config={draft} />
+                </>
+              )}
             </aside>
           )}
           <main ref={mainRef} className="flex-1 overflow-auto p-2">

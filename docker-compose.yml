@@ -7,6 +7,7 @@ volumes:
   minio-data:
   keycloak-data:
   etl-scratch:
+  appexport-runtime:
 
 services:
 
@@ -157,6 +158,7 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
+      CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
     ports:
       - "8200:8200"
     networks: [gis-net]
@@ -189,7 +191,7 @@ services:
     # app.jobs.app") avant même d'atteindre le connecteur.
     command: >
       sh -c "python -m scripts.ensure_procrastinate_schema &&
-             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d,terrain3d"
+             python -m procrastinate --app app.jobs.app worker -q ingestion,search,cdc,etl,tileset3d,terrain3d,appexport"
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -215,11 +217,38 @@ services:
       OTEL_SERVICE_NAME: geostudio-worker
       QGIS_WORKER_URL: http://qgis-worker:8000
       QGIS_WORKER_TIMEOUT_SECONDS: "600"
+      CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
+      APPEXPORT_RUNTIME_DIR: /export-runtime
+      S3_APPEXPORTS_BUCKET: geostudio-appexports
     volumes:
       - etl-scratch:/scratch
+      - appexport-runtime:/export-runtime:ro
     networks: [gis-net]
-    depends_on: [pgbouncer, minio]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_started
     restart: unless-stopped
+
+  # Bâtit une fois le runtime d'export statique générique et le dépose dans
+  # le volume `appexport-runtime`, consommé par `worker` (SP-18a). Tourne
+  # une seule fois par `docker compose up --profile appexport` (aucun
+  # `restart:`). Profil `appexport` : un `docker compose up` par défaut ne
+  # le démarre pas, même porte que CORE_APPEXPORT_ENABLED — `worker` n'a
+  # donc plus de hard `depends_on` dessus (Compose refuse de mélanger un
+  # `depends_on` dur sur un service à profil avec ce profil inactif) ; si
+  # le profil n'est pas actif, le volume `appexport-runtime` reste
+  # simplement vide et `build_app_export_task` échoue proprement avec un
+  # message `FileNotFoundError` explicite (comportement existant, Task 6).
+  appexport-runtime-builder:
+    build:
+      context: .
+      dockerfile: deploy/appexport-runtime-builder/Dockerfile
+    profiles: ["appexport"]
+    volumes:
+      - appexport-runtime:/export-runtime
+    networks: [gis-net]
 
   # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
   # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un

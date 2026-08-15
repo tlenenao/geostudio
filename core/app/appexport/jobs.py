@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Tâche procrastinate (SP-18a) : guard → gèle les DataSources → assemble
+le zip → upload S3. Tourne sur le worker partagé (queue `appexport`, pas de
+Chromium/Node ici — voir plan §Global Constraints). Toute erreur marque le
+job "error", jamais un job bloqué en "running" (même critère que
+app.export.jobs/app.pipelines.jobs)."""
+import logging
+import os
+
+from app.appexport import repository as appexport_repo
+from app.appexport.bundler import build_bundle_zip
+from app.appexport.freeze import freeze_config
+from app.appexport.guard import check_export_guard
+from app.auth.dependency import is_appexport_enabled
+from app.configs import repository as configs_repo
+from app.db import make_engine, make_session_factory, request_scoped_session
+from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.jobs import app
+
+logger = logging.getLogger(__name__)
+
+
+def _session_factory():
+    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
+    return make_session_factory(engine)
+
+
+def s3_client_from_env():
+    return make_s3_client(
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        access_key=os.environ["S3_ACCESS_KEY"],
+        secret_key=os.environ["S3_SECRET_KEY"],
+    )
+
+
+@app.task(queue="appexport")
+def build_app_export_task(job_id: str, tenant_id: str) -> None:
+    session_factory = _session_factory()
+
+    if not is_appexport_enabled():
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
+        return
+
+    with request_scoped_session(session_factory) as session:
+        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
+            return
+        appexport_repo.mark_running(session, job_id=job_id)
+        item_id = job.item_id
+
+    try:
+        with request_scoped_session(session_factory) as session:
+            config_read = configs_repo.get_config_by_item(session, item_id)
+            if config_read is None:
+                raise ValueError(f"app export item '{item_id}' not found")
+            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config)
+            if not guard_result.allowed:
+                raise ValueError("; ".join(guard_result.reasons))
+            frozen = freeze_config(session, tenant_id=tenant_id, config=config_read.config)
+
+        runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
+        zip_bytes = build_bundle_zip(frozen, runtime_dir=runtime_dir)
+
+        result_key = f"appexports/{job_id}.zip"
+        bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
+        s3_client = s3_client_from_env()
+        ensure_uploads_bucket(s3_client, bucket)
+        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
+
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+    except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
+        logger.exception("app export job %s : erreur inattendue", job_id)
+        with request_scoped_session(session_factory) as session:
+            appexport_repo.mark_error(session, job_id=job_id, error=str(exc))

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "gen:api-types": "openapi-typescript ../core/openapi.json -o src/api/generated/core-schema.d.ts"
+    "gen:api-types": "openapi-typescript ../core/openapi.json -o src/api/generated/core-schema.d.ts",
+    "build:export-runtime": "vite build --config vite.export.config.ts"
   },
   "dependencies": {
     "@deck.gl/aggregation-layers": "^9.0.0",
