@@ -49,4 +49,37 @@ describe("AppExportPanel", () => {
     expect(screen.getByText(/écriture.*désactivée/i)).toBeInTheDocument();
     expect(client.createAppExport).not.toHaveBeenCalled();
   });
+
+  it("triggers a connected export and shows a download link once done", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
+    expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected");
+  });
+
+  it("confirms the write warning with the mode that actually triggered it", async () => {
+    const client = makeClient({
+      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+    });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config(true)} />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    await userEvent.click(screen.getByRole("button", { name: /connect/i }));
+    expect(screen.getByText(/écriture.*désactivée/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /quand même/i }));
+    await waitFor(() => expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected"));
+  });
 });

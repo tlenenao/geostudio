@@ -107,8 +107,8 @@ def test_post_app_export_rejects_invalid_mode(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "connected"})
-    assert response.status_code == 422  # SP-18a only supports "static"
+    response = client.post("/app-exports", json={"itemId": item_id, "mode": "bogus"})
+    assert response.status_code == 422
 
 
 def test_get_app_export_job_reports_status(env):
@@ -155,3 +155,13 @@ def test_get_app_export_job_done_status_includes_result_url(env):
     body = response.json()
     assert body["status"] == "done"
     assert body["resultUrl"] == f"https://minio.test/geostudio-appexports/appexports/{job_id}.zip"
+
+
+def test_post_app_export_accepts_connected_mode(env):
+    make_client, owner, _stranger, item_id, _Session = env
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    response = client.post("/app-exports", json={"itemId": item_id, "mode": "connected"})
+    assert response.status_code == 202
+    assert len(calls) == 1

@@ -21,7 +21,7 @@ from app.users.models import User
 
 router = APIRouter()
 
-_SUPPORTED_MODES = {"static"}  # "connected"/"standalone" arrivent en SP-18b/c
+_SUPPORTED_MODES = {"static", "connected"}  # "standalone" arrive en SP-18c
 
 
 class CreateAppExportRequest(BaseModel):

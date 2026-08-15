@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tâche procrastinate (SP-18a) : guard → gèle les DataSources → assemble
-le zip → upload S3. Tourne sur le worker partagé (queue `appexport`, pas de
-Chromium/Node ici — voir plan §Global Constraints). Toute erreur marque le
-job "error", jamais un job bloqué en "running" (même critère que
+"""Tâche procrastinate (SP-18a/b) : guard → (statique : gèle les
+DataSources ; connecté : garde la config telle quelle + embarque l'URL du
+cœur) → assemble le zip → upload S3. Tourne sur le worker partagé (queue
+`appexport`, pas de Chromium/Node ici). Toute erreur marque le job "error",
+jamais un job bloqué en "running" (même critère que
 app.export.jobs/app.pipelines.jobs)."""
 import logging
 import os
@@ -13,6 +14,7 @@ from app.appexport.freeze import freeze_config
 from app.appexport.guard import check_export_guard
 from app.auth.dependency import is_appexport_enabled
 from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.jobs import app
@@ -33,6 +35,15 @@ def s3_client_from_env():
     )
 
 
+def _prepare_bundle_inputs(
+    session, *, tenant_id: str, mode: str, config: BuilderConfig,
+) -> tuple[BuilderConfig, dict | None]:
+    if mode == "connected":
+        core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
+        return config, {"coreUrl": core_url}
+    return freeze_config(session, tenant_id=tenant_id, config=config), None
+
+
 @app.task(queue="appexport")
 def build_app_export_task(job_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
@@ -49,19 +60,22 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             return
         appexport_repo.mark_running(session, job_id=job_id)
         item_id = job.item_id
+        mode = job.mode
 
     try:
         with request_scoped_session(session_factory) as session:
             config_read = configs_repo.get_config_by_item(session, item_id)
             if config_read is None:
                 raise ValueError(f"app export item '{item_id}' not found")
-            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config)
+            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
             if not guard_result.allowed:
                 raise ValueError("; ".join(guard_result.reasons))
-            frozen = freeze_config(session, tenant_id=tenant_id, config=config_read.config)
+            bundle_config, connection = _prepare_bundle_inputs(
+                session, tenant_id=tenant_id, mode=mode, config=config_read.config,
+            )
 
         runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
-        zip_bytes = build_bundle_zip(frozen, runtime_dir=runtime_dir)
+        zip_bytes = build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
 
         result_key = f"appexports/{job_id}.zip"
         bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
