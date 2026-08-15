@@ -262,3 +262,102 @@ test("re-enables Enregistrer once the invalid visibleWhen is corrected", async (
   await userEvent.type(area, " 'a'");
   expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled();
 });
+
+test("a GridCanvas move can be undone with Ctrl+Z", async () => {
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.layout.items[0].x).toBe(0);
+});
+
+test("Ctrl+Shift+Z redoes an undone GridCanvas move", async () => {
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-w1 à droite" }));
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
+
+  await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.layout.items[0].x).toBe(1);
+});
+
+test("a burst of keystrokes in visibleWhen collapses into one undo step once blurred", async () => {
+  // Seeds an already-existing widget (mirrors the GridCanvas tests above)
+  // rather than adding one via the palette click just before typing: adding
+  // a widget is itself a setDraft call, and with real timers there's no
+  // guaranteed >400ms gap between that click and the first keystroke below,
+  // so it would risk coalescing into the *same* undo step as the typed
+  // text — one Ctrl+Z would then remove the widget outright instead of
+  // just clearing visibleWhen, which is not what this test means to check.
+  // Seeding seeds the widget outside the undo stack entirely (seedDraft
+  // never creates a step), isolating the burst under test to exactly the
+  // keystrokes typed below.
+  const withItem: AppConfig = {
+    kind: "app", theme: {}, dataSources: [], messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [
+      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+    ] },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
+  await userEvent.type(area, "vars.x == 'a'");
+  // Move focus to a non-text element — tabbing would only land in the "text"
+  // widget's own textarea just below visibleWhen in the same panel, still a
+  // text field, so it wouldn't actually exercise the "focus left every text
+  // field" path the keyboard shortcut check depends on.
+  await userEvent.click(screen.getByRole("button", { name: "Édition" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(area).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+});
+
+test("Ctrl+Z while focus is in a text field does not trigger the builder's undo", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await screen.findByRole("button", { name: "Texte" });
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  const area = screen.getByLabelText("Condition d'affichage (visibleWhen)");
+  await userEvent.type(area, "vars.x");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+
+  await userEvent.type(area, "{Control>}z{/Control}"); // focus stays in `area`
+  expect(area).toHaveValue("vars.x");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled();
+});
+
+test("Annuler and Rétablir start disabled and stay disabled with no edits", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await screen.findByRole("button", { name: "Texte" });
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+});

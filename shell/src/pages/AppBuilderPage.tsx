@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { toBlob } from "html-to-image";
 import { useAppConfig, useCreateDataset, useInstanceInfo, useSaveApp, useUploadThumbnail } from "../api/hooks";
-import type { AppConfig, PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
+import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
@@ -41,7 +42,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const [draft, setDraft] = useState<AppConfig | null>(null);
+  const { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo } = useUndoableDraft();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
@@ -62,8 +63,26 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change
     // (e.g. the refetch after a save) would clobber in-flight local edits.
-    if (query.data) setDraft((d) => d ?? query.data);
-  }, [query.data]);
+    // seedDraft (not setDraft) — this is the session's starting point, not
+    // an edit, and must not create an undo step (SP-19).
+    if (query.data) seedDraft(query.data);
+  }, [query.data, seedDraft]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = document.activeElement;
+      const isTextField = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
   const activePage = activePageId ?? pages[0]?.id ?? null;
@@ -202,6 +221,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         <div className="flex items-center gap-2 border-b p-2">
           <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
           <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+          <div className="ml-2 flex items-center gap-1">
+            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>Annuler</Button>
+            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>Rétablir</Button>
+          </div>
           <div className="ml-2 flex items-center gap-1">
             {BREAKPOINTS.map((bp) => (
               <Button
