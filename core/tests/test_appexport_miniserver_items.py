@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import pytest
+
 from app.analytics.duckdb_conn import open_local_connection
-from app.appexport.miniserver.items import get_feature, select_features
+from app.appexport.miniserver.items import get_feature, select_features, MissingGeometryColumn
 from app.cdc.parquet_writer import ChangeRow, write_geoparquet
 from app.collections.introspection import ColumnInfo, TableInfo
 
@@ -91,3 +93,33 @@ def test_get_feature_missing_returns_none(tmp_path):
     finally:
         conn.close()
     assert feature is None
+
+
+def test_select_features_bbox_on_non_spatial_raises_error(tmp_path):
+    """Verify that spatial filters (bbox) on non-spatial collections raise MissingGeometryColumn."""
+    table_info = _write_fixture(tmp_path)
+    conn = open_local_connection()
+    try:
+        with pytest.raises(MissingGeometryColumn, match="collection has no geometry column"):
+            select_features(
+                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
+                table_info=table_info, limit=10, offset=0,
+                bbox=(0, 0, 1, 1),
+            )
+    finally:
+        conn.close()
+
+
+def test_select_features_geom_intersects_on_non_spatial_raises_error(tmp_path):
+    """Verify that spatial filters (geom_intersects) on non-spatial collections raise MissingGeometryColumn."""
+    table_info = _write_fixture(tmp_path)
+    conn = open_local_connection()
+    try:
+        with pytest.raises(MissingGeometryColumn, match="collection has no geometry column"):
+            select_features(
+                conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
+                table_info=table_info, limit=10, offset=0,
+                geom_intersects={"type": "Point", "coordinates": [0.5, 0.5]},
+            )
+    finally:
+        conn.close()
