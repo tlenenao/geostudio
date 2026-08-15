@@ -165,3 +165,13 @@ def test_post_app_export_accepts_connected_mode(env):
     response = client.post("/app-exports", json={"itemId": item_id, "mode": "connected"})
     assert response.status_code == 202
     assert len(calls) == 1
+
+
+def test_post_app_export_accepts_standalone_mode(env):
+    make_client, owner, _stranger, item_id, _Session = env
+    client, calls = make_client()
+    client.app.dependency_overrides[get_current_user] = lambda: owner
+    client.app.dependency_overrides[get_current_user_optional] = lambda: owner
+    response = client.post("/app-exports", json={"itemId": item_id, "mode": "standalone"})
+    assert response.status_code == 202
+    assert len(calls) == 1
