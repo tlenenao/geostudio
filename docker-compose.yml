@@ -229,18 +229,23 @@ services:
         condition: service_started
       minio:
         condition: service_started
-      appexport-runtime-builder:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   # Bâtit une fois le runtime d'export statique générique et le dépose dans
   # le volume `appexport-runtime`, consommé par `worker` (SP-18a). Tourne
-  # une seule fois par `docker compose up` (aucun `restart:`), `worker`
-  # attend sa complétion via `condition: service_completed_successfully`.
+  # une seule fois par `docker compose up --profile appexport` (aucun
+  # `restart:`). Profil `appexport` : un `docker compose up` par défaut ne
+  # le démarre pas, même porte que CORE_APPEXPORT_ENABLED — `worker` n'a
+  # donc plus de hard `depends_on` dessus (Compose refuse de mélanger un
+  # `depends_on` dur sur un service à profil avec ce profil inactif) ; si
+  # le profil n'est pas actif, le volume `appexport-runtime` reste
+  # simplement vide et `build_app_export_task` échoue proprement avec un
+  # message `FileNotFoundError` explicite (comportement existant, Task 6).
   appexport-runtime-builder:
     build:
       context: .
       dockerfile: deploy/appexport-runtime-builder/Dockerfile
+    profiles: ["appexport"]
     volumes:
       - appexport-runtime:/export-runtime
     networks: [gis-net]
