@@ -22,7 +22,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
   const [job, setJob] = useState<AppExportJobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const [showWriteWarning, setShowWriteWarning] = useState(false);
+  const [pendingWarningMode, setPendingWarningMode] = useState<AppExportMode | null>(null);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,7 +52,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
   }
 
   async function runExport(mode: AppExportMode) {
-    setShowWriteWarning(false);
+    setPendingWarningMode(null);
     setDialogOpen(false);
     setRunning(true);
     setError(null);
@@ -75,7 +75,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
     const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
     if (hasWriteWidget) {
       setDialogOpen(false);
-      setShowWriteWarning(true);
+      setPendingWarningMode(mode);
       return;
     }
     void runExport(mode);
@@ -91,19 +91,22 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
           <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
             Statique
           </Button>
+          <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
+            Connecté
+          </Button>
         </div>
       </Dialog>
-      {showWriteWarning && (
+      {pendingWarningMode && (
         <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
           <p>
             Cette app contient un widget Formulaire — toute écriture sera
-            désactivée dans l&apos;export statique faute de backend.
+            désactivée dans l&apos;export faute de session authentifiée.
           </p>
           <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => runExport("static")}>
+            <Button size="sm" onClick={() => runExport(pendingWarningMode)}>
               Exporter quand même
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowWriteWarning(false)}>
+            <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>
               Annuler
             </Button>
           </div>
