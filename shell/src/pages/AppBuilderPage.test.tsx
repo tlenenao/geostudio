@@ -188,6 +188,35 @@ test("adds a second page and can switch back to editing the first", async () => 
   expect(saved.pages![1].layout.items).toHaveLength(0); // page 2 untouched
 });
 
+// SP-19 final-branch-review fix pass, finding C2: `activePageId` is a plain
+// useState, not part of the undo stack. Undoing "Ajouter une page" reverts
+// the config (page removed) but left activePageId pointing at the
+// now-nonexistent page — every subsequent edit (e.g. adding a widget)
+// silently no-op'd because setPageLayout() returns the config unchanged for
+// an unknown pageId. Mirrors the saveAppConfig assertion pattern of the
+// Task 3 GridCanvas undo tests above.
+test("undoing 'Ajouter une page' then adding a widget lands on a real page, not a stale one", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await screen.findByRole("button", { name: "Ajouter une page" });
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une page" }));
+
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Texte" }));
+  // The widget must show up on the canvas actually being edited, not be
+  // silently dropped.
+  expect(screen.getAllByRole("button", { name: /^Sélectionner widget-/ })).toHaveLength(1);
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  const items = saved.pages ? saved.pages[0].layout.items : saved.layout.items;
+  expect(items).toHaveLength(1);
+  expect(items[0].widget).toBe("text");
+});
+
 test("captures a thumbnail and uploads it", async () => {
   const uploadThumbnail = vi.fn().mockResolvedValue(undefined);
   renderPage({
