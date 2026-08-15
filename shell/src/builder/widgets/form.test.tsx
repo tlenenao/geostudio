@@ -603,3 +603,14 @@ test("hides the write buttons when the instance is in read-only demo mode, even 
   await waitFor(() => expect(getInstanceInfo).toHaveBeenCalled());
   await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
 });
+
+// I5 regression: `permissionQuery.data ?? true` used to fail open when the
+// query genuinely errored (not just "still loading") — e.g. StaticItemClient's
+// zero-backend `unsupported()` rejection in a static export — rendering the
+// form as writable when a submit could never actually succeed.
+test("hides the write buttons when getCollectionPermission rejects (query genuinely fails, e.g. static export)", async () => {
+  const getCollectionPermission = vi.fn().mockRejectedValue(new Error("Non disponible dans un export statique."));
+  const { client } = renderConnectedForm({ client: { getCollectionPermission } });
+  await waitFor(() => expect(client.getCollectionPermission).toHaveBeenCalledWith("incidents"));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
+});
