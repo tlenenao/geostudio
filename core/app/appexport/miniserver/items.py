@@ -13,6 +13,12 @@ from dataclasses import dataclass
 from app.collections.introspection import TableInfo
 
 
+class MissingGeometryColumn(Exception):
+    """Raised when a spatial filter (bbox, geom_intersects) is requested
+    on a collection with no geometry column."""
+    pass
+
+
 @dataclass(frozen=True)
 class FeaturePage:
     features: list[dict]
@@ -67,6 +73,8 @@ def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
 def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, list]:
     clauses: list[str] = []
     params: list = []
+    if (bbox is not None or geom_intersects is not None) and table_info.geometry_column is None:
+        raise MissingGeometryColumn("collection has no geometry column")
     if bbox is not None:
         minx, miny, maxx, maxy = bbox
         clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))")
