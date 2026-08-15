@@ -25,4 +25,16 @@ describe("collectWidgetTypes", () => {
   it("returns an empty set for a config with no widgets", () => {
     expect(collectWidgetTypes(config([[]]))).toEqual(new Set());
   });
+
+  it("collects widget types from the top-level layout when pages is empty (legacy/implicit single-page shape)", () => {
+    const legacyConfig = {
+      kind: "app", theme: {}, dataSources: [], messages: [], navigationMode: "tabs", variables: [],
+      pages: [],
+      layout: {
+        type: "grid", breakpoints: {},
+        items: [{ id: "w0", widget: "form", x: 0, y: 0, w: 4, h: 2, props: {} }],
+      },
+    } as unknown as AppConfig;
+    expect(collectWidgetTypes(legacyConfig)).toEqual(new Set(["form"]));
+  });
 });

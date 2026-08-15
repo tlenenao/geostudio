@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from app.collections import repository as collections_repo
-from app.configs.schemas import BuilderConfig, LayoutItem
+from app.configs.schemas import BuilderConfig
 
 # Miroir de shell/src/builder/widgets/{index,data,chart,pivot,navigation,
 # form,hero,richSection,gallery,datasetCard,dateRangeFilter,selectFilter,
@@ -32,6 +32,13 @@ class ExportGuardResult:
 
 def _collect_widget_types(config: BuilderConfig) -> set[str]:
     types: set[str] = set()
+    # A config always has at least one page. If `pages` is empty (legacy /
+    # implicit single-page shape, cf. shell/src/builder/pages.ts:6-7,23),
+    # the widgets actually live in the top-level `layout` — scan both so a
+    # single-page app (the common case) doesn't sail through unchecked.
+    if config.layout is not None:
+        for item in config.layout.items:
+            types.add(item.widget)
     for page in config.pages:
         for item in page.layout.items:
             types.add(item.widget)

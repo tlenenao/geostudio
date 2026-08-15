@@ -116,3 +116,24 @@ def test_unsupported_widget_type_is_blocked():
         result = check_export_guard(s, tenant_id="t1", config=config)
     assert result.allowed is False
     assert any("acme-widget" in r for r in result.reasons)
+
+
+def test_unsupported_widget_in_top_level_layout_is_blocked():
+    # Legacy/implicit single-page shape (shell/src/builder/pages.ts:6-7,23):
+    # `pages` empty, widgets live in the top-level `layout` — the common
+    # case for single-page apps. C2 regression: the guard used to only scan
+    # `config.pages[*].layout.items`, letting an unsupported widget sail
+    # through unchecked for every single-page app.
+    Session = _session()
+    with Session() as s:
+        config = BuilderConfig(
+            kind="app",
+            dataSources=[],
+            layout=Layout(type="grid", items=[
+                LayoutItem(id="w0", widget="acme-widget", x=0, y=0, w=4, h=2),
+            ]),
+            pages=[],
+        )
+        result = check_export_guard(s, tenant_id="t1", config=config)
+    assert result.allowed is False
+    assert any("acme-widget" in r for r in result.reasons)
