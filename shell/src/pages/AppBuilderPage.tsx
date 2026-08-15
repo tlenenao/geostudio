@@ -85,7 +85,16 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   }, [undo, redo]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
-  const activePage = activePageId ?? pages[0]?.id ?? null;
+  // Validate activePageId against the current draft's pages rather than
+  // trusting it blindly: undoing a page addition (Ctrl+Z) reverts `draft`
+  // but `activePageId` is a plain useState, not part of the undo stack, so
+  // it keeps pointing at a page that no longer exists. setPageLayout()
+  // silently no-ops for an unknown pageId (see builder/pages.ts), so every
+  // edit made while activePageId is stale was previously a silent no-op —
+  // SP-19 final-branch-review fix pass, finding C2.
+  const activePage = (activePageId && pages.some((p) => p.id === activePageId))
+    ? activePageId
+    : (pages[0]?.id ?? null);
   const activeLayout = useMemo(
     () => (draft && activePage ? getPageLayout(draft, activePage) : null),
     [draft, activePage],
@@ -95,6 +104,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     () => activeLayout?.items.find((i) => i.id === selectedId) ?? null,
     [activeLayout, selectedId],
   );
+
+  // Same class of bug as C2 above, for the other piece of state that lives
+  // outside the undo stack: undoing a widget addition leaves `selectedId`
+  // pointing at a removed item. `selected` above already resolves to null
+  // in that case, but the stale id itself should not linger indefinitely —
+  // reconcile it explicitly once the item it points to stops existing in
+  // the active layout (SP-19 final-branch-review fix pass, finding M2).
+  useEffect(() => {
+    if (selectedId && activeLayout && !activeLayout.items.some((i) => i.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, activeLayout]);
 
   if (query.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">Chargement…</p>;

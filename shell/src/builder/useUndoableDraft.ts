@@ -16,7 +16,19 @@
 // widget" click) naturally flushes on its own since nothing else calls
 // setDraft within the window. undo()/redo() always flush a still-pending
 // burst synchronously first, so Ctrl+Z is correct even mid-burst.
-import { useCallback, useRef, useState } from "react";
+//
+// All ref bookkeeping (stackRef/pendingBaselineRef/timerRef/draftRef) happens
+// in the outer function bodies below, never inside a function passed to
+// setDraftState — React (and specifically <StrictMode>, which wraps the
+// whole app in dev, see main.tsx) may invoke a useState updater function
+// twice to surface impurities. Mutating refs inside one would double the
+// mutation on every call in dev, corrupting the stack (SP-19 final-branch-
+// review fix pass, finding C1). `draftRef` mirrors `draft` synchronously
+// (updated at call time, not on commit) so every one of setDraft/seedDraft/
+// undo/redo can compute its next value from a reliable "current" value
+// without going through setDraftState's updater form at all — setDraftState
+// is only ever called with a plain, already-computed value.
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../api/types";
 import { applyRedo, applyUndo, createUndoStack, pushUndo, type UndoStack } from "./undoStack";
 
@@ -34,6 +46,7 @@ export type UndoableDraft = {
 
 export function useUndoableDraft(): UndoableDraft {
   const [draft, setDraftState] = useState<AppConfig | null>(null);
+  const draftRef = useRef<AppConfig | null>(null);
   const stackRef = useRef<UndoStack<AppConfig>>(createUndoStack());
   const pendingBaselineRef = useRef<AppConfig | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,53 +65,64 @@ export function useUndoableDraft(): UndoableDraft {
     setCanRedo(false);
   }, []);
 
+  // Clears a still-pending coalesce timer on unmount. Without this, navigating
+  // away from the builder mid-burst leaves the timer armed and flush() (via
+  // setCanUndo/setCanRedo) fires against an unmounted hook instance (SP-19
+  // final-branch-review fix pass, finding I1).
+  useEffect(() => () => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+  }, []);
+
   const setDraft = useCallback<UndoableDraft["setDraft"]>((update) => {
-    setDraftState((prev) => {
-      const next = typeof update === "function"
-        ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
-        : update;
-      if (next !== prev && prev !== null) {
-        if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(flush, COALESCE_WINDOW_MS);
-      }
-      return next;
-    });
+    const prev = draftRef.current;
+    const next = typeof update === "function"
+      ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
+      : update;
+    if (next !== prev && prev !== null) {
+      if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(flush, COALESCE_WINDOW_MS);
+    }
+    draftRef.current = next;
+    setDraftState(next);
   }, [flush]);
 
   // Seeds the initial config once loaded, bypassing history entirely — the
   // starting point of the session, not an edit. Undoing it would set draft
-  // back to null and break rendering. `prev ?? value` mirrors the original
-  // AppBuilderPage seeding effect (never clobbers in-flight edits on a
-  // refetch).
+  // back to null and break rendering. Reading/checking draftRef.current
+  // directly (instead of `prev ?? value` inside a setState updater) mirrors
+  // the original AppBuilderPage seeding effect (never clobbers in-flight
+  // edits on a refetch).
   const seedDraft = useCallback((value: AppConfig) => {
-    setDraftState((prev) => prev ?? value);
+    if (draftRef.current !== null) return;
+    draftRef.current = value;
+    setDraftState(value);
   }, []);
 
   const undo = useCallback(() => {
     flush();
-    setDraftState((prev) => {
-      if (prev === null) return prev;
-      const result = applyUndo(stackRef.current, prev);
-      if (result === null) return prev;
-      stackRef.current = result.stack;
-      setCanUndo(result.stack.past.length > 0);
-      setCanRedo(true);
-      return result.value;
-    });
+    const prev = draftRef.current;
+    if (prev === null) return;
+    const result = applyUndo(stackRef.current, prev);
+    if (result === null) return;
+    stackRef.current = result.stack;
+    draftRef.current = result.value;
+    setCanUndo(result.stack.past.length > 0);
+    setCanRedo(true);
+    setDraftState(result.value);
   }, [flush]);
 
   const redo = useCallback(() => {
     flush();
-    setDraftState((prev) => {
-      if (prev === null) return prev;
-      const result = applyRedo(stackRef.current, prev);
-      if (result === null) return prev;
-      stackRef.current = result.stack;
-      setCanUndo(true);
-      setCanRedo(result.stack.future.length > 0);
-      return result.value;
-    });
+    const prev = draftRef.current;
+    if (prev === null) return;
+    const result = applyRedo(stackRef.current, prev);
+    if (result === null) return;
+    stackRef.current = result.stack;
+    draftRef.current = result.value;
+    setCanUndo(true);
+    setCanRedo(result.stack.future.length > 0);
+    setDraftState(result.value);
   }, [flush]);
 
   return { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo };
