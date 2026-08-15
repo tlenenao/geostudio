@@ -70,3 +70,20 @@ def test_open_connection_installs_and_loads_h3(monkeypatch):
 
     joined = "\n".join(recording.statements)
     assert "INSTALL h3 FROM community" in joined and "LOAD h3" in joined
+
+
+def test_open_local_connection_installs_and_loads_spatial_only(monkeypatch):
+    import duckdb
+
+    from app.analytics.duckdb_conn import open_local_connection
+
+    real_conn = duckdb.connect(":memory:")
+    recording = _RecordingConnection(real_conn)
+    monkeypatch.setattr(duckdb, "connect", lambda *_a, **_kw: recording)
+
+    open_local_connection()
+
+    joined = "\n".join(recording.statements)
+    assert "INSTALL spatial" in joined and "LOAD spatial" in joined
+    assert "httpfs" not in joined
+    assert "s3_" not in joined
