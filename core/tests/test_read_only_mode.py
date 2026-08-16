@@ -41,7 +41,7 @@ def test_instance_defaults_to_read_write(env):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
     }
 
 
@@ -51,7 +51,7 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": True, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
     }
 
 

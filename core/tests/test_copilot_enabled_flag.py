@@ -3,23 +3,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_export_enabled
+from app.auth.dependency import get_current_user, get_current_user_optional, is_copilot_enabled
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 
-def test_is_export_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_EXPORT_ENABLED", raising=False)
-    assert is_export_enabled() is False
+def test_is_copilot_enabled_defaults_to_false(monkeypatch):
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
+    assert is_copilot_enabled() is False
 
 
-def test_is_export_enabled_reads_env_var(monkeypatch):
-    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
-    assert is_export_enabled() is True
-    monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
-    assert is_export_enabled() is False
+def test_is_copilot_enabled_true_for_any_non_empty_provider(monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
+    assert is_copilot_enabled() is True
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "fake")
+    assert is_copilot_enabled() is True
 
 
 @pytest.fixture()
@@ -46,17 +46,15 @@ def env():
     return TestClient(app)
 
 
-def test_instance_reports_export_disabled_by_default(env):
+def test_instance_reports_copilot_disabled_by_default(env, monkeypatch):
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json() == {
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
-    }
+    assert response.json()["copilotEnabled"] is False
 
 
-def test_instance_reports_export_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
+def test_instance_reports_copilot_enabled(env, monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
     response = env.get("/instance")
     assert response.status_code == 200
-    assert response.json()["exportEnabled"] is True
+    assert response.json()["copilotEnabled"] is True
