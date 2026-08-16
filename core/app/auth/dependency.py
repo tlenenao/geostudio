@@ -69,6 +69,16 @@ def is_terrain3d_enabled() -> bool:
     return os.environ.get("CORE_TERRAIN3D_ENABLED", "false").lower() == "true"
 
 
+def is_copilot_enabled() -> bool:
+    """CORE_LLM_PROVIDER (SP-20) — contrairement aux autres capacités
+    instance-wide ci-dessus (is_etl_enabled et consorts), ce n'est pas un
+    booléen dédié : le copilote est actif dès qu'un fournisseur LLM est
+    configuré, quelle que soit sa valeur (CORE_LLM_PROVIDER=openai, ou
+    toute chaîne non vide). Lue à chaque appel, sans cache, même
+    convention que is_read_only_mode ci-dessus."""
+    return bool(os.environ.get("CORE_LLM_PROVIDER"))
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par
