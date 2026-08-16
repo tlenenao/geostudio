@@ -119,13 +119,21 @@ requête, jamais en `localStorage` côté client.
 
 ### Shell — `shell/src/builder/copilot/`
 
-- **`CopilotPanel.tsx`** — nouvel onglet du sélecteur de panneaux du builder
-  (aux côtés de Props/Actions/Données/Thème/Variables/Navigation), visible
-  seulement en mode édition (pas preview/runtime) et seulement si
+- **`CopilotPanel.tsx`** — nouvel onglet rendu conditionnellement dans
+  `AppBuilderPage.tsx` (aux côtés de `DataSourcePanel`/`ActionsPanel`/
+  `NavigationPanel`/`VariablesPanel`/`ThemePanel`, tous montés inline selon
+  l'onglet actif — il n'y a pas de composant sélecteur de panneaux séparé),
+  visible seulement en mode édition (pas preview/runtime) et seulement si
   `copilotEnabled` (sinon l'onglet n'existe pas). Historique affiché,
   éphémère (perdu au rechargement, aucune persistance en v1), champ de
   saisie, résumé textuel des `clientOps` appliquées sur chaque réponse, bouton
-  « Annuler » qui appelle `undo()` du `UndoContext` (SP-19).
+  « Annuler » qui appelle `undo()`. **Vérifié contre le code réel (pas de
+  `UndoContext`)** : `undo`/`redo`/`canUndo`/`canRedo` sont des valeurs
+  retournées par le hook `useUndoableDraft()` (SP-19,
+  `shell/src/builder/useUndoableDraft.ts`) et détenues localement par
+  `AppBuilderPage`, exactement comme `draft`/`setDraft` — `CopilotPanel` les
+  reçoit en props au même titre que les autres panneaux, il n'y a aucun
+  Context React à consommer.
 - **`useMcpToken.ts`** — hook `signinSilent()` décrit en §2.1.
 - **`clientTools.ts`** — schémas des opérations client
   (`addWidget`, `updateWidgetProps`, `removeWidget`, `addDataSource`,
