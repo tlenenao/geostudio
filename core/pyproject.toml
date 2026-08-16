@@ -114,6 +114,7 @@ type = "layers"
 layers = [
     "app.main",
     "app.mcp",
+    "app.copilot",
     "app.public",
     "app.harvest",
     "app.pipelines",
