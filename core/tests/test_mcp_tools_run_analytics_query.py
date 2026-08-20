@@ -49,7 +49,7 @@ def _local_duckdb(monkeypatch, tmp_path):
     return tmp_path
 
 
-def _create_collection_dataset(app_client, collection_id):
+def _create_collection_dataset(app_client, collection_id):  # noqa: F811
     result = call_tool(
         app_client,
         "create_dataset",
@@ -62,7 +62,7 @@ def _create_collection_dataset(app_client, collection_id):
     return result["pk"]
 
 
-def test_run_analytics_query_collection_source_returns_grouped_counts(app_client, _local_duckdb):
+def test_run_analytics_query_collection_source_returns_grouped_counts(app_client, _local_duckdb):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection(app_client)
         _write_partition(
@@ -116,7 +116,7 @@ def test_run_analytics_query_collection_source_returns_grouped_counts(app_client
     ]
 
 
-def test_run_analytics_query_unknown_group_by_field_errors(app_client, _local_duckdb):
+def test_run_analytics_query_unknown_group_by_field_errors(app_client, _local_duckdb):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection(app_client)
         _write_partition(
@@ -147,7 +147,7 @@ def test_run_analytics_query_unknown_group_by_field_errors(app_client, _local_du
     assert "inconnu" in error_text
 
 
-def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb):
+def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb):  # noqa: F811
     with app_client:
         error_text = call_tool_expecting_error(
             app_client,
@@ -160,7 +160,7 @@ def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb)
     assert "not found" in error_text
 
 
-def _register_incidents_collection_owned_by_other(app_client):
+def _register_incidents_collection_owned_by_other(app_client):  # noqa: F811
     """Same schema/data as _register_incidents_collection, but owned by a
     different user (still public at creation, so create_dataset succeeds).
     Deviation from the plan brief's literal test (which reused
@@ -217,7 +217,7 @@ def _register_incidents_collection_owned_by_other(app_client):
         return col.id
 
 
-def test_run_analytics_query_collection_unreadable_by_caller_errors(app_client, _local_duckdb):
+def test_run_analytics_query_collection_unreadable_by_caller_errors(app_client, _local_duckdb):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection_owned_by_other(app_client)
         dataset_item_id = _create_collection_dataset(app_client, collection_id)

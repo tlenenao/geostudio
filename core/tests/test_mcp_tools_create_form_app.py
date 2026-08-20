@@ -13,7 +13,7 @@ from tests.test_mcp_tools_query_features import (  # noqa: F401
 pytestmark = pytest.mark.postgis
 
 
-def _register_incidents_collection_owned_by_other(app_client):
+def _register_incidents_collection_owned_by_other(app_client):  # noqa: F811
     """Same table/collection as _register_incidents_collection, but owned by
     a second user distinct from app_client.mock_user, with no
     CollectionShare granting mock_user write access. is_public=True so
@@ -68,7 +68,7 @@ def _register_incidents_collection_owned_by_other(app_client):
         return col.id
 
 
-def test_create_form_app_non_owner_without_write_access_gets_map_table_only(app_client):
+def test_create_form_app_non_owner_without_write_access_gets_map_table_only(app_client):  # noqa: F811
     # Closes the review finding on Task 10: can_write_collection was only
     # verified by inspection end-to-end, never exercised returning False
     # through the real create_form_app tool call. mock_user here is neither
@@ -88,7 +88,7 @@ def test_create_form_app_non_owner_without_write_access_gets_map_table_only(app_
         assert config.config.messages == []
 
 
-def test_create_form_app_owner_gets_form_map_table(app_client):
+def test_create_form_app_owner_gets_form_map_table(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection(app_client)
         result = call_tool(app_client, "create_form_app", {"collectionId": collection_id})
@@ -102,7 +102,7 @@ def test_create_form_app_owner_gets_form_map_table(app_client):
         assert widget_types == ["form", "map", "table"]
 
 
-def test_create_form_app_writes_audit_log_with_agent_actor(app_client):
+def test_create_form_app_writes_audit_log_with_agent_actor(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection(app_client)
         call_tool(app_client, "create_form_app", {"collectionId": collection_id})
@@ -119,7 +119,7 @@ def test_create_form_app_writes_audit_log_with_agent_actor(app_client):
         assert all(r.actor_kind == "agent" for r in rows if r.object_type in ("item", "config"))
 
 
-def test_create_form_app_unknown_collection_errors(app_client):
+def test_create_form_app_unknown_collection_errors(app_client):  # noqa: F811
     with app_client:
         error_text = call_tool_expecting_error(
             app_client, "create_form_app", {"collectionId": "nope"}

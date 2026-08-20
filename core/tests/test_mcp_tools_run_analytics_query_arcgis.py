@@ -31,7 +31,7 @@ def _clear_live_query_cache():
     live_query._cache.clear()
 
 
-def _register_arcgis_layer(app_client, *, owner=None):
+def _register_arcgis_layer(app_client, *, owner=None):  # noqa: F811
     with app_client.session_factory() as session:
         layer_owner = owner or app_client.mock_user
         source = harvest_repo.create_source(
@@ -73,7 +73,7 @@ def _register_arcgis_layer(app_client, *, owner=None):
         return layer_item.id
 
 
-def _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id):
+def _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id):  # noqa: F811
     """Builds the dataset item/config directly (bypassing create_dataset's
     own validation), so a test can simulate a dataset that references an
     arcgis layer the caller can no longer read — create_dataset itself
@@ -101,7 +101,7 @@ def _register_dataset_item_for_arcgis_layer(app_client, arcgis_item_id):
         return item.id
 
 
-def test_run_analytics_query_arcgis_source_groupby_and_measure(app_client, monkeypatch):
+def test_run_analytics_query_arcgis_source_groupby_and_measure(app_client, monkeypatch):  # noqa: F811
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -135,7 +135,7 @@ def test_run_analytics_query_arcgis_source_groupby_and_measure(app_client, monke
     assert result["rows"] == [{"commune": "Metz", "value": 3}, {"commune": "Nancy", "value": 7}]
 
 
-def test_run_analytics_query_arcgis_source_rejects_bucket(app_client, monkeypatch):
+def test_run_analytics_query_arcgis_source_rejects_bucket(app_client, monkeypatch):  # noqa: F811
     monkeypatch.setattr(
         harvest_routes,
         "get_arcgis_http_client",
@@ -157,7 +157,7 @@ def test_run_analytics_query_arcgis_source_rejects_bucket(app_client, monkeypatc
     assert "bucket/split/bins" in error_text
 
 
-def test_run_analytics_query_arcgis_layer_unreadable_errors(app_client):
+def test_run_analytics_query_arcgis_layer_unreadable_errors(app_client):  # noqa: F811
     with app_client.session_factory() as session:
         other_owner = get_or_create_user(
             session,

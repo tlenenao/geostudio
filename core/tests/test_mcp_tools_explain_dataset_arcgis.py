@@ -18,7 +18,7 @@ from tests.test_mcp_tools_create import (  # noqa: F401
 SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer/0"
 
 
-def _register_arcgis_layer(app_client):
+def _register_arcgis_layer(app_client):  # noqa: F811
     with app_client.session_factory() as session:
         source = harvest_repo.create_source(
             session,
@@ -53,7 +53,8 @@ def _register_arcgis_layer(app_client):
 
 
 def test_explain_dataset_arcgis_source_returns_fields_from_live_layer_metadata(
-    app_client, monkeypatch
+    app_client,  # noqa: F811
+    monkeypatch,
 ):
     def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == f"{SERVICE}?f=json"
