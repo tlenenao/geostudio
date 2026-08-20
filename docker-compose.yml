@@ -55,6 +55,24 @@ services:
       postgis:
         condition: service_healthy
     networks: [gis-net]
+    # Sonde vérifiée à l'exécution (SP-21) : psql existe dans cette image
+    # (`edoburu/pgbouncer:1.22.1-p0`). `-d pgbouncer` (console d'admin de
+    # pgbouncer) échoue par conception ici — `admin_users` par défaut de
+    # l'image est `postgres`, absent de `userlist.txt` (seul `gis` y est) ;
+    # confirmé : "FATAL: not allowed". La base réelle `gis`, elle, se proxy
+    # normalement — `select 1` y passe et prouve le chemin bout-en-bout
+    # (pgbouncer → postgis). Mot de passe repris de la variable déjà
+    # déclarée ci-dessus via `$$` (échappement de substitution compose déjà
+    # utilisé dans docker-compose.prod.yml), pas une nouvelle variable.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=$$DB_PASSWORD psql -h 127.0.0.1 -p 6432 -U gis -d gis -c 'select 1'",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─── Stockage objet ────────────────────────────────────
 
@@ -92,6 +110,18 @@ services:
     depends_on:
       pgbouncer:
         condition: service_started
+    # Sonde vérifiée à l'exécution (SP-21) : image `martin:v0.18.0` sans
+    # curl (base Debian minimale + busybox) mais avec `wget` (busybox) et
+    # `/health` répond "OK" (confirmé en conteneur réel, martin branché sur
+    # un vrai Postgres/PostGIS derrière pgbouncer). `localhost` échoue
+    # ("Connection refused") : `/etc/hosts` résout `localhost` en `::1`
+    # avant `127.0.0.1`, et martin n'écoute qu'en IPv4 — `127.0.0.1`
+    # explicite contourne le problème.
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   titiler:
     image: ghcr.io/developmentseed/titiler:0.18.4
@@ -114,6 +144,25 @@ services:
     ports:
       - "8000:8000"
     networks: [gis-net]
+    # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
+    # et `/healthz` répond `{"ping":"pong!"}` (confirmé en conteneur réel).
+    # Découverte hors périmètre de cette tâche (aucune variable/port touché
+    # ici) : le conteneur écoute en interne sur le port **80**, pas 8000 —
+    # aucun `PORT` n'est câblé dans `environment` ci-dessus, et l'image
+    # (base tiangolo/uvicorn-gunicorn) défaut sur 80 en son absence
+    # (`gunicorn_conf.py` : `port = os.getenv("PORT", "80")`) ; confirmé
+    # `curl http://127.0.0.1:8000/healthz` → connexion refusée, alors que
+    # `curl http://127.0.0.1:80/healthz` répond. La sonde cible donc le
+    # port réellement en écoute. Le mapping `8000:8000` ci-dessus et
+    # `TITILER_URL: http://titiler:8000` (lu par `core`, cf.
+    # `core/app/terrain3d/routes.py`) restent inchangés par cette tâche —
+    # à investiguer séparément, ce mismatch peut casser le proxy COG
+    # terrain3d en usage réel.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─── Applications ──────────────────────────────────────
 
