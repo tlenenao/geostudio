@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
+import json
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -50,7 +52,7 @@ def _system_message(item_id: str, current_config: dict) -> dict:
             "entier d'un coup. Utilise les outils fournis ; ne réponds en "
             "texte libre que pour expliquer ou poser une question.\n\n"
             f"Item en cours d'édition : {item_id}\n"
-            f"Configuration actuelle (JSON) : {current_config}"
+            f"Configuration actuelle (JSON) : {json.dumps(current_config, ensure_ascii=False)}"
         ),
     }
 
@@ -71,7 +73,12 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
     provider = get_llm_provider()
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        turn: LLMTurn = provider.chat(messages, all_tools)
+        # provider.chat est synchrone (httpx.post bloquant) : appelé
+        # directement ici, il gèlerait la boucle d'événements — donc tout le
+        # process, tous tenants confondus — pour la latence du LLM, et
+        # neutraliserait le asyncio.wait_for qui garde ce tour (wait_for ne
+        # peut pas interrompre un appel synchrone qui tient déjà le thread).
+        turn: LLMTurn = await anyio.to_thread.run_sync(provider.chat, messages, all_tools)
         if not turn.tool_calls:
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
@@ -79,7 +86,10 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
         messages.append({
             "role": "assistant", "content": turn.text,
             "tool_calls": [
-                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": tc.arguments}}
+                # arguments doit être une **chaîne** JSON : le schéma de
+                # message OpenAI rejette un objet à la réinjection du tour
+                # suivant.
+                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
                 for tc in turn.tool_calls
             ],
         })

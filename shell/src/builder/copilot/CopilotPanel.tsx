@@ -5,7 +5,7 @@
 // setDraft (SP-19 undo) en un seul appel par tour : annulable via le
 // bouton "Annuler" existant de la barre d'outils (AppBuilderPage.tsx),
 // pas de bouton Annuler dédié ici — un seul et même undo stack.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, CopilotMessage } from "../../api/types";
 import { Button } from "../../ui/button";
@@ -31,6 +31,14 @@ export function CopilotPanel({
 }) {
   const client = useItemClient();
   const getMcpToken = useMcpToken();
+  // Un tour peut durer plusieurs secondes : si l'utilisateur change de page
+  // pendant ce temps, les clientOps doivent viser la page réellement active
+  // à l'arrivée de la réponse, pas celle capturée à l'envoi (la config,
+  // elle, est déjà lue au plus tard via le paramètre `d` de setDraft).
+  const activePageIdRef = useRef(activePageId);
+  useEffect(() => {
+    activePageIdRef.current = activePageId;
+  }, [activePageId]);
   const [history, setHistory] = useState<CopilotMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -58,7 +66,7 @@ export function CopilotPanel({
         setDraft((d) => {
           if (!d) return d;
           return (result.clientOps as RawClientOp[]).reduce(
-            (acc, op) => applyClientOp(op, acc, activePageId), d,
+            (acc, op) => applyClientOp(op, acc, activePageIdRef.current), d,
           );
         });
       } else {

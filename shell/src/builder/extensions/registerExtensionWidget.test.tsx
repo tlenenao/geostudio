@@ -32,6 +32,15 @@ test("registers a WidgetDefinition with the manifest's identity and defaults", (
   expect(def.actions).toEqual(["reset"]);
 });
 
+test("exposes the manifest's props as the widget's configSchema", () => {
+  // Sans configSchema, applyClientOp (copilote SP-20) résout `configSchema
+  // ?? []` en allowlist vide et jette silencieusement tout patch de prop
+  // visant un widget tiers, pendant que le panneau annonce « Widget
+  // modifié ». Le manifeste porte déjà exactement la forme attendue.
+  registerExtensionWidget(manifest);
+  expect(getWidget("acme.gauge")!.configSchema).toEqual(manifest.props);
+});
+
 test("the generated props panel edits props through onChange", async () => {
   registerExtensionWidget(manifest);
   const Panel = getWidget("acme.gauge")!.PropsPanel;

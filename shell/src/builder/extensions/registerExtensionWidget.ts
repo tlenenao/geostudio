@@ -12,6 +12,10 @@ export function registerExtensionWidget(manifest: ExtensionManifest): void {
     defaultSize: manifest.defaultSize,
     events: manifest.events,
     actions: manifest.actions,
+    // Sans ça, toute écriture de prop passant par le configSchema du
+    // registre (copilote SP-20, applyClientOp) est silencieusement filtrée
+    // pour un widget d'extension.
+    configSchema: manifest.props,
     PropsPanel: makeGeneratedPropsPanel(manifest),
     Component: makeLazyWcHost(manifest),
   });

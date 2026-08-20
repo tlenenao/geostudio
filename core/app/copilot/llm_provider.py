@@ -51,7 +51,21 @@ class OpenAICompatibleLLMProvider:
         self._model = model
 
     def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
-        openai_tools = [{"type": "function", "function": t} for t in tools]
+        # Les outils arrivent en forme MCP/shell ({name, description,
+        # inputSchema}) ; l'API chat-completions attend {name, description,
+        # parameters}. Sans cette conversion, un vrai fournisseur rejette la
+        # requête en 400 à chaque tour.
+        openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("inputSchema", {"type": "object", "properties": {}}),
+                },
+            }
+            for t in tools
+        ]
         response = httpx.post(
             self._api_url,
             headers={"Authorization": f"Bearer {self._api_key}"},
