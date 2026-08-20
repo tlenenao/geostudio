@@ -192,10 +192,10 @@ def register_collection(
         raise HTTPException(status_code=409, detail="table already registered")
     try:
         info = introspect(session, body.tableName)
-    except TableNotFound:
-        raise HTTPException(status_code=400, detail="table not found in schema public")
+    except TableNotFound as exc:
+        raise HTTPException(status_code=400, detail="table not found in schema public") from exc
     except UnsupportedTable as exc:
-        raise HTTPException(status_code=400, detail=exc.reason)
+        raise HTTPException(status_code=400, detail=exc.reason) from exc
     apply_ddl(session, info.table_name)
     col = repo.create_collection(
         session,
@@ -359,10 +359,10 @@ def get_collection_schema(
     col = get_readable_collection(session, user, collection_id)
     try:
         info = introspect(session, col.table_name)
-    except TableNotFound:
-        raise HTTPException(status_code=404, detail="backing table not found")
+    except TableNotFound as exc:
+        raise HTTPException(status_code=404, detail="backing table not found") from exc
     except UnsupportedTable as exc:
-        raise HTTPException(status_code=409, detail=exc.reason)
+        raise HTTPException(status_code=409, detail=exc.reason) from exc
     return table_info_to_schema(info)
 
 

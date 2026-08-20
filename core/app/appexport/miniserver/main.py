@@ -120,7 +120,7 @@ def list_items(
                 bbox=_parse_bbox(bbox),
             )
         except MissingGeometryColumn as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         conn.close()
     return {
@@ -175,7 +175,7 @@ def aggregate(collection_id: str, body: AggregateRequestBody):
                         {"field": exc.field, "code": "unknown_field", "message": exc.message}
                     ]
                 },
-            )
+            ) from exc
     finally:
         conn.close()
     return {"categoryKey": category_key, "rows": rows}

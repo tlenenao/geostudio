@@ -67,8 +67,15 @@ def create_secret_route(
         # uq_connector_secrets_tenant_name constraint is the real guard,
         # this just turns a concurrent duplicate into the same 409 the
         # pre-check gives in the common case (request_scoped_session rolls
-        # back the failed flush; see app/db.py).
-        raise HTTPException(status_code=409, detail="secret name already exists")
+        # back the failed flush; see app/db.py). `from None`, not `from exc`:
+        # SQLAlchemy's IntegrityError repr includes bound parameters by
+        # default (hide_parameters is not set in app/db.py), which here
+        # would be the INSERT's ciphertext/nonce bytes — this module's own
+        # module docstring promises it "ne retourne jamais [...] un
+        # ciphertext ou un nonce", a promise chaining would risk breaking
+        # the moment this exception reaches a traceback-capturing sink
+        # (logs, Sentry/OTel) rather than just the HTTP response.
+        raise HTTPException(status_code=409, detail="secret name already exists") from None
     write_audit(
         session,
         tenant_id=user.tenant_id,
