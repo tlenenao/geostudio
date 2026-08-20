@@ -161,6 +161,7 @@ layers = [
     "app.tileset3d",
     "app.terrain3d",
     "app.secrets",
+    "app.cdc",
     "app.ingestion",
     "app.dcat",
     "app.stac",
@@ -170,10 +171,13 @@ layers = [
     "app.extensions",
     "app.items",
     "app.sharing",
+    "app.instance",
     "app.auth",
     "app.audit",
     "app.users",
     "app.tenants",
+    "app.search",
+    "app.analytics",
 ]
 ignore_imports = [
     "app.db -> app.configs.models",
