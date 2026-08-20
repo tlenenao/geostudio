@@ -18,6 +18,7 @@ import ast
 import pathlib
 import re
 
+import pytest
 import yaml
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -359,33 +360,158 @@ def test_backup_covers_every_bucket_the_core_uses():
     )
 
 
-# Un tag « flottant » : v3.0 suit tous les patches à venir, 24.0 aussi. La
-# règle est une liste noire volontaire (absence de tag, `latest`, mineur
+# Mots-clés de tags mouvants : comme `latest`, ils avancent à chaque nouvelle
+# publication sans jamais changer de nom — même classe de danger.
+FLOATING_WORD_TAGS = {
+    "latest", "stable", "edge", "main", "master", "dev", "nightly", "release",
+}
+
+# Un tag « flottant » : v3.0 suit tous les patchs à venir, 24.0 aussi, et un
+# tag majeur seul (v3, 3) suit en plus tous les mineurs à venir. La règle est
+# une liste noire volontaire (absence de tag, mot-clé mouvant, majeur/mineur
 # flottant) et non une exigence de forme : des tags parfaitement pinnés ne
 # sont pas semver (minio publie RELEASE.2025-09-07T16-13-09Z, pgbouncer
 # 1.22.1-p0), et une exigence de forme les rejetterait à tort.
-FLOATING_TAG_RE = re.compile(r"^v?\d+\.\d+$")
+FLOATING_TAG_RE = re.compile(r"^v?\d+(\.\d+)?$")
+
+
+def unpinned_reason(image: str) -> str | None:
+    """Classe une référence d'image Docker telle qu'écrite dans un fichier
+    compose (donc potentiellement porteuse d'une substitution `${...}` non
+    résolue) : None si elle est pinnée de façon reproductible, une raison
+    lisible sinon. Extrait de `test_images_are_pinned` pour être testable
+    directement sur une chaîne, sans passer par un fichier compose.
+
+    Trois cas particuliers, chacun corrigeant un écart entre le docstring de
+    `test_images_are_pinned` et ce qu'elle vérifiait réellement avant ce
+    correctif (aucun des trois n'était vivant dans ce dépôt) :
+
+    - une image derrière une substitution (`${VAR}`) n'est exemptée que si
+      c'est une des nôtres (`OWN_IMAGE_RE`, pinnée par le tag de release CI) —
+      une image tierce hypothétique derrière une variable reste un tag fourni
+      par l'opérateur, invérifiable ici, donc signalée plutôt qu'exemptée ;
+    - un digest (`image@sha256:…`) est le pin le plus fort possible, accepté
+      sans lire de tag ;
+    - le tag n'est résolu que dans le dernier segment de chemin, pour qu'un
+      hôte de registre avec port (`host:5000/img`) ne fasse pas passer une
+      image sans tag pour pinnée.
+    """
+    if "${" in image:
+        if OWN_IMAGE_RE.match(image):
+            return None  # nos propres images : pinnées par le tag de release
+        return f"{image} (image tierce derrière une substitution, invérifiable ici)"
+    if "@sha256:" in image:
+        return None  # digest : le pin le plus fort possible
+    last_segment = image.rpartition("/")[2]
+    _, _, tag = last_segment.rpartition(":")
+    if tag == last_segment or not tag:
+        return f"{image} (aucun tag)"
+    if tag in FLOATING_WORD_TAGS:
+        return f"{image} ({tag})"
+    if FLOATING_TAG_RE.fullmatch(tag):
+        kind = "mineur flottant" if "." in tag else "majeur flottant"
+        return f"{image} ({kind})"
+    return None
 
 
 def test_images_are_pinned():
-    """Une image sans tag, en `latest`, ou pinnée au mineur, change sous les
-    pieds de l'opérateur : deux `docker compose pull` à un mois d'écart ne
-    donnent pas la même stack, et un incident devient irreproductible."""
+    """Une image sans tag, en `latest`, en tag mouvant (`stable`/`edge`/…),
+    ou pinnée au majeur/mineur, change sous les pieds de l'opérateur : deux
+    `docker compose pull` à un mois d'écart ne donnent pas la même stack, et
+    un incident devient irreproductible. Un digest (`@sha256:…`) est
+    toujours accepté — c'est le pin le plus fort. Seule une des nôtres
+    (`ghcr.io/<owner>/geostudio-*`) est exemptée derrière une substitution
+    `${VAR}`, parce qu'elle est alors pinnée par le tag de release CI plutôt
+    que par ce fichier — une image tierce derrière une substitution reste un
+    tag fourni par l'opérateur, invérifiable ici, et donc signalée."""
     unpinned = {}
     for path in (BASE, PROD):
         for name, service in services(path).items():
             image = service.get("image")
-            if not image or "${" in image:
-                continue  # nos propres images : pinnées par le tag de release
-            _, _, tag = image.rpartition(":")
-            if tag == image or not tag:
-                unpinned[f"{path.name}:{name}"] = f"{image} (aucun tag)"
-            elif tag == "latest":
-                unpinned[f"{path.name}:{name}"] = f"{image} (latest)"
-            elif FLOATING_TAG_RE.fullmatch(tag):
-                unpinned[f"{path.name}:{name}"] = f"{image} (mineur flottant)"
+            if not image:
+                continue
+            reason = unpinned_reason(image)
+            if reason:
+                unpinned[f"{path.name}:{name}"] = reason
     assert not unpinned, (
         f"images non pinnées : {unpinned}. Résoudre le tag exact contre le "
         "registre — jamais l'inventer (précédent SP-15d : qgis/qgis:latest "
         "pointait vers un build 4.3.0-master instable)."
     )
+
+
+# Étape 2 — RED : ces cas pin down les trois écarts de la revue avant de
+# corriger `unpinned_reason`. Certains échouent contre la version encore
+# non corrigée ci-dessus (fix 1/2/3), les autres décrivent des tags réels du
+# dépôt qui doivent rester acceptés une fois les fixes en place.
+@pytest.mark.parametrize(
+    "image",
+    [
+        # Fix 2 — vrais tags déjà pinnés dans le dépôt : doivent rester
+        # acceptés après durcissement du regex flottant.
+        "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+        "edoburu/pgbouncer:1.22.1-p0",
+        "traefik:v0.18.0",
+        "traefik:0.18.4",
+        "traefik:0.11.4",
+        "traefik:v0.20.1",
+        "traefik:v3.0.4",
+        "keycloak:24.0.5",
+        "tailscale/tailscale:v1.102.3",
+    ],
+)
+def test_unpinned_reason_accepts_real_pinned_tags(image):
+    assert unpinned_reason(image) is None
+
+
+def test_unpinned_reason_registry_port_is_not_read_as_a_tag():
+    """Fix 1 : `host:5000/img` sans tag doit être signalé comme non pinné,
+    pas silencieusement accepté parce que `5000/img` ressemble à un tag."""
+    reason = unpinned_reason("myregistry.example.com:5000/myimage")
+    assert reason is not None
+    assert "aucun tag" in reason
+
+
+@pytest.mark.parametrize("image", ["myimage:3", "myimage:v3"])
+def test_unpinned_reason_flags_major_only_tags(image):
+    """Fix 2 : un tag majeur seul (`:3`, `:v3`) flotte sur tous les mineurs
+    et patchs à venir, tout comme `:3.0` flotte sur tous les patchs."""
+    assert unpinned_reason(image) is not None
+
+
+@pytest.mark.parametrize(
+    "image",
+    ["myimage:stable", "myimage:edge", "myimage:main", "myimage:master",
+     "myimage:dev", "myimage:nightly", "myimage:release"],
+)
+def test_unpinned_reason_flags_word_based_moving_tags(image):
+    """Fix 2 : ces mots-clés bougent sous les pieds de l'opérateur exactement
+    comme `latest`, que la règle rejette déjà par son nom."""
+    assert unpinned_reason(image) is not None
+
+
+def test_unpinned_reason_accepts_digest_pin():
+    """Un pin par digest est le pin le plus fort possible — toujours
+    accepté, même si aucune image du dépôt n'en utilise à ce jour."""
+    assert unpinned_reason(
+        "myimage@sha256:"
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    ) is None
+
+
+def test_unpinned_reason_rejects_third_party_image_behind_substitution():
+    """Fix 3 : seules nos propres images ghcr.io/<owner>/geostudio-* sont
+    pinnées par le tag de release et donc exemptées ici — une image tierce
+    hypothétique derrière une substitution reste un tag fourni par
+    l'opérateur, impossible à vérifier depuis ce fichier, et doit être
+    signalée plutôt que silencieusement acceptée."""
+    reason = unpinned_reason("somevendor/something:${SOMEVENDOR_TAG}")
+    assert reason is not None
+
+
+def test_unpinned_reason_accepts_own_image_behind_substitution():
+    """Miroir du cas précédent : une de nos propres images GHCR derrière une
+    substitution reste exemptée, comme avant ce fix."""
+    assert unpinned_reason(
+        "ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}"
+    ) is None
