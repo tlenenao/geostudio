@@ -27,6 +27,24 @@ Procédure de reprise sur perte totale (machine détruite/volée/disque mort).
   `apk add mc` dans son Dockerfile — c'est Midnight Commander sous Alpine,
   pas le client MinIO (cf. Task 1).
 
+## Périmètre de la sauvegarde (ce qui revient, et ce qui ne revient pas)
+
+**Restauré** : la base Postgres complète (donc aussi les comptes Keycloak,
+même base `gis`), et cinq buckets MinIO — `thumbnails`, `uploads`, `cdc`,
+`tileset3d`, `terrain3d`.
+
+**Volontairement non restauré** : les buckets `exports` et `appexports`. Ils
+ne contiennent que des artefacts régénérables — un PDF de rapport planifié,
+un bundle d'export d'app. Après restauration, un lien de téléchargement
+émis avant la perte sera mort : c'est attendu, l'export se re-demande.
+
+**Non prouvé à ce jour (SP-21)** : ce runbook n'a **jamais été rejoué de bout
+en bout**. Le périmètre ci-dessus est vérifié mécaniquement
+(`core/tests/test_deployability.py`), mais personne n'a encore observé une
+restauration réussie — en particulier, personne n'a vérifié qu'un item
+`tileset3d` reste affichable après restauration. C'est le chantier 1.4 du
+plan d'action, renvoyé à la vague 2.
+
 ## 1. Récupérer et déchiffrer la dernière archive
 
 ```bash

@@ -19,12 +19,29 @@ PGPASSWORD="$PG_PASSWORD" pg_dump -h postgis -p 5432 -U gis -d gis \
   --format=custom --file="${WORKDIR}/postgres.dump"
 echo "[backup] postgres.dump: $(du -h "${WORKDIR}/postgres.dump" | cut -f1)"
 
-# ── 2. MinIO (miroir des 3 buckets applicatifs) ──
+# ── 2. MinIO (miroir des buckets de données) ──
+#
+# Périmètre : les cinq buckets dont le contenu est IRREMPLAÇABLE.
+#   - thumbnails/uploads : fichiers déposés par les utilisateurs ;
+#   - cdc : journal de réplication, socle de tout l'analytique ;
+#   - tileset3d/terrain3d : un tileset 3D ou un COG de terrain uploadé est
+#     un objet S3 JAMAIS extrait, sans autre copie, dont les métadonnées
+#     vivent dans BuilderConfig. Sans lui, la restauration fait réapparaître
+#     l'item intact en pointant sur une clé disparue — cassé pour toujours,
+#     et sans erreur au moment de la restauration (SP-21, chantier 1.3).
+#
+# Volontairement EXCLUS, et c'est écrit ici pour que ça ne se redécouvre
+# pas : `exports` et `appexports` ne contiennent que des artefacts
+# régénérables (un PDF de rapport, un bundle d'app se re-demandent). Toute
+# exclusion nouvelle doit aussi être déclarée dans
+# core/tests/test_deployability.py::BACKUP_EXCLUDED_BUCKETS.
 mc alias set local http://minio:9000 "$MINIO_USER" "$MINIO_PASSWORD" >/dev/null
 mkdir -p "${WORKDIR}/minio"
 for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
               "${S3_UPLOADS_BUCKET:-geostudio-uploads}" \
-              "${S3_CDC_BUCKET:-geostudio-cdc}"; do
+              "${S3_CDC_BUCKET:-geostudio-cdc}" \
+              "${S3_TILESET3D_BUCKET:-geostudio-tileset3d}" \
+              "${S3_TERRAIN3D_BUCKET:-geostudio-terrain3d}"; do
   if mc ls "local/${bucket}" >/dev/null 2>&1; then
     mc mirror --overwrite --quiet "local/${bucket}" "${WORKDIR}/minio/${bucket}"
   else
