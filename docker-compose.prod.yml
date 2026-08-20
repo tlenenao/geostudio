@@ -4,6 +4,13 @@
 # `build:`), tunnel sortant (aucun port hôte publié), Traefik sans ACME (le
 # TLS est terminé au bord du tunnel — cf. service `tunnel`, Task 5), nom
 # d'hôte public unique `GEOSTUDIO_PUBLIC_HOST` (cf. Task 3).
+#
+# Correctif (décision Tanguy) : chaque service substitué ci-dessous porte
+# aussi `build: !reset null`. La fusion Compose est additive, pas
+# remplaçante : sans ce reset, le `build:` du fichier de base survit à côté
+# de l'`image:` de cet overlay dans la configuration résolue, et un hôte de
+# production sans l'arbre source échoue dès qu'un build est déclenché —
+# exactement ce que cet overlay a pour but d'empêcher.
 
 volumes:
   tailscale-state:
@@ -13,6 +20,7 @@ services:
 
   postgis:
     image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
     restart: unless-stopped
 
   pgbouncer:
@@ -76,6 +84,7 @@ services:
 
   core:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
     ports: !reset []
     environment:
       CORE_AUTH_MODE: oidc
@@ -108,24 +117,30 @@ services:
   # build-and-push), donc ces deux services réutilisent geostudio-core.
   worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
 
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
 
   # SP-21 : ces trois services restaient en `build:` (fichier de base), donc
   # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
   # du fichier de base — substituer l'image n'allume aucune capacité.
   export-worker:
     image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
 
   qgis-worker:
     image: ghcr.io/tlenenao/geostudio-qgis-worker:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
 
   appexport-runtime-builder:
     image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
 
   shell:
     image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
     ports: !reset []
     environment:
       VITE_CORE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
