@@ -1,75 +1,277 @@
-### Task 4: E2E proof
+## Task 4: Core — `mcp_loopback.py` + `tools_allowlist.py`
 
 **Files:**
-- Modify: `shell/e2e/app-builder.spec.ts`
+- Create: `core/app/copilot/mcp_loopback.py`
+- Create: `core/app/copilot/tools_allowlist.py`
+- Create: `core/tests/test_copilot_mcp_loopback.py`
 
 **Interfaces:**
-- Consumes: `mockCore` (`./mocks`, unchanged).
+- Consumes: the app's own `/mcp` endpoint (mounted by `create_app()`, `core/app/main.py:236`), same JSON-RPC-over-HTTP handshake as `core/tests/test_mcp_routes.py` (`initialize` → `notifications/initialized` → `tools/list`/`tools/call`, SSE `data: ` line parsing).
+- Produces: `McpLoopbackSession(mcp_token, http_client=None)` with `async list_tools() -> list[dict]`, `async call_tool(name, arguments) -> ToolCallResult`, `async aclose()`; `McpLoopbackError`; `ALLOWED_MCP_TOOL_NAMES: frozenset[str]`. Consumed by Task 5's `routes.py`.
 
-- [ ] **Step 1: Append the E2E test**
+- [ ] **Step 1: Write the failing tests**
 
-Append to `shell/e2e/app-builder.spec.ts` (existing test stays as-is above
-this):
+Create `core/tests/test_copilot_mcp_loopback.py`, reusing the exact app-construction pattern from `core/tests/test_mcp_routes.py` (fresh `create_app()` + `sqlite` in-memory + `CORE_AUTH_MODE=mock`), but driving the loopback client through an ASGI-transport `httpx.AsyncClient` instead of the raw `TestClient`:
 
-```ts
+```python
+# SPDX-License-Identifier: Apache-2.0
+import httpx
+import pytest
 
-test("undo/redo: adding a widget can be undone and redone", async ({ page }) => {
-  await mockCore(page);
-  await page.goto("/");
+from app import db
+from app.copilot.mcp_loopback import ALLOWED_MCP_TOOL_NAMES, McpLoopbackError, McpLoopbackSession
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 
-  await page.getByRole("button", { name: "Nouveau" }).click();
-  const dialog = page.getByRole("dialog", { name: "Nouvel élément" });
-  await dialog.getByLabel("Type").selectOption("app");
-  await page.getByLabel("Titre").fill("Mon app");
-  await page.getByRole("button", { name: "Créer" }).click();
-  await expect(page).toHaveURL(/\/apps\/9\/edit$/);
 
-  await page.getByRole("button", { name: "Texte" }).click();
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
+@pytest.fixture()
+def app(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_BASE_URL", "http://test")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    application = create_app()
 
-  await page.keyboard.press("Control+z");
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Annuler" })).toBeDisabled();
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
 
-  await page.keyboard.press("Control+Shift+z");
-  await expect(page.getByRole("button", { name: /^Sélectionner widget-/ })).toBeVisible();
-});
+    application.dependency_overrides[db.get_session] = override_session
+    return application
+
+
+@pytest.mark.asyncio
+async def test_list_tools_returns_full_catalog(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            tools = await session.list_tools()
+        finally:
+            await session.aclose()
+        names = {t["name"] for t in tools}
+        assert ALLOWED_MCP_TOOL_NAMES <= names  # every allowlisted tool really exists server-side
+
+
+@pytest.mark.asyncio
+async def test_call_tool_returns_text_result(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            result = await session.call_tool("whoami", {})
+        finally:
+            await session.aclose()
+        assert result.is_error is False
+        assert "mockuser" in result.text
+
+
+@pytest.mark.asyncio
+async def test_call_tool_surfaces_tool_execution_error_without_raising(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            # get_item on a nonexistent id: the tool itself raises, MCP
+            # reports it as a tool-level error (isError), not a protocol
+            # failure — must not raise McpLoopbackError.
+            result = await session.call_tool("get_item", {"itemId": "does-not-exist"})
+        finally:
+            await session.aclose()
+        assert result.is_error is True
+
+
+@pytest.mark.asyncio
+async def test_call_tool_raises_on_unknown_tool_name(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            with pytest.raises(McpLoopbackError):
+                await session.call_tool("not_a_real_tool", {})
+        finally:
+            await session.aclose()
 ```
 
-- [ ] **Step 2: Run it**
+Note: check `core/pyproject.toml`'s `[tool.pytest.ini_options]` for `asyncio_mode` — if it's not `"auto"`, add `@pytest.mark.asyncio` is already present above and confirm `pytest-asyncio` is a dependency (it must be, since `core/tests/test_mcp_routes.py`'s own async paths and the app's async route handlers are already tested elsewhere in this suite — if `uv run pytest` errors with "async def functions are not natively supported", check `core/pyproject.toml` for the marker registration and add `asyncio_mode = "auto"` under `[tool.pytest.ini_options]` only if it's genuinely missing, matching whatever convention the rest of the suite already uses).
 
-Run: `cd shell && npx playwright test e2e/app-builder.spec.ts`
-Expected: PASS (2 tests — the pre-existing one and this new one).
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 3: Commit**
+Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.copilot.mcp_loopback'`.
+
+- [ ] **Step 3: Implement**
+
+Create `core/app/copilot/tools_allowlist.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Ensemble fermé des outils MCP que le copilote peut invoquer en loopback
+(SP-20). Exclut délibérément save_app_config/set_sharing : le copilote
+édite la config déjà ouverte dans le builder uniquement via des opérations
+côté client (clientOps, jamais écrites en base pendant la conversation) ;
+il peut CRÉER un nouvel item (create_item/create_form_app) via les mêmes
+outils qu'un agent MCP externe, jamais muter un item existant directement."""
+
+ALLOWED_MCP_TOOL_NAMES = frozenset({
+    "search_catalog",
+    "list_items",
+    "explain_dataset",
+    "run_analytics_query",
+    "create_item",
+    "create_form_app",
+})
+```
+
+Create `core/app/copilot/mcp_loopback.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Client de rappel vers le serveur /mcp existant, pour la boucle
+d'outils du copilote (SP-20) — un vrai appel réseau (HTTP), pas une
+logique d'outil dupliquée. Réutilise le même protocole JSON-RPC-sur-HTTP
+déjà exercé par core/tests/test_mcp_routes.py (initialize ->
+notifications/initialized -> tools/list ou tools/call, réponse en SSE) :
+un httpx.AsyncClient brut suffit, pas besoin du SDK client `mcp` (deuxième
+dépendance client pour un seul appelant)."""
+import json
+import os
+import uuid
+
+import httpx
+
+
+class McpLoopbackError(Exception):
+    """Échec au niveau du protocole (poignée de main, HTTP, réponse
+    malformée) — distinct d'un outil qui s'exécute et lève une erreur
+    métier, renvoyée comme ToolCallResult(is_error=True) pour que le LLM
+    la voie et puisse réagir, plutôt que de faire planter tout le tour."""
+
+
+class ToolCallResult:
+    def __init__(self, text: str, is_error: bool):
+        self.text = text
+        self.is_error = is_error
+
+
+class McpLoopbackSession:
+    """Une session par requête POST /copilot/turn — la poignée de main
+    n'a lieu qu'une fois, paresseusement, au premier appel."""
+
+    def __init__(self, mcp_token: str, *, http_client: httpx.AsyncClient | None = None):
+        self._mcp_token = mcp_token
+        self._client = http_client or httpx.AsyncClient(
+            base_url=os.environ["CORE_BASE_URL"], timeout=15.0,
+        )
+        self._owns_client = http_client is None
+        self._session_id: str | None = None
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {self._mcp_token}",
+        }
+        if self._session_id:
+            headers["mcp-session-id"] = self._session_id
+        return headers
+
+    async def _ensure_initialized(self) -> None:
+        if self._session_id:
+            return
+        response = await self._client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18", "capabilities": {},
+                    "clientInfo": {"name": "geostudio-copilot", "version": "0"},
+                },
+            },
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP initialize failed: {response.status_code}")
+        session_id = response.headers.get("mcp-session-id")
+        if not session_id:
+            raise McpLoopbackError("MCP initialize did not return a session id")
+        self._session_id = session_id
+        notify = await self._client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+            headers=self._headers(),
+        )
+        if notify.status_code != 202:
+            raise McpLoopbackError(f"MCP notifications/initialized failed: {notify.status_code}")
+
+    def _parse_sse(self, response: httpx.Response) -> dict:
+        for line in response.text.splitlines():
+            if line.startswith("data: "):
+                return json.loads(line.removeprefix("data: "))
+        raise McpLoopbackError("no SSE data line in MCP response")
+
+    async def list_tools(self) -> list[dict]:
+        await self._ensure_initialized()
+        response = await self._client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/list", "params": {}},
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP tools/list failed: {response.status_code}")
+        payload = self._parse_sse(response)
+        if "error" in payload:
+            raise McpLoopbackError(f"MCP tools/list error: {payload['error']}")
+        return payload["result"]["tools"]
+
+    async def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
+        await self._ensure_initialized()
+        response = await self._client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            },
+            headers=self._headers(),
+        )
+        if response.status_code == 401:
+            raise McpLoopbackError("MCP token rejected (expired or wrong audience)")
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP tools/call failed: {response.status_code}")
+        payload = self._parse_sse(response)
+        if "error" in payload:
+            # Erreur JSON-RPC de protocole (ex. nom d'outil inconnu) —
+            # distincte d'un outil qui s'exécute et lève, cf. isError ci-dessous.
+            raise McpLoopbackError(f"MCP tools/call error: {payload['error']}")
+        result = payload["result"]
+        content = result.get("content") or []
+        text = content[0]["text"] if content else ""
+        return ToolCallResult(text=text, is_error=bool(result.get("isError", False)))
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
+Expected: PASS (all 4). If `test_call_tool_surfaces_tool_execution_error_without_raising` fails because `get_item` isn't a real registered tool name, run `uv run pytest tests/test_copilot_mcp_loopback.py::test_list_tools_returns_full_catalog -v -s` and print `tools` to find any real registered tool that raises a `ValueError`-style "not found" on a bad id (check `core/app/mcp/tools.py` for one — `explain_dataset`/`run_analytics_query` on a bad `datasetId` are documented in SP-14o/SP-16b's own text as doing exactly this), and substitute that tool name/argument instead of `get_item`.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add shell/e2e/app-builder.spec.ts
-git commit -m "test(e2e): undo/redo an added widget in the app builder (SP-19)"
+git add core/app/copilot/mcp_loopback.py core/app/copilot/tools_allowlist.py core/tests/test_copilot_mcp_loopback.py
+git commit -m "$(cat <<'EOF'
+feat(core): client de rappel MCP + allowlist d'outils pour le copilote (SP-20)
+
+McpLoopbackSession parle JSON-RPC-sur-HTTP à /mcp, le même protocole déjà
+exercé par test_mcp_routes.py — un vrai appel réseau, aucune logique
+d'outil dupliquée. ALLOWED_MCP_TOOL_NAMES fixe les 6 outils accessibles au
+copilote (jamais save_app_config/set_sharing).
+EOF
+)"
 ```
 
 ---
 
-## Self-review notes
-
-- **Spec coverage:** §3 architecture (single stack behind the one existing
-  commit point) → Tasks 2–3. §3 granularity (corrected 2026-08-15, centralized
-  debounce) → Task 2's `COALESCE_WINDOW_MS` mechanism, verified in Task 3's
-  "collapses into one undo step" and "flushes immediately on undo" tests. §5
-  risk (single-commit-point audit) → resolved by construction: every panel
-  reads from the same `AppBuilderPage.tsx` `setDraft` (confirmed by reading
-  `PropsPanel`/`ActionsPanel`/`DataSourcePanel`/`ThemePanel`/
-  `VariablesPanel`/`NavigationPanel`/`GridCanvas`/every widget's `PropsPanel`
-  before writing this plan — none of them hold a second, parallel path to
-  the config), so no per-panel fix task is needed. §6 acceptance criteria:
-  (1) any panel's committed mutation undoable → Task 3 GridCanvas test +
-  Task 4 E2E; (2) one step per gesture, not per intermediate event → Task 2
-  burst test + Task 3 visibleWhen burst test; (3) 50-step cap → Task 1; (4)
-  `Ctrl+Z` ignored while typing → Task 3's dedicated test.
-- **Placeholder scan:** none — every step has complete, real code.
-- **Type consistency:** `UndoStack<T>`/`pushUndo`/`applyUndo`/`applyRedo`
-  used identically in Task 1 (definition) and Task 2 (`useUndoableDraft`'s
-  only consumer). `UndoableDraft`'s five fields (`draft`, `setDraft`,
-  `seedDraft`, `undo`, `redo`, `canUndo`, `canRedo`) used identically in Task
-  2 (definition) and Task 3 (destructured in `AppBuilderPage.tsx`, same
-  names, no renaming).
