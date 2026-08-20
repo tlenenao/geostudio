@@ -8,7 +8,11 @@ const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
 
 const RESOURCE_TYPES: [string, string][] = [
-  ["", "Tous"], ["app", "Application"], ["dashboard", "Tableau de bord"], ["map", "Carte"], ["site", "Site"],
+  ["", "Tous"],
+  ["app", "Application"],
+  ["dashboard", "Tableau de bord"],
+  ["map", "Carte"],
+  ["site", "Site"],
 ];
 
 export function registerGalleryWidget(): void {
@@ -27,23 +31,49 @@ export function registerGalleryWidget(): void {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       return (
         <div className="flex flex-col gap-2 text-sm">
-          <label className={labelCls}>Type d'élément
-            <select aria-label="Type d'élément" className={inputCls}
-              value={String(props.type ?? "")} onChange={(e) => set({ type: e.target.value })}>
-              {RESOURCE_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <label className={labelCls}>
+            Type d'élément
+            <select
+              aria-label="Type d'élément"
+              className={inputCls}
+              value={String(props.type ?? "")}
+              onChange={(e) => set({ type: e.target.value })}
+            >
+              {RESOURCE_TYPES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
             </select>
           </label>
-          <label className={labelCls}>Tag
-            <input aria-label="Tag" className={inputCls}
-              value={String(props.tag ?? "")} onChange={(e) => set({ tag: e.target.value })} />
+          <label className={labelCls}>
+            Tag
+            <input
+              aria-label="Tag"
+              className={inputCls}
+              value={String(props.tag ?? "")}
+              onChange={(e) => set({ tag: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Limite
-            <input aria-label="Limite" type="number" className={inputCls}
-              value={String(props.limit ?? 12)} onChange={(e) => set({ limit: Number(e.target.value) })} />
+          <label className={labelCls}>
+            Limite
+            <input
+              aria-label="Limite"
+              type="number"
+              className={inputCls}
+              value={String(props.limit ?? 12)}
+              onChange={(e) => set({ limit: Number(e.target.value) })}
+            />
           </label>
-          <label className={labelCls}>Colonnes
-            <input aria-label="Colonnes" type="number" className={inputCls}
-              value={String(props.columns ?? 3)} onChange={(e) => set({ columns: Number(e.target.value) })} />
+          <label className={labelCls}>
+            Colonnes
+            <input
+              aria-label="Colonnes"
+              type="number"
+              className={inputCls}
+              value={String(props.columns ?? 3)}
+              onChange={(e) => set({ columns: Number(e.target.value) })}
+            />
           </label>
         </div>
       );
@@ -56,21 +86,34 @@ export function registerGalleryWidget(): void {
       const columns = Number(props.columns ?? 3);
       const query = useQuery({
         queryKey: ["public-gallery", type, tag, limit],
-        queryFn: () => client.listPublicItems({ type: type as ResourceType | undefined, tag, page: 1, pageSize: limit }),
+        queryFn: () =>
+          client.listPublicItems({
+            type: type as ResourceType | undefined,
+            tag,
+            page: 1,
+            pageSize: limit,
+          }),
       });
 
       if (query.isLoading) {
         return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       }
       if (query.isError) {
-        return <p role="alert" className="text-xs text-red-600">Erreur de chargement</p>;
+        return (
+          <p role="alert" className="text-xs text-red-600">
+            Erreur de chargement
+          </p>
+        );
       }
       const items = query.data?.items ?? [];
       if (items.length === 0) {
         return <p className="text-sm text-[var(--gs-color-muted)]">Aucun élément publié</p>;
       }
       return (
-        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        <div
+          className="grid gap-4"
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        >
           {items.map((item) => (
             <a
               key={item.pk}
@@ -88,7 +131,10 @@ export function registerGalleryWidget(): void {
                 {(item.keywords ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {(item.keywords ?? []).map((k) => (
-                      <span key={k} className="rounded-full bg-[var(--gs-color-background)] px-2 py-0.5 text-[10px] text-[var(--gs-color-muted)]">
+                      <span
+                        key={k}
+                        className="rounded-full bg-[var(--gs-color-background)] px-2 py-0.5 text-[10px] text-[var(--gs-color-muted)]"
+                      >
                         {k}
                       </span>
                     ))}

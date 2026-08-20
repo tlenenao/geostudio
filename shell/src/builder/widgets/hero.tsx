@@ -22,7 +22,14 @@ export function registerHeroWidget(): void {
   registerWidget({
     type: "hero",
     label: "Hero",
-    defaultProps: { title: "Titre", subtitle: "", backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left" },
+    defaultProps: {
+      title: "Titre",
+      subtitle: "",
+      backgroundImageUrl: "",
+      ctaLabel: "",
+      ctaHref: "",
+      align: "left",
+    },
     defaultSize: { w: 12, h: 3 },
     configSchema: [
       { name: "title", type: "string", label: "Titre", default: "Titre" },
@@ -37,29 +44,59 @@ export function registerHeroWidget(): void {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       return (
         <div className="flex flex-col gap-2 text-sm">
-          <label className={labelCls}>Titre du bandeau
-            <input aria-label="Titre du bandeau" className={inputCls}
-              value={String(props.title ?? "")} onChange={(e) => set({ title: e.target.value })} />
+          <label className={labelCls}>
+            Titre du bandeau
+            <input
+              aria-label="Titre du bandeau"
+              className={inputCls}
+              value={String(props.title ?? "")}
+              onChange={(e) => set({ title: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Sous-titre
-            <input aria-label="Sous-titre" className={inputCls}
-              value={String(props.subtitle ?? "")} onChange={(e) => set({ subtitle: e.target.value })} />
+          <label className={labelCls}>
+            Sous-titre
+            <input
+              aria-label="Sous-titre"
+              className={inputCls}
+              value={String(props.subtitle ?? "")}
+              onChange={(e) => set({ subtitle: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>URL de l'image de fond
-            <input aria-label="URL de l'image de fond" className={inputCls}
-              value={String(props.backgroundImageUrl ?? "")} onChange={(e) => set({ backgroundImageUrl: e.target.value })} />
+          <label className={labelCls}>
+            URL de l'image de fond
+            <input
+              aria-label="URL de l'image de fond"
+              className={inputCls}
+              value={String(props.backgroundImageUrl ?? "")}
+              onChange={(e) => set({ backgroundImageUrl: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Libellé du CTA
-            <input aria-label="Libellé du CTA" className={inputCls}
-              value={String(props.ctaLabel ?? "")} onChange={(e) => set({ ctaLabel: e.target.value })} />
+          <label className={labelCls}>
+            Libellé du CTA
+            <input
+              aria-label="Libellé du CTA"
+              className={inputCls}
+              value={String(props.ctaLabel ?? "")}
+              onChange={(e) => set({ ctaLabel: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Lien du CTA
-            <input aria-label="Lien du CTA" className={inputCls}
-              value={String(props.ctaHref ?? "")} onChange={(e) => set({ ctaHref: e.target.value })} />
+          <label className={labelCls}>
+            Lien du CTA
+            <input
+              aria-label="Lien du CTA"
+              className={inputCls}
+              value={String(props.ctaHref ?? "")}
+              onChange={(e) => set({ ctaHref: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Alignement
-            <select aria-label="Alignement" className={inputCls}
-              value={String(props.align ?? "left")} onChange={(e) => set({ align: e.target.value })}>
+          <label className={labelCls}>
+            Alignement
+            <select
+              aria-label="Alignement"
+              className={inputCls}
+              value={String(props.align ?? "left")}
+              onChange={(e) => set({ align: e.target.value })}
+            >
               <option value="left">Gauche</option>
               <option value="center">Centre</option>
             </select>
@@ -75,7 +112,11 @@ export function registerHeroWidget(): void {
           className={`flex h-full w-full flex-col justify-center gap-3 rounded-[var(--gs-radius)] p-8 text-white ${align}`}
           style={
             backgroundImageUrl
-              ? { backgroundImage: `url(${backgroundImageUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
+              ? {
+                  backgroundImage: `url(${backgroundImageUrl})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }
               : { backgroundColor: "var(--gs-color-primary)" }
           }
         >

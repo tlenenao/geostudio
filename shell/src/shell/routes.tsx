@@ -39,15 +39,19 @@ function useOpenItem() {
   const navigate = useNavigate();
   const client = useItemClient();
   const [openError, setOpenError] = useState(false);
-  const onOpenItem = async (pk: string, type: ResourceType) => {
+  const openItemAsync = async (pk: string, type: ResourceType) => {
     if (type === "bookmark") {
       try {
         const bookmark = await client.getBookmarkConfig(pk);
         const ctx = encodeAnalyticsContext({
-          timeRange: bookmark.timeRange, extent: bookmark.extent, crossFilter: bookmark.crossFilter,
+          timeRange: bookmark.timeRange,
+          extent: bookmark.extent,
+          crossFilter: bookmark.crossFilter,
         });
         setOpenError(false);
-        navigate(`/apps/${encodeURIComponent(bookmark.appId)}/${encodeURIComponent(bookmark.pageId)}?ctx=${ctx}`);
+        navigate(
+          `/apps/${encodeURIComponent(bookmark.appId)}/${encodeURIComponent(bookmark.pageId)}?ctx=${ctx}`,
+        );
       } catch {
         setOpenError(true);
       }
@@ -68,8 +72,17 @@ function useOpenItem() {
       navigate(`/items/${pk}`);
       return;
     }
-    navigate(type === "map" ? `/maps/${pk}` : type === "dataset" ? `/datasets/${pk}/edit` : `/apps/${pk}/edit`);
+    navigate(
+      type === "map"
+        ? `/maps/${pk}`
+        : type === "dataset"
+          ? `/datasets/${pk}/edit`
+          : `/apps/${pk}/edit`,
+    );
   };
+  // Adaptateur synchrone : CatalogPage attend `(pk, type) => void`, pas une
+  // Promise (les 3 call sites la passent directement comme handler).
+  const onOpenItem = (pk: string, type: ResourceType) => void openItemAsync(pk, type);
   return { onOpenItem, openError };
 }
 
@@ -108,12 +121,17 @@ function ItemDetailRoute() {
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) => navigate(
-        type === "map" ? `/maps/${pk}` :
-        type === "dataset" ? `/datasets/${pk}/edit` :
-        type === "pipeline" ? `/pipelines/${pk}/edit` :
-        `/apps/${pk}/edit`
-      )}
+      onOpenEditor={(type) =>
+        navigate(
+          type === "map"
+            ? `/maps/${pk}`
+            : type === "dataset"
+              ? `/datasets/${pk}/edit`
+              : type === "pipeline"
+                ? `/pipelines/${pk}/edit`
+                : `/apps/${pk}/edit`,
+        )
+      }
     />
   );
 }
@@ -223,7 +241,10 @@ export function AppRoutes() {
         <Route path="/pipelines/new" element={<PipelineNewRoute />} />
         <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
         <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
-        <Route path="/datasets/visual-query/:pipelinePk/edit" element={<VisualQueryWizardEditRoute />} />
+        <Route
+          path="/datasets/visual-query/:pipelinePk/edit"
+          element={<VisualQueryWizardEditRoute />}
+        />
         <Route path="/reports" element={<ReportsRoute />} />
         <Route path="/reports/new" element={<ReportNewRoute />} />
         <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />

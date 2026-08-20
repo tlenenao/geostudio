@@ -124,7 +124,11 @@ test("edits terrain and camera, then saves both", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
   const saved = saveMapConfig.mock.calls[0][1];
-  expect(saved.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1 });
+  expect(saved.terrain).toEqual({
+    tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+    encoding: "terrarium",
+    exaggeration: 1,
+  });
   expect(saved.view.pitch).toBe(40);
   expect(saved.view.bearing).toBe(200);
 });
@@ -132,7 +136,9 @@ test("edits terrain and camera, then saves both", async () => {
 test("the camera reset button zeroes pitch and bearing in the saved view", async () => {
   const saveMapConfig = vi.fn().mockResolvedValue(undefined);
   renderEditor({
-    getMapConfig: vi.fn().mockResolvedValue({ ...config, view: { ...config.view, pitch: 40, bearing: 200 } }),
+    getMapConfig: vi
+      .fn()
+      .mockResolvedValue({ ...config, view: { ...config.view, pitch: 40, bearing: 200 } }),
     saveMapConfig,
     listLayerSources: vi.fn().mockResolvedValue([]),
   });
@@ -162,7 +168,11 @@ test("exportRender=1 renders a nude chrome (no builder aside/save button) and ma
     {
       getMapConfig: vi.fn().mockResolvedValue({
         ...config,
-        printLayout: { title: "Carte des communes", showLegend: true, cartouche: "GeoStudio © 2026" },
+        printLayout: {
+          title: "Carte des communes",
+          showLegend: true,
+          cartouche: "GeoStudio © 2026",
+        },
       }),
       listLayerSources: vi.fn().mockResolvedValue([]),
     },

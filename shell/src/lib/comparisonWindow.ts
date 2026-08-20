@@ -31,7 +31,8 @@ export function referenceWindow(
   current: { from: string; to: string },
   mode: ReferenceMode,
 ): { from: string; to: string } {
-  const from = new Date(current.from), to = new Date(current.to);
+  const from = new Date(current.from),
+    to = new Date(current.to);
   if (mode === "sameLastYear") {
     return { from: toISODate(shiftYears(from, -1)), to: toISODate(shiftYears(to, -1)) };
   }
@@ -59,7 +60,18 @@ export function windowedStatisticsSource(
   window: { from: string; to: string },
   query: { groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string },
 ): DataSource {
-  const synthetic: DataSource = { id: originSourceId, type: "statistics", service: "core", layer: "", datasetId, query: {} };
-  const patch = derivePatch(synthetic, { ...analyticsCtx, timeRange: window }, { [datasetId]: dataset });
+  const synthetic: DataSource = {
+    id: originSourceId,
+    type: "statistics",
+    service: "core",
+    layer: "",
+    datasetId,
+    query: {},
+  };
+  const patch = derivePatch(
+    synthetic,
+    { ...analyticsCtx, timeRange: window },
+    { [datasetId]: dataset },
+  );
   return { ...synthetic, query: { ...query, ...patch } };
 }

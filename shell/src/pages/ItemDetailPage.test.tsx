@@ -44,8 +44,15 @@ test("shows 'Ouvrir dans l'éditeur' for a pipeline item and calls onOpenEditor(
   server.use(
     http.get("https://core.test/items/7", () =>
       HttpResponse.json({
-        pk: "7", resourceType: "pipeline", title: "Item 7", abstract: "Abstract 7",
-        owner: "alice", thumbnailUrl: null, date: "2026-01-01T00:00:00Z", configId: null, isPublished: false,
+        pk: "7",
+        resourceType: "pipeline",
+        title: "Item 7",
+        abstract: "Abstract 7",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: false,
       }),
     ),
   );

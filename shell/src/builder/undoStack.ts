@@ -24,7 +24,8 @@ export function pushUndo<T>(stack: UndoStack<T>, snapshot: T): UndoStack<T> {
 // so a following applyRedo can restore it. Returns null when there's
 // nothing to undo (caller keeps whatever state it already has).
 export function applyUndo<T>(
-  stack: UndoStack<T>, current: T,
+  stack: UndoStack<T>,
+  current: T,
 ): { stack: UndoStack<T>; value: T } | null {
   if (stack.past.length === 0) return null;
   const value = stack.past[stack.past.length - 1];
@@ -36,7 +37,8 @@ export function applyUndo<T>(
 // Mirror of applyUndo: pops the oldest `future` entry, pushes `current`
 // back onto `past`.
 export function applyRedo<T>(
-  stack: UndoStack<T>, current: T,
+  stack: UndoStack<T>,
+  current: T,
 ): { stack: UndoStack<T>; value: T } | null {
   if (stack.future.length === 0) return null;
   const value = stack.future[0];

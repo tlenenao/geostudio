@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import {
-  applyRedo, applyUndo, createUndoStack, pushUndo, UNDO_STACK_MAX_DEPTH,
-} from "./undoStack";
+import { applyRedo, applyUndo, createUndoStack, pushUndo, UNDO_STACK_MAX_DEPTH } from "./undoStack";
 
 test("a fresh stack has empty past and future", () => {
   const stack = createUndoStack<number>();

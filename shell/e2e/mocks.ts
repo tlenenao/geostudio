@@ -1,8 +1,28 @@
 import type { Page } from "@playwright/test";
 
 const ALL = [
-  { pk: "1", resourceType: "app", title: "Alpha", abstract: "A", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false },
-  { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "B", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false },
+  {
+    pk: "1",
+    resourceType: "app",
+    title: "Alpha",
+    abstract: "A",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: null,
+    isPublished: false,
+  },
+  {
+    pk: "2",
+    resourceType: "dashboard",
+    title: "Beta",
+    abstract: "B",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: null,
+    isPublished: false,
+  },
 ];
 
 const DEFAULT_MAP_CONFIG = {
@@ -32,25 +52,64 @@ export async function mockCore(page: Page) {
   let siteSlug: string | null = null;
   let sitePublished = false;
   const SITE_APP_CONFIG = {
-    version: 1, kind: "site", theme: {}, dataSources: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Bienvenue sur le portail" } },
-    ] },
-    messages: [], pages: [],
+    version: 1,
+    kind: "site",
+    theme: {},
+    dataSources: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        {
+          id: "t1",
+          widget: "text",
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          props: { text: "Bienvenue sur le portail" },
+        },
+      ],
+    },
+    messages: [],
+    pages: [],
   } as const;
 
   // Content widgets (SP-16b) — a second published item, distinct from the
   // site itself, for the Gallery to list and link to.
   const GALLERY_ITEM = {
-    pk: "8", resourceType: "app", title: "Carte des risques", abstract: "Resume des risques",
-    owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: null,
-    isPublished: true, keywords: ["risques"],
+    pk: "8",
+    resourceType: "app",
+    title: "Carte des risques",
+    abstract: "Resume des risques",
+    owner: "mockuser",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: null,
+    isPublished: true,
+    keywords: ["risques"],
   } as const;
   const GALLERY_ITEM_CONFIG = {
-    version: 1, kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Detail de l'article" } },
-    ] },
+    version: 1,
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        {
+          id: "t1",
+          widget: "text",
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          props: { text: "Detail de l'article" },
+        },
+      ],
+    },
   } as const;
 
   await page.route("**/items*", async (route) => {
@@ -72,8 +131,13 @@ export async function mockCore(page: Page) {
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: false,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: false,
       },
     });
   });
@@ -115,7 +179,10 @@ export async function mockCore(page: Page) {
     const body = await route.request().postDataJSON();
     if (body?.config?.kind === "site") {
       siteSlug = body.slug ?? "mon-portail";
-      await route.fulfill({ status: 201, json: { id: "cfg-site", kind: "site", itemId: "site-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-site", kind: "site", itemId: "site-1" },
+      });
     } else if (body?.config?.kind === "map") {
       // Map creation path — return itemId "77" so the test lands on /maps/77.
       await route.fulfill({
@@ -123,7 +190,10 @@ export async function mockCore(page: Page) {
         json: { id: "cfg-1", kind: "map", itemId: "77" },
       });
     } else if (body?.config?.kind === "dataset") {
-      await route.fulfill({ status: 201, json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" },
+      });
     } else {
       // App/dashboard creation path — persist the posted config so a later
       // GET (e.g. opening the editor right after creation) reflects it,
@@ -144,8 +214,15 @@ export async function mockCore(page: Page) {
     }
     await route.fulfill({
       json: {
-        pk: "9", resourceType: "app", title: "Créée", abstract: "", owner: "mockuser",
-        thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: published,
+        pk: "9",
+        resourceType: "app",
+        title: "Créée",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: null,
+        isPublished: published,
       },
     });
   });
@@ -308,9 +385,17 @@ export async function mockCore(page: Page) {
   await page.route("**/collections/parcs", async (route) => {
     await route.fulfill({
       json: {
-        id: "parcs", title: "Parcs", description: "Parcs publics de la ville", tableName: "parcs",
-        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
-        canWrite: false, featureCount: 2,
+        id: "parcs",
+        title: "Parcs",
+        description: "Parcs publics de la ville",
+        tableName: "parcs",
+        isPublic: true,
+        editable: false,
+        geometryType: null,
+        srid: null,
+        pkColumn: "id",
+        canWrite: false,
+        featureCount: 2,
       },
     });
   });
@@ -318,7 +403,9 @@ export async function mockCore(page: Page) {
   await page.route("**/collections/parcs/schema", async (route) => {
     await route.fulfill({
       json: {
-        collection: "parcs", pk: "id", geometry: null,
+        collection: "parcs",
+        pk: "id",
+        geometry: null,
         fields: [{ name: "nom", type: "string", required: true }],
       },
     });
@@ -327,14 +414,24 @@ export async function mockCore(page: Page) {
   // Collection "incidents" — schéma introspecté, permission d'écriture, et
   // CRUD complet avec état en mémoire (pour que la Table reflète les écritures
   // du Formulaire au fil du scénario "déclarer un incident").
-  const incidentRecords = new Map<string, { properties: Record<string, unknown>; geometry: unknown }>();
+  const incidentRecords = new Map<
+    string,
+    { properties: Record<string, unknown>; geometry: unknown }
+  >();
   let nextIncidentId = 1;
 
   await page.route("**/collections/incidents", async (route) => {
     await route.fulfill({
       json: {
-        id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-        isPublic: false, editable: true, geometryType: null, srid: null, pkColumn: "id",
+        id: "incidents",
+        title: "Incidents",
+        description: "",
+        tableName: "incidents",
+        isPublic: false,
+        editable: true,
+        geometryType: null,
+        srid: null,
+        pkColumn: "id",
         canWrite: true,
       },
     });
@@ -343,7 +440,9 @@ export async function mockCore(page: Page) {
   await page.route("**/collections/incidents/schema", async (route) => {
     await route.fulfill({
       json: {
-        collection: "incidents", pk: "id", geometry: null,
+        collection: "incidents",
+        pk: "id",
+        geometry: null,
         fields: [
           { name: "titre", type: "string", required: true, maxLength: 120 },
           { name: "gravite", type: "enum", required: true, values: ["faible", "moyenne", "haute"] },
@@ -359,7 +458,10 @@ export async function mockCore(page: Page) {
         json: {
           type: "FeatureCollection",
           features: [...incidentRecords.entries()].map(([id, r]) => ({
-            type: "Feature", id: Number(id), properties: r.properties, geometry: r.geometry,
+            type: "Feature",
+            id: Number(id),
+            properties: r.properties,
+            geometry: r.geometry,
           })),
         },
       });
@@ -402,9 +504,16 @@ export async function mockCore(page: Page) {
     }
     await route.fulfill({
       json: {
-        pk: "site-1", resourceType: "site", slug: siteSlug, title: "Mon Portail",
-        abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-        configId: null, isPublished: sitePublished,
+        pk: "site-1",
+        resourceType: "site",
+        slug: siteSlug,
+        title: "Mon Portail",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: null,
+        isPublished: sitePublished,
       },
     });
   });
@@ -412,13 +521,22 @@ export async function mockCore(page: Page) {
   // Public consultation by slug — 200 only when published and slug matches,
   // 404 otherwise (never 403 — anonymous access is the point).
   await page.route("https://core.test/public/sites/*", async (route) => {
-    const wanted = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+    const wanted = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").pop() ?? "",
+    );
     if (sitePublished && wanted === siteSlug) {
       await route.fulfill({
         json: {
-          pk: "site-1", resourceType: "site", slug: siteSlug, title: "Mon Portail",
-          abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-          configId: null, isPublished: true,
+          pk: "site-1",
+          resourceType: "site",
+          slug: siteSlug,
+          title: "Mon Portail",
+          abstract: "",
+          owner: "mockuser",
+          thumbnailUrl: null,
+          date: "2026-01-01",
+          configId: null,
+          isPublished: true,
         },
       });
     } else {
@@ -433,7 +551,13 @@ export async function mockCore(page: Page) {
   // not a fixture disconnected from what the test actually saved.
   await page.route("https://core.test/public/configs/by-item/site-1", async (route) => {
     await route.fulfill({
-      json: { id: "cfg-site", itemId: "site-1", kind: "site", version: 1, config: savedConfigs.get("site-1") ?? SITE_APP_CONFIG },
+      json: {
+        id: "cfg-site",
+        itemId: "site-1",
+        kind: "site",
+        version: 1,
+        config: savedConfigs.get("site-1") ?? SITE_APP_CONFIG,
+      },
     });
   });
 

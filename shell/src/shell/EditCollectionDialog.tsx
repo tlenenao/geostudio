@@ -45,14 +45,18 @@ export function EditCollectionDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title={`Éditer ${collection.title}`}>
-      <form onSubmit={submit} className="flex flex-col gap-3">
+      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           Titre
           <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           Description
-          <Input aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Input
+            aria-label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input

@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("a Filtre wired to a variable updates a Texte widget reading it, in the runtime", async ({ page }) => {
+test("a Filtre wired to a variable updates a Texte widget reading it, in the runtime", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

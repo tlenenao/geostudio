@@ -5,8 +5,11 @@ import { useItemClient } from "../../api/ItemClientProvider";
 import type { ReportRunStatus } from "../../api/types";
 
 const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
-  pending: "En attente", running: "En cours", done: "Terminé",
-  error: "Échec", unknown: "Inconnu",
+  pending: "En attente",
+  running: "En cours",
+  done: "Terminé",
+  error: "Échec",
+  unknown: "Inconnu",
 };
 
 // Rythmes de sondage. PipelineRunPanel s'arrête net dès que le run quitte
@@ -53,9 +56,9 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
         if (stopped.current) return;
         setHasError(true);
       }
-      if (!stopped.current) setTimeout(poll, delay);
+      if (!stopped.current) setTimeout(() => void poll(), delay);
     }
-    poll();
+    void poll();
     return () => {
       stopped.current = true;
     };
@@ -78,7 +81,12 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
             <span>{STATUS_LABEL[run.status]}</span>
             <span className="text-slate-400">{new Date(run.createdAt).toLocaleString()}</span>
             {run.resultUrl && (
-              <a href={run.resultUrl} className="text-blue-600 underline" target="_blank" rel="noreferrer">
+              <a
+                href={run.resultUrl}
+                className="text-blue-600 underline"
+                target="_blank"
+                rel="noreferrer"
+              >
                 Télécharger
               </a>
             )}

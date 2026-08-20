@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("a per-breakpoint position is applied by the runtime at the matching viewport", async ({ page }) => {
+test("a per-breakpoint position is applied by the runtime at the matching viewport", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

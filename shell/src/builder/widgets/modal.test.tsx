@@ -8,12 +8,20 @@ import { ActionBus } from "../ActionBus";
 import type { AuthState } from "../../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: true, username: "tanguy",
-  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: true,
+  username: "tanguy",
+  error: null,
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../../auth/useAuth", () => ({ useAuth: () => authState }));
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("declares open/close actions", () => {
   expect(getWidget("modal")!.actions).toEqual(["open", "close"]);
@@ -25,7 +33,10 @@ test("closed by default, opens on the open action, closes on Escape", async () =
   const Modal = getWidget("modal")!.Component;
   render(
     <Modal
-      props={{ title: "Détail", items: [{ id: "c", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Corps" } }] }}
+      props={{
+        title: "Détail",
+        items: [{ id: "c", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Corps" } }],
+      }}
       ctx={{ mode: "runtime", bus, widgetId: "modal1" } as WidgetContext}
     />,
   );
@@ -44,7 +55,12 @@ test("closes on the close action too", async () => {
     { id: "m2", from: "closer", event: "clicked", to: "modal1", action: "close" },
   ]);
   const Modal = getWidget("modal")!.Component;
-  render(<Modal props={{ title: "Détail", items: [] }} ctx={{ mode: "runtime", bus, widgetId: "modal1" } as WidgetContext} />);
+  render(
+    <Modal
+      props={{ title: "Détail", items: [] }}
+      ctx={{ mode: "runtime", bus, widgetId: "modal1" } as WidgetContext}
+    />,
+  );
   bus.emit("opener", "clicked");
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
   bus.emit("closer", "clicked");

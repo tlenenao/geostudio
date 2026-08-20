@@ -16,7 +16,9 @@ test("copilot panel is absent without copilotEnabled", async ({ page }) => {
   await expect(page.getByLabel("Message au copilote")).toHaveCount(0);
 });
 
-test("copilot: explain prompt makes no changes, add-widget prompt adds and is undoable", async ({ page }) => {
+test("copilot: explain prompt makes no changes, add-widget prompt adds and is undoable", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("https://core.test/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, copilotEnabled: true } });

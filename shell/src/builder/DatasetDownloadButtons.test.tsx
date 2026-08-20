@@ -8,7 +8,9 @@ import type { CollectionSchema, ItemClient } from "../api/types";
 import { DatasetDownloadButtons } from "./DatasetDownloadButtons";
 
 const schema: CollectionSchema = {
-  collection: "parcs", pk: "id", geometry: null,
+  collection: "parcs",
+  pk: "id",
+  geometry: null,
   fields: [{ name: "nom", type: "string", required: true }],
 };
 
@@ -31,8 +33,16 @@ function renderButtons(featureCount: number | null, clientOverrides: Partial<Ite
 }
 
 beforeEach(() => {
-  Object.defineProperty(URL, "createObjectURL", { value: vi.fn(() => "blob:mock"), writable: true, configurable: true });
-  Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), writable: true, configurable: true });
+  Object.defineProperty(URL, "createObjectURL", {
+    value: vi.fn(() => "blob:mock"),
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    writable: true,
+    configurable: true,
+  });
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -55,7 +65,11 @@ test("disables the CSV button above the 10000-row cap and shows the explanatory 
   renderButtons(10001);
   const button = await screen.findByRole("button", { name: "Télécharger CSV" });
   expect(button).toBeDisabled();
-  expect(screen.getByText(/trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-15\)/)).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      /trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-15\)/,
+    ),
+  ).toBeInTheDocument();
 });
 
 test("disables the CSV button for an unknown feature count without showing the too-large message", async () => {
@@ -66,7 +80,11 @@ test("disables the CSV button for an unknown feature count without showing the t
 });
 
 test("clicking the CSV button fetches records via the client and triggers a download", async () => {
-  const client = renderButtons(1, { queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "X" }, geometry: null }]) });
+  const client = renderButtons(1, {
+    queryDataSource: vi
+      .fn()
+      .mockResolvedValue([{ id: 1, properties: { nom: "X" }, geometry: null }]),
+  });
   const button = await screen.findByRole("button", { name: "Télécharger CSV" });
   await userEvent.click(button);
   await vi.waitFor(() => expect(client.queryDataSource).toHaveBeenCalled());

@@ -48,7 +48,12 @@ export function styleForPos(pos: Pos): CSSProperties {
 // Move an item within a breakpoint: writes the base position at `lg`, or the
 // per-breakpoint override at md/sm (leaving the base and other breakpoints
 // untouched). Clamps to the grid.
-export function moveItemAt(item: WidgetItem, bp: Breakpoint, dxCells: number, dyCells: number): WidgetItem {
+export function moveItemAt(
+  item: WidgetItem,
+  bp: Breakpoint,
+  dxCells: number,
+  dyCells: number,
+): WidgetItem {
   const cur = posFor(item, bp);
   const x = Math.max(0, Math.min(GRID_COLS - cur.w, cur.x + dxCells));
   const y = Math.max(0, cur.y + dyCells);

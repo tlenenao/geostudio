@@ -54,15 +54,39 @@ afterEach(() => {
 });
 
 const NODES: PipelineNode[] = [
-  { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "Villes" },
-  { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "Écriture" },
+  {
+    id: "r1",
+    kind: "reader",
+    op: "reader.collection",
+    x: 0,
+    y: 0,
+    params: { collectionId: "villes" },
+    title: "Villes",
+  },
+  {
+    id: "w1",
+    kind: "writer",
+    op: "writer.collection",
+    x: 300,
+    y: 0,
+    params: { collectionId: "villes_propres" },
+    title: "Écriture",
+  },
 ];
 const EDGES: PipelineEdge[] = [{ id: "e1", from: "r1", to: "w1" }];
 
 test("renders one labeled element per node", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
   );
   expect(screen.getByText("Villes")).toBeInTheDocument();
   expect(screen.getByText("Écriture")).toBeInTheDocument();
@@ -71,8 +95,16 @@ test("renders one labeled element per node", () => {
 test("clicking a node calls onSelectNode with its id", () => {
   const onSelectNode = vi.fn();
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={onSelectNode}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={onSelectNode}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
   );
   fireEvent.click(screen.getByText("Villes"));
   expect(onSelectNode).toHaveBeenCalledWith("r1");
@@ -81,8 +113,16 @@ test("clicking a node calls onSelectNode with its id", () => {
 test("the edge's insert button is present and triggers onInsertOnEdge with the edge id and a chosen op", () => {
   const onInsertOnEdge = vi.fn();
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={onInsertOnEdge} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={onInsertOnEdge}
+      opsCatalog={{}}
+    />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Filtrer" }));
@@ -91,8 +131,16 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
 
 test("the edge insertion menu offers the 5 spatial transform ops", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   for (const label of ["Buffer", "Reprojeter", "Intersection", "Compter dans", "Agréger H3"]) {
@@ -103,7 +151,11 @@ test("the edge insertion menu offers the 5 spatial transform ops", () => {
 const BINARY_CATALOG: PipelineOpsCatalog = {
   "reader.collection": { kind: "reader", paramsSchema: { properties: {} } },
   "writer.collection": { kind: "writer", paramsSchema: { properties: {} } },
-  "transform.join": { kind: "transform", paramsSchema: { properties: {} }, acceptsSecondaryInput: true },
+  "transform.join": {
+    kind: "transform",
+    paramsSchema: { properties: {} },
+    acceptsSecondaryInput: true,
+  },
 };
 
 test("a node whose op accepts a secondary input renders a second target handle", () => {
@@ -112,8 +164,16 @@ test("a node whose op accepts a secondary input renders a second target handle",
     { id: "t1", kind: "transform", op: "transform.join", x: 300, y: 0, params: {}, title: "J" },
   ];
   render(
-    <PipelineCanvas nodes={nodes} edges={[]} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={BINARY_CATALOG} />,
+    <PipelineCanvas
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={BINARY_CATALOG}
+    />,
   );
   const joinNodeEl = screen.getByText("J").closest(".react-flow__node")!;
   expect(joinNodeEl.querySelectorAll(".react-flow__handle").length).toBe(3); // primary target + secondary target + source
@@ -121,8 +181,16 @@ test("a node whose op accepts a secondary input renders a second target handle",
 
 test("a node whose op does not accept a secondary input renders only one target handle", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
   );
   const readerNodeEl = screen.getByText("Villes").closest(".react-flow__node")!;
   expect(readerNodeEl.querySelectorAll(".react-flow__handle").length).toBe(2); // target + source
@@ -130,8 +198,16 @@ test("a node whose op does not accept a secondary input renders only one target 
 
 test("the edge insertion menu offers Fusionner (transform.merge)", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}} />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
   expect(screen.getByRole("menuitem", { name: "Fusionner" })).toBeInTheDocument();
@@ -139,27 +215,54 @@ test("the edge insertion menu offers Fusionner (transform.merge)", () => {
 
 test("a node present in nodeStats shows its row count as a badge", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
-      nodeStats={{ r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 } }} runStatus="running" />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      nodeStats={{ r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 } }}
+      runStatus="running"
+    />,
   );
   expect(screen.getByText("42")).toBeInTheDocument();
 });
 
 test("the first not-yet-completed node in topological order shows a spinner while running", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
-      nodeStats={{}} runStatus="running" />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      nodeStats={{}}
+      runStatus="running"
+    />,
   );
   expect(screen.getByRole("status", { name: "Exécution en cours" })).toBeInTheDocument();
 });
 
 test("no spinner is shown once the run is no longer 'running'", () => {
   render(
-    <PipelineCanvas nodes={NODES} edges={EDGES} selectedNodeId={null} onSelectNode={vi.fn()}
-      onNodesChange={vi.fn()} onEdgesChange={vi.fn()} onInsertOnEdge={vi.fn()} opsCatalog={{}}
-      nodeStats={{}} runStatus="succeeded" />,
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      nodeStats={{}}
+      runStatus="succeeded"
+    />,
   );
   expect(screen.queryByRole("status", { name: "Exécution en cours" })).not.toBeInTheDocument();
 });

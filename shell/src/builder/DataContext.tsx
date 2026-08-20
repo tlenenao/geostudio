@@ -12,7 +12,13 @@ export const DatasetsContext = createContext<Record<string, DatasetConfig>>({});
 const DataStatesContext = createContext<Record<string, DataSourceState>>({});
 const SetFilterContext = createContext<SetFilter>(() => {});
 
-export function DataProvider({ sources, children }: { sources: DataSource[]; children: ReactNode }) {
+export function DataProvider({
+  sources,
+  children,
+}: {
+  sources: DataSource[];
+  children: ReactNode;
+}) {
   const client = useItemClient();
   const analyticsCtx = useAnalyticsContext();
   const [filters, setFilters] = useState<Record<string, Record<string, unknown>>>({});
@@ -24,9 +30,14 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
   // — same queryKey ("dataset", pk) as useDatasetConfig() elsewhere, so React
   // Query dedups the fetch, and getDatasetConfig() itself dedups further via
   // itemClient's internal resolveDataset cache.
-  const datasetIds = [...new Set(sources.map((s) => s.datasetId).filter((id): id is string => Boolean(id)))];
+  const datasetIds = [
+    ...new Set(sources.map((s) => s.datasetId).filter((id): id is string => Boolean(id))),
+  ];
   const datasetResults = useQueries({
-    queries: datasetIds.map((id) => ({ queryKey: ["dataset", id], queryFn: () => client.getDatasetConfig(id) })),
+    queries: datasetIds.map((id) => ({
+      queryKey: ["dataset", id],
+      queryFn: () => client.getDatasetConfig(id),
+    })),
   });
   const datasets: Record<string, DatasetConfig> = {};
   datasetIds.forEach((id, i) => {
@@ -37,13 +48,20 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
   // Resolve the primary-key column name for every distinct collection behind
   // those datasets, so table/map widgets can cross-filter by pk without
   // fetching a schema themselves (they only read ctx.data.pkColumn).
-  const collectionIds = [...new Set(
-    Object.values(datasets)
-      .filter((d): d is Extract<DatasetConfig, { source: "collection" }> => d.source === "collection")
-      .map((d) => d.collectionId),
-  )];
+  const collectionIds = [
+    ...new Set(
+      Object.values(datasets)
+        .filter(
+          (d): d is Extract<DatasetConfig, { source: "collection" }> => d.source === "collection",
+        )
+        .map((d) => d.collectionId),
+    ),
+  ];
   const schemaResults = useQueries({
-    queries: collectionIds.map((id) => ({ queryKey: ["collection-schema", id], queryFn: () => client.getCollectionSchema(id) })),
+    queries: collectionIds.map((id) => ({
+      queryKey: ["collection-schema", id],
+      queryFn: () => client.getCollectionSchema(id),
+    })),
   });
   const pkByCollection: Record<string, string> = {};
   const hasGeometryByCollection: Record<string, boolean> = {};
@@ -76,7 +94,9 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
     const merged = mergedQueryFor(s);
     const dataset = s.datasetId ? datasets[s.datasetId] : undefined;
     const hasGeometry = dataset
-      ? (dataset.source === "arcgis" ? true : (hasGeometryByCollection[dataset.collectionId] ?? false))
+      ? dataset.source === "arcgis"
+        ? true
+        : (hasGeometryByCollection[dataset.collectionId] ?? false)
       : false;
     states[s.id] = {
       loading: r.isLoading,
@@ -85,7 +105,10 @@ export function DataProvider({ sources, children }: { sources: DataSource[]; chi
       layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,
-      pkColumn: dataset && dataset.source === "collection" ? pkByCollection[dataset.collectionId] : undefined,
+      pkColumn:
+        dataset && dataset.source === "collection"
+          ? pkByCollection[dataset.collectionId]
+          : undefined,
       resolvedSource: merged,
       hasGeometry,
     };

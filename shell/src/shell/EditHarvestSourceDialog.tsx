@@ -7,8 +7,14 @@ import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
 
 export function EditHarvestSourceDialog({
-  source, open, onClose,
-}: { source: HarvestSource; open: boolean; onClose: () => void }) {
+  source,
+  open,
+  onClose,
+}: {
+  source: HarvestSource;
+  open: boolean;
+  onClose: () => void;
+}) {
   const updateSource = useUpdateHarvestSource(source.id);
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
@@ -35,7 +41,7 @@ export function EditHarvestSourceDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title={`Éditer ${source.url}`}>
-      <form onSubmit={submit} className="flex flex-col gap-3">
+      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           URL
           <Input aria-label="URL" value={url} onChange={(e) => setUrl(e.target.value)} />

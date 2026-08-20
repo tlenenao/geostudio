@@ -30,8 +30,14 @@ function stringifyVariable(value: unknown): string {
   return String(value);
 }
 
-function interpolate(text: string, record: DataRecord | undefined, variables: Record<string, unknown>): string {
-  let out = text.replace(/\{\{\s*var:([\w.]+)\s*\}\}/g, (_, name: string) => stringifyVariable(variables[name]));
+function interpolate(
+  text: string,
+  record: DataRecord | undefined,
+  variables: Record<string, unknown>,
+): string {
+  let out = text.replace(/\{\{\s*var:([\w.]+)\s*\}\}/g, (_, name: string) =>
+    stringifyVariable(variables[name]),
+  );
   if (record) {
     out = out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
       const v = record.properties[key];
@@ -68,7 +74,10 @@ export function registerBuiltinWidgets(): void {
           dataSources={dataSources}
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-        <p className="text-[10px] text-slate-400">Utilisez {"{{champ}}"} pour insérer une valeur de la source liée, ou {"{{var:nom}}"} pour une variable.</p>
+        <p className="text-[10px] text-slate-400">
+          Utilisez {"{{champ}}"} pour insérer une valeur de la source liée, ou {"{{var:nom}}"} pour
+          une variable.
+        </p>
       </div>
     ),
     Component: ({ props, ctx }) => {
@@ -111,7 +120,11 @@ export function registerBuiltinWidgets(): void {
     ),
     Component: ({ props }) =>
       props.src ? (
-        <img className="h-full w-full object-cover" src={String(props.src)} alt={String(props.alt ?? "")} />
+        <img
+          className="h-full w-full object-cover"
+          src={String(props.src)}
+          alt={String(props.alt ?? "")}
+        />
       ) : (
         <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
           Image

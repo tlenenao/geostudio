@@ -7,17 +7,27 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CollectionAdmin, ItemClient, PipelinePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { VisualQueryWizardPage } from "./VisualQueryWizardPage";
-import { compileVisualQueryToPipeline, VisualQueryState } from "../builder/visualQuery/compilePipeline";
+import {
+  compileVisualQueryToPipeline,
+  VisualQueryState,
+} from "../builder/visualQuery/compilePipeline";
 
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({
-    isLoading: false, isAuthenticated: true, username: "alice",
-    getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(), error: null,
+    isLoading: false,
+    isAuthenticated: true,
+    username: "alice",
+    getAccessToken: () => "t",
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    error: null,
   }),
 }));
 
 const BASE_SCHEMA = {
-  collection: "incidents", pk: "id", geometry: null,
+  collection: "incidents",
+  pk: "id",
+  geometry: null,
   fields: [{ name: "commune", type: "string" as const, required: true }],
 };
 
@@ -26,9 +36,18 @@ const BASE_SCHEMA = {
 // convention que CollectionParamSelect.test.tsx).
 const COLLECTIONS: CollectionAdmin[] = [
   {
-    id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-    isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id",
-    canWrite: true, featureCount: 10, owner: "alice",
+    id: "incidents",
+    title: "Incidents",
+    description: "",
+    tableName: "incidents",
+    isPublic: true,
+    editable: true,
+    geometryType: null,
+    srid: null,
+    pkColumn: "id",
+    canWrite: true,
+    featureCount: 10,
+    owner: "alice",
   },
 ];
 
@@ -38,12 +57,41 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "query_out" }),
-    createDatasetItem: vi.fn().mockResolvedValue({ pk: "dataset-1", resourceType: "dataset", title: "Ma requête", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false }),
-    createPipelineItem: vi.fn().mockResolvedValue({ pk: "pipeline-1", resourceType: "pipeline", title: "Requête — Ma requête", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-2", isPublished: false }),
+    createDatasetItem: vi.fn().mockResolvedValue({
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "Ma requête",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    }),
+    createPipelineItem: vi.fn().mockResolvedValue({
+      pk: "pipeline-1",
+      resourceType: "pipeline",
+      title: "Requête — Ma requête",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-2",
+      isPublished: false,
+    }),
     savePipelineConfig: vi.fn().mockResolvedValue(undefined),
     saveDatasetConfig: vi.fn().mockResolvedValue(undefined),
     runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
-    getPipelineRuns: vi.fn().mockResolvedValue([{ id: "run-1", status: "succeeded", startedAt: null, finishedAt: null, error: null, nodeStats: {} }]),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "succeeded",
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]),
     ...overrides,
   };
   render(
@@ -51,7 +99,10 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
       <ItemClientProvider client={client as ItemClient}>
         <MemoryRouter initialEntries={["/datasets/visual-query/new"]}>
           <Routes>
-            <Route path="/datasets/visual-query/new" element={<VisualQueryWizardPage pipelinePk={null} initialTitle="Ma requête" />} />
+            <Route
+              path="/datasets/visual-query/new"
+              element={<VisualQueryWizardPage pipelinePk={null} initialTitle="Ma requête" />}
+            />
             <Route path="/datasets/:pk/edit" element={<div>dataset-edit-page</div>} />
           </Routes>
         </MemoryRouter>
@@ -66,11 +117,19 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
 // filtre/jointure/résumé) — réutilisé tel quel comme fixture de
 // décompilation, cf. brief fix I3.
 const EXISTING_STATE: VisualQueryState = {
-  title: "Ma requête", baseCollectionId: "incidents",
-  filters: [], join: null, summary: null, refreshPolicy: null,
+  title: "Ma requête",
+  baseCollectionId: "incidents",
+  filters: [],
+  join: null,
+  summary: null,
+  refreshPolicy: null,
 };
 const EXISTING_PIPELINE: PipelinePayload = compileVisualQueryToPipeline(
-  EXISTING_STATE, BASE_SCHEMA, null, "query_out", "dataset-1",
+  EXISTING_STATE,
+  BASE_SCHEMA,
+  null,
+  "query_out",
+  "dataset-1",
 );
 
 function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
@@ -79,15 +138,64 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
-    getItem: vi.fn().mockResolvedValue({ pk: "dataset-1", resourceType: "dataset", title: "Ma requête existante", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false }),
+    getItem: vi.fn().mockResolvedValue({
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "Ma requête existante",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    }),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "should-not-be-created" }),
-    createDatasetItem: vi.fn().mockResolvedValue({ pk: "should-not-be-created", resourceType: "dataset", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-x", isPublished: false }),
-    createPipelineItem: vi.fn().mockResolvedValue({ pk: "should-not-be-created", resourceType: "pipeline", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-y", isPublished: false }),
+    createDatasetItem: vi.fn().mockResolvedValue({
+      pk: "should-not-be-created",
+      resourceType: "dataset",
+      title: "x",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-x",
+      isPublished: false,
+    }),
+    createPipelineItem: vi.fn().mockResolvedValue({
+      pk: "should-not-be-created",
+      resourceType: "pipeline",
+      title: "x",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-y",
+      isPublished: false,
+    }),
     savePipelineConfig: vi.fn().mockResolvedValue(undefined),
     saveDatasetConfig: vi.fn().mockResolvedValue(undefined),
-    updateItem: vi.fn().mockResolvedValue({ pk: "dataset-1", resourceType: "dataset", title: "x", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false }),
+    updateItem: vi.fn().mockResolvedValue({
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "x",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    }),
     runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
-    getPipelineRuns: vi.fn().mockResolvedValue([{ id: "run-1", status: "succeeded", startedAt: null, finishedAt: null, error: null, nodeStats: {} }]),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "succeeded",
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]),
     ...overrides,
   };
   render(
@@ -95,7 +203,10 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
       <ItemClientProvider client={client as ItemClient}>
         <MemoryRouter initialEntries={["/datasets/visual-query/pipeline-1/edit"]}>
           <Routes>
-            <Route path="/datasets/visual-query/:pipelinePk/edit" element={<VisualQueryWizardPage pipelinePk="pipeline-1" />} />
+            <Route
+              path="/datasets/visual-query/:pipelinePk/edit"
+              element={<VisualQueryWizardPage pipelinePk="pipeline-1" />}
+            />
             <Route path="/datasets/:pk/edit" element={<div>dataset-edit-page</div>} />
           </Routes>
         </MemoryRouter>
@@ -129,7 +240,8 @@ describe("VisualQueryWizardPage", () => {
       expect.objectContaining({ owner: "alice" }),
     );
     expect(client.saveDatasetConfig).toHaveBeenCalledWith(
-      "dataset-1", expect.objectContaining({ sourcePipelineId: "pipeline-1" }),
+      "dataset-1",
+      expect.objectContaining({ sourcePipelineId: "pipeline-1" }),
     );
     expect(client.runPipeline).toHaveBeenCalledWith("pipeline-1");
     await waitFor(() => expect(screen.getByText("dataset-edit-page")).toBeInTheDocument());
@@ -139,7 +251,9 @@ describe("VisualQueryWizardPage", () => {
   });
 
   test("affiche une erreur si le provisionnement échoue, sans créer le dataset ni le pipeline", async () => {
-    const client = renderWizard({ createEmptyCollection: vi.fn().mockRejectedValue(new Error("quota dépassé")) });
+    const client = renderWizard({
+      createEmptyCollection: vi.fn().mockRejectedValue(new Error("quota dépassé")),
+    });
     await screen.findByRole("option", { name: "Incidents" });
     await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
     await screen.findByText("Filtrer");
@@ -148,14 +262,16 @@ describe("VisualQueryWizardPage", () => {
     expect(client.createDatasetItem).not.toHaveBeenCalled();
   });
 
-  test("attend le run par son propre poll (sans clic manuel), même si le premier statut est \"running\"", async () => {
+  test('attend le run par son propre poll (sans clic manuel), même si le premier statut est "running"', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let call = 0;
     const client = renderWizard({
       getPipelineRuns: vi.fn().mockImplementation(() => {
         call += 1;
         const status = call < 2 ? "running" : "succeeded";
-        return Promise.resolve([{ id: "run-1", status, startedAt: null, finishedAt: null, error: null, nodeStats: {} }]);
+        return Promise.resolve([
+          { id: "run-1", status, startedAt: null, finishedAt: null, error: null, nodeStats: {} },
+        ]);
       }),
     });
     await userEvent.selectOptions(await screen.findByLabelText("Collection de base"), "incidents");
@@ -163,7 +279,9 @@ describe("VisualQueryWizardPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Créer" }));
 
     await waitFor(() => expect(client.runPipeline).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
     await waitFor(() => expect(screen.getByText("dataset-edit-page")).toBeInTheDocument());
     // runPipeline n'a été appelé qu'une fois : aucun clic manuel n'a redéclenché un run redondant.
     expect(client.runPipeline).toHaveBeenCalledTimes(1);
@@ -189,7 +307,14 @@ describe("VisualQueryWizardPage", () => {
   test("revue finale #2, Important 2 : un run en échec réaffiche le formulaire avec un message d'erreur, au lieu de rester bloqué", async () => {
     const client = renderWizard({
       getPipelineRuns: vi.fn().mockResolvedValue([
-        { id: "run-1", status: "failed", startedAt: null, finishedAt: null, error: "message d'échec explicite", nodeStats: {} },
+        {
+          id: "run-1",
+          status: "failed",
+          startedAt: null,
+          finishedAt: null,
+          error: "message d'échec explicite",
+          nodeStats: {},
+        },
       ]),
     });
     await screen.findByRole("option", { name: "Incidents" });
@@ -216,7 +341,9 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     // de base avant d'agir, même course que les tests en mode création
     // ci-dessus.
     await screen.findByText("Modifier la requête");
-    await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
     // Suivi fix I3 : le Titre se pré-remplit depuis l'item dataset, avant
     // toute interaction utilisateur.
     await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Ma requête existante"));
@@ -232,7 +359,8 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     await userEvent.click(button);
 
     await waitFor(() => expect(client.savePipelineConfig).toHaveBeenCalled());
-    const [calledPk, calledPayload] = (client.savePipelineConfig as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [calledPk, calledPayload] = (client.savePipelineConfig as ReturnType<typeof vi.fn>).mock
+      .calls[0];
     expect(calledPk).toBe("pipeline-1");
     const writerNode = calledPayload.nodes.find((n: { op: string }) => n.op === "writer.dataset");
     expect(writerNode.params).toEqual(
@@ -260,14 +388,21 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     const getCollectionSchema = vi.fn().mockImplementation((collectionId: string) =>
       Promise.resolve(
         collectionId === "query_out"
-          ? { collection: "query_out", pk: "id", geometry: null, fields: [{ name: "commune", type: "string" as const, required: true }] }
+          ? {
+              collection: "query_out",
+              pk: "id",
+              geometry: null,
+              fields: [{ name: "commune", type: "string" as const, required: true }],
+            }
           : BASE_SCHEMA,
       ),
     );
     renderWizardEdit({ getCollectionSchema });
 
     await screen.findByText("Modifier la requête");
-    await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
     await screen.findByText("Filtrer");
 
     // Pas de changement de la requête : pas de faux positif de blocage.
@@ -281,14 +416,29 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     await userEvent.click(screen.getByRole("button", { name: "Ajouter un résumé" }));
     await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Mettre à jour" })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Mettre à jour" })).toBeDisabled(),
+    );
     expect(screen.getByText(/La structure de sortie a changé/)).toBeInTheDocument();
   });
 
   test("revue finale #2, Important 3 : changer la collection de base réinitialise filtre/jointure/résumé", async () => {
     const collections: CollectionAdmin[] = [
       ...COLLECTIONS,
-      { id: "other", title: "Autre collection", description: "", tableName: "other", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 5, owner: "alice" },
+      {
+        id: "other",
+        title: "Autre collection",
+        description: "",
+        tableName: "other",
+        isPublic: true,
+        editable: true,
+        geometryType: null,
+        srid: null,
+        pkColumn: "id",
+        canWrite: true,
+        featureCount: 5,
+        owner: "alice",
+      },
     ];
     const client = renderWizard({ listCollections: () => Promise.resolve(collections) });
     await screen.findByRole("option", { name: "Incidents" });
@@ -301,12 +451,14 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "other");
     // La jointure posée sur l'ancienne collection de base a disparu : le
     // bouton "Ajouter une jointure" doit réapparaître (au lieu du picker).
-    await waitFor(() => expect(screen.getByRole("button", { name: "Ajouter une jointure" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Ajouter une jointure" })).toBeInTheDocument(),
+    );
     expect(screen.queryByText("Supprimer la jointure")).not.toBeInTheDocument();
     expect(client.getCollectionSchema).toBeDefined();
   });
 
-  test("revue finale #2, Important 4 : \"Ajouter une jointure\"/\"Ajouter un résumé\" sont réversibles", async () => {
+  test('revue finale #2, Important 4 : "Ajouter une jointure"/"Ajouter un résumé" sont réversibles', async () => {
     renderWizard();
     await screen.findByRole("option", { name: "Incidents" });
     await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
@@ -328,9 +480,22 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
   });
 
   test("round 2, Important 1 : un titre tapé avant que le fetch de l'item dataset ne résolve n'est pas écrasé", async () => {
-    let resolveGetItem!: (value: { pk: string; resourceType: "dataset"; title: string; abstract: string; owner: string; thumbnailUrl: null; date: string; configId: string; isPublished: boolean }) => void;
+    let resolveGetItem!: (value: {
+      pk: string;
+      resourceType: "dataset";
+      title: string;
+      abstract: string;
+      owner: string;
+      thumbnailUrl: null;
+      date: string;
+      configId: string;
+      isPublished: boolean;
+    }) => void;
     const delayedGetItem = vi.fn().mockImplementation(
-      () => new Promise((resolve) => { resolveGetItem = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveGetItem = resolve;
+        }),
     );
     const client = renderWizardEdit({ getItem: delayedGetItem });
 
@@ -340,7 +505,9 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     // un titre pendant cette fenêtre, sans attendre le second fetch — on
     // vérifie juste que la requête est partie (invoquée), pas qu'elle a
     // résolu.
-    await waitFor(() => expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
     await waitFor(() => expect(client.getItem).toHaveBeenCalled());
     await userEvent.clear(screen.getByLabelText("Titre"));
     await userEvent.type(screen.getByLabelText("Titre"), "Titre tapé par l'utilisateur");
@@ -348,7 +515,17 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     // Le second fetch résout seulement maintenant, avec un titre serveur
     // différent : il ne doit pas écraser la saisie utilisateur.
     await act(async () => {
-      resolveGetItem({ pk: "dataset-1", resourceType: "dataset", title: "Titre serveur (ne doit pas apparaître)", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: false });
+      resolveGetItem({
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Titre serveur (ne doit pas apparaître)",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "",
+        configId: "cfg-1",
+        isPublished: false,
+      });
       // Laisser toutes les promesses/microtâches en attente se résoudre
       // (react-query doit relire la donnée résolue et l'effet de
       // pré-remplissage doit avoir eu l'occasion de s'exécuter).

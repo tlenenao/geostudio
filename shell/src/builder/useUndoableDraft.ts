@@ -69,23 +69,30 @@ export function useUndoableDraft(): UndoableDraft {
   // away from the builder mid-burst leaves the timer armed and flush() (via
   // setCanUndo/setCanRedo) fires against an unmounted hook instance (SP-19
   // final-branch-review fix pass, finding I1).
-  useEffect(() => () => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-  }, []);
-
-  const setDraft = useCallback<UndoableDraft["setDraft"]>((update) => {
-    const prev = draftRef.current;
-    const next = typeof update === "function"
-      ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
-      : update;
-    if (next !== prev && prev !== null) {
-      if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
+  useEffect(
+    () => () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(flush, COALESCE_WINDOW_MS);
-    }
-    draftRef.current = next;
-    setDraftState(next);
-  }, [flush]);
+    },
+    [],
+  );
+
+  const setDraft = useCallback<UndoableDraft["setDraft"]>(
+    (update) => {
+      const prev = draftRef.current;
+      const next =
+        typeof update === "function"
+          ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
+          : update;
+      if (next !== prev && prev !== null) {
+        if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(flush, COALESCE_WINDOW_MS);
+      }
+      draftRef.current = next;
+      setDraftState(next);
+    },
+    [flush],
+  );
 
   // Seeds the initial config once loaded, bypassing history entirely — the
   // starting point of the session, not an edit. Undoing it would set draft

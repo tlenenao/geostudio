@@ -86,7 +86,12 @@ export function CollectionsAdminPage() {
                   <Button type="button" variant="outline" size="sm" onClick={() => setSharing(col)}>
                     Partager
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(col)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleting(col)}
+                  >
                     Supprimer
                   </Button>
                 </td>
@@ -100,16 +105,24 @@ export function CollectionsAdminPage() {
         <EditCollectionDialog collection={editing} open={true} onClose={() => setEditing(null)} />
       )}
       {sharing && (
-        <CollectionShareDialog collectionId={sharing.id} open={true} onClose={() => setSharing(null)} />
+        <CollectionShareDialog
+          collectionId={sharing.id}
+          open={true}
+          onClose={() => setSharing(null)}
+        />
       )}
       <ConfirmDialog
         open={!!deleting}
         title="Supprimer la collection"
-        message={deleting ? `Désenregistrer « ${deleting.title} » ? La table PostGIS ne sera pas supprimée.` : ""}
+        message={
+          deleting
+            ? `Désenregistrer « ${deleting.title} » ? La table PostGIS ne sera pas supprimée.`
+            : ""
+        }
         confirmLabel="Supprimer"
         pending={deleteCollection.isPending}
         onCancel={() => setDeleting(null)}
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
       />
     </div>
   );

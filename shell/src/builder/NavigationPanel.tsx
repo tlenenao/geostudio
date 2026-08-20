@@ -38,7 +38,15 @@ export function NavigationPanel({
     const latTrimmed = lat.trim();
     const lonNum = Number(lonTrimmed);
     const latNum = Number(latTrimmed);
-    if (!to || !action || !lonTrimmed || !latTrimmed || Number.isNaN(lonNum) || Number.isNaN(latNum)) return;
+    if (
+      !to ||
+      !action ||
+      !lonTrimmed ||
+      !latTrimmed ||
+      Number.isNaN(lonNum) ||
+      Number.isNaN(latNum)
+    )
+      return;
     const message: ActionMessage = {
       id: crypto.randomUUID(),
       from: page.id,
@@ -48,7 +56,10 @@ export function NavigationPanel({
       payload: { center: [lonNum, latNum] },
     };
     onPageChange({ ...page, onEnter: [...onEnter, message] });
-    setTo(""); setAction(""); setLon(""); setLat("");
+    setTo("");
+    setAction("");
+    setLon("");
+    setLat("");
   }
   function remove(id: string) {
     onPageChange({ ...page, onEnter: onEnter.filter((m) => m.id !== id) });
@@ -77,20 +88,32 @@ export function NavigationPanel({
 
       {navigationMode === "story" && (
         <>
-          <p className="text-[10px] text-slate-400">Actions à l'entrée du chapitre « {page.name} ».</p>
+          <p className="text-[10px] text-slate-400">
+            Actions à l'entrée du chapitre « {page.name} ».
+          </p>
           <ul className="flex flex-col gap-1">
             {onEnter.map((m) => {
               const when = m.when ?? "";
               const error = when ? validateExpression(when) : null;
-              const center = (m.payload?.center as [number, number] | undefined);
+              const center = m.payload?.center as [number, number] | undefined;
               return (
-                <li key={m.id} className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs">
+                <li
+                  key={m.id}
+                  className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs"
+                >
                   <div className="flex items-center justify-between">
                     <span>
                       {widgetLabel(items, m.to)}.{m.action}
                       {center ? ` → [${center[0]}, ${center[1]}]` : ""}
                     </span>
-                    <button type="button" aria-label={`Retirer l'action ${m.id}`} className="text-red-600" onClick={() => remove(m.id)}>✕</button>
+                    <button
+                      type="button"
+                      aria-label={`Retirer l'action ${m.id}`}
+                      className="text-red-600"
+                      onClick={() => remove(m.id)}
+                    >
+                      ✕
+                    </button>
                   </div>
                   <input
                     aria-label={`Condition de l'action ${m.id}`}
@@ -99,30 +122,70 @@ export function NavigationPanel({
                     value={when}
                     onChange={(e) => updateWhen(m.id, e.target.value)}
                   />
-                  {error && <span role="alert" className="text-red-600">{error}</span>}
+                  {error && (
+                    <span role="alert" className="text-red-600">
+                      {error}
+                    </span>
+                  )}
                 </li>
               );
             })}
-            {onEnter.length === 0 && <li className="text-xs text-slate-400">Aucune action à l'entrée.</li>}
+            {onEnter.length === 0 && (
+              <li className="text-xs text-slate-400">Aucune action à l'entrée.</li>
+            )}
           </ul>
 
-          <select aria-label="Widget cible" className={selectCls} value={to}
-            onChange={(e) => { setTo(e.target.value); setAction(""); }}>
+          <select
+            aria-label="Widget cible"
+            className={selectCls}
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setAction("");
+            }}
+          >
             <option value="">Widget cible…</option>
-            {receivers.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, i.id)}</option>)}
+            {receivers.map((i) => (
+              <option key={i.id} value={i.id}>
+                {widgetLabel(items, i.id)}
+              </option>
+            ))}
           </select>
-          <select aria-label="Action" className={selectCls} value={action} disabled={!to}
-            onChange={(e) => setAction(e.target.value)}>
+          <select
+            aria-label="Action"
+            className={selectCls}
+            value={action}
+            disabled={!to}
+            onChange={(e) => setAction(e.target.value)}
+          >
             <option value="">Action…</option>
-            {actionsOf(items, to).map((a) => <option key={a} value={a}>{a}</option>)}
+            {actionsOf(items, to).map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
           </select>
           <div className="flex gap-1">
-            <input aria-label="Longitude" placeholder="Longitude" className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
-              value={lon} onChange={(e) => setLon(e.target.value)} />
-            <input aria-label="Latitude" placeholder="Latitude" className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
-              value={lat} onChange={(e) => setLat(e.target.value)} />
+            <input
+              aria-label="Longitude"
+              placeholder="Longitude"
+              className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+              value={lon}
+              onChange={(e) => setLon(e.target.value)}
+            />
+            <input
+              aria-label="Latitude"
+              placeholder="Latitude"
+              className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+            />
           </div>
-          <button type="button" className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100" onClick={add}>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+            onClick={add}
+          >
             Ajouter à ce chapitre
           </button>
         </>

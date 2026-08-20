@@ -10,7 +10,9 @@ async function mockTerrain3DUploadFlow(page: Page) {
   // Route dédiée terrain3d (jamais la générique **/uploads/presign) : c'est
   // la seule qui signe dans le bucket que le worker de conversion lit.
   await page.route("**/terrain3d/uploads/presign", async (route) => {
-    await route.fulfill({ json: { uploadUrl: "https://minio.test/terrain3d-raw", key: "t-mock/x/dem.tif" } });
+    await route.fulfill({
+      json: { uploadUrl: "https://minio.test/terrain3d-raw", key: "t-mock/x/dem.tif" },
+    });
   });
   await page.route("https://minio.test/terrain3d-raw", async (route) => {
     await route.fulfill({ status: 200, body: "" });
@@ -33,16 +35,31 @@ async function mockTerrain3DUploadFlow(page: Page) {
     if (url.searchParams.get("type") !== "terrain3d") return route.fallback();
     await route.fulfill({
       json: {
-        items: [{
-          pk: "d1", resourceType: "terrain3d", title: "Relief du massif E2E", abstract: "",
-          owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false,
-        }],
-        total: 1, page: 1, pageSize: 200,
+        items: [
+          {
+            pk: "d1",
+            resourceType: "terrain3d",
+            title: "Relief du massif E2E",
+            abstract: "",
+            owner: "mockuser",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 200,
       },
     });
   });
   await page.route("https://core.test/terrain3d/d1/tiles/*/*/*.png", async (route) => {
-    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("fake-png-tile") });
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("fake-png-tile"),
+    });
   });
 }
 
@@ -67,7 +84,9 @@ test("upload a DEM, select it as hosted terrain, tiles resolve", async ({ page }
   // disambiguation rationale tileset3d.spec.ts documents for "Importer".
   const demDialog = page.getByRole("dialog", { name: "Nouveau DEM" });
   await demDialog.getByLabel("Fichier DEM (GeoTIFF)").setInputFiles({
-    name: "dem.tif", mimeType: "application/octet-stream", buffer: Buffer.from("fake dem bytes"),
+    name: "dem.tif",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("fake dem bytes"),
   });
   await demDialog.getByLabel("Titre", { exact: true }).fill("Relief du massif E2E");
   await demDialog.getByRole("button", { name: "Importer" }).click();

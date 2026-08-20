@@ -28,10 +28,15 @@ export function makeLazyWcHost(manifest: ExtensionManifest) {
     useEffect(() => {
       let cancelled = false;
       ensureModuleLoaded(manifest.moduleUrl)
-        .then(() => { if (!cancelled) setStatus("ready"); })
-        .catch(() => { if (!cancelled) setStatus("error"); });
-      return () => { cancelled = true; };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+        .then(() => {
+          if (!cancelled) setStatus("ready");
+        })
+        .catch(() => {
+          if (!cancelled) setStatus("error");
+        });
+      return () => {
+        cancelled = true;
+      };
     }, []);
 
     if (status === "loading") return <Placeholder text="Chargement…" tone="loading" />;

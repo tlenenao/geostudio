@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("markExportReady", () => {
-  it("sets data-export-ready=\"true\" on document.body — the exact selector Task 6's worker waits for", () => {
+  it('sets data-export-ready="true" on document.body — the exact selector Task 6\'s worker waits for', () => {
     markExportReady();
     // Assert against the actual DOM attribute (not just "didn't throw"): this
     // is the literal string Playwright's page.wait_for_selector(

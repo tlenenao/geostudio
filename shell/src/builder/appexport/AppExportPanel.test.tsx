@@ -8,11 +8,24 @@ import type { AppConfig, ItemClient } from "../../api/types";
 
 function config(withForm = false): AppConfig {
   return {
-    kind: "app", theme: {}, dataSources: [], messages: [], navigationMode: "tabs", variables: [],
-    pages: [{
-      id: "p1", name: "P1", onEnter: [],
-      layout: { type: "grid", breakpoints: {}, items: withForm ? [{ id: "w1", widget: "form", x: 0, y: 0, w: 4, h: 2, props: {} }] : [] },
-    }],
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    navigationMode: "tabs",
+    variables: [],
+    pages: [
+      {
+        id: "p1",
+        name: "P1",
+        onEnter: [],
+        layout: {
+          type: "grid",
+          breakpoints: {},
+          items: withForm ? [{ id: "w1", widget: "form", x: 0, y: 0, w: 4, h: 2, props: {} }] : [],
+        },
+      },
+    ],
   } as unknown as AppConfig;
 }
 
@@ -24,7 +37,12 @@ describe("AppExportPanel", () => {
   it("triggers export and shows a download link once done", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+      getAppExportJob: vi.fn().mockResolvedValue({
+        id: "job1",
+        status: "done",
+        resultUrl: "https://x.test/bundle.zip",
+        error: null,
+      }),
     });
     render(
       <ItemClientProvider client={client}>
@@ -33,7 +51,9 @@ describe("AppExportPanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
     await userEvent.click(screen.getByRole("button", { name: /statique/i }));
-    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument(),
+    );
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "static");
   });
 
@@ -53,7 +73,12 @@ describe("AppExportPanel", () => {
   it("triggers a connected export and shows a download link once done", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+      getAppExportJob: vi.fn().mockResolvedValue({
+        id: "job1",
+        status: "done",
+        resultUrl: "https://x.test/bundle.zip",
+        error: null,
+      }),
     });
     render(
       <ItemClientProvider client={client}>
@@ -62,14 +87,21 @@ describe("AppExportPanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
     await userEvent.click(screen.getByRole("button", { name: /connect/i }));
-    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument(),
+    );
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "connected");
   });
 
   it("confirms the write warning with the mode that actually triggered it", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+      getAppExportJob: vi.fn().mockResolvedValue({
+        id: "job1",
+        status: "done",
+        resultUrl: "https://x.test/bundle.zip",
+        error: null,
+      }),
     });
     render(
       <ItemClientProvider client={client}>
@@ -86,7 +118,12 @@ describe("AppExportPanel", () => {
   it("triggers a standalone export and shows a download link once done", async () => {
     const client = makeClient({
       createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
+      getAppExportJob: vi.fn().mockResolvedValue({
+        id: "job1",
+        status: "done",
+        resultUrl: "https://x.test/bundle.zip",
+        error: null,
+      }),
     });
     render(
       <ItemClientProvider client={client}>
@@ -95,7 +132,9 @@ describe("AppExportPanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
     await userEvent.click(screen.getByRole("button", { name: /autoport/i }));
-    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument(),
+    );
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "standalone");
   });
 });

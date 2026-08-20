@@ -19,12 +19,16 @@ describe("useIsExportRender", () => {
   });
 
   it("is true with exportRender=1", () => {
-    const { result } = renderHook(() => useIsExportRender(), { wrapper: wrapper("/maps/1?exportRender=1") });
+    const { result } = renderHook(() => useIsExportRender(), {
+      wrapper: wrapper("/maps/1?exportRender=1"),
+    });
     expect(result.current).toBe(true);
   });
 
-  it("is false for other values of exportRender (not exactly \"1\")", () => {
-    const { result } = renderHook(() => useIsExportRender(), { wrapper: wrapper("/maps/1?exportRender=true") });
+  it('is false for other values of exportRender (not exactly "1")', () => {
+    const { result } = renderHook(() => useIsExportRender(), {
+      wrapper: wrapper("/maps/1?exportRender=true"),
+    });
     expect(result.current).toBe(false);
   });
 });

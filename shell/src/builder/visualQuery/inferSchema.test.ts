@@ -4,7 +4,9 @@ import type { CollectionSchema } from "../../api/types";
 import { inferOutputColumns } from "./inferSchema";
 
 const BASE: CollectionSchema = {
-  collection: "incidents", pk: "id", geometry: { column: "geom", type: "Point", srid: 4326 },
+  collection: "incidents",
+  pk: "id",
+  geometry: { column: "geom", type: "Point", srid: 4326 },
   fields: [
     { name: "commune", type: "string", required: true },
     { name: "gravite", type: "integer", required: false },
@@ -13,11 +15,13 @@ const BASE: CollectionSchema = {
 };
 
 const JOINED: CollectionSchema = {
-  collection: "communes", pk: "id", geometry: null,
+  collection: "communes",
+  pk: "id",
+  geometry: null,
   fields: [
-    { name: "commune", type: "string", required: true },  // colonne de jointure
+    { name: "commune", type: "string", required: true }, // colonne de jointure
     { name: "population", type: "integer", required: false },
-    { name: "gravite", type: "string", required: false },  // collision de nom avec BASE, type différent
+    { name: "gravite", type: "string", required: false }, // collision de nom avec BASE, type différent
   ],
 };
 
@@ -37,9 +41,9 @@ describe("inferOutputColumns", () => {
     const join = { collectionId: "communes", on: "commune", how: "inner" as const };
     const result = inferOutputColumns(BASE, join, JOINED, null);
     const names = result.columns.map((c) => c.name);
-    expect(names).toContain("commune");       // colonne de jointure, une seule fois
-    expect(names).toContain("population");    // pas de collision, nom inchangé
-    expect(names).toContain("gravite");       // colonne de base, jamais renommée ni supprimée
+    expect(names).toContain("commune"); // colonne de jointure, une seule fois
+    expect(names).toContain("population"); // pas de collision, nom inchangé
+    expect(names).toContain("gravite"); // colonne de base, jamais renommée ni supprimée
     expect(names).toContain("joined_gravite"); // collision : seule la colonne jointe est renommée
   });
 

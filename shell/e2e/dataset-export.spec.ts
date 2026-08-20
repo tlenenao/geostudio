@@ -17,11 +17,17 @@ async function createApp(page: Page, title: string) {
 
 async function addFeaturesSource(page: Page, collection: string) {
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  await page.getByLabel(/Collection de la source/).last().fill(collection);
+  await page
+    .getByLabel(/Collection de la source/)
+    .last()
+    .fill(collection);
 }
 
 async function promoteLastSource(page: Page, expectedActiveCount: number) {
-  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).last().click();
+  await page
+    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .last()
+    .click();
   await expect(page.getByText("Dataset partagé actif")).toHaveCount(expectedActiveCount);
 }
 
@@ -31,20 +37,34 @@ test("exporter un widget table en CSV depuis une app en mode runtime", async ({ 
   await page.route("**/collections/analytics/schema", async (route) => {
     await route.fulfill({
       json: {
-        collection: "analytics", pk: "id",
+        collection: "analytics",
+        pk: "id",
         geometry: { column: "geometry", type: "Point", srid: 4326 },
         fields: [{ name: "region", type: "string" }],
       },
     });
   });
   await page.route("**/collections/analytics/items*", async (route) => {
-    await route.fulfill({ json: { type: "FeatureCollection", features: [{ id: 1, properties: { region: "Nord" } }] } });
+    await route.fulfill({
+      json: { type: "FeatureCollection", features: [{ id: 1, properties: { region: "Nord" } }] },
+    });
   });
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
       json: {
-        id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "analytics", columns: {}, timeField: null, reactsToExtent: false } },
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: {
+            source: "collection",
+            collectionId: "analytics",
+            columns: {},
+            timeField: null,
+            reactsToExtent: false,
+          },
+        },
       },
     });
   });
@@ -86,31 +106,62 @@ test("exporter depuis DatasetEditPage en XLSX", async ({ page }) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({
       json: {
-        collections: [{
-          id: "villes", title: "Villes", description: "", tableName: "villes", isPublic: true, editable: true,
-          geometryType: "Point", srid: 4326, pkColumn: "id", canWrite: true, featureCount: 1, owner: "mockuser",
-        }],
+        collections: [
+          {
+            id: "villes",
+            title: "Villes",
+            description: "",
+            tableName: "villes",
+            isPublic: true,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 1,
+            owner: "mockuser",
+          },
+        ],
       },
     });
   });
   await page.route("**/collections/villes/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "villes", pk: "id", geometry: { column: "geometry", type: "Point", srid: 4326 },
-        fields: [{ name: "nom", type: "string" }] },
+      json: {
+        collection: "villes",
+        pk: "id",
+        geometry: { column: "geometry", type: "Point", srid: 4326 },
+        fields: [{ name: "nom", type: "string" }],
+      },
     });
   });
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
       json: {
-        id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "villes", columns: {} } },
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "villes", columns: {} },
+        },
       },
     });
   });
   await page.route("https://core.test/items/dataset-1", async (route) => {
     await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Villes partagées", abstract: "", owner: "mockuser",
-        thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
+      json: {
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Villes partagées",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-dataset",
+        isPublished: false,
+        keywords: [],
+      },
     });
   });
   await page.route("**/collections/villes/export/items*", async (route) => {

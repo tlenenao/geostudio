@@ -6,7 +6,13 @@ import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
 
-export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CreateHarvestSourceDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const createSource = useCreateHarvestSource();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
@@ -37,7 +43,7 @@ export function CreateHarvestSourceDialog({ open, onClose }: { open: boolean; on
 
   return (
     <Dialog open={open} onClose={close} title="Ajouter une source">
-      <form onSubmit={submit} className="flex flex-col gap-3">
+      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           Type
           <select

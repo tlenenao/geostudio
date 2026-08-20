@@ -3,7 +3,9 @@ import { expect, test } from "vitest";
 import { sanitizeMarkdown } from "./sanitizeMarkdown";
 
 test("renders CommonMark: headings, bold/italic, links, lists", () => {
-  const html = sanitizeMarkdown("# Titre\n\n**gras** et *italique*\n\n- un\n- deux\n\n[lien](https://example.com)");
+  const html = sanitizeMarkdown(
+    "# Titre\n\n**gras** et *italique*\n\n- un\n- deux\n\n[lien](https://example.com)",
+  );
   expect(html).toContain("<h1>Titre</h1>");
   expect(html).toContain("<strong>gras</strong>");
   expect(html).toContain("<em>italique</em>");

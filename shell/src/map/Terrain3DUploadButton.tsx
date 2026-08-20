@@ -17,7 +17,8 @@ type Phase = "form" | "uploading" | "converting" | "error";
 // MSW-based with real timers, where fake timers would fight userEvent's
 // own scheduler) — mirrors Tileset3DUploadButton's pollTimeoutMs param.
 export function Terrain3DUploadButton({
-  onUploaded, pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  onUploaded,
+  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
 }: {
   onUploaded: (itemId: string) => void;
   pollIntervalMs?: number;
@@ -72,11 +73,16 @@ export function Terrain3DUploadButton({
       // File) envoie File.type, et un type signé différent fait échouer S3
       // en 403 SignatureDoesNotMatch (même traitement qu'ImportFileButton).
       const { uploadUrl, key } = await client.presignTerrain3DUpload(
-        file.name, file.type || "application/octet-stream",
+        file.name,
+        file.type || "application/octet-stream",
       );
       await client.uploadToPresignedUrl(uploadUrl, file);
       setPhase("converting");
-      const { jobId } = await client.createTerrain3DUpload({ key, filename: file.name, title: title.trim() });
+      const { jobId } = await client.createTerrain3DUpload({
+        key,
+        filename: file.name,
+        title: title.trim(),
+      });
       await poll(jobId);
     } catch (e) {
       setPhase("error");
@@ -100,7 +106,7 @@ export function Terrain3DUploadButton({
         Nouveau DEM
       </Button>
       <Dialog open={open} onClose={requestClose} title="Nouveau DEM">
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Fichier DEM (GeoTIFF)
             <input
@@ -117,7 +123,9 @@ export function Terrain3DUploadButton({
           {phase === "uploading" && <p className="text-sm text-slate-500">Envoi du fichier…</p>}
           {phase === "converting" && <p className="text-sm text-slate-500">Conversion en COG…</p>}
           {phase === "error" && (
-            <p role="alert" className="text-sm text-red-600">{error}</p>
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>

@@ -43,12 +43,20 @@ test("builtin widgets render their props", () => {
 test("registerWidget warns when a type is overwritten, but still overwrites it", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   registerWidget({
-    type: "dup", label: "A", defaultProps: {}, defaultSize: { w: 1, h: 1 },
-    PropsPanel: () => <div />, Component: () => <div>a</div>,
+    type: "dup",
+    label: "A",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => <div />,
+    Component: () => <div>a</div>,
   });
   registerWidget({
-    type: "dup", label: "B", defaultProps: {}, defaultSize: { w: 1, h: 1 },
-    PropsPanel: () => <div />, Component: () => <div>b</div>,
+    type: "dup",
+    label: "B",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => <div />,
+    Component: () => <div>b</div>,
   });
   expect(warn).toHaveBeenCalledWith(expect.stringContaining("dup"));
   expect(getWidget("dup")?.label).toBe("B");
@@ -58,8 +66,12 @@ test("registerWidget warns when a type is overwritten, but still overwrites it",
 test("registerWidget does not warn for a brand-new type", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   registerWidget({
-    type: "fresh", label: "A", defaultProps: {}, defaultSize: { w: 1, h: 1 },
-    PropsPanel: () => <div />, Component: () => <div />,
+    type: "fresh",
+    label: "A",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => <div />,
+    Component: () => <div />,
   });
   expect(warn).not.toHaveBeenCalled();
   warn.mockRestore();

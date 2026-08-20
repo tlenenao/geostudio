@@ -7,10 +7,13 @@ export function registerNavigationWidget(): void {
     label: "Navigation",
     defaultProps: { direction: "horizontal" },
     defaultSize: { w: 4, h: 1 },
-    configSchema: [{ name: "direction", type: "string", label: "Direction", default: "horizontal" }],
+    configSchema: [
+      { name: "direction", type: "string", label: "Direction", default: "horizontal" },
+    ],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
-        <label className="flex flex-col gap-1">Orientation
+        <label className="flex flex-col gap-1">
+          Orientation
           <select
             aria-label="Orientation du menu"
             className="h-9 rounded-md border border-slate-300 px-2"
@@ -21,7 +24,9 @@ export function registerNavigationWidget(): void {
             <option value="vertical">Verticale</option>
           </select>
         </label>
-        <p className="text-[10px] text-slate-400">Affiche automatiquement toutes les pages de l'application.</p>
+        <p className="text-[10px] text-slate-400">
+          Affiche automatiquement toutes les pages de l'application.
+        </p>
       </div>
     ),
     Component: ({ props, ctx }) => {

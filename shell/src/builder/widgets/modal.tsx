@@ -42,7 +42,12 @@ export function registerModalWidget(): void {
             />
             Modale large
           </label>
-          <LayoutEditor items={items} onChange={(next) => onChange({ title, items: next, wide })} dataSources={dataSources} breakpoint="lg" />
+          <LayoutEditor
+            items={items}
+            onChange={(next) => onChange({ title, items: next, wide })}
+            dataSources={dataSources}
+            breakpoint="lg"
+          />
         </div>
       );
     },
@@ -71,7 +76,13 @@ export function registerModalWidget(): void {
               onSelect={() => {}}
               onMoveItem={() => {}}
               renderItem={(item) => (
-                <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} breakpoint={ctx.breakpoint} />
+                <WidgetHost
+                  item={item}
+                  mode={ctx.mode}
+                  pages={ctx.pages}
+                  navigate={ctx.navigate}
+                  breakpoint={ctx.breakpoint}
+                />
               )}
             />
           </div>

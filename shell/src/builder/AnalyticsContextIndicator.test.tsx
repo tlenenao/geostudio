@@ -2,7 +2,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { AnalyticsContextProvider, useSetCrossFilter, useSetExtent, useSetTimeRange } from "./AnalyticsContext";
+import {
+  AnalyticsContextProvider,
+  useSetCrossFilter,
+  useSetExtent,
+  useSetTimeRange,
+} from "./AnalyticsContext";
 import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
 import type { DatasetConfig } from "../api/types";
 import { DatasetsContext } from "./DataContext";
@@ -13,7 +18,9 @@ function Controls() {
   const setCrossFilter = useSetCrossFilter();
   return (
     <div>
-      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>set-time</button>
+      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>
+        set-time
+      </button>
       <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
       <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
     </div>
@@ -72,7 +79,11 @@ test("shows 'Tout effacer' only with 2+ active chips, and it clears everything",
 test("formats an array cross-filter value as a comma-joined list and a range as an arrow", async () => {
   function RangeControl() {
     const setCrossFilter = useSetCrossFilter();
-    return <button onClick={() => setCrossFilter("ds1", "score", { from: "10", to: "50" }, "src1")}>set-range</button>;
+    return (
+      <button onClick={() => setCrossFilter("ds1", "score", { from: "10", to: "50" }, "src1")}>
+        set-range
+      </button>
+    );
   }
   render(
     <AnalyticsContextProvider interactions="auto">
@@ -87,8 +98,12 @@ test("formats an array cross-filter value as a comma-joined list and a range as 
 test("shows the dataset(s) a cross-filter propagates to via a declared link", async () => {
   const datasets: Record<string, DatasetConfig> = {
     ds1: {
-      source: "collection", collectionId: "communes", columns: {},
-      crossFilterLinks: [{ targetDatasetId: "ds2", mode: "attribute", sourceField: "region", targetField: "region" }],
+      source: "collection",
+      collectionId: "communes",
+      columns: {},
+      crossFilterLinks: [
+        { targetDatasetId: "ds2", mode: "attribute", sourceField: "region", targetField: "region" },
+      ],
     },
   };
   render(
@@ -114,8 +129,17 @@ test("shows no propagation arrow when the dataset declares no matching link", as
 test("shows no propagation arrow when the declared link's mode does not match the active filter", async () => {
   const datasets: Record<string, DatasetConfig> = {
     ds1: {
-      source: "collection", collectionId: "communes", columns: {},
-      crossFilterLinks: [{ targetDatasetId: "ds2", mode: "attribute", sourceField: "other-field", targetField: "region" }],
+      source: "collection",
+      collectionId: "communes",
+      columns: {},
+      crossFilterLinks: [
+        {
+          targetDatasetId: "ds2",
+          mode: "attribute",
+          sourceField: "other-field",
+          targetField: "region",
+        },
+      ],
     },
   };
   render(

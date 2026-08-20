@@ -45,7 +45,12 @@ export function PageManager({
           key={p.id}
           className={`flex items-center gap-1 rounded border p-1 text-xs ${p.id === activePageId ? "border-blue-500" : "border-slate-200"}`}
         >
-          <button type="button" aria-label={`Ouvrir la page ${p.id}`} className="flex-1 truncate text-left" onClick={() => onSelectPage(p.id)}>
+          <button
+            type="button"
+            aria-label={`Ouvrir la page ${p.id}`}
+            className="flex-1 truncate text-left"
+            onClick={() => onSelectPage(p.id)}
+          >
             {p.name}
           </button>
           <input
@@ -54,13 +59,41 @@ export function PageManager({
             value={p.name}
             onChange={(e) => rename(p.id, e.target.value)}
           />
-          <button type="button" aria-label={`Monter la page ${p.id}`} disabled={i === 0} className="disabled:opacity-30" onClick={() => move(p.id, -1)}>↑</button>
-          <button type="button" aria-label={`Descendre la page ${p.id}`} disabled={i === pages.length - 1} className="disabled:opacity-30" onClick={() => move(p.id, 1)}>↓</button>
-          <button type="button" aria-label={`Retirer la page ${p.id}`} disabled={pages.length <= 1} className="text-red-600 disabled:opacity-30" onClick={() => remove(p.id)}>✕</button>
+          <button
+            type="button"
+            aria-label={`Monter la page ${p.id}`}
+            disabled={i === 0}
+            className="disabled:opacity-30"
+            onClick={() => move(p.id, -1)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label={`Descendre la page ${p.id}`}
+            disabled={i === pages.length - 1}
+            className="disabled:opacity-30"
+            onClick={() => move(p.id, 1)}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            aria-label={`Retirer la page ${p.id}`}
+            disabled={pages.length <= 1}
+            className="text-red-600 disabled:opacity-30"
+            onClick={() => remove(p.id)}
+          >
+            ✕
+          </button>
         </li>
       ))}
       <li>
-        <button type="button" className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100" onClick={addPage}>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+          onClick={addPage}
+        >
           Ajouter une page
         </button>
       </li>

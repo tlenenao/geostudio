@@ -7,7 +7,10 @@ import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsConte
 import { registerDateRangeFilterWidget } from "./dateRangeFilter";
 import type { WidgetContext } from "../registry";
 
-beforeEach(() => { _resetRegistry(); registerDateRangeFilterWidget(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerDateRangeFilterWidget();
+});
 
 function TimeRangeProbe() {
   const ctx = useAnalyticsContext();

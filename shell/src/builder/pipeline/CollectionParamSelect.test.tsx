@@ -8,8 +8,34 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { CollectionParamSelect } from "./CollectionParamSelect";
 
 const COLLECTIONS: CollectionAdmin[] = [
-  { id: "villes", title: "Villes", description: "", tableName: "villes", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 10, owner: "alice" },
-  { id: "readonly_layer", title: "Lecture seule", description: "", tableName: "readonly_layer", isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id", canWrite: false, featureCount: 3, owner: "bob" },
+  {
+    id: "villes",
+    title: "Villes",
+    description: "",
+    tableName: "villes",
+    isPublic: true,
+    editable: true,
+    geometryType: null,
+    srid: null,
+    pkColumn: "id",
+    canWrite: true,
+    featureCount: 10,
+    owner: "alice",
+  },
+  {
+    id: "readonly_layer",
+    title: "Lecture seule",
+    description: "",
+    tableName: "readonly_layer",
+    isPublic: true,
+    editable: false,
+    geometryType: null,
+    srid: null,
+    pkColumn: "id",
+    canWrite: false,
+    featureCount: 3,
+    owner: "bob",
+  },
 ];
 
 function renderSelect(props: Partial<Parameters<typeof CollectionParamSelect>[0]> = {}) {
@@ -19,7 +45,13 @@ function renderSelect(props: Partial<Parameters<typeof CollectionParamSelect>[0]
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <CollectionParamSelect value="" onChange={onChange} variant="readable" ariaLabel="Collection" {...props} />
+        <CollectionParamSelect
+          value=""
+          onChange={onChange}
+          variant="readable"
+          ariaLabel="Collection"
+          {...props}
+        />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -28,7 +60,9 @@ function renderSelect(props: Partial<Parameters<typeof CollectionParamSelect>[0]
 
 test("variant=readable lists every collection", async () => {
   renderSelect({ variant: "readable" });
-  await waitFor(() => expect(screen.getByRole("option", { name: /Lecture seule/ })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("option", { name: /Lecture seule/ })).toBeInTheDocument(),
+  );
   expect(screen.getByRole("option", { name: /Villes/ })).toBeInTheDocument();
 });
 

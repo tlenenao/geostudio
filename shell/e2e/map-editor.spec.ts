@@ -24,7 +24,9 @@ test("create a Map → add a layer → save → canvas mounts", async ({ page })
   await expect(page.getByText(/échec de l'enregistrement/i)).toHaveCount(0);
 });
 
-test("add a 3D tileset + terrain, set the camera, save, and reload — everything round-trips", async ({ page }) => {
+test("add a 3D tileset + terrain, set the camera, save, and reload — everything round-trips", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("https://example.test/tileset.json", (route) =>
     route.fulfill({
@@ -33,11 +35,18 @@ test("add a 3D tileset + terrain, set the camera, save, and reload — everythin
       body: JSON.stringify({
         asset: { version: "1.0" },
         geometricError: 500,
-        root: { boundingVolume: { region: [0, 0, 0, 0, 0, 0] }, geometricError: 500, refine: "ADD", children: [] },
+        root: {
+          boundingVolume: { region: [0, 0, 0, 0, 0, 0] },
+          geometricError: 500,
+          refine: "ADD",
+          children: [],
+        },
       }),
     }),
   );
-  await page.route("https://example.test/dem/**", (route) => route.fulfill({ status: 404, body: "" }));
+  await page.route("https://example.test/dem/**", (route) =>
+    route.fulfill({ status: 404, body: "" }),
+  );
 
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
@@ -68,7 +77,9 @@ test("add a 3D tileset + terrain, set the camera, save, and reload — everythin
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
   await expect(page.getByText("Bâtiments").first()).toBeVisible();
   await expect(page.getByLabel("Activer le terrain 3D")).toBeChecked();
-  await expect(page.getByLabel("URL de tuiles terrain")).toHaveValue("https://example.test/dem/{z}/{x}/{y}.png");
+  await expect(page.getByLabel("URL de tuiles terrain")).toHaveValue(
+    "https://example.test/dem/{z}/{x}/{y}.png",
+  );
   await expect(page.getByLabel("Inclinaison de la caméra")).toHaveValue("45");
   await expect(page.getByLabel("Orientation de la caméra")).toHaveValue("90");
 });

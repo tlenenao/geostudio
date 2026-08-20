@@ -9,7 +9,10 @@ test("login (mock) → list → open item", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
 
   // Opening a non-map item now navigates directly to the builder, not to /items/:pk.
-  await page.getByRole("button", { name: /ouvrir/i }).first().click();
+  await page
+    .getByRole("button", { name: /ouvrir/i })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/apps\/1\/edit$/);
 });
 
@@ -28,7 +31,10 @@ test("delete an item from the catalog", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).first().click();
-  await page.getByRole("button", { name: /^supprimer$/i }).first().click();
+  await page
+    .getByRole("button", { name: /^supprimer$/i })
+    .first()
+    .click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
 });
@@ -39,7 +45,10 @@ test("delete from the detail page returns to the catalog", async ({ page }) => {
   await page.goto("/items/1");
   await expect(page).toHaveURL(/\/items\/1$/);
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: /^supprimer$/i }).first().click();
+  await page
+    .getByRole("button", { name: /^supprimer$/i })
+    .first()
+    .click();
   await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
@@ -59,7 +68,9 @@ test("catalog search still sends q to the core (regression)", async ({ page }) =
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
 
-  const request = page.waitForRequest((req) => req.url().includes("/items?") && req.url().includes("q=Alp"));
+  const request = page.waitForRequest(
+    (req) => req.url().includes("/items?") && req.url().includes("q=Alp"),
+  );
   await page.getByRole("textbox", { name: "Rechercher" }).fill("Alp");
   await request;
 });

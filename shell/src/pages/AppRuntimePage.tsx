@@ -57,9 +57,16 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const [searchParams, setSearchParams] = useSearchParams();
   // Read once at mount ("au montage" per spec) — this component itself
   // writes ?ctx= back, so re-reading on every searchParams change would
-  // create a feedback loop.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const initialAnalyticsContext = useMemo(() => decodeAnalyticsContext(searchParams.get("ctx")), []);
+  // create a feedback loop. Le disable ci-dessous vise le tableau de
+  // dépendances (ESLint y rapporte le problème, pas sur la ligne
+  // `useMemo(` elle-même — `eslint-disable-next-line` posé plus haut ne le
+  // couvrait pas réellement, jamais remarqué avant le premier vrai passage
+  // d'ESLint sur ce fichier, SP-22 Task 3).
+  const initialAnalyticsContext = useMemo(
+    () => decodeAnalyticsContext(searchParams.get("ctx")),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Toujours écrire via le setSearchParams du dernier rendu : ce setter est lié
   // à la localisation courante, donc il préserve le pathname (ex. le segment
@@ -67,8 +74,15 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // de page ; sans ce ref, la fermeture capturée au montage réécrirait l'URL
   // relative à l'ancien pathname (avec replace) et ferait « reculer » la page.
   const setSearchParamsRef = useRef(setSearchParams);
-  useEffect(() => { setSearchParamsRef.current = setSearchParams; });
-  useEffect(() => () => { if (writeTimer.current) clearTimeout(writeTimer.current); }, []);
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams;
+  });
+  useEffect(
+    () => () => {
+      if (writeTimer.current) clearTimeout(writeTimer.current);
+    },
+    [],
+  );
 
   function handleAnalyticsContextChange(state: AnalyticsContextState) {
     // Additivité (contrainte globale #1) : une app sans interactions="auto"
@@ -80,15 +94,19 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     if (query.data?.interactions !== "auto") return;
     if (writeTimer.current) clearTimeout(writeTimer.current);
     writeTimer.current = setTimeout(() => {
-      setSearchParamsRef.current((prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("ctx", encodeAnalyticsContext(state));
-        return next;
-      }, { replace: true });
+      setSearchParamsRef.current(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("ctx", encodeAnalyticsContext(state));
+          return next;
+        },
+        { replace: true },
+      );
     }, EXTENT_DEBOUNCE_MS);
   }
 
-  const [currentAnalyticsContext, setCurrentAnalyticsContext] = useState<AnalyticsContextState>(initialAnalyticsContext);
+  const [currentAnalyticsContext, setCurrentAnalyticsContext] =
+    useState<AnalyticsContextState>(initialAnalyticsContext);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [viewTitle, setViewTitle] = useState("");
   const { username } = useAuth();
@@ -104,8 +122,10 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     if (!title) return;
     try {
       await createBookmark.mutateAsync({
-        title, owner: username ?? "",
-        appId: pk, pageId: pageId ?? query.data?.pages?.[0]?.id ?? "",
+        title,
+        owner: username ?? "",
+        appId: pk,
+        pageId: pageId ?? query.data?.pages?.[0]?.id ?? "",
         ...currentAnalyticsContext,
       });
       setSaveDialogOpen(false);
@@ -120,10 +140,18 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
     return <p role="status">Chargement…</p>;
   }
   if (itemQuery.isError) {
-    return <p role="alert" className="text-sm text-red-600">Accès refusé.</p>;
+    return (
+      <p role="alert" className="text-sm text-red-600">
+        Accès refusé.
+      </p>
+    );
   }
   if (query.isError || !query.data) {
-    return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
+    return (
+      <p role="alert" className="text-sm text-red-600">
+        Application introuvable.
+      </p>
+    );
   }
   // Fix round (finding I1): the export bar/button must show whenever
   // exportEnabled is true, regardless of interactions === "auto" — that flag
@@ -149,7 +177,9 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           config={query.data}
           mode="runtime"
           pageId={pageId}
-          onNavigate={(nextPageId) => navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)}
+          onNavigate={(nextPageId) =>
+            navigate(`/apps/${encodeURIComponent(pk)}/${encodeURIComponent(nextPageId)}`)
+          }
           initialAnalyticsContext={initialAnalyticsContext}
           onAnalyticsContextChange={handleAnalyticsContextChangeAndTrack}
         />
@@ -169,20 +199,40 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           {query.data.printLayout.cartouche}
         </div>
       )}
-      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} title="Enregistrer la vue">
+      <Dialog
+        open={saveDialogOpen}
+        onClose={() => setSaveDialogOpen(false)}
+        title="Enregistrer la vue"
+      >
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Nom de la vue
-            <Input aria-label="Nom de la vue" value={viewTitle} onChange={(e) => setViewTitle(e.target.value)} />
+            <Input
+              aria-label="Nom de la vue"
+              value={viewTitle}
+              onChange={(e) => setViewTitle(e.target.value)}
+            />
           </label>
           {createBookmark.isError && (
-            <p role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</p>
+            <p role="alert" className="text-sm text-red-600">
+              Échec de l'enregistrement.
+            </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setSaveDialogOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSaveDialogOpen(false)}
+            >
               Annuler
             </Button>
-            <Button type="button" size="sm" disabled={createBookmark.isPending || !viewTitle.trim()} onClick={saveView}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={createBookmark.isPending || !viewTitle.trim()}
+              onClick={() => void saveView()}
+            >
               Enregistrer
             </Button>
           </div>

@@ -11,14 +11,22 @@ function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
   return (
     <div className="flex items-center justify-between border-t border-slate-200 py-1 text-xs">
       <span>{rule.title}</span>
-      <span className={latest?.state === "firing" ? "font-semibold text-red-600" : "text-slate-500"}>
+      <span
+        className={latest?.state === "firing" ? "font-semibold text-red-600" : "text-slate-500"}
+      >
         {latest ? latest.state : "—"}
       </span>
     </div>
   );
 }
 
-export function AlertRuleEditor({ datasetItemId, owner }: { datasetItemId: string; owner: string }) {
+export function AlertRuleEditor({
+  datasetItemId,
+  owner,
+}: {
+  datasetItemId: string;
+  owner: string;
+}) {
   const rulesQuery = useAlertRulesForDataset(datasetItemId);
   const createRule = useCreateAlertRule();
   const [name, setName] = useState("");
@@ -31,15 +39,21 @@ export function AlertRuleEditor({ datasetItemId, owner }: { datasetItemId: strin
     setCreateError(null);
     try {
       await createRule.mutateAsync({
-        title: name, owner,
+        title: name,
+        owner,
         alert: {
-          datasetItemId, query: { agg: "count" }, condition: { expr },
+          datasetItemId,
+          query: { agg: "count" },
+          condition: { expr },
           refreshPolicy: refreshPolicy ?? { enabled: true, cron: "*/15 * * * *" },
           channels: [{ kind: "webhook", url: webhookUrl }],
           messageTemplate: "Alert {ruleName}: value={value} ({state})",
         },
       });
-      setName(""); setExpr(""); setWebhookUrl(""); setRefreshPolicy(null);
+      setName("");
+      setExpr("");
+      setWebhookUrl("");
+      setRefreshPolicy(null);
     } catch {
       setCreateError("Échec de la création de la règle.");
     }
@@ -53,30 +67,52 @@ export function AlertRuleEditor({ datasetItemId, owner }: { datasetItemId: strin
           Impossible de charger les règles d'alerte.
         </p>
       )}
-      {(rulesQuery.data ?? []).map((rule) => <AlertRuleRow key={rule.itemId} rule={rule} />)}
+      {(rulesQuery.data ?? []).map((rule) => (
+        <AlertRuleRow key={rule.itemId} rule={rule} />
+      ))}
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-2 text-xs">
         <label className="flex flex-col gap-1">
           Nom de la règle
-          <input aria-label="Nom de la règle" className="h-8 rounded border border-slate-300 px-2"
-            value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            aria-label="Nom de la règle"
+            className="h-8 rounded border border-slate-300 px-2"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
         <label className="flex flex-col gap-1">
           Condition (expression)
-          <input aria-label="Condition (expression)" className="h-8 rounded border border-slate-300 px-2 font-mono"
-            placeholder="value > 100" value={expr} onChange={(e) => setExpr(e.target.value)} />
+          <input
+            aria-label="Condition (expression)"
+            className="h-8 rounded border border-slate-300 px-2 font-mono"
+            placeholder="value > 100"
+            value={expr}
+            onChange={(e) => setExpr(e.target.value)}
+          />
         </label>
         <label className="flex flex-col gap-1">
           URL du webhook
-          <input aria-label="URL du webhook" className="h-8 rounded border border-slate-300 px-2"
-            value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
+          <input
+            aria-label="URL du webhook"
+            className="h-8 rounded border border-slate-300 px-2"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+          />
         </label>
         <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
-        <button type="button"
+        <button
+          type="button"
           className="self-start rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
-          onClick={handleCreate} disabled={createRule.isPending}>
+          onClick={() => void handleCreate()}
+          disabled={createRule.isPending}
+        >
           Créer la règle
         </button>
-        {createError && <p role="alert" className="text-red-600">{createError}</p>}
+        {createError && (
+          <p role="alert" className="text-red-600">
+            {createError}
+          </p>
+        )}
       </div>
     </div>
   );

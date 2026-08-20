@@ -24,8 +24,12 @@ function mockMe(isAnalyst: boolean) {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
-        id: "u1", username: "alice", firstName: "Alice", lastName: "Martin",
-        isAdmin: false, isAnalyst,
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+        isAnalyst,
       }),
     ),
   );
@@ -47,7 +51,14 @@ test("executes a query and renders the result table", async () => {
   server.use(
     http.post("https://core.test/analytics/sql", async ({ request }) => {
       posted = await request.json();
-      return HttpResponse.json({ columns: ["nom", "surface"], rows: [["Parc A", 12], ["Parc B", 30]], truncated: false });
+      return HttpResponse.json({
+        columns: ["nom", "surface"],
+        rows: [
+          ["Parc A", 12],
+          ["Parc B", 30],
+        ],
+        truncated: false,
+      });
     }),
   );
   render(<Harness />);
@@ -79,7 +90,11 @@ test("shows the server error message and keeps the SQL text on failure", async (
   server.use(
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
-        { detail: { errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }] } },
+        {
+          detail: {
+            errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
+          },
+        },
         { status: 400 },
       ),
     ),
@@ -105,7 +120,9 @@ test("records history on success and reloads a past query when clicked", async (
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   await screen.findByRole("columnheader", { name: "id" });
   await userEvent.clear(textarea);
-  const historyButton = await screen.findByRole("button", { name: "Recharger la requête : select id from x" });
+  const historyButton = await screen.findByRole("button", {
+    name: "Recharger la requête : select id from x",
+  });
   await userEvent.click(historyButton);
   expect(textarea).toHaveValue("select id from x");
 });

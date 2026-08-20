@@ -27,7 +27,14 @@ function renderPanel(overrides: Partial<ItemClient> = {}) {
 test("shows the run history from getPipelineRuns on mount", async () => {
   renderPanel({
     getPipelineRuns: vi.fn().mockResolvedValue([
-      { id: "run-0", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:02Z", error: null, nodeStats: {} },
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:02Z",
+        error: null,
+        nodeStats: {},
+      },
     ]),
   });
   await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
@@ -38,7 +45,16 @@ test("clicking Exécuter runs the pipeline then polls until the run leaves queue
   const getPipelineRuns = vi.fn().mockImplementation(() => {
     call += 1;
     const status = call < 2 ? "running" : "succeeded";
-    return Promise.resolve([{ id: "run-1", status, startedAt: "2026-08-06T10:00:00Z", finishedAt: null, error: null, nodeStats: {} }]);
+    return Promise.resolve([
+      {
+        id: "run-1",
+        status,
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]);
   });
   renderPanel({ getPipelineRuns });
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
@@ -49,7 +65,14 @@ test("clicking Exécuter runs the pipeline then polls until the run leaves queue
 test("a failed run shows its error message", async () => {
   renderPanel({
     getPipelineRuns: vi.fn().mockResolvedValue([
-      { id: "run-2", status: "failed", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:01Z", error: "collection introuvable", nodeStats: {} },
+      {
+        id: "run-2",
+        status: "failed",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:01Z",
+        error: "collection introuvable",
+        nodeStats: {},
+      },
     ]),
   });
   await waitFor(() => expect(screen.getByText("collection introuvable")).toBeInTheDocument());
@@ -70,7 +93,14 @@ test("calls onLatestRunChange with the newest run whenever the run list is (re)l
   const client: Partial<ItemClient> = {
     runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
     getPipelineRuns: vi.fn().mockResolvedValue([
-      { id: "run-0", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:02Z", error: null, nodeStats: {} },
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:02Z",
+        error: null,
+        nodeStats: {},
+      },
     ]),
   };
   render(
@@ -80,9 +110,9 @@ test("calls onLatestRunChange with the newest run whenever the run list is (re)l
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  await waitFor(() => expect(onLatestRunChange).toHaveBeenCalledWith(
-    expect.objectContaining({ id: "run-0" }),
-  ));
+  await waitFor(() =>
+    expect(onLatestRunChange).toHaveBeenCalledWith(expect.objectContaining({ id: "run-0" })),
+  );
 });
 
 test("calls onLatestRunChange with null when there is no run yet", async () => {

@@ -88,9 +88,10 @@ test("toggles publication from the menu", async () => {
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   const publish = screen.getByRole("button", { name: "Publier" });
   await userEvent.click(publish);
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Publier" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Publier" })).not.toBeInTheDocument(),
+  );
 });
-
 
 // Revue finale SP-17b (I3) : la création d'un ReportSchedule est refusée en
 // 403 par le cœur quand la capacité export est coupée — l'entrée du menu suit
@@ -100,7 +101,9 @@ function renderBookmarkActions(exportEnabled: boolean) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const client = {
-    getInstanceInfo: vi.fn().mockResolvedValue({ readOnly: false, etlEnabled: false, exportEnabled }),
+    getInstanceInfo: vi
+      .fn()
+      .mockResolvedValue({ readOnly: false, etlEnabled: false, exportEnabled }),
   } as unknown as ItemClient;
   render(
     <MemoryRouter>
@@ -116,14 +119,16 @@ function renderBookmarkActions(exportEnabled: boolean) {
 test("propose « Programmer un rapport » sur un signet quand la capacité export est active", async () => {
   renderBookmarkActions(true);
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await waitFor(() => expect(
-    screen.getByRole("button", { name: "Programmer un rapport" }),
-  ).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Programmer un rapport" })).toBeInTheDocument(),
+  );
 });
 
 test("masque « Programmer un rapport » quand la capacité export est coupée", async () => {
   renderBookmarkActions(false);
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
-  await waitFor(() => expect(screen.getByRole("button", { name: /modifier/i })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /modifier/i })).toBeInTheDocument(),
+  );
   expect(screen.queryByRole("button", { name: "Programmer un rapport" })).not.toBeInTheDocument();
 });

@@ -9,8 +9,13 @@ import { SitePublicPage } from "./SitePublicPage";
 import type { AuthState } from "../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: false, username: null,
-  error: null, getAccessToken: () => undefined, signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: false,
+  username: null,
+  error: null,
+  getAccessToken: () => undefined,
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
@@ -28,15 +33,38 @@ function renderSite(client: Partial<ItemClient>, slug = "mon-portail") {
 }
 
 const siteItem: Item = {
-  pk: "42", resourceType: "site", title: "Mon Portail", abstract: "", owner: "alice",
-  thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: true, slug: "mon-portail",
+  pk: "42",
+  resourceType: "site",
+  title: "Mon Portail",
+  abstract: "",
+  owner: "alice",
+  thumbnailUrl: null,
+  date: "",
+  configId: "cfg-1",
+  isPublished: true,
+  slug: "mon-portail",
 };
 
 const config: AppConfig = {
-  kind: "app", theme: {}, dataSources: [], messages: [],
-  layout: { type: "grid", breakpoints: {}, items: [
-    { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 1, props: { text: "Bienvenue sur le portail" } },
-  ] },
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  layout: {
+    type: "grid",
+    breakpoints: {},
+    items: [
+      {
+        id: "t1",
+        widget: "text",
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 1,
+        props: { text: "Bienvenue sur le portail" },
+      },
+    ],
+  },
 };
 
 test("200: renders the published site's runtime layout via AppRenderer", async () => {
@@ -50,10 +78,13 @@ test("200: renders the published site's runtime layout via AppRenderer", async (
 
 test("404: shows a not-found message without leaking whether the slug exists, and never fetches the config", async () => {
   const getPublicAppConfig = vi.fn().mockResolvedValue(config);
-  renderSite({
-    getItemBySlug: vi.fn().mockRejectedValue(new Error("404")),
-    getPublicAppConfig,
-  }, "nexiste-pas");
+  renderSite(
+    {
+      getItemBySlug: vi.fn().mockRejectedValue(new Error("404")),
+      getPublicAppConfig,
+    },
+    "nexiste-pas",
+  );
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/nexiste-pas/i);
   expect(getPublicAppConfig).not.toHaveBeenCalled();

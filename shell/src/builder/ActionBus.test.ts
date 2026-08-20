@@ -6,7 +6,9 @@ test("emits an event to the wired target action", () => {
   const bus = new ActionBus();
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter" }]);
+  bus.configure([
+    { id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter" },
+  ]);
   bus.emit("filter1", "changed", { nom: "A" });
   expect(handler).toHaveBeenCalledWith({ nom: "A" });
 });
@@ -59,7 +61,16 @@ test("fires the action when the condition evaluates truthy against the payload",
   const bus = new ActionBus();
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter", when: "record.nom == 'A'" }]);
+  bus.configure([
+    {
+      id: "m1",
+      from: "filter1",
+      event: "changed",
+      to: "list1",
+      action: "setFilter",
+      when: "record.nom == 'A'",
+    },
+  ]);
   bus.emit("filter1", "changed", { nom: "A" });
   expect(handler).toHaveBeenCalledWith({ nom: "A" });
 });
@@ -68,7 +79,16 @@ test("does not fire the action when the condition evaluates falsy against the pa
   const bus = new ActionBus();
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter", when: "record.nom == 'A'" }]);
+  bus.configure([
+    {
+      id: "m1",
+      from: "filter1",
+      event: "changed",
+      to: "list1",
+      action: "setFilter",
+      when: "record.nom == 'A'",
+    },
+  ]);
   bus.emit("filter1", "changed", { nom: "B" });
   expect(handler).not.toHaveBeenCalled();
 });
@@ -77,7 +97,9 @@ test("a message without a condition always fires (no regression)", () => {
   const bus = new ActionBus();
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter" }]);
+  bus.configure([
+    { id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter" },
+  ]);
   bus.emit("filter1", "changed", { nom: "anything" });
   expect(handler).toHaveBeenCalledWith({ nom: "anything" });
 });
@@ -87,7 +109,16 @@ test("evaluates the condition against vars/user set via setContext, not just the
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
   bus.setContext({ vars: { seuil: "haute" }, user: { name: "tanguy" } });
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter", when: "vars.seuil == 'haute' && user.name == 'tanguy'" }]);
+  bus.configure([
+    {
+      id: "m1",
+      from: "filter1",
+      event: "changed",
+      to: "list1",
+      action: "setFilter",
+      when: "vars.seuil == 'haute' && user.name == 'tanguy'",
+    },
+  ]);
   bus.emit("filter1", "changed", {});
   expect(handler).toHaveBeenCalled();
 });
@@ -96,7 +127,16 @@ test("a malformed condition never throws and is treated as not matching", () => 
   const bus = new ActionBus();
   const handler = vi.fn();
   bus.register("list1", "setFilter", handler);
-  bus.configure([{ id: "m1", from: "filter1", event: "changed", to: "list1", action: "setFilter", when: "record.missingField.nested" }]);
+  bus.configure([
+    {
+      id: "m1",
+      from: "filter1",
+      event: "changed",
+      to: "list1",
+      action: "setFilter",
+      when: "record.missingField.nested",
+    },
+  ]);
   expect(() => bus.emit("filter1", "changed", { nom: "A" })).not.toThrow();
   expect(handler).not.toHaveBeenCalled();
 });
@@ -125,7 +165,14 @@ test("dispatch calls each message's target handler with the message's static pay
   const fly = vi.fn();
   bus.register("map1", "flyTo", fly);
   bus.dispatch([
-    { id: "oe1", from: "p1", event: "enter", to: "map1", action: "flyTo", payload: { center: [2, 48] } },
+    {
+      id: "oe1",
+      from: "p1",
+      event: "enter",
+      to: "map1",
+      action: "flyTo",
+      payload: { center: [2, 48] },
+    },
   ]);
   expect(fly).toHaveBeenCalledWith({ center: [2, 48] });
 });
@@ -136,7 +183,15 @@ test("dispatch skips a message whose when condition is false", () => {
   bus.register("map1", "flyTo", fly);
   bus.setContext({ vars: { ready: false }, user: { name: "" } });
   bus.dispatch([
-    { id: "oe1", from: "p1", event: "enter", to: "map1", action: "flyTo", payload: {}, when: "vars.ready" },
+    {
+      id: "oe1",
+      from: "p1",
+      event: "enter",
+      to: "map1",
+      action: "flyTo",
+      payload: {},
+      when: "vars.ready",
+    },
   ]);
   expect(fly).not.toHaveBeenCalled();
 });
@@ -144,13 +199,17 @@ test("dispatch skips a message whose when condition is false", () => {
 test("dispatch is a no-op when no handler is registered for the target", () => {
   const bus = new ActionBus();
   expect(() =>
-    bus.dispatch([{ id: "oe1", from: "p1", event: "enter", to: "ghost", action: "flyTo", payload: {} }]),
+    bus.dispatch([
+      { id: "oe1", from: "p1", event: "enter", to: "ghost", action: "flyTo", payload: {} },
+    ]),
   ).not.toThrow();
 });
 
 test("dispatch isolates a throwing handler so later messages still run", () => {
   const bus = new ActionBus();
-  const boom = vi.fn(() => { throw new Error("boom"); });
+  const boom = vi.fn(() => {
+    throw new Error("boom");
+  });
   const ok = vi.fn();
   bus.register("a", "x", boom);
   bus.register("b", "y", ok);

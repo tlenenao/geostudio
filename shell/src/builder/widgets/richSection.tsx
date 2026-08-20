@@ -33,7 +33,12 @@ export function registerRichSectionWidget(): void {
         ) : null;
       }
       const html = sanitizeMarkdown(markdown);
-      return <div className="prose max-w-none text-[var(--gs-color-text)]" dangerouslySetInnerHTML={{ __html: html }} />;
+      return (
+        <div
+          className="prose max-w-none text-[var(--gs-color-text)]"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
     },
   });
 }

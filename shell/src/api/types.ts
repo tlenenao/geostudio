@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-export type ResourceType = "app" | "dashboard" | "map" | "site" | "dataset" | "external" | "bookmark" | "pipeline" | "alert" | "report" | "tileset3d" | "terrain3d";
+export type ResourceType =
+  | "app"
+  | "dashboard"
+  | "map"
+  | "site"
+  | "dataset"
+  | "external"
+  | "bookmark"
+  | "pipeline"
+  | "alert"
+  | "report"
+  | "tileset3d"
+  | "terrain3d";
 
 export type CreateKind = "app" | "dashboard" | "site";
 
@@ -32,12 +44,24 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean; copilotEnabled: boolean };
+export type InstanceInfo = {
+  readOnly: boolean;
+  etlEnabled: boolean;
+  exportEnabled: boolean;
+  appExportEnabled: boolean;
+  tileset3dEnabled: boolean;
+  terrain3dEnabled: boolean;
+  copilotEnabled: boolean;
+};
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
 export type CopilotClientOp = { op: string; args: Record<string, unknown> };
 export type CopilotTurnResult = { reply: string; clientOps: CopilotClientOp[] };
-export type CopilotToolSchema = { name: string; description: string; inputSchema: Record<string, unknown> };
+export type CopilotToolSchema = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+};
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -50,7 +74,13 @@ export type ListItemsParams = {
   me?: string;
 };
 
-export type UpdatePatch = { title?: string; abstract?: string; keywords?: string[]; isPublished?: boolean; slug?: string };
+export type UpdatePatch = {
+  title?: string;
+  abstract?: string;
+  keywords?: string[];
+  isPublished?: boolean;
+  slug?: string;
+};
 
 export type Group = { id: string; title: string };
 export type ShareRole = "viewer" | "editor";
@@ -59,13 +89,49 @@ export type Sharing = {
   groups: { groupId: string; role: ShareRole }[];
 };
 
-export type MapViewport = { center: [number, number]; zoom: number; pitch?: number; bearing?: number };
+export type MapViewport = {
+  center: [number, number];
+  zoom: number;
+  pitch?: number;
+  bearing?: number;
+};
 export type BaseMap = { style: string };
 export type MapLayer =
-  | { id: string; title: string; visible: boolean; kind: "vector"; tilesUrl: string; sourceLayer: string; paint?: Record<string, unknown> }
-  | { id: string; title: string; visible: boolean; kind: "raster"; tilesUrl: string; opacity?: number }
-  | { id: string; title: string; visible: boolean; kind: "feature"; url: string; paint?: Record<string, unknown>; renderAs?: "fill" | "circle" | "line" }
-  | { id: string; title: string; visible: boolean; kind: "deck"; deckType: "heatmap" | "hexbin" | "column"; dataUrl: string; props?: Record<string, unknown> }
+  | {
+      id: string;
+      title: string;
+      visible: boolean;
+      kind: "vector";
+      tilesUrl: string;
+      sourceLayer: string;
+      paint?: Record<string, unknown>;
+    }
+  | {
+      id: string;
+      title: string;
+      visible: boolean;
+      kind: "raster";
+      tilesUrl: string;
+      opacity?: number;
+    }
+  | {
+      id: string;
+      title: string;
+      visible: boolean;
+      kind: "feature";
+      url: string;
+      paint?: Record<string, unknown>;
+      renderAs?: "fill" | "circle" | "line";
+    }
+  | {
+      id: string;
+      title: string;
+      visible: boolean;
+      kind: "deck";
+      deckType: "heatmap" | "hexbin" | "column";
+      dataUrl: string;
+      props?: Record<string, unknown>;
+    }
   | { id: string; title: string; visible: boolean; kind: "tiles3d"; url: string };
 export type MapTerrainConfig = { tilesUrl: string; encoding: "terrarium"; exaggeration?: number };
 export type PrintLayoutConfig = {
@@ -98,7 +164,7 @@ export type LayerSource = {
 };
 
 export type CollectionFieldType =
-  | "string" | "integer" | "number" | "boolean" | "date" | "datetime" | "enum" | "unsupported";
+  "string" | "integer" | "number" | "boolean" | "date" | "datetime" | "enum" | "unsupported";
 
 export type CollectionSchemaField = {
   name: string;
@@ -136,17 +202,31 @@ export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
-  listPublicItems(params?: { type?: ResourceType; tag?: string; page?: number; pageSize?: number }): Promise<ItemPage>;
+  listPublicItems(params?: {
+    type?: ResourceType;
+    tag?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<ItemPage>;
   getMe(): Promise<Me>;
   getInstanceInfo(): Promise<InstanceInfo>;
-  copilotTurn(itemId: string, payload: {
-    message: string;
-    history: CopilotMessage[];
-    mcpToken: string;
-    currentConfig: AppConfig;
-    clientTools: CopilotToolSchema[];
-  }): Promise<CopilotTurnResult>;
-  createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item>;
+  copilotTurn(
+    itemId: string,
+    payload: {
+      message: string;
+      history: CopilotMessage[];
+      mcpToken: string;
+      currentConfig: AppConfig;
+      clientTools: CopilotToolSchema[];
+    },
+  ): Promise<CopilotTurnResult>;
+  createConfigItem(input: {
+    kind: CreateKind;
+    title: string;
+    owner: string;
+    templateId?: string;
+    slug?: string;
+  }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
@@ -176,19 +256,31 @@ export interface ItemClient {
   createDatasetItem(input: CreateDatasetInput): Promise<Item>;
   createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
   getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
-  createPipelineItem(input: { title: string; owner: string; pipeline: PipelinePayload }): Promise<Item>;
+  createPipelineItem(input: {
+    title: string;
+    owner: string;
+    pipeline: PipelinePayload;
+  }): Promise<Item>;
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string): Promise<PipelineRun[]>;
   previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
-  createAlertRuleItem(input: { title: string; owner: string; alert: AlertRulePayload }): Promise<Item>;
+  createAlertRuleItem(input: {
+    title: string;
+    owner: string;
+    alert: AlertRulePayload;
+  }): Promise<Item>;
   getAlertRuleConfig(pk: string): Promise<AlertRulePayload>;
   saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
   getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]>;
-  createReportScheduleItem(input: { title: string; owner: string; report: ReportSchedulePayload }): Promise<Item>;
+  createReportScheduleItem(input: {
+    title: string;
+    owner: string;
+    report: ReportSchedulePayload;
+  }): Promise<Item>;
   getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload>;
   saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void>;
   getReportRuns(pk: string): Promise<ReportRunStatus[]>;
@@ -204,7 +296,10 @@ export interface ItemClient {
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
   getCollection(collectionId: string): Promise<CollectionAdmin>;
   getCollectionPermission(collectionId: string): Promise<boolean>;
-  createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }>;
+  createFeature(
+    collectionId: string,
+    feature: GeoJSONFeatureInput,
+  ): Promise<{ id: string | number }>;
   updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void>;
   deleteFeature(collectionId: string, fid: string): Promise<void>;
   presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
@@ -213,8 +308,12 @@ export interface ItemClient {
     layers: { name: string; featureCount: number; geometryType: string }[];
   }>;
   createIngestionJob(input: {
-    key: string; filename: string; collectionTitle: string;
-    latField?: string; lonField?: string; layerName?: string;
+    key: string;
+    filename: string;
+    collectionTitle: string;
+    latField?: string;
+    lonField?: string;
+    layerName?: string;
   }): Promise<{ jobId: string }>;
   getIngestionJob(jobId: string): Promise<{
     status: "pending" | "running" | "done" | "error";
@@ -222,14 +321,19 @@ export interface ItemClient {
     collectionId: string | null;
     itemId: string | null;
   }>;
-  runAnalyticsSql(sql: string): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
+  runAnalyticsSql(
+    sql: string,
+  ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
   createExport(itemId: string, format: ExportFormat): Promise<{ jobId: string }>;
   getExportJob(jobId: string): Promise<ExportJob>;
   createAppExport(itemId: string, mode: AppExportMode): Promise<{ jobId: string }>;
   getAppExportJob(itemId: string, jobId: string): Promise<AppExportJobStatus>;
   createTileset3DUpload(input: { filename: string; title: string }): Promise<{ jobId: string }>;
   presignTileset3DUploadPart(jobId: string, partNumber: number): Promise<{ uploadUrl: string }>;
-  completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]): Promise<void>;
+  completeTileset3DUpload(
+    jobId: string,
+    parts: { partNumber: number; etag: string }[],
+  ): Promise<void>;
   getTileset3DUploadJob(jobId: string): Promise<{
     status: "pending" | "finalizing" | "done" | "error";
     errorMessage: string | null;
@@ -249,9 +353,14 @@ export interface ItemClient {
   // S3_UPLOADS_BUCKET alors que le worker de conversion lit le DEM brut dans
   // S3_TERRAIN3D_BUCKET (et n'y purgerait jamais l'upload brut).
   presignTerrain3DUpload(
-    filename: string, contentType: string,
+    filename: string,
+    contentType: string,
   ): Promise<{ uploadUrl: string; key: string }>;
-  createTerrain3DUpload(input: { key: string; filename: string; title: string }): Promise<{ jobId: string }>;
+  createTerrain3DUpload(input: {
+    key: string;
+    filename: string;
+    title: string;
+  }): Promise<{ jobId: string }>;
   getTerrain3DUploadJob(jobId: string): Promise<{
     status: "uploaded" | "converting" | "done" | "error";
     errorMessage: string | null;
@@ -346,7 +455,11 @@ export type CreateDatasetInput =
 // builder/. Si AnalyticsContextState change de forme, répercuter le
 // changement ici aussi.
 export type BookmarkCrossFilterValue = string | string[] | { from: string; to: string };
-export type BookmarkCrossFilterEntry = { field: string; value: BookmarkCrossFilterValue; originSourceId: string };
+export type BookmarkCrossFilterEntry = {
+  field: string;
+  value: BookmarkCrossFilterValue;
+  originSourceId: string;
+};
 
 export type BookmarkPayload = {
   appId: string;
@@ -396,7 +509,13 @@ export type CollectionAdmin = {
 };
 
 export type CandidateTable =
-  | { tableName: string; registrable: true; geometryType: string | null; srid: number | null; columnCount: number }
+  | {
+      tableName: string;
+      registrable: true;
+      geometryType: string | null;
+      srid: number | null;
+      columnCount: number;
+    }
   | { tableName: string; registrable: false; reason: string };
 
 export type CollectionCreateInput = {
@@ -413,7 +532,8 @@ export type CollectionPatchInput = {
   editable?: boolean;
 };
 
-export type HarvestSourceType = "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
+export type HarvestSourceType =
+  "stac" | "arcgis" | "wms" | "wfs" | "wmts" | "csw" | "ogc-records" | "ckan";
 export type HarvestSourceMode = "reference" | "copy";
 export type HarvestSourceStatus = "running" | "ok" | "error" | null;
 
@@ -544,8 +664,7 @@ export interface AlertCondition {
 }
 
 export type AlertChannel =
-  | { kind: "webhook"; url: string }
-  | { kind: "email"; to: string; smtpSecretName: string };
+  { kind: "webhook"; url: string } | { kind: "email"; to: string; smtpSecretName: string };
 
 export interface AlertRulePayload {
   datasetItemId: string;
@@ -614,10 +733,20 @@ export type PipelineOpsCatalog = Record<string, PipelineOpEntry>;
 
 export type ExportFormat = "png" | "pdf";
 export type ExportJobStatus = "pending" | "running" | "done" | "error";
-export type ExportJob = { id: string; status: ExportJobStatus; resultUrl: string | null; error: string | null };
+export type ExportJob = {
+  id: string;
+  status: ExportJobStatus;
+  resultUrl: string | null;
+  error: string | null;
+};
 
 export type AppExportMode = "static" | "connected" | "standalone";
-export type AppExportJobStatus = { id: string; status: string; resultUrl: string | null; error: string | null };
+export type AppExportJobStatus = {
+  id: string;
+  status: string;
+  resultUrl: string | null;
+  error: string | null;
+};
 
 export type PipelineRunStatus = "queued" | "running" | "succeeded" | "failed";
 

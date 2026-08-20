@@ -13,10 +13,22 @@ export function quoteSqlLiteral(value: string): string {
 }
 
 const OPERATOR_TO_SQL: Record<FilterOperator, string> = {
-  eq: "=", neq: "!=", gt: ">", gte: ">=", lt: "<", lte: "<=", contains: "LIKE",
+  eq: "=",
+  neq: "!=",
+  gt: ">",
+  gte: ">=",
+  lt: "<",
+  lte: "<=",
+  contains: "LIKE",
 };
 const SQL_TO_OPERATOR: Record<string, FilterOperator> = {
-  "=": "eq", "!=": "neq", ">": "gt", ">=": "gte", "<": "lt", "<=": "lte", LIKE: "contains",
+  "=": "eq",
+  "!=": "neq",
+  ">": "gt",
+  ">=": "gte",
+  "<": "lt",
+  "<=": "lte",
+  LIKE: "contains",
 };
 
 function formatValue(row: FilterRow, fieldType: CollectionFieldType): string {

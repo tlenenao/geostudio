@@ -2,13 +2,18 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("créer un site, y ajouter un DatasetCard lié à une collection publique, publier, consulter et télécharger en anonyme", async ({ page }) => {
+test("créer un site, y ajouter un DatasetCard lié à une collection publique, publier, consulter et télécharger en anonyme", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 
   // 1. Créer un Site.
   await page.getByRole("button", { name: "Nouveau" }).click();
-  await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("site");
+  await page
+    .getByRole("dialog", { name: "Nouvel élément" })
+    .getByLabel("Type")
+    .selectOption("site");
   await page.getByLabel("Titre").fill("Portail Parcs");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/site-1\/edit$/);
@@ -57,7 +62,9 @@ test("créer un site, y ajouter un DatasetCard lié à une collection publique, 
   expect(csvDownload.suggestedFilename()).toBe("parcs.csv");
 });
 
-test("une collection non publique via /public/datasets/:id rend « introuvable », sans fuite d'existence", async ({ page }) => {
+test("une collection non publique via /public/datasets/:id rend « introuvable », sans fuite d'existence", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/collections/incidents", async (route) => {
     // "incidents" est privée dans la fixture partagée (isPublic:false) — même

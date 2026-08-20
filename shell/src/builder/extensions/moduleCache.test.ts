@@ -22,8 +22,12 @@ test("does not share the cache across different URLs", async () => {
 
 test("caches a rejected import too — a second call does not retry", async () => {
   const importFn = vi.fn().mockRejectedValue(new Error("network down"));
-  await expect(ensureModuleLoaded("https://example.com/broken.js", importFn)).rejects.toThrow("network down");
-  await expect(ensureModuleLoaded("https://example.com/broken.js", importFn)).rejects.toThrow("network down");
+  await expect(ensureModuleLoaded("https://example.com/broken.js", importFn)).rejects.toThrow(
+    "network down",
+  );
+  await expect(ensureModuleLoaded("https://example.com/broken.js", importFn)).rejects.toThrow(
+    "network down",
+  );
   expect(importFn).toHaveBeenCalledTimes(1);
 });
 

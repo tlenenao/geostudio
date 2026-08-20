@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { BASEMAPS } from "./basemaps";
 
-export function BasemapSelect({ value, onChange }: { value: string; onChange: (style: string) => void }) {
+export function BasemapSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (style: string) => void;
+}) {
   return (
     <label className="flex flex-col gap-1 text-sm">
       Fond de carte
@@ -12,7 +18,9 @@ export function BasemapSelect({ value, onChange }: { value: string; onChange: (s
         onChange={(e) => onChange(e.target.value)}
       >
         {BASEMAPS.map((b) => (
-          <option key={b.id} value={b.style}>{b.label}</option>
+          <option key={b.id} value={b.style}>
+            {b.label}
+          </option>
         ))}
       </select>
     </label>

@@ -6,8 +6,13 @@ import type { CollectionSchema } from "../../api/types";
 import { QueryFilterBuilder } from "./QueryFilterBuilder";
 
 const SCHEMA: CollectionSchema = {
-  collection: "incidents", pk: "id", geometry: null,
-  fields: [{ name: "commune", type: "string", required: true }, { name: "gravite", type: "integer", required: false }],
+  collection: "incidents",
+  pk: "id",
+  geometry: null,
+  fields: [
+    { name: "commune", type: "string", required: true },
+    { name: "gravite", type: "integer", required: false },
+  ],
 };
 
 describe("QueryFilterBuilder", () => {

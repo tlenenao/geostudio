@@ -13,15 +13,27 @@ export function DataSourceSelect({
   onChange: (id: string) => void;
 }) {
   const addDataSource = useAddDataSource();
-  const datasetsQuery = useItems({ type: "dataset", pageSize: 100 }, { enabled: Boolean(addDataSource) });
-  const boundDatasetIds = new Set(dataSources.map((s) => s.datasetId).filter((id): id is string => Boolean(id)));
-  const sharedDatasets = (datasetsQuery.data?.items ?? []).filter((d) => !boundDatasetIds.has(d.pk));
+  const datasetsQuery = useItems(
+    { type: "dataset", pageSize: 100 },
+    { enabled: Boolean(addDataSource) },
+  );
+  const boundDatasetIds = new Set(
+    dataSources.map((s) => s.datasetId).filter((id): id is string => Boolean(id)),
+  );
+  const sharedDatasets = (datasetsQuery.data?.items ?? []).filter(
+    (d) => !boundDatasetIds.has(d.pk),
+  );
 
   function handleChange(raw: string) {
     if (raw.startsWith("dataset:")) {
       const pk = raw.slice("dataset:".length);
       const source: DataSource = {
-        id: crypto.randomUUID(), type: "features", service: "core", layer: "", datasetId: pk, query: {},
+        id: crypto.randomUUID(),
+        type: "features",
+        service: "core",
+        layer: "",
+        datasetId: pk,
+        query: {},
       };
       addDataSource?.(source);
       onChange(source.id);
@@ -41,12 +53,16 @@ export function DataSourceSelect({
       >
         <option value="">Aucune</option>
         {dataSources.map((s) => (
-          <option key={s.id} value={s.id}>{s.layer || s.id}</option>
+          <option key={s.id} value={s.id}>
+            {s.layer || s.id}
+          </option>
         ))}
         {sharedDatasets.length > 0 && (
           <optgroup label="Datasets partagés">
             {sharedDatasets.map((d) => (
-              <option key={d.pk} value={`dataset:${d.pk}`}>{d.title}</option>
+              <option key={d.pk} value={`dataset:${d.pk}`}>
+                {d.title}
+              </option>
             ))}
           </optgroup>
         )}

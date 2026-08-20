@@ -20,15 +20,28 @@ export function registerSelectFilterWidget(): void {
     ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
-        <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-          onChange={(id) => onChange({ ...props, dataSourceId: id })} />
-        <label className="flex flex-col gap-1">Champ
-          <input aria-label="Champ du sélecteur" className="h-9 rounded-md border border-slate-300 px-2"
-            value={String(props.field ?? "")} onChange={(e) => onChange({ ...props, field: e.target.value })} />
+        <DataSourceSelect
+          value={String(props.dataSourceId ?? "")}
+          dataSources={dataSources}
+          onChange={(id) => onChange({ ...props, dataSourceId: id })}
+        />
+        <label className="flex flex-col gap-1">
+          Champ
+          <input
+            aria-label="Champ du sélecteur"
+            className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.field ?? "")}
+            onChange={(e) => onChange({ ...props, field: e.target.value })}
+          />
         </label>
-        <label className="flex flex-col gap-1">Libellé
-          <input aria-label="Libellé du sélecteur" className="h-9 rounded-md border border-slate-300 px-2"
-            value={String(props.label ?? "")} onChange={(e) => onChange({ ...props, label: e.target.value })} />
+        <label className="flex flex-col gap-1">
+          Libellé
+          <input
+            aria-label="Libellé du sélecteur"
+            className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.label ?? "")}
+            onChange={(e) => onChange({ ...props, label: e.target.value })}
+          />
         </label>
       </div>
     ),
@@ -45,24 +58,41 @@ export function registerSelectFilterWidget(): void {
         queryKey: ["analytics-filter-options", datasetId, field],
         queryFn: async () => {
           const rows = await client.queryDataSource({
-            id: `analytics-filter-${datasetId}-${field}`, type: "statistics", service: "core",
-            layer: "", datasetId, query: { groupBy: field },
+            id: `analytics-filter-${datasetId}-${field}`,
+            type: "statistics",
+            service: "core",
+            layer: "",
+            datasetId,
+            query: { groupBy: field },
           });
-          return rows.map((r): SelectOption => ({ value: String(r.id), count: Number(r.properties.value ?? 0) }));
+          return rows.map((r): SelectOption => ({
+            value: String(r.id),
+            count: Number(r.properties.value ?? 0),
+          }));
         },
         enabled: Boolean(datasetId && field),
       });
 
       if (!datasetId || !field) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">Liez ce filtre à une source dataset et un champ</p>;
+        return (
+          <p className="text-xs text-[var(--gs-color-muted)]">
+            Liez ce filtre à une source dataset et un champ
+          </p>
+        );
       }
-      if (query.isLoading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (query.isLoading)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (query.isError || !query.data) {
-        return <p role="alert" className="text-xs text-[var(--gs-color-muted)]">Impossible de charger les valeurs</p>;
+        return (
+          <p role="alert" className="text-xs text-[var(--gs-color-muted)]">
+            Impossible de charger les valeurs
+          </p>
+        );
       }
 
       const active = analyticsCtx.crossFilter[datasetId];
-      const checked = active && active.field === field && Array.isArray(active.value) ? active.value : [];
+      const checked =
+        active && active.field === field && Array.isArray(active.value) ? active.value : [];
 
       function toggle(value: string, isChecked: boolean) {
         const next = isChecked ? [...checked, value] : checked.filter((v) => v !== value);
@@ -75,8 +105,12 @@ export function registerSelectFilterWidget(): void {
           <legend>{String(props.label ?? "Filtrer")}</legend>
           {query.data.map((opt) => (
             <label key={opt.value} className="flex items-center gap-2">
-              <input type="checkbox" aria-label={opt.value} checked={checked.includes(opt.value)}
-                onChange={(e) => toggle(opt.value, e.target.checked)} />
+              <input
+                type="checkbox"
+                aria-label={opt.value}
+                checked={checked.includes(opt.value)}
+                onChange={(e) => toggle(opt.value, e.target.checked)}
+              />
               {opt.value} ({opt.count})
             </label>
           ))}

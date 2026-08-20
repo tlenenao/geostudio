@@ -28,9 +28,7 @@ test("toggles a layer's visibility", async () => {
   const onChange = vi.fn();
   renderPanel(layers, onChange);
   await userEvent.click(screen.getByRole("button", { name: "Masquer A" }));
-  expect(onChange).toHaveBeenCalledWith([
-    { ...layers[0], visible: false }, layers[1],
-  ]);
+  expect(onChange).toHaveBeenCalledWith([{ ...layers[0], visible: false }, layers[1]]);
 });
 
 test("removes a layer", async () => {

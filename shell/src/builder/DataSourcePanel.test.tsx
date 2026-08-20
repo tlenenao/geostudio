@@ -16,7 +16,9 @@ test("adds a data source", async () => {
 });
 
 test("removes a data source", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "features", service: "featureserv", layer: "parcs", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "features", service: "featureserv", layer: "parcs", query: {} },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   await userEvent.click(screen.getByRole("button", { name: "Retirer parcs" }));
@@ -24,7 +26,9 @@ test("removes a data source", async () => {
 });
 
 test("edits a source layer", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "features", service: "featureserv", layer: "", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "features", service: "featureserv", layer: "", query: {} },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   await userEvent.type(screen.getByLabelText("Collection de la source d1"), "parcs");
@@ -33,14 +37,18 @@ test("edits a source layer", async () => {
 });
 
 test("offers a statistics type option", () => {
-  const sources: DataSource[] = [{ id: "d1", type: "features", service: "featureserv", layer: "", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "features", service: "featureserv", layer: "", query: {} },
+  ];
   render(<DataSourcePanel sources={sources} onChange={vi.fn()} />);
   const typeSelect = screen.getByLabelText("Type de la source d1");
   expect(within(typeSelect).getByRole("option", { name: "Statistiques" })).toBeInTheDocument();
 });
 
 test("edits a statistics source's group-by and split", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   // onChange is a spy, so the controlled inputs stay frozen at "" — each
@@ -52,7 +60,9 @@ test("edits a statistics source's group-by and split", async () => {
 });
 
 test("adds and configures a measure on a statistics source", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une mesure à d1" }));
@@ -61,7 +71,15 @@ test("adds and configures a measure on a statistics source", async () => {
 });
 
 test("edits the default aggregation of a statistics source", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: { groupBy: "region" } }];
+  const sources: DataSource[] = [
+    {
+      id: "d1",
+      type: "statistics",
+      service: "featureserv",
+      layer: "villes",
+      query: { groupBy: "region" },
+    },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   await userEvent.selectOptions(screen.getByLabelText("Agrégation (source d1)"), "sum");
@@ -73,9 +91,16 @@ test("edits the default aggregation of a statistics source", async () => {
 test("promoting a features source calls onPromote and then shows it as shared", async () => {
   const onChange = vi.fn();
   const onPromote = vi.fn();
-  const sources: DataSource[] = [{ id: "s1", type: "features", service: "core", layer: "parcs", query: {} }];
+  const sources: DataSource[] = [
+    { id: "s1", type: "features", service: "core", layer: "parcs", query: {} },
+  ];
   const { rerender } = render(
-    <DataSourcePanel sources={sources} onChange={onChange} onPromote={onPromote} promotingId={null} />,
+    <DataSourcePanel
+      sources={sources}
+      onChange={onChange}
+      onPromote={onPromote}
+      promotingId={null}
+    />,
   );
 
   await userEvent.click(screen.getByRole("button", { name: "Promouvoir en dataset partagé s1" }));
@@ -90,23 +115,36 @@ test("promoting a features source calls onPromote and then shows it as shared", 
     />,
   );
   expect(screen.getByText("Dataset partagé actif")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" }),
+  ).not.toBeInTheDocument();
 });
 
 test("a comma-separated group-by becomes a string array; a single field stays a string", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} },
+  ];
   const onChange = vi.fn();
   const { rerender } = render(<DataSourcePanel sources={sources} onChange={onChange} />);
-  fireEvent.change(screen.getByLabelText("Grouper par (source d1)"), { target: { value: "origin,destination" } });
-  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.groupBy).toEqual(["origin", "destination"]);
+  fireEvent.change(screen.getByLabelText("Grouper par (source d1)"), {
+    target: { value: "origin,destination" },
+  });
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.groupBy).toEqual([
+    "origin",
+    "destination",
+  ]);
 
-  const withArray: DataSource[] = [{ ...sources[0], query: { groupBy: ["origin", "destination"] } }];
+  const withArray: DataSource[] = [
+    { ...sources[0], query: { groupBy: ["origin", "destination"] } },
+  ];
   rerender(<DataSourcePanel sources={withArray} onChange={onChange} />);
   expect(screen.getByLabelText("Grouper par (source d1)")).toHaveValue("origin,destination");
 });
 
 test("edits the histogram bin count on a statistics source", async () => {
-  const sources: DataSource[] = [{ id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} }];
+  const sources: DataSource[] = [
+    { id: "d1", type: "statistics", service: "featureserv", layer: "villes", query: {} },
+  ];
   const onChange = vi.fn();
   render(<DataSourcePanel sources={sources} onChange={onChange} />);
   await userEvent.type(screen.getByLabelText("Nombre de classes (source d1)"), "8");

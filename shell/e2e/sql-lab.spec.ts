@@ -3,13 +3,21 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un analyste exécute une requête SQL, voit le résultat, et recharge une requête depuis l'historique", async ({ page }) => {
+test("un analyste exécute une requête SQL, voit le résultat, et recharge une requête depuis l'historique", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: false, isAnalyst: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: false,
+        isAnalyst: true,
       },
     });
   });
@@ -36,24 +44,38 @@ test("un analyste exécute une requête SQL, voit le résultat, et recharge une 
   await expect.poll(() => posted).toEqual({ sql: "select nom, surface from parcs" });
 
   await page.getByLabel("Requête SQL").fill("");
-  await page.getByRole("button", { name: "Recharger la requête : select nom, surface from parcs" }).click();
+  await page
+    .getByRole("button", { name: "Recharger la requête : select nom, surface from parcs" })
+    .click();
   await expect(page.getByLabel("Requête SQL")).toHaveValue("select nom, surface from parcs");
 });
 
-test("une erreur SQL affiche le message du serveur et conserve le texte dans l'éditeur", async ({ page }) => {
+test("une erreur SQL affiche le message du serveur et conserve le texte dans l'éditeur", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: false, isAnalyst: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: false,
+        isAnalyst: true,
       },
     });
   });
   await page.route("https://core.test/analytics/sql", async (route) => {
     await route.fulfill({
       status: 400,
-      json: { detail: { errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }] } },
+      json: {
+        detail: {
+          errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
+        },
+      },
     });
   });
 
@@ -64,7 +86,9 @@ test("une erreur SQL affiche le message du serveur et conserve le texte dans l'�
   await expect(page.getByLabel("Requête SQL")).toHaveValue("select * fro parcs");
 });
 
-test("un utilisateur non-analyste ne voit pas le lien SQL Lab et reçoit un message d'accès refusé", async ({ page }) => {
+test("un utilisateur non-analyste ne voit pas le lien SQL Lab et reçoit un message d'accès refusé", async ({
+  page,
+}) => {
   await mockCore(page);
   let sqlCalled = false;
   await page.route("https://core.test/analytics/sql", async (route) => {

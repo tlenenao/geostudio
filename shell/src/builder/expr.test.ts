@@ -4,7 +4,11 @@ import { evaluateExpression, validateExpression } from "./expr";
 
 afterEach(() => vi.restoreAllMocks());
 
-const ctx = { vars: { seuil: "haute" }, record: { gravite: "haute", titre: "Fuite" }, user: { name: "tanguy" } };
+const ctx = {
+  vars: { seuil: "haute" },
+  record: { gravite: "haute", titre: "Fuite" },
+  user: { name: "tanguy" },
+};
 
 test("evaluates arithmetic, string concatenation and the ternary operator", () => {
   expect(evaluateExpression("1 + 2 * 3", ctx)).toBe(7);
@@ -41,7 +45,8 @@ test("validateExpression returns an error message for an invalid expression", ()
 
 test("evaluateExpression can read the ctx.* analytics binding", () => {
   const result = evaluateExpression("ctx.timeRange.from", {
-    vars: {}, user: { name: "" },
+    vars: {},
+    user: { name: "" },
     ctx: { timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {} },
   });
   expect(result).toBe("2026-01-01");

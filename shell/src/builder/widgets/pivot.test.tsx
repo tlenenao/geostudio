@@ -11,10 +11,17 @@ import { ExplorerProvider } from "../ExplorerContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
-const state = (over: Partial<DataSourceState> = {}): DataSourceState =>
-  ({ loading: false, error: false, records: [], ...over });
+const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
+  loading: false,
+  error: false,
+  records: [],
+  ...over,
+});
 
 // Small fixture for behavioural tests (config message, cross-filter, explorer
 // menu). Deliberately 2 columns, not 1: with a single column a row's total
@@ -64,14 +71,20 @@ test("PropsPanel edits the rows and columns encodings", async () => {
   await userEvent.type(screen.getByLabelText("Champ lignes"), "r");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { rows: "r" } }));
   await userEvent.type(screen.getByLabelText("Champ colonnes"), "c");
-  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { columns: "c" } }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ encodings: { columns: "c" } }),
+  );
 });
 
 test("shows loading, error and empty states", () => {
   const Pivot = getWidget("pivot")!.Component;
-  const { rerender } = render(<Pivot props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />);
+  const { rerender } = render(
+    <Pivot props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />,
+  );
   expect(screen.getByText(/chargement/i)).toBeInTheDocument();
-  rerender(<Pivot props={{}} ctx={{ mode: "runtime", data: state({ error: true }) } as WidgetContext} />);
+  rerender(
+    <Pivot props={{}} ctx={{ mode: "runtime", data: state({ error: true }) } as WidgetContext} />,
+  );
   expect(screen.getByText(/erreur/i)).toBeInTheDocument();
   rerender(<Pivot props={{}} ctx={{ mode: "runtime", data: state() } as WidgetContext} />);
   expect(screen.getByText(/aucune donnée/i)).toBeInTheDocument();
@@ -85,7 +98,12 @@ test("shows a configuration message when rows/columns encodings are not set", ()
 
 test("renders row/column headers, cells and totals", () => {
   const Pivot = getWidget("pivot")!.Component;
-  render(<Pivot props={{ encodings: { rows: "region", columns: "quarter" } }} ctx={{ mode: "runtime", data: distinct } as WidgetContext} />);
+  render(
+    <Pivot
+      props={{ encodings: { rows: "region", columns: "quarter" } }}
+      ctx={{ mode: "runtime", data: distinct } as WidgetContext}
+    />,
+  );
   expect(screen.getByRole("button", { name: "Nord" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Q1" })).toBeInTheDocument();
   expect(screen.getByRole("cell", { name: "100" })).toBeInTheDocument();
@@ -104,7 +122,10 @@ test("clicking a row header cross-filters on the rows field", async () => {
   const Pivot = getWidget("pivot")!.Component;
   render(
     <AnalyticsContextProvider interactions="auto">
-      <Pivot props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }} ctx={{ mode: "runtime", data: small } as WidgetContext} />
+      <Pivot
+        props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }}
+        ctx={{ mode: "runtime", data: small } as WidgetContext}
+      />
       <Probe />
     </AnalyticsContextProvider>,
   );
@@ -121,7 +142,10 @@ test("clicking a column header cross-filters on the columns field", async () => 
   const Pivot = getWidget("pivot")!.Component;
   render(
     <AnalyticsContextProvider interactions="auto">
-      <Pivot props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }} ctx={{ mode: "runtime", data: small } as WidgetContext} />
+      <Pivot
+        props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }}
+        ctx={{ mode: "runtime", data: small } as WidgetContext}
+      />
       <Probe />
     </AnalyticsContextProvider>,
   );
@@ -137,7 +161,10 @@ test("never cross-filters from a data cell or the Total row/column", async () =>
   const Pivot = getWidget("pivot")!.Component;
   render(
     <AnalyticsContextProvider interactions="auto">
-      <Pivot props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }} ctx={{ mode: "runtime", data: small } as WidgetContext} />
+      <Pivot
+        props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }}
+        ctx={{ mode: "runtime", data: small } as WidgetContext}
+      />
       <Probe />
     </AnalyticsContextProvider>,
   );
@@ -154,7 +181,10 @@ test("shows an explorer menu when bound to a dataset and interactions are auto",
   const Pivot = getWidget("pivot")!.Component;
   render(
     <ExplorerProvider enabled>
-      <Pivot props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }} ctx={{ mode: "runtime", data: small } as WidgetContext} />
+      <Pivot
+        props={{ encodings: { rows: "region", columns: "quarter" }, dataSourceId: "src-1" }}
+        ctx={{ mode: "runtime", data: small } as WidgetContext}
+      />
     </ExplorerProvider>,
   );
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();

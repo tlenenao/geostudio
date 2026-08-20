@@ -1,13 +1,20 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un admin voit les extensions (actives et désactivées) et peut les activer/désactiver depuis le shell", async ({ page }) => {
+test("un admin voit les extensions (actives et désactivées) et peut les activer/désactiver depuis le shell", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -27,9 +34,16 @@ test("un admin voit les extensions (actives et désactivées) et peut les active
       json: {
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: true,
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [],
+            events: [],
+            actions: [],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
+            enabled: true,
           },
         ],
       },
@@ -44,7 +58,9 @@ test("un admin voit les extensions (actives et désactivées) et peut les active
   await expect.poll(() => patchedBody).toEqual({ enabled: false });
 });
 
-test("un utilisateur non-admin voit un message d'accès refusé et n'appelle jamais /extensions", async ({ page }) => {
+test("un utilisateur non-admin voit un message d'accès refusé et n'appelle jamais /extensions", async ({
+  page,
+}) => {
   await mockCore(page);
   let extensionsCalled = false;
   // Host-scoped — see rationale in the test above.

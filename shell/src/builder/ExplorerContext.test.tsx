@@ -2,7 +2,13 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { ExplorerProvider, useCloseExplorer, useExplorerEnabled, useExplorerTarget, useOpenExplorer } from "./ExplorerContext";
+import {
+  ExplorerProvider,
+  useCloseExplorer,
+  useExplorerEnabled,
+  useExplorerTarget,
+  useOpenExplorer,
+} from "./ExplorerContext";
 
 function Probe() {
   const target = useExplorerTarget();
@@ -21,28 +27,44 @@ function Probe() {
 }
 
 test("openExplorer is a silent no-op when the provider is disabled", async () => {
-  render(<ExplorerProvider enabled={false}><Probe /></ExplorerProvider>);
+  render(
+    <ExplorerProvider enabled={false}>
+      <Probe />
+    </ExplorerProvider>,
+  );
   expect(screen.getByText("enabled:false")).toBeInTheDocument();
   await userEvent.click(screen.getByText("open"));
   expect(screen.getByText("target:none")).toBeInTheDocument();
 });
 
 test("openExplorer sets the target when enabled", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  render(
+    <ExplorerProvider enabled>
+      <Probe />
+    </ExplorerProvider>,
+  );
   expect(screen.getByText("enabled:true")).toBeInTheDocument();
   await userEvent.click(screen.getByText("open"));
   expect(screen.getByText("target:ds1/src1")).toBeInTheDocument();
 });
 
 test("opening a second target while one is open replaces it (last one wins)", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  render(
+    <ExplorerProvider enabled>
+      <Probe />
+    </ExplorerProvider>,
+  );
   await userEvent.click(screen.getByText("open"));
   await userEvent.click(screen.getByText("open-other"));
   expect(screen.getByText("target:ds2/src2")).toBeInTheDocument();
 });
 
 test("closeExplorer clears the target", async () => {
-  render(<ExplorerProvider enabled><Probe /></ExplorerProvider>);
+  render(
+    <ExplorerProvider enabled>
+      <Probe />
+    </ExplorerProvider>,
+  );
   await userEvent.click(screen.getByText("open"));
   await userEvent.click(screen.getByText("close"));
   expect(screen.getByText("target:none")).toBeInTheDocument();

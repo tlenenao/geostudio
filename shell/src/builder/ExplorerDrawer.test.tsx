@@ -39,12 +39,21 @@ function CrossFilterSetter() {
 }
 
 function renderDrawer(
-  opts: { queryDataSource?: ReturnType<typeof vi.fn>; getDatasetConfig?: ReturnType<typeof vi.fn> } = {},
+  opts: {
+    queryDataSource?: ReturnType<typeof vi.fn>;
+    getDatasetConfig?: ReturnType<typeof vi.fn>;
+  } = {},
 ) {
-  const dataset: DatasetConfig = { source: "collection", collectionId: "col-1", columns: { nom: { label: "Nom" } } };
+  const dataset: DatasetConfig = {
+    source: "collection",
+    collectionId: "col-1",
+    columns: { nom: { label: "Nom" } },
+  };
   const getDatasetConfig = opts.getDatasetConfig ?? vi.fn().mockResolvedValue(dataset);
   const queryDataSource = opts.queryDataSource ?? vi.fn().mockResolvedValue([]);
-  const featuresUrl = vi.fn().mockReturnValue("https://core.test/collections/col-1/items?region=Nord");
+  const featuresUrl = vi
+    .fn()
+    .mockReturnValue("https://core.test/collections/col-1/items?region=Nord");
   const client = { getDatasetConfig, queryDataSource, featuresUrl } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -63,7 +72,9 @@ function renderDrawer(
   return { queryDataSource, featuresUrl };
 }
 
-beforeEach(() => { highlightSpy.mockClear(); });
+beforeEach(() => {
+  highlightSpy.mockClear();
+});
 
 test("renders nothing when no target is open", () => {
   renderDrawer();
@@ -71,35 +82,47 @@ test("renders nothing when no target is open", () => {
 });
 
 test("opening a target queries the raw dataset features with the analytics context applied, even from its own origin widget", async () => {
-  const queryDataSource = vi.fn().mockResolvedValue([
-    { id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } },
-  ]);
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValue([
+      { id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } },
+    ]);
   renderDrawer({ queryDataSource });
   await userEvent.click(screen.getByText("set-cf"));
   await userEvent.click(screen.getByText("open"));
   await screen.findByText("Parc A");
-  expect(queryDataSource).toHaveBeenCalledWith(expect.objectContaining({
-    id: "__explorer__",
-    datasetId: "ds1",
-    query: expect.objectContaining({ limit: 200, region: "Nord" }),
-  }));
+  expect(queryDataSource).toHaveBeenCalledWith(
+    expect.objectContaining({
+      id: "__explorer__",
+      datasetId: "ds1",
+      query: expect.objectContaining({ limit: 200, region: "Nord" }),
+    }),
+  );
 });
 
 test("table column headers use the dataset's business labels when available", async () => {
-  renderDrawer({ queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "Parc A" } }]) });
+  renderDrawer({
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "Parc A" } }]),
+  });
   await userEvent.click(screen.getByText("open"));
   expect(await screen.findByText("Nom")).toBeInTheDocument();
 });
 
 test("shows the 200-row cap message when the limit is reached", async () => {
-  const records: DataRecord[] = Array.from({ length: 200 }, (_, i) => ({ id: i, properties: { nom: `Parc ${i}` } }));
+  const records: DataRecord[] = Array.from({ length: 200 }, (_, i) => ({
+    id: i,
+    properties: { nom: `Parc ${i}` },
+  }));
   renderDrawer({ queryDataSource: vi.fn().mockResolvedValue(records) });
   await userEvent.click(screen.getByText("open"));
   expect(await screen.findByText(/200 premières affichées/)).toBeInTheDocument();
 });
 
 test("paginates 20 rows at a time", async () => {
-  const records: DataRecord[] = Array.from({ length: 25 }, (_, i) => ({ id: i, properties: { nom: `Parc ${i}` } }));
+  const records: DataRecord[] = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    properties: { nom: `Parc ${i}` },
+  }));
   renderDrawer({ queryDataSource: vi.fn().mockResolvedValue(records) });
   await userEvent.click(screen.getByText("open"));
   await screen.findByText("Parc 0");
@@ -110,7 +133,10 @@ test("paginates 20 rows at a time", async () => {
 });
 
 test("pagination buttons have explicit aria-labels", async () => {
-  const records: DataRecord[] = Array.from({ length: 25 }, (_, i) => ({ id: i, properties: { nom: `Parc ${i}` } }));
+  const records: DataRecord[] = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    properties: { nom: `Parc ${i}` },
+  }));
   renderDrawer({ queryDataSource: vi.fn().mockResolvedValue(records) });
   await userEvent.click(screen.getByText("open"));
   await screen.findByText("Parc 0");
@@ -119,7 +145,11 @@ test("pagination buttons have explicit aria-labels", async () => {
 });
 
 test("rows are keyboard-accessible: labeled, focusable, and activated by Enter/Space", async () => {
-  const record = { id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } };
+  const record = {
+    id: 1,
+    properties: { nom: "Parc A" },
+    geometry: { type: "Point", coordinates: [1, 2] },
+  };
   renderDrawer({ queryDataSource: vi.fn().mockResolvedValue([record]) });
   await userEvent.click(screen.getByText("open"));
   const row = await screen.findByRole("button", { name: "Voir Parc A" });
@@ -133,7 +163,11 @@ test("rows are keyboard-accessible: labeled, focusable, and activated by Enter/S
 });
 
 test("clicking a row highlights it on the drawer's own map without touching the analytics context", async () => {
-  const record = { id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } };
+  const record = {
+    id: 1,
+    properties: { nom: "Parc A" },
+    geometry: { type: "Point", coordinates: [1, 2] },
+  };
   renderDrawer({ queryDataSource: vi.fn().mockResolvedValue([record]) });
   await userEvent.click(screen.getByText("open"));
   await userEvent.click(await screen.findByText("Parc A"));
@@ -149,7 +183,9 @@ test("closing via the close button clears the target", async () => {
 
 test("shows the loading state while the dataset config is still in flight, not the empty state", async () => {
   let resolveDataset: (v: DatasetConfig) => void = () => {};
-  const datasetPromise = new Promise<DatasetConfig>((resolve) => { resolveDataset = resolve; });
+  const datasetPromise = new Promise<DatasetConfig>((resolve) => {
+    resolveDataset = resolve;
+  });
   const getDatasetConfig = vi.fn().mockReturnValue(datasetPromise);
   renderDrawer({ getDatasetConfig, queryDataSource: vi.fn().mockResolvedValue([]) });
   await userEvent.click(screen.getByText("open"));

@@ -53,6 +53,15 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
     }
   }
 
+  async function togglePublish() {
+    try {
+      await publish.mutateAsync({ isPublished: !item.isPublished });
+      setPanel(null);
+    } catch {
+      /* surfaced via publish.isError */
+    }
+  }
+
   return (
     <div className="relative">
       <Button size="sm" variant="ghost" aria-label="Actions" onClick={() => setPanel("menu")}>
@@ -61,7 +70,10 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
       {panel === "menu" && (
         <div className="absolute z-20 mt-8 flex flex-col rounded-md border border-slate-200 bg-white text-sm shadow">
-          <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("edit")}>
+          <button
+            className="px-3 py-1 text-left hover:bg-slate-100"
+            onClick={() => setPanel("edit")}
+          >
             Modifier
           </button>
           {item.resourceType === "bookmark" && exportEnabled && (
@@ -77,24 +89,26 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
           )}
           <button
             className="px-3 py-1 text-left hover:bg-slate-100"
-            onClick={async () => {
-              try {
-                await publish.mutateAsync({ isPublished: !item.isPublished });
-                setPanel(null);
-              } catch {
-                /* surfaced via publish.isError */
-              }
-            }}
+            onClick={() => void togglePublish()}
           >
             {item.isPublished ? "Dépublier" : "Publier"}
           </button>
-          <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("thumbnail")}>
+          <button
+            className="px-3 py-1 text-left hover:bg-slate-100"
+            onClick={() => setPanel("thumbnail")}
+          >
             Miniature
           </button>
-          <button className="px-3 py-1 text-left hover:bg-slate-100" onClick={() => setPanel("share")}>
+          <button
+            className="px-3 py-1 text-left hover:bg-slate-100"
+            onClick={() => setPanel("share")}
+          >
             Partager
           </button>
-          <button className="px-3 py-1 text-left text-red-600 hover:bg-slate-100" onClick={() => setPanel("delete")}>
+          <button
+            className="px-3 py-1 text-left text-red-600 hover:bg-slate-100"
+            onClick={() => setPanel("delete")}
+          >
             Supprimer
           </button>
         </div>
@@ -103,7 +117,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
       <Dialog open={panel === "edit"} onClose={() => setPanel(null)} title="Modifier l'élément">
         <MetadataForm
           initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
-          onSubmit={save}
+          onSubmit={(v) => void save(v)}
           onCancel={() => setPanel(null)}
           pending={update.isPending}
         />
@@ -115,7 +129,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
       </Dialog>
 
       <Dialog open={panel === "thumbnail"} onClose={() => setPanel(null)} title="Miniature">
-        <ThumbnailUpload onUpload={upload} pending={thumbnail.isPending} />
+        <ThumbnailUpload onUpload={(file) => void upload(file)} pending={thumbnail.isPending} />
         {thumbnail.isError && (
           <p role="alert" className="mt-2 text-sm text-red-600">
             Échec de l'envoi.
@@ -131,7 +145,7 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         message={`Supprimer « ${item.title} » ? Cette action est irréversible.`}
         confirmLabel="Supprimer"
         pending={remove.isPending}
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
         onCancel={() => setPanel(null)}
       />
       {remove.isError && panel === "delete" && (

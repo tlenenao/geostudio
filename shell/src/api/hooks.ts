@@ -1,7 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
-import type { AlertRulePayload, AppConfig, CollectionCreateInput, CollectionPatchInput, CreateBookmarkInput, CreateDatasetInput, CreateKind, DatasetConfig, HarvestSourceCreateInput, HarvestSourcePatchInput, Item, ItemPage, ListItemsParams, MapConfig, PipelinePayload, ReportSchedulePayload, Sharing, UpdatePatch } from "./types";
+import type {
+  AlertRulePayload,
+  AppConfig,
+  CollectionCreateInput,
+  CollectionPatchInput,
+  CreateBookmarkInput,
+  CreateDatasetInput,
+  CreateKind,
+  DatasetConfig,
+  HarvestSourceCreateInput,
+  HarvestSourcePatchInput,
+  Item,
+  ItemPage,
+  ListItemsParams,
+  MapConfig,
+  PipelinePayload,
+  ReportSchedulePayload,
+  Sharing,
+  UpdatePatch,
+} from "./types";
 
 export { useItemClient } from "./ItemClientProvider";
 
@@ -40,7 +59,9 @@ export function useInstanceInfo() {
     // Même garde défensive pour etlEnabled que pour readOnly ci-dessus
     // (SP-15b) : un ItemClient de test qui ne l'implémente pas encore
     // résout silencieusement à false plutôt que de planter la query.
-    queryFn: () => client.getInstanceInfo?.() ?? Promise.resolve({ readOnly: false, etlEnabled: false, exportEnabled: false }),
+    queryFn: () =>
+      client.getInstanceInfo?.() ??
+      Promise.resolve({ readOnly: false, etlEnabled: false, exportEnabled: false }),
   });
 }
 
@@ -48,10 +69,15 @@ export function useCreateItem() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }) =>
-      client.createConfigItem(input),
+    mutationFn: (input: {
+      kind: CreateKind;
+      title: string;
+      owner: string;
+      templateId?: string;
+      slug?: string;
+    }) => client.createConfigItem(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -77,8 +103,8 @@ export function useDeleteItem() {
       ctx?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
     },
     onSettled: (_data, _err, pk) => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      queryClient.invalidateQueries({ queryKey: ["item", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["item", pk] });
     },
   });
 }
@@ -111,8 +137,8 @@ export function useUpdateItem(pk: string) {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["item", pk] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["item", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -123,8 +149,8 @@ export function useUploadThumbnail(pk: string) {
   return useMutation({
     mutationFn: (file: File) => client.uploadThumbnail(pk, file),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["item", pk] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["item", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -153,8 +179,8 @@ export function useSetSharing(pk: string) {
   return useMutation({
     mutationFn: (sharing: Sharing) => client.setSharing(pk, sharing),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sharing", pk] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["sharing", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -183,7 +209,7 @@ export function useCreateMap() {
   return useMutation({
     mutationFn: (input: { title: string; owner: string }) => client.createMapItem(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -203,7 +229,7 @@ export function useSaveMap(pk: string) {
   return useMutation({
     mutationFn: (config: MapConfig) => client.saveMapConfig(pk, config),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["map", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["map", pk] });
     },
   });
 }
@@ -214,7 +240,7 @@ export function useCreateDataset() {
   return useMutation({
     mutationFn: (input: CreateDatasetInput) => client.createDatasetItem(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -225,7 +251,7 @@ export function useCreateBookmark() {
   return useMutation({
     mutationFn: (input: CreateBookmarkInput) => client.createBookmarkItem(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -245,7 +271,7 @@ export function useSaveDataset(pk: string) {
   return useMutation({
     mutationFn: (config: DatasetConfig) => client.saveDatasetConfig(pk, config),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dataset", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["dataset", pk] });
     },
   });
 }
@@ -266,7 +292,7 @@ export function useCreatePipeline() {
     mutationFn: (input: { title: string; owner: string; pipeline: PipelinePayload }) =>
       client.createPipelineItem(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
     },
   });
 }
@@ -277,7 +303,7 @@ export function useSavePipeline(pk: string) {
   return useMutation({
     mutationFn: (payload: PipelinePayload) => client.savePipelineConfig(pk, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pipeline", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["pipeline", pk] });
     },
   });
 }
@@ -329,9 +355,12 @@ export function useCreateAlertRule() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; owner: string; alert: AlertRulePayload }) => client.createAlertRuleItem(input),
+    mutationFn: (input: { title: string; owner: string; alert: AlertRulePayload }) =>
+      client.createAlertRuleItem(input),
     onSuccess: (_item, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["alert-rules", variables.alert.datasetItemId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["alert-rules", variables.alert.datasetItemId],
+      });
     },
   });
 }
@@ -375,7 +404,7 @@ export function useSaveApp(pk: string) {
   return useMutation({
     mutationFn: (config: AppConfig) => client.saveAppConfig(pk, config),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["app", pk] });
+      void queryClient.invalidateQueries({ queryKey: ["app", pk] });
     },
   });
 }
@@ -407,9 +436,10 @@ export function useSetExtensionEnabled() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => client.setExtensionEnabled(id, enabled),
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      client.setExtensionEnabled(id, enabled),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["extensions"] });
+      void queryClient.invalidateQueries({ queryKey: ["extensions"] });
     },
   });
 }
@@ -438,8 +468,8 @@ export function useCreateCollection() {
   return useMutation({
     mutationFn: (input: CollectionCreateInput) => client.createCollection(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
-      queryClient.invalidateQueries({ queryKey: ["collections", "candidates"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections", "candidates"] });
     },
   });
 }
@@ -450,7 +480,7 @@ export function useUpdateCollection(id: string) {
   return useMutation({
     mutationFn: (patch: CollectionPatchInput) => client.updateCollection(id, patch),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
     },
   });
 }
@@ -461,8 +491,8 @@ export function useDeleteCollection() {
   return useMutation({
     mutationFn: (id: string) => client.deleteCollection(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
-      queryClient.invalidateQueries({ queryKey: ["collections", "candidates"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections", "admin"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections", "candidates"] });
     },
   });
 }
@@ -482,7 +512,7 @@ export function useCreateHarvestSource() {
   return useMutation({
     mutationFn: (input: HarvestSourceCreateInput) => client.createHarvestSource(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+      void queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
     },
   });
 }
@@ -493,7 +523,7 @@ export function useUpdateHarvestSource(id: string) {
   return useMutation({
     mutationFn: (patch: HarvestSourcePatchInput) => client.updateHarvestSource(id, patch),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+      void queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
     },
   });
 }
@@ -504,7 +534,7 @@ export function useDeleteHarvestSource() {
   return useMutation({
     mutationFn: (id: string) => client.deleteHarvestSource(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+      void queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
     },
   });
 }
@@ -515,7 +545,7 @@ export function useRunHarvestSource() {
   return useMutation({
     mutationFn: (id: string) => client.runHarvestSource(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
+      void queryClient.invalidateQueries({ queryKey: ["harvest-sources"] });
     },
   });
 }
@@ -535,7 +565,7 @@ export function useSetCollectionSharing(id: string) {
   return useMutation({
     mutationFn: (sharing: Sharing) => client.setCollectionSharing(id, sharing),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["collection-sharing", id] });
+      void queryClient.invalidateQueries({ queryKey: ["collection-sharing", id] });
     },
   });
 }

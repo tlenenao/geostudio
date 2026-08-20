@@ -6,12 +6,19 @@ import type { CollectionSchema } from "../../api/types";
 import { QueryJoinPicker } from "./QueryJoinPicker";
 
 const BASE: CollectionSchema = {
-  collection: "incidents", pk: "id", geometry: null,
+  collection: "incidents",
+  pk: "id",
+  geometry: null,
   fields: [{ name: "commune", type: "string", required: true }],
 };
 const JOINED: CollectionSchema = {
-  collection: "communes", pk: "id", geometry: null,
-  fields: [{ name: "commune", type: "string", required: true }, { name: "population", type: "integer", required: false }],
+  collection: "communes",
+  pk: "id",
+  geometry: null,
+  fields: [
+    { name: "commune", type: "string", required: true },
+    { name: "population", type: "integer", required: false },
+  ],
 };
 
 describe("QueryJoinPicker", () => {
@@ -19,7 +26,8 @@ describe("QueryJoinPicker", () => {
     const onChange = vi.fn();
     render(
       <QueryJoinPicker
-        baseSchema={BASE} joinedSchema={JOINED}
+        baseSchema={BASE}
+        joinedSchema={JOINED}
         collections={[{ id: "communes", title: "Communes" }]}
         value={{ collectionId: "communes", on: "", how: "inner" }}
         onChange={onChange}
@@ -30,10 +38,14 @@ describe("QueryJoinPicker", () => {
   });
 
   test("affiche un message si aucune colonne n'est commune", () => {
-    const disjointJoined: CollectionSchema = { ...JOINED, fields: [{ name: "population", type: "integer", required: false }] };
+    const disjointJoined: CollectionSchema = {
+      ...JOINED,
+      fields: [{ name: "population", type: "integer", required: false }],
+    };
     render(
       <QueryJoinPicker
-        baseSchema={BASE} joinedSchema={disjointJoined}
+        baseSchema={BASE}
+        joinedSchema={disjointJoined}
         collections={[{ id: "communes", title: "Communes" }]}
         value={{ collectionId: "communes", on: "", how: "inner" }}
         onChange={vi.fn()}
@@ -46,7 +58,8 @@ describe("QueryJoinPicker", () => {
     const onChange = vi.fn();
     render(
       <QueryJoinPicker
-        baseSchema={BASE} joinedSchema={JOINED}
+        baseSchema={BASE}
+        joinedSchema={JOINED}
         collections={[{ id: "communes", title: "Communes" }]}
         value={{ collectionId: "communes", on: "commune", how: "inner" }}
         onChange={onChange}

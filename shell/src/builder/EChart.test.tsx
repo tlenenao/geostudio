@@ -77,9 +77,7 @@ test("renders a sunburst option without throwing (SunburstChart must be register
 });
 
 test("registers SunburstChart with echarts.use", () => {
-  render(
-    <EChart option={{ series: [{ type: "sunburst", data: [{ name: "A", value: 1 }] }] }} />,
-  );
+  render(<EChart option={{ series: [{ type: "sunburst", data: [{ name: "A", value: 1 }] }] }} />);
   // NB: each chart-type mock is a bare `{}`, so they are all deep-equal to one
   // another — `toHaveBeenCalledWith(expect.arrayContaining(...))` (structural
   // equality) would pass even if SunburstChart were never registered, as long

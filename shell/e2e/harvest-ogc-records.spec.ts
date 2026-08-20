@@ -4,13 +4,20 @@ import { mockCore } from "./mocks";
 
 const OGC_URL = "https://records.example.com/api";
 
-test("un admin déclare une source OGC API - Records, la moissonne, et l'item apparaît au catalogue, cherchable", async ({ page }) => {
+test("un admin déclare une source OGC API - Records, la moissonne, et l'item apparaît au catalogue, cherchable", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -25,8 +32,15 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
       await route.fulfill({
         status: 201,
         json: {
-          id: "src-1", type: "ogc-records", url: OGC_URL, mode: "reference", enabled: true,
-          intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
+          id: "src-1",
+          type: "ogc-records",
+          url: OGC_URL,
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
         },
       });
       return;
@@ -34,12 +48,19 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
     await route.fulfill({
       json: {
         sources: created
-          ? [{
-              id: "src-1", type: "ogc-records", url: OGC_URL, mode: "reference", enabled: true,
-              intervalMinutes: null,
-              lastRunAt: runCount > 0 ? "2026-07-24T10:00:00Z" : null,
-              lastStatus: runCount > 0 ? "ok" : null, lastError: null,
-            }]
+          ? [
+              {
+                id: "src-1",
+                type: "ogc-records",
+                url: OGC_URL,
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: runCount > 0 ? "2026-07-24T10:00:00Z" : null,
+                lastStatus: runCount > 0 ? "ok" : null,
+                lastError: null,
+              },
+            ]
           : [],
       },
     });
@@ -48,9 +69,15 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
   await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("rec-1", {
-      pk: "rec-1", resourceType: "external", title: "Sentiers de randonnée (OGC Records distant)",
-      abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-      configId: null, isPublished: false,
+      pk: "rec-1",
+      resourceType: "external",
+      title: "Sentiers de randonnée (OGC Records distant)",
+      abstract: "",
+      owner: "mockuser",
+      thumbnailUrl: null,
+      date: "2026-01-01",
+      configId: null,
+      isPublished: false,
     });
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
@@ -66,9 +93,14 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
   await dialog.getByLabel("URL").fill(OGC_URL);
   await dialog.getByLabel("Type").selectOption("ogc-records");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => created).toEqual({
-    type: "ogc-records", url: OGC_URL, mode: "reference", enabled: true,
-  });
+  await expect
+    .poll(() => created)
+    .toEqual({
+      type: "ogc-records",
+      url: OGC_URL,
+      mode: "reference",
+      enabled: true,
+    });
 
   await page.getByRole("button", { name: "Moissonner maintenant" }).click();
   await expect.poll(() => runCount).toBe(1);
@@ -78,7 +110,9 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
   await expect(page.getByText("Sentiers de randonnée (OGC Records distant)")).toBeVisible();
   await expect(page.getByText("Externe")).toBeVisible();
 
-  const request = page.waitForRequest((req) => req.url().includes("/items?") && req.url().includes("q=Sentiers"));
+  const request = page.waitForRequest(
+    (req) => req.url().includes("/items?") && req.url().includes("q=Sentiers"),
+  );
   await page.getByRole("textbox", { name: "Rechercher" }).fill("Sentiers");
   await request;
   await expect(page.getByText("Sentiers de randonnée (OGC Records distant)")).toBeVisible();

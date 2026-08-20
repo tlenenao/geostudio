@@ -3,14 +3,35 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 const OPS_CATALOG = {
-  "reader.collection": { kind: "reader", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
-  "transform.filter": { kind: "transform", paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] } },
+  "reader.collection": {
+    kind: "reader",
+    paramsSchema: {
+      properties: { collectionId: { type: "string", format: "collection-id" } },
+      required: ["collectionId"],
+    },
+  },
+  "transform.filter": {
+    kind: "transform",
+    paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] },
+  },
   "transform.join": {
     kind: "transform",
-    paramsSchema: { properties: { withCollectionId: { type: "string", format: "collection-id" }, on: { type: "string" } }, required: ["on"] },
+    paramsSchema: {
+      properties: {
+        withCollectionId: { type: "string", format: "collection-id" },
+        on: { type: "string" },
+      },
+      required: ["on"],
+    },
     acceptsSecondaryInput: true,
   },
-  "writer.collection": { kind: "writer", paramsSchema: { properties: { collectionId: { type: "string", format: "collection-id" } }, required: ["collectionId"] } },
+  "writer.collection": {
+    kind: "writer",
+    paramsSchema: {
+      properties: { collectionId: { type: "string", format: "collection-id" } },
+      required: ["collectionId"],
+    },
+  },
 };
 
 async function mockPipelineFlow(page: Page) {
@@ -22,17 +43,48 @@ async function mockPipelineFlow(page: Page) {
   });
   await page.route("https://core.test/collections*", async (route) => {
     await route.fulfill({
-      json: { collections: [
-        { id: "villes", title: "Villes", description: "", tableName: "villes", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 10, owner: "alice" },
-        { id: "villes_propres", title: "Villes propres", description: "", tableName: "villes_propres", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 0, owner: "alice" },
-      ] },
+      json: {
+        collections: [
+          {
+            id: "villes",
+            title: "Villes",
+            description: "",
+            tableName: "villes",
+            isPublic: true,
+            editable: true,
+            geometryType: null,
+            srid: null,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 10,
+            owner: "alice",
+          },
+          {
+            id: "villes_propres",
+            title: "Villes propres",
+            description: "",
+            tableName: "villes_propres",
+            isPublic: true,
+            editable: true,
+            geometryType: null,
+            srid: null,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 0,
+            owner: "alice",
+          },
+        ],
+      },
     });
   });
   await page.route("https://core.test/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = await route.request().postDataJSON();
     if (body?.config?.kind !== "pipeline") return route.fallback();
-    await route.fulfill({ status: 201, json: { id: "cfg-pipe1", kind: "pipeline", itemId: "pipe-1" } });
+    await route.fulfill({
+      status: 201,
+      json: { id: "cfg-pipe1", kind: "pipeline", itemId: "pipe-1" },
+    });
   });
   let runPolls = 0;
   await page.route("https://core.test/pipelines/pipe-1/run", async (route) => {
@@ -42,12 +94,23 @@ async function mockPipelineFlow(page: Page) {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({
-      json: [{ id: "run-1", status, startedAt: "2026-08-06T10:00:00Z", finishedAt: status === "succeeded" ? "2026-08-06T10:00:02Z" : null, error: null, nodeStats: {} }],
+      json: [
+        {
+          id: "run-1",
+          status,
+          startedAt: "2026-08-06T10:00:00Z",
+          finishedAt: status === "succeeded" ? "2026-08-06T10:00:02Z" : null,
+          error: null,
+          nodeStats: {},
+        },
+      ],
     });
   });
 }
 
-test("un utilisateur non-technicien construit, enregistre puis exécute un pipeline visuellement", async ({ page }) => {
+test("un utilisateur non-technicien construit, enregistre puis exécute un pipeline visuellement", async ({
+  page,
+}) => {
   await mockCore(page);
   await mockPipelineFlow(page);
   await page.goto("/");
@@ -71,7 +134,10 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
 
   // Relier reader -> writer (poignée droite du premier nœud vers la poignée
   // gauche du second — sélecteurs React Flow standard).
-  const sourceHandle = page.locator(".react-flow__node").first().locator(".react-flow__handle-right");
+  const sourceHandle = page
+    .locator(".react-flow__node")
+    .first()
+    .locator(".react-flow__handle-right");
   const targetHandle = page.locator(".react-flow__node").last().locator(".react-flow__handle-left");
   await sourceHandle.dragTo(targetHandle);
 
@@ -90,7 +156,9 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
   await expect(page.getByText("succeeded")).toBeVisible({ timeout: 10_000 });
 });
 
-test("un utilisateur relie une seconde source sur la poignée secondaire d'un transform.join", async ({ page }) => {
+test("un utilisateur relie une seconde source sur la poignée secondaire d'un transform.join", async ({
+  page,
+}) => {
   await mockCore(page);
   await mockPipelineFlow(page);
   await page.goto("/");
@@ -127,11 +195,17 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
   const writerNode = nodes.nth(3);
 
   // Primaire : premier reader -> entrée primaire (gauche) du join.
-  await primaryReader.locator(".react-flow__handle-right").dragTo(joinNode.locator(".react-flow__handle-left"));
+  await primaryReader
+    .locator(".react-flow__handle-right")
+    .dragTo(joinNode.locator(".react-flow__handle-left"));
   // Secondaire : second reader -> entrée secondaire (haut) du join.
-  await secondaryReader.locator(".react-flow__handle-right").dragTo(joinNode.locator(".react-flow__handle-top"));
+  await secondaryReader
+    .locator(".react-flow__handle-right")
+    .dragTo(joinNode.locator(".react-flow__handle-top"));
   // join -> writer.
-  await joinNode.locator(".react-flow__handle-right").dragTo(writerNode.locator(".react-flow__handle-left"));
+  await joinNode
+    .locator(".react-flow__handle-right")
+    .dragTo(writerNode.locator(".react-flow__handle-left"));
 
   await primaryReader.click();
   await page.getByLabel("collectionId").selectOption("villes");
@@ -157,8 +231,24 @@ test("un auteur planifie un pipeline existant sans écrire de cron à la main", 
     kind: "pipeline",
     pipeline: {
       nodes: [
-        { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" }, title: "reader.collection" },
-        { id: "w1", kind: "writer", op: "writer.collection", x: 300, y: 0, params: { collectionId: "villes_propres" }, title: "writer.collection" },
+        {
+          id: "r1",
+          kind: "reader",
+          op: "reader.collection",
+          x: 0,
+          y: 0,
+          params: { collectionId: "villes" },
+          title: "reader.collection",
+        },
+        {
+          id: "w1",
+          kind: "writer",
+          op: "writer.collection",
+          x: 300,
+          y: 0,
+          params: { collectionId: "villes_propres" },
+          title: "writer.collection",
+        },
       ],
       edges: [{ id: "e1", from: "r1", to: "w1" }],
     },
@@ -166,10 +256,14 @@ test("un auteur planifie un pipeline existant sans écrire de cron à la main", 
   await page.route("https://core.test/configs/by-item/pipe-1", async (route) => {
     const method = route.request().method();
     if (method === "GET") {
-      await route.fulfill({ json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig } });
+      await route.fulfill({
+        json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig },
+      });
     } else if (method === "PUT") {
       savedConfig = await route.request().postDataJSON();
-      await route.fulfill({ json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig } });
+      await route.fulfill({
+        json: { id: "cfg-pipe1", itemId: "pipe-1", kind: "pipeline", config: savedConfig },
+      });
     } else {
       await route.fallback();
     }

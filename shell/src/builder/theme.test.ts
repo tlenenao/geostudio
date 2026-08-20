@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { themeToCssVars, DEFAULT_THEME_COLORS, DEFAULT_FONT, DEFAULT_RADIUS, DEFAULT_SPACE } from "./theme";
+import {
+  themeToCssVars,
+  DEFAULT_THEME_COLORS,
+  DEFAULT_FONT,
+  DEFAULT_RADIUS,
+  DEFAULT_SPACE,
+} from "./theme";
 
 test("an empty theme resolves to all documented defaults", () => {
   const vars = themeToCssVars({});
@@ -29,7 +35,14 @@ test("a partial theme overrides only the fields it sets", () => {
 
 test("a fully specified theme is passed through verbatim", () => {
   const theme = {
-    colors: { primary: "#111111", background: "#222222", surface: "#333333", text: "#444444", muted: "#555555", border: "#666666" },
+    colors: {
+      primary: "#111111",
+      background: "#222222",
+      surface: "#333333",
+      text: "#444444",
+      muted: "#555555",
+      border: "#666666",
+    },
     font: "Georgia, serif",
     radius: "0px",
     space: "1rem",

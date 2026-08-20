@@ -2,7 +2,12 @@
 export const EXTENT_DEBOUNCE_MS = 500;
 
 export type CrossFilterValue = string | string[] | { from: string; to: string };
-export type CrossFilterEntry = { field: string; value: CrossFilterValue; originSourceId: string; geometry?: unknown };
+export type CrossFilterEntry = {
+  field: string;
+  value: CrossFilterValue;
+  originSourceId: string;
+  geometry?: unknown;
+};
 
 export type AnalyticsContextState = {
   timeRange: { from: string; to: string } | null;
@@ -10,28 +15,58 @@ export type AnalyticsContextState = {
   crossFilter: Record<string, CrossFilterEntry | undefined>;
 };
 
-export const EMPTY_ANALYTICS_CONTEXT: AnalyticsContextState = { timeRange: null, extent: null, crossFilter: {} };
+export const EMPTY_ANALYTICS_CONTEXT: AnalyticsContextState = {
+  timeRange: null,
+  extent: null,
+  crossFilter: {},
+};
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 type SetTimeRange = (range: { from: string; to: string } | null) => void;
 type SetExtent = (bbox: [number, number, number, number] | null) => void;
-type SetCrossFilter = (datasetId: string, field: string, value: CrossFilterValue, originSourceId: string, geometry?: unknown) => void;
+type SetCrossFilter = (
+  datasetId: string,
+  field: string,
+  value: CrossFilterValue,
+  originSourceId: string,
+  geometry?: unknown,
+) => void;
 type ClearCrossFilter = (datasetId: string) => void;
 
 const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
 const AnalyticsSettersContext = createContext<{
-  setTimeRange: SetTimeRange; setExtent: SetExtent; setCrossFilter: SetCrossFilter; clearCrossFilter: ClearCrossFilter;
+  setTimeRange: SetTimeRange;
+  setExtent: SetExtent;
+  setCrossFilter: SetCrossFilter;
+  clearCrossFilter: ClearCrossFilter;
 }>({
-  setTimeRange: () => {}, setExtent: () => {}, setCrossFilter: () => {}, clearCrossFilter: () => {},
+  setTimeRange: () => {},
+  setExtent: () => {},
+  setCrossFilter: () => {},
+  clearCrossFilter: () => {},
 });
 
 function sameCrossFilterValue(a: CrossFilterValue, b: CrossFilterValue): boolean {
-  return typeof a === "string" && typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b);
+  return typeof a === "string" && typeof b === "string"
+    ? a === b
+    : JSON.stringify(a) === JSON.stringify(b);
 }
 
 export function AnalyticsContextProvider({
-  interactions, initialState, onStateChange, children,
+  interactions,
+  initialState,
+  onStateChange,
+  children,
 }: {
   interactions?: "auto" | "manual";
   initialState?: AnalyticsContextState;
@@ -39,47 +74,73 @@ export function AnalyticsContextProvider({
   children: ReactNode;
 }) {
   const active = interactions === "auto";
-  const [state, setState] = useState<AnalyticsContextState>(initialState ?? EMPTY_ANALYTICS_CONTEXT);
+  const [state, setState] = useState<AnalyticsContextState>(
+    initialState ?? EMPTY_ANALYTICS_CONTEXT,
+  );
   const extentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onStateChangeRef = useRef(onStateChange);
-  useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
-  useEffect(() => { onStateChangeRef.current?.(state); }, [state]);
-  useEffect(() => () => { if (extentTimer.current) clearTimeout(extentTimer.current); }, []);
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  }, [onStateChange]);
+  useEffect(() => {
+    onStateChangeRef.current?.(state);
+  }, [state]);
+  useEffect(
+    () => () => {
+      if (extentTimer.current) clearTimeout(extentTimer.current);
+    },
+    [],
+  );
 
-  const setTimeRange = useCallback<SetTimeRange>((range) => {
-    if (!active) return;
-    setState((prev) => ({ ...prev, timeRange: range }));
-  }, [active]);
+  const setTimeRange = useCallback<SetTimeRange>(
+    (range) => {
+      if (!active) return;
+      setState((prev) => ({ ...prev, timeRange: range }));
+    },
+    [active],
+  );
 
-  const setExtent = useCallback<SetExtent>((bbox) => {
-    if (!active) return;
-    if (extentTimer.current) clearTimeout(extentTimer.current);
-    extentTimer.current = setTimeout(() => {
-      setState((prev) => ({ ...prev, extent: bbox }));
-    }, EXTENT_DEBOUNCE_MS);
-  }, [active]);
+  const setExtent = useCallback<SetExtent>(
+    (bbox) => {
+      if (!active) return;
+      if (extentTimer.current) clearTimeout(extentTimer.current);
+      extentTimer.current = setTimeout(() => {
+        setState((prev) => ({ ...prev, extent: bbox }));
+      }, EXTENT_DEBOUNCE_MS);
+    },
+    [active],
+  );
 
-  const setCrossFilter = useCallback<SetCrossFilter>((datasetId, field, value, originSourceId, geometry) => {
-    if (!active) return;
-    setState((prev) => {
-      const current = prev.crossFilter[datasetId];
-      const isToggleOff = Boolean(current) && current!.field === field && sameCrossFilterValue(current!.value, value);
-      const nextCrossFilter = { ...prev.crossFilter };
-      if (isToggleOff) delete nextCrossFilter[datasetId];
-      else nextCrossFilter[datasetId] = { field, value, originSourceId, geometry };
-      return { ...prev, crossFilter: nextCrossFilter };
-    });
-  }, [active]);
+  const setCrossFilter = useCallback<SetCrossFilter>(
+    (datasetId, field, value, originSourceId, geometry) => {
+      if (!active) return;
+      setState((prev) => {
+        const current = prev.crossFilter[datasetId];
+        const isToggleOff =
+          Boolean(current) &&
+          current!.field === field &&
+          sameCrossFilterValue(current!.value, value);
+        const nextCrossFilter = { ...prev.crossFilter };
+        if (isToggleOff) delete nextCrossFilter[datasetId];
+        else nextCrossFilter[datasetId] = { field, value, originSourceId, geometry };
+        return { ...prev, crossFilter: nextCrossFilter };
+      });
+    },
+    [active],
+  );
 
-  const clearCrossFilter = useCallback<ClearCrossFilter>((datasetId) => {
-    if (!active) return;
-    setState((prev) => {
-      if (!prev.crossFilter[datasetId]) return prev;
-      const nextCrossFilter = { ...prev.crossFilter };
-      delete nextCrossFilter[datasetId];
-      return { ...prev, crossFilter: nextCrossFilter };
-    });
-  }, [active]);
+  const clearCrossFilter = useCallback<ClearCrossFilter>(
+    (datasetId) => {
+      if (!active) return;
+      setState((prev) => {
+        if (!prev.crossFilter[datasetId]) return prev;
+        const nextCrossFilter = { ...prev.crossFilter };
+        delete nextCrossFilter[datasetId];
+        return { ...prev, crossFilter: nextCrossFilter };
+      });
+    },
+    [active],
+  );
 
   const setters = useMemo(
     () => ({ setTimeRange, setExtent, setCrossFilter, clearCrossFilter }),

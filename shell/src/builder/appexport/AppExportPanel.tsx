@@ -72,7 +72,9 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
   // avertissement explicite, franchissable seulement par un second clic
   // conscient ("Exporter quand même").
   function onChooseMode(mode: AppExportMode) {
-    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) => WRITE_CAPABLE_WIDGET_TYPES.has(t));
+    const hasWriteWidget = [...collectWidgetTypes(config)].some((t) =>
+      WRITE_CAPABLE_WIDGET_TYPES.has(t),
+    );
     if (hasWriteWidget) {
       setDialogOpen(false);
       setPendingWarningMode(mode);
@@ -86,7 +88,11 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)} disabled={running}>
         Exporter
       </Button>
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Choisir le mode d'export">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title="Choisir le mode d'export"
+      >
         <div className="flex justify-end gap-2">
           <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
             Statique
@@ -102,11 +108,11 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       {pendingWarningMode && (
         <div role="alert" className="rounded border border-amber-400 bg-amber-50 p-2 text-sm">
           <p>
-            Cette app contient un widget Formulaire — toute écriture sera
-            désactivée dans l&apos;export faute de session authentifiée.
+            Cette app contient un widget Formulaire — toute écriture sera désactivée dans
+            l&apos;export faute de session authentifiée.
           </p>
           <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => runExport(pendingWarningMode)}>
+            <Button size="sm" onClick={() => void runExport(pendingWarningMode)}>
               Exporter quand même
             </Button>
             <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>

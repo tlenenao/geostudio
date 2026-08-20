@@ -8,13 +8,19 @@ export type PipelineValidationResult = {
 };
 
 export function isPipelineValid(result: PipelineValidationResult): boolean {
-  return result.graphErrors.length === 0 && Object.values(result.nodeErrors).every((errs) => errs.length === 0);
+  return (
+    result.graphErrors.length === 0 &&
+    Object.values(result.nodeErrors).every((errs) => errs.length === 0)
+  );
 }
 
 // Vérification de forme uniquement (présence des champs requis) — jamais la
 // sémantique d'une expression SQL bornée, cf. plan Global Constraints et
 // design SP-15a §5.1 (frontière déjà actée, non rouverte ici).
-function validateNodeParamsShape(entry: PipelineOpsCatalog[string], params: Record<string, unknown>): string[] {
+function validateNodeParamsShape(
+  entry: PipelineOpsCatalog[string],
+  params: Record<string, unknown>,
+): string[] {
   const errors: string[] = [];
   for (const field of entry.paramsSchema.required ?? []) {
     const value = params[field];
@@ -44,33 +50,42 @@ export function validatePipelineGraphLocally(
     bucket.set(e.to, (bucket.get(e.to) ?? 0) + 1);
   }
   for (const [nodeId, count] of primaryCount) {
-    if (count > 1) graphErrors.push(`Un nœud ne peut avoir qu'une seule arête entrante (${nodeId}).`);
+    if (count > 1)
+      graphErrors.push(`Un nœud ne peut avoir qu'une seule arête entrante (${nodeId}).`);
   }
   for (const [nodeId, count] of secondaryCount) {
-    if (count > 1) graphErrors.push(`Un nœud ne peut avoir qu'une seule arête secondaire entrante (${nodeId}).`);
+    if (count > 1)
+      graphErrors.push(`Un nœud ne peut avoir qu'une seule arête secondaire entrante (${nodeId}).`);
   }
 
   if (hasCycle(nodes, edges)) {
     graphErrors.push("Le graphe contient un cycle.");
   }
 
-  if (!nodes.some((n) => n.kind === "reader")) graphErrors.push("Le pipeline doit contenir au moins une source.");
-  if (!nodes.some((n) => n.kind === "writer")) graphErrors.push("Le pipeline doit contenir au moins une écriture.");
+  if (!nodes.some((n) => n.kind === "reader"))
+    graphErrors.push("Le pipeline doit contenir au moins une source.");
+  if (!nodes.some((n) => n.kind === "writer"))
+    graphErrors.push("Le pipeline doit contenir au moins une écriture.");
 
   for (const node of nodes) {
     const entry = opsCatalog[node.op];
-    const errors = entry ? validateNodeParamsShape(entry, node.params) : [`Opération inconnue : ${node.op}.`];
+    const errors = entry
+      ? validateNodeParamsShape(entry, node.params)
+      : [`Opération inconnue : ${node.op}.`];
     const hasSecondaryEdge = edges.some((e) => e.to === node.id && e.role === "secondary");
     const hasPrimaryEdge = edges.some((e) => e.to === node.id && e.role !== "secondary");
     if (entry) {
       if (entry.acceptsSecondaryInput) {
         const withCollectionId = node.params.withCollectionId;
-        const hasParam = withCollectionId !== undefined && withCollectionId !== null && withCollectionId !== "";
+        const hasParam =
+          withCollectionId !== undefined && withCollectionId !== null && withCollectionId !== "";
         if (!hasPrimaryEdge) {
           errors.push(`${node.op} : requiert une arête primaire entrante.`);
         }
         if (hasSecondaryEdge && hasParam) {
-          errors.push(`${node.op} : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.`);
+          errors.push(
+            `${node.op} : withCollectionId et une arête secondaire ne peuvent pas être renseignés en même temps.`,
+          );
         } else if (!hasSecondaryEdge && !hasParam) {
           errors.push(`${node.op} : requiert soit withCollectionId, soit une arête secondaire.`);
         }

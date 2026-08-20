@@ -23,12 +23,12 @@ function Harness({ open = true, onClose = () => {} }: { open?: boolean; onClose?
 
 test("shows an empty-state message when there are no candidate tables", async () => {
   server.use(
-    http.get("https://core.test/collections/candidates", () => HttpResponse.json({ candidates: [] })),
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
   );
   render(<Harness />);
-  await waitFor(() =>
-    expect(screen.getByText(/Aucune table à enregistrer/)).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText(/Aucune table à enregistrer/)).toBeInTheDocument());
 });
 
 test("disables a non-registrable candidate and shows its reason", async () => {
@@ -37,7 +37,13 @@ test("disables a non-registrable candidate and shows its reason", async () => {
       HttpResponse.json({
         candidates: [
           { tableName: "widgets", registrable: false, reason: "table has no primary key" },
-          { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+          {
+            tableName: "points_interet",
+            registrable: true,
+            geometryType: "Point",
+            srid: 4326,
+            columnCount: 3,
+          },
         ],
       }),
     ),
@@ -58,15 +64,32 @@ test("submits the chosen table and closes on success", async () => {
   server.use(
     http.get("https://core.test/collections/candidates", () =>
       HttpResponse.json({
-        candidates: [{ tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 }],
+        candidates: [
+          {
+            tableName: "points_interet",
+            registrable: true,
+            geometryType: "Point",
+            srid: 4326,
+            columnCount: 3,
+          },
+        ],
       }),
     ),
     http.post("https://core.test/collections", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
-        id: "points_interet", title: "Points d'intérêt", description: "", tableName: "points_interet",
-        isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-        pkColumn: "id", canWrite: true, featureCount: 0, owner: "admin",
+        id: "points_interet",
+        title: "Points d'intérêt",
+        description: "",
+        tableName: "points_interet",
+        isPublic: false,
+        editable: true,
+        geometryType: "Point",
+        srid: 4326,
+        pkColumn: "id",
+        canWrite: true,
+        featureCount: 0,
+        owner: "admin",
       });
     }),
   );
@@ -87,7 +110,15 @@ test("disables the submit button when the instance is in read-only demo mode", a
   server.use(
     http.get("https://core.test/collections/candidates", () =>
       HttpResponse.json({
-        candidates: [{ tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 }],
+        candidates: [
+          {
+            tableName: "points_interet",
+            registrable: true,
+            geometryType: "Point",
+            srid: 4326,
+            columnCount: 3,
+          },
+        ],
       }),
     ),
     http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),

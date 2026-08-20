@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("adding a page and a Navigation widget lets the runtime navigate between pages", async ({ page }) => {
+test("adding a page and a Navigation widget lets the runtime navigate between pages", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 
