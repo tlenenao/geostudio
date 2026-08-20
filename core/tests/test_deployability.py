@@ -14,6 +14,7 @@ non câblées dans la stack packagée (SP-17a, SP-17b, tileset3d, et
 correspond à une de ces découvertes, et échoue sur le dépôt tel qu'il était
 avant SP-21.
 """
+
 import ast
 import pathlib
 import re
@@ -141,9 +142,7 @@ def test_every_referenced_ghcr_image_is_released():
             match = OWN_IMAGE_RE.match(service.get("image") or "")
             if match and match.group(1) not in published:
                 missing[f"{path.name}:{name}"] = match.group(1)
-    assert not missing, (
-        f"images GHCR référencées mais jamais publiées : {missing}."
-    )
+    assert not missing, f"images GHCR référencées mais jamais publiées : {missing}."
 
 
 def test_prod_overlay_substitutes_every_build_with_an_image():
@@ -182,9 +181,7 @@ def test_prod_overlay_substitutes_every_build_with_an_image():
         "configuration résolue. Ajouter `build: !reset null` à côté de "
         "`image:` dans docker-compose.prod.yml pour ces services."
     )
-    assert not introduced, (
-        f"l'overlay de production introduit lui-même un build: {introduced}."
-    )
+    assert not introduced, f"l'overlay de production introduit lui-même un build: {introduced}."
 
 
 # Variables lues par le cœur mais légitimement absentes du compose de ce
@@ -200,6 +197,7 @@ ENV_WIRING_EXEMPTIONS = {
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
 }
+
 
 def _string_literal(node: ast.AST) -> str | None:
     """Valeur si `node` est une constante chaîne littérale (`"CORE_FOO"`) —
@@ -363,7 +361,14 @@ def test_backup_covers_every_bucket_the_core_uses():
 # Mots-clés de tags mouvants : comme `latest`, ils avancent à chaque nouvelle
 # publication sans jamais changer de nom — même classe de danger.
 FLOATING_WORD_TAGS = {
-    "latest", "stable", "edge", "main", "master", "dev", "nightly", "release",
+    "latest",
+    "stable",
+    "edge",
+    "main",
+    "master",
+    "dev",
+    "nightly",
+    "release",
 }
 
 # Un tag « flottant » : v3.0 suit tous les patchs à venir, 24.0 aussi, et un
@@ -481,8 +486,15 @@ def test_unpinned_reason_flags_major_only_tags(image):
 
 @pytest.mark.parametrize(
     "image",
-    ["myimage:stable", "myimage:edge", "myimage:main", "myimage:master",
-     "myimage:dev", "myimage:nightly", "myimage:release"],
+    [
+        "myimage:stable",
+        "myimage:edge",
+        "myimage:main",
+        "myimage:master",
+        "myimage:dev",
+        "myimage:nightly",
+        "myimage:release",
+    ],
 )
 def test_unpinned_reason_flags_word_based_moving_tags(image):
     """Fix 2 : ces mots-clés bougent sous les pieds de l'opérateur exactement
@@ -493,10 +505,12 @@ def test_unpinned_reason_flags_word_based_moving_tags(image):
 def test_unpinned_reason_accepts_digest_pin():
     """Un pin par digest est le pin le plus fort possible — toujours
     accepté, même si aucune image du dépôt n'en utilise à ce jour."""
-    assert unpinned_reason(
-        "myimage@sha256:"
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    ) is None
+    assert (
+        unpinned_reason(
+            "myimage@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
+        is None
+    )
 
 
 def test_unpinned_reason_rejects_third_party_image_behind_substitution():
@@ -512,6 +526,4 @@ def test_unpinned_reason_rejects_third_party_image_behind_substitution():
 def test_unpinned_reason_accepts_own_image_behind_substitution():
     """Miroir du cas précédent : une de nos propres images GHCR derrière une
     substitution reste exemptée, comme avant ce fix."""
-    assert unpinned_reason(
-        "ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}"
-    ) is None
+    assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}") is None
