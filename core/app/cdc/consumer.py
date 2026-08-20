@@ -166,7 +166,7 @@ def decode_wal2json_message(
         if kind == "delete":
             keynames = change.get("oldkeys", {}).get("keynames", [])
             keyvalues = change.get("oldkeys", {}).get("keyvalues", [])
-            oldkeys = dict(zip(keynames, keyvalues))
+            oldkeys = dict(zip(keynames, keyvalues, strict=True))
             pk_value = oldkeys.get(pk_column)
             row = ChangeRow(
                 op="delete",
@@ -179,7 +179,9 @@ def decode_wal2json_message(
                 geometry_wkb_hex=None,
             )
         else:
-            record = dict(zip(change.get("columnnames", []), change.get("columnvalues", [])))
+            record = dict(
+                zip(change.get("columnnames", []), change.get("columnvalues", []), strict=True)
+            )
             geom_hex = record.pop(geometry_column, None) if geometry_column else None
             row = ChangeRow(
                 op=kind,
