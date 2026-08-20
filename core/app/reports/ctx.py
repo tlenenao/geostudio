@@ -20,9 +20,10 @@ def encode_analytics_context(bookmark: BookmarkPayload) -> str:
     state = {
         "timeRange": bookmark.timeRange.model_dump(by_alias=True) if bookmark.timeRange else None,
         "extent": list(bookmark.extent) if bookmark.extent else None,
-        # by_alias=True requis : BookmarkCrossFilterEntry.value peut nester une BookmarkTimeRange,
-        # dont le champ Python from_ est aliasé vers la clé JSON "from". Sans by_alias=True,
-        # la clé sortirait en "from_", cassant la compatibilité de format avec le décodeur JS du shell.
+        # by_alias=True requis : BookmarkCrossFilterEntry.value peut nester une
+        # BookmarkTimeRange, dont le champ Python from_ est aliasé vers la clé JSON
+        # "from". Sans by_alias=True, la clé sortirait en "from_", cassant la
+        # compatibilité de format avec le décodeur JS du shell.
         "crossFilter": {
             key: entry.model_dump(by_alias=True) for key, entry in bookmark.crossFilter.items()
         },

@@ -12,7 +12,8 @@ class ExtensionPermissionError(Exception):
         self.prop = prop
         self.collection = collection
         super().__init__(
-            f"widget '{widget}' prop '{prop}': collection '{collection}' is outside its declared permissions"
+            f"widget '{widget}' prop '{prop}': collection '{collection}' is outside "
+            "its declared permissions"
         )
 
 

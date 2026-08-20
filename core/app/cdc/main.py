@@ -61,7 +61,10 @@ class _WorkerState:
 
 
 def build_s3_key(*, tenant_id: str, collection_id: str, dt: str) -> str:
-    return f"cdc/tenant_id={tenant_id}/collection_id={collection_id}/dt={dt}/part-{uuid.uuid4().hex}.parquet"
+    return (
+        f"cdc/tenant_id={tenant_id}/collection_id={collection_id}/dt={dt}/"
+        f"part-{uuid.uuid4().hex}.parquet"
+    )
 
 
 def _load_collection_meta(session) -> dict:

@@ -127,8 +127,8 @@ def compile_transform_sql(
         src = f"'EPSG:{input_srid}'"
         return (
             f"SELECT * EXCLUDE (geometry), "
-            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), {p.distance}), "
-            f"'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), "
+            f"{p.distance}), 'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
         )
 
     if op == "transform.reproject":
@@ -151,7 +151,8 @@ def compile_transform_sql(
         )
         return (
             f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
-            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o ON ST_Intersects(t.geometry, o.geometry)"
+            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+            f"ON ST_Intersects(t.geometry, o.geometry)"
         )
 
     if op == "transform.countWithin":
@@ -169,7 +170,10 @@ def compile_transform_sql(
 
     if op == "transform.h3Aggregate":
         p = TransformH3AggregateParams.model_validate(params)
-        h3_expr = f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), ST_X(ST_Centroid(geometry)), {p.resolution})"
+        h3_expr = (
+            f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), "
+            f"ST_X(ST_Centroid(geometry)), {p.resolution})"
+        )
         select_parts = [
             f"{h3_expr} AS h3Cell",
             f"ST_GeomFromText(h3_cell_to_boundary_wkt({h3_expr})) AS geometry",

@@ -144,7 +144,8 @@ def list_configs_by_kind_and_tenant(
             # corrompue est journalisée et ignorée plutôt que de faire
             # planter la requête pour tout le tenant.
             logger.warning(
-                "list_configs_by_kind_and_tenant: config invalide ignorée (item_id=%s, tenant_id=%s, kind=%s)",
+                "list_configs_by_kind_and_tenant: config invalide ignorée "
+                "(item_id=%s, tenant_id=%s, kind=%s)",
                 record.item_id,
                 record.tenant_id,
                 kind,

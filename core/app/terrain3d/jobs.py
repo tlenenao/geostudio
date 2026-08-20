@@ -195,7 +195,8 @@ def _purge_raw_upload(
                 )
         except Exception:
             logger.exception(
-                "terrain3d job %s : échec de l'écriture d'audit pour la purge de l'upload brut (%s)",
+                "terrain3d job %s : échec de l'écriture d'audit pour la purge "
+                "de l'upload brut (%s)",
                 job_id,
                 source_key,
             )

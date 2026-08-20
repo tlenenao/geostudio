@@ -115,7 +115,8 @@ def main() -> int:
     glob = f"s3://{BUCKET}/tenant_id=default/collection_id=spike/dt=*/*.parquet"
 
     rows = conn.execute(
-        f"SELECT id, titre, _op, _lsn FROM read_parquet('{glob}', hive_partitioning=true) ORDER BY id, _lsn"
+        f"SELECT id, titre, _op, _lsn FROM read_parquet('{glob}', hive_partitioning=true) "
+        "ORDER BY id, _lsn"
     ).fetchall()
     check("lecture GeoParquet réel via httpfs (3 lignes brutes)", len(rows) == 3)
 
