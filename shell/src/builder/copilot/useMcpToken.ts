@@ -1,20 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
-// Jeton d'audience MCP distincte pour le copilote (SP-20) — obtenu par un
-// appel direct au endpoint de token OIDC (grant_type=refresh_token) avec
-// le scope geostudio-mcp-audience (provisionné Task 1), plutôt que via
-// oidc.signinSilent(). signinSilent() a été abandonné après investigation
-// (revue finale de branche) : sur la branche refresh-token de
-// oidc-client-ts (systématiquement empruntée ici, geostudio-shell étant
-// un client public qui reçoit toujours un refresh token), la librairie ne
-// transmet PAS le paramètre scope au fournisseur — le jeton obtenu
-// n'aurait donc jamais l'audience geostudio-mcp. L'appel direct évite
-// aussi de remplacer l'utilisateur OIDC stocké de la session shell
-// (signinSilent() écrase le User stocké via storeUser(), ce que cet appel
-// ne fait jamais). Jeton en mémoire uniquement (useRef), jamais
+// Jeton d'audience MCP distincte pour le copilote (SP-20) — obtenu via un
+// second signinSilent({scope, forceIframeAuth: true}) demandant le
+// client-scope optionnel geostudio-mcp-audience (provisionné Task 1).
+//
+// Historique (revue finale de branche, 2 tentatives) :
+// 1. signinSilent({scope}) seul — abandonné : oidc-client-ts emprunte
+//    systématiquement sa branche refresh-token ici (geostudio-shell
+//    reçoit toujours un refresh token), qui ne transmet PAS `scope` au
+//    fournisseur.
+// 2. Appel direct au endpoint de token (grant_type=refresh_token) —
+//    abandonné après vérification empirique contre un vrai Keycloak :
+//    ce realm Keycloak 24 ne réapplique JAMAIS le mapper d'audience
+//    personnalisé de geostudio-mcp-audience sur un grant refresh_token,
+//    quel que soit le scope demandé (testé : up-scope, re-demande à
+//    l'identique, scope par défaut vs optionnel — aucune combinaison ne
+//    fonctionne). Seul le grant initial (authorization_code en usage
+//    réel) produit l'audience geostudio-mcp.
+// 3. (Ici) signinSilent({scope, forceIframeAuth: true}) — force
+//    oidc-client-ts sur sa branche iframe silencieuse (un vrai
+//    authorization_code frais via prompt=none), qui ne passe jamais par
+//    le chemin refresh-token défaillant. Vérifié statiquement contre le
+//    code source réel d'oidc-client-ts (le chemin iframe transmet bien
+//    scope), PAS vérifié de bout en bout (nécessite un vrai
+//    navigateur+iframe+session Keycloak, indisponible dans cet
+//    environnement) — risque résiduel documenté, à vérifier avant mise
+//    en production réelle.
+//
+// Contourne délibérément le useAuth() de l'app (../../auth/useAuth), qui
+// n'expose pas signinSilent — importe react-oidc-context directement,
+// comme AuthProvider.tsx le fait déjà pour construire son propre
+// <AuthProvider>. Le jeton ne vit qu'en mémoire (état React), jamais
 // localStorage — même garantie que le jeton REST normal (cf.
-// AuthProvider.tsx, InMemoryStore). Re-fetché automatiquement à
-// l'approche de l'expiration (buffer 30s) plutôt que mis en cache
-// indéfiniment.
+// AuthProvider.tsx, InMemoryStore). Mis en cache avec suivi
+// d'expiration (buffer 30s) — jamais mis en cache indéfiniment.
+//
+// Effet de bord accepté (M4, revue finale de branche) : signinSilent()
+// remplace l'utilisateur OIDC stocké de toute la session shell —
+// inoffensif sur le realm de ce dépôt (mapper d'audience geostudio-core
+// au niveau client, pas par scope), documenté comme suivi non bloquant.
 import { useCallback, useRef } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 import { isMockMode } from "../../auth/useAuth";
@@ -43,32 +66,15 @@ export function useMcpToken(): () => Promise<string> {
     const cached = cachedRef.current;
     if (cached && Date.now() < cached.expiresAt) return cached.accessToken;
 
-    const refreshToken = oidc.user?.refresh_token;
-    if (!refreshToken) {
-      throw new Error("Impossible d'obtenir un jeton MCP (pas de refresh token disponible).");
+    const user = await oidc.signinSilent({ scope: MCP_SCOPE, forceIframeAuth: true });
+    if (!user?.access_token) {
+      throw new Error("Impossible d'obtenir un jeton MCP (signinSilent a échoué).");
     }
-    const response = await fetch(`${oidc.settings.authority}/protocol/openid-connect/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: oidc.settings.client_id,
-        scope: MCP_SCOPE,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error("Impossible d'obtenir un jeton MCP (le serveur d'autorisation a refusé la demande).");
-    }
-    const body = (await response.json()) as { access_token?: string; expires_in?: number };
-    if (!body.access_token) {
-      throw new Error("Impossible d'obtenir un jeton MCP (réponse sans access_token).");
-    }
-    const expiresInMs = (body.expires_in ?? 60) * 1000;
+    const expiresInMs = (user.expires_in ?? 60) * 1000;
     cachedRef.current = {
-      accessToken: body.access_token,
+      accessToken: user.access_token,
       expiresAt: Date.now() + expiresInMs - EXPIRY_BUFFER_MS,
     };
-    return body.access_token;
+    return user.access_token;
   }, [oidc]);
 }
