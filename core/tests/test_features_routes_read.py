@@ -117,7 +117,7 @@ def test_items_returns_feature_collection_with_links(env):
     body = r.json()
     assert body["type"] == "FeatureCollection"
     assert body["numberMatched"] == 3 and body["numberReturned"] == 1
-    rels = {l["rel"]: l["href"] for l in body["links"]}
+    rels = {link["rel"]: link["href"] for link in body["links"]}
     assert "offset=2" in rels["next"] and "offset=0" in rels["prev"]
     assert repo.calls["limit"] == 1 and repo.calls["offset"] == 1
 

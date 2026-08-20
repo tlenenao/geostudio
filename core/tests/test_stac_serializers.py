@@ -25,14 +25,15 @@ def test_catalog_is_valid_and_links_children():
     assert cat["type"] == "Catalog"
     assert cat["stac_version"] == "1.0.0"
     assert set(cat["conformsTo"]) == EXPECTED_CONFORMANCE
-    rels = {l["rel"]: l["href"] for l in cat["links"]}
+    rels = {link["rel"]: link["href"] for link in cat["links"]}
     assert rels["self"] == f"{BASE}/stac"
     assert rels["data"] == f"{BASE}/stac/collections"
     assert rels["search"] == f"{BASE}/stac/search"
     assert rels["conformance"] == f"{BASE}/stac/conformance"
-    children = [l["href"] for l in cat["links"] if l["rel"] == "child"]
+    children = [link["href"] for link in cat["links"] if link["rel"] == "child"]
     assert children == [f"{BASE}/stac/collections/roads", f"{BASE}/stac/collections/rivers"]
-    # stac-pydantic Catalog ne connaît pas conformsTo (champ STAC-API) : le retirer avant validation.
+    # stac-pydantic Catalog ne connaît pas conformsTo (champ STAC-API) : le
+    # retirer avant validation.
     Catalog.model_validate({k: v for k, v in cat.items() if k != "conformsTo"})
 
 
@@ -49,7 +50,7 @@ def test_collection_valid_with_bbox_and_temporal():
     assert col["license"] == "other"
     assert col["extent"]["spatial"]["bbox"] == [[1.0, 44.0, 2.0, 45.0]]
     assert col["extent"]["temporal"]["interval"] == [["2026-07-01T00:00:00Z", None]]
-    rels = {l["rel"]: l["href"] for l in col["links"]}
+    rels = {link["rel"]: link["href"] for link in col["links"]}
     assert rels["self"] == f"{BASE}/stac/collections/roads"
     assert rels["items"] == f"{BASE}/stac/collections/roads/items"
     assert rels["parent"] == f"{BASE}/stac"
@@ -92,7 +93,7 @@ def test_item_valid_with_bbox_and_synthetic_datetime():
     assert it["properties"]["datetime"] == DT  # écrase l'attribut homonyme de la feature
     assert it["properties"]["titre"] == "Nid de poule"
     assert it["assets"] == {}
-    rels = {l["rel"]: l["href"] for l in it["links"]}
+    rels = {link["rel"]: link["href"] for link in it["links"]}
     assert rels["self"] == f"{BASE}/stac/collections/roads/items/7"
     assert rels["collection"] == f"{BASE}/stac/collections/roads"
     Item.model_validate(it)

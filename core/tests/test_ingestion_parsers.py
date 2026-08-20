@@ -207,8 +207,8 @@ def test_list_layers_multi_layer_gpkg(tmp_path):
         crs="EPSG:4326",
     )
     layers = list_layers(path.read_bytes(), "multi.gpkg")
-    assert {l.name for l in layers} == {"a", "b"}
-    assert all(l.feature_count == 1 for l in layers)
+    assert {layer.name for layer in layers} == {"a", "b"}
+    assert all(layer.feature_count == 1 for layer in layers)
 
 
 def test_list_layers_shapefile_zip_names_layer_from_shp(tmp_path):

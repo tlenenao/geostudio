@@ -88,7 +88,7 @@ def test_full_stac_navigation(pg_app):
     items = client.get("/stac/collections/stac_roads/items?limit=2").json()
     assert items["type"] == "FeatureCollection" and len(items["features"]) == 2
     assert items["features"][0]["properties"]["datetime"].endswith("Z")
-    assert any(l["rel"] == "next" for l in items["links"])
+    assert any(link["rel"] == "next" for link in items["links"])
 
     # bbox filter : seul le point (1,44) est dans l'emprise serrée.
     tight = client.get("/stac/collections/stac_roads/items?bbox=0.9,43.9,1.1,44.1").json()
