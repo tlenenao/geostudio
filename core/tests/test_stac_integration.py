@@ -2,6 +2,7 @@
 """Bout en bout STAC sur PostGIS réel : vrai introspecteur, vraie DDL RLS,
 vrai select_features sous rls_scope. Couvre §10 : navigation, portée anonyme
 publié/public sans fuite, bbox, lien next, datetime granularité collection."""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -21,14 +22,25 @@ def pg_app(pg_engine):
     Base.metadata.create_all(pg_engine)
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS stac_roads"))
-        conn.execute(text("CREATE TABLE stac_roads (id serial PRIMARY KEY, "
-                          "n text, geom geometry(Point, 4326))"))
+        conn.execute(
+            text(
+                "CREATE TABLE stac_roads (id serial PRIMARY KEY, "
+                "n text, geom geometry(Point, 4326))"
+            )
+        )
     Session = make_session_factory(pg_engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="",
-                                   bootstrap_admin=True)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
         s.commit()
     app = create_app()
 
@@ -42,16 +54,22 @@ def pg_app(pg_engine):
     yield app, TestClient(app)
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS stac_roads"))
-        conn.execute(text(
-            "TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE"))
+        conn.execute(
+            text("TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE")
+        )
 
 
 def _seed(app, client, public):
     client.post("/collections", json={"tableName": "stac_roads", "isPublic": public})
     for lon, lat in [(1.0, 44.0), (2.0, 45.0), (3.0, 46.0)]:
-        client.post("/collections/stac_roads/items", json={
-            "type": "Feature", "properties": {"n": "x"},
-            "geometry": {"type": "Point", "coordinates": [lon, lat]}})
+        client.post(
+            "/collections/stac_roads/items",
+            json={
+                "type": "Feature",
+                "properties": {"n": "x"},
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            },
+        )
 
 
 def test_full_stac_navigation(pg_app):

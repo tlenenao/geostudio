@@ -6,7 +6,12 @@ import psycopg2.extras
 import pytest
 from sqlalchemy import text
 
-from app.cdc.consumer import SLOT_NAME, decode_wal2json_message, ensure_replication_slot, stream_changes
+from app.cdc.consumer import (
+    SLOT_NAME,
+    decode_wal2json_message,
+    ensure_replication_slot,
+    stream_changes,
+)
 
 pytestmark = pytest.mark.postgis
 
@@ -16,9 +21,7 @@ def cdc_table(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP PUBLICATION IF EXISTS test_cdc_pub"))
         conn.execute(text("DROP TABLE IF EXISTS t_cdc_consumer"))
-        conn.execute(text(
-            "CREATE TABLE t_cdc_consumer (id serial PRIMARY KEY, v text)"
-        ))
+        conn.execute(text("CREATE TABLE t_cdc_consumer (id serial PRIMARY KEY, v text)"))
         conn.execute(text("CREATE PUBLICATION test_cdc_pub FOR TABLE t_cdc_consumer"))
     yield "t_cdc_consumer"
     with pg_engine.begin() as conn:
@@ -36,7 +39,9 @@ def _raw_dsn() -> str:
 def _drop_slot_after():
     yield
     raw_dsn = _raw_dsn()
-    conn = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+    conn = psycopg2.connect(
+        raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+    )
     cur = conn.cursor()
     try:
         cur.drop_replication_slot(SLOT_NAME)
@@ -57,13 +62,17 @@ def test_stream_changes_decodes_and_stops_on_should_stop(cdc_table, pg_engine):
     state = {"count": 0}
 
     def on_message(payload, lsn):
-        for decoded in decode_wal2json_message(payload, lsn=lsn, collection_meta={cdc_table: ("id", None)}):
+        for decoded in decode_wal2json_message(
+            payload, lsn=lsn, collection_meta={cdc_table: ("id", None)}
+        ):
             received.append(decoded)
             state["count"] += 1
 
     stream_changes(
-        raw_dsn, on_message=on_message,
-        is_flush_due=lambda: False, do_flush=lambda: None,
+        raw_dsn,
+        on_message=on_message,
+        is_flush_due=lambda: False,
+        do_flush=lambda: None,
         should_stop=lambda: state["count"] >= 1,
         poll_timeout_s=0.2,
     )
@@ -92,7 +101,9 @@ def test_stream_changes_ack_advances_confirmed_flush_lsn(cdc_table, pg_engine):
     ensure_replication_slot(raw_dsn)
 
     lsn_before = _confirmed_flush_lsn(pg_engine)
-    assert lsn_before is not None  # le slot existe, la colonne est lisible (peut être NULL au tout début)
+    assert (
+        lsn_before is not None
+    )  # le slot existe, la colonne est lisible (peut être NULL au tout début)
 
     with pg_engine.begin() as conn:
         conn.execute(text(f"INSERT INTO {cdc_table} (v) VALUES ('a')"))
@@ -102,7 +113,9 @@ def test_stream_changes_ack_advances_confirmed_flush_lsn(cdc_table, pg_engine):
 
     def on_message(payload, lsn):
         state["last_lsn"] = lsn
-        for decoded in decode_wal2json_message(payload, lsn=lsn, collection_meta={cdc_table: ("id", None)}):
+        for decoded in decode_wal2json_message(
+            payload, lsn=lsn, collection_meta={cdc_table: ("id", None)}
+        ):
             received.append(decoded)
             state["count"] += 1
 
@@ -114,8 +127,10 @@ def test_stream_changes_ack_advances_confirmed_flush_lsn(cdc_table, pg_engine):
         return state["last_lsn"]
 
     stream_changes(
-        raw_dsn, on_message=on_message,
-        is_flush_due=lambda: state["count"] >= 1, do_flush=do_flush,
+        raw_dsn,
+        on_message=on_message,
+        is_flush_due=lambda: state["count"] >= 1,
+        do_flush=do_flush,
         should_stop=lambda: state["count"] >= 1,
         poll_timeout_s=0.2,
     )

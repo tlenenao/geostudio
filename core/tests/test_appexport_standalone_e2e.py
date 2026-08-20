@@ -7,6 +7,7 @@ l'app et l'instantané sans qu'aucun Postgres/Keycloak/MinIO n'apparaisse
 dans son compose. @pytest.mark.postgis (write_snapshot a besoin d'une
 collection réelle) ET @pytest.mark.docker (besoin d'un démon Docker) —
 skippé si l'un des deux manque."""
+
 import io
 import shutil
 import socket
@@ -20,6 +21,7 @@ import requests
 from sqlalchemy import text
 
 import app.main  # noqa: F401 — import-only, registers every model on
+
 # Base.metadata before create_all() — même piège que test_appexport_freeze.py.
 from app.appexport.bundler import build_standalone_bundle_zip
 from app.appexport.snapshot import write_snapshot
@@ -55,7 +57,10 @@ def standalone_image():
         pytest.skip("docker non disponible — test standalone E2E skippé")
     subprocess.run(
         ["docker", "build", "-f", "deploy/appexport-standalone/Dockerfile", "-t", IMAGE_TAG, "."],
-        cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=900,
+        cwd=str(REPO_ROOT),
+        check=True,
+        capture_output=True,
+        timeout=900,
     )
     return IMAGE_TAG
 
@@ -68,10 +73,11 @@ def pg_session(pg_engine):
         yield s
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_standalone_e2e"))
-        conn.execute(text(
-            "TRUNCATE collection_shares, collections, audit_log, items, "
-            "users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE collection_shares, collections, audit_log, items, users, tenants CASCADE"
+            )
+        )
 
 
 def _free_port() -> int:
@@ -82,22 +88,38 @@ def _free_port() -> int:
 
 def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_image, tmp_path):
     s = pg_session
-    s.execute(text(
-        "CREATE TABLE t_standalone_e2e (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
-    ))
+    s.execute(
+        text(
+            "CREATE TABLE t_standalone_e2e (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
+        )
+    )
     s.commit()
     apply_collection_ddl(s, "t_standalone_e2e")
 
     tenant = get_or_create_default_tenant(s)
     owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=False,
     )
     s.commit()
     col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_standalone_e2e",
-        title="X", description="", is_public=True,
-        pk_column="id", geometry_column=None, geometry_type=None, srid=None,
+        s,
+        tenant_id=tenant.id,
+        owner_id=owner.id,
+        table_name="t_standalone_e2e",
+        title="X",
+        description="",
+        is_public=True,
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=None,
     )
     s.commit()
     info = introspect_table(s, col.table_name)
@@ -106,11 +128,29 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
     s.commit()
 
     config = BuilderConfig(
-        kind="app", dataSources=[DataSource(id="s1", type="features", service="core", layer=col.id, query={})],
+        kind="app",
+        dataSources=[DataSource(id="s1", type="features", service="core", layer=col.id, query={})],
         layout=Layout(type="grid", items=[]),
-        pages=[Page(id="p1", name="P1", layout=Layout(
-            type="grid", items=[LayoutItem(id="w1", widget="table", x=0, y=0, w=4, h=2, props={"dataSourceId": "s1"})],
-        ))],
+        pages=[
+            Page(
+                id="p1",
+                name="P1",
+                layout=Layout(
+                    type="grid",
+                    items=[
+                        LayoutItem(
+                            id="w1",
+                            widget="table",
+                            x=0,
+                            y=0,
+                            w=4,
+                            h=2,
+                            props={"dataSourceId": "s1"},
+                        )
+                    ],
+                ),
+            )
+        ],
     )
 
     snapshot_src = tmp_path / "snapshot-src"
@@ -131,8 +171,19 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
 
     port = _free_port()
     run = subprocess.run(
-        ["docker", "run", "-d", "-p", f"{port}:8000", "-v", f"{data_dir}:/data:ro", standalone_image],
-        capture_output=True, check=True, text=True,
+        [
+            "docker",
+            "run",
+            "-d",
+            "-p",
+            f"{port}:8000",
+            "-v",
+            f"{data_dir}:/data:ro",
+            standalone_image,
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
     )
     container_id = run.stdout.strip()
     try:
@@ -156,7 +207,9 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
         names = [f["properties"]["name"] for f in items_resp.json()["features"]]
         assert names == ["Alpha"]
 
-        agg_resp = requests.post(f"{base}/collections/{col.id}/aggregate", json={"agg": "count"}, timeout=5)
+        agg_resp = requests.post(
+            f"{base}/collections/{col.id}/aggregate", json={"agg": "count"}, timeout=5
+        )
         assert agg_resp.status_code == 200
         assert agg_resp.json()["rows"][0]["value"] == 1
 

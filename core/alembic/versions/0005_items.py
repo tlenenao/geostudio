@@ -4,8 +4,10 @@ Revision ID: 0005
 Revises: 0004
 Create Date: 2026-07-05
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0005"
 down_revision = "0004"
@@ -36,7 +38,9 @@ def upgrade() -> None:
     op.drop_column("configs", "item_id")
     op.add_column(
         "configs",
-        sa.Column("item_id", sa.String(), sa.ForeignKey("items.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "item_id", sa.String(), sa.ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+        ),
     )
 
 

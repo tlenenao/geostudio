@@ -61,6 +61,7 @@ WMTS_KVP = WMTS.replace(
 def _connector(body: bytes) -> WmtsConnector:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=body)
+
     return WmtsConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
@@ -93,9 +94,12 @@ def test_kvp_gettile_template_when_no_resource_url():
 
 
 def test_fetch_copy_geojson_is_none():
-    assert _connector(WMTS).fetch_copy_geojson(
-        list(_connector(WMTS).fetch(CAPS))[0], http_get=lambda u: None
-    ) is None
+    assert (
+        _connector(WMTS).fetch_copy_geojson(
+            list(_connector(WMTS).fetch(CAPS))[0], http_get=lambda u: None
+        )
+        is None
+    )
 
 
 def test_malformed_returns_empty():

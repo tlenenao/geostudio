@@ -24,7 +24,7 @@ class _FakeS3Client:
             body = data
         else:
             start, end = Range.removeprefix("bytes=").split("-")
-            body = data[int(start):int(end) + 1]
+            body = data[int(start) : int(end) + 1]
 
         class _Body:
             def __init__(self, chunk: bytes):
@@ -73,7 +73,10 @@ def test_validate_tileset_zip_accepts_a_valid_archive():
     client = _FakeS3Client({"k": zip_bytes})
     f = S3RangeFile(client, bucket="b", key="k")
     result = validate_tileset_zip(
-        f, max_entries=100, max_total_bytes=10_000, max_entry_bytes=10_000,
+        f,
+        max_entries=100,
+        max_total_bytes=10_000,
+        max_entry_bytes=10_000,
     )
     assert result.entry_count == 2
     assert result.total_bytes == len(entries["tileset.json"]) + len(entries["tiles/0.b3dm"])

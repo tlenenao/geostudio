@@ -6,7 +6,6 @@ pas le cas que I5 nomme explicitement — « un worker vivant mais bloqué ».
 Pour le CDC, il existe un signal serveur direct et fiable :
 `pg_replication_slots.active`, à true seulement tant qu'un consommateur tient
 le slot. C'est ce que teste cette sonde."""
-import pytest
 
 from scripts.healthcheck_cdc import SLOT_NAME, slot_is_active
 

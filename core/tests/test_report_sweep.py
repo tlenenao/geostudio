@@ -3,6 +3,7 @@
 test_pipeline_sweep.py exactly: pure SQLite, render_export_task.defer is
 monkeypatched so this test proves "is a report due, was export_jobs+
 report_runs created and committed before deferring", never a real render."""
+
 import pytest
 
 from app.configs import repository as configs_repo
@@ -31,28 +32,52 @@ def _make_session():
 
 def _seed_due_report(session, *, tenant_id, owner_id) -> str:
     app_item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="app", title="Dashboard",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="app",
+        title="Dashboard",
     )
     bookmark_item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="bookmark", title="A view",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="bookmark",
+        title="A view",
     )
-    bookmark_config = BuilderConfig.model_validate({
-        "kind": "bookmark",
-        "bookmark": {"appId": app_item.id, "pageId": "page-1", "timeRange": None, "extent": None, "crossFilter": {}},
-    })
-    configs_repo.create_config(session, bookmark_config, item_id=bookmark_item.id, tenant_id=tenant_id)
+    bookmark_config = BuilderConfig.model_validate(
+        {
+            "kind": "bookmark",
+            "bookmark": {
+                "appId": app_item.id,
+                "pageId": "page-1",
+                "timeRange": None,
+                "extent": None,
+                "crossFilter": {},
+            },
+        }
+    )
+    configs_repo.create_config(
+        session, bookmark_config, item_id=bookmark_item.id, tenant_id=tenant_id
+    )
 
     report_item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="report", title="Weekly report",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="report",
+        title="Weekly report",
     )
-    report_config = BuilderConfig.model_validate({
-        "kind": "report",
-        "report": {
-            "bookmarkItemId": bookmark_item.id,
-            "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-        },
-    })
+    report_config = BuilderConfig.model_validate(
+        {
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": bookmark_item.id,
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        }
+    )
     configs_repo.create_config(session, report_config, item_id=report_item.id, tenant_id=tenant_id)
     return report_item.id
 
@@ -62,8 +87,13 @@ def test_sweep_defers_render_export_task_for_a_due_report(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_due_report(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -87,8 +117,13 @@ def test_sweep_short_circuits_in_read_only_mode(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_report(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -115,8 +150,13 @@ def test_sweep_commits_run_before_deferring(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_report(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -126,6 +166,7 @@ def test_sweep_commits_run_before_deferring(monkeypatch, tmp_path):
 
     def fake_defer(**kw):
         from app.export import repository as export_repo
+
         with SeparateSession() as s2:
             job = export_repo.get_job(s2, tenant_id=tenant_id, job_id=kw["job_id"])
             seen_from_separate_session.append(job is not None)

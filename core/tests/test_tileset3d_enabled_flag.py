@@ -30,8 +30,14 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         s.commit()
     app = create_app()

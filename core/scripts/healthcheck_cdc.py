@@ -10,6 +10,7 @@ qu'un consommateur le tient.
 Usage (healthcheck docker) : `python -m scripts.healthcheck_cdc`
 Sortie 0 = sain, 1 = pas sain.
 """
+
 import os
 import sys
 

@@ -13,10 +13,13 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 GAUGE_BODY = {
-    "id": "acme.gauge", "tag": "gauge-extension-widget", "label": "Jauge (extension)",
+    "id": "acme.gauge",
+    "tag": "gauge-extension-widget",
+    "label": "Jauge (extension)",
     "moduleUrl": "https://example.com/gauge.js",
     "props": [{"name": "initial", "type": "number", "label": "Valeur initiale", "default": 0}],
-    "events": ["changed"], "actions": ["reset"],
+    "events": ["changed"],
+    "actions": ["reset"],
     "defaultSize": {"w": 2, "h": 2},
     "permissions": {"collections": "all"},
 }
@@ -29,10 +32,25 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -100,8 +118,14 @@ def test_get_extensions_never_leaks_across_tenants(env):
         s.add(other_tenant)
         s.flush()
         other_admin = get_or_create_user(
-            s, tenant_id=other_tenant.id, oidc_sub="oa", username="other-admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=other_tenant.id,
+            oidc_sub="oa",
+            username="other-admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         s.commit()
     _as(app, admin)
@@ -126,8 +150,14 @@ def test_patch_extension_cross_tenant_returns_404(env):
         s.add(other_tenant)
         s.flush()
         other_admin = get_or_create_user(
-            s, tenant_id=other_tenant.id, oidc_sub="oa-patch", username="other-admin-patch",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=other_tenant.id,
+            oidc_sub="oa-patch",
+            username="other-admin-patch",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         s.commit()
 
@@ -143,8 +173,10 @@ def test_mutations_are_audited(env):
     _as(app, admin)
     client.post("/extensions", json=GAUGE_BODY)
     client.patch("/extensions/acme.gauge", json={"enabled": False})
-    from app.audit.models import AuditLog
     from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     assert "extension.create" in actions

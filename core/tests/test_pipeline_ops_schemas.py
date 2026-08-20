@@ -15,9 +15,14 @@ from app.pipelines.ops.schemas import (
 def test_all_eight_phase1_ops_are_registered():
     # Phase 1 ops still present (this test continues to verify backward compat)
     phase1_ops = {
-        "reader.collection", "transform.filter", "transform.select",
-        "transform.derive", "transform.aggregate", "transform.join",
-        "writer.collection", "writer.export",
+        "reader.collection",
+        "transform.filter",
+        "transform.select",
+        "transform.derive",
+        "transform.aggregate",
+        "transform.join",
+        "writer.collection",
+        "writer.export",
     }
     assert phase1_ops.issubset(set(OP_PARAMS))
     assert set(OP_KINDS) == set(OP_PARAMS)
@@ -78,9 +83,18 @@ def test_ops_catalog_exposes_json_schema_per_op():
 
 def test_collection_referencing_fields_carry_collection_id_format_hint():
     catalog = ops_catalog()
-    assert catalog["reader.collection"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
-    assert catalog["writer.collection"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
-    assert catalog["transform.join"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
+    assert (
+        catalog["reader.collection"]["paramsSchema"]["properties"]["collectionId"]["format"]
+        == "collection-id"
+    )
+    assert (
+        catalog["writer.collection"]["paramsSchema"]["properties"]["collectionId"]["format"]
+        == "collection-id"
+    )
+    assert (
+        catalog["transform.join"]["paramsSchema"]["properties"]["withCollectionId"]["format"]
+        == "collection-id"
+    )
 
 
 def test_non_collection_fields_carry_no_format_hint():
@@ -91,12 +105,23 @@ def test_non_collection_fields_carry_no_format_hint():
 
 def test_all_eighteen_ops_are_registered():
     assert set(OP_PARAMS) == {
-        "reader.collection", "transform.filter", "transform.select",
-        "transform.derive", "transform.aggregate", "transform.join",
-        "writer.collection", "writer.export",
-        "transform.buffer", "transform.reproject", "transform.intersection",
-        "transform.countWithin", "transform.h3Aggregate", "writer.dataset",
-        "transform.qgis", "reader.connector.rest", "reader.connector.postgres",
+        "reader.collection",
+        "transform.filter",
+        "transform.select",
+        "transform.derive",
+        "transform.aggregate",
+        "transform.join",
+        "writer.collection",
+        "writer.export",
+        "transform.buffer",
+        "transform.reproject",
+        "transform.intersection",
+        "transform.countWithin",
+        "transform.h3Aggregate",
+        "writer.dataset",
+        "transform.qgis",
+        "reader.connector.rest",
+        "reader.connector.postgres",
         "transform.merge",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
@@ -140,7 +165,8 @@ def test_transform_reproject_rejects_malformed_crs():
 
 def test_transform_intersection_defaults():
     params = parse_op_params(
-        "transform.intersection", {"withCollectionId": "x"},
+        "transform.intersection",
+        {"withCollectionId": "x"},
     )
     assert params.how == "inner"
     assert params.outputGeometry == "left"
@@ -148,7 +174,8 @@ def test_transform_intersection_defaults():
 
 def test_transform_count_within_defaults():
     params = parse_op_params(
-        "transform.countWithin", {"withCollectionId": "x"},
+        "transform.countWithin",
+        {"withCollectionId": "x"},
     )
     assert params.countColumn == "count"
     assert params.predicate == "intersects"
@@ -156,7 +183,8 @@ def test_transform_count_within_defaults():
 
 def test_transform_h3_aggregate_requires_resolution_and_metrics():
     params = parse_op_params(
-        "transform.h3Aggregate", {"resolution": 9, "metrics": {"n": "COUNT(*)"}},
+        "transform.h3Aggregate",
+        {"resolution": 9, "metrics": {"n": "COUNT(*)"}},
     )
     assert params.resolution == 9
     assert params.metrics == {"n": "COUNT(*)"}
@@ -173,7 +201,8 @@ def test_transform_h3_aggregate_rejects_resolution_out_of_bounds():
 
 def test_writer_dataset_requires_title_when_dataset_id_absent():
     params = parse_op_params(
-        "writer.dataset", {"collectionId": "c1", "title": "My dataset"},
+        "writer.dataset",
+        {"collectionId": "c1", "title": "My dataset"},
     )
     assert params.datasetId is None
     assert params.title == "My dataset"
@@ -183,7 +212,8 @@ def test_writer_dataset_requires_title_when_dataset_id_absent():
 
 def test_writer_dataset_allows_missing_title_when_dataset_id_present():
     params = parse_op_params(
-        "writer.dataset", {"collectionId": "c1", "datasetId": "d1"},
+        "writer.dataset",
+        {"collectionId": "c1", "datasetId": "d1"},
     )
     assert params.datasetId == "d1"
     assert params.title is None
@@ -191,9 +221,20 @@ def test_writer_dataset_allows_missing_title_when_dataset_id_present():
 
 def test_new_collection_referencing_fields_carry_collection_id_format_hint():
     catalog = ops_catalog()
-    assert catalog["transform.intersection"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
-    assert catalog["transform.countWithin"]["paramsSchema"]["properties"]["withCollectionId"]["format"] == "collection-id"
-    assert catalog["writer.dataset"]["paramsSchema"]["properties"]["collectionId"]["format"] == "collection-id"
+    assert (
+        catalog["transform.intersection"]["paramsSchema"]["properties"]["withCollectionId"][
+            "format"
+        ]
+        == "collection-id"
+    )
+    assert (
+        catalog["transform.countWithin"]["paramsSchema"]["properties"]["withCollectionId"]["format"]
+        == "collection-id"
+    )
+    assert (
+        catalog["writer.dataset"]["paramsSchema"]["properties"]["collectionId"]["format"]
+        == "collection-id"
+    )
 
 
 def test_fifteenth_op_is_registered():
@@ -226,7 +267,8 @@ def test_transform_qgis_rejects_missing_required_param():
     # in test_pipeline_qgis_algorithms.py::test_centroids_required_params_...).
     with pytest.raises(ValidationError):
         parse_op_params(
-            "transform.qgis", {"algorithmId": "native:centroids", "params": {}},
+            "transform.qgis",
+            {"algorithmId": "native:centroids", "params": {}},
         )
 
 
@@ -249,7 +291,12 @@ def test_transform_qgis_accepts_optional_output_srid():
         "transform.qgis",
         {
             "algorithmId": "gdal:warpreproject",
-            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0, "MULTITHREADING": False, "RESAMPLING": 0},
+            "params": {
+                "TARGET_CRS": "EPSG:2154",
+                "DATA_TYPE": 0,
+                "MULTITHREADING": False,
+                "RESAMPLING": 0,
+            },
             "outputSrid": "EPSG:2154",
         },
     )
@@ -260,9 +307,11 @@ def test_transform_qgis_rejects_malformed_output_srid():
     with pytest.raises(ValidationError):
         parse_op_params(
             "transform.qgis",
-            {"algorithmId": "native:dissolve",
-             "params": {"SEPARATE_DISJOINT": False},
-             "outputSrid": "not-a-crs"},
+            {
+                "algorithmId": "native:dissolve",
+                "params": {"SEPARATE_DISJOINT": False},
+                "outputSrid": "not-a-crs",
+            },
         )
 
 
@@ -289,17 +338,20 @@ def test_reader_connector_rest_rejects_non_http_base_url():
 
 
 def test_reader_connector_rest_full_params():
-    params = parse_op_params("reader.connector.rest", {
-        "baseUrl": "https://api.example.com/",
-        "path": "v1/items",
-        "method": "POST",
-        "query": {"limit": "100"},
-        "headers": {"User-Agent": "geostudio"},
-        "recordsPath": "data.items",
-        "paginator": "page_number",
-        "paginatorConfig": {"pageParam": "page"},
-        "secretName": "my-api-key",
-    })
+    params = parse_op_params(
+        "reader.connector.rest",
+        {
+            "baseUrl": "https://api.example.com/",
+            "path": "v1/items",
+            "method": "POST",
+            "query": {"limit": "100"},
+            "headers": {"User-Agent": "geostudio"},
+            "recordsPath": "data.items",
+            "paginator": "page_number",
+            "paginatorConfig": {"pageParam": "page"},
+            "secretName": "my-api-key",
+        },
+    )
     assert params.path == "v1/items"
     assert params.method == "POST"
     assert params.recordsPath == "data.items"
@@ -309,9 +361,13 @@ def test_reader_connector_rest_full_params():
 
 def test_reader_connector_rest_rejects_unknown_paginator():
     with pytest.raises(ValidationError):
-        parse_op_params("reader.connector.rest", {
-            "baseUrl": "https://api.example.com/", "paginator": "not-a-paginator",
-        })
+        parse_op_params(
+            "reader.connector.rest",
+            {
+                "baseUrl": "https://api.example.com/",
+                "paginator": "not-a-paginator",
+            },
+        )
 
 
 def test_reader_connector_postgres_requires_secret_name_and_query():
@@ -367,7 +423,12 @@ def test_transform_merge_is_kind_transform_and_registered():
 
 def test_binary_ops_accept_secondary_input_in_catalog():
     catalog = ops_catalog()
-    for op in ("transform.join", "transform.intersection", "transform.countWithin", "transform.merge"):
+    for op in (
+        "transform.join",
+        "transform.intersection",
+        "transform.countWithin",
+        "transform.merge",
+    ):
         assert catalog[op]["acceptsSecondaryInput"] is True
 
 
@@ -379,8 +440,12 @@ def test_non_binary_ops_do_not_accept_secondary_input_in_catalog():
 
 def test_binary_ops_set_matches_catalog_flag():
     from app.pipelines.ops.schemas import BINARY_OPS
+
     assert BINARY_OPS == {
-        "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
+        "transform.join",
+        "transform.intersection",
+        "transform.countWithin",
+        "transform.merge",
     }
 
 
@@ -406,7 +471,8 @@ def test_writer_dataset_mode_defaults_to_append():
 
 def test_writer_dataset_mode_accepts_replace():
     params = parse_op_params(
-        "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "replace"},
+        "writer.dataset",
+        {"collectionId": "c1", "title": "My dataset", "mode": "replace"},
     )
     assert params.mode == "replace"
 
@@ -414,7 +480,8 @@ def test_writer_dataset_mode_accepts_replace():
 def test_writer_dataset_mode_rejects_unknown_value():
     with pytest.raises(ValidationError):
         parse_op_params(
-            "writer.dataset", {"collectionId": "c1", "title": "My dataset", "mode": "overwrite"},
+            "writer.dataset",
+            {"collectionId": "c1", "title": "My dataset", "mode": "overwrite"},
         )
 
 

@@ -20,29 +20,41 @@ def env(pg_engine):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     yield Session, tenant, user
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE items, configs, config_revisions, collections, "
-            "audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_creates_an_empty_table_with_the_requested_columns_and_no_rows(env):
     Session, tenant, user = env
     with Session() as s:
         col = create_empty_collection(
-            s, tenant_id=tenant.id, owner_id=user.id, title="Ma requête",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Ma requête",
             columns=[
                 EmptyCollectionColumn(name="commune", sqlType="text"),
                 EmptyCollectionColumn(name="total", sqlType="integer"),
             ],
-            geometry_type=None, srid=None,
-            introspect=introspect_table, apply_ddl=apply_collection_ddl,
+            geometry_type=None,
+            srid=None,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
         )
         s.commit()
         rows = s.execute(text(f"SELECT commune, total FROM public.{col.table_name}")).fetchall()
@@ -56,10 +68,15 @@ def test_creates_a_geometry_column_when_geometry_type_is_given(env):
     Session, tenant, user = env
     with Session() as s:
         col = create_empty_collection(
-            s, tenant_id=tenant.id, owner_id=user.id, title="Ma requête spatiale",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Ma requête spatiale",
             columns=[EmptyCollectionColumn(name="commune", sqlType="text")],
-            geometry_type="Point", srid=4326,
-            introspect=introspect_table, apply_ddl=apply_collection_ddl,
+            geometry_type="Point",
+            srid=4326,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
         )
         s.commit()
         assert col.geometry_column == "geom"
@@ -71,10 +88,15 @@ def test_column_names_are_quoted_defensively(env):
     Session, tenant, user = env
     with Session() as s:
         col = create_empty_collection(
-            s, tenant_id=tenant.id, owner_id=user.id, title="Colonne réservée",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Colonne réservée",
             columns=[EmptyCollectionColumn(name="select", sqlType="text")],  # mot réservé SQL
-            geometry_type=None, srid=None,
-            introspect=introspect_table, apply_ddl=apply_collection_ddl,
+            geometry_type=None,
+            srid=None,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
         )
         s.commit()
         rows = s.execute(text(f'SELECT "select" FROM public.{col.table_name}')).fetchall()

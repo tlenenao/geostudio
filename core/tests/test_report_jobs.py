@@ -4,8 +4,8 @@
 the sweep. The notify half lives in test_report_jobs.py's sibling tests
 below; the periodic-task-level commit-before-defer proof lives in
 test_report_sweep.py (mirrors test_alert_sweep.py/test_pipeline_sweep.py)."""
-import pytest
 
+import pytest
 from sqlalchemy import select
 
 from app.alerts.notify import NotifyError
@@ -17,7 +17,6 @@ from app.export import repository as export_repo
 from app.items import repository as items_repo
 from app.reports import jobs as report_jobs
 from app.reports import repository as reports_repo
-from app.sharing.authorization import can
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -38,28 +37,46 @@ def _make_session():
 
 def _seed_bookmark(session, *, tenant_id, owner_id, app_id="app-1", page_id="page-1") -> str:
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="bookmark", title="A view",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="bookmark",
+        title="A view",
     )
-    config = BuilderConfig.model_validate({
-        "kind": "bookmark",
-        "bookmark": {"appId": app_id, "pageId": page_id, "timeRange": None, "extent": None, "crossFilter": {}},
-    })
+    config = BuilderConfig.model_validate(
+        {
+            "kind": "bookmark",
+            "bookmark": {
+                "appId": app_id,
+                "pageId": page_id,
+                "timeRange": None,
+                "extent": None,
+                "crossFilter": {},
+            },
+        }
+    )
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
     return item.id
 
 
 def _seed_report(session, *, tenant_id, owner_id, bookmark_item_id) -> str:
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="report", title="Weekly report",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="report",
+        title="Weekly report",
     )
-    config = BuilderConfig.model_validate({
-        "kind": "report",
-        "report": {
-            "bookmarkItemId": bookmark_item_id,
-            "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-        },
-    })
+    config = BuilderConfig.model_validate(
+        {
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": bookmark_item_id,
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        }
+    )
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
     return item.id
 
@@ -69,18 +86,33 @@ def test_trigger_creates_export_job_and_report_run_for_due_report(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
-        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     deferred = []
-    monkeypatch.setattr(report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}))
+    monkeypatch.setattr(
+        report_jobs,
+        "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
+    )
     report_jobs._trigger_due_reports(Session)
 
     with Session() as s:
@@ -100,24 +132,44 @@ def test_trigger_skips_report_and_audits_when_owner_lost_bookmark_access(monkeyp
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=other.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=other.id,
+            resource_type="app",
+            title="Dashboard",
         )
         # Bookmark owned by "other", never shared with "owner" — "owner"
         # (the report's owner) cannot read it.
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=other.id, app_id=app_item.id)
-        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     deferred = []
-    monkeypatch.setattr(report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}))
+    monkeypatch.setattr(
+        report_jobs,
+        "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
+    )
     report_jobs._trigger_due_reports(Session)
 
     assert deferred == []
@@ -134,12 +186,22 @@ def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
         # App owned by "other", never shared with "owner" — "owner" (the
         # report's owner) cannot read it, but CAN read the bookmark itself
@@ -147,14 +209,24 @@ def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch)
         # check ("target app not readable"), distinct from the first
         # ("bookmark not readable") covered by the sibling test above.
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=other.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=other.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
-        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     deferred = []
-    monkeypatch.setattr(report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}))
+    monkeypatch.setattr(
+        report_jobs,
+        "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
+    )
     report_jobs._trigger_due_reports(Session)
 
     assert deferred == []
@@ -162,9 +234,15 @@ def test_trigger_skips_report_and_audits_when_owner_lost_app_access(monkeypatch)
         run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
         assert run is not None
         assert run.export_job_id is None
-        audit_rows = s.execute(
-            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
-        ).scalars().all()
+        audit_rows = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.run", AuditLog.object_id == report_id
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(audit_rows) == 1
         assert audit_rows[0].payload["success"] is False
         assert audit_rows[0].payload["error"] == "target app not readable by report owner"
@@ -179,36 +257,58 @@ def test_failed_trigger_still_records_a_run_so_cron_cadence_is_respected(monkeyp
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
         # Bookmark détenu par "other", jamais partagé : le propriétaire du
         # rapport ne peut pas le lire → ReportTriggerError à chaque tentative.
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=other.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=other.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=other.id, app_id=app_item.id)
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         )
-        config = BuilderConfig.model_validate({
-            "kind": "report",
-            "report": {
-                "bookmarkItemId": bookmark_id,
-                "refreshPolicy": {"enabled": True, "cron": "0 8 * * 1"},  # hebdomadaire
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": bookmark_id,
+                    "refreshPolicy": {"enabled": True, "cron": "0 8 * * 1"},  # hebdomadaire
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=item.id, tenant_id=tenant.id)
         report_id = item.id
         s.commit()
 
     monkeypatch.setattr(
-        report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(lambda **kw: None)}),
+        report_jobs,
+        "render_export_task",
+        type("_T", (), {"defer": staticmethod(lambda **kw: None)}),
     )
 
     with Session() as s:
@@ -236,15 +336,28 @@ def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(mo
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
-        first_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
-        second_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        first_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
+        second_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     attempts = []
@@ -255,7 +368,9 @@ def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(mo
             raise Exception("procrastinate indisponible")
 
     monkeypatch.setattr(
-        report_jobs, "render_export_task", type("_T", (), {"defer": staticmethod(_defer)}),
+        report_jobs,
+        "render_export_task",
+        type("_T", (), {"defer": staticmethod(_defer)}),
     )
 
     report_jobs._trigger_due_reports(Session)  # ne doit pas propager
@@ -264,9 +379,15 @@ def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(mo
     # du premier remontait et le second n'était jamais atteint.
     assert len(attempts) == 2
     with Session() as s:
-        failures = s.execute(
-            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_type == "item")
-        ).scalars().all()
+        failures = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.run", AuditLog.object_type == "item"
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(failures) == 1
         assert failures[0].payload["success"] is False
         assert "mise en file impossible" in failures[0].payload["error"]
@@ -275,7 +396,9 @@ def test_trigger_continues_to_next_report_when_one_raises_an_unexpected_error(mo
         # "pending" pour toujours (personne ne l'a dépilé, et
         # reclaim_stuck_jobs ne récupère que les "running").
         failed_run = reports_repo.get_latest_run(
-            s, tenant_id=tenant.id, report_item_id=failures[0].object_id,
+            s,
+            tenant_id=tenant.id,
+            report_item_id=failures[0].object_id,
         )
         failed_job = export_repo.get_job(s, tenant_id=tenant.id, job_id=failed_run.export_job_id)
         assert failed_job.status == "error"
@@ -289,19 +412,31 @@ def test_trigger_audits_unexpected_error_raised_inside_the_loop_body(monkeypatch
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
-        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     deferred = []
     monkeypatch.setattr(
-        report_jobs, "render_export_task",
+        report_jobs,
+        "render_export_task",
         type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
     )
 
@@ -314,9 +449,15 @@ def test_trigger_audits_unexpected_error_raised_inside_the_loop_body(monkeypatch
 
     assert deferred == []
     with Session() as s:
-        rows = s.execute(
-            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
-        ).scalars().all()
+        rows = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.run", AuditLog.object_id == report_id
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].payload["success"] is False
         assert rows[0].payload["error"] == "erreur interne : bookmark illisible"
@@ -327,34 +468,59 @@ def test_notify_sends_webhook_with_result_url_and_marks_notified(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         report_id = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         ).id
-        config = BuilderConfig.model_validate({
-            "kind": "report",
-            "report": {
-                "bookmarkItemId": "bookmark-x",
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
         job = export_repo.create_job(
-            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+            s,
+            tenant_id=tenant.id,
+            item_id=app_item.id,
+            user_id=owner.id,
+            format="pdf",
         )
         export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
         s.commit()
 
     sent = []
-    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload: sent.append((channel, payload)))
-    monkeypatch.setattr(report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf")
+    monkeypatch.setattr(
+        report_jobs, "send_webhook", lambda channel, *, payload: sent.append((channel, payload))
+    )
+    monkeypatch.setattr(
+        report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf"
+    )
     report_jobs._notify_pending_reports(Session)
 
     assert len(sent) == 1
@@ -369,29 +535,50 @@ def test_notify_marks_notified_even_when_channel_fails(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         report_id = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         ).id
-        config = BuilderConfig.model_validate({
-            "kind": "report",
-            "report": {
-                "bookmarkItemId": "bookmark-x",
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
         job = export_repo.create_job(
-            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+            s,
+            tenant_id=tenant.id,
+            item_id=app_item.id,
+            user_id=owner.id,
+            format="pdf",
         )
         export_repo.mark_error(s, job_id=job.id, error="worker crashed")
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
         s.commit()
 
     def _fail(*a, **kw):
@@ -417,29 +604,50 @@ def test_notify_marks_notified_when_channel_raises_a_non_notify_error(monkeypatc
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         report_id = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         ).id
-        config = BuilderConfig.model_validate({
-            "kind": "report",
-            "report": {
-                "bookmarkItemId": "bookmark-x",
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
         job = export_repo.create_job(
-            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+            s,
+            tenant_id=tenant.id,
+            item_id=app_item.id,
+            user_id=owner.id,
+            format="pdf",
         )
         export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
         s.commit()
 
     def _boom(*a, **kw):
@@ -453,9 +661,15 @@ def test_notify_marks_notified_when_channel_raises_a_non_notify_error(monkeypatc
     with Session() as s:
         fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert fetched.notified_at is not None  # jamais rejoué, même sur erreur inattendue
-        audit_rows = s.execute(
-            select(AuditLog).where(AuditLog.action == "report.notify", AuditLog.object_id == report_id)
-        ).scalars().all()
+        audit_rows = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.notify", AuditLog.object_id == report_id
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(audit_rows) == 1
         assert audit_rows[0].payload["success"] is False
         assert audit_rows[0].payload["channel"] is None
@@ -469,33 +683,56 @@ def test_notify_marks_notified_when_presigned_url_raises(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         report_id = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         ).id
-        config = BuilderConfig.model_validate({
-            "kind": "report",
-            "report": {
-                "bookmarkItemId": "bookmark-x",
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
         job = export_repo.create_job(
-            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+            s,
+            tenant_id=tenant.id,
+            item_id=app_item.id,
+            user_id=owner.id,
+            format="pdf",
         )
         export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
         s.commit()
 
     sent = []
-    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload: sent.append(payload))
+    monkeypatch.setattr(
+        report_jobs, "send_webhook", lambda channel, *, payload: sent.append(payload)
+    )
 
     def _boom(job):
         raise KeyError("S3_ENDPOINT_URL")
@@ -515,19 +752,38 @@ def test_notify_skips_runs_whose_export_job_is_still_pending():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         report_id = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="report",
+            title="Weekly report",
         ).id
         job = export_repo.create_job(
-            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf",
+            s,
+            tenant_id=tenant.id,
+            item_id=app_item.id,
+            user_id=owner.id,
+            format="pdf",
         )  # left "pending" — not done, not error
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id)
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
         s.commit()
 
     report_jobs._notify_pending_reports(Session)
@@ -549,19 +805,31 @@ def test_trigger_fails_report_without_deferring_when_export_capability_is_disabl
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         app_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard",
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Dashboard",
         )
         bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
-        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
         s.commit()
 
     deferred = []
     monkeypatch.setattr(
-        report_jobs, "render_export_task",
+        report_jobs,
+        "render_export_task",
         type("_T", (), {"defer": staticmethod(lambda **kw: deferred.append(kw))}),
     )
 
@@ -572,9 +840,15 @@ def test_trigger_fails_report_without_deferring_when_export_capability_is_disabl
         run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
         assert run is not None
         assert run.export_job_id is None
-        rows = s.execute(
-            select(AuditLog).where(AuditLog.action == "report.run", AuditLog.object_id == report_id)
-        ).scalars().all()
+        rows = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.run", AuditLog.object_id == report_id
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].payload["error"] == "export capability disabled on this instance"
 
@@ -598,6 +872,8 @@ def test_presigned_url_for_notification_uses_a_seven_day_ttl(monkeypatch):
 
 
 def test_presigned_url_is_none_for_a_job_that_is_not_done(monkeypatch):
-    monkeypatch.setattr(report_jobs, "s3_client_from_env", lambda: pytest.fail("ne doit pas être appelé"))
+    monkeypatch.setattr(
+        report_jobs, "s3_client_from_env", lambda: pytest.fail("ne doit pas être appelé")
+    )
     job = type("_Job", (), {"status": "error", "result_key": None})()
     assert report_jobs._presigned_url_for_job(job) is None

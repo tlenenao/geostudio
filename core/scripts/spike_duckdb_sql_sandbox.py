@@ -34,6 +34,7 @@ Lancer : cd core && uv run python -m scripts.spike_duckdb_sql_sandbox
 seul `-m` depuis `core/` le garantit, cf. convention déjà en place pour
 `scripts.seed_demo`/`scripts.measure_aggregate_performance`.)
 """
+
 import json
 import os
 import threading
@@ -70,24 +71,41 @@ def write_fixture():
     # Écrit un GeoParquet CDC réel via geopandas → MinIO (httpfs write).
     conn = _open()
     gdf = gpd.GeoDataFrame(
-        [{"id": i, "region": "Nord" if i % 2 else "Sud", "pop": i,
-          "_op": "insert", "_lsn": i, "_ts": 1.0, "geometry": Point(i, i)} for i in range(1, 6)],
-        geometry="geometry", crs="EPSG:4326",
+        [
+            {
+                "id": i,
+                "region": "Nord" if i % 2 else "Sud",
+                "pop": i,
+                "_op": "insert",
+                "_lsn": i,
+                "_ts": 1.0,
+                "geometry": Point(i, i),
+            }
+            for i in range(1, 6)
+        ],
+        geometry="geometry",
+        crs="EPSG:4326",
     )
     local = f"/tmp/spike-{uuid.uuid4().hex}.parquet"
     gdf.to_parquet(local)
-    conn.execute(f"COPY (SELECT * FROM read_parquet('{local}')) TO '{GLOB.replace('*', 'part-1')}' (FORMAT parquet)")
+    conn.execute(
+        f"COPY (SELECT * FROM read_parquet('{local}')) TO '{GLOB.replace('*', 'part-1')}' (FORMAT parquet)"
+    )
     conn.close()
 
 
 def probe_ast():
     conn = _open()
-    doc = json.loads(conn.execute(
-        "SELECT json_serialize_sql('SELECT region, count(*) FROM villes t JOIN autre a ON a.id=t.id GROUP BY region')"
-    ).fetchone()[0])
+    doc = json.loads(
+        conn.execute(
+            "SELECT json_serialize_sql('SELECT region, count(*) FROM villes t JOIN autre a ON a.id=t.id GROUP BY region')"
+        ).fetchone()[0]
+    )
     print("AST SAMPLE:", json.dumps(doc)[:2000])
     # Repérer visuellement les type de nœud SELECT et les nœuds de table de base (table_name).
-    check("json_serialize_sql renvoie un AST exploitable", "statements" in doc, str(list(doc.keys())))
+    check(
+        "json_serialize_sql renvoie un AST exploitable", "statements" in doc, str(list(doc.keys()))
+    )
     conn.close()
 
 
@@ -96,17 +114,24 @@ def probe_materialize_then_lock():
     conn.execute("SET memory_limit='512MB'")
     conn.execute("SET threads=2")
     # 1) Matérialiser depuis le GeoParquet (accès externe encore autorisé).
-    conn.execute(f"CREATE TEMP TABLE villes AS SELECT * FROM read_parquet('{GLOB}', hive_partitioning=true)")
+    conn.execute(
+        f"CREATE TEMP TABLE villes AS SELECT * FROM read_parquet('{GLOB}', hive_partitioning=true)"
+    )
     # 2) Verrouiller.
     conn.execute("SET enable_external_access = false")
     conn.execute("SET lock_configuration = true")
     # 3) SELECT + ST_* sur la table temp doivent marcher.
-    n = conn.execute("SELECT count(*) FROM villes WHERE ST_Intersects(geometry, ST_MakeEnvelope(0,0,10,10))").fetchone()[0]
+    n = conn.execute(
+        "SELECT count(*) FROM villes WHERE ST_Intersects(geometry, ST_MakeEnvelope(0,0,10,10))"
+    ).fetchone()[0]
     check("SELECT + ST_* sur table temp après verrouillage", n == 5, f"count={n}")
 
     # 4) Chaque cas d'abus doit LEVER une exception.
     for label, sql in [
-        ("read_parquet chemin arbitraire (cross-tenant)", f"SELECT * FROM read_parquet('{BASE}/tenant_id=t2/collection_id=x/dt=*/*.parquet')"),
+        (
+            "read_parquet chemin arbitraire (cross-tenant)",
+            f"SELECT * FROM read_parquet('{BASE}/tenant_id=t2/collection_id=x/dt=*/*.parquet')",
+        ),
         ("read_csv arbitraire", "SELECT * FROM read_csv('/etc/hostname')"),
         ("lecture fichier local", "SELECT * FROM read_text('/etc/hostname')"),
         ("ATTACH base externe", "ATTACH 'x.db' AS x"),
@@ -131,7 +156,11 @@ def probe_timeout():
         conn.execute("SELECT count(*) FROM range(100000000000) t1, range(100000) t2").fetchall()
         check("interrupt() interrompt une requête longue", False, "n'a pas été interrompue")
     except duckdb.Error as exc:
-        check("interrupt() interrompt une requête longue", (time.time() - t0) < 5, f"{type(exc).__name__}")
+        check(
+            "interrupt() interrompt une requête longue",
+            (time.time() - t0) < 5,
+            f"{type(exc).__name__}",
+        )
     finally:
         timer.cancel()
         conn.close()
@@ -143,5 +172,7 @@ if __name__ == "__main__":
     probe_materialize_then_lock()
     probe_timeout()
     failed = [r for r in results if not r[1]]
-    print(f"\n{'GO' if not failed else 'NO-GO'} — {len(results) - len(failed)}/{len(results)} checks PASS")
+    print(
+        f"\n{'GO' if not failed else 'NO-GO'} — {len(results) - len(failed)}/{len(results)} checks PASS"
+    )
     raise SystemExit(1 if failed else 0)

@@ -5,7 +5,9 @@ Revision ID: 0016
 Revises: 0015
 Create Date: 2026-07-19
 """
+
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0016"
@@ -36,8 +38,10 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column(
-            "source_id", sa.String(),
-            sa.ForeignKey("harvest_sources.id", ondelete="CASCADE"), nullable=False,
+            "source_id",
+            sa.String(),
+            sa.ForeignKey("harvest_sources.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("external_id", sa.String(), nullable=False),
         sa.Column("item_id", sa.String(), sa.ForeignKey("items.id"), nullable=True),

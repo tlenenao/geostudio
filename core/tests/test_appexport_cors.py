@@ -68,16 +68,14 @@ def test_cors_header_absent_on_collection_write_endpoints_when_enabled(monkeypat
     assert "access-control-allow-origin" not in client.patch("/collections/col1", json={}).headers
     assert "access-control-allow-origin" not in client.delete("/collections/col1").headers
     assert (
-        "access-control-allow-origin"
-        not in client.post("/collections/col1/items", json={}).headers
+        "access-control-allow-origin" not in client.post("/collections/col1/items", json={}).headers
     )
     assert (
         "access-control-allow-origin"
         not in client.put("/collections/col1/items/fid1", json={}).headers
     )
     assert (
-        "access-control-allow-origin"
-        not in client.delete("/collections/col1/items/fid1").headers
+        "access-control-allow-origin" not in client.delete("/collections/col1/items/fid1").headers
     )
 
 

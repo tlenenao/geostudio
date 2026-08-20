@@ -2,10 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -17,9 +17,13 @@ def _make_client(*, username: str, oidc_sub: str):
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub=oidc_sub,
-            username=username, email=f"{username}@example.com",
-            first_name="Alice", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub=oidc_sub,
+            username=username,
+            email=f"{username}@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         setup_session.commit()
 
@@ -57,16 +61,22 @@ def test_terrain3d_config_round_trips(client_env):
     client, Session, tenant, user = client_env
     with Session() as s:
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id,
-            resource_type="terrain3d", title="Relief du massif",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="terrain3d",
+            title="Relief du massif",
         )
         configs_repo.create_config(
             s,
             BuilderConfig(
                 kind="terrain3d",
-                terrain3d=Terrain3DPayload(sourceKey="tenant-1/abc/dem-cog.tif", originalFilename="dem.tif"),
+                terrain3d=Terrain3DPayload(
+                    sourceKey="tenant-1/abc/dem-cog.tif", originalFilename="dem.tif"
+                ),
             ),
-            item_id=item.id, tenant_id=tenant.id,
+            item_id=item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
         item_id = item.id
@@ -75,7 +85,10 @@ def test_terrain3d_config_round_trips(client_env):
     assert by_item.status_code == 200
     body = by_item.json()["config"]
     assert body["kind"] == "terrain3d"
-    assert body["terrain3d"] == {"sourceKey": "tenant-1/abc/dem-cog.tif", "originalFilename": "dem.tif"}
+    assert body["terrain3d"] == {
+        "sourceKey": "tenant-1/abc/dem-cog.tif",
+        "originalFilename": "dem.tif",
+    }
 
 
 def test_terrain3d_config_requires_terrain3d_payload(client):

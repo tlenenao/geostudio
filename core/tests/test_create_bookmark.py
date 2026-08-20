@@ -19,12 +19,22 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         bob = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
-            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-2",
+            username="bob",
+            email="bob@example.com",
+            first_name="Bob",
+            last_name="Doe",
         )
         setup_session.commit()
 
@@ -49,7 +59,8 @@ def _app_body(title: str = "Cible") -> dict:
     return {
         "title": title,
         "config": {
-            "version": 1, "kind": "app",
+            "version": 1,
+            "kind": "app",
             "layout": {"type": "grid", "breakpoints": {}, "items": []},
         },
     }
@@ -59,11 +70,14 @@ def _bookmark_body(app_id: str, title: str = "Ma vue") -> dict:
     return {
         "title": title,
         "config": {
-            "version": 1, "kind": "bookmark",
+            "version": 1,
+            "kind": "bookmark",
             "bookmark": {
-                "appId": app_id, "pageId": "page-1",
+                "appId": app_id,
+                "pageId": "page-1",
                 "timeRange": {"from": "2026-01-01", "to": "2026-02-01"},
-                "extent": None, "crossFilter": {},
+                "extent": None,
+                "crossFilter": {},
             },
         },
     }
@@ -93,13 +107,19 @@ def test_create_bookmark_app_non_lisible_rejetee_avec_meme_message(client):
         from app.items import repository as items_repo
 
         bob_app = items_repo.create_item(
-            session, tenant_id=client.user.tenant_id, owner_id=client.bob.id,
-            resource_type="app", title="App de Bob",
+            session,
+            tenant_id=client.user.tenant_id,
+            owner_id=client.bob.id,
+            resource_type="app",
+            title="App de Bob",
         )
         configs_repo.create_config(
             session,
-            BuilderConfig(version=1, kind="app", layout={"type": "grid", "breakpoints": {}, "items": []}),
-            bob_app.id, tenant_id=client.user.tenant_id,
+            BuilderConfig(
+                version=1, kind="app", layout={"type": "grid", "breakpoints": {}, "items": []}
+            ),
+            bob_app.id,
+            tenant_id=client.user.tenant_id,
         )
         session.commit()
         bob_app_id = bob_app.id
@@ -114,8 +134,11 @@ def test_create_bookmark_cible_un_kind_non_app_rejetee(client):
         from app.items import repository as items_repo
 
         map_item = items_repo.create_item(
-            session, tenant_id=client.user.tenant_id, owner_id=client.user.id,
-            resource_type="map", title="Une carte",
+            session,
+            tenant_id=client.user.tenant_id,
+            owner_id=client.user.id,
+            resource_type="map",
+            title="Une carte",
         )
         session.commit()
         map_item_id = map_item.id
@@ -130,7 +153,8 @@ def test_update_bookmark_app_inexistante_rejetee(client):
     created = client.post("/configs", json=_bookmark_body(app_item_id))
     item_id = created.json()["itemId"]
     bad_config = {
-        "version": 1, "kind": "bookmark",
+        "version": 1,
+        "kind": "bookmark",
         "bookmark": {"appId": "inexistante", "pageId": "page-1"},
     }
     res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
@@ -146,7 +170,8 @@ def test_update_bookmark_by_config_id_app_inexistante_rejetee(client):
     created = client.post("/configs", json=_bookmark_body(app_item_id))
     config_id = created.json()["id"]
     bad_config = {
-        "version": 1, "kind": "bookmark",
+        "version": 1,
+        "kind": "bookmark",
         "bookmark": {"appId": "inexistante", "pageId": "page-1"},
     }
     res = client.put(f"/configs/{config_id}", json=bad_config)

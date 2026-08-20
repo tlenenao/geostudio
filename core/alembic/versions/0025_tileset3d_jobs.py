@@ -5,7 +5,9 @@ Revision ID: 0025
 Revises: 0024
 Create Date: 2026-08-13
 """
+
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0025"

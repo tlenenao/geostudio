@@ -5,12 +5,16 @@ from app.collections.introspection import ColumnInfo, TableInfo
 
 def _entry() -> CollectionSnapshotEntry:
     table_info = TableInfo(
-        table_name="t_x", pk_column="id", geometry_column="geom",
-        geometry_type="point", srid=4326,
+        table_name="t_x",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="point",
+        srid=4326,
         columns=[ColumnInfo(name="name", type="string", required=False)],
     )
     return CollectionSnapshotEntry(
-        id="col1", tenant_id="t1",
+        id="col1",
+        tenant_id="t1",
         collection_json={"id": "col1", "title": "X"},
         schema_json={"collection": "t_x", "pk": "id", "geometry": None, "fields": []},
         table_info=table_info,

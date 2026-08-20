@@ -12,8 +12,13 @@ def _env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     return Session, tenant, user
@@ -23,9 +28,14 @@ def test_create_and_get_job():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="f.geojson", collection_title="Villes",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id
@@ -41,9 +51,14 @@ def test_get_job_scoped_to_tenant():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="f.geojson", collection_title="Villes",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id
@@ -55,9 +70,14 @@ def test_mark_running_then_done():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="f.geojson", collection_title="Villes",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id
@@ -78,9 +98,14 @@ def test_mark_error():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="f.geojson", collection_title="Villes",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id
@@ -97,9 +122,14 @@ def test_create_job_stores_optional_lat_lon_fields():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="f.csv", collection_title="Villes",
-            lat_field="y", lon_field="x",
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.csv",
+            collection_title="Villes",
+            lat_field="y",
+            lon_field="x",
         )
         s.commit()
         assert job.lat_field == "y"
@@ -110,9 +140,15 @@ def test_create_job_stores_layer_name():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="villes.gpkg", collection_title="Villes",
-            lat_field=None, lon_field=None, layer_name="villes",
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="villes.gpkg",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
+            layer_name="villes",
         )
         s.commit()
         job_id = job.id
@@ -125,9 +161,14 @@ def test_create_job_defaults_layer_name_to_none():
     Session, tenant, user = _env()
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k",
-            filename="villes.geojson", collection_title="Villes",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="villes.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         assert job.layer_name is None

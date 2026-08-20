@@ -3,8 +3,8 @@ import duckdb
 import pytest
 
 from app.configs.schemas import PipelineEdge, PipelineNode
-from app.pipelines.compiler import compile_transform_sql, predecessor_id, topological_order
 from app.pipelines import compiler
+from app.pipelines.compiler import compile_transform_sql, predecessor_id, topological_order
 
 
 def _node(id_, kind, op, **params) -> PipelineNode:
@@ -68,7 +68,9 @@ def test_compile_filter(conn):
 
 def test_compile_select_with_rename(conn):
     sql = compile_transform_sql(
-        "transform.select", {"columns": {"region": "zone", "pop": None}}, input_view="base",
+        "transform.select",
+        {"columns": {"region": "zone", "pop": None}},
+        input_view="base",
     )
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
@@ -77,7 +79,9 @@ def test_compile_select_with_rename(conn):
 
 def test_compile_derive(conn):
     sql = compile_transform_sql(
-        "transform.derive", {"column": "pop_double", "expr": "pop * 2"}, input_view="base",
+        "transform.derive",
+        {"column": "pop_double", "expr": "pop * 2"},
+        input_view="base",
     )
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     row = conn.execute("SELECT pop_double FROM out WHERE id = 1").fetchone()
@@ -99,8 +103,10 @@ def test_compile_join(conn):
     conn.execute("CREATE TABLE other (id INTEGER, label VARCHAR)")
     conn.execute("INSERT INTO other VALUES (1, 'A'), (2, 'B')")
     sql = compile_transform_sql(
-        "transform.join", {"withCollectionId": "x", "on": "id", "how": "inner"},
-        input_view="base", join_view="other",
+        "transform.join",
+        {"withCollectionId": "x", "on": "id", "how": "inner"},
+        input_view="base",
+        join_view="other",
     )
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn.execute("SELECT id, label FROM out ORDER BY id").fetchall()
@@ -110,7 +116,9 @@ def test_compile_join(conn):
 def test_compile_join_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql(
-            "transform.join", {"withCollectionId": "x", "on": "id"}, input_view="base",
+            "transform.join",
+            {"withCollectionId": "x", "on": "id"},
+            input_view="base",
         )
 
 
@@ -131,12 +139,12 @@ def conn_spatial():
 
 def test_compile_buffer_native_unit(conn_spatial):
     sql = compile_transform_sql(
-        "transform.buffer", {"distance": 1, "unit": "native"}, input_view="base",
+        "transform.buffer",
+        {"distance": 1, "unit": "native"},
+        input_view="base",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
-    row = conn_spatial.execute(
-        "SELECT ST_GeometryType(geometry) FROM out WHERE id = 1"
-    ).fetchone()
+    row = conn_spatial.execute("SELECT ST_GeometryType(geometry) FROM out WHERE id = 1").fetchone()
     assert row == ("POLYGON",)
 
 
@@ -147,8 +155,10 @@ def test_compile_buffer_meters_unit_uses_correct_axis_order(conn_spatial):
     # Global Constraints). Un point à ~333 m au nord doit être DANS un buffer
     # de 500 m ; un point à ~111 km doit être EN DEHORS.
     sql = compile_transform_sql(
-        "transform.buffer", {"distance": 500, "unit": "meters"},
-        input_view="base", input_srid=4326,
+        "transform.buffer",
+        {"distance": 500, "unit": "meters"},
+        input_view="base",
+        input_srid=4326,
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     near, far = conn_spatial.execute(
@@ -161,8 +171,10 @@ def test_compile_buffer_meters_unit_uses_correct_axis_order(conn_spatial):
 
 def test_compile_reproject_uses_correct_axis_order(conn_spatial):
     sql = compile_transform_sql(
-        "transform.reproject", {"targetCrs": "EPSG:3857"},
-        input_view="base", input_srid=4326,
+        "transform.reproject",
+        {"targetCrs": "EPSG:3857"},
+        input_view="base",
+        input_srid=4326,
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     x, y = conn_spatial.execute(
@@ -176,8 +188,10 @@ def test_compile_intersection_default_keeps_left_geometry(conn_spatial):
     conn_spatial.execute("CREATE TABLE other (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute("INSERT INTO other VALUES (10, ST_Buffer(ST_Point(3.0, 45.0), 1))")
     sql = compile_transform_sql(
-        "transform.intersection", {"withCollectionId": "x"},
-        input_view="base", join_view="other",
+        "transform.intersection",
+        {"withCollectionId": "x"},
+        input_view="base",
+        join_view="other",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn_spatial.execute("SELECT id FROM out ORDER BY id").fetchall()
@@ -190,7 +204,8 @@ def test_compile_intersection_output_geometry_intersection(conn_spatial):
     sql = compile_transform_sql(
         "transform.intersection",
         {"withCollectionId": "x", "outputGeometry": "intersection"},
-        input_view="base", join_view="other",
+        input_view="base",
+        join_view="other",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     types = conn_spatial.execute("SELECT ST_GeometryType(geometry) FROM out").fetchall()
@@ -201,8 +216,10 @@ def test_compile_count_within_intersects_default(conn_spatial):
     conn_spatial.execute("CREATE TABLE other (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute("INSERT INTO other VALUES (10, ST_Buffer(ST_Point(3.0, 45.0), 1))")
     sql = compile_transform_sql(
-        "transform.countWithin", {"withCollectionId": "x"},
-        input_view="base", join_view="other",
+        "transform.countWithin",
+        {"withCollectionId": "x"},
+        input_view="base",
+        join_view="other",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = dict(conn_spatial.execute("SELECT id, count FROM out").fetchall())
@@ -215,7 +232,8 @@ def test_compile_count_within_custom_column_and_contains_predicate(conn_spatial)
     sql = compile_transform_sql(
         "transform.countWithin",
         {"withCollectionId": "x", "countColumn": "n", "predicate": "contains"},
-        input_view="base", join_view="other",
+        input_view="base",
+        join_view="other",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = dict(conn_spatial.execute("SELECT id, n FROM out").fetchall())
@@ -237,7 +255,9 @@ def test_compile_h3_aggregate_groups_nearby_points(conn_spatial):
 
 def test_compile_h3_aggregate_with_no_metrics_has_no_trailing_comma(conn_spatial):
     sql = compile_transform_sql(
-        "transform.h3Aggregate", {"resolution": 9, "metrics": {}}, input_view="base",
+        "transform.h3Aggregate",
+        {"resolution": 9, "metrics": {}},
+        input_view="base",
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn_spatial.execute("SELECT h3Cell FROM out").fetchall()
@@ -246,14 +266,21 @@ def test_compile_h3_aggregate_with_no_metrics_has_no_trailing_comma(conn_spatial
 
 def test_transform_output_srid_passthrough_for_unaffected_ops():
     assert compiler.transform_output_srid("transform.filter", {}, input_srid=4326) == 4326
-    assert compiler.transform_output_srid(
-        "transform.buffer", {"distance": 1}, input_srid=2154,
-    ) == 2154
+    assert (
+        compiler.transform_output_srid(
+            "transform.buffer",
+            {"distance": 1},
+            input_srid=2154,
+        )
+        == 2154
+    )
 
 
 def test_transform_output_srid_reproject_parses_target():
     srid = compiler.transform_output_srid(
-        "transform.reproject", {"targetCrs": "EPSG:2154"}, input_srid=4326,
+        "transform.reproject",
+        {"targetCrs": "EPSG:2154"},
+        input_srid=4326,
     )
     assert srid == 2154
 
@@ -261,15 +288,19 @@ def test_transform_output_srid_reproject_parses_target():
 def test_transform_output_srid_intersection_raises_on_mismatch():
     with pytest.raises(ValueError, match="transform.reproject"):
         compiler.transform_output_srid(
-            "transform.intersection", {"withCollectionId": "x"},
-            input_srid=4326, join_srid=3857,
+            "transform.intersection",
+            {"withCollectionId": "x"},
+            input_srid=4326,
+            join_srid=3857,
         )
 
 
 def test_transform_output_srid_intersection_passes_on_match():
     srid = compiler.transform_output_srid(
-        "transform.intersection", {"withCollectionId": "x"},
-        input_srid=4326, join_srid=4326,
+        "transform.intersection",
+        {"withCollectionId": "x"},
+        input_srid=4326,
+        join_srid=4326,
     )
     assert srid == 4326
 
@@ -277,19 +308,28 @@ def test_transform_output_srid_intersection_passes_on_match():
 def test_transform_output_srid_count_within_raises_on_mismatch():
     with pytest.raises(ValueError, match="transform.reproject"):
         compiler.transform_output_srid(
-            "transform.countWithin", {"withCollectionId": "x"},
-            input_srid=4326, join_srid=2154,
+            "transform.countWithin",
+            {"withCollectionId": "x"},
+            input_srid=4326,
+            join_srid=2154,
         )
 
 
 def test_transform_output_srid_h3_aggregate_requires_4326():
     with pytest.raises(ValueError, match="EPSG:4326"):
         compiler.transform_output_srid(
-            "transform.h3Aggregate", {"resolution": 9, "metrics": {}}, input_srid=3857,
+            "transform.h3Aggregate",
+            {"resolution": 9, "metrics": {}},
+            input_srid=3857,
         )
-    assert compiler.transform_output_srid(
-        "transform.h3Aggregate", {"resolution": 9, "metrics": {}}, input_srid=4326,
-    ) == 4326
+    assert (
+        compiler.transform_output_srid(
+            "transform.h3Aggregate",
+            {"resolution": 9, "metrics": {}},
+            input_srid=4326,
+        )
+        == 4326
+    )
 
 
 def test_transform_output_srid_qgis_passes_through_by_default():
@@ -309,8 +349,12 @@ def test_transform_output_srid_qgis_uses_explicit_output_srid():
         "transform.qgis",
         {
             "algorithmId": "gdal:warpreproject",
-            "params": {"TARGET_CRS": "EPSG:2154", "DATA_TYPE": 0,
-                       "MULTITHREADING": False, "RESAMPLING": 0},
+            "params": {
+                "TARGET_CRS": "EPSG:2154",
+                "DATA_TYPE": 0,
+                "MULTITHREADING": False,
+                "RESAMPLING": 0,
+            },
             "outputSrid": "EPSG:2154",
         },
         input_srid=4326,
@@ -369,12 +413,18 @@ def test_compile_merge_without_join_view_raises():
 def test_transform_output_srid_merge_raises_on_mismatch():
     with pytest.raises(ValueError, match="transform.reproject"):
         compiler.transform_output_srid(
-            "transform.merge", {}, input_srid=4326, join_srid=3857,
+            "transform.merge",
+            {},
+            input_srid=4326,
+            join_srid=3857,
         )
 
 
 def test_transform_output_srid_merge_passes_on_match():
     srid = compiler.transform_output_srid(
-        "transform.merge", {}, input_srid=4326, join_srid=4326,
+        "transform.merge",
+        {},
+        input_srid=4326,
+        join_srid=4326,
     )
     assert srid == 4326

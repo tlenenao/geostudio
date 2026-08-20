@@ -23,12 +23,14 @@ def test_jobs_backlog_gauge_counts_todo_and_doing_per_queue(pg_engine_with_procr
     engine = pg_engine_with_procrastinate_schema
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM procrastinate_jobs"))
-        conn.execute(text(
-            "INSERT INTO procrastinate_jobs (queue_name, task_name, status) VALUES "
-            "('ingestion', 't1', 'todo'), ('ingestion', 't2', 'doing'), "
-            "('search', 't3', 'todo'), ('ingestion', 't4', 'succeeded'), "
-            "('search', 't5', 'failed')"
-        ))
+        conn.execute(
+            text(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, status) VALUES "
+                "('ingestion', 't1', 'todo'), ('ingestion', 't2', 'doing'), "
+                "('search', 't3', 'todo'), ('ingestion', 't4', 'succeeded'), "
+                "('search', 't5', 'failed')"
+            )
+        )
 
     reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[reader])

@@ -35,14 +35,29 @@ def db_session(monkeypatch, tmp_path):
     session = Session()
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="Alice", last_name="", bootstrap_admin=False,
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="Alice",
+        last_name="",
+        bootstrap_admin=False,
     )
-    item = create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="Carte test")
+    item = create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="Carte test"
+    )
     configs_repo.create_config(
         session,
-        BuilderConfig(kind="map", map={"basemap": {"style": "https://x.test/s.json"}, "view": {"center": [0.0, 0.0], "zoom": 2.0}}),
-        item.id, tenant_id=tenant.id,
+        BuilderConfig(
+            kind="map",
+            map={
+                "basemap": {"style": "https://x.test/s.json"},
+                "view": {"center": [0.0, 0.0], "zoom": 2.0},
+            },
+        ),
+        item.id,
+        tenant_id=tenant.id,
     )
     session.commit()
     return session, tenant, user, item
@@ -102,7 +117,9 @@ class _FakeUploadS3Client:
 
 def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
     session, tenant, user, item = db_session
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
 
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
@@ -158,7 +175,9 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
 def test_render_export_task_marks_error_when_export_disabled(db_session, monkeypatch):
     session, tenant, user, item = db_session
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
 
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -176,7 +195,9 @@ def test_render_export_task_marks_error_when_export_disabled(db_session, monkeyp
 
 def test_render_export_task_marks_error_never_zombie_on_navigation_failure(db_session, monkeypatch):
     session, tenant, user, item = db_session
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
 
     def _boom(url):
@@ -209,8 +230,13 @@ def test_render_export_task_builds_url_with_page_id_and_ctx(db_session, monkeypa
     monkeypatch.setattr(export_jobs, "_launch_and_navigate", fake_launch_and_navigate)
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
     job = export_repo.create_job(
-        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
-        page_id="page-2", ctx="abc123",
+        session,
+        tenant_id=tenant.id,
+        item_id=item.id,
+        user_id=user.id,
+        format="pdf",
+        page_id="page-2",
+        ctx="abc123",
     )
     session.commit()
 
@@ -237,11 +263,14 @@ def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session
     session, tenant, user, item = db_session
     captured_urls = []
     monkeypatch.setattr(
-        export_jobs, "_launch_and_navigate",
+        export_jobs,
+        "_launch_and_navigate",
         lambda url: captured_urls.append(url) or _FakePage(),
     )
     monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
     session.commit()
 
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
@@ -260,7 +289,9 @@ def test_render_export_task_url_unchanged_when_page_id_and_ctx_absent(db_session
 
 def test_render_export_task_missing_job_is_a_noop(db_session):
     session, tenant, _user, _item = db_session
-    export_jobs.render_export_task(job_id="does-not-exist", tenant_id=tenant.id)  # ne doit pas lever
+    export_jobs.render_export_task(
+        job_id="does-not-exist", tenant_id=tenant.id
+    )  # ne doit pas lever
 
 
 class _FakeLaunchedBrowser:
@@ -349,7 +380,10 @@ def test_launch_and_navigate_real_chromium_waits_for_export_ready(tmp_path, chro
         '<html><body><script>setTimeout(() => { document.body.dataset.exportReady = "true"; }, 200);</script></body></html>'
     )
     port = _free_port()
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), lambda *a: http.server.SimpleHTTPRequestHandler(*a, directory=str(tmp_path)))
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", port),
+        lambda *a: http.server.SimpleHTTPRequestHandler(*a, directory=str(tmp_path)),
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

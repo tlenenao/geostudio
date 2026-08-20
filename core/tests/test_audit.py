@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from app.audit.models import AuditLog
 from app.audit.writer import write_audit
-from app.db import make_engine, make_session_factory, init_db
+from app.db import init_db, make_engine, make_session_factory
 from app.tenants.repository import get_or_create_default_tenant
 
 

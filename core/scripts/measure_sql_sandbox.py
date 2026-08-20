@@ -19,6 +19,7 @@ Usage (contre un MinIO jetable) :
 le package `scripts` a besoin du cwd sur sys.path, cf. constat empirique de
 la Task 1 de ce plan.)
 """
+
 import os
 import sys
 import time
@@ -49,10 +50,15 @@ INSERT_BATCHES = INCREMENTAL_BATCHES - UPDATE_BATCHES - DELETE_BATCHES
 REGIONS = ["Nord", "Sud", "Est", "Ouest"]
 
 TABLE_INFO = TableInfo(
-    table_name=COLLECTION_ID, pk_column="id", geometry_column="geometry",
-    geometry_type="Point", srid=4326,
-    columns=[ColumnInfo(name="region", type="string", required=True),
-             ColumnInfo(name="pop", type="integer", required=True)],
+    table_name=COLLECTION_ID,
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+    ],
 )
 
 
@@ -66,7 +72,8 @@ def _base_uri() -> str:
 
 def _client():
     return boto3.client(
-        "s3", endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        "s3",
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
         aws_access_key_id=os.environ["S3_ACCESS_KEY"],
         aws_secret_access_key=os.environ["S3_SECRET_KEY"],
     )
@@ -87,8 +94,10 @@ def _write_batch(client, *, ids: np.ndarray, op: str, lsn: int) -> None:
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     buf = BytesIO()
     gdf.to_parquet(buf)
-    key = (f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/"
-           f"dt=2026-07-18/part-{uuid.uuid4().hex}.parquet")
+    key = (
+        f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/"
+        f"dt=2026-07-18/part-{uuid.uuid4().hex}.parquet"
+    )
     client.put_object(Bucket=_bucket(), Key=key, Body=buf.getvalue())
 
 
@@ -100,8 +109,11 @@ def _measure_sql() -> tuple[float, list, list]:
     )
     start = time.monotonic()
     columns, rows, truncated = run_analyst_sql(
-        conn, sql="SELECT region, count(*), avg(pop) FROM villes GROUP BY region",
-        allowed={COLLECTION_ID: TABLE_INFO}, base_uri=_base_uri(), tenant_id=TENANT_ID,
+        conn,
+        sql="SELECT region, count(*), avg(pop) FROM villes GROUP BY region",
+        allowed={COLLECTION_ID: TABLE_INFO},
+        base_uri=_base_uri(),
+        tenant_id=TENANT_ID,
     )
     elapsed = time.monotonic() - start
     conn.close()
@@ -119,8 +131,10 @@ def main() -> int:
     print(f"Écriture du backfill ({BACKFILL_ROWS} lignes, 1 fichier)...")
     _write_batch(client, ids=np.arange(0, BACKFILL_ROWS), op="insert", lsn=1)
 
-    print(f"Écriture de {INSERT_BATCHES} flushes incrémentaux d'insertion "
-          f"({ROWS_PER_BATCH} lignes chacun)...")
+    print(
+        f"Écriture de {INSERT_BATCHES} flushes incrémentaux d'insertion "
+        f"({ROWS_PER_BATCH} lignes chacun)..."
+    )
     next_id = BACKFILL_ROWS
     lsn = 2
     for _ in range(INSERT_BATCHES):
@@ -128,38 +142,50 @@ def main() -> int:
         next_id += ROWS_PER_BATCH
         lsn += 1
 
-    print(f"Écriture de {UPDATE_BATCHES} flushes de mise à jour "
-          f"(pks déjà backfillés, {ROWS_PER_BATCH} lignes chacun, exerce max(_lsn))...")
+    print(
+        f"Écriture de {UPDATE_BATCHES} flushes de mise à jour "
+        f"(pks déjà backfillés, {ROWS_PER_BATCH} lignes chacun, exerce max(_lsn))..."
+    )
     for i in range(UPDATE_BATCHES):
         ids = np.arange(i * ROWS_PER_BATCH, (i + 1) * ROWS_PER_BATCH)
         _write_batch(client, ids=ids, op="update", lsn=lsn)
         lsn += 1
 
-    print(f"Écriture de {DELETE_BATCHES} flushes de suppression "
-          f"(tombstones sur pks déjà backfillés, {ROWS_PER_BATCH} lignes chacun)...")
+    print(
+        f"Écriture de {DELETE_BATCHES} flushes de suppression "
+        f"(tombstones sur pks déjà backfillés, {ROWS_PER_BATCH} lignes chacun)..."
+    )
     delete_base = UPDATE_BATCHES * ROWS_PER_BATCH
     for i in range(DELETE_BATCHES):
         ids = np.arange(delete_base + i * ROWS_PER_BATCH, delete_base + (i + 1) * ROWS_PER_BATCH)
         _write_batch(client, ids=ids, op="delete", lsn=lsn)
         lsn += 1
 
-    expected_live = BACKFILL_ROWS + INSERT_BATCHES * ROWS_PER_BATCH - DELETE_BATCHES * ROWS_PER_BATCH
-    print(f"Lignes vivantes attendues après réduction état-courant (backfill + inserts - "
-          f"tombstones, updates neutres en compte) : {expected_live}")
+    expected_live = (
+        BACKFILL_ROWS + INSERT_BATCHES * ROWS_PER_BATCH - DELETE_BATCHES * ROWS_PER_BATCH
+    )
+    print(
+        f"Lignes vivantes attendues après réduction état-courant (backfill + inserts - "
+        f"tombstones, updates neutres en compte) : {expected_live}"
+    )
 
     elapsed, columns, rows = _measure_sql()
     total_count = sum(r[1] for r in rows)
     print(f"Colonnes : {columns}")
     print(f"Lignes retournées (par région) : {rows}")
     print(f"Somme des count(*) : {total_count} (attendu {expected_live})")
-    print(f"Requête SQL analyste (SELECT region, count(*), avg(pop) FROM villes GROUP BY region) : "
-          f"{elapsed:.3f}s (limite STATEMENT_TIMEOUT_S={STATEMENT_TIMEOUT_S}s) "
-          f"({'PASS' if elapsed < STATEMENT_TIMEOUT_S else 'FAIL'})")
+    print(
+        f"Requête SQL analyste (SELECT region, count(*), avg(pop) FROM villes GROUP BY region) : "
+        f"{elapsed:.3f}s (limite STATEMENT_TIMEOUT_S={STATEMENT_TIMEOUT_S}s) "
+        f"({'PASS' if elapsed < STATEMENT_TIMEOUT_S else 'FAIL'})"
+    )
 
     ok = elapsed < STATEMENT_TIMEOUT_S and total_count == expected_live
     if total_count != expected_live:
-        print(f"ATTENTION : somme des count(*) ({total_count}) != attendu ({expected_live}) "
-              f"— la réduction max(_lsn) ne s'est pas comportée comme prévu")
+        print(
+            f"ATTENTION : somme des count(*) ({total_count}) != attendu ({expected_live}) "
+            f"— la réduction max(_lsn) ne s'est pas comportée comme prévu"
+        )
 
     return 0 if ok else 1
 

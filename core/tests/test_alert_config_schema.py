@@ -55,19 +55,30 @@ def test_alert_query_rejects_groupby():
 
 def test_alert_query_rejects_more_than_one_measure():
     with pytest.raises(ValidationError):
-        BuilderConfig.model_validate(_base_alert(query={
-            "measures": [{"field": "a", "agg": "count", "label": "x"}, {"field": "b", "agg": "sum", "label": "y"}],
-        }))
+        BuilderConfig.model_validate(
+            _base_alert(
+                query={
+                    "measures": [
+                        {"field": "a", "agg": "count", "label": "x"},
+                        {"field": "b", "agg": "sum", "label": "y"},
+                    ],
+                }
+            )
+        )
 
 
 def test_alert_refresh_policy_rejects_invalid_cron():
     with pytest.raises(ValidationError):
-        BuilderConfig.model_validate(_base_alert(refreshPolicy={"enabled": True, "cron": "not-a-cron"}))
+        BuilderConfig.model_validate(
+            _base_alert(refreshPolicy={"enabled": True, "cron": "not-a-cron"})
+        )
 
 
 def test_alert_email_channel_requires_smtp_secret_name():
     config = BuilderConfig.model_validate(
-        _base_alert(channels=[{"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-main"}])
+        _base_alert(
+            channels=[{"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-main"}]
+        )
     )
     assert config.alert.channels[0].smtpSecretName == "smtp-main"
 
@@ -103,9 +114,13 @@ def test_alert_channel_missing_kind_is_rejected_not_silently_coerced():
     # fields (e.g. `url`) with no error.
     with pytest.raises(ValidationError):
         BuilderConfig.model_validate(
-            _base_alert(channels=[{
-                "url": "https://example.test/hook",
-                "to": "ops@example.test",
-                "smtpSecretName": "smtp-main",
-            }])
+            _base_alert(
+                channels=[
+                    {
+                        "url": "https://example.test/hook",
+                        "to": "ops@example.test",
+                        "smtpSecretName": "smtp-main",
+                    }
+                ]
+            )
         )

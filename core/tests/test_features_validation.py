@@ -3,12 +3,16 @@ from app.collections.introspection import ColumnInfo, TableInfo
 from app.features.validation import validate_feature
 
 INFO = TableInfo(
-    table_name="incidents", pk_column="id", geometry_column="geom",
-    geometry_type="Point", srid=4326,
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
     columns=[
         ColumnInfo(name="titre", type="string", required=True, max_length=200),
-        ColumnInfo(name="gravite", type="enum", required=False,
-                   enum_values=["faible", "moyenne", "haute"]),
+        ColumnInfo(
+            name="gravite", type="enum", required=False, enum_values=["faible", "moyenne", "haute"]
+        ),
         ColumnInfo(name="nb", type="integer", required=False),
         ColumnInfo(name="date_incident", type="date", required=False),
         ColumnInfo(name="resolu", type="boolean", required=False),
@@ -26,11 +30,19 @@ def _codes(errors):
 
 
 def test_valid_feature_passes():
-    errors = validate_feature(INFO, _f(
-        {"titre": "Nid de poule", "gravite": "haute", "nb": 3,
-         "date_incident": "2026-07-10", "resolu": False},
-        {"type": "Point", "coordinates": [1.5, 45.2]},
-    ))
+    errors = validate_feature(
+        INFO,
+        _f(
+            {
+                "titre": "Nid de poule",
+                "gravite": "haute",
+                "nb": 3,
+                "date_incident": "2026-07-10",
+                "resolu": False,
+            },
+            {"type": "Point", "coordinates": [1.5, 45.2]},
+        ),
+    )
     assert errors == []
 
 
@@ -50,8 +62,9 @@ def test_missing_required():
 
 
 def test_type_checks():
-    errors = validate_feature(INFO, _f(
-        {"titre": "x", "nb": "trois", "resolu": "oui", "date_incident": "pas-une-date"}))
+    errors = validate_feature(
+        INFO, _f({"titre": "x", "nb": "trois", "resolu": "oui", "date_incident": "pas-une-date"})
+    )
     codes = _codes(errors)
     assert ("nb", "invalid_type") in codes
     assert ("resolu", "invalid_type") in codes
@@ -69,13 +82,20 @@ def test_enum_and_unsupported():
 
 
 def test_geometry_type_mismatch_and_unexpected():
-    assert ("geometry", "geometry_mismatch") in _codes(validate_feature(
-        INFO, _f({"titre": "x"}, {"type": "Polygon", "coordinates": []})))
-    no_geom = TableInfo(table_name="notes", pk_column="id", geometry_column=None,
-                        geometry_type=None, srid=None,
-                        columns=[ColumnInfo(name="titre", type="string", required=True)])
-    assert ("geometry", "unexpected_geometry") in _codes(validate_feature(
-        no_geom, _f({"titre": "x"}, {"type": "Point", "coordinates": [0, 0]})))
+    assert ("geometry", "geometry_mismatch") in _codes(
+        validate_feature(INFO, _f({"titre": "x"}, {"type": "Polygon", "coordinates": []}))
+    )
+    no_geom = TableInfo(
+        table_name="notes",
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=None,
+        columns=[ColumnInfo(name="titre", type="string", required=True)],
+    )
+    assert ("geometry", "unexpected_geometry") in _codes(
+        validate_feature(no_geom, _f({"titre": "x"}, {"type": "Point", "coordinates": [0, 0]}))
+    )
 
 
 def test_geometry_is_optional():

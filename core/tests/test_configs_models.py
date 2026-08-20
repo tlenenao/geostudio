@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from sqlalchemy import select
 
-from app.db import Base, make_engine, make_session_factory, init_db
 from app.configs.models import Config, ConfigRevision
+from app.db import Base, init_db, make_engine, make_session_factory
 from app.items.models import Item
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -17,13 +17,23 @@ def test_can_persist_config_and_revision():
         with Session() as session:
             tenant = get_or_create_default_tenant(session)
             user = get_or_create_user(
-                session, tenant_id=tenant.id, oidc_sub="sub-1",
-                username="alice", email=None, first_name="", last_name="",
+                session,
+                tenant_id=tenant.id,
+                oidc_sub="sub-1",
+                username="alice",
+                email=None,
+                first_name="",
+                last_name="",
             )
-            session.add(Item(
-                id="item-1", tenant_id=tenant.id, owner_id=user.id,
-                resource_type="app", title="My App",
-            ))
+            session.add(
+                Item(
+                    id="item-1",
+                    tenant_id=tenant.id,
+                    owner_id=user.id,
+                    resource_type="app",
+                    title="My App",
+                )
+            )
             # Explicit flush: Item and Config aren't linked by an ORM
             # relationship (just a raw FK column), so the unit of work isn't
             # guaranteed to insert `items` before `configs` in the same
@@ -33,9 +43,9 @@ def test_can_persist_config_and_revision():
                 id="c1", tenant_id=tenant.id, kind="app", item_id="item-1", current_version=1
             )
             session.add(config)
-            session.add(ConfigRevision(
-                tenant_id=tenant.id, config_id="c1", version=1, data={"kind": "app"}
-            ))
+            session.add(
+                ConfigRevision(tenant_id=tenant.id, config_id="c1", version=1, data={"kind": "app"})
+            )
             session.commit()
 
         with Session() as session:

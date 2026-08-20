@@ -3,6 +3,7 @@
 50 000 entités s'importe en un temps trivial devant le budget UI de 5 min
 (le budget UI couvre aussi le transfert réseau du fichier, hors périmètre
 d'un test backend — cf. design SP-6b §11)."""
+
 import time
 
 import numpy as np
@@ -35,33 +36,42 @@ def env(pg_engine):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     yield Session, tenant, user
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE items, configs, config_revisions, collections, "
-            "audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def _synthetic_gpkg_bytes(tmp_path) -> bytes:
     rng = np.random.default_rng(42)
     lons = rng.uniform(-5.0, 9.0, N_FEATURES)
     lats = rng.uniform(41.0, 51.0, N_FEATURES)
-    geometry = shapely.to_wkb(
-        np.array([Point(x, y) for x, y in zip(lons, lats)], dtype=object)
-    )
+    geometry = shapely.to_wkb(np.array([Point(x, y) for x, y in zip(lons, lats)], dtype=object))
     path = tmp_path / "big.gpkg"
     pyogrio_write(
-        str(path), geometry=geometry,
+        str(path),
+        geometry=geometry,
         field_data=[
             np.array([f"entite-{i}" for i in range(N_FEATURES)], dtype=object),
             np.arange(N_FEATURES, dtype="int64"),
         ],
-        fields=["nom", "rang"], layer="entites", geometry_type="Point", crs="EPSG:4326",
+        fields=["nom", "rang"],
+        layer="entites",
+        geometry_type="Point",
+        crs="EPSG:4326",
     )
     return path.read_bytes()
 
@@ -73,20 +83,23 @@ def test_gpkg_50k_features_imports_within_m4_budget(env, tmp_path):
     with Session() as s:
         t0 = time.monotonic()
         result = run_import(
-            s, tenant_id=tenant.id, created_by=user.id, filename="big.gpkg",
-            content=content, collection_title="Gros import", lat_field=None,
-            lon_field=None, layer_name="entites",
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="big.gpkg",
+            content=content,
+            collection_title="Gros import",
+            lat_field=None,
+            lon_field=None,
+            layer_name="entites",
         )
         s.commit()
         elapsed = time.monotonic() - t0
 
     assert elapsed < PERF_BUDGET_SECONDS, (
-        f"import de {N_FEATURES} entités trop lent : {elapsed:.1f}s "
-        f"(budget {PERF_BUDGET_SECONDS}s)"
+        f"import de {N_FEATURES} entités trop lent : {elapsed:.1f}s (budget {PERF_BUDGET_SECONDS}s)"
     )
 
     with Session() as s:
-        count = s.execute(
-            text(f"SELECT count(*) FROM public.{result.collection_id}")
-        ).scalar_one()
+        count = s.execute(text(f"SELECT count(*) FROM public.{result.collection_id}")).scalar_one()
         assert count == N_FEATURES

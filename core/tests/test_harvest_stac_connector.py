@@ -133,9 +133,7 @@ def test_fetch_terminates_on_cyclic_catalog_links():
 
 
 def test_fetch_caps_number_of_collections():
-    many = {"collections": [
-        {"id": f"c{i}", "title": f"C{i}", "links": []} for i in range(600)
-    ]}
+    many = {"collections": [{"id": f"c{i}", "title": f"C{i}", "links": []} for i in range(600)]}
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=many)
@@ -158,7 +156,9 @@ def test_fetch_skips_malformed_collection_entries_and_keeps_valid_ones():
             {
                 "id": "buildings",
                 "title": "Bâtiments",
-                "links": [{"rel": "self", "href": "https://stac.example.com/collections/buildings"}],
+                "links": [
+                    {"rel": "self", "href": "https://stac.example.com/collections/buildings"}
+                ],
             },
             None,
             {"id": "bad-bbox", "extent": {"spatial": {"bbox": [["a", "b", "c", "d"]]}}},
@@ -224,7 +224,11 @@ def test_stac_fetch_copy_geojson_single_get_returns_bytes():
         return httpx.Response(200, content=b'{"type":"FeatureCollection","features":[]}')
 
     rec = HarvestedRecord(
-        external_id="c", title="C", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_id="c",
+        title="C",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
         external_url="https://stac.example.com/collections/c",
         items_url="https://stac.example.com/collections/c/items",
     )
@@ -235,8 +239,13 @@ def test_stac_fetch_copy_geojson_single_get_returns_bytes():
 
 def test_stac_fetch_copy_geojson_none_when_no_items_url():
     rec = HarvestedRecord(
-        external_id="c", title="C", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="https://stac.example.com/collections/c", items_url=None,
+        external_id="c",
+        title="C",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="https://stac.example.com/collections/c",
+        items_url=None,
     )
     called = []
     assert StacConnector().fetch_copy_geojson(rec, http_get=lambda u: called.append(u)) is None
@@ -251,7 +260,8 @@ def test_stac_walk_caps_total_documents():
 
     n_children = _MAX_DOCUMENTS + 50
     root = {
-        "type": "Catalog", "id": "root",
+        "type": "Catalog",
+        "id": "root",
         "links": [
             {"rel": "child", "href": f"https://stac.example.com/c{i}.json"}
             for i in range(n_children)
@@ -265,10 +275,15 @@ def test_stac_walk_caps_total_documents():
         if url.endswith("root.json"):
             return httpx.Response(200, json=root)
         cid = url.rsplit("/", 1)[-1].removesuffix(".json")
-        return httpx.Response(200, json={
-            "type": "Collection", "id": cid, "title": cid,
-            "links": [{"rel": "self", "href": url}],
-        })
+        return httpx.Response(
+            200,
+            json={
+                "type": "Collection",
+                "id": cid,
+                "title": cid,
+                "links": [{"rel": "self", "href": url}],
+            },
+        )
 
     list(_connector(handler).fetch("https://stac.example.com/root.json"))
     assert seen["count"] <= _MAX_DOCUMENTS

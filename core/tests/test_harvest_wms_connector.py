@@ -83,6 +83,7 @@ WMS_NO_MERCATOR = b"""<?xml version="1.0"?>
 def _connector(body: bytes) -> WmsConnector:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=body)
+
     return WmsConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
 
 

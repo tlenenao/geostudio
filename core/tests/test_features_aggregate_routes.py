@@ -15,10 +15,17 @@ from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="villes", pk_column="id", geometry_column="geometry",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="region", type="string", required=True),
-                          ColumnInfo(name="pop", type="integer", required=True)])
+INFO = TableInfo(
+    table_name="villes",
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+    ],
+)
 
 
 def fake_introspector(session, table_name):
@@ -28,7 +35,9 @@ def fake_introspector(session, table_name):
 
 
 def _write_partition(base_dir, *, tenant_id, collection_id, rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-07-18"
+    partition_dir = (
+        base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-07-18"
+    )
     partition_dir.mkdir(parents=True, exist_ok=True)
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     gdf.to_parquet(partition_dir / "part-1.parquet")
@@ -41,10 +50,25 @@ def env(tmp_path):
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
         tenant_id = tenant.id
     app = create_app()
@@ -55,14 +79,18 @@ def env(tmp_path):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (lambda session, table: None)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
 
     def fake_duckdb_factory():
         conn = duckdb.connect(":memory:")
         conn.execute("INSTALL spatial; LOAD spatial;")
         return conn
 
-    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: fake_duckdb_factory
+    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: (
+        fake_duckdb_factory
+    )
     monkeypatch_base_uri = str(tmp_path)
     app.dependency_overrides[features_routes.get_analytics_base_uri] = lambda: monkeypatch_base_uri
 
@@ -83,19 +111,43 @@ def _register(app, client, admin, public=False):
 def test_aggregate_returns_wide_rows_for_a_readable_collection(env):
     app, client, admin, _r, tmp_path, tenant_id = env
     col = _register(app, client, admin)
-    _write_partition(tmp_path, tenant_id=tenant_id, collection_id=col["id"], rows=[
-        {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
-        {"id": 2, "region": "Sud", "pop": 5, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(1, 1)},
-    ])
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            },
+            {
+                "id": 2,
+                "region": "Sud",
+                "pop": 5,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(1, 1),
+            },
+        ],
+    )
 
-    response = client.post(f"/collections/{col['id']}/aggregate",
-                           json={"groupBy": "region", "agg": "sum", "field": "pop"})
+    response = client.post(
+        f"/collections/{col['id']}/aggregate",
+        json={"groupBy": "region", "agg": "sum", "field": "pop"},
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["categoryKey"] == "region"
     assert sorted(body["rows"], key=lambda r: r["region"]) == [
-        {"region": "Nord", "value": 10}, {"region": "Sud", "value": 5},
+        {"region": "Nord", "value": 10},
+        {"region": "Sud", "value": 5},
     ]
 
 
@@ -117,8 +169,21 @@ def test_aggregate_on_private_collection_by_non_owner_returns_404(env):
 def test_aggregate_unknown_group_by_field_returns_400(env):
     app, client, admin, _r, tmp_path, tenant_id = env
     col = _register(app, client, admin)
-    _write_partition(tmp_path, tenant_id=tenant_id, collection_id=col["id"], rows=[
-        {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
-    ])
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            },
+        ],
+    )
     response = client.post(f"/collections/{col['id']}/aggregate", json={"groupBy": "inconnu"})
     assert response.status_code == 400

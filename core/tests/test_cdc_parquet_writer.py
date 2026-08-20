@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import geopandas as gpd
@@ -19,12 +19,26 @@ def _hex(geom) -> str:
 
 def test_build_geodataframe_insert_and_update():
     rows = [
-        ChangeRow(op="insert", lsn=100, ts=1721212121.0, pk_column="id", pk_value=1,
-                  columns={"id": 1, "titre": "a"}, geometry_column="geom",
-                  geometry_wkb_hex=_hex(Point(2.3, 48.8))),
-        ChangeRow(op="update", lsn=105, ts=1721212125.0, pk_column="id", pk_value=1,
-                  columns={"id": 1, "titre": "b"}, geometry_column="geom",
-                  geometry_wkb_hex=_hex(Point(2.4, 48.9))),
+        ChangeRow(
+            op="insert",
+            lsn=100,
+            ts=1721212121.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "a"},
+            geometry_column="geom",
+            geometry_wkb_hex=_hex(Point(2.3, 48.8)),
+        ),
+        ChangeRow(
+            op="update",
+            lsn=105,
+            ts=1721212125.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "b"},
+            geometry_column="geom",
+            geometry_wkb_hex=_hex(Point(2.4, 48.9)),
+        ),
     ]
     gdf = build_geodataframe(rows, srid=4326)
     assert list(gdf["_op"]) == ["insert", "update"]
@@ -37,11 +51,26 @@ def test_build_geodataframe_insert_and_update():
 
 def test_build_geodataframe_delete_is_tombstone_only():
     rows = [
-        ChangeRow(op="insert", lsn=1, ts=1.0, pk_column="id", pk_value=1,
-                  columns={"id": 1, "titre": "a"}, geometry_column="geom",
-                  geometry_wkb_hex=_hex(Point(0, 0))),
-        ChangeRow(op="delete", lsn=2, ts=2.0, pk_column="id", pk_value=1,
-                  columns={"id": 1}, geometry_column="geom", geometry_wkb_hex=None),
+        ChangeRow(
+            op="insert",
+            lsn=1,
+            ts=1.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "a"},
+            geometry_column="geom",
+            geometry_wkb_hex=_hex(Point(0, 0)),
+        ),
+        ChangeRow(
+            op="delete",
+            lsn=2,
+            ts=2.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1},
+            geometry_column="geom",
+            geometry_wkb_hex=None,
+        ),
     ]
     gdf = build_geodataframe(rows, srid=4326)
     assert gdf["_op"].iloc[1] == "delete"
@@ -70,22 +99,34 @@ def test_write_geoparquet_mixed_backfill_and_live_numeric_batch_does_not_crash(t
     backfill_record = _normalize_record({"id": 1, "score": Decimal("1.5")})
     assert isinstance(backfill_record["score"], float)  # précondition du test
     backfill_row = ChangeRow(
-        op="insert", lsn=100, ts=1.0, pk_column="id", pk_value=1,
-        columns=backfill_record, geometry_column=None, geometry_wkb_hex=None,
+        op="insert",
+        lsn=100,
+        ts=1.0,
+        pk_column="id",
+        pk_value=1,
+        columns=backfill_record,
+        geometry_column=None,
+        geometry_wkb_hex=None,
     )
 
     # Chemin live : payload wal2json réel décodé, NUMERIC non quoté -> float
     # (json.loads), pour la même colonne "score" de la même table.
-    payload = json.dumps({
-        "change": [{
-            "table": "points_interet",
-            "kind": "update",
-            "columnnames": ["id", "score"],
-            "columnvalues": [1, 2.7],
-        }],
-    })
+    payload = json.dumps(
+        {
+            "change": [
+                {
+                    "table": "points_interet",
+                    "kind": "update",
+                    "columnnames": ["id", "score"],
+                    "columnvalues": [1, 2.7],
+                }
+            ],
+        }
+    )
     decoded = decode_wal2json_message(
-        payload, lsn=200, collection_meta={"points_interet": ("id", None)},
+        payload,
+        lsn=200,
+        collection_meta={"points_interet": ("id", None)},
     )
     live_row = decoded[0].row
     assert isinstance(live_row.columns["score"], float)  # précondition du test
@@ -113,29 +154,44 @@ def test_write_geoparquet_mixed_backfill_and_live_timestamptz_batch_does_not_cra
     resteraient homogènes en type (str/str, donc pas d'ArrowTypeError) mais
     incohérentes en valeur ; ce test vérifie donc le CONTENU, pas seulement
     l'absence de crash."""
-    backfill_record = _normalize_record({
-        "id": 1, "vu_le": datetime(2026, 3, 5, 14, 30, 0, tzinfo=timezone.utc),
-    })
+    backfill_record = _normalize_record(
+        {
+            "id": 1,
+            "vu_le": datetime(2026, 3, 5, 14, 30, 0, tzinfo=UTC),
+        }
+    )
     assert isinstance(backfill_record["vu_le"], str)  # précondition du test
     assert backfill_record["vu_le"] == "2026-03-05 14:30:00+00"
     backfill_row = ChangeRow(
-        op="insert", lsn=100, ts=1.0, pk_column="id", pk_value=1,
-        columns=backfill_record, geometry_column=None, geometry_wkb_hex=None,
+        op="insert",
+        lsn=100,
+        ts=1.0,
+        pk_column="id",
+        pk_value=1,
+        columns=backfill_record,
+        geometry_column=None,
+        geometry_wkb_hex=None,
     )
 
     # Chemin live : payload wal2json réel décodé — même format texte natif
     # Postgres (vérifié empiriquement contre wal2json réel, cf. docstring
     # de app/cdc/backfill.py), pour la même colonne "vu_le".
-    payload = json.dumps({
-        "change": [{
-            "table": "points_interet",
-            "kind": "update",
-            "columnnames": ["id", "vu_le"],
-            "columnvalues": [1, "2026-03-05 15:00:00+00"],
-        }],
-    })
+    payload = json.dumps(
+        {
+            "change": [
+                {
+                    "table": "points_interet",
+                    "kind": "update",
+                    "columnnames": ["id", "vu_le"],
+                    "columnvalues": [1, "2026-03-05 15:00:00+00"],
+                }
+            ],
+        }
+    )
     decoded = decode_wal2json_message(
-        payload, lsn=200, collection_meta={"points_interet": ("id", None)},
+        payload,
+        lsn=200,
+        collection_meta={"points_interet": ("id", None)},
     )
     live_row = decoded[0].row
     assert isinstance(live_row.columns["vu_le"], str)  # précondition du test
@@ -148,9 +204,18 @@ def test_write_geoparquet_mixed_backfill_and_live_timestamptz_batch_does_not_cra
 
 
 def test_write_geoparquet_roundtrip_preserves_crs_and_columns(tmp_path):
-    rows = [ChangeRow(op="insert", lsn=1, ts=1.0, pk_column="id", pk_value=1,
-                       columns={"id": 1, "titre": "a"}, geometry_column="geom",
-                       geometry_wkb_hex=_hex(Point(0, 0)))]
+    rows = [
+        ChangeRow(
+            op="insert",
+            lsn=1,
+            ts=1.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "a"},
+            geometry_column="geom",
+            geometry_wkb_hex=_hex(Point(0, 0)),
+        )
+    ]
     path = str(tmp_path / "part.parquet")
     write_geoparquet(rows, srid=2154, path=path)
     gdf = gpd.read_parquet(path)

@@ -26,28 +26,55 @@ def _setup(monkeypatch, tmp_path, *, with_private_source=False, mode="static"):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="", bootstrap_admin=False,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
         )
         data_sources = []
         if with_private_source:
             col = create_collection(
-                s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_priv",
-                title="Priv", description="", is_public=False,
-                pk_column="id", geometry_column="geom",
-                geometry_type="point", srid=4326,
+                s,
+                tenant_id=tenant.id,
+                owner_id=owner.id,
+                table_name="t_priv",
+                title="Priv",
+                description="",
+                is_public=False,
+                pk_column="id",
+                geometry_column="geom",
+                geometry_type="point",
+                srid=4326,
             )
-            data_sources = [DataSource(id="s1", type="features", service="core", layer=col.id, query={})]
-        item = create_item(s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="App")
+            data_sources = [
+                DataSource(id="s1", type="features", service="core", layer=col.id, query={})
+            ]
+        item = create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="App"
+        )
         config = BuilderConfig(
-            kind="app", dataSources=data_sources,
+            kind="app",
+            dataSources=data_sources,
             layout=Layout(type="grid", items=[]),
-            pages=[Page(id="p1", name="P1", layout=Layout(
-                type="grid", items=[LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2)],
-            ))],
+            pages=[
+                Page(
+                    id="p1",
+                    name="P1",
+                    layout=Layout(
+                        type="grid",
+                        items=[LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2)],
+                    ),
+                )
+            ],
         )
         configs_repo.create_config(s, config, item.id, tenant_id=tenant.id)
-        job = appexport_repo.create_job(s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode=mode)
+        job = appexport_repo.create_job(
+            s, tenant_id=tenant.id, item_id=item.id, user_id=owner.id, mode=mode
+        )
         s.commit()
     return Session, tenant.id, job.id
 
@@ -105,7 +132,9 @@ def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_
     monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
 
     captured: dict = {}
-    real_build_bundle_zip = __import__("app.appexport.jobs", fromlist=["build_bundle_zip"]).build_bundle_zip
+    real_build_bundle_zip = __import__(
+        "app.appexport.jobs", fromlist=["build_bundle_zip"]
+    ).build_bundle_zip
 
     def spy_build_bundle_zip(config, **kwargs):
         captured["connection"] = kwargs.get("connection")
@@ -124,7 +153,9 @@ def test_connected_job_skips_freezing_and_embeds_core_base_url(monkeypatch, tmp_
 
 
 def test_connected_job_with_private_source_marks_error(monkeypatch, tmp_path):
-    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="connected")
+    Session, tenant_id, job_id = _setup(
+        monkeypatch, tmp_path, with_private_source=True, mode="connected"
+    )
     monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
     monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
     build_app_export_task(job_id=job_id, tenant_id=tenant_id)
@@ -146,7 +177,9 @@ def test_standalone_job_with_no_data_sources_succeeds(monkeypatch, tmp_path):
 
 
 def test_standalone_job_with_private_source_marks_error(monkeypatch, tmp_path):
-    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path, with_private_source=True, mode="standalone")
+    Session, tenant_id, job_id = _setup(
+        monkeypatch, tmp_path, with_private_source=True, mode="standalone"
+    )
     monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
     monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
     build_app_export_task(job_id=job_id, tenant_id=tenant_id)

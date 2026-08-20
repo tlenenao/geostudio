@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 
-from app.db import make_engine, make_session_factory, init_db
+from app.db import init_db, make_engine, make_session_factory
 from app.items.models import Item
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.models import Group, GroupMember, ItemShare
@@ -24,24 +24,49 @@ def session():
 def actors(session):
     tenant = get_or_create_default_tenant(session)
     owner = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-owner",
-        username="owner", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-owner",
+        username="owner",
+        email=None,
+        first_name="",
+        last_name="",
     )
     viewer = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-viewer",
-        username="viewer", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-viewer",
+        username="viewer",
+        email=None,
+        first_name="",
+        last_name="",
     )
     editor = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-editor",
-        username="editor", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-editor",
+        username="editor",
+        email=None,
+        first_name="",
+        last_name="",
     )
     stranger = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-stranger",
-        username="stranger", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-stranger",
+        username="stranger",
+        email=None,
+        first_name="",
+        last_name="",
     )
     dual_role_member = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-dual",
-        username="dual_role_member", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-dual",
+        username="dual_role_member",
+        email=None,
+        first_name="",
+        last_name="",
     )
 
     viewer_group = Group(id="viewers", tenant_id=tenant.id, name="Viewers", created_by=owner.id)
@@ -50,32 +75,58 @@ def actors(session):
     session.flush()
     session.add(GroupMember(group_id=viewer_group.id, user_id=viewer.id, tenant_id=tenant.id))
     session.add(GroupMember(group_id=editor_group.id, user_id=editor.id, tenant_id=tenant.id))
-    session.add(GroupMember(group_id=viewer_group.id, user_id=dual_role_member.id, tenant_id=tenant.id))
-    session.add(GroupMember(group_id=editor_group.id, user_id=dual_role_member.id, tenant_id=tenant.id))
+    session.add(
+        GroupMember(group_id=viewer_group.id, user_id=dual_role_member.id, tenant_id=tenant.id)
+    )
+    session.add(
+        GroupMember(group_id=editor_group.id, user_id=dual_role_member.id, tenant_id=tenant.id)
+    )
     session.flush()
 
-    def make_item(item_id: str, *, is_public: bool = False, is_published: bool = False) -> ItemAccessFacts:
+    def make_item(
+        item_id: str, *, is_public: bool = False, is_published: bool = False
+    ) -> ItemAccessFacts:
         item = Item(
-            id=item_id, tenant_id=tenant.id, owner_id=owner.id,
-            resource_type="app", title="Test item",
-            is_public=is_public, is_published=is_published,
+            id=item_id,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Test item",
+            is_public=is_public,
+            is_published=is_published,
         )
         session.add(item)
         session.flush()
-        session.add(ItemShare(
-            item_id=item_id, group_id=viewer_group.id, tenant_id=tenant.id, role="viewer",
-        ))
-        session.add(ItemShare(
-            item_id=item_id, group_id=editor_group.id, tenant_id=tenant.id, role="editor",
-        ))
+        session.add(
+            ItemShare(
+                item_id=item_id,
+                group_id=viewer_group.id,
+                tenant_id=tenant.id,
+                role="viewer",
+            )
+        )
+        session.add(
+            ItemShare(
+                item_id=item_id,
+                group_id=editor_group.id,
+                tenant_id=tenant.id,
+                role="editor",
+            )
+        )
         session.flush()
         return ItemAccessFacts(
-            id=item_id, tenant_id=tenant.id, owner_id=owner.id,
-            is_public=is_public, is_published=is_published,
+            id=item_id,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            is_public=is_public,
+            is_published=is_published,
         )
 
     return {
-        "owner": owner, "viewer": viewer, "editor": editor, "stranger": stranger,
+        "owner": owner,
+        "viewer": viewer,
+        "editor": editor,
+        "stranger": stranger,
         "dual_role_member": dual_role_member,
         "make_item": make_item,
     }
@@ -165,23 +216,30 @@ def test_cross_tenant_isolation_prevents_unauthorized_access(session, actors):
 
     # Create a user in the second tenant
     user_in_tenant2 = get_or_create_user(
-        session, tenant_id=tenant2.id, oidc_sub="sub-tenant2-user",
-        username="tenant2_user", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant2.id,
+        oidc_sub="sub-tenant2-user",
+        username="tenant2_user",
+        email=None,
+        first_name="",
+        last_name="",
     )
 
     # Create a group in tenant2 with id that matches tenant1's viewer group
     # (This creates the scenario where cross-tenant filtering is critical)
     group_in_tenant2 = Group(
-        id="shared-xgroup", tenant_id=tenant2.id, name="Shared Group in T2",
+        id="shared-xgroup",
+        tenant_id=tenant2.id,
+        name="Shared Group in T2",
         created_by=user_in_tenant2.id,
     )
     session.add(group_in_tenant2)
     session.flush()
 
     # Add the tenant2 user to this group in tenant2
-    session.add(GroupMember(
-        group_id=group_in_tenant2.id, user_id=user_in_tenant2.id, tenant_id=tenant2.id
-    ))
+    session.add(
+        GroupMember(group_id=group_in_tenant2.id, user_id=user_in_tenant2.id, tenant_id=tenant2.id)
+    )
     session.flush()
 
     # Get the default tenant from actors
@@ -192,9 +250,14 @@ def test_cross_tenant_isolation_prevents_unauthorized_access(session, actors):
     item_in_tenant1 = actors["make_item"]("item-cross-tenant-test")
     # Note: make_item shares to "viewers" and "editors" groups, not "shared-xgroup"
     # So we add an additional share to test
-    session.add(ItemShare(
-        item_id=item_in_tenant1.id, group_id="shared-xgroup", tenant_id=tenant1.id, role="viewer"
-    ))
+    session.add(
+        ItemShare(
+            item_id=item_in_tenant1.id,
+            group_id="shared-xgroup",
+            tenant_id=tenant1.id,
+            role="viewer",
+        )
+    )
     session.flush()
 
     # Now the critical test: tenant2_user is in group "shared-xgroup" in tenant2,

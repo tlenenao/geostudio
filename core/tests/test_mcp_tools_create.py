@@ -4,10 +4,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -33,8 +33,13 @@ def app_client(monkeypatch, tmp_path):
         # CORE_AUTH_MODE=mock always resolves this exact identity (see
         # app/auth/dependency.py's mock branch and MockTokenVerifier).
         mock_user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="mock-sub",
-            username="mockuser", email=None, first_name="Mock", last_name="User",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         setup_session.commit()
 
@@ -80,9 +85,12 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     init_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
             "params": {
-                "protocolVersion": "2025-06-18", "capabilities": {},
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
                 "clientInfo": {"name": "test", "version": "0"},
             },
         },
@@ -102,15 +110,15 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     call_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
         headers=session_headers,
     )
     assert call_response.status_code == 200
-    body_line = next(
-        line for line in call_response.text.splitlines() if line.startswith("data: ")
-    )
+    body_line = next(line for line in call_response.text.splitlines() if line.startswith("data: "))
     payload = json.loads(body_line.removeprefix("data: "))
     return payload["result"]
 
@@ -118,8 +126,11 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
 def _seed_item(test_client, *, owner_id, title="Item") -> str:
     with test_client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=test_client.tenant.id, owner_id=owner_id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=test_client.tenant.id,
+            owner_id=owner_id,
+            resource_type="app",
+            title=title,
         )
         session.commit()
         return item.id
@@ -128,9 +139,11 @@ def _seed_item(test_client, *, owner_id, title="Item") -> str:
 def test_create_item_creates_and_owns_it_as_the_caller(app_client):
     with app_client:
         result = call_tool(
-            app_client, "create_item",
+            app_client,
+            "create_item",
             {
-                "kind": "app", "title": "My App",
+                "kind": "app",
+                "title": "My App",
                 "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
             },
         )
@@ -140,6 +153,7 @@ def test_create_item_creates_and_owns_it_as_the_caller(app_client):
 
     with app_client.session_factory() as session:
         from app.items.models import Item
+
         item = session.get(Item, result["pk"])
         assert item.owner_id == app_client.mock_user.id
 
@@ -156,16 +170,21 @@ def test_create_item_ignores_any_owner_argument_and_uses_the_caller_identity(app
     # running the call once with print(result) before finishing this test).
     with app_client:
         call_tool_raw(
-            app_client, "create_item",
+            app_client,
+            "create_item",
             {
-                "kind": "app", "title": "My App", "owner": "someone-else",
+                "kind": "app",
+                "title": "My App",
+                "owner": "someone-else",
                 "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
             },
         )
 
     with app_client.session_factory() as session:
-        from app.items.models import Item
         from sqlalchemy import select
+
+        from app.items.models import Item
+
         spoofed = session.scalars(select(Item).where(Item.owner_id == "someone-else")).all()
         assert spoofed == []
 
@@ -181,6 +200,7 @@ def test_resolve_actor_bootstraps_admin_from_core_admin_subs(app_client, monkeyp
 
     with app_client.session_factory() as session:
         from app.users.models import User
+
         user = session.get(User, app_client.mock_user.id)
         assert user.is_admin is True
 
@@ -191,6 +211,7 @@ def test_resolve_actor_does_not_bootstrap_admin_without_core_admin_subs(app_clie
 
     with app_client.session_factory() as session:
         from app.users.models import User
+
         user = session.get(User, app_client.mock_user.id)
         assert user.is_admin is False
 
@@ -198,16 +219,20 @@ def test_resolve_actor_does_not_bootstrap_admin_without_core_admin_subs(app_clie
 def test_create_item_writes_audit_log_with_agent_actor(app_client):
     with app_client:
         call_tool(
-            app_client, "create_item",
+            app_client,
+            "create_item",
             {
-                "kind": "app", "title": "My App",
+                "kind": "app",
+                "title": "My App",
                 "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
             },
         )
 
     with app_client.session_factory() as session:
         from sqlalchemy import select
+
         from app.audit.models import AuditLog
+
         actions = {r.action for r in session.scalars(select(AuditLog)).all()}
         rows = list(session.scalars(select(AuditLog)))
         assert "item.create" in actions

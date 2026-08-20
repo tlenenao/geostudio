@@ -4,8 +4,10 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-07-05
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0003"
 down_revision = "0002"
@@ -26,9 +28,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_unique_constraint(
-        "uq_users_tenant_oidc_sub", "users", ["tenant_id", "oidc_sub"]
-    )
+    op.create_unique_constraint("uq_users_tenant_oidc_sub", "users", ["tenant_id", "oidc_sub"])
 
 
 def downgrade() -> None:

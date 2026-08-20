@@ -4,9 +4,9 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 
 
 @pytest.fixture()

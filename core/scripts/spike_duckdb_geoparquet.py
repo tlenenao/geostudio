@@ -25,13 +25,13 @@ Nécessite : docker compose up -d minio (le bucket "geostudio-cdc-spike" est
 créé par le script s'il n'existe pas).
 Sort avec le code 0 (PASS) ou 1 (FAIL, échecs listés).
 """
+
 import os
 import sys
 from io import BytesIO
 
 import duckdb
 import geopandas as gpd
-import shapely.wkb
 from shapely.geometry import Point
 
 BUCKET = "geostudio-cdc-spike"
@@ -42,7 +42,8 @@ def _write_fixture_to_minio() -> None:
     from botocore.exceptions import ClientError
 
     client = boto3.client(
-        "s3", endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        "s3",
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
         aws_access_key_id=os.environ["S3_ACCESS_KEY"],
         aws_secret_access_key=os.environ["S3_SECRET_KEY"],
     )
@@ -53,12 +54,30 @@ def _write_fixture_to_minio() -> None:
             raise
 
     records = [
-        {"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Point(2.30, 48.80)},
-        {"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0,
-         "geometry": Point(2.31, 48.81)},  # doit gagner (lsn max)
-        {"id": 2, "titre": "c", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Point(10.0, 10.0)},  # hors bbox du filtre testé plus bas
+        {
+            "id": 1,
+            "titre": "a",
+            "_op": "insert",
+            "_lsn": 1,
+            "_ts": 1.0,
+            "geometry": Point(2.30, 48.80),
+        },
+        {
+            "id": 1,
+            "titre": "b",
+            "_op": "update",
+            "_lsn": 2,
+            "_ts": 2.0,
+            "geometry": Point(2.31, 48.81),
+        },  # doit gagner (lsn max)
+        {
+            "id": 2,
+            "titre": "c",
+            "_op": "insert",
+            "_lsn": 1,
+            "_ts": 1.0,
+            "geometry": Point(10.0, 10.0),
+        },  # hors bbox du filtre testé plus bas
     ]
     gdf = gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
     buf = BytesIO()
@@ -127,7 +146,8 @@ def main() -> int:
         ORDER BY id
     """
     bbox_sql_wkb = bbox_sql_native.replace(
-        "ST_Intersects(geometry,", "ST_Intersects(ST_GeomFromWKB(geometry),",
+        "ST_Intersects(geometry,",
+        "ST_Intersects(ST_GeomFromWKB(geometry),",
     )
     bbox_result = None
     working_incantation = None

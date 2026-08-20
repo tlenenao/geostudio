@@ -24,7 +24,10 @@ def test_print_layout_rejects_invalid_page_size():
 def test_builder_config_print_layout_optional_and_absent_by_default():
     config = BuilderConfig(
         kind="map",
-        map={"basemap": {"style": "https://example.test/style.json"}, "view": {"center": [0.0, 0.0], "zoom": 3.0}},
+        map={
+            "basemap": {"style": "https://example.test/style.json"},
+            "view": {"center": [0.0, 0.0], "zoom": 3.0},
+        },
     )
     assert config.printLayout is None
 
@@ -32,7 +35,10 @@ def test_builder_config_print_layout_optional_and_absent_by_default():
 def test_builder_config_accepts_print_layout_on_map_kind():
     config = BuilderConfig(
         kind="map",
-        map={"basemap": {"style": "https://example.test/style.json"}, "view": {"center": [0.0, 0.0], "zoom": 3.0}},
+        map={
+            "basemap": {"style": "https://example.test/style.json"},
+            "view": {"center": [0.0, 0.0], "zoom": 3.0},
+        },
         printLayout={"pageSize": "a3", "orientation": "landscape", "title": "Carte des incidents"},
     )
     assert config.printLayout is not None
@@ -41,6 +47,8 @@ def test_builder_config_accepts_print_layout_on_map_kind():
 
 
 def test_builder_config_accepts_print_layout_on_app_kind():
-    config = BuilderConfig(kind="app", layout={"type": "grid", "items": []}, printLayout={"cartouche": "GeoStudio"})
+    config = BuilderConfig(
+        kind="app", layout={"type": "grid", "items": []}, printLayout={"cartouche": "GeoStudio"}
+    )
     assert config.printLayout is not None
     assert config.printLayout.cartouche == "GeoStudio"

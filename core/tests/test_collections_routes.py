@@ -13,8 +13,11 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 INCIDENTS = TableInfo(
-    table_name="incidents", pk_column="id", geometry_column="geom",
-    geometry_type="Point", srid=4326,
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
     columns=[ColumnInfo(name="titre", type="string", required=True)],
 )
 
@@ -32,10 +35,25 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -46,8 +64,8 @@ def env():
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     ddl_calls: list[str] = []
-    app.dependency_overrides[collections_routes.get_ddl_applier] = (
-        lambda: lambda session, table: ddl_calls.append(table)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: ddl_calls.append(table)
     )
     client = TestClient(app)
     return app, client, Session, admin, regular, ddl_calls
@@ -126,9 +144,7 @@ def test_denylist_short_circuits_before_introspection(env):
         calls.append(table_name)
         raise TableNotFound(table_name)
 
-    app.dependency_overrides[collections_routes.get_introspector] = (
-        lambda: spying_introspector
-    )
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: spying_introspector
     r = client.post("/collections", json={"tableName": "items"})
     assert r.status_code == 400
     assert r.json()["detail"] == "core table cannot be registered"
@@ -156,9 +172,7 @@ def test_denylist_postgis_system_tables_short_circuits_before_introspection(env)
         calls.append(table_name)
         raise TableNotFound(table_name)
 
-    app.dependency_overrides[collections_routes.get_introspector] = (
-        lambda: spying_introspector
-    )
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: spying_introspector
     for table in ("spatial_ref_sys", "geometry_columns", "geography_columns"):
         r = client.post("/collections", json={"tableName": table})
         assert r.status_code == 400
@@ -227,9 +241,7 @@ def test_schema_endpoint_409_when_backing_table_unsupported(env):
     def unsupported_introspector(session, table_name):
         raise UnsupportedTable("no geometry column")
 
-    app.dependency_overrides[collections_routes.get_introspector] = (
-        lambda: unsupported_introspector
-    )
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: unsupported_introspector
     r = client.get("/collections/incidents/schema")
     assert r.status_code == 409
     assert r.json()["detail"] == "no geometry column"
@@ -269,8 +281,10 @@ def test_mutations_are_audited(env):
     client.post("/collections", json={"tableName": "incidents"})
     client.patch("/collections/incidents", json={"title": "X"})
     client.delete("/collections/incidents")
-    from app.audit.models import AuditLog
     from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     for expected in ("collection.create", "collection.update", "collection.delete"):
@@ -280,7 +294,9 @@ def test_mutations_are_audited(env):
 def test_canWrite_reflects_the_requesting_users_write_access(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True})
+    client.post(
+        "/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True}
+    )
 
     # admin (propriétaire de la collection qu'il vient de créer) : canWrite=True
     assert client.get("/collections/incidents").json()["canWrite"] is True
@@ -293,7 +309,9 @@ def test_canWrite_reflects_the_requesting_users_write_access(env):
     assert client.get("/collections").json()["collections"][0]["canWrite"] is False
 
 
-def test_patch_collection_enqueues_embedding_only_when_title_or_description_change(env, monkeypatch):
+def test_patch_collection_enqueues_embedding_only_when_title_or_description_change(
+    env, monkeypatch
+):
     # Évite un recalcul inutile d'embedding sur un simple toggle isPublic/
     # editable (brief SP-7 Task 7, patch_collection) : l'enqueue ne doit se
     # déclencher que si le titre ou la description ont effectivement changé.
@@ -303,7 +321,8 @@ def test_patch_collection_enqueues_embedding_only_when_title_or_description_chan
 
     deferred = []
     monkeypatch.setattr(
-        repo, "enqueue_embedding",
+        repo,
+        "enqueue_embedding",
         lambda collection_id, tenant_id: deferred.append((collection_id, tenant_id)),
     )
 
@@ -328,9 +347,17 @@ def test_list_collections_accepts_q_param_without_error(env):
     _as(app, regular)
     with Session() as s:
         repo.create_collection(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id, table_name="c1",
-            title="Communes", description="", is_public=True,
-            pk_column="id", geometry_column=None, geometry_type=None, srid=None,
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            table_name="c1",
+            title="Communes",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
         )
         s.commit()
     resp = client.get("/collections?q=commun")

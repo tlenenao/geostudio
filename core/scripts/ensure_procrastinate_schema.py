@@ -9,6 +9,7 @@ bloquants »). Ce script se substitue à `procrastinate schema --apply` dans
 le `command:` du worker : il vérifie d'abord si le schéma est déjà là
 (`has_table`) et ne rappelle `apply_schema()` que s'il est absent — même
 garde que `core/tests/conftest.py::pg_engine_with_procrastinate_schema`."""
+
 import os
 import sys
 
@@ -26,15 +27,11 @@ def schema_is_applied(conninfo: str) -> bool:
 
 
 def main() -> None:
-    database_url = os.environ["DATABASE_URL"].replace(
-        "postgresql+psycopg://", "postgresql://"
-    )
+    database_url = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
     if schema_is_applied(database_url):
         print("procrastinate: schéma déjà appliqué, rien à faire.")
         return
-    app = procrastinate.App(
-        connector=procrastinate.PsycopgConnector(conninfo=database_url)
-    )
+    app = procrastinate.App(connector=procrastinate.PsycopgConnector(conninfo=database_url))
     with app.open():
         app.schema_manager.apply_schema()
     print("procrastinate: schéma appliqué.")

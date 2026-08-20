@@ -2,7 +2,6 @@
 import json
 
 import httpx
-import pytest
 
 from app.harvest.connectors import get_connector
 from app.harvest.connectors.arcgis import ArcgisConnector
@@ -15,10 +14,16 @@ SERVICE_META = {
     "documentInfo": {"Keywords": "bati,urbain"},
 }
 LAYER_0 = {
-    "id": 0, "name": "Bâtiments", "description": "Empreintes",
-    "geometryType": "esriGeometryPolygon", "maxRecordCount": 2000,
+    "id": 0,
+    "name": "Bâtiments",
+    "description": "Empreintes",
+    "geometryType": "esriGeometryPolygon",
+    "maxRecordCount": 2000,
     "extent": {
-        "xmin": 647850.0, "ymin": 6861300.0, "xmax": 647950.0, "ymax": 6861400.0,
+        "xmin": 647850.0,
+        "ymin": 6861300.0,
+        "xmax": 647950.0,
+        "ymax": 6861400.0,
         "spatialReference": {"latestWkid": 2154},
     },
 }
@@ -31,6 +36,7 @@ def _handler(docs):
         assert "f=json" in url
         base = url.split("?")[0]
         return httpx.Response(200, json=docs[base])
+
     return handler
 
 
@@ -79,6 +85,7 @@ def test_fetch_no_layers_key_returns_empty():
 def test_fetch_non_object_service_response_returns_empty():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=[1, 2, 3])
+
     transport = httpx.MockTransport(handler)
     assert list(ArcgisConnector(client=httpx.Client(transport=transport)).fetch(SERVICE)) == []
 
@@ -92,6 +99,7 @@ def test_fetch_layer_meta_error_skips_that_layer():
         if base == f"{SERVICE}/0":
             return httpx.Response(200, json=LAYER_0)
         return httpx.Response(500)  # couche 1 en erreur
+
     transport = httpx.MockTransport(handler)
     records = list(ArcgisConnector(client=httpx.Client(transport=transport)).fetch(SERVICE))
     assert {r.external_id for r in records} == {f"{SERVICE}/0"}
@@ -120,12 +128,20 @@ def _page(features, *, exceeded):
 
 
 def _feature(i):
-    return {"type": "Feature", "properties": {"n": i}, "geometry": {"type": "Point", "coordinates": [i, i]}}
+    return {
+        "type": "Feature",
+        "properties": {"n": i},
+        "geometry": {"type": "Point", "coordinates": [i, i]},
+    }
 
 
 def test_copy_geojson_assembles_all_pages():
     rec = HarvestedRecord(
-        external_id=f"{SERVICE}/0", title="B", abstract="", keywords=[], bbox=[0, 0, 1, 1],
+        external_id=f"{SERVICE}/0",
+        title="B",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
         external_url=f"{SERVICE}/0",
         items_url=f"{SERVICE}/0/query?where=1=1&outFields=*&f=geojson",
     )
@@ -147,8 +163,13 @@ def test_copy_geojson_assembles_all_pages():
 
 def test_copy_geojson_none_when_no_items_url():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=None,
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=None,
     )
     assert ArcgisConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
 
@@ -157,8 +178,13 @@ def test_copy_geojson_truncates_at_max_features():
     from app.harvest.connectors.arcgis import _MAX_COPY_FEATURES
 
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{SERVICE}/0/query?f=geojson",
     )
 
     def http_get(url: str) -> httpx.Response:
@@ -175,8 +201,13 @@ def test_copy_geojson_caps_number_of_pages():
     from app.harvest.connectors.arcgis import _MAX_COPY_PAGES
 
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{SERVICE}/0/query?f=geojson",
     )
     calls = {"n": 0}
 
@@ -194,8 +225,13 @@ def test_copy_geojson_caps_number_of_pages():
 
 def test_copy_geojson_stops_cleanly_on_malformed_page():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{SERVICE}/0/query?f=geojson",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{SERVICE}/0/query?f=geojson",
     )
 
     def http_get(url: str) -> httpx.Response:

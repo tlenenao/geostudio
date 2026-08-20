@@ -22,13 +22,23 @@ def test_connector_secret_row_round_trip():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
         secret = ConnectorSecret(
-            id="sec1", tenant_id=tenant.id, name="my-api", kind="bearer_token",
-            ciphertext=b"cipher", nonce=b"nonce123456", created_by=user.id,
+            id="sec1",
+            tenant_id=tenant.id,
+            name="my-api",
+            kind="bearer_token",
+            ciphertext=b"cipher",
+            nonce=b"nonce123456",
+            created_by=user.id,
         )
         s.add(secret)
         s.commit()
@@ -46,18 +56,37 @@ def test_connector_secret_unique_name_per_tenant():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
-        s.add(ConnectorSecret(
-            id="sec1", tenant_id=tenant.id, name="dup", kind="bearer_token",
-            ciphertext=b"c1", nonce=b"n1", created_by=user.id,
-        ))
+        s.add(
+            ConnectorSecret(
+                id="sec1",
+                tenant_id=tenant.id,
+                name="dup",
+                kind="bearer_token",
+                ciphertext=b"c1",
+                nonce=b"n1",
+                created_by=user.id,
+            )
+        )
         s.commit()
-        s.add(ConnectorSecret(
-            id="sec2", tenant_id=tenant.id, name="dup", kind="bearer_token",
-            ciphertext=b"c2", nonce=b"n2", created_by=user.id,
-        ))
+        s.add(
+            ConnectorSecret(
+                id="sec2",
+                tenant_id=tenant.id,
+                name="dup",
+                kind="bearer_token",
+                ciphertext=b"c2",
+                nonce=b"n2",
+                created_by=user.id,
+            )
+        )
         with pytest.raises(IntegrityError):
             s.commit()

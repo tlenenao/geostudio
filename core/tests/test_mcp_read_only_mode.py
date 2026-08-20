@@ -32,8 +32,13 @@ def app_client(monkeypatch, tmp_path):
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         mock_user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="mock-sub",
-            username="mockuser", email=None, first_name="Mock", last_name="User",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         setup_session.commit()
 
@@ -74,9 +79,12 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     init_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
             "params": {
-                "protocolVersion": "2025-06-18", "capabilities": {},
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
                 "clientInfo": {"name": "test", "version": "0"},
             },
         },
@@ -96,22 +104,26 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     call_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
         headers=session_headers,
     )
     assert call_response.status_code == 200
-    body_line = next(
-        line for line in call_response.text.splitlines() if line.startswith("data: ")
-    )
+    body_line = next(line for line in call_response.text.splitlines() if line.startswith("data: "))
     payload = json.loads(body_line.removeprefix("data: "))
     return payload["result"]
 
 
 def test_read_only_tools_constant_matches_the_six_write_tools():
     assert READ_ONLY_TOOLS == {
-        "save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset",
+        "save_app_config",
+        "create_item",
+        "create_form_app",
+        "set_sharing",
+        "create_dataset",
         "create_bookmark",
     }
 
@@ -120,8 +132,12 @@ def test_save_app_config_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "save_app_config",
-            {"itemId": "does-not-exist", "config": {"kind": "app", "layout": {"type": "grid", "items": []}}},
+            app_client,
+            "save_app_config",
+            {
+                "itemId": "does-not-exist",
+                "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
+            },
         )
     assert READ_ONLY_MESSAGE in error_text
 
@@ -130,8 +146,13 @@ def test_create_item_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "create_item",
-            {"kind": "app", "title": "X", "config": {"kind": "app", "layout": {"type": "grid", "items": []}}},
+            app_client,
+            "create_item",
+            {
+                "kind": "app",
+                "title": "X",
+                "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
+            },
         )
     assert READ_ONLY_MESSAGE in error_text
 
@@ -140,7 +161,9 @@ def test_create_form_app_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "create_form_app", {"collectionId": "does-not-exist"},
+            app_client,
+            "create_form_app",
+            {"collectionId": "does-not-exist"},
         )
     assert READ_ONLY_MESSAGE in error_text
 
@@ -149,7 +172,8 @@ def test_create_dataset_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "create_dataset",
+            app_client,
+            "create_dataset",
             {"title": "X", "source": "collection", "collectionId": "does-not-exist"},
         )
     assert READ_ONLY_MESSAGE in error_text
@@ -159,7 +183,8 @@ def test_create_bookmark_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "create_bookmark",
+            app_client,
+            "create_bookmark",
             {"title": "X", "appId": "does-not-exist", "pageId": "page-1"},
         )
     assert READ_ONLY_MESSAGE in error_text
@@ -169,7 +194,8 @@ def test_set_sharing_refuses_in_read_only_mode(app_client, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "set_sharing",
+            app_client,
+            "set_sharing",
             {"itemId": "does-not-exist", "sharing": {"public": False, "groups": []}},
         )
     assert READ_ONLY_MESSAGE in error_text

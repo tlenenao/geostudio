@@ -15,8 +15,13 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     return Session, tenant, alice
@@ -26,8 +31,13 @@ def test_create_job_defaults_to_pending(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id, source_key=f"{tenant.id}/x/city.zip",
-            upload_id="mpu-1", filename="city.zip", title="Ville",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key=f"{tenant.id}/x/city.zip",
+            upload_id="mpu-1",
+            filename="city.zip",
+            title="Ville",
         )
         s.commit()
         assert job.status == "pending"
@@ -39,8 +49,13 @@ def test_get_job_scopes_by_tenant(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id, source_key="k", upload_id="u",
-            filename="f.zip", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            upload_id="u",
+            filename="f.zip",
+            title="T",
         )
         s.commit()
         job_id = job.id
@@ -53,8 +68,13 @@ def test_mark_finalizing_then_done_transitions_status_and_sets_item_id(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id, source_key="k", upload_id="u",
-            filename="f.zip", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            upload_id="u",
+            filename="f.zip",
+            title="T",
         )
         s.commit()
         job_id = job.id
@@ -74,8 +94,13 @@ def test_mark_error_sets_status_and_message(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id, source_key="k", upload_id="u",
-            filename="f.zip", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            upload_id="u",
+            filename="f.zip",
+            title="T",
         )
         s.commit()
         job_id = job.id

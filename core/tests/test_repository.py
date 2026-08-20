@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 
-from app.db import make_engine, make_session_factory, init_db
 from app.configs import repository as repo
 from app.configs.schemas import BuilderConfig
+from app.db import init_db, make_engine, make_session_factory
 from app.items.models import Item
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
@@ -21,12 +21,15 @@ def session():
 
 
 def _config(kind: str = "app", widget: str = "map") -> BuilderConfig:
-    return BuilderConfig.model_validate({
-        "kind": kind,
-        "layout": {"type": "grid", "items": [
-            {"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}
-        ]},
-    })
+    return BuilderConfig.model_validate(
+        {
+            "kind": kind,
+            "layout": {
+                "type": "grid",
+                "items": [{"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}],
+            },
+        }
+    )
 
 
 def _make_item(session, item_id: str) -> str:
@@ -35,13 +38,23 @@ def _make_item(session, item_id: str) -> str:
     # now-enforced FK (Step 5) raises IntegrityError on the Config insert.
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-1",
-        username="alice", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-1",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
-    session.add(Item(
-        id=item_id, tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="placeholder",
-    ))
+    session.add(
+        Item(
+            id=item_id,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="app",
+            title="placeholder",
+        )
+    )
     session.commit()
     return tenant.id
 
@@ -64,7 +77,9 @@ def test_get_missing_returns_none(session):
 
 def test_update_creates_new_revision(session):
     tenant_id = _make_item(session, "item-1")
-    created = repo.create_config(session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id)
+    created = repo.create_config(
+        session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id
+    )
     updated = repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
     assert updated is not None
     assert updated.version == 2
@@ -80,7 +95,9 @@ def test_update_missing_returns_none(session):
 
 def test_rollback_restores_old_revision_as_new(session):
     tenant_id = _make_item(session, "item-1")
-    created = repo.create_config(session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id)
+    created = repo.create_config(
+        session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id
+    )
     repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
 
     rolled = repo.rollback_config(session, created.id, version=1, tenant_id=tenant_id)
@@ -98,7 +115,9 @@ def test_rollback_missing_version_returns_none(session):
 
 def test_delete_config_removes_config_and_revisions(session):
     tenant_id = _make_item(session, "item-1")
-    created = repo.create_config(session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id)
+    created = repo.create_config(
+        session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id
+    )
     repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
 
     assert repo.delete_config(session, created.id) is True
@@ -112,7 +131,9 @@ def test_delete_missing_config_returns_false(session):
 
 def test_get_config_by_item_returns_latest(session):
     tenant_id = _make_item(session, "item-7")
-    created = repo.create_config(session, _config(widget="map"), item_id="item-7", tenant_id=tenant_id)
+    created = repo.create_config(
+        session, _config(widget="map"), item_id="item-7", tenant_id=tenant_id
+    )
     repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
     found = repo.get_config_by_item(session, "item-7")
     assert found is not None
@@ -128,20 +149,40 @@ def test_get_config_by_item_missing_returns_none(session):
 def test_list_configs_by_kind_returns_matching_kind_only(session):
     tenant_id = _make_item(session, "item-app")
     repo.create_config(session, _config(kind="app"), item_id="item-app", tenant_id=tenant_id)
-    session.add(Item(id="item-pipe", tenant_id=tenant_id, owner_id=session.execute(
-        __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-app")
-    ).scalar_one(), resource_type="pipeline", title="placeholder"))
+    session.add(
+        Item(
+            id="item-pipe",
+            tenant_id=tenant_id,
+            owner_id=session.execute(
+                __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-app")
+            ).scalar_one(),
+            resource_type="pipeline",
+            title="placeholder",
+        )
+    )
     session.commit()
-    pipeline_config = BuilderConfig.model_validate({
-        "kind": "pipeline",
-        "pipeline": {
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-        },
-    })
+    pipeline_config = BuilderConfig.model_validate(
+        {
+            "kind": "pipeline",
+            "pipeline": {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_propres"},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        }
+    )
     repo.create_config(session, pipeline_config, item_id="item-pipe", tenant_id=tenant_id)
 
     results = repo.list_configs_by_kind(session, kind="pipeline")
@@ -156,7 +197,9 @@ def test_list_configs_by_kind_returns_empty_when_none_match(session):
 
 def test_list_configs_by_kind_returns_latest_revision(session):
     tenant_id = _make_item(session, "item-1")
-    created = repo.create_config(session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id)
+    created = repo.create_config(
+        session, _config(widget="map"), item_id="item-1", tenant_id=tenant_id
+    )
     repo.update_config(session, created.id, _config(widget="table"), tenant_id=tenant_id)
 
     results = repo.list_configs_by_kind(session, kind="app")
@@ -172,48 +215,79 @@ def test_list_configs_by_kind_skips_one_unvalidatable_config(session, caplog):
     tenant_id = _make_item(session, "item-good")
     repo.create_config(
         session,
-        BuilderConfig.model_validate({
-            "kind": "pipeline",
-            "pipeline": {
-                "nodes": [
-                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                    {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
-                ],
-                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-            },
-        }),
+        BuilderConfig.model_validate(
+            {
+                "kind": "pipeline",
+                "pipeline": {
+                    "nodes": [
+                        {
+                            "id": "r1",
+                            "kind": "reader",
+                            "op": "reader.collection",
+                            "params": {"collectionId": "villes"},
+                        },
+                        {
+                            "id": "w1",
+                            "kind": "writer",
+                            "op": "writer.collection",
+                            "params": {"collectionId": "villes_propres"},
+                        },
+                    ],
+                    "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+                },
+            }
+        ),
         item_id="item-good",
         tenant_id=tenant_id,
     )
 
-    session.add(Item(
-        id="item-bad", tenant_id=tenant_id,
-        owner_id=session.execute(
-            __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-good")
-        ).scalar_one(),
-        resource_type="pipeline", title="placeholder",
-    ))
+    session.add(
+        Item(
+            id="item-bad",
+            tenant_id=tenant_id,
+            owner_id=session.execute(
+                __import__("sqlalchemy").select(Item.owner_id).where(Item.id == "item-good")
+            ).scalar_one(),
+            resource_type="pipeline",
+            title="placeholder",
+        )
+    )
     session.commit()
     bad_created = repo.create_config(
         session,
-        BuilderConfig.model_validate({
-            "kind": "pipeline",
-            "pipeline": {
-                "nodes": [
-                    {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                    {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
-                ],
-                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-            },
-        }),
+        BuilderConfig.model_validate(
+            {
+                "kind": "pipeline",
+                "pipeline": {
+                    "nodes": [
+                        {
+                            "id": "r1",
+                            "kind": "reader",
+                            "op": "reader.collection",
+                            "params": {"collectionId": "villes"},
+                        },
+                        {
+                            "id": "w1",
+                            "kind": "writer",
+                            "op": "writer.collection",
+                            "params": {"collectionId": "villes_propres"},
+                        },
+                    ],
+                    "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+                },
+            }
+        ),
         item_id="item-bad",
         tenant_id=tenant_id,
     )
     # Corruption directe de la révision stockée : un dict qui ne valide plus
     # contre BuilderConfig (kind="pipeline" mais champ "pipeline" invalide).
     from app.configs.models import ConfigRevision
+
     stored = session.scalars(
-        __import__("sqlalchemy").select(ConfigRevision).where(ConfigRevision.config_id == bad_created.id)
+        __import__("sqlalchemy")
+        .select(ConfigRevision)
+        .where(ConfigRevision.config_id == bad_created.id)
     ).one()
     stored.data = {"kind": "pipeline", "pipeline": "not-a-valid-shape"}
     session.commit()
@@ -227,13 +301,23 @@ def test_list_configs_by_kind_skips_one_unvalidatable_config(session, caplog):
 
 def _make_item_for_tenant(session, item_id: str, tenant_id: str, *, oidc_sub: str) -> None:
     user = get_or_create_user(
-        session, tenant_id=tenant_id, oidc_sub=oidc_sub,
-        username=oidc_sub, email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant_id,
+        oidc_sub=oidc_sub,
+        username=oidc_sub,
+        email=None,
+        first_name="",
+        last_name="",
     )
-    session.add(Item(
-        id=item_id, tenant_id=tenant_id, owner_id=user.id,
-        resource_type="app", title="placeholder",
-    ))
+    session.add(
+        Item(
+            id=item_id,
+            tenant_id=tenant_id,
+            owner_id=user.id,
+            resource_type="app",
+            title="placeholder",
+        )
+    )
     session.commit()
 
 
@@ -269,10 +353,15 @@ def test_list_configs_by_kind_and_tenant_skips_one_unvalidatable_config(session,
     repo.create_config(session, _config(kind="app"), item_id="item-good", tenant_id=tenant.id)
 
     _make_item_for_tenant(session, "item-bad", tenant.id, oidc_sub="sub-bad")
-    bad_created = repo.create_config(session, _config(kind="app"), item_id="item-bad", tenant_id=tenant.id)
+    bad_created = repo.create_config(
+        session, _config(kind="app"), item_id="item-bad", tenant_id=tenant.id
+    )
     from app.configs.models import ConfigRevision
+
     stored = session.scalars(
-        __import__("sqlalchemy").select(ConfigRevision).where(ConfigRevision.config_id == bad_created.id)
+        __import__("sqlalchemy")
+        .select(ConfigRevision)
+        .where(ConfigRevision.config_id == bad_created.id)
     ).one()
     stored.data = {"kind": "pipeline", "pipeline": "not-a-valid-shape"}
     session.commit()

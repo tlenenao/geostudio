@@ -13,7 +13,9 @@ def _read_lag(reader: InMemoryMetricReader) -> dict[str, float]:
         for scope_metrics in resource_metrics.scope_metrics:
             for metric in scope_metrics.metrics:
                 if metric.name == "geostudio.cdc.lag_seconds":
-                    return {dp.attributes["collection_id"]: dp.value for dp in metric.data.data_points}
+                    return {
+                        dp.attributes["collection_id"]: dp.value for dp in metric.data.data_points
+                    }
     return {}
 
 

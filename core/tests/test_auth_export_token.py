@@ -28,8 +28,14 @@ def _session_with_user():
     session = Session()
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="Alice", last_name="", bootstrap_admin=False,
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="Alice",
+        last_name="",
+        bootstrap_admin=False,
     )
     session.commit()
     return session, tenant, user

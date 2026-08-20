@@ -4,6 +4,7 @@ DB. Sert aussi de test de non-régression structurel pour le mapping
 schéma->champs, dupliqué côté TS dans
 shell/src/builder/widgets/form.tsx::fieldsFromSchema (même risque de dérive
 que CEL, arbitrage A8 — voir spec §Architecture MCP v1)."""
+
 import pytest
 
 from app.collections.models import Collection
@@ -13,7 +14,8 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 SCHEMA = {
-    "collection": "incidents", "pk": "id",
+    "collection": "incidents",
+    "pk": "id",
     "geometry": {"column": "geom", "type": "Point", "srid": 4326},
     "fields": [
         {"name": "titre", "type": "string", "required": True, "maxLength": 200},
@@ -25,10 +27,24 @@ SCHEMA = {
 def test_form_fields_from_schema_maps_every_field_visible_and_unordered_by_default():
     fields = form_fields_from_schema(SCHEMA)
     assert fields == [
-        {"name": "titre", "type": "string", "label": "titre", "order": 0,
-         "hidden": False, "required": True, "maxLength": 200},
-        {"name": "gravite", "type": "enum", "label": "gravite", "order": 1,
-         "hidden": False, "required": False, "values": ["faible", "haute"]},
+        {
+            "name": "titre",
+            "type": "string",
+            "label": "titre",
+            "order": 0,
+            "hidden": False,
+            "required": True,
+            "maxLength": 200,
+        },
+        {
+            "name": "gravite",
+            "type": "enum",
+            "label": "gravite",
+            "order": 1,
+            "hidden": False,
+            "required": False,
+            "values": ["faible", "haute"],
+        },
     ]
 
 
@@ -62,12 +78,33 @@ def env():
     Session = make_session_factory(engine)
     with Session() as session:
         tenant = get_or_create_default_tenant(session)
-        owner = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="o",
-                                    username="owner", email=None, first_name="", last_name="")
-        other = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="x",
-                                    username="other", email=None, first_name="", last_name="")
-        col = Collection(id="col-1", tenant_id=tenant.id, owner_id=owner.id,
-                          table_name="col_1", title="Col 1", pk_column="id", editable=True)
+        owner = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        other = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="x",
+            username="other",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        col = Collection(
+            id="col-1",
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name="col_1",
+            title="Col 1",
+            pk_column="id",
+            editable=True,
+        )
         session.add(col)
         session.commit()
         yield session, owner, other, col
