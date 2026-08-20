@@ -266,3 +266,42 @@ async def test_synchronous_provider_call_does_not_block_the_event_loop(monkeypat
             elapsed = time.monotonic() - started
     assert [r.status_code for r in responses] == [200, 200]
     assert elapsed < delay * 1.8, f"les deux tours se sont sérialisés ({elapsed:.2f}s pour 2×{delay}s)"
+
+
+def test_turn_rejects_an_mcp_token_belonging_to_another_user(client, monkeypatch):
+    """C1 (confused deputy) : le jeton MCP du corps agit à la place de
+    l'appelant — s'il porte une autre identité, la route exécuterait les
+    outils d'écriture sous cette identité alors qu'elle en a authentifié
+    une autre."""
+    import app.copilot.routes as routes_module
+    monkeypatch.setattr(routes_module, "mcp_token_subject", lambda token: "bob-sub")
+    provider = CapturingLLMProvider([LLMTurn(text="ok")])
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
+
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "salut", "history": [],
+        "mcpToken": "jeton-de-bob", "currentConfig": {}, "clientTools": [],
+    })
+
+    assert resp.status_code == 403
+    assert provider.calls == []  # aucun appel LLM, aucun outil exécuté
+
+
+def test_turn_rejects_an_unreadable_mcp_token(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    from app.copilot.mcp_token import McpTokenError
+
+    def _boom(token):
+        raise McpTokenError("signature invalide")
+
+    monkeypatch.setattr(routes_module, "mcp_token_subject", _boom)
+    provider = CapturingLLMProvider([LLMTurn(text="ok")])
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
+
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "salut", "history": [],
+        "mcpToken": "cassé", "currentConfig": {}, "clientTools": [],
+    })
+
+    assert resp.status_code == 401
+    assert provider.calls == []

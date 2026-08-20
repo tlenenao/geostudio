@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.auth.dependency import get_current_user
 from app.copilot.llm_provider import LLMTurn, get_llm_provider
 from app.copilot.mcp_loopback import McpLoopbackError, McpLoopbackSession
+from app.copilot.mcp_token import McpTokenError, mcp_token_subject
 from app.copilot.tools_allowlist import ALLOWED_MCP_TOOL_NAMES
 from app.users.models import User
 
@@ -125,6 +126,19 @@ async def copilot_turn(
     body: CopilotTurnRequest,
     user: User = Depends(get_current_user),
 ) -> CopilotTurnResponse:
+    # Le jeton MCP du corps agira à la place de l'appelant : il doit
+    # d'abord être prouvé lui appartenir, sinon la route vérifie une
+    # identité (header Authorization) et exécute sous une autre.
+    try:
+        token_subject = mcp_token_subject(body.mcpToken)
+    except McpTokenError as exc:
+        raise HTTPException(status_code=401, detail="Jeton MCP invalide.") from exc
+    if token_subject != user.oidc_sub:
+        raise HTTPException(
+            status_code=403,
+            detail="Le jeton MCP ne correspond pas à l'utilisateur authentifié.",
+        )
+
     mcp_session = McpLoopbackSession(body.mcpToken)
     try:
         return await asyncio.wait_for(
