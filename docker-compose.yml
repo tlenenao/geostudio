@@ -153,10 +153,20 @@ services:
       CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
       # Fournisseur d'embeddings de la recherche sémantique (SP-7). Non
       # câblé jusqu'ici : le cœur retombait silencieusement sur son défaut.
-      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-}
+      # Défauts `fake`/`text-embedding-3-small` ici, pas une substitution à
+      # défaut vide : ce sont les vrais défauts applicatifs de
+      # get_embedding_provider() (core/app/search/providers.py) — un
+      # défaut de compose vide sur ces deux-là ferait planter la recherche
+      # sémantique là où elle marchait avant le câblage (ValueError sur
+      # provider inconnu), l'image inverse du bug que cette même tâche
+      # corrige par ailleurs. API_URL/API_KEY n'ont pas de défaut
+      # applicatif (lus via `os.environ[...]`, seulement quand
+      # provider="openai") : une substitution à défaut vide reste correcte
+      # pour ces deux-là, même patron que CORE_LLM_API_*.
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-fake}
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
-      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
@@ -234,10 +244,14 @@ services:
       # (file `etl`). Une valeur divergente entre les deux services produit
       # une capacité à moitié allumée — précédent SP-17a.
       CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
-      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-}
+      # Miroir des défauts du service `core` ci-dessus (mêmes commentaires) :
+      # `fake`/`text-embedding-3-small`, pas une substitution à défaut vide,
+      # pour ne pas diverger d'un défaut applicatif qui marchait avant le
+      # câblage.
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-fake}
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
-      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —
