@@ -98,7 +98,7 @@ npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 1615 exécutés + 153 skipped (mesuré 2026-08-20 ; les
+uv run pytest        # 1649 passed + 153 skipped (mesuré 2026-08-21 ; les
                      # skips sont les marqueurs postgis/qgis/playwright, qui
                      # nécessitent docker ou un navigateur)
 
@@ -832,6 +832,129 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     consigne de n'y obéir jamais). Le 3e Critique de cette revue (blocage
     de la boucle d'événements) était déjà fermé par le fix I1 de la revue
     de branche.
+- **SP-21** — « Déployabilité » (vague 1 du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, constats C4, C5,
+  I5, I8, I14) : un garde-fou de 7 règles dans `core/tests/test_deployability.py`
+  qui teste le **dépôt** (compose, overlay prod, `release.yml`,
+  `.env.example`, `deploy/backup/backup.sh`) plutôt que `core/app/` —
+  entorse assumée au découpage, écrite en réaction à quatre capacités
+  livrées-testées-mergées qui se sont révélées non câblées dans la stack
+  packagée (SP-17a, SP-17b, tileset3d, et `CORE_ETL_ENABLED` — trouvée en
+  écrivant ces tests). Chaque règle correspond à une de ces découvertes et
+  échouait sur le dépôt tel qu'il était avant SP-21, sauf deux gardes-fous
+  purs qui protègent l'avenir sans corriger de défaut présent
+  (`test_every_referenced_ghcr_image_is_released`,
+  `test_every_compose_substitution_is_documented` — 43 substitutions déjà
+  toutes documentées à l'arrivée). État à l'arrivée des 5 autres règles,
+  toutes rouges avant SP-21 : `test_every_build_service_has_a_released_image`
+  — 4 services construits sans image publiée (`export-worker`,
+  `qgis-worker`, `appexport-runtime-builder`, `backup`) ;
+  `test_prod_overlay_substitutes_every_build_with_an_image` — l'overlay prod
+  ne substituait que 5 services sur 9, laissant `build:` actif pour les 4
+  autres ; `test_every_core_env_var_is_wired_to_a_service` — 6 variables
+  lues par `core/app/` n'étaient câblées sur aucun service ;
+  `test_backup_covers_every_bucket_the_core_uses` — 2 buckets S3 utilisés
+  par le cœur (`tileset3d`, `terrain3d`) n'étaient pas sauvegardés ;
+  `test_images_are_pinned` — 4 images (`minio`, `keycloak`, `traefik`,
+  `tailscale`) n'étaient pas pinnées au patch/digest.
+  - **Images & overlay** — les 4 services manquants ajoutés à la matrice
+    `build-and-push` de `release.yml` (8 entrées au total). Le critère de
+    sortie du plan lui-même (« 0 `build:` dans le compose prod résolu ») —
+    n'était **pas** atteint en suivant ses instructions littérales : mesuré
+    8, parce que la fusion Compose est additive (retirer `build:` du
+    fichier de base ne le retire pas de l'overlay qui en hérite). Écart
+    tranché par Tanguy : `build: !reset null` appliqué aux 8 services
+    concernés (dont 5 déjà pré-existants avant SP-21), règle durcie, et le
+    `ComposeLoader` du garde-fou corrigé pour résoudre ce tag à un sentinel
+    `RESET` plutôt qu'à la chaîne littérale `'null'` (qui aurait fait
+    passer un `build:` supprimé pour un contexte de build valide). Vérifié
+    indépendamment sur le compose résolu : `grep -c build:` → 0.
+  - **6 variables câblées** : `CORE_ANALYST_SUBS`, `CORE_ETL_ENABLED`,
+    `CORE_EMBEDDING_PROVIDER`, `CORE_EMBEDDING_API_URL`,
+    `CORE_EMBEDDING_API_KEY`, `CORE_EMBEDDING_MODEL`, câblées sur `core`
+    (les 6) et `worker` (les 5 hors `CORE_ANALYST_SUBS`), toutes avec un
+    défaut identique au défaut applicatif — aucune capacité ne s'allume par
+    effet de bord. **`CORE_ETL_ENABLED` est la 4ᵉ occurrence de la classe de
+    bug que ce garde-fou existe pour attraper, et la plus large** : une
+    capacité instance-wide entière (tout le module pipelines) restait
+    inactivable en pratique malgré sa présence dans le code et ses tests —
+    et sa **présence dans `.env.example` donnait l'illusion qu'elle était
+    câblée**, alors que la ligne documentée n'était substituée dans aucun
+    `environment:` de service. En élargissant la règle de lecture des
+    variables (`ENV_READ_RE`) d'un simple grep vers un **résolveur AST**
+    (pour voir les lectures indirectes via constante de module), la même
+    tâche a trouvé 3 allowlists d'egress SSRF (`CORE_PIPELINES_/HARVEST_/
+    ALERTS_EGRESS_ALLOWLIST`) câblées sur **zéro** service — 2 des 3
+    pourtant déjà documentées dans `.env.example`, même piège que
+    `CORE_ETL_ENABLED`. Décision Tanguy : les 3 câblées sur `core` et
+    `worker`.
+  - **Sauvegarde** : 2 buckets S3 amenés dans le périmètre de
+    `deploy/backup/backup.sh` (`tileset3d`, `terrain3d`, rejoignant
+    `thumbnails`/`uploads`/`cdc`) et 2 exclus **explicitement** avec leur
+    raison écrite (`BACKUP_EXCLUDED_BUCKETS` : `S3_EXPORTS_BUCKET`,
+    `S3_APPEXPORTS_BUCKET` — sorties recalculables, pas des données
+    sources). Couverture réelle : 5 des 7 buckets lus par le cœur sont
+    sauvegardés, 2 exclus par construction. Défaut trouvé en revue dans le
+    runbook de restauration (`docs/runbooks/2026-07-24-restauration-
+    sauvegardes.md`) : sa §4 promettait « cinq buckets restaurés » alors
+    qu'elle n'en recréait que trois (`mc mb`) — le mode d'échec même que
+    cette tâche existe pour supprimer, retrouvé un cran plus loin dans le
+    même fichier ; corrigé, désormais piloté par les 5 `${S3_*_BUCKET}` que
+    le service `backup` reçoit réellement.
+  - **4 images repinnées**, résolues contre leurs registres et vérifiées par
+    `docker manifest inspect` : `minio/minio` (sans tag) →
+    `RELEASE.2025-09-07T16-13-09Z` ; `quay.io/keycloak/keycloak:24.0` →
+    `24.0.5` ; `traefik:v3.0` → `v3.0.4` ; `tailscale/tailscale:latest` →
+    `v1.102.3`. `grep -c ":latest"` sur le compose résolu → 0.
+  - **Healthchecks posés sur les 7 services qui en manquaient** : `core`,
+    `worker`, `cdc-worker`, `shell` (sonde CDC `scripts/healthcheck_cdc.py`
+    sur `pg_replication_slots.active`, la seule des quatre capable de
+    détecter « vivant mais ne consomme plus », vérifiée contre un vrai
+    slot de réplication) puis `pgbouncer`/`martin`/`titiler` — les trois
+    commandes de sonde **suggérées par le plan étaient fausses**, toutes
+    remplacées après inspection réelle des images (`pgbouncer -d pgbouncer`
+    rejeté par `FATAL: not allowed`, seul `gis` a une entrée dans
+    `userlist.txt` ; `martin` n'a pas `curl` et `localhost` y résout en
+    IPv6 alors que martin n'écoute qu'en IPv4 ; `titiler` n'écoutait sur
+    aucun port testé). **5ᵉ occurrence de la classe de bug SP-21, trouvée
+    par cette même tâche** : `titiler:0.18.4` (base tiangolo/uvicorn-
+    gunicorn) écoute sur le port 80, `PORT` jamais câblé, alors que `core`
+    proxifie chaque tuile terrain 3D en serveur-à-serveur vers
+    `${TITILER_URL:-http://titiler:8000}` — connexion refusée, le terrain
+    3D hébergé ne pouvait **pas fonctionner du tout** en stack packagée.
+    Décision Tanguy : corrigé dans SP-21 (`PORT: "8000"` câblé, vérifié
+    depuis un second conteneur sur le réseau docker : `http://titiler:8000/
+    healthz` → 200). **Ce qui n'a pas pu être vérifié** : le
+    `depends_on: core: service_healthy` d'`export-worker` reste vérifié
+    **par lecture seulement** — `shell` et `export-worker` n'ont jamais atteint
+    « started » dans les vérifications réelles de cette session, bloqués
+    par des pannes de packaging **pré-existantes, sans rapport avec
+    SP-21** (cf. `### Suivis non bloquants ouverts`).
+  - **Notices GPL/AGPL** : notice + labels OCI embarqués dans
+    `geostudio-qgis-worker` (QGIS + GRASS, GPL-2.0-or-later) — deux
+    inexactitudes du plan corrigées au passage : « aucune modification »
+    était faux (`qgis_process plugins enable grassprovider` grave une
+    activation de plugin dans le profil QGIS de l'image, reformulé en
+    « pas de modification des sources, un réglage de configuration ») et
+    « QGIS 3.34 LTR » précisé en « 3.34.5 "Prizren", LTR » (lu depuis
+    l'image réelle). En reprenant la checklist sur les 8 images publiées,
+    la revue a trouvé que l'affirmation du plan « sept d'entre elles ne
+    contiennent que du permissif » était **fausse** :
+    `geostudio-postgis` embarque PostGIS (GPL-2.0-or-later) — puis que
+    **`geostudio-backup` embarque le client MinIO `mc`, en
+    AGPL-3.0-or-later**, et que c'est la tâche 1 de SP-21 elle-même
+    (matrice de release) qui a fait de cette image un objet publié, donc
+    distribué, pour la première fois. Décision Tanguy : embarquer la
+    notice maintenant (`LICENSE-BACKUP.md` + 3 labels OCI, build et notice
+    relus depuis un vrai conteneur). Constat supplémentaire, documenté mais
+    non traité : `geostudio-core` et `geostudio-export-worker` embarquent
+    `psycopg` (LGPL-3.0-only) et `psycopg2-binary`, copyleft faible jusqu'ici
+    non documenté — l'opportunité d'une notice embarquée pour ces deux
+    images **n'est pas tranchée** (leurs Dockerfiles étaient hors du
+    périmètre de fichiers autorisés pour cette tâche).
+    `geostudio-postgis` reste sans notice/labels embarqués, **bloqué** :
+    son `Dockerfile` porte des lignes non commitées d'un autre travail en
+    cours dans ce même arbre, et le stager emporterait ce travail.
 
 ### À venir
 
@@ -925,7 +1048,15 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
 - Tags d'images Docker `pgbouncer`/`martin`/`titiler` à repinner si dérive ;
   documenter dans `.env.example`.
 - Volume `pg-data` du projet compose par défaut cassé (`alembic_version` jamais
-  stampée) — réparation non destructive hors périmètre.
+  stampée) — réparation non destructive hors périmètre. **Croisement SP-21** :
+  `shell` a désormais `depends_on: core: condition: service_healthy` (décision
+  Tanguy, gardé tel que le plan SP-21 le spécifiait) — si `core` ne devient
+  jamais `healthy` (par exemple à cause de ce volume cassé), `shell` ne démarre
+  plus du tout, là où avant il démarrait quand même et affichait une page
+  d'erreur. `docker compose ps` le dit désormais explicitement (`shell` reste
+  `Created`), ce qui est un diagnostic plus net qu'une page muette, mais change
+  le symptôme observé par quiconque tombe sur ce volume cassé sans connaître ce
+  changement.
 - Questions produit ouvertes : Q2 (premiers utilisateurs réels), Q10 (temps
   réel), Q11 (offline) — cf. comparatif §8. Seule Q2 peut réordonner SP-3/SP-6.
 - Brainstorm Analytics Platform (2026-07-09) validé et décliné en SP-14/SP-16,
@@ -988,3 +1119,66 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   dans un export avant que le `QueryClient` par défaut (3 retries,
   backoff exponentiel) ne marque la requête de permission en erreur —
   `retry: false` sur `entry.tsx`'s `QueryClient` réglerait ça proprement.
+- SP-21, suivis non bloquants : la restauration n'a **jamais été rejouée
+  de bout en bout** (chantier 1.4, renvoyé en vague 2) — le périmètre de
+  sauvegarde est vérifié mécaniquement (quels buckets, quelles tables),
+  mais personne n'a observé une restauration réussie, en particulier pour
+  un item `tileset3d`. Le garde-fou **lit des YAML** : il ne démarre rien,
+  ne prouve pas qu'un tag existe réellement au registre (seul `docker
+  manifest inspect`, exécuté à la main en tâche 5, le fait), et ne prouve
+  pas qu'un `docker compose pull && up` de l'overlay complet fonctionne
+  bout en bout. La sonde `worker` (`procrastinate healthchecks`) ne
+  détecte pas un worker coincé sur une tâche qui ne rend jamais la main —
+  seule la liveness du process, pas la progression du travail. Le pinning
+  au patch est une dette d'entretien assumée : aucun outil de mise à jour
+  automatique (Renovate/Dependabot ou équivalent) n'est en place, quatre
+  images de plus à surveiller manuellement pour les CVE. Le
+  `depends_on: core: service_healthy` d'`export-worker` reste vérifié
+  **par lecture seulement** — la stack n'a pas pu être montée jusque là
+  dans cette
+  session (cf. panne pré-existante ci-dessous), donc jamais observé en
+  conteneur réel. Décision Tanguy sur `shell` → `core:
+  condition: service_healthy` (gardé) et son interaction avec le volume
+  `pg-data` cassé : documentée dans le bullet `pg-data` ci-dessus, pas
+  répétée ici.
+  **Panne de packaging pré-existante, distincte de SP-21**, rencontrée en
+  sondant la stack réelle et à ne pas confondre avec un défaut introduit
+  par cette tâche : GUC invalide `output_plugin_libraries` dans le
+  `command:` de `postgis` ; les images `core`/`worker` ignorent `uv.lock`
+  au build et récupèrent `mcp==2.0.0`, qui casse l'import `fastmcp` ; un
+  `libexpat.so.1` manquant pour `defusedxml`. Ces trois pannes ont empêché
+  `shell` et `export-worker` d'atteindre « started » dans les
+  vérifications Docker réelles de cette session — non corrigées, hors
+  périmètre du garde-fou de déployabilité (qui teste la forme du compose,
+  pas la buildabilité des images).
+  **Licences** : notice + labels OCI embarqués toujours **manquants** pour
+  `geostudio-postgis` — bloqué, son `Dockerfile` porte des lignes non
+  commitées d'un autre travail en cours dans cet arbre, et le stager
+  emporterait ce travail. La question d'une notice LGPL embarquée pour
+  `geostudio-core`/`geostudio-export-worker` (`psycopg`, LGPL-3.0-only,
+  utilisé non modifié) n'est **pas tranchée** — traitement documenté mais
+  pas validé par Tanguy. La licence de Chromium/FFmpeg embarqués dans
+  `geostudio-export-worker` reste délibérément « non tranchée » (précédent
+  SP-17a). Le binaire `mc` de `geostudio-backup` est téléchargé depuis une
+  URL non pinnée en version (`release/linux-amd64/mc`) : l'offre de source
+  AGPL ne peut donc pas nommer la version exacte redistribuée dans une
+  image donnée, seulement pointer vers le dépôt amont.
+  **Résolveur AST des variables d'environnement** — angles morts connus,
+  documentés mais non couverts : un nom dont la valeur est calculée (pas
+  une constante littérale), une f-string, une indirection par `getattr`.
+  `_module_string_constants` ignore les affectations chaînées
+  (`A = B = "X"`) et les `AnnAssign` (`A: str = "X"`).
+  **Minors résiduels à garder en tête** : le docstring de tête de
+  `test_deployability.py` ne nomme encore que les quatre incidents
+  d'origine (SP-17a, SP-17b, tileset3d, `CORE_ETL_ENABLED`), pas les 3
+  allowlists SSRF que la même règle a trouvées plus tard — raison d'être
+  périmée dans le fichier dont c'est justement l'objet ; `.env.example`
+  documente `S3_TILESET3D_BUCKET`/`S3_TERRAIN3D_BUCKET` comme des lignes
+  réglables alors qu'elles sont figées en dur dans `docker-compose.yml` —
+  un réglage d'apparence atteignable, sans effet réel, même classe que
+  SP-21 lui-même, côté « documenté mais non substitué », qui n'est couvert
+  par aucune des 7 règles (la règle 5 ne vérifie que la direction inverse) ;
+  la sonde `pgbouncer` traverse le pool jusqu'à Postgres (`select 1`), donc
+  `pgbouncer` passe `unhealthy` si `postgis` est dégradé — sans cascade
+  réelle aujourd'hui, vérifié : les cinq consommateurs de `pgbouncer` sont
+  tous en `service_started`, jamais `service_healthy`.
