@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -691,9 +692,6 @@ def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_
         headers={"Authorization": "Bearer anything"},
     )
     assert response.status_code == 201, response.text
-
-
-from unittest.mock import Mock
 
 
 def test_get_config_by_item_with_mode_runtime_increments_counter(client, monkeypatch):

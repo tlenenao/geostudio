@@ -1,4 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+import http.server
+import socket
+import threading
+
 import pytest
 
 from app.configs import repository as configs_repo
@@ -361,11 +365,6 @@ def test_launch_and_navigate_cleans_up_driver_and_browser_on_mid_sequence_failur
 
     assert browser.closed is True
     assert driver.stopped is True
-
-
-import http.server
-import socket
-import threading
 
 
 def _free_port() -> int:

@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-from app.search.ranking import reciprocal_rank_fusion
+import pytest
+from sqlalchemy import select
+
+from app.db import Base, make_session_factory
+from app.items.models import Item
+from app.search.providers import FakeProvider
+from app.search.ranking import hybrid_search_ids, reciprocal_rank_fusion
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
 def test_rrf_favors_items_present_in_both_lists():
@@ -25,17 +33,6 @@ def test_rrf_k_constant_is_configurable():
     ranked_k1 = reciprocal_rank_fusion([["a"]], k=1)
     assert ranked_default[0][1] == 1 / 61
     assert ranked_k1[0][1] == 1 / 2
-
-
-import pytest
-from sqlalchemy import select
-
-from app.db import Base, make_session_factory
-from app.items.models import Item
-from app.search.providers import FakeProvider
-from app.search.ranking import hybrid_search_ids
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
 
 
 @pytest.fixture()

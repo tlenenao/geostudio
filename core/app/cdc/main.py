@@ -21,10 +21,10 @@ from app.cdc import (  # noqa: E402  (après setup(), même patron que app.jobs)
     consumer,
     storage,
 )
-from app.cdc.buffer import CdcBufferManager
-from app.cdc.parquet_writer import write_geoparquet
-from app.collections.models import Collection
-from app.db import make_engine, make_session_factory
+from app.cdc.buffer import CdcBufferManager  # noqa: E402
+from app.cdc.parquet_writer import write_geoparquet  # noqa: E402
+from app.collections.models import Collection  # noqa: E402
+from app.db import make_engine, make_session_factory  # noqa: E402
 
 
 class _WorkerState:

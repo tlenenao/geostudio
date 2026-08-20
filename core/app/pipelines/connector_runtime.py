@@ -232,8 +232,7 @@ def materialize_rest_connector(
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
-        for page in client.paginate(params.path, method=params.method, params=params.query or None):
-            yield page
+        yield from client.paginate(params.path, method=params.method, params=params.query or None)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
