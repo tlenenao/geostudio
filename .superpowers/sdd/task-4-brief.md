@@ -1,335 +1,276 @@
-### Task 4: `app.appexport.snapshot.write_snapshot`
+## Task 4: Core — `mcp_loopback.py` + `tools_allowlist.py`
 
 **Files:**
-- Create: `core/app/appexport/snapshot.py`
-- Create: `core/tests/test_appexport_snapshot.py`
+- Create: `core/app/copilot/mcp_loopback.py`
+- Create: `core/app/copilot/tools_allowlist.py`
+- Create: `core/tests/test_copilot_mcp_loopback.py`
 
 **Interfaces:**
-- Consumes: `CollectionSnapshotEntry`/`write_manifest` (Task 3),
-  `app.cdc.parquet_writer.ChangeRow`/`write_geoparquet` (unchanged),
-  `app.collections.schema_json.table_info_to_schema` (unchanged),
-  `app.features.repository.select_features`/`app.features.rls.rls_scope`
-  (unchanged, same as `freeze.py`).
-- Produces: `write_snapshot(session, *, tenant_id: str, config: BuilderConfig,
-  snapshot_dir: str, max_records_per_source: int = 50_000) ->
-  list[CollectionSnapshotEntry]` — for every distinct collection referenced
-  by a `"features"`/`"statistics"` DataSource, writes a GeoParquet partition
-  under `{snapshot_dir}/snapshot/tenant_id=.../collection_id=.../dt=snapshot/data.parquet`
-  (skipped if the collection has zero rows) and a
-  `{snapshot_dir}/manifest.json` listing every entry. Consumed by Task 7's
-  bundler and Task 8's job.
+- Consumes: the app's own `/mcp` endpoint (mounted by `create_app()`, `core/app/main.py:236`), same JSON-RPC-over-HTTP handshake as `core/tests/test_mcp_routes.py` (`initialize` → `notifications/initialized` → `tools/list`/`tools/call`, SSE `data: ` line parsing).
+- Produces: `McpLoopbackSession(mcp_token, http_client=None)` with `async list_tools() -> list[dict]`, `async call_tool(name, arguments) -> ToolCallResult`, `async aclose()`; `McpLoopbackError`; `ALLOWED_MCP_TOOL_NAMES: frozenset[str]`. Consumed by Task 5's `routes.py`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_appexport_snapshot.py`:
+Create `core/tests/test_copilot_mcp_loopback.py`, reusing the exact app-construction pattern from `core/tests/test_mcp_routes.py` (fresh `create_app()` + `sqlite` in-memory + `CORE_AUTH_MODE=mock`), but driving the loopback client through an ASGI-transport `httpx.AsyncClient` instead of the raw `TestClient`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""write_snapshot (SP-18c) — mêmes contraintes PostGIS-réelles que
-test_appexport_freeze.py : introspect_table/insert_feature/select_features
-touchent pg_class/pg_namespace/geometry_columns et RLS Postgres réelle, ni
-portable SQLite ni simulable sans une vraie base."""
+import httpx
 import pytest
-from sqlalchemy import text
 
-import app.main  # noqa: F401 — import-only, registers every model on
-# Base.metadata before create_all() — même piège que test_appexport_freeze.py.
-from app.appexport.manifest import read_manifest
-from app.appexport.snapshot import write_snapshot
-from app.collections.ddl import apply_collection_ddl
-from app.collections.introspection_pg import introspect_table
-from app.collections.repository import create_collection
-from app.configs.schemas import BuilderConfig, DataSource, Layout, LayoutItem, Page
-from app.db import Base, make_session_factory
-from app.features.repository import insert_feature
-from app.features.rls import rls_scope
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
-from duckdb import connect as duckdb_connect
-
-pytestmark = pytest.mark.postgis
+from app import db
+from app.copilot.mcp_loopback import ALLOWED_MCP_TOOL_NAMES, McpLoopbackError, McpLoopbackSession
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 
 
 @pytest.fixture()
-def pg_session(pg_engine):
-    Base.metadata.create_all(pg_engine)
-    Session = make_session_factory(pg_engine)
-    with Session() as s:
-        yield s
-    with pg_engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS t_snapshot_x"))
-        conn.execute(text(
-            "TRUNCATE collection_shares, collections, audit_log, items, "
-            "users, tenants CASCADE"
-        ))
+def app(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_BASE_URL", "http://test")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    application = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    application.dependency_overrides[db.get_session] = override_session
+    return application
 
 
-def _app_config(data_sources) -> BuilderConfig:
-    return BuilderConfig(
-        kind="app", dataSources=data_sources,
-        layout=Layout(type="grid", items=[]),
-        pages=[Page(id="p1", name="Page 1", layout=Layout(
-            type="grid", items=[LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2)],
-        ))],
-    )
+@pytest.mark.asyncio
+async def test_list_tools_returns_full_catalog(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            tools = await session.list_tools()
+        finally:
+            await session.aclose()
+        names = {t["name"] for t in tools}
+        assert ALLOWED_MCP_TOOL_NAMES <= names  # every allowlisted tool really exists server-side
 
 
-def test_no_data_sources_writes_empty_manifest(pg_session, tmp_path):
-    entries = write_snapshot(
-        pg_session, tenant_id="t1", config=_app_config([]), snapshot_dir=str(tmp_path),
-    )
-    assert entries == []
-    assert read_manifest(str(tmp_path / "manifest.json")) == []
+@pytest.mark.asyncio
+async def test_call_tool_returns_text_result(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            result = await session.call_tool("whoami", {})
+        finally:
+            await session.aclose()
+        assert result.is_error is False
+        assert "mockuser" in result.text
 
 
-def test_features_source_is_written_as_geoparquet(pg_session, tmp_path):
-    s = pg_session
-    s.execute(text(
-        "CREATE TABLE t_snapshot_x (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
-    ))
-    s.commit()
-    apply_collection_ddl(s, "t_snapshot_x")
-
-    tenant = get_or_create_default_tenant(s)
-    owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
-    )
-    s.commit()
-    col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_snapshot_x",
-        title="X", description="", is_public=True,
-        pk_column="id", geometry_column=None, geometry_type=None, srid=None,
-    )
-    s.commit()
-
-    info = introspect_table(s, col.table_name)
-    with rls_scope(s, tenant.id):
-        insert_feature(s, info, properties={"name": "Alpha"}, geometry=None)
-        insert_feature(s, info, properties={"name": "Beta"}, geometry=None)
-    s.commit()
-
-    config = _app_config([
-        DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
-    ])
-    entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
-
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.id == col.id
-    assert entry.collection_json["featureCount"] == 2
-    assert entry.collection_json["isPublic"] is True
-    assert entry.collection_json["canWrite"] is False
-    assert entry.schema_json["pk"] == "id"
-
-    parquet_path = (
-        tmp_path / "snapshot" / f"tenant_id={tenant.id}" / f"collection_id={col.id}"
-        / "dt=snapshot" / "data.parquet"
-    )
-    assert parquet_path.is_file()
-    conn = duckdb_connect(":memory:")
-    rows = conn.execute(f"SELECT name FROM read_parquet('{parquet_path}') ORDER BY name").fetchall()
-    conn.close()
-    assert rows == [("Alpha",), ("Beta",)]
-
-    on_disk = read_manifest(str(tmp_path / "manifest.json"))
-    assert len(on_disk) == 1
-    assert on_disk[0].id == col.id
+@pytest.mark.asyncio
+async def test_call_tool_surfaces_tool_execution_error_without_raising(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            # get_item on a nonexistent id: the tool itself raises, MCP
+            # reports it as a tool-level error (isError), not a protocol
+            # failure — must not raise McpLoopbackError.
+            result = await session.call_tool("get_item", {"itemId": "does-not-exist"})
+        finally:
+            await session.aclose()
+        assert result.is_error is True
 
 
-def test_collection_with_no_rows_writes_no_parquet_file(pg_session, tmp_path):
-    s = pg_session
-    s.execute(text(
-        "CREATE TABLE t_snapshot_x (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
-    ))
-    s.commit()
-    apply_collection_ddl(s, "t_snapshot_x")
-
-    tenant = get_or_create_default_tenant(s)
-    owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
-    )
-    s.commit()
-    col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_snapshot_x",
-        title="X", description="", is_public=True,
-        pk_column="id", geometry_column=None, geometry_type=None, srid=None,
-    )
-    s.commit()
-
-    config = _app_config([
-        DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
-    ])
-    entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
-
-    assert entries[0].collection_json["featureCount"] == 0
-    parquet_dir = tmp_path / "snapshot" / f"tenant_id={tenant.id}" / f"collection_id={col.id}"
-    assert not parquet_dir.exists()
-
-
-def test_same_collection_referenced_twice_is_written_once(pg_session, tmp_path):
-    s = pg_session
-    s.execute(text(
-        "CREATE TABLE t_snapshot_x (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
-    ))
-    s.commit()
-    apply_collection_ddl(s, "t_snapshot_x")
-
-    tenant = get_or_create_default_tenant(s)
-    owner = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="", bootstrap_admin=False,
-    )
-    s.commit()
-    col = create_collection(
-        s, tenant_id=tenant.id, owner_id=owner.id, table_name="t_snapshot_x",
-        title="X", description="", is_public=True,
-        pk_column="id", geometry_column=None, geometry_type=None, srid=None,
-    )
-    s.commit()
-
-    config = _app_config([
-        DataSource(id="s1", type="features", service="core", layer=col.id, query={}),
-        DataSource(id="s2", type="statistics", service="core", layer=col.id, query={}),
-    ])
-    entries = write_snapshot(s, tenant_id=tenant.id, config=config, snapshot_dir=str(tmp_path))
-
-    assert len(entries) == 1
+@pytest.mark.asyncio
+async def test_call_tool_raises_on_unknown_tool_name(app):
+    async with app.router.lifespan_context(app):
+        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        session = McpLoopbackSession("anything", http_client=http_client)
+        try:
+            with pytest.raises(McpLoopbackError):
+                await session.call_tool("not_a_real_tool", {})
+        finally:
+            await session.aclose()
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+Note: check `core/pyproject.toml`'s `[tool.pytest.ini_options]` for `asyncio_mode` — if it's not `"auto"`, add `@pytest.mark.asyncio` is already present above and confirm `pytest-asyncio` is a dependency (it must be, since `core/tests/test_mcp_routes.py`'s own async paths and the app's async route handlers are already tested elsewhere in this suite — if `uv run pytest` errors with "async def functions are not natively supported", check `core/pyproject.toml` for the marker registration and add `asyncio_mode = "auto"` under `[tool.pytest.ini_options]` only if it's genuinely missing, matching whatever convention the rest of the suite already uses).
 
-Run: `cd core && uv run pytest tests/test_appexport_snapshot.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.snapshot'`
-(all four tests skip anyway if `CORE_TEST_DATABASE_URL` is unset — set it
-before running, per this repo's usual postgis test setup, e.g. via the same
-docker Postgres CI already spins up in `test-gate`).
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 3: Create `snapshot.py`**
+Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.copilot.mcp_loopback'`.
 
-Create `core/app/appexport/snapshot.py`:
+- [ ] **Step 3: Implement**
+
+Create `core/app/copilot/tools_allowlist.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Écrit un instantané GeoParquet local par collection référencée par une
-config (SP-18c) — même patron in-process que app.appexport.freeze
-(introspect_table + select_features sous rls_scope), mais au lieu
-d'embarquer des enregistrements JSON dans la config, écrit une partition
-GeoParquet au format CDC (app.cdc.parquet_writer.write_geoparquet/ChangeRow)
-avec un seul _lsn=0/_op="insert" par ligne — un instantané est exactement
-« un lot CDC de rien que des insertions ». app.analytics.aggregate.
-run_collection_aggregate (réutilisé tel quel par le mini-serveur, Task 6)
-attend cette disposition hive-partitionnée
-(tenant_id=X/collection_id=Y/dt=*/*.parquet) avec colonnes _lsn/_op — c'est
-pour ça, pas par choix arbitraire.
+"""Ensemble fermé des outils MCP que le copilote peut invoquer en loopback
+(SP-20). Exclut délibérément save_app_config/set_sharing : le copilote
+édite la config déjà ouverte dans le builder uniquement via des opérations
+côté client (clientOps, jamais écrites en base pendant la conversation) ;
+il peut CRÉER un nouvel item (create_item/create_form_app) via les mêmes
+outils qu'un agent MCP externe, jamais muter un item existant directement."""
 
-Une collection sans aucune ligne ne produit aucun fichier parquet (au lieu
-d'un GeoDataFrame vide dont le schéma serait mal inféré) — le mini-serveur
-(items.py/run_collection_aggregate) tolère déjà un glob sans fichier
-(retourne une page vide), donc rien à modifier côté lecture.
-
-Une même collection référencée par plusieurs DataSources (ex. une carte et
-un widget d'agrégat sur la même collection) n'est écrite qu'une fois —
-dédoublonnage par collection_id."""
-import os
-
-from shapely.geometry import shape as shapely_shape
-
-from app.appexport.manifest import CollectionSnapshotEntry, write_manifest
-from app.cdc.parquet_writer import ChangeRow, write_geoparquet
-from app.collections import repository as collections_repo
-from app.collections.introspection_pg import introspect_table
-from app.collections.schema_json import table_info_to_schema
-from app.configs.schemas import BuilderConfig
-from app.features.repository import select_features
-from app.features.rls import rls_scope
-
-_PAGE_SIZE = 1000
-
-
-def _collection_json(col, *, feature_count: int) -> dict:
-    return {
-        "id": col.id, "title": col.title, "description": col.description,
-        "tableName": col.table_name, "isPublic": col.is_public, "editable": False,
-        "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
-        "canWrite": False, "featureCount": feature_count, "owner": None,
-    }
-
-
-def _fetch_rows(session, *, tenant_id: str, info, max_records: int) -> list[ChangeRow]:
-    rows: list[ChangeRow] = []
-    offset = 0
-    with rls_scope(session, tenant_id):
-        while len(rows) < max_records:
-            page = select_features(
-                session, info, limit=_PAGE_SIZE, offset=offset,
-                bbox=None, geom_intersects=None, filters=None,
-            )
-            for feature in page.features:
-                geometry = feature["geometry"]
-                wkb_hex = shapely_shape(geometry).wkb_hex if geometry else None
-                rows.append(ChangeRow(
-                    op="insert", lsn=0, ts=0.0, pk_column=info.pk_column,
-                    pk_value=feature["id"], columns=feature["properties"],
-                    geometry_column=info.geometry_column, geometry_wkb_hex=wkb_hex,
-                ))
-            if len(page.features) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
-    return rows[:max_records]
-
-
-def write_snapshot(
-    session, *, tenant_id: str, config: BuilderConfig, snapshot_dir: str,
-    max_records_per_source: int = 50_000,
-) -> list[CollectionSnapshotEntry]:
-    entries: list[CollectionSnapshotEntry] = []
-    seen: set[str] = set()
-
-    for source in config.dataSources:
-        if source.type not in ("features", "statistics"):
-            continue
-        collection_id = source.layer
-        if collection_id in seen:
-            continue
-        seen.add(collection_id)
-
-        col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
-        info = introspect_table(session, col.table_name)
-        rows = _fetch_rows(session, tenant_id=tenant_id, info=info, max_records=max_records_per_source)
-
-        if rows:
-            parquet_dir = os.path.join(
-                snapshot_dir, "snapshot", f"tenant_id={tenant_id}",
-                f"collection_id={collection_id}", "dt=snapshot",
-            )
-            os.makedirs(parquet_dir, exist_ok=True)
-            write_geoparquet(rows, srid=info.srid or 4326, path=os.path.join(parquet_dir, "data.parquet"))
-
-        entries.append(CollectionSnapshotEntry(
-            id=col.id, tenant_id=tenant_id,
-            collection_json=_collection_json(col, feature_count=len(rows)),
-            schema_json=table_info_to_schema(info),
-            table_info=info,
-        ))
-
-    os.makedirs(snapshot_dir, exist_ok=True)
-    write_manifest(entries, os.path.join(snapshot_dir, "manifest.json"))
-    return entries
+ALLOWED_MCP_TOOL_NAMES = frozenset({
+    "search_catalog",
+    "list_items",
+    "explain_dataset",
+    "run_analytics_query",
+    "create_item",
+    "create_form_app",
+})
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+Create `core/app/copilot/mcp_loopback.py`:
 
-Run: `cd core && uv run pytest tests/test_appexport_snapshot.py -v`
-Expected: PASS (4 tests) against a real `CORE_TEST_DATABASE_URL` Postgres;
-SKIPPED (all 4) if that env var is unset.
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Client de rappel vers le serveur /mcp existant, pour la boucle
+d'outils du copilote (SP-20) — un vrai appel réseau (HTTP), pas une
+logique d'outil dupliquée. Réutilise le même protocole JSON-RPC-sur-HTTP
+déjà exercé par core/tests/test_mcp_routes.py (initialize ->
+notifications/initialized -> tools/list ou tools/call, réponse en SSE) :
+un httpx.AsyncClient brut suffit, pas besoin du SDK client `mcp` (deuxième
+dépendance client pour un seul appelant)."""
+import json
+import os
+import uuid
+
+import httpx
+
+
+class McpLoopbackError(Exception):
+    """Échec au niveau du protocole (poignée de main, HTTP, réponse
+    malformée) — distinct d'un outil qui s'exécute et lève une erreur
+    métier, renvoyée comme ToolCallResult(is_error=True) pour que le LLM
+    la voie et puisse réagir, plutôt que de faire planter tout le tour."""
+
+
+class ToolCallResult:
+    def __init__(self, text: str, is_error: bool):
+        self.text = text
+        self.is_error = is_error
+
+
+class McpLoopbackSession:
+    """Une session par requête POST /copilot/turn — la poignée de main
+    n'a lieu qu'une fois, paresseusement, au premier appel."""
+
+    def __init__(self, mcp_token: str, *, http_client: httpx.AsyncClient | None = None):
+        self._mcp_token = mcp_token
+        self._client = http_client or httpx.AsyncClient(
+            base_url=os.environ["CORE_BASE_URL"], timeout=15.0,
+        )
+        self._owns_client = http_client is None
+        self._session_id: str | None = None
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {self._mcp_token}",
+        }
+        if self._session_id:
+            headers["mcp-session-id"] = self._session_id
+        return headers
+
+    async def _ensure_initialized(self) -> None:
+        if self._session_id:
+            return
+        response = await self._client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18", "capabilities": {},
+                    "clientInfo": {"name": "geostudio-copilot", "version": "0"},
+                },
+            },
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP initialize failed: {response.status_code}")
+        session_id = response.headers.get("mcp-session-id")
+        if not session_id:
+            raise McpLoopbackError("MCP initialize did not return a session id")
+        self._session_id = session_id
+        notify = await self._client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+            headers=self._headers(),
+        )
+        if notify.status_code != 202:
+            raise McpLoopbackError(f"MCP notifications/initialized failed: {notify.status_code}")
+
+    def _parse_sse(self, response: httpx.Response) -> dict:
+        for line in response.text.splitlines():
+            if line.startswith("data: "):
+                return json.loads(line.removeprefix("data: "))
+        raise McpLoopbackError("no SSE data line in MCP response")
+
+    async def list_tools(self) -> list[dict]:
+        await self._ensure_initialized()
+        response = await self._client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/list", "params": {}},
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP tools/list failed: {response.status_code}")
+        payload = self._parse_sse(response)
+        if "error" in payload:
+            raise McpLoopbackError(f"MCP tools/list error: {payload['error']}")
+        return payload["result"]["tools"]
+
+    async def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
+        await self._ensure_initialized()
+        response = await self._client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            },
+            headers=self._headers(),
+        )
+        if response.status_code == 401:
+            raise McpLoopbackError("MCP token rejected (expired or wrong audience)")
+        if response.status_code != 200:
+            raise McpLoopbackError(f"MCP tools/call failed: {response.status_code}")
+        payload = self._parse_sse(response)
+        if "error" in payload:
+            # Erreur JSON-RPC de protocole (ex. nom d'outil inconnu) —
+            # distincte d'un outil qui s'exécute et lève, cf. isError ci-dessous.
+            raise McpLoopbackError(f"MCP tools/call error: {payload['error']}")
+        result = payload["result"]
+        content = result.get("content") or []
+        text = content[0]["text"] if content else ""
+        return ToolCallResult(text=text, is_error=bool(result.get("isError", False)))
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
+Expected: PASS (all 4). If `test_call_tool_surfaces_tool_execution_error_without_raising` fails because `get_item` isn't a real registered tool name, run `uv run pytest tests/test_copilot_mcp_loopback.py::test_list_tools_returns_full_catalog -v -s` and print `tools` to find any real registered tool that raises a `ValueError`-style "not found" on a bad id (check `core/app/mcp/tools.py` for one — `explain_dataset`/`run_analytics_query` on a bad `datasetId` are documented in SP-14o/SP-16b's own text as doing exactly this), and substitute that tool name/argument instead of `get_item`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/appexport/snapshot.py core/tests/test_appexport_snapshot.py
-git commit -m "feat(core): write_snapshot — GeoParquet snapshot per collection (SP-18c)"
+git add core/app/copilot/mcp_loopback.py core/app/copilot/tools_allowlist.py core/tests/test_copilot_mcp_loopback.py
+git commit -m "$(cat <<'EOF'
+feat(core): client de rappel MCP + allowlist d'outils pour le copilote (SP-20)
+
+McpLoopbackSession parle JSON-RPC-sur-HTTP à /mcp, le même protocole déjà
+exercé par test_mcp_routes.py — un vrai appel réseau, aucune logique
+d'outil dupliquée. ALLOWED_MCP_TOOL_NAMES fixe les 6 outils accessibles au
+copilote (jamais save_app_config/set_sharing).
+EOF
+)"
 ```
 
 ---

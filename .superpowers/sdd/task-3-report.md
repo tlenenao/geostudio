@@ -1,118 +1,137 @@
-# Task 3 Report: `app.appexport.manifest` — shared snapshot manifest shape
-
-**Status:** DONE  
-**Commit:** 7ecc571  
-**Date:** 2026-08-15
+# Task 3 Report: Core — `llm_provider.py`
 
 ## Summary
 
-Implemented a new shared JSON manifest module (`app.appexport.manifest`) that serializes/deserializes the interface contract between the Autoporté export job (Task 4, full core with Postgres) and the slim mini-server (Task 6, no database). This module is the sole bridge between the two separate Docker processes — no Python imports or network calls cross this boundary at runtime, only a JSON file on disk.
+Successfully implemented the pluggable LLM provider abstraction for SP-20 copilote embarqué following TDD discipline. All 5 tests pass. Implementation follows the exact same architectural pattern as `app.search.providers.EmbeddingProvider` (SP-7).
 
-## What Was Done
+## Implementation Details
 
-### 1. Test-Driven Development (TDD)
+### Files Created
 
-Following TDD discipline:
-- **Step 1:** Created `core/tests/test_appexport_manifest.py` with the exact test code from the brief
-- **Step 2:** Ran tests and confirmed `ModuleNotFoundError: No module named 'app.appexport.manifest'` ✓
-- **Step 3:** Created `core/app/appexport/manifest.py` with the exact module code from the brief
-- **Step 4:** Re-ran tests and confirmed both tests pass ✓
+1. **`core/app/copilot/__init__.py`** — Empty module marker
+2. **`core/app/copilot/llm_provider.py`** — Main implementation (84 lines)
+   - `ToolCall` (dataclass): id, name, arguments
+   - `LLMTurn` (dataclass): text response + tool_calls list
+   - `LLMProvider` (Protocol): Interface with single `chat(messages, tools) -> LLMTurn` method
+   - `FakeLLMProvider`: Scriptable, deterministic provider for tests/dev (no network)
+     - Cycles through responses in order
+     - Repeats last response once exhausted
+   - `OpenAICompatibleLLMProvider`: Production HTTP provider
+     - Calls OpenAI-compatible API via httpx
+     - Parses tool_calls from OpenAI message format
+   - `get_llm_provider()`: Factory function
+     - Defaults to `FakeLLMProvider` when `CORE_LLM_PROVIDER` unset or "fake"
+     - Returns `OpenAICompatibleLLMProvider` when `CORE_LLM_PROVIDER=openai`
+     - Raises `ValueError` on unknown provider kind
 
-### 2. Module Implementation
+3. **`core/tests/test_copilot_llm_provider.py`** — 5 test cases (66 lines)
 
-Created `/core/app/appexport/manifest.py` (72 lines) with:
+### TDD Evidence
 
-- **`CollectionSnapshotEntry` dataclass**: A frozen dataclass holding the snapshot of a single collection:
-  - `id: str` — collection identifier
-  - `tenant_id: str` — tenant scope
-  - `collection_json: dict` — full collection metadata as stored
-  - `schema_json: dict` — collection schema
-  - `table_info: TableInfo` — reused directly from `app.collections.introspection` (no duplication of shape)
-
-- **`write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`**: Serializes a list of collection snapshots to JSON file on disk
-  - Converts Python snake_case field names to camelCase for the JSON envelope
-  - Uses `asdict()` for nested `ColumnInfo` objects
-  - Preserves all metadata for round-trip fidelity
-
-- **`read_manifest(path: str) -> list[CollectionSnapshotEntry]`**: Deserializes JSON file back to Python dataclasses
-  - Reconstructs `TableInfo` and `ColumnInfo` objects from JSON
-  - Converts camelCase JSON keys back to snake_case Python fields
-  - Returns empty list if file contains empty collections array
-
-### 3. Key Design Decisions
-
-- **No dataclass duplication**: The module reuses `TableInfo` and `ColumnInfo` from `app.collections.introspection` unchanged, rather than creating parallel shapes. These classes have no runtime dependency on Postgres (Session is only a non-executed type alias), and the standalone mini-server only needs `sqlalchemy` package installed (never a driver or connection).
-
-- **Snake-to-camelCase transformation**: Field names use snake_case in Python (`table_name`, `pk_column`, `geometry_column`, `tenant_id`) but camelCase in JSON (`tableName`, `pkColumn`, `geometryColumn`, `tenantId`). This follows REST API conventions for the JSON envelope while keeping Python code idiomatic.
-
-- **Frozen dataclass**: `CollectionSnapshotEntry` is immutable (`frozen=True`), appropriate for a serialized snapshot that should not be modified in place.
-
-## Test Output
-
+#### RED Phase
 ```
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0
-rootdir: /home/lenen/projets/geostudio/core
-collected 2 items
+$ cd core && uv run pytest tests/test_copilot_llm_provider.py -v
 
-tests/test_appexport_manifest.py::test_write_then_read_manifest_round_trips PASSED [ 50%]
-tests/test_appexport_manifest.py::test_write_manifest_with_no_entries PASSED [100%]
-
-============================== 2 passed in 0.05s ===============================
+ERROR collecting tests/test_copilot_llm_provider.py
+...
+ModuleNotFoundError: No module named 'app.copilot'
 ```
 
-**All assertions passed:**
-- Round-trip preservation: full fidelity on write/read cycle
-- Empty manifest: correctly handles zero entries
-- All field types preserved: strings, dicts, nested dataclasses, integers
+Confirmed module did not exist before implementation.
 
-## Deviations from Brief
+#### GREEN Phase
+```
+$ cd core && uv run pytest tests/test_copilot_llm_provider.py -v
 
-**None.** The implementation follows the brief exactly:
-- Test code copied verbatim
-- Module code copied verbatim
-- Commit message copied verbatim
-- No changes to existing files
+tests/test_copilot_llm_provider.py::test_fake_provider_returns_scripted_responses_in_order PASSED [ 20%]
+tests/test_copilot_llm_provider.py::test_fake_provider_repeats_last_response_once_exhausted PASSED [ 40%]
+tests/test_copilot_llm_provider.py::test_get_llm_provider_defaults_to_fake PASSED [ 60%]
+tests/test_copilot_llm_provider.py::test_get_llm_provider_rejects_unknown_kind PASSED [ 80%]
+tests/test_copilot_llm_provider.py::test_openai_compatible_provider_parses_tool_calls PASSED [100%]
 
-## Self-Review Notes
+============================== 5 passed in 0.07s ===============================
+```
 
-### Strengths
-1. **Isolation**: Module is completely self-contained; no external dependencies beyond what's already in core (sqlalchemy for types only, json/dataclasses from stdlib).
-2. **Round-trip fidelity**: Binary symmetric serialization (write + read preserves all data exactly).
-3. **No database required**: Pure JSON I/O, no queries. Both processes (full core and slim mini-server) can use identical code.
-4. **Type safety**: Frozen dataclass and explicit type annotations make the contract unambiguous.
-5. **Tested thoroughly**: Two tests cover the happy path (round-trip) and edge case (empty list).
+All tests pass on first implementation.
 
-### Potential Future Considerations (not blocking)
-- Versioning: The manifest format has no version field. If the shape evolves in future tasks, a version number in the JSON envelope would enable forward compatibility.
-- Error handling: `read_manifest()` will raise `KeyError` if the JSON is malformed. For robustness in Task 4/6, consider wrapping calls with try/except and providing readable error messages.
-- Bytes/non-serializable fields: The current implementation assumes `collection_json` and `schema_json` are JSON-serializable dicts. If these ever contain bytes or other non-serializable types, explicit handling will be needed.
+### Test Coverage
+
+1. **test_fake_provider_returns_scripted_responses_in_order**
+   - Verifies responses consumed in order
+   - Tests both tool_calls and text responses
+
+2. **test_fake_provider_repeats_last_response_once_exhausted**
+   - Ensures last response repeats indefinitely (not IndexError)
+
+3. **test_get_llm_provider_defaults_to_fake**
+   - Confirms default behavior when env var unset
+
+4. **test_get_llm_provider_rejects_unknown_kind**
+   - Verifies ValueError on invalid provider kind
+   - Monkeypatch ensures env isolation
+
+5. **test_openai_compatible_provider_parses_tool_calls**
+   - Mocks httpx.post to verify API call format
+   - Verifies Bearer token, model, and message format
+   - Tests tool_call parsing from OpenAI response format
+   - Tests JSON argument deserialization
+
+### Architectural Alignment
+
+- Follows same pattern as `app.search.providers.EmbeddingProvider` (SP-7)
+- No database dependencies
+- No authentication/authorization dependencies  
+- Pure backend logic consumed by Task 5's routes.py
+- French documentation aligns with CLAUDE.md language rules
+- Dataclasses for structured data (following project conventions)
+- Protocol for provider interface (duck-typing support)
+- Environment-based factory configuration (os.environ)
+
+### Commit Information
+
+**SHA:** `c3da6d2`  
+**Message:** `feat(core): fournisseur LLM enfichable pour le copilote (SP-20)`
+
+```
+LLMProvider (Protocol) + FakeLLMProvider (scriptable, tests/mock) +
+OpenAICompatibleLLMProvider (CORE_LLM_PROVIDER=openai), même patron que
+app.search.providers.EmbeddingProvider (SP-7).
+```
+
+## Self-Review Findings
 
 ### Code Quality
-- Follows SPDX license header convention.
-- Docstring explains the module's role in SP-18c architecture (shared boundary between processes).
-- Consistent with existing codebase style (PEP 8, type hints).
-- Tests are minimal but sufficient for a pure I/O module.
+✓ All code matches brief exactly — character-for-character  
+✓ French comments and docstrings appropriate per CLAUDE.md  
+✓ SPDX license headers present on all files  
+✓ Type hints complete and correct (Python 3.10+ syntax)  
+✓ Dataclass defaults properly implemented (`field(default_factory=list)`)  
+✓ No type: ignore comments needed  
 
-## Commit Details
+### Testing
+✓ Test file imports work correctly  
+✓ Monkeypatch usage correct (setenv/delenv)  
+✓ Mock httpx.post captures all required headers/JSON  
+✓ JSON parsing tested (arguments field)  
+✓ Error message matching correct (regex match)  
 
-```
-commit 7ecc571
-Author: Claude <noreply@anthropic.com>
-Date:   2026-08-15
+### Architecture
+✓ No integration dependencies (httpx imported only in OpenAI provider)  
+✓ Defaults sensible (FakeLLMProvider for dev, OpenAI for prod)  
+✓ Factory pattern clean and extensible  
+✓ Protocol allows duck-typing if new providers added later  
+✓ No circular imports possible  
 
-    feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)
-    
-    - Create CollectionSnapshotEntry dataclass for snapshot metadata
-    - Implement write_manifest() and read_manifest() for JSON round-trip
-    - Reuse TableInfo/ColumnInfo from app.collections.introspection
-    - Pure I/O, no database required; shared between export job and mini-server
-```
+### No Issues Found
 
-## Dependencies
+Code is production-ready. Implementation complete per brief specification.
 
-This module satisfies the interface requirements for:
-- **Task 4** (export job, full core): Will call `write_manifest()` to serialize collection snapshots to disk
-- **Task 6** (mini-server, slim image): Will call `read_manifest()` to deserialize and serve the data
+## Files Changed
 
-No external consumers yet on this codebase; the module is ready for both downstream tasks.
+- Created: `core/app/copilot/__init__.py`
+- Created: `core/app/copilot/llm_provider.py`
+- Created: `core/tests/test_copilot_llm_provider.py`
+
+## Next Steps
+
+Task 3 complete. The LLM provider module is now available for Task 5's routes.py to consume via `from app.copilot.llm_provider import get_llm_provider`.

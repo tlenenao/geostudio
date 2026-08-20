@@ -1,91 +1,72 @@
-### Task 11: publish `geostudio-appexport-standalone` to ghcr.io
+## Task 11: Shell — `itemClient.ts` (`copilotTurn` + `copilotEnabled`)
 
 **Files:**
-- Modify: `.github/workflows/release.yml`
+- Modify: `shell/src/api/types.ts`
+- Modify: `shell/src/api/itemClient.ts`
 
 **Interfaces:**
-- Produces: on a `v*.*.*` tag push, `release.yml`'s `build-and-push` job
-  also builds and pushes `ghcr.io/tlenenao/geostudio-appexport-standalone`.
+- Produces: `InstanceInfo.copilotEnabled: boolean`; `CopilotMessage`, `CopilotClientOp`, `CopilotTurnResult` types; `ItemClient.copilotTurn(itemId, payload): Promise<CopilotTurnResult>`. Consumed by Task 13 (`CopilotPanel.tsx`) and `AppBuilderPage.tsx` wiring.
 
-- [ ] **Step 1: Add `dockerfile` to every matrix entry and add the 4th image**
+- [ ] **Step 1: Add types**
 
-In `.github/workflows/release.yml`, replace:
+In `shell/src/api/types.ts`, change:
+```ts
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean };
+```
+to:
+```ts
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean; copilotEnabled: boolean };
 
-```yaml
-      matrix:
-        include:
-          - image: geostudio-core
-            context: ./core
-          - image: geostudio-shell
-            context: ./shell
-          - image: geostudio-postgis
-            context: ./deploy/postgis
+export type CopilotMessage = { role: "user" | "assistant"; content: string };
+export type CopilotClientOp = { op: string; args: Record<string, unknown> };
+export type CopilotTurnResult = { reply: string; clientOps: CopilotClientOp[] };
+export type CopilotToolSchema = { name: string; description: string; inputSchema: Record<string, unknown> };
 ```
 
-with:
-
-```yaml
-      matrix:
-        include:
-          - image: geostudio-core
-            context: ./core
-            dockerfile: Dockerfile
-          - image: geostudio-shell
-            context: ./shell
-            dockerfile: Dockerfile
-          - image: geostudio-postgis
-            context: ./deploy/postgis
-            dockerfile: Dockerfile
-          - image: geostudio-appexport-standalone
-            context: .
-            dockerfile: deploy/appexport-standalone/Dockerfile
+Add the method to the `ItemClient` interface, right after `getInstanceInfo(): Promise<InstanceInfo>;`:
+```ts
+  getInstanceInfo(): Promise<InstanceInfo>;
+  copilotTurn(itemId: string, payload: {
+    message: string;
+    history: CopilotMessage[];
+    mcpToken: string;
+    currentConfig: AppConfig;
+    clientTools: CopilotToolSchema[];
+  }): Promise<CopilotTurnResult>;
 ```
 
-- [ ] **Step 2: Pass the resolved Dockerfile path to `docker/build-push-action`**
+- [ ] **Step 2: Implement in `createItemClient`**
 
-In the same file, replace:
+In `shell/src/api/itemClient.ts`, add right after `getAppExportJob`:
 
-```yaml
-      - uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          push: true
-          tags: |
-            ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
-            ghcr.io/tlenenao/${{ matrix.image }}:latest
+```ts
+    async getAppExportJob(_itemId: string, jobId: string): Promise<AppExportJobStatus> {
+      return request<AppExportJobStatus>("GET", `/app-exports/jobs/${jobId}`);
+    },
+
+    async copilotTurn(itemId, payload): Promise<CopilotTurnResult> {
+      return request<CopilotTurnResult>("POST", "/copilot/turn", { itemId, ...payload });
+    },
 ```
 
-with:
+(Add `CopilotTurnResult` to the existing `import type { ... } from "./types"` at the top of the file.)
 
-```yaml
-      - uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
-          push: true
-          tags: |
-            ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
-            ghcr.io/tlenenao/${{ matrix.image }}:latest
-```
+- [ ] **Step 3: Type-check**
 
-(For `geostudio-core`: `context=./core` + `dockerfile=Dockerfile` →
-`file=./core/Dockerfile`, identical to today's implicit default. For the
-new image: `context=.` + `dockerfile=deploy/appexport-standalone/Dockerfile`
-→ `file=./deploy/appexport-standalone/Dockerfile`.)
-
-- [ ] **Step 3: Validate the workflow YAML parses**
-
-Run: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/release.yml'))"`
-Expected: no exception. (This repo has no tag to push and trigger a real
-run — parsing is the only automated check available here; the actual
-build-and-push path is exercised for real the next time Tanguy cuts a
-release, same gap already documented for `geostudio-core`/`shell`/`postgis`.)
+Run: `cd shell && npm run build`
+Expected: PASS — `tsc --noEmit` succeeds (confirms `createItemClient`'s returned object structurally satisfies the updated `ItemClient` interface, and any test-double `ItemClient` implementations using `Partial<ItemClient>` still compile).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add .github/workflows/release.yml
-git commit -m "ci(release): publish geostudio-appexport-standalone to ghcr.io (SP-18c)"
+git add shell/src/api/types.ts shell/src/api/itemClient.ts
+git commit -m "$(cat <<'EOF'
+feat(shell): ItemClient.copilotTurn + InstanceInfo.copilotEnabled (SP-20)
+
+Types CopilotMessage/CopilotClientOp/CopilotTurnResult/CopilotToolSchema
+et méthode copilotTurn() côté client, miroir de createAppExport.
+EOF
+)"
 ```
 
 ---

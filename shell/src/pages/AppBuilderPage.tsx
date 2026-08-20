@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { toBlob } from "html-to-image";
 import { useAppConfig, useCreateDataset, useInstanceInfo, useSaveApp, useUploadThumbnail } from "../api/hooks";
-import type { AppConfig, PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
+import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
+import { CopilotPanel } from "../builder/copilot/CopilotPanel";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
@@ -37,11 +39,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const thumbnail = useUploadThumbnail(pk);
   const instanceQuery = useInstanceInfo();
   const appExportEnabled = instanceQuery.data?.appExportEnabled === true;
+  const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
   const { username } = useAuth();
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const [draft, setDraft] = useState<AppConfig | null>(null);
+  const { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo } = useUndoableDraft();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
@@ -62,11 +65,38 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change
     // (e.g. the refetch after a save) would clobber in-flight local edits.
-    if (query.data) setDraft((d) => d ?? query.data);
-  }, [query.data]);
+    // seedDraft (not setDraft) — this is the session's starting point, not
+    // an edit, and must not create an undo step (SP-19).
+    if (query.data) seedDraft(query.data);
+  }, [query.data, seedDraft]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = document.activeElement;
+      const isTextField = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
-  const activePage = activePageId ?? pages[0]?.id ?? null;
+  // Validate activePageId against the current draft's pages rather than
+  // trusting it blindly: undoing a page addition (Ctrl+Z) reverts `draft`
+  // but `activePageId` is a plain useState, not part of the undo stack, so
+  // it keeps pointing at a page that no longer exists. setPageLayout()
+  // silently no-ops for an unknown pageId (see builder/pages.ts), so every
+  // edit made while activePageId is stale was previously a silent no-op —
+  // SP-19 final-branch-review fix pass, finding C2.
+  const activePage = (activePageId && pages.some((p) => p.id === activePageId))
+    ? activePageId
+    : (pages[0]?.id ?? null);
   const activeLayout = useMemo(
     () => (draft && activePage ? getPageLayout(draft, activePage) : null),
     [draft, activePage],
@@ -76,6 +106,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     () => activeLayout?.items.find((i) => i.id === selectedId) ?? null,
     [activeLayout, selectedId],
   );
+
+  // Same class of bug as C2 above, for the other piece of state that lives
+  // outside the undo stack: undoing a widget addition leaves `selectedId`
+  // pointing at a removed item. `selected` above already resolves to null
+  // in that case, but the stale id itself should not linger indefinitely —
+  // reconcile it explicitly once the item it points to stops existing in
+  // the active layout (SP-19 final-branch-review fix pass, finding M2).
+  useEffect(() => {
+    if (selectedId && activeLayout && !activeLayout.items.some((i) => i.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, activeLayout]);
 
   if (query.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">Chargement…</p>;
@@ -203,6 +245,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
           <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
           <div className="ml-2 flex items-center gap-1">
+            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>Annuler</Button>
+            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>Rétablir</Button>
+          </div>
+          <div className="ml-2 flex items-center gap-1">
             {BREAKPOINTS.map((bp) => (
               <Button
                 key={bp}
@@ -269,6 +315,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 <>
                   <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Export standalone</p>
                   <AppExportPanel itemId={pk} config={draft} />
+                </>
+              )}
+              {copilotEnabled && (
+                <>
+                  <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Copilote</p>
+                  <CopilotPanel itemId={pk} config={draft} activePageId={activePage} setDraft={setDraft} />
                 </>
               )}
             </aside>

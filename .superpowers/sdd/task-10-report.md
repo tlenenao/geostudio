@@ -1,227 +1,159 @@
-# Task 10 report: `deploy/appexport-standalone/Dockerfile`
+# Task 10 report — Shell `useMcpToken.ts`
 
-## What was done
+## What was implemented
 
-1. Created `deploy/appexport-standalone/Dockerfile` with the exact content
-   given in the brief (verbatim, no deviations) — a two-stage build:
-   - Stage `shell-runtime` (`node:20-slim`): `npm ci` + `npm run
-     build:export-runtime` (runs `vite build --config
-     vite.export.config.ts`) producing `dist-export/`, then renames
-     `index.export.html` → `index.html` so `StaticFiles(html=True)` in
-     `core/app/appexport/miniserver/main.py` serves it for `/`.
-   - Stage 2 (`python:3.12-slim`): minimal pip install (`fastapi`,
-     `uvicorn[standard]`, `pydantic`, `duckdb`, `sqlalchemy`), installs the
-     DuckDB `spatial` extension at build time, copies `core/app` → `/app/app`
-     and the built runtime from stage 1 → `/runtime`, sets
-     `APPEXPORT_STANDALONE_DATA_DIR=/data` and
-     `APPEXPORT_STANDALONE_RUNTIME_DIR=/runtime`, exposes port 8000, and
-     runs `uvicorn app.appexport.miniserver.main:app --host 0.0.0.0 --port
-     8000`.
+1. **`shell/src/auth/useAuth.ts`** — added `isMockMode(): boolean`, a simple
+   getter for the existing module-level `mockMode` flag, right after
+   `enableMockAuth`. Verified the real file matches the brief's assumption
+   exactly (same `let mockMode = false;` / `enableMockAuth()` shape, same
+   `// eslint-disable-next-line react-hooks/rules-of-hooks` pattern already
+   used by `useAuth()` itself).
 
-2. Verified pre-conditions before building (not in the brief, done as a
-   sanity check): `shell/package.json` has the `build:export-runtime`
-   script (`vite build --config vite.export.config.ts`),
-   `shell/vite.export.config.ts` exists, and
-   `core/app/appexport/miniserver/main.py` exists (from earlier tasks in
-   this plan).
+2. **`shell/src/builder/copilot/useMcpToken.ts`** — created verbatim from the
+   brief (Step 4). `useMcpToken(): () => Promise<string>`:
+   - Mock mode (`isMockMode()`): returns a `useCallback` resolving to the
+     fixed string `"mock-mcp-token"`.
+   - Real mode: calls `useAuth as useOidcAuth` from `react-oidc-context`
+     directly (bypassing the app's own `useAuth()`, which doesn't expose
+     `signinSilent`), requests `scope: "openid profile email
+     geostudio-mcp-audience"`, caches the resulting `access_token` in a
+     `useRef` for the panel's session lifetime (never localStorage), and
+     throws a French, readable error if `signinSilent` resolves without a
+     token.
 
-3. **Ran the real build** from the repo root:
-   ```
-   docker build -f deploy/appexport-standalone/Dockerfile -t geostudio-appexport-standalone:local .
-   ```
-   Build succeeded end-to-end on the first attempt, no retries needed, no
-   Dockerfile changes required. Total wall time roughly 45s (image layers
-   for `node:20-slim`/`python:3.12-slim` were partly cached from prior
-   builds in this environment; `npm ci` ~20s, `npm run build:export-runtime`
-   ~14.5s, `pip install` ~18.6s, DuckDB spatial extension install ~5.4s).
+3. **Two test files**, per the brief's isolation strategy (mock-mode flag
+   has no reset function, so mock and real-OIDC behavior must live in
+   separate files that each dynamically `import()` the hook under test):
+   - `shell/src/builder/copilot/useMcpToken.test.tsx` (mock mode, 1 test)
+   - `shell/src/builder/copilot/useMcpTokenOidc.test.tsx` (real OIDC mode,
+     2 tests)
 
-4. Confirmed the image was actually produced:
-   ```
-   $ docker images | grep geostudio-appexport-standalone
-   geostudio-appexport-standalone:local   f0e6e388ba1f   482MB   120MB
-   ```
+## Deviations from the brief's literal test code (both found via TDD, both fixed)
 
-5. Committed **only** the new Dockerfile, staged explicitly by path (not
-   `git add -A`/`.`/`-a`), per the brief's Step 3 instructions and the
-   controller's explicit warning about unrelated uncommitted scratch files
-   under `.superpowers/sdd/` in this working tree:
-   ```
-   git add deploy/appexport-standalone/Dockerfile
-   git commit -m "feat(deploy): standalone mini-server Docker image (SP-18c)"
-   ```
-   Commit: `913e906ca9c311dc38fb8d1f6bcbf20c36f5b51e` on branch `dev`.
-   `git show --stat HEAD` confirms exactly one file changed:
-   ```
-   deploy/appexport-standalone/Dockerfile | 44 ++++++++++++++++++++++++++++++++++
-   1 file changed, 44 insertions(+)
-   ```
-   Verified via `git status --porcelain` immediately after `git add` that
-   only `deploy/appexport-standalone/Dockerfile` showed as staged (`A`);
-   all the pre-existing modified `.superpowers/sdd/*.md` files remained
-   unstaged and were untouched by the commit.
+The brief's code was followed exactly for `useAuth.ts` and `useMcpToken.ts`
+(Steps 1 and 4, verbatim). Two defects surfaced in the brief's literal test
+code while running Steps 3/5 — both are pre-existing bugs in the plan text,
+not something introduced by me, and both were fixed rather than "worked
+around":
 
-## Deviations from the brief
+1. **`vi.resetModules()` in `useMcpToken.test.tsx`'s `beforeEach` broke the
+   very test it was meant to protect.** Confirmed empirically (see RED/GREEN
+   below): `enableMockAuth` is imported *statically* at the top of the test
+   file, resolved once at module-load time. `vi.resetModules()` then clears
+   Vitest's module registry, so the later `await import("./useMcpToken")`
+   gets a **fresh** copy of `../../auth/useAuth` with `mockMode` reset back
+   to `false` — while the statically-imported `enableMockAuth()` binding
+   used inside the test still points at the *old* module instance. Result:
+   `isMockMode()` inside the freshly-loaded `useMcpToken.ts` sees `false`,
+   and the hook falls through to the real-OIDC branch, returning
+   `"real-mcp-token"` instead of `"mock-mcp-token"`.
+   Fix: removed `beforeEach(() => vi.resetModules())` — this file has only
+   one test, so it was never needed for intra-file isolation, and
+   cross-file isolation from `useMcpTokenOidc.test.tsx` (the actual reason
+   the brief split into two files) is already guaranteed by Vitest running
+   each test file in its own module context. Added a comment explaining
+   why, in case a second test is ever added to this file.
+2. **Unused `waitFor` import** in both test files (present in the brief's
+   literal code, never called) failed `tsc --noEmit` under this repo's
+   `noUnusedLocals` — which is part of `npm run build` per CLAUDE.md.
+   Fixed by removing the unused import from both files.
 
-None. The Dockerfile content matches the brief's Step 1 code block
-verbatim, and Steps 2 and 3 were followed exactly as written.
+Neither `useAuth.ts` nor `useMcpToken.ts` (the two files the brief asked to
+be followed "exactly", including the rules-of-hooks eslint-disable pattern)
+needed any change — implemented verbatim.
 
-## Full `docker build` output
+## TDD evidence
 
-```
-#0 building with "default" instance using docker driver
-
-#1 [internal] load build definition from Dockerfile
-#1 transferring dockerfile: 2.50kB done
-#1 DONE 0.0s
-
-#2 [internal] load metadata for docker.io/library/node:20-slim
-#2 DONE 0.9s
-
-#3 [internal] load metadata for docker.io/library/python:3.12-slim
-#3 DONE 2.0s
-
-#4 [internal] load .dockerignore
-#4 transferring context: 2B done
-#4 DONE 0.0s
-
-#5 [stage-1 1/6] FROM docker.io/library/python:3.12-slim@sha256:dd29372629eeba2dd003fd9e9d35a5b8236c44727875a0364254b5127af88e65
-#5 resolve docker.io/library/python:3.12-slim@sha256:dd29372629eeba2dd003fd9e9d35a5b8236c44727875a0364254b5127af88e65 0.0s done
-#5 DONE 3.1s
-
-#6 [shell-runtime 1/7] FROM docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
-#6 resolve docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 0.0s done
-#6 CACHED
-
-#7 [shell-runtime 2/7] WORKDIR /build
-#7 DONE 0.1s
-
-#8 [internal] load build context
-#8 transferring context: 225.37MB 5.0s
-#8 transferring context: 480.71MB 8.0s done
-#8 DONE 8.1s
-
-#9 [stage-1 2/6] WORKDIR /app
-#9 DONE 0.5s
-
-#10 [stage-1 3/6] RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic duckdb sqlalchemy
-#10 17.48 Successfully installed annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.14.2 click-8.4.2 duckdb-1.5.5 fastapi-0.141.1 greenlet-3.5.5 h11-0.16.0 httptools-0.8.0 idna-3.18 pydantic-2.13.4 pydantic-core-2.46.4 python-dotenv-1.2.2 pyyaml-6.0.3 sqlalchemy-2.0.52 starlette-1.6.0 typing-extensions-4.16.0 typing-inspection-0.4.4 uvicorn-0.52.3 uvloop-0.22.1 watchfiles-1.2.0 websockets-17.0.1
-#10 17.48 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
-#10 DONE 18.6s
-
-#11 [shell-runtime 3/7] COPY shell/package.json shell/package-lock.json ./
-#11 DONE 0.6s
-
-#12 [shell-runtime 4/7] RUN npm ci
-#12 1.475 npm warn EBADENGINE Unsupported engine {
-#12 1.475 npm warn EBADENGINE   package: '@mapbox/jsonlint-lines-primitives@2.0.3',
-#12 1.475 npm warn EBADENGINE   required: { node: '>= 22' },
-#12 1.475 npm warn EBADENGINE   current: { node: 'v20.20.2', npm: '10.8.2' }
-#12 1.475 npm warn EBADENGINE }
-#12 3.067 npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
-#12 19.75 added 534 packages, and audited 535 packages in 19s
-#12 19.79 16 vulnerabilities (7 moderate, 9 high)
-#12 DONE 19.9s
-
-#13 [stage-1 4/6] RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL spatial')"
-#13 5.143 100% ▕██████████████████████████████████████▏ (00:00:04.66 elapsed)
-#13 DONE 5.4s
-
-#14 [stage-1 5/6] COPY core/app ./app
-#14 DONE 0.1s
-
-#15 [shell-runtime 5/7] COPY shell/ .
-#15 DONE 9.4s
-
-#16 [shell-runtime 6/7] RUN npm run build:export-runtime
-#16 0.590 > geostudio-shell@0.1.0 build:export-runtime
-#16 0.590 > vite build --config vite.export.config.ts
-#16 0.894 vite v6.4.3 building for production...
-#16 0.958 transforming...
-#16 13.21 ✓ 3918 modules transformed.
-#16 14.02 rendering chunks...
-#16 14.26 computing gzip size...
-#16 14.31 dist-export/index.export.html                    0.43 kB │ gzip:   0.30 kB
-#16 14.31 dist-export/assets/index-C3NnytiJ.css           22.01 kB │ gzip:   5.20 kB
-#16 14.31 dist-export/assets/MapView-PhPnDjd-.css         65.47 kB │ gzip:   9.22 kB
-#16 14.31 dist-export/assets/index.export-DPmQ9Jjs.js    607.47 kB │ gzip: 180.86 kB
-#16 14.31 dist-export/assets/EChart-DeAawO0k.js          825.08 kB │ gzip: 277.25 kB
-#16 14.31 dist-export/assets/MapView-nSMZL_0T.js       1,871.72 kB │ gzip: 522.18 kB
-#16 14.32 (!) Some chunks are larger than 500 kB after minification. Consider:
-#16 14.32 - Using dynamic import() to code-split the application
-#16 14.32 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
-#16 14.32 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-#16 14.32 ✓ built in 13.39s
-#16 DONE 14.5s
-
-#17 [shell-runtime 7/7] RUN mv dist-export/index.export.html dist-export/index.html
-#17 DONE 0.6s
-
-#18 [stage-1 6/6] COPY --from=shell-runtime /build/dist-export /runtime
-#18 DONE 0.1s
-
-#19 exporting to image
-#19 exporting layers 4.1s done
-#19 exporting manifest sha256:e1c0dadc6e591c27bab70b45a06e41f602906a81f43d8acd0aa65cbc9c805080 0.0s done
-#19 exporting config sha256:1e114deabb5d6e802d9877c145f81326b1f3b3e6a7eeba42535331ee0e59d4b7 0.0s done
-#19 exporting attestation manifest sha256:e5f1dd5cb9686a31b673289fabc0e6e5d0f20d1e7b84ecb5ea1f675c8b1fe0cc 0.0s done
-#19 exporting manifest list sha256:f0e6e388ba1fa92aff81bb0be426c5a46ad5cad031da2133611c12bbd1ec4b62 0.0s done
-#19 naming to docker.io/library/geostudio-appexport-standalone:local done
-#19 unpacking to docker.io/library/geostudio-appexport-standalone:local 1.7s done
-#19 DONE 5.9s
-```
-
-(Full untruncated log saved during the session at
-`/tmp/claude-1000/-home-lenen-projets-geostudio/49a68433-b728-410b-b8ce-d2818586d011/scratchpad/task10-build.log`,
-240 lines — the above is the complete content minus a handful of
-interleaved progress-percentage lines from concurrent build stages that
-carry no additional information.)
-
-Warnings present (all non-blocking, pre-existing/expected, no action
-taken):
-- `npm warn EBADENGINE` for `@mapbox/jsonlint-lines-primitives@2.0.3`
-  wanting Node >=22 while the stage uses `node:20-slim` — pre-existing
-  shell dependency constraint, not something this Dockerfile controls or
-  the brief flagged.
-- `npm audit`: 16 vulnerabilities (7 moderate, 9 high) in shell
-  dependencies — pre-existing, out of scope for this task.
-- Vite chunk-size warning (chunks >500kB) — pre-existing shell build
-  characteristic, out of scope.
-- `pip install` running as root warning — expected/standard for a
-  Docker image build, no virtualenv needed in a container.
-
-None of these are build failures; the build completed successfully both
-stages, `exporting to image` succeeded, and the image was tagged
-`geostudio-appexport-standalone:local`.
-
-## Confirmation the image was actually built
+### RED
 
 ```
-$ docker images | grep geostudio-appexport-standalone
-geostudio-appexport-standalone:local   f0e6e388ba1f   482MB   120MB
+cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx
+```
+```
+FAIL  src/builder/copilot/useMcpToken.test.tsx [ src/builder/copilot/useMcpToken.test.tsx ]
+Error: Failed to resolve import "./useMcpToken" from "src/builder/copilot/useMcpToken.test.tsx". Does the file exist?
+FAIL  src/builder/copilot/useMcpTokenOidc.test.tsx [ src/builder/copilot/useMcpTokenOidc.test.tsx ]
+Error: Failed to resolve import "./useMcpToken" from "src/builder/copilot/useMcpTokenOidc.test.tsx". Does the file exist?
+
+ Test Files  2 failed (2)
+      Tests  no tests
+```
+Matches the brief's expected failure exactly.
+
+After implementing `useMcpToken.ts` (Step 4) but before removing
+`vi.resetModules()`, a second RED was observed for the wrong reason (not
+"module not found" but an assertion failure) — this is the
+`vi.resetModules()` bug described above:
+```
+ ❯ src/builder/copilot/useMcpToken.test.tsx (1 test | 1 failed) 34ms
+   × useMcpToken > returns a fixed mock token synchronously in mock mode
+     → expected 'real-mcp-token' to be 'mock-mcp-token'
+ ✓ src/builder/copilot/useMcpTokenOidc.test.tsx (2 tests) 43ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 2 passed (3)
+```
+Diagnosed via an isolated probe test proving the module-instance split (see
+report body above), then fixed by removing the unnecessary
+`vi.resetModules()` call.
+
+### GREEN
+
+```
+cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx
+```
+```
+ ✓ src/builder/copilot/useMcpToken.test.tsx (1 test) 27ms
+ ✓ src/builder/copilot/useMcpTokenOidc.test.tsx (2 tests) 41ms
+
+ Test Files  2 passed (2)
+      Tests  3 passed (3)
 ```
 
-Image present locally, tagged as expected, non-zero size (482MB virtual /
-120MB unique layers reported by the human-readable `docker images`
-output).
+Additional verification:
+- `npx tsc --noEmit` — clean (0 errors) after removing the unused `waitFor`
+  imports.
+- `npx vitest run src/builder/copilot src/auth` — 6 files / 20 tests pass
+  (nothing else in these two directories broke).
+- Full suite: `npx vitest run` — **151 test files, 1228 tests, all pass.**
 
-## Commit
+## Files changed
 
-```
-$ git show --stat HEAD
-commit 913e906ca9c311dc38fb8d1f6bcbf20c36f5b51e
-Author: Tanguy <lenenaon.tanguy@gmail.com>
-Date:   Sat Aug 15 20:01:56 2026 +0200
+- `/home/lenen/projets/geostudio/shell/src/auth/useAuth.ts` (modified —
+  added `isMockMode()`)
+- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpToken.ts`
+  (created, verbatim from brief)
+- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpToken.test.tsx`
+  (created — brief's code minus the removed `vi.resetModules()` and unused
+  `waitFor` import)
+- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpTokenOidc.test.tsx`
+  (created — brief's code minus the unused `waitFor` import)
 
-    feat(deploy): standalone mini-server Docker image (SP-18c)
+Commit: `f5b5e77` — `feat(shell): useMcpToken — second signinSilent pour
+l'audience MCP (SP-20)`, exact message from the brief, only the 4 files
+above staged (other unrelated working-tree changes from prior/parallel
+tasks were left untouched).
 
- deploy/appexport-standalone/Dockerfile | 44 ++++++++++++++++++++++++++++++++++
- 1 file changed, 44 insertions(+)
-```
+## Self-review findings
 
-Only `deploy/appexport-standalone/Dockerfile` was staged and committed
-(verified via `git status --porcelain` right after `git add`, before
-`git commit`). The unrelated uncommitted `.superpowers/sdd/*.md` scratch
-files noted by the controller remain untouched and unstaged in the
-working tree.
+- No `console.*` left in the hook or tests.
+- No `any` types introduced.
+- `useMcpToken.ts` matches the brief's code byte-for-byte (comments
+  included) — nothing was "fixed" there, per instructions.
+- The two test-file bugs above are pre-existing defects in the plan's
+  literal test code, not introduced by my implementation; both are narrow,
+  mechanical fixes (drop one unneeded `beforeEach`, drop two unused
+  imports) that don't change what either test verifies.
+- Cross-file isolation between `useMcpToken.test.tsx` (mock mode) and
+  `useMcpTokenOidc.test.tsx` (real mode) was explicitly re-verified by
+  running both together in the same `vitest run` invocation (shown above) —
+  no leakage of the `mockMode` flag observed.
 
-## Status: DONE
+## Issues or concerns
+
+None blocking. Two minor plan-text bugs found and fixed as documented
+above (both are the kind of defect the brief's own TDD instructions (Step
+3 "confirm they fail for the expected reason", Step 5 "confirm all 3
+pass") are designed to catch). Task 12/13 (`CopilotPanel.tsx`) can consume
+`useMcpToken()` as specified — its public signature
+(`(): () => Promise<string>`) is unchanged from the brief.

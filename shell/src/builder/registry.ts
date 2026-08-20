@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
 import type { Breakpoint } from "./grid";
 import type { ActionBus } from "./ActionBus";
+import type { WidgetPropDescriptor } from "./widgetPropSchema";
 
 export type WidgetContext = {
   mode: RenderMode;
@@ -24,6 +25,11 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
   defaultSize: { w: number; h: number };
   events?: readonly string[];
   actions?: readonly string[];
+  // Sous-ensemble des props éditables par le copilote (SP-20) — seules les
+  // props scalaires (string/number/boolean/dataSource) ; les props
+  // array/object (colonnes de table, items de tiroir, encodages...) restent
+  // hors de portée, non listées ici.
+  configSchema?: WidgetPropDescriptor[];
   PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };

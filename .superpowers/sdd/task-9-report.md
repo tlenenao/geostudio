@@ -1,84 +1,108 @@
-# Task 9 Report: Widen `_SUPPORTED_MODES` to accept `mode="standalone"` (SP-18c)
+# Task 9 Report: Shell — `applyClientOp.ts` (SP-20)
 
 ## Summary
-Task 9 of SP-18c implementation successfully completed. The `POST /app-exports` endpoint now accepts `mode="standalone"` as a valid export mode, alongside "static" and "connected".
 
-## What Was Done
+Implemented `shell/src/builder/copilot/applyClientOp.ts` — a pure function that executes client operations proposed by the copilot (SP-20) by reusing existing pure helpers from the palette/PropsPanel. All 7 tests pass.
 
-### Step 1: Write the Failing Test
-Appended a new test `test_post_app_export_accepts_standalone_mode` to `core/tests/test_appexport_routes.py` that verifies the endpoint accepts `mode="standalone"` and returns 202 status with a job ID.
+## Implementation Details
 
-### Step 2: Verified Failure with 422
-Ran the new test in isolation to confirm it fails with 422 Unprocessable Entity (expected behavior before applying the fix):
+### Files Created
+
+1. **`shell/src/builder/copilot/applyClientOp.test.ts`** (103 lines)
+   - 7 test cases covering all 5 operations plus error cases
+   - Uses `vitest` with beforeEach setup to reset/register widgets
+   - Tests all code paths: success, unknown type, duplicate ID, unknown operation
+
+2. **`shell/src/builder/copilot/applyClientOp.ts`** (78 lines)
+   - Pure function `applyClientOp(raw: RawClientOp, config: AppConfig, activePageId: string): AppConfig`
+   - Exported type `RawClientOp` (opaque op name + args)
+   - Helper `coerceProp()` for type coercion (string/number/boolean/dataSource)
+   - Five switch cases:
+     - `addWidget`: creates item with default props/size via `getWidget()`
+     - `updateWidgetProps`: merges only keys in `configSchema`, coerces by type
+     - `removeWidget`: filters item by id
+     - `addDataSource`: appends new source, ignores duplicate id
+     - `setFilter`: updates source's query
+   - Default: no-op, never throws
+
+### Design Decisions
+
+- **Pure, no mutations**: all operations return a new `AppConfig`, never mutate input
+- **Reuses existing helpers**: `nextFreePosition`, `getPageLayout`, `setPageLayout`, `getWidget` — same code path as manual UI
+- **Type safety**: `coerceProp()` enforces type coercion; `updateWidgetProps` checks `configSchema` before merging
+- **Unknown op safety**: unknown operation names are no-ops; unknown widget types are no-ops
+
+### Imports Verified
+
+All imports exist and have correct signatures:
+- `getWidget` from `../registry` ✓
+- `nextFreePosition` from `../grid` ✓
+- `getPageLayout`/`setPageLayout` from `../pages` ✓
+- Types `AppConfig`/`DataSource`/`WidgetItem` from `../../api/types` ✓
+
+## TDD Evidence
+
+### RED (Before Implementation)
+
 ```
-test_post_app_export_accepts_standalone_mode FAILED [100%]
-assert 422 == 202
+cd shell && npx vitest run src/builder/copilot/applyClientOp.test.ts
+
+Failed Suites 1
+FAIL  src/builder/copilot/applyClientOp.test.ts
+Error: Failed to resolve import "./applyClientOp" from "src/builder/copilot/applyClientOp.test.ts"
+
+Test Files  1 failed (1)
 ```
-Confirmed that "standalone" was not in `_SUPPORTED_MODES`.
 
-### Step 3: Applied the One-Line Change
-Modified `core/app/appexport/routes.py` line 24:
-- **Before:** `_SUPPORTED_MODES = {"static", "connected"}  # "standalone" arrive en SP-18c`
-- **After:** `_SUPPORTED_MODES = {"static", "connected", "standalone"}`
+### GREEN (After Implementation)
 
-### Step 4: Verified All Tests Pass
-Ran the full test suite:
-```bash
-cd core && uv run pytest tests/test_appexport_routes.py -v
 ```
-Result: **9 tests passed** (100%)
+cd shell && npx vitest run src/builder/copilot/applyClientOp.test.ts
 
-All tests passing:
-1. test_post_app_export_requires_flag_enabled ✓
-2. test_post_app_export_creates_job_and_returns_202 ✓
-3. test_post_app_export_denies_user_without_read_access ✓
-4. test_post_app_export_rejects_invalid_mode ✓
-5. test_get_app_export_job_reports_status ✓
-6. test_post_app_export_allowed_in_read_only_demo_mode ✓
-7. test_get_app_export_job_done_status_includes_result_url ✓
-8. test_post_app_export_accepts_connected_mode ✓
-9. test_post_app_export_accepts_standalone_mode ✓ (NEW)
+✓ src/builder/copilot/applyClientOp.test.ts (7 tests) 16ms
+
+Test Files  1 passed (1)
+Tests       7 passed (7)
+```
 
 ## Test Coverage
 
-The new test `test_post_app_export_accepts_standalone_mode` verifies:
-- `POST /app-exports` accepts `mode="standalone"`
-- Response status code is 202 (Accepted)
-- A task is deferred (1 call recorded)
-- Endpoint behavior is consistent with existing mode tests
+All 7 tests pass:
 
-Test pattern mirrors `test_post_app_export_accepts_connected_mode`, using same fixtures and dependency overrides.
+1. ✓ `addWidget adds an item with the widget's default props/size`
+2. ✓ `addWidget with an unknown type is a no-op`
+3. ✓ `updateWidgetProps merges only keys present in configSchema, coerced by type`
+4. ✓ `removeWidget removes the item by id`
+5. ✓ `addDataSource appends a new source, ignoring a duplicate id`
+6. ✓ `setFilter updates an existing source's query`
+7. ✓ `an unknown op name is a no-op, never throws`
 
-## Self-Review Notes
+## Commit
+
+```
+e87f01a feat(shell): applyClientOp.ts — exécute les opérations du copilote (SP-20)
+```
+
+Commit message follows the exact format from the brief.
+
+## Self-Review Findings
+
+✓ No issues found. Implementation is clean, pure, and follows project patterns.
 
 ### Code Quality
-- One-line change in routes.py is minimal and focused
-- Removed obsolete TODO comment about SP-18c
-- No new dependencies or side effects introduced
-- Test follows existing naming and structure conventions
-- Test uses identical setup pattern as sibling tests
 
-### Process Validation
-- TDD discipline: test first, verified failure, applied fix, verified pass
-- Only intended files staged (routes.py and test file)
-- No unrelated files included in commit
-- All 9 tests pass consistently
+- Follows SPDX license header convention
+- French documentation comments reflect copilot context
+- Type safety enforced via TypeScript strict mode
+- No magic numbers; uses existing constants
+- Error handling: all unknown inputs are safe (return original config or no-op)
 
-### Interface Correctness
-- Endpoint signature unchanged
-- Validation logic properly rejects invalid modes
-- HTTP status codes correct (202 success, 422 invalid mode)
-- Mode correctly passed through to job creation and audit logging
+### Integration Points
 
-## Files Modified
-- `core/app/appexport/routes.py`: 1 line changed
-- `core/tests/test_appexport_routes.py`: 10 lines added (test function)
+- Ready for Task 13 (`CopilotPanel.tsx`) which will call this via `setDraft`
+- Every copilot edit lands in SP-19's undo stack for free (no changes needed)
+- Consistent with shell's pure-function architecture patterns
 
-## No Deviations
-Task executed exactly as specified in the brief. No unexpected issues or alternatives encountered.
+## Concerns
 
-## Commit Details
-- **Hash:** 9bda1c8
-- **Message:** "feat(core): POST /app-exports accepts mode=standalone (SP-18c)"
-- **Files:** core/app/appexport/routes.py, core/tests/test_appexport_routes.py
-- **Staged:** Explicitly (not via git add -A), excluding .superpowers/sdd/ bookkeeping files
+None. Implementation is complete, tested, and ready for use.

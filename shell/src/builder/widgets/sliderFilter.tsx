@@ -13,6 +13,11 @@ export function registerSliderFilterWidget(): void {
     label: "Curseur",
     defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
     defaultSize: { w: 4, h: 1 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "field", type: "string", label: "Champ", default: "" },
+      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}

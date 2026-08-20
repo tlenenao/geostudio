@@ -1,162 +1,201 @@
-### Task 3: `app.appexport.manifest` — shared snapshot manifest shape
+## Task 3: Core — `llm_provider.py`
 
 **Files:**
-- Create: `core/app/appexport/manifest.py`
-- Create: `core/tests/test_appexport_manifest.py`
+- Create: `core/app/copilot/__init__.py` (empty)
+- Create: `core/app/copilot/llm_provider.py`
+- Create: `core/tests/test_copilot_llm_provider.py`
 
 **Interfaces:**
-- Consumes: `TableInfo`/`ColumnInfo` (`app.collections.introspection`, unchanged).
-- Produces: `CollectionSnapshotEntry` dataclass (`id: str`, `tenant_id: str`,
-  `collection_json: dict`, `schema_json: dict`, `table_info: TableInfo`),
-  `write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None`,
-  `read_manifest(path: str) -> list[CollectionSnapshotEntry]`. This is the
-  contract Task 4 (writer, full core) and Task 6 (reader, slim mini-server
-  image) both depend on — the JSON on disk is the only thing that ever
-  crosses between them, never a Python import across the image boundary.
+- Produces: `LLMProvider` (Protocol), `LLMTurn`, `ToolCall`, `FakeLLMProvider`, `OpenAICompatibleLLMProvider`, `get_llm_provider() -> LLMProvider`, all in `app.copilot.llm_provider`. Consumed by Task 5's `routes.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Create `core/tests/test_appexport_manifest.py`:
+Create `core/tests/test_copilot_llm_provider.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-from app.appexport.manifest import CollectionSnapshotEntry, read_manifest, write_manifest
-from app.collections.introspection import ColumnInfo, TableInfo
+import pytest
+
+from app.copilot.llm_provider import (
+    FakeLLMProvider, LLMTurn, ToolCall, get_llm_provider,
+)
 
 
-def _entry() -> CollectionSnapshotEntry:
-    table_info = TableInfo(
-        table_name="t_x", pk_column="id", geometry_column="geom",
-        geometry_type="point", srid=4326,
-        columns=[ColumnInfo(name="name", type="string", required=False)],
-    )
-    return CollectionSnapshotEntry(
-        id="col1", tenant_id="t1",
-        collection_json={"id": "col1", "title": "X"},
-        schema_json={"collection": "t_x", "pk": "id", "geometry": None, "fields": []},
-        table_info=table_info,
-    )
+def test_fake_provider_returns_scripted_responses_in_order():
+    provider = FakeLLMProvider(responses=[
+        LLMTurn(text="", tool_calls=[ToolCall(id="1", name="search_catalog", arguments={"q": "x"})]),
+        LLMTurn(text="Voici le résultat."),
+    ])
+    first = provider.chat(messages=[], tools=[])
+    assert first.tool_calls[0].name == "search_catalog"
+    second = provider.chat(messages=[], tools=[])
+    assert second.text == "Voici le résultat."
 
 
-def test_write_then_read_manifest_round_trips(tmp_path):
-    path = str(tmp_path / "manifest.json")
-    write_manifest([_entry()], path)
-
-    entries = read_manifest(path)
-
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.id == "col1"
-    assert e.tenant_id == "t1"
-    assert e.collection_json == {"id": "col1", "title": "X"}
-    assert e.schema_json == {"collection": "t_x", "pk": "id", "geometry": None, "fields": []}
-    assert e.table_info.table_name == "t_x"
-    assert e.table_info.pk_column == "id"
-    assert e.table_info.geometry_column == "geom"
-    assert e.table_info.srid == 4326
-    assert e.table_info.columns[0].name == "name"
-    assert e.table_info.columns[0].type == "string"
+def test_fake_provider_repeats_last_response_once_exhausted():
+    provider = FakeLLMProvider(responses=[LLMTurn(text="unique")])
+    provider.chat(messages=[], tools=[])
+    again = provider.chat(messages=[], tools=[])
+    assert again.text == "unique"
 
 
-def test_write_manifest_with_no_entries(tmp_path):
-    path = str(tmp_path / "manifest.json")
-    write_manifest([], path)
-    assert read_manifest(path) == []
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.manifest'`
-
-- [ ] **Step 3: Create `manifest.py`**
-
-Create `core/app/appexport/manifest.py`:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-"""Manifeste d'instantané autoporté (SP-18c) : forme partagée entre le job
-d'export (app.appexport.snapshot, tourne dans le worker complet, tous les
-paquets core disponibles) et le mini-serveur (app.appexport.miniserver,
-tourne dans une image Docker séparée et volontairement minimale) — les deux
-processus lisent/écrivent le même fichier manifest.json sur disque, jamais
-d'appel réseau ni d'import Python entre eux à l'exécution.
-
-Réutilise TableInfo/ColumnInfo tels quels (app.collections.introspection)
-plutôt qu'une forme dupliquée : ces deux dataclasses n'ont aucune dépendance
-d'exécution réelle à Postgres (Session n'y sert que de type non exécuté
-dans un alias inutilisé ici) — seul le paquet sqlalchemy doit être installé
-pour l'import, jamais un driver ni une connexion réelle (cf.
-deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
-psycopg2-binary)."""
-import json
-from dataclasses import asdict, dataclass
-
-from app.collections.introspection import ColumnInfo, TableInfo
+def test_get_llm_provider_defaults_to_fake(monkeypatch):
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
+    provider = get_llm_provider()
+    assert isinstance(provider, FakeLLMProvider)
 
 
-@dataclass(frozen=True)
-class CollectionSnapshotEntry:
-    id: str
-    tenant_id: str
-    collection_json: dict
-    schema_json: dict
-    table_info: TableInfo
+def test_get_llm_provider_rejects_unknown_kind(monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "not-a-real-provider")
+    with pytest.raises(ValueError, match="unknown CORE_LLM_PROVIDER"):
+        get_llm_provider()
 
 
-def write_manifest(entries: list[CollectionSnapshotEntry], path: str) -> None:
-    payload = {
-        "collections": [
-            {
-                "id": e.id,
-                "tenantId": e.tenant_id,
-                "collectionJson": e.collection_json,
-                "schemaJson": e.schema_json,
-                "tableInfo": {
-                    "tableName": e.table_info.table_name,
-                    "pkColumn": e.table_info.pk_column,
-                    "geometryColumn": e.table_info.geometry_column,
-                    "geometryType": e.table_info.geometry_type,
-                    "srid": e.table_info.srid,
-                    "columns": [asdict(c) for c in e.table_info.columns],
-                },
-            }
-            for e in entries
-        ]
-    }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f)
+def test_openai_compatible_provider_parses_tool_calls(monkeypatch):
+    import httpx
 
+    from app.copilot.llm_provider import OpenAICompatibleLLMProvider
 
-def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
-    with open(path, encoding="utf-8") as f:
-        payload = json.load(f)
-    entries: list[CollectionSnapshotEntry] = []
-    for raw in payload["collections"]:
-        ti = raw["tableInfo"]
-        table_info = TableInfo(
-            table_name=ti["tableName"], pk_column=ti["pkColumn"],
-            geometry_column=ti["geometryColumn"], geometry_type=ti["geometryType"],
-            srid=ti["srid"], columns=[ColumnInfo(**c) for c in ti["columns"]],
+    def fake_post(url, *, headers, json, timeout):
+        assert headers["Authorization"] == "Bearer test-key"
+        assert json["model"] == "gpt-4o-mini"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{
+                    "message": {
+                        "content": "",
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "function": {"name": "search_catalog", "arguments": '{"q": "incidents"}'},
+                        }],
+                    },
+                }],
+            },
+            request=httpx.Request("POST", url),
         )
-        entries.append(CollectionSnapshotEntry(
-            id=raw["id"], tenant_id=raw["tenantId"],
-            collection_json=raw["collectionJson"], schema_json=raw["schemaJson"],
-            table_info=table_info,
-        ))
-    return entries
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAICompatibleLLMProvider(api_url="https://example/v1/chat", api_key="test-key", model="gpt-4o-mini")
+    turn = provider.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
+    assert turn.tool_calls == [ToolCall(id="call_1", name="search_catalog", arguments={"q": "incidents"})]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_appexport_manifest.py -v`
-Expected: PASS (2 tests)
+Run: `cd core && uv run pytest tests/test_copilot_llm_provider.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.copilot'`.
+
+- [ ] **Step 3: Implement**
+
+Create `core/app/copilot/__init__.py` (empty file).
+
+Create `core/app/copilot/llm_provider.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Fournisseur LLM enfichable pour le copilote (SP-20), même convention que
+app.search.providers.EmbeddingProvider (SP-7) : un provider HTTP compatible
+OpenAI pour la production, un provider déterministe sans réseau pour
+dev/test/mock (CORE_LLM_PROVIDER=fake, ou absent)."""
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Protocol
+
+import httpx
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass
+class LLMTurn:
+    text: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
+
+
+class LLMProvider(Protocol):
+    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn: ...
+
+
+class FakeLLMProvider:
+    """Réponses scriptées, consommées dans l'ordre ; la dernière est
+    réutilisée si l'appelant en demande plus qu'il n'y en a — permet de
+    scripter une boucle multi-tours (ex. un tool_call puis une réponse
+    texte) sans dépendre du contenu réel des messages."""
+
+    def __init__(self, responses: list[LLMTurn] | None = None):
+        self._responses = responses or [LLMTurn(text="(réponse simulée)")]
+        self._i = 0
+
+    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+        turn = self._responses[min(self._i, len(self._responses) - 1)]
+        self._i += 1
+        return turn
+
+
+class OpenAICompatibleLLMProvider:
+    def __init__(self, *, api_url: str, api_key: str, model: str):
+        self._api_url = api_url
+        self._api_key = api_key
+        self._model = model
+
+    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+        openai_tools = [{"type": "function", "function": t} for t in tools]
+        response = httpx.post(
+            self._api_url,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json={"model": self._model, "messages": messages, "tools": openai_tools},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        choice = response.json()["choices"][0]["message"]
+        tool_calls = [
+            ToolCall(
+                id=tc["id"],
+                name=tc["function"]["name"],
+                arguments=json.loads(tc["function"]["arguments"] or "{}"),
+            )
+            for tc in choice.get("tool_calls") or []
+        ]
+        return LLMTurn(text=choice.get("content") or "", tool_calls=tool_calls)
+
+
+def get_llm_provider() -> LLMProvider:
+    kind = os.environ.get("CORE_LLM_PROVIDER")
+    if kind is None or kind == "fake":
+        return FakeLLMProvider()
+    if kind == "openai":
+        return OpenAICompatibleLLMProvider(
+            api_url=os.environ["CORE_LLM_API_URL"],
+            api_key=os.environ["CORE_LLM_API_KEY"],
+            model=os.environ.get("CORE_LLM_MODEL", "gpt-4o-mini"),
+        )
+    raise ValueError(f"unknown CORE_LLM_PROVIDER: {kind}")
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_copilot_llm_provider.py -v`
+Expected: PASS (all 5).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add core/app/appexport/manifest.py core/tests/test_appexport_manifest.py
-git commit -m "feat(core): app.appexport.manifest — shared snapshot manifest shape (SP-18c)"
+git add core/app/copilot/__init__.py core/app/copilot/llm_provider.py core/tests/test_copilot_llm_provider.py
+git commit -m "$(cat <<'EOF'
+feat(core): fournisseur LLM enfichable pour le copilote (SP-20)
+
+LLMProvider (Protocol) + FakeLLMProvider (scriptable, tests/mock) +
+OpenAICompatibleLLMProvider (CORE_LLM_PROVIDER=openai), même patron que
+app.search.providers.EmbeddingProvider (SP-7).
+EOF
+)"
 ```
 
 ---

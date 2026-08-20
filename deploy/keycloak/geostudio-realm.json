@@ -748,7 +748,8 @@
         "address",
         "phone",
         "offline_access",
-        "microprofile-jwt"
+        "microprofile-jwt",
+        "geostudio-mcp-audience"
       ]
     },
     {

@@ -15,6 +15,9 @@ let mockMode = false;
 export function enableMockAuth() {
   mockMode = true;
 }
+export function isMockMode(): boolean {
+  return mockMode;
+}
 
 const MOCK_STATE: AuthState = {
   isLoading: false,

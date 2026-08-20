@@ -1,165 +1,171 @@
-# Task 4 report — `app.appexport.snapshot.write_snapshot`
+# Task 4 report — `mcp_loopback.py` + `tools_allowlist.py`
 
-## What I did
+## What was implemented
 
-Followed TDD exactly per the brief (`.superpowers/sdd/task-4-brief.md`):
+- `core/app/copilot/tools_allowlist.py` — `ALLOWED_MCP_TOOL_NAMES` frozenset
+  (6 tools: `search_catalog`, `list_items`, `explain_dataset`,
+  `run_analytics_query`, `create_item`, `create_form_app`), verbatim from the
+  brief. Verified all 6 are real `@server.tool()`-registered functions in
+  `core/app/mcp/tools.py`.
+- `core/app/copilot/mcp_loopback.py` — `McpLoopbackSession`
+  (`list_tools()`, `call_tool(name, arguments)`, `aclose()`),
+  `McpLoopbackError`, `ToolCallResult`, verbatim from the brief, with two
+  fixes (see Deviations): re-exports `ALLOWED_MCP_TOOL_NAMES` from
+  `tools_allowlist`, and a corrected comment about what actually triggers a
+  JSON-RPC `"error"` field vs. a tool-level `isError` result.
+- `core/tests/test_copilot_mcp_loopback.py` — 5 tests (brief specified 4;
+  see Deviations for why a 5th was added) driving the real `/mcp` endpoint
+  via `httpx.AsyncClient(transport=httpx.ASGITransport(app=app))`, no mocks.
 
-1. Read the full brief, including the exact test file and module content
-   provided verbatim.
-2. Verified the interfaces the brief claims exist, actually exist and match
-   the signatures used in the brief's code, before writing anything:
-   - `app/appexport/manifest.py` — `CollectionSnapshotEntry`, `write_manifest`,
-     `read_manifest` (Task 3 output, already present on disk).
-   - `app/appexport/freeze.py` — confirmed the same
-     `introspect_table` + `select_features` under `rls_scope` in-process
-     pattern this task's module reuses.
-   - `app/cdc/parquet_writer.py` — `ChangeRow` dataclass fields
-     (`op, lsn, ts, pk_column, pk_value, columns, geometry_column,
-     geometry_wkb_hex`) and `write_geoparquet(rows, *, srid, path)`.
-   - `app/collections/schema_json.py` — `table_info_to_schema(info) -> dict`.
-   - `app/features/repository.py` — `select_features(session, info, *, limit,
-     offset, bbox=None, geom_intersects=None, filters=None) -> FeaturePage`.
-   - `app/collections/repository.py` — `get_collection(session, *, tenant_id,
-     collection_id)`.
-   All matched the brief exactly — no adjustments needed.
-3. Created `core/tests/test_appexport_snapshot.py` verbatim from the brief
-   (4 `@pytest.mark.postgis` tests: empty data sources, a features source
-   written as GeoParquet + manifest, a zero-row collection producing no
-   parquet file, and the same collection referenced by two DataSources
-   being written only once).
-4. Ran the test with `CORE_TEST_DATABASE_URL` set — confirmed it failed with
-   `ModuleNotFoundError: No module named 'app.appexport.snapshot'` (a real
-   collection error, not a skip — proof the env var was reaching pytest and
-   postgis fixtures were engaging, since `app.main` import logged
-   procrastinate task registration).
-5. Created `core/app/appexport/snapshot.py` verbatim from the brief.
-6. Re-ran the test — all 4 passed for real (2.37s) against Postgres.
-7. Sanity-checked the skip/pass gating by re-running with the env var
-   unset — all 4 correctly SKIPPED, confirming the pass in step 6 was a
-   genuine real-database run and not a coincidence of some other default.
-8. Self-reviewed the diff (`git diff --cached --stat`): only the two new
-   files, 278 insertions, 0 modifications to any existing file — matches the
-   brief's stated scope exactly.
-9. Committed with the exact message from the brief's Step 5.
+## TDD evidence
 
-## Full test output
-
-### Step 2 — before creating the module (env var set, expect ModuleNotFoundError, not skip)
+### RED
 
 ```
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
-cachedir: .pytest_cache
-rootdir: /home/lenen/projets/geostudio/core
-configfile: pyproject.toml
-plugins: anyio-4.14.1, pytest_httpserver-1.1.5
-collecting ... collected 0 items / 1 error
-
-==================================== ERRORS ====================================
-______________ ERROR collecting tests/test_appexport_snapshot.py _______________
-ImportError while importing test module '/home/lenen/projets/geostudio/core/tests/test_appexport_snapshot.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-/usr/lib/python3.14/importlib/__init__.py:88: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests/test_appexport_snapshot.py:12: in <module>
-    from app.appexport.snapshot import write_snapshot
-E   ModuleNotFoundError: No module named 'app.appexport.snapshot'
-------------------------------- Captured stdout --------------------------------
-{"timestamp": "2026-08-15T19:24:53", "level": "INFO", "logger": "procrastinate.blueprints", "message": "Adding tasks from blueprint", "trace_id": null, "span_id": null}
-{"timestamp": "2026-08-15T19:24:53", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.harvest.jobs.run_harvest_sweep_task with periodic id '' to run periodically with cron */15 * * * *", "trace_id": null, "span_id": null}
-{"timestamp": "2026-08-15T19:24:54", "level": "INFO", "logger": "procrastinate.periodic", "message": "Registering task app.pipelines.jobs.run_pipeline_sweep_task with periodic id '' to run periodically with cron */5 * * * *", "trace_id": null, "span_id": null}
+cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v
+```
+```
+ERROR collecting tests/test_copilot_mcp_loopback.py
+E   ModuleNotFoundError: No module named 'app.copilot.mcp_loopback'
 =========================== short test summary info ============================
-ERROR tests/test_appexport_snapshot.py
+ERROR tests/test_copilot_mcp_loopback.py
 !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-=============================== 1 error in 1.86s ===============================
+=============================== 1 error in 0.16s ===============================
 ```
+Failed for the expected reason (module doesn't exist yet).
 
-### Step 4 — after creating the module (env var set, expect PASS for real)
-
-```
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
-cachedir: .pytest_cache
-rootdir: /home/lenen/projets/geostudio/core
-configfile: pyproject.toml
-plugins: anyio-4.14.1, pytest_httpserver-1.1.5
-collecting ... collected 4 items
-
-tests/test_appexport_snapshot.py::test_no_data_sources_writes_empty_manifest PASSED [ 25%]
-tests/test_appexport_snapshot.py::test_features_source_is_written_as_geoparquet PASSED [ 50%]
-tests/test_appexport_snapshot.py::test_collection_with_no_rows_writes_no_parquet_file PASSED [ 75%]
-tests/test_appexport_snapshot.py::test_same_collection_referenced_twice_is_written_once PASSED [100%]
-
-============================== 4 passed in 2.37s ===============================
-```
-
-### Sanity check — env var unset (expect all 4 SKIPPED, confirming step 4 was genuinely a real-DB run)
+### GREEN
 
 ```
-============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/lenen/projets/geostudio/core/.venv/bin/python
-cachedir: .pytest_cache
-rootdir: /home/lenen/projets/geostudio/core
-configfile: pyproject.toml
-plugins: anyio-4.14.1, pytest_httpserver-1.1.5
-collecting ... collected 4 items
+cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v
+```
+```
+collected 5 items
 
-tests/test_appexport_snapshot.py::test_no_data_sources_writes_empty_manifest SKIPPED [ 25%]
-tests/test_appexport_snapshot.py::test_features_source_is_written_as_geoparquet SKIPPED [ 50%]
-tests/test_appexport_snapshot.py::test_collection_with_no_rows_writes_no_parquet_file SKIPPED [ 75%]
-tests/test_appexport_snapshot.py::test_same_collection_referenced_twice_is_written_once SKIPPED [100%]
+tests/test_copilot_mcp_loopback.py::test_list_tools_returns_full_catalog PASSED [ 20%]
+tests/test_copilot_mcp_loopback.py::test_call_tool_returns_text_result PASSED [ 40%]
+tests/test_copilot_mcp_loopback.py::test_call_tool_surfaces_tool_execution_error_without_raising PASSED [ 60%]
+tests/test_copilot_mcp_loopback.py::test_call_tool_surfaces_unknown_tool_name_as_tool_error PASSED [ 80%]
+tests/test_copilot_mcp_loopback.py::test_call_tool_raises_on_genuine_protocol_level_failure PASSED [100%]
 
-============================== 4 skipped in 1.74s ==============================
+============================== 5 passed in 2.59s ===============================
 ```
 
-## Deviations from the brief
+Also re-ran the surrounding MCP/copilot suites for regressions — all pass
+(17/17): `test_mcp_routes.py`, `test_mcp_auth.py`, `test_copilot_llm_provider.py`,
+`test_copilot_enabled_flag.py`.
 
-None. Both the test file and `snapshot.py` were created exactly as specified
-in the brief's Step 1 and Step 3 code blocks, verbatim. All interfaces the
-brief assumed (`CollectionSnapshotEntry`/`write_manifest` from Task 3,
-`ChangeRow`/`write_geoparquet`, `table_info_to_schema`, `select_features`,
-`rls_scope`, `collections_repo.get_collection`) were verified against the
-real, current signatures in the codebase before use and matched without any
-adjustment needed.
+Also ran `uv run lint-imports`: "layered architecture KEPT — 1 kept, 0 broken"
+(app.copilot doesn't import anything that would violate the layer contract;
+it's a pure HTTP client with no dependency on other app.* internals).
 
-## Self-review notes
+## Deviations from the brief (and why)
 
-- `git diff --cached --stat` confirms the change is scoped to exactly the
-  two files named in the brief: `core/app/appexport/snapshot.py` (106 lines)
-  and `core/tests/test_appexport_snapshot.py` (172 lines), 278 insertions,
-  0 deletions, 0 other files touched. No existing file was modified.
-- Confirmed the `ModuleNotFoundError` failure in Step 2 was a genuine
-  collection-time error (not a skip) — the captured stdout shows
-  `app.main` import succeeding (procrastinate periodic tasks registered),
-  which only happens when the postgis fixtures/session machinery is
-  actually engaging, i.e. `CORE_TEST_DATABASE_URL` was correctly reaching
-  pytest.
-- Confirmed the inverse: with the env var unset, all 4 tests SKIP rather
-  than error or pass — this rules out the possibility that the PASS in
-  Step 4 was accidentally running against SQLite or some other fallback
-  instead of real Postgres.
-- Logic sanity-checked against the module's own docstring claims:
-  - Zero-row collections produce no parquet file (`if rows:` guard) but
-    still get a manifest entry with `featureCount: 0` — matches
-    `test_collection_with_no_rows_writes_no_parquet_file`.
-  - Same collection referenced by two DataSources (one `"features"`, one
-    `"statistics"`) is deduplicated via the `seen` set keyed by
-    `collection_id` — matches
-    `test_same_collection_referenced_twice_is_written_once`.
-  - Every row gets `op="insert"`, `lsn=0` — the CDC-shaped
-    "a snapshot is a change-log of nothing but inserts" framing that lets
-    `run_collection_aggregate`'s existing hive-partition glob/CTE
-    dedup logic read snapshot partitions unmodified.
-  - Partition path exactly matches
-    `{snapshot_dir}/snapshot/tenant_id=.../collection_id=.../dt=snapshot/data.parquet`
-    as asserted by the test and required by
-    `app.analytics.aggregate.run_collection_aggregate`'s expected layout.
-- No full test suite run — per the task scope, this task only adds two new
-  files and touches nothing existing, so the scoped run
-  (`tests/test_appexport_snapshot.py`) is sufficient evidence.
+The brief's Step 1 test file and Step 3 `mcp_loopback.py` code are given
+verbatim, but three things in the brief didn't match the real system. All
+three were resolved by testing against the real `/mcp` endpoint rather than
+guessing, per the task's "ask before proceeding rather than guessing"
+instruction interpreted as "resolve by empirical substitution when possible,
+escalate only if unresolvable" (the brief itself pre-authorizes exactly this
+kind of substitution for the `get_item` test).
 
-## Commit
+1. **`asyncio_mode` / `pytest.mark.asyncio` doesn't apply to this repo.**
+   `pytest-asyncio` is not a dependency at all — `pyproject.toml`'s
+   `[tool.pytest.ini_options]` has no `asyncio_mode` key, and there's no
+   `asyncio` marker registered. The repo's actual convention (confirmed in
+   `tests/test_mcp_auth.py`, `tests/test_jobs_observability.py`) is the
+   `anyio` pytest plugin: `@pytest.mark.anyio` plus a per-file
+   `anyio_backend` fixture returning `"asyncio"`. I used that convention
+   instead of `@pytest.mark.asyncio` / `asyncio_mode = "auto"` — did **not**
+   touch `pyproject.toml`, since the setting the brief worried about isn't
+   applicable here (`anyio`'s plugin is auto-active via `pytest-anyio`
+   dependency of `httpx`/`anyio`, no ini config needed).
 
-`5009aaf` — `feat(core): write_snapshot — GeoParquet snapshot per collection (SP-18c)`
+2. **`base_url="http://test"` is rejected by DNS-rebinding host-header
+   protection.** FastMCP auto-enables `TransportSecuritySettings` with
+   `allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"]` whenever its
+   `host` constructor arg (default `"127.0.0.1"`, never overridden in
+   `create_mcp_server`) is a loopback value — which it always is here. A
+   client presenting `Host: test` gets a genuine `421 Misdirected Request`
+   before the handshake even starts. Changed both the `CORE_BASE_URL` env
+   var and the `httpx.AsyncClient(base_url=...)` in every test from
+   `http://test` to `http://localhost:8200` (matching the already-working
+   pattern in `test_mcp_routes.py`). This is orthogonal to `CORE_BASE_URL`'s
+   own value — the allowlist is fixed to loopback hostnames regardless.
+
+3. **An unknown tool name is *not* a JSON-RPC protocol-level error in this
+   MCP SDK version.** The brief's 4th test
+   (`test_call_tool_raises_on_unknown_tool_name`) assumed
+   `session.call_tool("not_a_real_tool", {})` would produce a top-level
+   JSON-RPC `"error"` field, causing `McpLoopbackError` to be raised.
+   Empirically (confirmed with a standalone repro script hitting the real
+   `/mcp` endpoint), the server instead returns `200 OK` with
+   `{"result": {"content": [...], "isError": true}}` — the exact same shape
+   as a tool that raises internally (e.g. `get_item` on a bad id). So
+   `call_tool`'s existing logic (as given in the brief, unchanged) correctly
+   does **not** raise for this case — the brief's test expectation, not the
+   implementation, was wrong.
+   - Renamed/rewrote that test to
+     `test_call_tool_surfaces_unknown_tool_name_as_tool_error`, asserting
+     `result.is_error is True` instead of `pytest.raises`.
+   - Since that removed the only exercised path proving `McpLoopbackError`
+     really gets raised for a *genuine* protocol failure, I added a 5th
+     test, `test_call_tool_raises_on_genuine_protocol_level_failure`, using
+     the real DNS-rebinding 421 from finding #2 above as the trigger (an
+     `httpx.AsyncClient` pointed at `http://unrecognized-host`). This keeps
+     the interface contract ("raises only on protocol failure, never on
+     tool-level errors") actually covered by a real, reproducible case
+     instead of an imagined one.
+   - Corrected the misleading inline comment in `mcp_loopback.py`'s
+     `call_tool` (previously listed "nom d'outil inconnu" as an example of
+     a protocol-level error — it isn't) to reflect this.
+
+4. **`ALLOWED_MCP_TOOL_NAMES` re-export.** The brief's own test file (given
+   verbatim in Step 1) imports `ALLOWED_MCP_TOOL_NAMES` from
+   `app.copilot.mcp_loopback`, but Step 3's `mcp_loopback.py` code doesn't
+   import it from `tools_allowlist.py` — an internal inconsistency in the
+   brief. Added `from app.copilot.tools_allowlist import
+   ALLOWED_MCP_TOOL_NAMES` plus an `__all__` to `mcp_loopback.py` so both
+   import paths work, matching what the brief's own test expects.
+
+No changes were needed to `get_item`/Step 4's documented fallback — `get_item`
+on a nonexistent id really does raise via `_require_access`
+(`core/app/mcp/tools.py:69-79`, `raise ValueError("item not found")`), which
+the MCP SDK turns into `isError=true`, exactly as the brief predicted for the
+happy case.
+
+## Files changed
+
+- `core/app/copilot/mcp_loopback.py` (new)
+- `core/app/copilot/tools_allowlist.py` (new)
+- `core/tests/test_copilot_mcp_loopback.py` (new)
+
+Commit: `308e97d` — `feat(core): client de rappel MCP + allowlist d'outils
+pour le copilote (SP-20)` (exact message from the brief).
+
+## Self-review findings
+
+- Confirmed via `uv run lint-imports` that `app.copilot` doesn't break the
+  layered-architecture import-linter contract.
+- Confirmed the 6 allowlisted tool names are all real, currently-registered
+  MCP tools (not just plausible-sounding names) by grepping
+  `core/app/mcp/tools.py`.
+- Confirmed no regression in the 4 directly-related existing test files
+  (17/17 pass) plus the new file (5/5 pass).
+- `McpLoopbackSession.__init__` raises `KeyError` if `CORE_BASE_URL` is unset
+  and no `http_client` is injected — this is deliberate (brief's own code,
+  unchanged), consistent with this repo's "fail fast on missing required
+  env var" convention (e.g. `CORE_SECRETS_MASTER_KEY`). Flagging only for
+  Task 5's awareness: whatever constructs `McpLoopbackSession` in
+  `routes.py` must ensure `CORE_BASE_URL` is set in every deployment path
+  (it already is per `app/main.py`'s own default-handling, so this should be
+  a non-issue in practice).
+
+## Issues or concerns
+
+None blocking. The three empirical corrections above (asyncio/anyio
+convention, Host-header allowlist, unknown-tool-name behavior) are the kind
+of thing that would have caused Task 5's `routes.py` to be built against a
+false mental model of `call_tool`'s failure modes if left uncorrected — worth
+a quick read by whoever picks up Task 5, since it consumes exactly this
+`McpLoopbackSession`/`McpLoopbackError`/`ToolCallResult` interface.

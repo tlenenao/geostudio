@@ -660,9 +660,176 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   aucune donnée n'est mal exposée (agit comme si aucun filtre n'était posé),
   mais l'expérience est trompeuse ; reste en suivi non bloquant, nécessite
   un choix produit (honorer `query` à la congélation vs. étendre
-  l'avertissement d'export aux widgets de filtre). Jalon M15 non atteint
-  sous ce seul périmètre : Connecté et Autoporté restent des plans séparés
-  (SP-18b/c, non datés).
+  l'avertissement d'export aux widgets de filtre).
+- **SP-18b** — export d'apps : mode Connecté (deuxième des trois modes de
+  SP-18) : réutilise quasi tel quel le mécanisme SP-18a (garde/job/route/
+  panneau) — `check_export_guard` gagne un paramètre `mode` requis, sans
+  défaut (tous les sites d'appel existants mis à jour explicitement) : en
+  mode `"connected"` la restriction sur les sources `"statistics"` et
+  l'allowlist de types de widgets disparaissent toutes deux (rien n'est
+  figé côté serveur, `/collections/{id}/aggregate` est déjà anonyme-capable
+  pour une collection publique ; un widget tiers charge son JS depuis sa
+  propre origine, exactement comme dans le shell normal). `build_app_export_task`
+  saute `freeze_config` pour ce mode (données vivantes) et embarque un
+  `geostudio-connection.json` (`{"coreUrl": ...}`, sourcé de `CORE_BASE_URL`,
+  déjà utilisé pour le même usage par le serveur MCP) dans le zip aux côtés
+  de la config **non gelée**. Le runtime prébâti existant (un seul, partagé
+  avec le mode Statique) devient sensible au mode au chargement : la
+  présence de `geostudio-connection.json` bascule `createItemClient` (vrai
+  réseau, `getToken` codé en dur à `() => undefined` — jamais câblé sur
+  `useAuth()`, un piège identifié en conception : `enableMockAuth()` fait
+  retourner `"mock-token"` à `getAccessToken()`, et le cœur traite tout
+  `Authorization` présent comme devant être valide, sans repli anonyme sur
+  un jeton invalide) au lieu de `createStaticItemClient`. Nouveau middleware
+  CORS étroit et capacity-gated dans `core/app/main.py` (origine wildcard —
+  sûr ici puisqu'aucune credential/cookie ne traverse cette frontière,
+  Bearer-ou-rien — mais allowlist de chemins stricte : uniquement les
+  endpoints déjà anonymes-capables qu'un bundle Connecté appelle). Exécution
+  en subagent-driven-development, 9 tâches ; **revue finale de branche** (4
+  Important, invisibles à une revue par tâche) : `loadConnection()` laissait
+  une erreur de parse JSON se propager et casser le mode Statique déjà livré
+  sur tout hôte statique à repli SPA (nginx `try_files`, Netlify, Firebase
+  Hosting répondent 200+HTML sur un chemin non trouvé) — traité désormais
+  comme « pas de fichier de connexion », repli sur Statique ; les extensions
+  tierces actives n'étaient jamais enregistrées en mode Connecté (le garde
+  les autorise sur la prémisse qu'elles chargent leur propre JS, mais rien
+  ne les enregistrait — rendu en « Widget inconnu ») ; le widget Galerie
+  builtin appelle `GET /public/items`, absent de l'allowlist CORS (bloqué) ;
+  `.env.example` ne documentait ni la surface CORS wildcard ni l'obligation
+  de régler `CORE_BASE_URL` en URL externe réelle pour un déploiement
+  reverse-proxyé. Une passe de fix + **2 re-revues** ont trouvé et corrigé
+  2 défauts supplémentaires introduits par le premier fix lui-même :
+  `listActiveExtensions()` non gardé pouvait faire planter toute la page sur
+  un 404/erreur réseau/CORS même pour une app sans widget tiers (try/catch
+  ajouté) ; le try/catch, trop large dans sa première forme, avalait aussi
+  les bugs réels de `registerExtensionWidget` — resserré au seul `fetch`.
+  0 Critical/Important non résolu au merge sur les 3 rounds cumulés.
+- **SP-18c** — export d'apps : mode Autoporté/standalone (troisième et
+  dernier mode de SP-18, **jalon M15 atteint**) : contrairement aux modes
+  Statique (données figées) et Connecté (cœur GeoStudio d'origine requis en
+  ligne), l'Autoporté embarque données **et** un mini-serveur dans un seul
+  conteneur Docker distribuable sans dépendance à une instance GeoStudio.
+  Cœur : `write_snapshot` (un GeoParquet par collection référencée,
+  réutilise le CTE de dédoublonnage CDC de SP-11b), `app.appexport.manifest`
+  (forme partagée du manifeste de snapshot), `open_local_connection` +
+  listing d'entités DuckDB-backed pour le mini-serveur, `build_standalone_bundle_zip`
+  (bundle données+compose), une app FastAPI mini-serveur autonome, job
+  d'export qui bascule sur `mode="standalone"`, `POST /app-exports` accepte
+  ce mode. Déploiement : image Docker mini-serveur dédiée, publiée sur
+  `ghcr.io` (`geostudio-appexport-standalone`) par la CI de release. Shell :
+  `AppExportMode` gagne `"standalone"`, bouton « Autoporté » sur
+  `AppExportPanel`. E2E : le conteneur standalone sert l'app depuis un vrai
+  snapshot. Exécution en subagent-driven-development, 14 tâches (2 défauts
+  trouvés et corrigés en revue de tâche : `build_standalone_bundle_zip` ne
+  levait pas d'erreur claire sur un `snapshot_dir` manquant ; le listing
+  d'entités du mini-serveur ne gardait pas contre un filtre spatial posé sur
+  une collection non spatiale) + **1 round de revue finale de branche** :
+  0 Critical/Important trouvé.
+- **SP-18** — clos : les trois modes d'export (Statique SP-18a, Connecté
+  SP-18b, Autoporté SP-18c) sont livrés. **Jalon M15 atteint.**
+- **SP-19** — undo/redo général du builder (`shell/src/pages/AppBuilderPage.tsx`)
+  : `Ctrl+Z`/`Ctrl+Shift+Z` + boutons « Annuler »/« Rétablir », pile
+  éphémère unique d'instantanés `AppConfig` complets (past/future,
+  plafond 50), derrière un seul hook `useUndoableDraft` qui remplace le
+  `useState` de `draft` — aucun panneau/widget individuel modifié
+  (vérifié contre le code réel : tous funnellent déjà par ce seul
+  `setDraft`). **Correction de spec actée au moment du plan (2026-08-15,
+  avec Tanguy)** : l'hypothèse initiale (panneaux bufferisant localement
+  la saisie avant commit) était fausse pour ce dépôt — tous les champs
+  texte appellent `setDraft` à chaque frappe, sans état local — remplacée
+  par un **coalescing centralisé par minuterie d'inactivité (400ms)**
+  dans le hook seul, pas par un buffer par panneau (§3/§4 de la spec
+  amendées en conséquence). Raccourci clavier ignoré tant que le focus
+  est dans un champ texte (préserve l'undo natif du navigateur).
+  Exécution en subagent-driven-development, 4 tâches (0 Critical/Important
+  en revue de tâche) + **revue finale de branche** : **2 Critical**
+  invisibles à la revue par tâche — `undo()`/`redo()` mutaient des refs
+  à l'intérieur d'un updater `useState`, cassé sous `<StrictMode>` (donc
+  en `npm run dev`, jamais en E2E qui tourne contre un build de prod où
+  le double-invoke DEV est compilé) : un seul edit puis `Ctrl+Z` ne
+  faisait rien tout en affichant `canUndo=false` comme si l'undo avait
+  réussi ; `activePageId` (state hors pile undo) devenait orphelin après
+  annulation d'un « Ajouter une page », `setPageLayout` no-opant alors
+  silencieusement tout edit suivant (« Enregistrer » sauvegardait sans
+  erreur ni changement) — corrigés en une passe (`draftRef` synchrone
+  remplaçant toute mutation de ref dans un updater ; `activePage` dérivé
+  et validé contre `draft.pages` à chaque render), plus 1 Important
+  (timer de coalescing non nettoyé au démontage) et 1 Minor de même
+  classe (`selectedId` non réconcilié). Re-revue : 0 Critical/Important
+  résiduel, E2E re-exécuté par le contrôleur (2/2). **Prérequis de SP-20
+  rempli.**
+- **SP-20** — copilote IA embarqué dans le builder (**jalon M16 atteint**,
+  arbitrages A32/A40) : panneau de chat dans le builder d'app, outils MCP
+  orchestrés par le cœur en **loopback HTTP réel** sur son propre `/mcp`
+  (jamais un appel direct aux fonctions d'outil), micro-actions appliquées
+  à la config en cours d'édition — annulables par le seul et même undo
+  stack SP-19, sans bouton dédié. Tout derrière `CORE_LLM_PROVIDER`
+  (défaut vide = capacité éteinte, routeur non monté, panneau absent).
+  - **Cœur** : `core/app/copilot/` (`llm_provider` — `LLMProvider`
+    enfichable, `FakeLLMProvider` déterministe pour dev/test +
+    `OpenAICompatibleLLMProvider` ; `mcp_loopback` — session HTTP vers
+    `/mcp`, poignée de main paresseuse ; `tools_allowlist` — 6 outils MCP
+    seulement, jamais `save_app_config`/`set_sharing` ; `routes` — `POST
+    /copilot/turn`, boucle d'outils bornée à 6 itérations, timeout 30 s,
+    session fermée en `finally`). `app.copilot` inséré sous `app.mcp` dans
+    le contrat de couches. Tout nom d'outil hors allowlist n'est **jamais**
+    exécuté côté serveur : il repart au shell en `clientOps`.
+  - **Shell** : `configSchema` sur `WidgetDefinition` (backfill des 22
+    widgets builtin + widgets d'extension), `clientTools.ts` (5 outils
+    client générés depuis le registre, pas maintenus à la main),
+    `applyClientOp.ts` (pur ; tout patch de prop filtré par le
+    `configSchema` du widget, un nom halluciné est rejeté),
+    `useMcpToken.ts` (jeton d'audience MCP distincte, en mémoire seule),
+    `CopilotPanel.tsx` (un seul `setDraft` par tour = une seule entrée
+    undo).
+  - Exécution en subagent-driven-development, 13 tâches, 0
+    Critical/Important non résolu sur les 13 revues de tâche. **Revue
+    finale de branche** : 3 Critical + 2 Important + 6 Minor, tous
+    invisibles à la revue par tâche (chaque tâche testait avec
+    `FakeLLMProvider`/mocks qui masquaient exactement les points cassés) —
+    schémas d'outils envoyés en forme MCP (`inputSchema`) au lieu de la
+    forme OpenAI (`parameters`), **présent verbatim dans le texte du
+    plan** ; `tool_calls[].function.arguments` réinjecté comme dict Python
+    au lieu d'une chaîne JSON (casse la 2e itération de toute boucle
+    d'outil) ; `signinSilent({scope})` ignoré silencieusement par
+    `oidc-client-ts` sur sa branche refresh-token, donc jeton MCP jamais à
+    la bonne audience en OIDC réel ; `provider.chat()` synchrone appelé
+    depuis une route `async` (gelait toute la boucle d'événements) ; jeton
+    MCP mis en cache indéfiniment. Une passe de fix (C1/C2/C3/I1/I2 +
+    M1/M2/M6), puis un **redesign de C3** en 2e tentative : l'appel direct
+    au endpoint de token a été abandonné après vérification empirique
+    contre un vrai Keycloak (un grant `refresh_token` ne réapplique jamais
+    le mapper d'audience, quelle que soit la combinaison de scopes) au
+    profit de `signinSilent({scope, forceIframeAuth: true})`.
+  - **Clôture** (2026-08-20) : croisement avec la revue de projet
+    `docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, qui portait
+    3 constats copilote de gravité Critique et 2 Important — chacun
+    re-vérifié contre le code avant correction, puis corrigé en TDD :
+    **confused deputy** sur `/copilot/turn` (la route authentifiait son
+    appelant puis agissait sous l'identité d'un **second** jeton fourni
+    par le client, jamais comparée — nouveau `app/copilot/mcp_token.py`,
+    `sub` du jeton MCP exigé égal à `user.oidc_sub`, 403 sinon, audience
+    MCP obligatoire pour qu'un jeton REST ne puisse pas satisfaire la
+    comparaison) ; **copilote cassé par construction en prod** (le rappel
+    `/mcp` ciblait `CORE_BASE_URL`, que l'overlay prod fixe à l'URL
+    publique en TLS — hairpin NAT, et rejeté de toute façon par la garde
+    anti-DNS-rebinding de FastMCP : nouvelle `CORE_INTERNAL_BASE_URL`,
+    câblage vérifié **par valeur** sur le compose résolu) ; **entrée non
+    bornée** (`CopilotTurnRequest` n'avait aucune contrainte et tout son
+    contenu repartait au LLM à chaque itération — bornes sur tous les
+    champs + taille sérialisée de `currentConfig`, `role` d'historique
+    borné à `user`/`assistant` pour qu'un `system` client ne réécrive pas
+    la consigne) ; **copilote éteint en mode démo lecture-seule** (les
+    écritures y étaient déjà bloquées, mais un visiteur anonyme pouvait
+    brûler le budget d'API LLM de l'opérateur — double verrou : capacité à
+    False *et* exemption du garde retirée) ; **surface d'injection de
+    prompt** via `currentConfig` (config interpolée nue dans la consigne,
+    alors qu'elle porte des textes rédigés par des utilisateurs et peut
+    venir d'un item partagé par un tiers — bloc désormais délimité par un
+    marqueur à **nonce tiré par tour**, annoncé comme de la donnée, avec
+    consigne de n'y obéir jamais). Le 3e Critique de cette revue (blocage
+    de la boucle d'événements) était déjà fermé par le fix I1 de la revue
+    de branche.
 
 ### À venir
 
@@ -695,22 +862,49 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   par notre propre TiTiler depuis un DEM COG hébergé chez nous, encodage
   terrain `mapbox` en plus de `terrarium`, conversion 3D (py3dtiles,
   nuages de points).
-- **SP-18** — export d'apps déployables sans GeoStudio (dépend de SP-11).
-  SP-18a (mécanisme commun + mode Statique) livré, cf. `### Fait`. Restent
-  non planifiés, non datés : SP-18b (mode Connecté) et SP-18c (mode
-  Autoporté). Jalon M15 non atteint tant que les trois modes ne sont pas
-  livrés.
-- **SP-19** — undo/redo général du builder (pile d'instantanés de config,
-  prérequis de SP-20). Aucune dépendance amont.
-- **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
-  MCP orchestrés en loopback réel, micro-actions sur la config en cours
-  d'édition). Dépend de SP-19. Jalon M16. Arbitrages A32/A40, brainstorm
-  2026-08-05 ; specs :
-  `docs/superpowers/specs/2026-08-05-undo-redo-builder-design.md` et
-  `docs/superpowers/specs/2026-08-05-copilote-embarque-design.md`.
+- **SP-18** — clos, jalon M15 atteint (cf. `### Fait`).
+- **SP-19** — clos (cf. `### Fait`).
+- **SP-20** — clos, **jalon M16 atteint** (cf. `### Fait`). Restent hors
+  périmètre livré, non planifiés : budget de temps **global** au tour (le
+  timeout 30 s est par appel LLM, et `asyncio.wait_for` ne peut pas
+  interrompre l'appel synchrone déjà parti dans son thread — borné en
+  pratique par le timeout httpx de 30 s) ; rate limiting applicatif par
+  utilisateur/tenant sur `/copilot/turn` (aujourd'hui seul le
+  `ratelimit` uniforme de Traefik) ; garde d'egress sur l'appel LLM
+  sortant (4e surface, les trois autres en ont une).
 
 ### Suivis non bloquants ouverts
 
+- SP-20, suivis non bloquants (revue finale de branche + clôture) : le
+  chemin OIDC **réel** de `useMcpToken` (`signinSilent({scope,
+  forceIframeAuth: true})`) n'est vérifié que statiquement et
+  unitairement — aucun bout-en-bout navigateur+iframe+Keycloak n'a pu être
+  produit dans cet environnement, à faire avant mise en production (même
+  précédent que les tests `@pytest.mark.qgis` de SP-15d) ; ce
+  `signinSilent` remplace l'utilisateur OIDC stocké de toute la session
+  shell (inoffensif sur ce realm, dont le mapper d'audience
+  `geostudio-core` est au niveau client, fragile sur un autre) ;
+  `CORE_LLM_PROVIDER` non vide mais **invalide** active le panneau et le
+  routeur sans échec au démarrage (échoue seulement en 500 à l'usage —
+  contraste avec `CORE_SECRETS_MASTER_KEY`, fail-fast au boot) ;
+  `configSchema` n'a pas de validation par valeurs autorisées (enum), donc
+  le copilote peut écrire une valeur qu'aucun `<select>` de l'UI manuelle
+  ne produirait (ex. `chartType` invalide) ; un nom d'outil client qui
+  entrerait en collision avec l'allowlist MCP s'exécuterait côté serveur
+  au lieu de repartir en `clientOp` (non exploitable aujourd'hui, les 5
+  noms client ne recoupent jamais les 6 noms MCP — à surveiller si le
+  vocabulaire client devient dynamique) ; `anyio` utilisé par
+  `app/copilot/routes.py` reste une dépendance transitive de Starlette,
+  non déclarée dans `core/pyproject.toml`.
+- `deploy/postgis/Dockerfile` + `deploy/postgis/pg_hba.conf` (non
+  commités, apparus pendant SP-20 pour faire tourner un vrai Keycloak) :
+  **inertes**, vérifié empiriquement — Postgres lit
+  `$PGDATA/pg_hba.conf`, jamais `/etc/postgresql/pg_hba.conf`, faute d'un
+  `-c hba_file=…` dans le `command:` du service ; et l'image se termine
+  déjà par `host all all all scram-sha-256`, que le fichier proposé
+  affaiblirait en `md5` s'il était câblé un jour. Le vrai problème de
+  démarrage de la stack par défaut reste le volume `pg-data` cassé
+  (bullet ci-dessous).
 - Connecteur ArcGIS v0 = services publics seulement (pas de token/OAuth distant) ;
   résiduel DNS-rebinding TOCTOU sur la garde egress (pinning-IP différé).
 - Tags d'images Docker `pgbouncer`/`martin`/`titiler` à repinner si dérive ;

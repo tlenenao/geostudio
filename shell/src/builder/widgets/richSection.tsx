@@ -8,6 +8,7 @@ export function registerRichSectionWidget(): void {
     label: "Section riche",
     defaultProps: { markdown: "" },
     defaultSize: { w: 12, h: 4 },
+    configSchema: [{ name: "markdown", type: "string", label: "Markdown", default: "" }],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">

@@ -51,7 +51,7 @@ def test_instance_reports_export_disabled_by_default(env):
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
     }
 
 

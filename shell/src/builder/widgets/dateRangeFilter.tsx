@@ -9,6 +9,7 @@ export function registerDateRangeFilterWidget(): void {
     label: "Plage de dates",
     defaultProps: { label: "Période" },
     defaultSize: { w: 4, h: 1 },
+    configSchema: [{ name: "label", type: "string", label: "Libellé", default: "Période" }],
     PropsPanel: ({ props, onChange }) => (
       <label className="flex flex-col gap-1 text-sm">Libellé
         <input aria-label="Libellé de la plage de dates" className="h-9 rounded-md border border-slate-300 px-2"

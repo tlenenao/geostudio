@@ -17,6 +17,9 @@ export function registerTabsWidget(): void {
     label: "Onglets",
     defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
     defaultSize: { w: 6, h: 6 },
+    // Son seul champ, `tabs`, est array-shaped — hors de portée pour
+    // updateWidgetProps en v1 (cf. Global Constraints). Rien à lister ici.
+    configSchema: [],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const { tabs } = props as TabsProps;
       const [activeId, setActiveId] = useState(tabs[0]?.id);

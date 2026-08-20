@@ -13,14 +13,15 @@ from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
-    is_appexport_enabled, is_etl_enabled, is_export_enabled, is_read_only_mode,
-    is_terrain3d_enabled, is_tileset3d_enabled,
+    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
+    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
+from app.copilot import routes as copilot_routes
 from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.export import routes as export_routes
@@ -188,6 +189,8 @@ def create_app() -> FastAPI:
         app.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
         app.include_router(terrain3d_routes.router)
+    if is_copilot_enabled():
+        app.include_router(copilot_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
