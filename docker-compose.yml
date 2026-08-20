@@ -141,25 +141,22 @@ services:
       AWS_S3_ENDPOINT: minio:9000
       AWS_HTTPS: "NO"
       AWS_VIRTUAL_HOSTING: "FALSE"
+      # L'image (base tiangolo/uvicorn-gunicorn) écoute par défaut sur le
+      # port 80 tant qu'aucun `PORT` n'est fourni (`gunicorn_conf.py` :
+      # `port = os.getenv("PORT", "80")`, confirmé en conteneur réel). Trois
+      # éléments supposent pourtant que titiler écoute sur 8000 : le mapping
+      # `ports:` ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
+      # (`core/app/terrain3d/routes.py`) pour le proxy COG terrain3d, et la
+      # sonde ci-dessous — d'où ce `PORT` explicite.
+      PORT: "8000"
     ports:
       - "8000:8000"
     networks: [gis-net]
     # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
-    # et `/healthz` répond `{"ping":"pong!"}` (confirmé en conteneur réel).
-    # Découverte hors périmètre de cette tâche (aucune variable/port touché
-    # ici) : le conteneur écoute en interne sur le port **80**, pas 8000 —
-    # aucun `PORT` n'est câblé dans `environment` ci-dessus, et l'image
-    # (base tiangolo/uvicorn-gunicorn) défaut sur 80 en son absence
-    # (`gunicorn_conf.py` : `port = os.getenv("PORT", "80")`) ; confirmé
-    # `curl http://127.0.0.1:8000/healthz` → connexion refusée, alors que
-    # `curl http://127.0.0.1:80/healthz` répond. La sonde cible donc le
-    # port réellement en écoute. Le mapping `8000:8000` ci-dessus et
-    # `TITILER_URL: http://titiler:8000` (lu par `core`, cf.
-    # `core/app/terrain3d/routes.py`) restent inchangés par cette tâche —
-    # à investiguer séparément, ce mismatch peut casser le proxy COG
-    # terrain3d en usage réel.
+    # et `/healthz` répond `{"ping":"pong!"}` sur le port 8000 une fois
+    # `PORT` câblé ci-dessus (confirmé en conteneur réel).
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/healthz"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
