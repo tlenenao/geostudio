@@ -33,19 +33,34 @@ cette propriété.
 | 1.1 | `release.yml` ne publie que 4 images | **confirmé** : `geostudio-core`, `-shell`, `-postgis`, `-appexport-standalone` |
 | 1.2 | L'overlay prod ne substitue que 5 services | **confirmé** : `postgis`, `core`, `worker`, `cdc-worker`, `shell`. Restent en `build:` : `export-worker`, `qgis-worker`, `appexport-runtime-builder` (base) et `backup` (déclaré uniquement dans l'overlay) |
 | 1.3 | `backup.sh` couvre 3 buckets sur 7 | **confirmé** : `thumbnails`, `uploads`, `cdc` ; le cœur lit aussi `exports`, `appexports`, `tileset3d`, `terrain3d`. `S3_EXPORTS_BUCKET`, `S3_APPEXPORTS_BUCKET`, `S3_CDC_BUCKET` absents de `.env.example` |
-| 1.5 | Aucun contrôle de déployabilité | **confirmé** : 52 variables lues par `os.environ` dans `core/app/`, aucune vérification |
+| 1.5 | Aucun contrôle de déployabilité | **confirmé** : 53 variables lues par `os.environ` dans `core/app/`, aucune vérification |
 | 1.6 | Images non pinnées, healthchecks absents | **confirmé** : `minio/minio` **sans aucun tag**, `tailscale/tailscale:latest`, `traefik:v3.0`, `keycloak:24.0` ; healthchecks sur `postgis`/`minio`/`keycloak` seulement |
 
 Deux écarts, tous deux dans le sens de l'aggravation :
 
-- **Écart 1 (nouveau constat)** — les quatre variables `CORE_EMBEDDING_*`
-  (fournisseur d'embeddings de SP-7) et `CORE_ANALYST_SUBS` (rôle analyste de
-  SP-11c) ne sont câblées sur **aucun** service. La recherche sémantique et le
-  rôle analyste ne sont donc pas configurables dans la stack packagée : le
-  cœur retombe silencieusement sur ses valeurs par défaut. Ces cinq variables
-  n'étaient pas dans la liste du plan ; elles sortent de la règle de §4.2
-  (test 3), ce qui est une preuve d'utilité de la règle avant même son
-  écriture — elles sont câblées en §4.3.
+- **Écart 1 (nouveaux constats, trouvés en exécutant la règle avant de
+  l'écrire)** — six variables ne sont câblées sur **aucun** service :
+  - **`CORE_ETL_ENABLED`** — le plus grave, et le plus invisible : la variable
+    est documentée dans `.env.example` (ligne 82) et nommée dans un
+    *commentaire* du compose (ligne 263), mais aucun service ne la reçoit.
+    Un opérateur qui la met à `true` dans son `.env` ne change **rien** :
+    toute la surface SP-15 (pipelines REST + MCP, 13 opérations, sidecar
+    QGIS, planification cron) reste éteinte, sans le moindre signal. C'est la
+    **4ᵉ occurrence** de la classe de bug qui motive cette vague, après
+    SP-17a, SP-17b et tileset3d — et de loin la plus large en volume de
+    fonctionnalité rendue inatteignable. Son mécanisme d'échec est pire que
+    celui des trois précédents : la présence de la ligne dans `.env.example`
+    fait croire au câblage.
+  - `CORE_EMBEDDING_PROVIDER` / `_API_URL` / `_API_KEY` / `_MODEL` — la
+    recherche sémantique de SP-7 n'est pas configurable dans la stack
+    packagée ; le cœur retombe silencieusement sur son fournisseur par
+    défaut.
+  - `CORE_ANALYST_SUBS` — le rôle analyste de SP-11c ne peut être accordé à
+    personne.
+
+  Aucune de ces six n'était dans la liste du plan d'action ; elles sortent de
+  la règle de §4.2 (test 3), ce qui est une preuve d'utilité de la règle avant
+  même son écriture. Elles sont câblées en §4.3.
 - **Écart 2 (règle du plan trop large)** — la formulation du plan (« toute
   variable lue par `os.environ` figure dans l'environnement d'au moins un
   service **et** dans `.env.example` ») est fausse sur sa seconde moitié :
@@ -148,16 +163,23 @@ pas la liste elle-même.
 
 ### 4.3 Câblage des variables manquantes (conséquence de la règle)
 
-Cinq variables entrent dans `docker-compose.yml` :
+Six variables entrent dans `docker-compose.yml` :
 
+- `CORE_ETL_ENABLED` sur `core` **et** `worker` — le cœur monte le routeur
+  pipelines et enregistre les outils MCP, le worker consomme la file `etl` ;
+  les deux doivent lire la même valeur, exactement comme `CORE_EXPORT_ENABLED`
+  l'est déjà pour `core` + `export-worker` (précédent SP-17a, où une valeur
+  divergente produisait une capture « Accès refusé » silencieuse) ;
 - `CORE_EMBEDDING_PROVIDER`, `CORE_EMBEDDING_API_URL`, `CORE_EMBEDDING_API_KEY`,
   `CORE_EMBEDDING_MODEL` sur `core` **et** `worker` (l'indexation sémantique
   tourne en job) ;
 - `CORE_ANALYST_SUBS` sur `core`.
 
-Toutes avec un défaut vide (`${VAR:-}`), donc sans changement de comportement
-pour une instance existante, et documentées dans `.env.example` par la même
-occasion — ce qui les fait entrer dans la règle du quatrième test.
+Toutes avec un défaut inoffensif (`${VAR:-}`, et `${CORE_ETL_ENABLED:-false}`
+pour la capacité), donc **sans changement de comportement pour une instance
+existante** : une variable absente du `.env` retombe sur ce qu'elle valait
+déjà quand personne ne la passait. Les cinq non documentées entrent aussi dans
+`.env.example` (`CORE_ETL_ENABLED` y est déjà).
 
 ### 4.4 Sauvegarde (1.3)
 
@@ -266,7 +288,7 @@ mal placée transforme un service lent en panne totale.
 | 1.1 | `test_every_build_service_has_a_released_image` vert ; la matrice compte 8 entrées |
 | 1.2 | `test_prod_overlay_leaves_no_build_directive` vert ; `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile export --profile etl --profile appexport config` ne contient plus aucun `build:` (exécution manuelle unique, consignée) |
 | 1.3 | `test_backup_covers_every_bucket_the_core_uses` vert ; les exclusions `exports`/`appexports` sont écrites dans le script et le runbook |
-| 1.5 | les 6 tests verts ; retirer `CORE_TILESET3D_ENABLED` du service `core` rend le test 3 rouge ; ajouter un `os.environ["CORE_NOUVEAU"]` non câblé le rend rouge aussi (les deux vérifiés à la main, consignés) |
+| 1.5 | les 6 tests verts ; retirer `CORE_TILESET3D_ENABLED` du service `core` rend le test 3 rouge ; ajouter un `os.environ["CORE_NOUVEAU"]` non câblé le rend rouge aussi (les deux vérifiés à la main, consignés) ; `CORE_ETL_ENABLED` est effectivement transmis à `core` et `worker` dans le compose résolu |
 | 1.6 | `test_images_are_pinned_to_a_patch_version` vert ; `docker compose config \| grep -c ":latest"` → 0 ; `docker compose ps` montre les nouveaux services `healthy` |
 
 Le test 4 (`substitutions documentées`) est vert dès l'écriture : à signaler
