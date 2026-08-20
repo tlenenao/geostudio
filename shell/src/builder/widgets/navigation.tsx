@@ -7,6 +7,7 @@ export function registerNavigationWidget(): void {
     label: "Navigation",
     defaultProps: { direction: "horizontal" },
     defaultSize: { w: 4, h: 1 },
+    configSchema: [{ name: "direction", type: "string", label: "Direction", default: "horizontal" }],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">Orientation

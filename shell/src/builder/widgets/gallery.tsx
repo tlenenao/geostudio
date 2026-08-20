@@ -17,6 +17,12 @@ export function registerGalleryWidget(): void {
     label: "Galerie",
     defaultProps: { type: "", tag: "", limit: 12, columns: 3 },
     defaultSize: { w: 12, h: 6 },
+    configSchema: [
+      { name: "type", type: "string", label: "Type d'item", default: "" },
+      { name: "tag", type: "string", label: "Tag", default: "" },
+      { name: "limit", type: "number", label: "Nombre max", default: 12 },
+      { name: "columns", type: "number", label: "Colonnes", default: 3 },
+    ],
     PropsPanel: ({ props, onChange }) => {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       return (

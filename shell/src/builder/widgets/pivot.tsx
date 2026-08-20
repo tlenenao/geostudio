@@ -23,6 +23,10 @@ export function registerPivotWidget(): void {
     label: "Pivot",
     defaultProps: { dataSourceId: "", encodings: { rows: "", columns: "" }, title: "" },
     defaultSize: { w: 6, h: 4 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "title", type: "string", label: "Titre", default: "" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const encodings = (props.encodings as PivotEncodings | undefined) ?? {};
       const setEncodings = (patch: PivotEncodings) => onChange({ ...props, encodings: { ...encodings, ...patch } });

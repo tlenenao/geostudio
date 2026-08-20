@@ -17,6 +17,10 @@ export function registerDrawerWidget(): void {
     label: "Tiroir",
     defaultProps: { title: "Tiroir", items: [], side: "right" },
     defaultSize: { w: 3, h: 1 },
+    configSchema: [
+      { name: "title", type: "string", label: "Titre", default: "Tiroir" },
+      { name: "side", type: "string", label: "Côté", default: "right" },
+    ],
     actions: ["open", "close"],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const { title, items, side } = props as DrawerProps;

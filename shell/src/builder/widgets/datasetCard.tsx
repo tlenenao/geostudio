@@ -11,6 +11,11 @@ export function registerDatasetCardWidget(): void {
     label: "Fiche jeu de données",
     defaultProps: { dataSourceId: "", showDownload: true, title: "" },
     defaultSize: { w: 4, h: 4 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "showDownload", type: "boolean", label: "Afficher le téléchargement", default: true },
+      { name: "title", type: "string", label: "Titre", default: "" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect

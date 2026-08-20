@@ -26,6 +26,10 @@ export function registerDataWidgets(): void {
     label: "Liste",
     defaultProps: { dataSourceId: "", titleField: "" },
     defaultSize: { w: 4, h: 4 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "titleField", type: "string", label: "Champ titre", default: "" },
+    ],
     events: ["itemSelected"],
     actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
@@ -82,6 +86,10 @@ export function registerDataWidgets(): void {
     label: "Table",
     defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
     defaultSize: { w: 6, h: 4 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "pageSize", type: "number", label: "Lignes par page", default: 10 },
+    ],
     events: ["itemSelected"],
     actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => {
