@@ -64,3 +64,64 @@ def test_openai_compatible_provider_parses_tool_calls(monkeypatch):
     provider = OpenAICompatibleLLMProvider(api_url="https://example/v1/chat", api_key="test-key", model="gpt-4o-mini")
     turn = provider.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
     assert turn.tool_calls == [ToolCall(id="call_1", name="search_catalog", arguments={"q": "incidents"})]
+
+
+def test_openai_compatible_provider_sends_tools_in_openai_shape(monkeypatch):
+    """Les outils sont déclarés côté MCP/shell en forme {name, description,
+    inputSchema} ; l'API chat-completions attend {name, description,
+    parameters}. Un `inputSchema` laissé tel quel fait rejeter la requête
+    (400) par un vrai fournisseur, à chaque tour (il y a toujours au moins
+    les 6 outils MCP de l'allowlist)."""
+    import json as json_module
+
+    import httpx
+
+    from app.copilot.llm_provider import OpenAICompatibleLLMProvider
+
+    captured: dict = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["payload"] = json
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    input_schema = {"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}
+    provider = OpenAICompatibleLLMProvider(api_url="https://example/v1/chat", api_key="test-key", model="gpt-4o-mini")
+    provider.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[{"name": "search_catalog", "description": "Cherche.", "inputSchema": input_schema}],
+    )
+
+    tool = captured["payload"]["tools"][0]
+    assert tool["type"] == "function"
+    assert tool["function"]["name"] == "search_catalog"
+    assert tool["function"]["description"] == "Cherche."
+    assert tool["function"]["parameters"] == input_schema
+    assert "inputSchema" not in json_module.dumps(captured["payload"])
+
+
+def test_openai_compatible_provider_tolerates_tools_without_description_or_schema(monkeypatch):
+    import httpx
+
+    from app.copilot.llm_provider import OpenAICompatibleLLMProvider
+
+    captured: dict = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["payload"] = json
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAICompatibleLLMProvider(api_url="https://example/v1/chat", api_key="test-key", model="gpt-4o-mini")
+    provider.chat(messages=[], tools=[{"name": "addWidget"}])
+
+    tool = captured["payload"]["tools"][0]["function"]
+    assert tool == {"name": "addWidget", "description": "", "parameters": {"type": "object", "properties": {}}}
