@@ -14,4 +14,12 @@ COPY retention.py /usr/local/bin/retention.py
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/entrypoint.sh
 
+# Cette image est désormais PUBLIÉE sur ghcr.io (SP-21) — c'est un acte de
+# distribution du client MinIO `mc`, sous AGPL. La notice voyage donc avec
+# l'image, pas seulement dans le dépôt.
+COPY LICENSE-BACKUP.md /LICENSE-BACKUP.md
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later AND Apache-2.0"
+LABEL org.opencontainers.image.source="https://github.com/tlenenao/geostudio"
+LABEL org.opencontainers.image.description="Image de sauvegarde GeoStudio (pg_dump chiffré age + rétention -> S3/MinIO) — contient le client MinIO mc (AGPL). Voir /LICENSE-BACKUP.md."
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
