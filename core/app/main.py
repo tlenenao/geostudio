@@ -123,7 +123,6 @@ def create_app() -> FastAPI:
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and request.url.path != "/mcp"
             and request.url.path != "/analytics/sql"
-            and request.url.path != "/copilot/turn"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
             and not _EXPORT_PATH_RE.match(request.url.path)
         ):

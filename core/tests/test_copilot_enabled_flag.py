@@ -58,3 +58,20 @@ def test_instance_reports_copilot_enabled(env, monkeypatch):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json()["copilotEnabled"] is True
+
+
+def test_is_copilot_disabled_in_read_only_mode(monkeypatch):
+    """I6 : en mode démo lecture-seule, un tour de copilote reste gratuit
+    pour le visiteur et payant pour l'opérateur — la capacité est donc
+    éteinte, ce qui masque aussi le panneau côté shell."""
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    assert is_copilot_enabled() is False
+
+
+def test_instance_reports_copilot_disabled_in_read_only_mode(env, monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json()["copilotEnabled"] is False
