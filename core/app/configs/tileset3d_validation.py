@@ -15,6 +15,7 @@ rechercher en base) mais conservés : les cinq autres validateurs de ce
 paquet partagent la même signature et les trois points d'appel de
 app.configs.routes les invoquent uniformément.
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 

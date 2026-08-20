@@ -10,13 +10,20 @@ from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+from app.configs.extension_permissions import (
+    ExtensionPermissionError,
+    validate_extension_permissions,
+)
 from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
-from app.configs.terrain3d_validation import validate_terrain3d_payload as _validate_terrain3d_payload
-from app.configs.tileset3d_validation import validate_tileset3d_payload as _validate_tileset3d_payload
-from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
+from app.configs.terrain3d_validation import (
+    validate_terrain3d_payload as _validate_terrain3d_payload,
+)
+from app.configs.tileset3d_validation import (
+    validate_tileset3d_payload as _validate_tileset3d_payload,
+)
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -28,7 +35,9 @@ router = APIRouter()
 
 _meter = metrics.get_meter(__name__)
 _apps_runtime_executions_counter = _meter.create_counter(
-    "geostudio.apps.runtime_executions", unit="1", description="GET config calls with mode=runtime",
+    "geostudio.apps.runtime_executions",
+    unit="1",
+    description="GET config calls with mode=runtime",
 )
 
 
@@ -42,9 +51,7 @@ class RollbackRequest(BaseModel):
     version: int
 
 
-def _require_access(
-    session: Session, *, user: User, item_id: str, action: str
-) -> None:
+def _require_access(session: Session, *, user: User, item_id: str, action: str) -> None:
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="not found")
@@ -54,7 +61,8 @@ def _require_access(
 
 def _delete_config_and_item(session: Session, config_id: str, item_id: str, tenant_id: str) -> None:
     from sqlalchemy import delete
-    from app.configs.models import ConfigRevision, Config
+
+    from app.configs.models import Config, ConfigRevision
     from app.sharing.models import ItemShare
 
     session.execute(delete(ConfigRevision).where(ConfigRevision.config_id == config_id))
@@ -104,8 +112,11 @@ def create_config(
     _validate_terrain3d_payload(session, request.config, user=user)
     try:
         item = items_repo.create_item(
-            session, tenant_id=user.tenant_id, owner_id=user.id,
-            resource_type=request.config.kind, title=request.title,
+            session,
+            tenant_id=user.tenant_id,
+            owner_id=user.id,
+            resource_type=request.config.kind,
+            title=request.title,
             slug=request.slug,
         )
     except SlugCollisionError as err:
@@ -114,13 +125,23 @@ def create_config(
         raise HTTPException(status_code=422, detail=str(err)) from err
     result = repo.create_config(session, request.config, item_id=item.id, tenant_id=user.tenant_id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.create", object_type="config", object_id=result.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.create",
+        object_type="config",
+        object_id=result.id,
         payload={"title": request.title, "kind": request.config.kind},
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="item.create", object_type="item", object_id=item.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="item.create",
+        object_type="item",
+        object_id=item.id,
         payload={"title": request.title},
     )
     return result
@@ -165,8 +186,14 @@ def update_config(
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.update", object_type="config", object_id=config_id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.update",
+        object_type="config",
+        object_id=config_id,
+        payload={},
     )
     return result
 
@@ -200,8 +227,13 @@ def rollback_config(
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.rollback", object_type="config", object_id=config_id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.rollback",
+        object_type="config",
+        object_id=config_id,
         payload={"restored_version": request.version},
     )
     return result
@@ -220,12 +252,24 @@ def delete_config(
 
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.delete", object_type="config", object_id=config_id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.delete",
+        object_type="config",
+        object_id=config_id,
+        payload={},
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="item.delete", object_type="item", object_id=result.itemId, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="item.delete",
+        object_type="item",
+        object_id=result.itemId,
+        payload={},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -271,8 +315,14 @@ def update_config_by_item(
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.update", object_type="config", object_id=existing.id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.update",
+        object_type="config",
+        object_id=existing.id,
+        payload={},
     )
     return result
 
@@ -289,12 +339,24 @@ def delete_config_by_item(
         raise HTTPException(status_code=404, detail="config not found")
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.delete", object_type="config", object_id=result.id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.delete",
+        object_type="config",
+        object_id=result.id,
+        payload={},
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="item.delete", object_type="item", object_id=item_id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="item.delete",
+        object_type="item",
+        object_id=item_id,
+        payload={},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -315,11 +377,23 @@ def delete_item(
         raise HTTPException(status_code=404, detail="item not found")
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="item.delete", object_type="item", object_id=item_id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="item.delete",
+        object_type="item",
+        object_id=item_id,
+        payload={},
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="config.delete", object_type="config", object_id=result.id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="config.delete",
+        object_type="config",
+        object_id=result.id,
+        payload={},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

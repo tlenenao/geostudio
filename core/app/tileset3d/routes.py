@@ -3,6 +3,7 @@
 quand CORE_TILESET3D_ENABLED est actif (app.main, à la construction de
 l'app, même patron que app.pipelines/app.export). Le proxy de lecture
 (GET /tileset3d/{item_id}/{path}) est ajouté dans ce même module en Task 6."""
+
 import logging
 import os
 import uuid
@@ -23,8 +24,11 @@ from app.items import repository as items_repo
 from app.sharing.authorization import can
 from app.tileset3d import repository as repo
 from app.tileset3d.schemas import (
-    Tileset3DCompleteRequest, Tileset3DJobStatus, Tileset3DPartPresignResponse,
-    Tileset3DUploadCreate, Tileset3DUploadCreated,
+    Tileset3DCompleteRequest,
+    Tileset3DJobStatus,
+    Tileset3DPartPresignResponse,
+    Tileset3DUploadCreate,
+    Tileset3DUploadCreated,
 )
 from app.tileset3d.storage import S3RangeFile
 from app.users.models import User
@@ -77,6 +81,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
         from app.tileset3d.jobs import finalize_tileset3d_task
 
         finalize_tileset3d_task.defer(job_id=job_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -92,21 +97,35 @@ def create_tileset3d_upload(
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     mp = s3.create_multipart_upload(Bucket=bucket, Key=key)
     job = repo.create_job(
-        session, tenant_id=user.tenant_id, created_by=user.id, source_key=key,
-        upload_id=mp["UploadId"], filename=body.filename, title=body.title,
+        session,
+        tenant_id=user.tenant_id,
+        created_by=user.id,
+        source_key=key,
+        upload_id=mp["UploadId"],
+        filename=body.filename,
+        title=body.title,
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="tileset3d.job_create", object_type="tileset3d_job", object_id=job.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="tileset3d.job_create",
+        object_type="tileset3d_job",
+        object_id=job.id,
         payload={"filename": body.filename, "title": body.title},
     )
     session.commit()
     return Tileset3DUploadCreated(jobId=job.id)
 
 
-@router.post("/tileset3d/uploads/{job_id}/parts/{part_number}/presign", response_model=Tileset3DPartPresignResponse)
+@router.post(
+    "/tileset3d/uploads/{job_id}/parts/{part_number}/presign",
+    response_model=Tileset3DPartPresignResponse,
+)
 def presign_tileset3d_part(
-    job_id: str, part_number: int,
+    job_id: str,
+    part_number: int,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
@@ -119,7 +138,12 @@ def presign_tileset3d_part(
         raise HTTPException(status_code=404, detail="job not found")
     url = s3.generate_presigned_url(
         "upload_part",
-        Params={"Bucket": bucket, "Key": job.source_key, "PartNumber": part_number, "UploadId": job.upload_id},
+        Params={
+            "Bucket": bucket,
+            "Key": job.source_key,
+            "PartNumber": part_number,
+            "UploadId": job.upload_id,
+        },
         ExpiresIn=900,
     )
     return Tileset3DPartPresignResponse(uploadUrl=url)
@@ -127,7 +151,8 @@ def presign_tileset3d_part(
 
 @router.post("/tileset3d/uploads/{job_id}/complete", status_code=204)
 def complete_tileset3d_upload(
-    job_id: str, body: Tileset3DCompleteRequest,
+    job_id: str,
+    body: Tileset3DCompleteRequest,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
@@ -138,13 +163,23 @@ def complete_tileset3d_upload(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     s3.complete_multipart_upload(
-        Bucket=bucket, Key=job.source_key, UploadId=job.upload_id,
-        MultipartUpload={"Parts": [{"PartNumber": p.partNumber, "ETag": p.etag} for p in body.parts]},
+        Bucket=bucket,
+        Key=job.source_key,
+        UploadId=job.upload_id,
+        MultipartUpload={
+            "Parts": [{"PartNumber": p.partNumber, "ETag": p.etag} for p in body.parts]
+        },
     )
     repo.mark_finalizing(session, job_id=job.id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="tileset3d.upload_complete", object_type="tileset3d_job", object_id=job.id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="tileset3d.upload_complete",
+        object_type="tileset3d_job",
+        object_id=job.id,
+        payload={},
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
     session.commit()
@@ -165,7 +200,8 @@ def get_tileset3d_upload_job(
 
 @router.get("/tileset3d/{item_id}/{path:path}")
 def read_tileset3d_entry(
-    item_id: str, path: str,
+    item_id: str,
+    path: str,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
@@ -249,7 +285,9 @@ def read_tileset3d_entry(
                     # 413 possible — on coupe la connexion et on trace.
                     logger.error(
                         "tileset3d : entrée %s (item %s) dépasse %d octets en cours de flux",
-                        path, item_id, max_bytes,
+                        path,
+                        item_id,
+                        max_bytes,
                     )
                     raise RuntimeError("tileset3d entry exceeded the proxy read cap mid-stream")
                 yield chunk
@@ -258,7 +296,8 @@ def read_tileset3d_entry(
             zf.close()
 
     return StreamingResponse(
-        _iter_entry(), media_type=_content_type_for(path),
+        _iter_entry(),
+        media_type=_content_type_for(path),
         headers={
             "Cache-Control": "private, max-age=3600",
             # Taille déclarée et déjà validée (<= max_bytes ci-dessus) : une

@@ -2,6 +2,7 @@
 """Validation d'un GeoJSON Feature contre le schéma introspecté (SP-3 §4).
 Pur : aucune DB. Les erreurs structurées sont le contrat consommé par les
 formulaires SP-4 ({"field", "code", "message"})."""
+
 from datetime import date, datetime
 
 from app.collections.introspection import ColumnInfo, TableInfo
@@ -51,13 +52,13 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             errors.append(_err(name, "unknown_property", f"unknown property '{name}'"))
             continue
         if col.type == "unsupported":
-            errors.append(_err(name, "unsupported_type",
-                               f"'{name}' is read-only (unsupported type)"))
+            errors.append(
+                _err(name, "unsupported_type", f"'{name}' is read-only (unsupported type)")
+            )
             continue
         if col.type == "enum":
             if value is not None and value not in (col.enum_values or []):
-                errors.append(_err(name, "invalid_enum",
-                                   f"'{value}' not in {col.enum_values}"))
+                errors.append(_err(name, "invalid_enum", f"'{value}' not in {col.enum_values}"))
             continue
         if not _type_ok(col, value):
             errors.append(_err(name, "invalid_type", f"expected {col.type}"))
@@ -69,12 +70,13 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
     geometry = feature.get("geometry")
     if geometry is not None:
         if not isinstance(geometry, dict):
-            errors.append(_err("geometry", "geometry_mismatch",
-                               "geometry must be a GeoJSON geometry object"))
+            errors.append(
+                _err("geometry", "geometry_mismatch", "geometry must be a GeoJSON geometry object")
+            )
         elif info.geometry_column is None:
-            errors.append(_err("geometry", "unexpected_geometry",
-                               "collection has no geometry column"))
+            errors.append(
+                _err("geometry", "unexpected_geometry", "collection has no geometry column")
+            )
         elif geometry.get("type") != info.geometry_type:
-            errors.append(_err("geometry", "geometry_mismatch",
-                               f"expected {info.geometry_type}"))
+            errors.append(_err("geometry", "geometry_mismatch", f"expected {info.geometry_type}"))
     return errors

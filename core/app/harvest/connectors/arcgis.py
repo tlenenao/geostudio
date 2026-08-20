@@ -3,6 +3,7 @@
 Une couche = un jeu de données (§2.1) : chaque couche du FeatureServer devient un
 HarvestedRecord. Parsing tolérant et borné (§2.4) : un service malformé/hostile
 /géant ne fait jamais tomber le moissonnage ni ne bloque le worker."""
+
 import json
 import logging
 from collections.abc import Iterable
@@ -77,15 +78,17 @@ class ArcgisConnector:
             if not isinstance(layer_meta, dict):
                 logger.warning("arcgis harvest: couche non-objet ignorée à %s", layer_url)
                 continue
-            records.append(HarvestedRecord(
-                external_id=layer_url,
-                title=layer_meta.get("name") or str(layer_id),
-                abstract=layer_meta.get("description") or "",
-                keywords=keywords,
-                bbox=_reproject_extent(layer_meta.get("extent")),
-                external_url=layer_url,
-                items_url=f"{layer_url}/query?where=1=1&outFields=*&f=geojson",
-            ))
+            records.append(
+                HarvestedRecord(
+                    external_id=layer_url,
+                    title=layer_meta.get("name") or str(layer_id),
+                    abstract=layer_meta.get("description") or "",
+                    keywords=keywords,
+                    bbox=_reproject_extent(layer_meta.get("extent")),
+                    external_url=layer_url,
+                    items_url=f"{layer_url}/query?where=1=1&outFields=*&f=geojson",
+                )
+            )
         return records
 
     @staticmethod
@@ -109,12 +112,12 @@ class ArcgisConnector:
             if pages >= _MAX_COPY_PAGES:
                 logger.warning(
                     "arcgis harvest: plafond de %d pages atteint pour %s, tronqué",
-                    _MAX_COPY_PAGES, record.external_id,
+                    _MAX_COPY_PAGES,
+                    record.external_id,
                 )
                 break
             page_url = (
-                f"{record.items_url}"
-                f"&resultOffset={offset}&resultRecordCount={_COPY_PAGE_SIZE}"
+                f"{record.items_url}&resultOffset={offset}&resultRecordCount={_COPY_PAGE_SIZE}"
             )
             try:
                 page = http_get(page_url).json()
@@ -132,7 +135,8 @@ class ArcgisConnector:
             if len(features) >= _MAX_COPY_FEATURES:
                 logger.warning(
                     "arcgis harvest: plafond de %d entités atteint pour %s, tronqué",
-                    _MAX_COPY_FEATURES, record.external_id,
+                    _MAX_COPY_FEATURES,
+                    record.external_id,
                 )
                 features = features[:_MAX_COPY_FEATURES]
                 break

@@ -8,31 +8,37 @@ récupérer ici — une ligne report_runs n'est jamais créée qu'immédiatement
 avant que sa ligne export_jobs soit déférée (voir app.reports.jobs), donc
 aucune fenêtre d'état intermédiaire bloqué à surveiller ; un rendu bloqué en
 lui-même est déjà couvert par export_repo.reclaim_stuck_jobs (SP-17a)."""
-import uuid
-from datetime import datetime, timezone
 
+import uuid
+from datetime import UTC, datetime
+
+import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.configs import repository as configs_repo
 from app.reports.models import ReportRun
 
-import croniter
-
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def create_run(
-    session: Session, *, tenant_id: str, report_item_id: str, export_job_id: str | None,
+    session: Session,
+    *,
+    tenant_id: str,
+    report_item_id: str,
+    export_job_id: str | None,
 ) -> ReportRun:
     """export_job_id=None = déclenchement échoué (cf. app.reports.jobs.
     _record_trigger_failure) : la ligne n'existe que pour donner à
     list_due_reports une date contre laquelle mesurer la cadence cron."""
     run = ReportRun(
-        id=uuid.uuid4().hex, tenant_id=tenant_id,
-        report_item_id=report_item_id, export_job_id=export_job_id,
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        report_item_id=report_item_id,
+        export_job_id=export_job_id,
     )
     session.add(run)
     session.flush()
@@ -47,21 +53,29 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> ReportRun | Non
 
 
 def list_runs(session: Session, *, tenant_id: str, report_item_id: str) -> list[ReportRun]:
-    rows = session.execute(
-        select(ReportRun)
-        .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
-        .order_by(ReportRun.created_at.desc())
-    ).scalars().all()
+    rows = (
+        session.execute(
+            select(ReportRun)
+            .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
+            .order_by(ReportRun.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
 def get_latest_run(session: Session, *, tenant_id: str, report_item_id: str) -> ReportRun | None:
-    return session.execute(
-        select(ReportRun)
-        .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
-        .order_by(ReportRun.created_at.desc())
-        .limit(1)
-    ).scalars().first()
+    return (
+        session.execute(
+            select(ReportRun)
+            .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
+            .order_by(ReportRun.created_at.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
 
 
 def mark_notified(session: Session, *, run_id: str) -> None:
@@ -77,9 +91,7 @@ def list_unnotified_runs(session: Session) -> list[ReportRun]:
     sweep_report_schedules_task — même discipline que list_due_reports
     ci-dessous : jamais exposé via une route, l'appelant est une tâche
     système, pas une requête utilisateur."""
-    rows = session.execute(
-        select(ReportRun).where(ReportRun.notified_at.is_(None))
-    ).scalars().all()
+    rows = session.execute(select(ReportRun).where(ReportRun.notified_at.is_(None))).scalars().all()
     return list(rows)
 
 
@@ -88,7 +100,7 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
     sweep_report_schedules_task. Jamais exposé via une route (même
     discipline que list_due_pipelines/list_due_rules) : le tuple porte
     tenant_id en clair."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     due: list[tuple[str, str]] = []
     for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report"):
         payload = config.report
@@ -103,7 +115,7 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
             continue
         created_at = latest.created_at
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
         next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
         if next_tick <= now:
             due.append((item_id, tenant_id))

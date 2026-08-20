@@ -2,6 +2,7 @@
 """Connecteur WMS (SP-12e) — GetCapabilities → une couche NOMMÉE = un record
 raster. HTTP uniquement, zéro I/O DB. Parsing tolérant et borné (ows.py) : un
 service malformé/hostile/géant ne fait jamais tomber le moissonnage."""
+
 import logging
 from collections.abc import Iterable
 
@@ -63,7 +64,9 @@ class WmsConnector:
         if name is not None:
             out.append(_layer_to_record(layer, name, crs, base, caps_url))
         for sub in ows.children(layer, "Layer"):
-            self._walk(sub, inherited_crs=crs, depth=depth + 1, base=base, caps_url=caps_url, out=out)
+            self._walk(
+                sub, inherited_crs=crs, depth=depth + 1, base=base, caps_url=caps_url, out=out
+            )
 
 
 def _layer_crs(layer) -> set[str]:
@@ -89,9 +92,13 @@ def _layer_to_record(layer, name, crs, base, caps_url) -> HarvestedRecord:
     tiles = _getmap_template(base, name) if (crs & _WEB_MERCATOR_CODES) else None
     return HarvestedRecord(
         external_id=f"{base}#{name}",
-        title=title, abstract=abstract, keywords=keywords, bbox=bbox,
+        title=title,
+        abstract=abstract,
+        keywords=keywords,
+        bbox=bbox,
         external_url=caps_url,  # URL du GetCapabilities telle que fournie (§3.1)
-        items_url=None, raster_tiles_url=tiles,
+        items_url=None,
+        raster_tiles_url=tiles,
     )
 
 
@@ -111,8 +118,10 @@ def _layer_bbox(layer) -> list[float]:
     if ll is not None:
         try:
             return [
-                float(ll.get("minx")), float(ll.get("miny")),
-                float(ll.get("maxx")), float(ll.get("maxy")),
+                float(ll.get("minx")),
+                float(ll.get("miny")),
+                float(ll.get("maxx")),
+                float(ll.get("maxy")),
             ]
         except (TypeError, ValueError):
             pass

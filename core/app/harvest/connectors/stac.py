@@ -2,6 +2,7 @@
 """Connecteur STAC externe (SP-12c) — HTTP uniquement, zéro I/O DB. Parsing
 tolérant et borné (§2.7 spec) : un catalogue distant malformé/cyclique/hostile
 ne doit jamais faire tomber tout un moissonnage ni bloquer le worker."""
+
 import logging
 from collections.abc import Iterable
 from urllib.parse import urljoin
@@ -46,11 +47,7 @@ class StacConnector:
         return http_get(record.items_url).content
 
     def _walk(self, client, url, *, depth, records, seen_docs) -> None:
-        if (
-            len(seen_docs) >= _MAX_DOCUMENTS
-            or len(records) >= _MAX_COLLECTIONS
-            or url in seen_docs
-        ):
+        if len(seen_docs) >= _MAX_DOCUMENTS or len(records) >= _MAX_COLLECTIONS or url in seen_docs:
             return
         seen_docs.add(url)
         try:
@@ -63,7 +60,9 @@ class StacConnector:
 
         if not isinstance(doc, dict):
             logger.warning(
-                "stac harvest: document racine non-objet ignoré à %s (type=%s)", url, type(doc).__name__
+                "stac harvest: document racine non-objet ignoré à %s (type=%s)",
+                url,
+                type(doc).__name__,
             )
             return
 
@@ -105,7 +104,8 @@ class StacConnector:
         if not isinstance(coll, dict):
             logger.warning(
                 "stac harvest: entrée de collection non-objet ignorée à %s (type=%s)",
-                base_url, type(coll).__name__,
+                base_url,
+                type(coll).__name__,
             )
             return None
         try:
@@ -121,7 +121,12 @@ class StacConnector:
             extent = coll.get("extent")
             spatial = extent.get("spatial") if isinstance(extent, dict) else None
             bboxes = spatial.get("bbox") if isinstance(spatial, dict) else None
-            if isinstance(bboxes, list) and bboxes and isinstance(bboxes[0], list) and len(bboxes[0]) >= 4:
+            if (
+                isinstance(bboxes, list)
+                and bboxes
+                and isinstance(bboxes[0], list)
+                and len(bboxes[0]) >= 4
+            ):
                 bbox = [float(v) for v in bboxes[0][:4]]
 
             self_href, items_href = None, None
@@ -137,8 +142,12 @@ class StacConnector:
                     items_href = urljoin(base_url, href)
 
             return HarvestedRecord(
-                external_id=str(external_id), title=title, abstract=abstract,
-                keywords=keywords, bbox=bbox, external_url=self_href or base_url,
+                external_id=str(external_id),
+                title=title,
+                abstract=abstract,
+                keywords=keywords,
+                bbox=bbox,
+                external_url=self_href or base_url,
                 items_url=items_href,
             )
         except (AttributeError, TypeError, KeyError, ValueError) as exc:

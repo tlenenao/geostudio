@@ -13,6 +13,7 @@ dans un alias inutilisé ici) — seul le paquet sqlalchemy doit être installé
 pour l'import, jamais un driver ni une connexion réelle (cf.
 deploy/appexport-standalone/Dockerfile, qui n'installe ni psycopg ni
 psycopg2-binary)."""
+
 import json
 from dataclasses import asdict, dataclass
 
@@ -59,13 +60,20 @@ def read_manifest(path: str) -> list[CollectionSnapshotEntry]:
     for raw in payload["collections"]:
         ti = raw["tableInfo"]
         table_info = TableInfo(
-            table_name=ti["tableName"], pk_column=ti["pkColumn"],
-            geometry_column=ti["geometryColumn"], geometry_type=ti["geometryType"],
-            srid=ti["srid"], columns=[ColumnInfo(**c) for c in ti["columns"]],
+            table_name=ti["tableName"],
+            pk_column=ti["pkColumn"],
+            geometry_column=ti["geometryColumn"],
+            geometry_type=ti["geometryType"],
+            srid=ti["srid"],
+            columns=[ColumnInfo(**c) for c in ti["columns"]],
         )
-        entries.append(CollectionSnapshotEntry(
-            id=raw["id"], tenant_id=raw["tenantId"],
-            collection_json=raw["collectionJson"], schema_json=raw["schemaJson"],
-            table_info=table_info,
-        ))
+        entries.append(
+            CollectionSnapshotEntry(
+                id=raw["id"],
+                tenant_id=raw["tenantId"],
+                collection_json=raw["collectionJson"],
+                schema_json=raw["schemaJson"],
+                table_info=table_info,
+            )
+        )
     return entries

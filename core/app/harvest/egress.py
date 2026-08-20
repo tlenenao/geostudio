@@ -9,6 +9,7 @@ Résiduel documenté (§3, §8) : DNS-rebinding TOCTOU — la garde valide l'IP
 résolue AVANT la requête, httpx re-résout au connect. Le pinning-IP est différé
 (fragile avec TLS/vhosts). Les cibles SSRF à forte valeur (métadonnées cloud,
 localhost) sont des IP-littérales ou résolvent stablement : couvertes en v0."""
+
 import ipaddress
 import logging
 import os
@@ -79,9 +80,7 @@ class _GuardedTransport(httpx.BaseTransport):
 
 
 def build_guarded_client(timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> httpx.Client:
-    return httpx.Client(
-        transport=_GuardedTransport(httpx.HTTPTransport()), timeout=timeout
-    )
+    return httpx.Client(transport=_GuardedTransport(httpx.HTTPTransport()), timeout=timeout)
 
 
 def guarded_get(url: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> httpx.Response:

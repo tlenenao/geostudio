@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
@@ -12,7 +13,6 @@ from app.sharing import repository as sharing_repo
 from app.sharing.authorization import can
 from app.sharing.schemas import GroupShare, Sharing
 from app.users.models import User
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -37,8 +37,14 @@ def list_items(
     user: User = Depends(get_current_user),
 ) -> ItemPage:
     return repo.list_items(
-        session, tenant_id=user.tenant_id, current_user_id=user.id,
-        q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        q=q,
+        resource_type=type,
+        scope=scope,
+        page=page,
+        page_size=pageSize,
     )
 
 
@@ -72,9 +78,14 @@ def update_item(
 
     try:
         result = repo.update_item(
-            session, tenant_id=user.tenant_id, item_id=item_id,
-            title=patch.title, abstract=patch.abstract, keywords=patch.keywords,
-            is_published=patch.isPublished, slug=patch.slug,
+            session,
+            tenant_id=user.tenant_id,
+            item_id=item_id,
+            title=patch.title,
+            abstract=patch.abstract,
+            keywords=patch.keywords,
+            is_published=patch.isPublished,
+            slug=patch.slug,
         )
     except SlugCollisionError as err:
         raise HTTPException(status_code=409, detail=str(err)) from err
@@ -90,8 +101,14 @@ def update_item(
     else:
         action = "item.update"
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action=action, object_type="item", object_id=item_id, payload={},
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action=action,
+        object_type="item",
+        object_id=item_id,
+        payload={},
     )
     return result
 
@@ -170,7 +187,9 @@ def set_sharing(
         raise HTTPException(status_code=403, detail="not allowed to share this item")
 
     ok = sharing_repo.replace_shares(
-        session, tenant_id=user.tenant_id, item_id=item_id,
+        session,
+        tenant_id=user.tenant_id,
+        item_id=item_id,
         shares=[(g.groupId, g.role) for g in body.groups],
     )
     if not ok:
@@ -178,8 +197,13 @@ def set_sharing(
     repo.set_is_public(session, tenant_id=user.tenant_id, item_id=item_id, is_public=body.public)
 
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="item.share", object_type="item", object_id=item_id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="item.share",
+        object_type="item",
+        object_id=item_id,
         payload={"public": body.public, "groups": [g.model_dump() for g in body.groups]},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,6 +10,7 @@ Pas d'import de app.collections.ddl.quote_ident ici (le quoting est
 réimplémenté localement) : ddl.py importe ce module pour appeler
 add_table_to_publication depuis apply_collection_ddl, un import dans l'autre
 sens créerait un cycle."""
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 

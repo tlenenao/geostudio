@@ -15,6 +15,7 @@ copié verbatim pour ce second kind à source S3 opaque.
 conservés : les autres validateurs de ce paquet partagent la même signature
 et les trois points d'appel de app.configs.routes les invoquent uniformément.
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 

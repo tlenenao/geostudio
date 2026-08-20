@@ -4,6 +4,7 @@ transform.qgis (design SP-15d §5/§10). Généré par
 scripts/generate_qgis_algorithm_schemas.py contre l'image pinnée
 qgis/qgis:release-3_34 — ne pas éditer qgis_algorithms.json à la main,
 relancer le script si l'allowlist doit changer."""
+
 import json
 from pathlib import Path
 

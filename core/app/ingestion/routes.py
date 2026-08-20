@@ -13,11 +13,19 @@ from app.db import get_session
 from app.ingestion import repository as repo
 from app.ingestion.parsers import IngestionParseError, list_layers
 from app.ingestion.schemas import (
-    IngestionJobCreate, IngestionJobCreated, IngestionJobStatus,
-    InspectRequest, InspectResponse, LayerInfoOut, PresignRequest, PresignResponse,
+    IngestionJobCreate,
+    IngestionJobCreated,
+    IngestionJobStatus,
+    InspectRequest,
+    InspectResponse,
+    LayerInfoOut,
+    PresignRequest,
+    PresignResponse,
 )
 from app.ingestion.storage import (
-    download_object, ensure_uploads_bucket, generate_presigned_put_url,
+    download_object,
+    ensure_uploads_bucket,
+    generate_presigned_put_url,
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.users.models import User
@@ -46,6 +54,7 @@ def get_uploads_bucket() -> str:
 def get_task_deferrer() -> Callable[[str, str], None]:
     def deferrer(job_id: str, tenant_id: str) -> None:
         run_ingestion_task.defer(job_id=job_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -58,9 +67,7 @@ def presign_upload(
 ) -> PresignResponse:
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}-{body.filename}"
-    url = generate_presigned_put_url(
-        s3, bucket=bucket, key=key, content_type=body.contentType
-    )
+    url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
     return PresignResponse(uploadUrl=url, key=key)
 
 
@@ -83,10 +90,14 @@ def inspect_upload(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except IngestionParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return InspectResponse(layers=[
-        LayerInfoOut(name=layer.name, featureCount=layer.feature_count, geometryType=layer.geometry_type)
-        for layer in layers
-    ])
+    return InspectResponse(
+        layers=[
+            LayerInfoOut(
+                name=layer.name, featureCount=layer.feature_count, geometryType=layer.geometry_type
+            )
+            for layer in layers
+        ]
+    )
 
 
 @router.post("/uploads", response_model=IngestionJobCreated, status_code=201)
@@ -104,13 +115,24 @@ def create_upload_job(
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     job = repo.create_job(
-        session, tenant_id=user.tenant_id, created_by=user.id, source_key=body.key,
-        filename=body.filename, collection_title=body.collectionTitle,
-        lat_field=body.latField, lon_field=body.lonField, layer_name=body.layerName,
+        session,
+        tenant_id=user.tenant_id,
+        created_by=user.id,
+        source_key=body.key,
+        filename=body.filename,
+        collection_title=body.collectionTitle,
+        lat_field=body.latField,
+        lon_field=body.lonField,
+        layer_name=body.layerName,
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="ingestion.job_create", object_type="ingestion_job", object_id=job.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="ingestion.job_create",
+        object_type="ingestion_job",
+        object_id=job.id,
         payload={"filename": body.filename, "collectionTitle": body.collectionTitle},
     )
     # Commit avant de déférer : procrastinate insère la tâche via sa propre
@@ -134,6 +156,8 @@ def get_upload_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return IngestionJobStatus(
-        status=job.status, errorMessage=job.error_message,
-        collectionId=job.collection_id, itemId=job.item_id,
+        status=job.status,
+        errorMessage=job.error_message,
+        collectionId=job.collection_id,
+        itemId=job.item_id,
     )

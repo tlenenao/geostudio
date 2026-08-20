@@ -5,6 +5,7 @@ la spec). supports_copy=True (comme STAC/ArcGIS/WFS) : une resource géo
 reconnue (GeoJSON/GPKG/SHP zippé) est copiable, CSV exclu (pas de mapping
 lat/lon pour la copie moissonnée). HTTP uniquement, zéro I/O DB, parsing
 tolérant et borné (même philosophie que StacConnector)."""
+
 import json
 import logging
 from collections.abc import Iterable
@@ -27,8 +28,11 @@ _WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 # volontairement absent (hors périmètre v1, §4 décision de cadrage 4).
 _FORMAT_RANK = {"GEOJSON": 0, "GPKG": 1, "GEOPACKAGE": 1, "SHP": 2, "SHAPEFILE": 2}
 _FORMAT_FILENAME = {
-    "GEOJSON": "harvest.geojson", "GPKG": "harvest.gpkg", "GEOPACKAGE": "harvest.gpkg",
-    "SHP": "harvest.zip", "SHAPEFILE": "harvest.zip",
+    "GEOJSON": "harvest.geojson",
+    "GPKG": "harvest.gpkg",
+    "GEOPACKAGE": "harvest.gpkg",
+    "SHP": "harvest.zip",
+    "SHAPEFILE": "harvest.zip",
 }
 
 
@@ -67,7 +71,9 @@ class CkanConnector:
             pages += 1
             if pages > _MAX_CKAN_PAGES:
                 logger.warning(
-                    "ckan harvest: plafond de %d pages pour %s, tronqué", _MAX_CKAN_PAGES, admin_url,
+                    "ckan harvest: plafond de %d pages pour %s, tronqué",
+                    _MAX_CKAN_PAGES,
+                    admin_url,
                 )
                 break
             params = [*base_params, ("start", str(start)), ("rows", str(_PAGE_SIZE))]
@@ -116,16 +122,23 @@ def _package_to_record(pkg: object, scheme: str, netloc: str) -> HarvestedRecord
         title = pkg.get("title") or name or str(external_id)
         abstract = pkg.get("notes") or ""
         tags_raw = pkg.get("tags")
-        keywords = [
-            t["name"] for t in tags_raw
-            if isinstance(t, dict) and isinstance(t.get("name"), str)
-        ] if isinstance(tags_raw, list) else []
+        keywords = (
+            [t["name"] for t in tags_raw if isinstance(t, dict) and isinstance(t.get("name"), str)]
+            if isinstance(tags_raw, list)
+            else []
+        )
         bbox = _extract_bbox(pkg.get("extras"))
         external_url = f"{scheme}://{netloc}/dataset/{name or external_id}"
         items_url, copy_filename = _pick_copy_resource(pkg.get("resources"))
         return HarvestedRecord(
-            external_id=str(external_id), title=title, abstract=abstract, keywords=keywords,
-            bbox=bbox, external_url=external_url, items_url=items_url, copy_filename=copy_filename,
+            external_id=str(external_id),
+            title=title,
+            abstract=abstract,
+            keywords=keywords,
+            bbox=bbox,
+            external_url=external_url,
+            items_url=items_url,
+            copy_filename=copy_filename,
         )
     except (AttributeError, TypeError, KeyError, ValueError) as exc:
         logger.warning("ckan harvest: paquet malformé ignoré : %s", exc)

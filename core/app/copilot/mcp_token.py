@@ -18,6 +18,7 @@ Décodage volontairement dupliqué de `app.mcp.auth.KeycloakTokenVerifier` :
 que `app.pipelines.egress`, qui duplique la garde SSRF d'`app.harvest`
 pour la même raison de couches.
 """
+
 import os
 from functools import lru_cache
 
@@ -32,9 +33,7 @@ class McpTokenError(Exception):
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
-    jwks_url = os.environ.get(
-        "CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs"
-    )
+    jwks_url = os.environ.get("CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs")
     return jwt.PyJWKClient(jwks_url, lifespan=600)
 
 

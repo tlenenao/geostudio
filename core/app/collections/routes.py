@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -11,11 +11,13 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections.introspection import (
-    Introspector, TableNotFound, UnsupportedTable,
+    Introspector,
+    TableNotFound,
+    UnsupportedTable,
 )
+from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
-from app.collections.provisioning import create_empty_collection
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
 from app.sharing.authorization import can
@@ -30,9 +32,13 @@ router = APIRouter()
 # comme collection ALTERerait une table système partagée par toute l'instance
 # PostGIS (tenant_id, RLS, grants) — à exclure explicitement, la denylist
 # core_table_names() ne les connaît pas (ce ne sont pas des modèles du cœur).
-POSTGIS_SYSTEM_TABLES = frozenset({
-    "spatial_ref_sys", "geometry_columns", "geography_columns",
-})
+POSTGIS_SYSTEM_TABLES = frozenset(
+    {
+        "spatial_ref_sys",
+        "geometry_columns",
+        "geography_columns",
+    }
+)
 
 
 def _core_tables() -> frozenset[str]:
@@ -44,16 +50,19 @@ def _core_tables() -> frozenset[str]:
 
 def get_introspector() -> Introspector:  # overridé en test ; task 7 branche le vrai
     from app.collections.introspection_pg import introspect_table
+
     return introspect_table
 
 
 def get_ddl_applier() -> Callable[[Session, str], None]:  # task 8 branche le vrai
     from app.collections.ddl import apply_collection_ddl
+
     return apply_collection_ddl
 
 
 def get_table_lister() -> Callable[[Session], list[str]]:  # overridé en test
     from app.collections.introspection_pg import list_public_tables
+
     return list_public_tables
 
 
@@ -68,8 +77,7 @@ def get_extent_provider():
     def provider(session, info, tenant_id):
         if session.get_bind().dialect.name != "postgresql":
             return None
-        session.execute(_text("SELECT set_config('app.tenant_id', :tid, true)"),
-                        {"tid": tenant_id})
+        session.execute(_text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
         session.execute(_text("SET LOCAL ROLE gis_rls"))
         try:
             return table_extent(session, info)
@@ -112,17 +120,29 @@ def _can_write_collection(session, user, col) -> bool:
     if user is None:
         return False
     return col.editable and can(
-        session, user_id=user.id, action="write", item=repo.get_access_facts(col),
-        kind="collection", actor_is_admin=user.is_admin,
+        session,
+        user_id=user.id,
+        action="write",
+        item=repo.get_access_facts(col),
+        kind="collection",
+        actor_is_admin=user.is_admin,
     )
 
 
 def _collection_json(col, can_write: bool, owner: str | None = None) -> dict:
     return {
-        "id": col.id, "title": col.title, "description": col.description,
-        "tableName": col.table_name, "isPublic": col.is_public, "editable": col.editable,
-        "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
-        "canWrite": can_write, "featureCount": col.feature_count, "owner": owner,
+        "id": col.id,
+        "title": col.title,
+        "description": col.description,
+        "tableName": col.table_name,
+        "isPublic": col.is_public,
+        "editable": col.editable,
+        "geometryType": col.geometry_type,
+        "srid": col.srid,
+        "pkColumn": col.pk_column,
+        "canWrite": can_write,
+        "featureCount": col.feature_count,
+        "owner": owner,
     }
 
 
@@ -138,13 +158,17 @@ def get_readable_collection(session, user, collection_id):
         col = repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
     else:
         from app.tenants.repository import get_or_create_default_tenant
+
         tenant = get_or_create_default_tenant(session)
         col = repo.get_collection(session, tenant_id=tenant.id, collection_id=collection_id)
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
     readable = can(
-        session, user_id=user.id if user else "", action="read",
-        item=repo.get_access_facts(col), kind="collection",
+        session,
+        user_id=user.id if user else "",
+        action="read",
+        item=repo.get_access_facts(col),
+        kind="collection",
         actor_is_admin=bool(user and user.is_admin),
     )
     if not readable:
@@ -155,7 +179,8 @@ def get_readable_collection(session, user, collection_id):
 @router.post("/collections", status_code=201)
 def register_collection(
     body: CollectionCreate,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
     count_features=Depends(get_feature_counter),
@@ -173,29 +198,50 @@ def register_collection(
         raise HTTPException(status_code=400, detail=exc.reason)
     apply_ddl(session, info.table_name)
     col = repo.create_collection(
-        session, tenant_id=user.tenant_id, owner_id=user.id, table_name=info.table_name,
-        title=body.title or info.table_name, description=body.description,
-        is_public=body.isPublic, pk_column=info.pk_column,
-        geometry_column=info.geometry_column, geometry_type=info.geometry_type,
-        srid=info.srid, feature_count=count_features(session, info.table_name),
+        session,
+        tenant_id=user.tenant_id,
+        owner_id=user.id,
+        table_name=info.table_name,
+        title=body.title or info.table_name,
+        description=body.description,
+        is_public=body.isPublic,
+        pk_column=info.pk_column,
+        geometry_column=info.geometry_column,
+        geometry_type=info.geometry_type,
+        srid=info.srid,
+        feature_count=count_features(session, info.table_name),
     )
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="collection.create", object_type="collection", object_id=col.id,
-                payload={"tableName": col.table_name})
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.create",
+        object_type="collection",
+        object_id=col.id,
+        payload={"tableName": col.table_name},
+    )
     return _collection_json(col, _can_write_collection(session, user, col))
 
 
 @router.post("/collections/empty", status_code=201)
 def create_empty_collection_route(
     body: EmptyCollectionCreate,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
     col = create_empty_collection(
-        session, tenant_id=user.tenant_id, owner_id=user.id, title=body.title,
-        columns=body.columns, geometry_type=body.geometryType, srid=body.srid,
-        introspect=introspect, apply_ddl=apply_ddl,
+        session,
+        tenant_id=user.tenant_id,
+        owner_id=user.id,
+        title=body.title,
+        columns=body.columns,
+        geometry_type=body.geometryType,
+        srid=body.srid,
+        introspect=introspect,
+        apply_ddl=apply_ddl,
     )
     return _collection_json(col, True)
 
@@ -203,28 +249,40 @@ def create_empty_collection_route(
 @router.get("/collections")
 def list_collections(
     q: str | None = None,
-    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
 ):
     from app.tenants.repository import get_or_create_default_tenant
     from app.users.models import User
+
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
     cols = repo.list_visible_collections(
-        session, tenant_id=tenant_id, user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin), q=q,
+        session,
+        tenant_id=tenant_id,
+        user_id=user.id if user else None,
+        is_admin=bool(user and user.is_admin),
+        q=q,
     )
     owner_ids = {c.owner_id for c in cols}
-    owners = dict(session.execute(
-        select(User.id, User.username).where(User.id.in_(owner_ids))
-    ).all()) if owner_ids else {}
-    return {"collections": [
-        _collection_json(c, _can_write_collection(session, user, c), owner=owners.get(c.owner_id))
-        for c in cols
-    ]}
+    owners = (
+        dict(session.execute(select(User.id, User.username).where(User.id.in_(owner_ids))).all())
+        if owner_ids
+        else {}
+    )
+    return {
+        "collections": [
+            _collection_json(
+                c, _can_write_collection(session, user, c), owner=owners.get(c.owner_id)
+            )
+            for c in cols
+        ]
+    }
 
 
 @router.get("/collections/candidates")
 def list_candidate_tables(
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
     list_tables: Callable[[Session], list[str]] = Depends(get_table_lister),
     introspect: Introspector = Depends(get_introspector),
 ):
@@ -234,7 +292,10 @@ def list_candidate_tables(
     for table_name in list_tables(session):
         if table_name in core:
             continue
-        if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=table_name) is not None:
+        if (
+            repo.get_collection(session, tenant_id=user.tenant_id, collection_id=table_name)
+            is not None
+        ):
             continue
         try:
             info = introspect(session, table_name)
@@ -243,18 +304,24 @@ def list_candidate_tables(
             continue
         except TableNotFound:
             continue  # can't happen by construction: table_name came from list_tables itself
-        candidates.append({
-            "tableName": table_name, "registrable": True,
-            "geometryType": info.geometry_type, "srid": info.srid,
-            "columnCount": len(info.columns),
-        })
+        candidates.append(
+            {
+                "tableName": table_name,
+                "registrable": True,
+                "geometryType": info.geometry_type,
+                "srid": info.srid,
+                "columnCount": len(info.columns),
+            }
+        )
     return {"candidates": candidates}
 
 
 @router.get("/collections/{collection_id}")
 def get_collection(
-    collection_id: str, request: Request,
-    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    collection_id: str,
+    request: Request,
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
 ):
@@ -263,10 +330,12 @@ def get_collection(
     body["itemType"] = "feature"
     base = str(request.base_url).rstrip("/")
     body["links"] = [
-        {"rel": "self", "type": "application/json",
-         "href": f"{base}/collections/{col.id}"},
-        {"rel": "items", "type": "application/geo+json",
-         "href": f"{base}/collections/{col.id}/items"},
+        {"rel": "self", "type": "application/json", "href": f"{base}/collections/{col.id}"},
+        {
+            "rel": "items",
+            "type": "application/geo+json",
+            "href": f"{base}/collections/{col.id}/items",
+        },
     ]
     try:
         info = introspect(session, col.table_name)
@@ -283,7 +352,8 @@ def get_collection(
 @router.get("/collections/{collection_id}/schema")
 def get_collection_schema(
     collection_id: str,
-    user=Depends(get_current_user_optional), session: Session = Depends(get_session),
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
     col = get_readable_collection(session, user, collection_id)
@@ -298,70 +368,110 @@ def get_collection_schema(
 
 @router.patch("/collections/{collection_id}")
 def patch_collection(
-    collection_id: str, body: CollectionPatch,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    collection_id: str,
+    body: CollectionPatch,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
     col = get_readable_collection(session, user, collection_id)
-    if not can(session, user_id=user.id, action="write", item=repo.get_access_facts(col),
-               kind="collection", actor_is_admin=user.is_admin):
+    if not can(
+        session,
+        user_id=user.id,
+        action="write",
+        item=repo.get_access_facts(col),
+        kind="collection",
+        actor_is_admin=user.is_admin,
+    ):
         raise HTTPException(status_code=403, detail="write access required")
-    text_changed = (
-        (body.title is not None and body.title != col.title)
-        or (body.description is not None and body.description != col.description)
+    text_changed = (body.title is not None and body.title != col.title) or (
+        body.description is not None and body.description != col.description
     )
-    for attr, value in (("title", body.title), ("description", body.description),
-                        ("is_public", body.isPublic), ("editable", body.editable)):
+    for attr, value in (
+        ("title", body.title),
+        ("description", body.description),
+        ("is_public", body.isPublic),
+        ("editable", body.editable),
+    ):
         if value is not None:
             setattr(col, attr, value)
     session.flush()
     if text_changed:
         repo.enqueue_embedding(col.id, user.tenant_id)
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="collection.update", object_type="collection", object_id=col.id,
-                payload=body.model_dump(exclude_none=True))
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.update",
+        object_type="collection",
+        object_id=col.id,
+        payload=body.model_dump(exclude_none=True),
+    )
     return _collection_json(col, _can_write_collection(session, user, col))
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
 def unregister_collection(
     collection_id: str,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
     col = get_readable_collection(session, user, collection_id)
     _require_admin(user)  # après le 404 : un non-admin qui la voit reçoit 403
     remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="collection.delete", object_type="collection", object_id=collection_id,
-                payload={})
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.delete",
+        object_type="collection",
+        object_id=collection_id,
+        payload={},
+    )
 
 
 def _require_share(session, user, col) -> None:
-    if not can(session, user_id=user.id, action="share", item=repo.get_access_facts(col),
-               kind="collection", actor_is_admin=user.is_admin):
+    if not can(
+        session,
+        user_id=user.id,
+        action="share",
+        item=repo.get_access_facts(col),
+        kind="collection",
+        actor_is_admin=user.is_admin,
+    ):
         raise HTTPException(status_code=403, detail="share access required")
 
 
 @router.get("/collections/{collection_id}/sharing", response_model=Sharing)
 def get_sharing(
-    collection_id: str, user=Depends(get_current_user), session: Session = Depends(get_session),
+    collection_id: str,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
     col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
-    return {"public": col.is_public,
-            "groups": [{"groupId": s.group_id, "role": s.role} for s in shares]}
+    return {
+        "public": col.is_public,
+        "groups": [{"groupId": s.group_id, "role": s.role} for s in shares],
+    }
 
 
 @router.put("/collections/{collection_id}/sharing", response_model=Sharing)
 def put_sharing(
-    collection_id: str, body: Sharing,
-    user=Depends(get_current_user), session: Session = Depends(get_session),
+    collection_id: str,
+    body: Sharing,
+    user=Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
     col = get_readable_collection(session, user, collection_id)
     _require_share(session, user, col)
     ok = repo.set_collection_sharing(
-        session, tenant_id=user.tenant_id, collection_id=col.id,
+        session,
+        tenant_id=user.tenant_id,
+        collection_id=col.id,
         groups=[(g.groupId, g.role) for g in body.groups],
     )
     if not ok:
@@ -370,9 +480,17 @@ def put_sharing(
         # muté qu'après validation — rien n'a changé à ce stade.
         raise HTTPException(status_code=404, detail="group not found")
     col.is_public = body.public
-    write_audit(session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-                action="collection.share", object_type="collection", object_id=col.id,
-                payload={"public": body.public,
-                         "groups": [g.model_dump() for g in body.groups]})
-    return {"public": col.is_public,
-            "groups": [{"groupId": g.groupId, "role": g.role} for g in body.groups]}
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="collection.share",
+        object_type="collection",
+        object_id=col.id,
+        payload={"public": body.public, "groups": [g.model_dump() for g in body.groups]},
+    )
+    return {
+        "public": col.is_public,
+        "groups": [{"groupId": g.groupId, "role": g.role} for g in body.groups],
+    }

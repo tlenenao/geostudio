@@ -7,6 +7,7 @@ docker-compose.yml généré) → upload S3. Tourne sur le worker partagé (queu
 avant de zipper n'a besoin ni de Docker ni de réseau). Toute erreur marque
 le job "error", jamais un job bloqué en "running" (même critère que
 app.export.jobs/app.pipelines.jobs)."""
+
 import logging
 import os
 import tempfile
@@ -40,7 +41,11 @@ def s3_client_from_env():
 
 
 def _prepare_bundle_inputs(
-    session, *, tenant_id: str, mode: str, config: BuilderConfig,
+    session,
+    *,
+    tenant_id: str,
+    mode: str,
+    config: BuilderConfig,
 ) -> tuple[BuilderConfig, dict | None]:
     if mode == "connected":
         core_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
@@ -53,7 +58,9 @@ def _build_zip_bytes(session, *, tenant_id: str, mode: str, config: BuilderConfi
         with tempfile.TemporaryDirectory() as snapshot_dir:
             write_snapshot(session, tenant_id=tenant_id, config=config, snapshot_dir=snapshot_dir)
             return build_standalone_bundle_zip(config, snapshot_dir=snapshot_dir)
-    bundle_config, connection = _prepare_bundle_inputs(session, tenant_id=tenant_id, mode=mode, config=config)
+    bundle_config, connection = _prepare_bundle_inputs(
+        session, tenant_id=tenant_id, mode=mode, config=config
+    )
     runtime_dir = os.environ["APPEXPORT_RUNTIME_DIR"]
     return build_bundle_zip(bundle_config, runtime_dir=runtime_dir, connection=connection)
 
@@ -64,7 +71,9 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
 
     if not is_appexport_enabled():
         with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_error(session, job_id=job_id, error="app export capability disabled")
+            appexport_repo.mark_error(
+                session, job_id=job_id, error="app export capability disabled"
+            )
         return
 
     with request_scoped_session(session_factory) as session:
@@ -81,16 +90,22 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             config_read = configs_repo.get_config_by_item(session, item_id)
             if config_read is None:
                 raise ValueError(f"app export item '{item_id}' not found")
-            guard_result = check_export_guard(session, tenant_id=tenant_id, config=config_read.config, mode=mode)
+            guard_result = check_export_guard(
+                session, tenant_id=tenant_id, config=config_read.config, mode=mode
+            )
             if not guard_result.allowed:
                 raise ValueError("; ".join(guard_result.reasons))
-            zip_bytes = _build_zip_bytes(session, tenant_id=tenant_id, mode=mode, config=config_read.config)
+            zip_bytes = _build_zip_bytes(
+                session, tenant_id=tenant_id, mode=mode, config=config_read.config
+            )
 
         result_key = f"appexports/{job_id}.zip"
         bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
         s3_client = s3_client_from_env()
         ensure_uploads_bucket(s3_client, bucket)
-        s3_client.put_object(Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip")
+        s3_client.put_object(
+            Bucket=bucket, Key=result_key, Body=zip_bytes, ContentType="application/zip"
+        )
 
         with request_scoped_session(session_factory) as session:
             appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)

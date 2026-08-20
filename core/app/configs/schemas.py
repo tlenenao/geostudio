@@ -101,7 +101,7 @@ class DatasetColumnMeta(BaseModel):
     label: str | None = None
     description: str | None = None
     format: str | None = None  # libre (ex. "currency", "percent", "date"),
-                                 # interprété côté widget consommateur
+    # interprété côté widget consommateur
 
 
 class DatasetCrossFilterLinkAttribute(BaseModel):
@@ -125,18 +125,18 @@ DatasetCrossFilterLink = Annotated[
 
 class DatasetPayload(BaseModel):
     source: Literal["collection", "arcgis"]
-    collectionId: str | None = None    # requis si source == "collection"
-    arcgisItemId: str | None = None    # requis si source == "arcgis" (SP-14k) : item "external"
-                                        # moissonné en mode référence (SP-12d)
+    collectionId: str | None = None  # requis si source == "collection"
+    arcgisItemId: str | None = None  # requis si source == "arcgis" (SP-14k) : item "external"
+    # moissonné en mode référence (SP-12d)
     columns: dict[str, DatasetColumnMeta] = Field(default_factory=dict)
-    timeField: str | None = None       # colonne consommée par le contexte temporel (SP-14b)
-    reactsToExtent: bool = False       # A29 : refetch auto sur déplacement carte (SP-14b)
+    timeField: str | None = None  # colonne consommée par le contexte temporel (SP-14b)
+    reactsToExtent: bool = False  # A29 : refetch auto sur déplacement carte (SP-14b)
     crossFilterLinks: list[DatasetCrossFilterLink] = Field(default_factory=list)  # SP-14n
     sourcePipelineId: str | None = None  # SP-14o : pipeline qui alimente ce
-        # dataset via writer.dataset, si créé par l'assistant de requête
-        # visuelle plutôt qu'à la main ; référence validée dans
-        # app.configs.dataset_validation, pas ici (un model_validator Pydantic
-        # n'a pas accès à la Session/l'utilisateur courant).
+    # dataset via writer.dataset, si créé par l'assistant de requête
+    # visuelle plutôt qu'à la main ; référence validée dans
+    # app.configs.dataset_validation, pas ici (un model_validator Pydantic
+    # n'a pas accès à la Session/l'utilisateur courant).
 
     @model_validator(mode="after")
     def _require_source_id(self) -> "DatasetPayload":
@@ -187,9 +187,9 @@ class PipelineNode(BaseModel):
     kind: Literal["reader", "transform", "writer"]
     op: str
     x: int = 0
-    y: int = 0                    # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
-                                   # canvas (SP-15b) — posé maintenant pour ne pas migrer
-                                   # le schéma plus tard (design SP-15a §4.1)
+    y: int = 0  # idiome LayoutItem, inutilisé tant qu'il n'y a pas de
+    # canvas (SP-15b) — posé maintenant pour ne pas migrer
+    # le schéma plus tard (design SP-15a §4.1)
     params: dict[str, Any] = Field(default_factory=dict)
     title: str | None = None
 
@@ -200,12 +200,12 @@ class PipelineEdge(BaseModel):
     id: str
     from_: str = Field(alias="from")
     to: str
-    when: str | None = None       # CEL, routage conditionnel — accepté mais non
-                                   # interprété par le compilateur avant Phase 3/4
+    when: str | None = None  # CEL, routage conditionnel — accepté mais non
+    # interprété par le compilateur avant Phase 3/4
     role: Literal["primary", "secondary"] | None = None  # None ≡ "primary" ;
-        # "secondary" = seconde entrée d'un op binaire (SP-15g §2.2), sans
-        # effet sur tout autre op (rejeté à la validation, app.pipelines.
-        # config_validation)
+    # "secondary" = seconde entrée d'un op binaire (SP-15g §2.2), sans
+    # effet sur tout autre op (rejeté à la validation, app.pipelines.
+    # config_validation)
 
 
 class PipelineRefreshPolicy(BaseModel):
@@ -215,6 +215,7 @@ class PipelineRefreshPolicy(BaseModel):
     @model_validator(mode="after")
     def _require_valid_cron(self) -> "PipelineRefreshPolicy":
         import croniter
+
         if not croniter.croniter.is_valid(self.cron):
             raise ValueError(f"invalid cron expression: {self.cron!r}")
         return self
@@ -317,20 +318,32 @@ class AlertRulePayload(BaseModel):
         # v1 scope (design SP-16b §1 non-buts, §2): one scalar per rule, no
         # per-group/multi-series alerting.
         if self.query.groupBy:
-            raise ValueError("alert query must not use groupBy (v1 supports a single scalar per rule)")
+            raise ValueError(
+                "alert query must not use groupBy (v1 supports a single scalar per rule)"
+            )
         if self.query.split is not None:
-            raise ValueError("alert query must not use split (v1 supports a single scalar per rule)")
+            raise ValueError(
+                "alert query must not use split (v1 supports a single scalar per rule)"
+            )
         if self.query.bucket is not None or self.query.bins is not None:
-            raise ValueError("alert query must not use bucket/bins (v1 supports a single scalar per rule)")
+            raise ValueError(
+                "alert query must not use bucket/bins (v1 supports a single scalar per rule)"
+            )
         if self.query.measures is not None and len(self.query.measures) > 1:
-            raise ValueError("alert query must have at most one measure (v1 supports a single scalar per rule)")
+            raise ValueError(
+                "alert query must have at most one measure (v1 supports a single scalar per rule)"
+            )
         return self
 
 
 class ReportSchedulePayload(BaseModel):
     bookmarkItemId: str
-    refreshPolicy: PipelineRefreshPolicy  # réutilisé tel quel, même forme que la planification pipeline/alerte
-    channels: list[AlertChannel] = Field(default_factory=list)  # réutilisé tel quel depuis AlertRule (SP-16b)
+    refreshPolicy: (
+        PipelineRefreshPolicy  # réutilisé tel quel, même forme que la planification pipeline/alerte
+    )
+    channels: list[AlertChannel] = Field(
+        default_factory=list
+    )  # réutilisé tel quel depuis AlertRule (SP-16b)
 
     @model_validator(mode="after")
     def _require_at_least_one_channel(self) -> "ReportSchedulePayload":
@@ -366,7 +379,19 @@ class BuilderConfig(BaseModel):
 
     version: int = 1
     itemId: str | None = None
-    kind: Literal["app", "dashboard", "map", "site", "dataset", "bookmark", "pipeline", "alert", "report", "tileset3d", "terrain3d"]
+    kind: Literal[
+        "app",
+        "dashboard",
+        "map",
+        "site",
+        "dataset",
+        "bookmark",
+        "pipeline",
+        "alert",
+        "report",
+        "tileset3d",
+        "terrain3d",
+    ]
     theme: dict = Field(default_factory=dict)
     dataSources: list[DataSource] = Field(default_factory=list)
     layout: Layout | None = None

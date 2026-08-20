@@ -28,8 +28,13 @@ ItemAccessFacts = AccessFacts
 
 
 def can(
-    session: Session, *, user_id: str, action: Action, item: AccessFacts,
-    kind: ObjectKind = "item", actor_is_admin: bool = False,
+    session: Session,
+    *,
+    user_id: str,
+    action: Action,
+    item: AccessFacts,
+    kind: ObjectKind = "item",
+    actor_is_admin: bool = False,
 ) -> bool:
     # Le rôle admin ne court-circuite QUE les collections (spec SP-3 §2) :
     # la sémantique de partage des items (SP-1, testée) ne bouge pas.
@@ -41,12 +46,18 @@ def can(
     def role_check(roles: set[str]) -> bool:
         if kind == "item":
             return has_group_role(
-                session, tenant_id=item.tenant_id, item_id=item.id,
-                user_id=user_id, roles=roles,
+                session,
+                tenant_id=item.tenant_id,
+                item_id=item.id,
+                user_id=user_id,
+                roles=roles,
             )
         return has_collection_group_role(
-            session, tenant_id=item.tenant_id, collection_id=item.id,
-            user_id=user_id, roles=roles,
+            session,
+            tenant_id=item.tenant_id,
+            collection_id=item.id,
+            user_id=user_id,
+            roles=roles,
         )
 
     if action == "read":

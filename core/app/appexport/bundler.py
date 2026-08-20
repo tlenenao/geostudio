@@ -12,6 +12,7 @@ d'origine) — un second fichier geostudio-connection.json embarque l'URL du
 cœur d'origine ; sa présence/absence dans le zip est le seul signal dont
 entry.tsx a besoin pour choisir createItemClient (réseau réel) vs
 createStaticItemClient (aucun réseau)."""
+
 import io
 import json
 import os
@@ -21,7 +22,10 @@ from app.configs.schemas import BuilderConfig
 
 
 def build_bundle_zip(
-    config: BuilderConfig, *, runtime_dir: str, connection: dict | None = None,
+    config: BuilderConfig,
+    *,
+    runtime_dir: str,
+    connection: dict | None = None,
 ) -> bytes:
     entry_path = os.path.join(runtime_dir, "index.export.html")
     if not os.path.isfile(entry_path):

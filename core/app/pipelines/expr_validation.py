@@ -6,9 +6,15 @@ moteur CEL tournait déjà côté serveur). Réutilise le même mécanisme AST q
 app.analytics.sql_sandbox (json_serialize_sql), restreint à UNE expression
 scalaire enveloppée dans un SELECT sans FROM — jamais un SELECT complet,
 jamais une référence de table."""
+
 import duckdb
 
-from app.analytics.sql_sandbox import SqlSandboxError, collect_table_refs, parse_ast, validate_select_only
+from app.analytics.sql_sandbox import (
+    SqlSandboxError,
+    collect_table_refs,
+    parse_ast,
+    validate_select_only,
+)
 
 
 def validate_bounded_expr(conn: duckdb.DuckDBPyConnection, expr: str) -> None:

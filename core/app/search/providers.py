@@ -7,6 +7,7 @@ sens sémantique — il garantit seulement "même texte -> même vecteur", ce qu
 suffit à exercer le mécanisme de recherche hybride en test. Les tests qui
 veulent contrôler quels textes se ressemblent injectent une table
 text -> vecteur explicite plutôt que de dépendre du hash."""
+
 import hashlib
 import os
 import random

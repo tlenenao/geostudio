@@ -21,6 +21,7 @@ Le contexte multiprocessing est explicitement "fork" : c'est le seul qui
 hérite de l'état déjà importé/monkeypatché du parent (Python 3.14 est
 passé à "forkserver" par défaut sur Linux), ce dont dépend le test de
 timeout — et le seul qui n'exige pas que la cible soit picklable."""
+
 import multiprocessing
 import warnings
 
@@ -44,8 +45,11 @@ def _cog_translate_child(src_path: str, dest_path: str, profile_name: str, conn)
     qu'on ne veut pas transporter."""
     try:
         cog_translate(
-            src_path, dest_path, cog_profiles.get(profile_name),
-            in_memory=False, quiet=True,
+            src_path,
+            dest_path,
+            cog_profiles.get(profile_name),
+            in_memory=False,
+            quiet=True,
             config={"GDAL_NUM_THREADS": "ALL_CPUS", "GDAL_TIFF_INTERNAL_MASK": True},
         )
     except Exception as exc:  # rio_cogeo/GDAL peuvent lever divers types selon la cause
@@ -60,7 +64,8 @@ def _run_cog_translate(src_path: str, dest_path: str, *, timeout_seconds: int | 
     ctx = multiprocessing.get_context("fork")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
     proc = ctx.Process(
-        target=_cog_translate_child, args=(src_path, dest_path, "deflate", child_conn),
+        target=_cog_translate_child,
+        args=(src_path, dest_path, "deflate", child_conn),
     )
     with warnings.catch_warnings():
         # Python ≥3.12 avertit quand fork() part d'un process multi-threadé
@@ -80,9 +85,7 @@ def _run_cog_translate(src_path: str, dest_path: str, *, timeout_seconds: int | 
             if proc.is_alive():  # SIGTERM ignoré/bloqué : kill dur
                 proc.kill()
                 proc.join()
-            raise Terrain3DConversionError(
-                f"conversion COG interrompue après {timeout_seconds}s"
-            )
+            raise Terrain3DConversionError(f"conversion COG interrompue après {timeout_seconds}s")
         error = parent_conn.recv() if parent_conn.poll() else None
     finally:
         parent_conn.close()

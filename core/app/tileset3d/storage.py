@@ -5,6 +5,7 @@ fichier (read/seek/tell) à zipfile.ZipFile, chaque accès se traduisant en
 GET S3 avec un en-tête Range. zipfile ne lit ainsi que l'EOCD + la table
 centrale à l'ouverture — coût constant, indépendant du volume de données du
 tileset."""
+
 import json
 import zipfile
 from dataclasses import dataclass
@@ -51,7 +52,9 @@ class S3RangeFile:
             return b""
         end = self._size - 1 if size is None or size < 0 else min(self._pos + size, self._size) - 1
         obj = self._client.get_object(
-            Bucket=self._bucket, Key=self._key, Range=f"bytes={self._pos}-{end}",
+            Bucket=self._bucket,
+            Key=self._key,
+            Range=f"bytes={self._pos}-{end}",
         )
         data = obj["Body"].read()
         self._pos += len(data)
@@ -63,7 +66,11 @@ def _is_unsafe_entry_name(name: str) -> bool:
 
 
 def validate_tileset_zip(
-    range_file: S3RangeFile, *, max_entries: int, max_total_bytes: int, max_entry_bytes: int,
+    range_file: S3RangeFile,
+    *,
+    max_entries: int,
+    max_total_bytes: int,
+    max_entry_bytes: int,
 ) -> ValidationResult:
     try:
         zf = zipfile.ZipFile(range_file)

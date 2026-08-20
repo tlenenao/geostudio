@@ -2,6 +2,7 @@
 """Routes REST de l'export (SP-17a) — montées uniquement quand
 CORE_EXPORT_ENABLED est actif (app.main, à la construction de l'app, jamais
 par requête — même patron que app.pipelines.routes)."""
+
 import os
 from collections.abc import Callable
 
@@ -14,6 +15,7 @@ from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.export import repository as export_repo
 from app.export.jobs import render_export_task
+
 # Réutilise le placeholder générique d'app.ingestion.routes (`raise
 # RuntimeError(...)` par défaut, overridé dans app.main quand S3_* est
 # configuré) plutôt que d'en redéfinir un second identique ici : ce n'est
@@ -58,6 +60,7 @@ def get_exports_bucket() -> str:
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         render_export_task.defer(job_id=job_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -71,10 +74,17 @@ def create_export_route(
     if body.format not in ("png", "pdf"):
         raise HTTPException(status_code=422, detail="format must be 'png' or 'pdf'")
     _require_export_read_access(session, user=user, item_id=body.itemId)
-    job = export_repo.create_job(session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, format=body.format)
+    job = export_repo.create_job(
+        session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, format=body.format
+    )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="export.create", object_type="export_job", object_id=job.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="export.create",
+        object_type="export_job",
+        object_id=job.id,
         payload={"itemId": body.itemId, "format": body.format},
     )
     # Commit avant de déférer : même raison que run_pipeline_route.

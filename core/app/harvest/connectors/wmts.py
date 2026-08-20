@@ -3,6 +3,7 @@
 gabarit {z}/{y}/{x}. N'ajoute à la carte que les couches offrant une matrice
 Web Mercator à identifiants de TileMatrix entiers ; sinon référence-only.
 HTTP uniquement, zéro I/O DB, parsing tolérant et borné (ows.py)."""
+
 import logging
 from collections.abc import Iterable
 
@@ -93,13 +94,20 @@ def _layer_to_record(layer, identifier, base, caps_url, mercator_sets) -> Harves
     title = ows.child_text(layer, "Title") or identifier
     abstract = ows.child_text(layer, "Abstract") or ""
     bbox = _wgs84_bbox(layer)
-    linked = [ows.child_text(link, "TileMatrixSet") for link in ows.children(layer, "TileMatrixSetLink")]
+    linked = [
+        ows.child_text(link, "TileMatrixSet") for link in ows.children(layer, "TileMatrixSetLink")
+    ]
     tms = next((t for t in linked if t in mercator_sets), None)
     tiles = _tiles_url(layer, identifier, base, tms) if tms is not None else None
     return HarvestedRecord(
         external_id=f"{base}#{identifier}",
-        title=title, abstract=abstract, keywords=[], bbox=bbox,
-        external_url=caps_url, items_url=None, raster_tiles_url=tiles,
+        title=title,
+        abstract=abstract,
+        keywords=[],
+        bbox=bbox,
+        external_url=caps_url,
+        items_url=None,
+        raster_tiles_url=tiles,
     )
 
 
@@ -132,9 +140,11 @@ def _tiles_url(layer, identifier, base, tms) -> str:
     resource = _resource_url_template(layer)
     if resource is not None:
         return (
-            resource
-            .replace("{TileMatrix}", "{z}").replace("{TileRow}", "{y}").replace("{TileCol}", "{x}")
-            .replace("{Style}", style).replace("{TileMatrixSet}", tms)
+            resource.replace("{TileMatrix}", "{z}")
+            .replace("{TileRow}", "{y}")
+            .replace("{TileCol}", "{x}")
+            .replace("{Style}", style)
+            .replace("{TileMatrixSet}", tms)
         )
     fmt = ows.child_text(layer, "Format") or "image/png"
     return (

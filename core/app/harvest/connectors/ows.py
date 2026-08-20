@@ -4,6 +4,7 @@ neutralise XXE et l'expansion d'entités (billion-laughs). Navigation
 namespace-agnostique (WMS 1.1.1 sans namespace vs 1.3.0/WFS/WMTS avec
 namespaces) : lookup par local-name plutôt que par QName figé. Tolérant :
 un document malformé/hostile retourne None, jamais d'exception qui fuite."""
+
 import logging
 from collections.abc import Iterator
 from xml.etree.ElementTree import Element
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _MAX_LAYERS = 500
 _MAX_DOCUMENTS = 1  # GetCapabilities = un seul GET par source
-_MAX_DEPTH = 10     # profondeur d'arbre <Layer> WMS
+_MAX_DEPTH = 10  # profondeur d'arbre <Layer> WMS
 _WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 
 

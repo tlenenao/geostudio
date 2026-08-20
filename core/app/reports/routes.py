@@ -3,6 +3,7 @@
 entièrement par les routes génériques /configs (kind="report"), comme pour
 AlertRule/Pipeline ; ce module ne porte que l'unique lecture sur mesure,
 reproduisant GET /alerts/{id}/evaluations."""
+
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -64,22 +65,30 @@ def get_report_runs_route(
             # uniquement pour que la cadence cron soit mesurable, il n'y a
             # jamais eu d'export_jobs derrière. Le détail de l'échec est dans
             # le journal d'audit (action report.run).
-            result.append(ReportRunStatus(
-                id=run.id, status="error", resultUrl=None,
-                error="déclenchement échoué (voir le journal d'audit)",
-                notifiedAt=run.notified_at.isoformat() if run.notified_at else None,
-                createdAt=run.created_at.isoformat(),
-            ))
+            result.append(
+                ReportRunStatus(
+                    id=run.id,
+                    status="error",
+                    resultUrl=None,
+                    error="déclenchement échoué (voir le journal d'audit)",
+                    notifiedAt=run.notified_at.isoformat() if run.notified_at else None,
+                    createdAt=run.created_at.isoformat(),
+                )
+            )
             continue
         job = export_repo.get_job(session, tenant_id=user.tenant_id, job_id=run.export_job_id)
         status = job.status if job is not None else "unknown"
         result_url = None
         if job is not None and job.status == "done" and job.result_key:
             result_url = generate_presigned_get_url(s3, bucket=bucket, key=job.result_key)
-        result.append(ReportRunStatus(
-            id=run.id, status=status, resultUrl=result_url,
-            error=job.error if job is not None else None,
-            notifiedAt=run.notified_at.isoformat() if run.notified_at else None,
-            createdAt=run.created_at.isoformat(),
-        ))
+        result.append(
+            ReportRunStatus(
+                id=run.id,
+                status=status,
+                resultUrl=result_url,
+                error=job.error if job is not None else None,
+                notifiedAt=run.notified_at.isoformat() if run.notified_at else None,
+                createdAt=run.created_at.isoformat(),
+            )
+        )
     return result

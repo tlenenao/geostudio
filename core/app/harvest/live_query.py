@@ -4,6 +4,7 @@ pagination, groupBy/mesures) vers l'API REST ArcGIS Feature Service, pour un
 dataset source="arcgis" (SP-14k) — lecture live, sans copie locale. Les
 requêtes sortantes utilisent le client HTTP injecté par la route appelante
 (gardé par le même egress guard que le moissonnage, SP-12d, egress.py)."""
+
 import json
 import re
 import time
@@ -68,8 +69,11 @@ def _bbox_params(bbox: tuple[float, float, float, float] | None) -> dict[str, st
 
 
 def translate_features_query(
-    *, filters: dict[str, str], bbox: tuple[float, float, float, float] | None,
-    limit: int, offset: int,
+    *,
+    filters: dict[str, str],
+    bbox: tuple[float, float, float, float] | None,
+    limit: int,
+    offset: int,
 ) -> dict[str, str]:
     return {
         "where": _build_where(filters),
@@ -82,8 +86,11 @@ def translate_features_query(
 
 
 def translate_aggregate_query(
-    *, group_by: list[str], measures: list[tuple[str, str | None, str]],
-    filters: dict[str, str], bbox: tuple[float, float, float, float] | None,
+    *,
+    group_by: list[str],
+    measures: list[tuple[str, str | None, str]],
+    filters: dict[str, str],
+    bbox: tuple[float, float, float, float] | None,
 ) -> dict[str, str]:
     out_statistics = []
     for i, (agg, field, _label) in enumerate(measures):
@@ -93,11 +100,13 @@ def translate_aggregate_query(
             raise ArcgisQueryError("field", f"agg '{agg}' requires a field")
         if field is not None and not _FIELD_NAME_RE.match(field):
             raise ArcgisQueryError(field, f"invalid measure field name '{field}'")
-        out_statistics.append({
-            "statisticType": agg,
-            "onStatisticField": field or "1",
-            "outStatisticFieldName": f"m{i}",
-        })
+        out_statistics.append(
+            {
+                "statisticType": agg,
+                "onStatisticField": field or "1",
+                "outStatisticFieldName": f"m{i}",
+            }
+        )
     params: dict[str, str] = {
         "where": _build_where(filters),
         "outStatistics": json.dumps(out_statistics),
@@ -132,7 +141,10 @@ def fetch_query(client: httpx.Client, external_url: str, params: dict[str, str])
 
 
 def aggregate_response(
-    raw: dict, *, group_by: list[str], measures: list[tuple[str, str | None, str]],
+    raw: dict,
+    *,
+    group_by: list[str],
+    measures: list[tuple[str, str | None, str]],
 ) -> tuple[str | list[str], list[dict]]:
     features = raw.get("features", [])
     if not group_by:

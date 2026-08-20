@@ -11,6 +11,7 @@ suppression des fichiers d'entrée (compact_partition), jamais l'inverse.
 Un crash entre les deux laisse des doublons inoffensifs (le lecteur réduit
 par (pk, max(_lsn))), jamais de perte ni de suppression partielle
 dangereuse — aucun verrou ni coordination avec le worker CDC nécessaire."""
+
 import re
 import uuid
 from dataclasses import dataclass
@@ -59,7 +60,12 @@ def merge_geoparquet(byte_blobs: list[bytes]) -> bytes:
 
 
 def compact_partition(
-    client, *, bucket: str, partition_prefix: str, files: list[dict], size_threshold_bytes: int,
+    client,
+    *,
+    bucket: str,
+    partition_prefix: str,
+    files: list[dict],
+    size_threshold_bytes: int,
 ) -> int:
     to_merge = select_files_to_merge(files, size_threshold_bytes=size_threshold_bytes)
     if not to_merge:
@@ -74,7 +80,10 @@ def compact_partition(
 
 
 def run_compaction_cycle(
-    client, *, bucket: str, size_threshold_bytes: int = DEFAULT_SIZE_THRESHOLD_BYTES,
+    client,
+    *,
+    bucket: str,
+    size_threshold_bytes: int = DEFAULT_SIZE_THRESHOLD_BYTES,
 ) -> CompactionReport:
     objects = storage.list_objects(client, bucket=bucket, prefix=CDC_PREFIX)
     groups = group_by_partition(objects)
@@ -82,13 +91,17 @@ def run_compaction_cycle(
     files_removed = 0
     for partition_prefix, files in groups.items():
         merged_count = compact_partition(
-            client, bucket=bucket, partition_prefix=partition_prefix, files=files,
+            client,
+            bucket=bucket,
+            partition_prefix=partition_prefix,
+            files=files,
             size_threshold_bytes=size_threshold_bytes,
         )
         if merged_count:
             partitions_compacted += 1
             files_removed += merged_count
     return CompactionReport(
-        partitions_scanned=len(groups), partitions_compacted=partitions_compacted,
+        partitions_scanned=len(groups),
+        partitions_compacted=partitions_compacted,
         files_removed=files_removed,
     )

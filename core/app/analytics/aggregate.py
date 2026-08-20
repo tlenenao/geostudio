@@ -12,6 +12,7 @@ vrai GeoParquet sur MinIO) que DuckDB lit la colonne géométrie d'un
 GeoParquet directement comme un type GEOMETRY natif — ST_GeomFromWKB(...)
 n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
+
 import json
 from typing import Literal
 
@@ -164,8 +165,7 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
         # lue par DuckDB comme un type GEOMETRY (spike Task 1, vérifié
         # contre MinIO réel) — pas de ST_GeomFromWKB(...) ici.
         clauses.append(
-            f"ST_Intersects({_qi(table_info.geometry_column)}, "
-            f"ST_MakeEnvelope(?, ?, ?, ?))"
+            f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))"
         )
         params.extend([minx, miny, maxx, maxy])
     if request.geomIntersects is not None:
@@ -173,10 +173,7 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
         # ci-dessus (rectangle). Même colonne, même opérateur ST_Intersects —
         # seule la forme du second argument change (GeoJSON arbitraire, pas
         # une enveloppe rectangulaire).
-        clauses.append(
-            f"ST_Intersects({_qi(table_info.geometry_column)}, "
-            f"ST_GeomFromGeoJSON(?))"
-        )
+        clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_GeomFromGeoJSON(?))")
         params.append(json.dumps(request.geomIntersects))
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 
@@ -203,7 +200,9 @@ def _pivot_split(sql_rows: list[dict], *, category_key: str) -> list[dict]:
     return [by_cat[c] for c in categories]
 
 
-def _pivot_measures(sql_rows: list[dict], *, category_key: str, measures: list[AggregateMeasure]) -> list[dict]:
+def _pivot_measures(
+    sql_rows: list[dict], *, category_key: str, measures: list[AggregateMeasure]
+) -> list[dict]:
     out = []
     for r in sql_rows:
         row = {category_key: str(r["__cat"])}
@@ -213,7 +212,9 @@ def _pivot_measures(sql_rows: list[dict], *, category_key: str, measures: list[A
     return out
 
 
-def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]) -> list[dict]:
+def _pivot_multi_measures(
+    sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]
+) -> list[dict]:
     out = []
     for r in sql_rows:
         row = {f: r[f] for f in fields}
@@ -224,10 +225,18 @@ def _pivot_multi_measures(sql_rows: list[dict], *, fields: list[str], measures: 
 
 
 def _run_binned_histogram(
-    conn, *, dedup_cte: str, where_sql: str, where_params: list, field: str, bins: int,
+    conn,
+    *,
+    dedup_cte: str,
+    where_sql: str,
+    where_params: list,
+    field: str,
+    bins: int,
 ) -> list[dict]:
     field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
-    minmax_sql = f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
+    minmax_sql = (
+        f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
+    )
     minmax_rows = _fetch_rows(conn, minmax_sql, where_params)
     lo = minmax_rows[0]["lo"] if minmax_rows else None
     hi = minmax_rows[0]["hi"] if minmax_rows else None
@@ -285,10 +294,18 @@ def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
 
 
 def run_collection_aggregate(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info, request: AggregateRequestBody,
+    conn,
+    *,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+    table_info,
+    request: AggregateRequestBody,
 ) -> tuple[str | list[str], list[dict]]:
     fields = _groupby_fields(request)
-    category_key: str | list[str] = fields if len(fields) > 1 else (fields[0] if fields else "group")
+    category_key: str | list[str] = (
+        fields if len(fields) > 1 else (fields[0] if fields else "group")
+    )
     _validate_fields(request, table_info)
 
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
@@ -299,14 +316,20 @@ def run_collection_aggregate(
 
     if request.bins is not None:
         rows = _run_binned_histogram(
-            conn, dedup_cte=dedup_cte, where_sql=where_sql, where_params=where_params,
-            field=request.field, bins=request.bins,
+            conn,
+            dedup_cte=dedup_cte,
+            where_sql=where_sql,
+            where_params=where_params,
+            field=request.field,
+            bins=request.bins,
         )
         return "bucketIndex", rows
 
     if len(fields) > 1:
         measures = _measures_for(request)
-        measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
+        measure_cols = ", ".join(
+            f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures)
+        )
         group_cols = ", ".join(_qi(f) for f in fields)
         sql = f"{dedup_cte} SELECT {group_cols}, {measure_cols} FROM live {where_sql} GROUP BY {group_cols}"
         sql_rows = _fetch_rows(conn, sql, where_params)
@@ -314,7 +337,9 @@ def run_collection_aggregate(
 
     single_field = fields[0] if fields else None
     if request.bucket:
-        cat_expr = f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
+        cat_expr = (
+            f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
+        )
     else:
         cat_expr = _qi(single_field) if single_field else "'Total'"
 
@@ -331,4 +356,6 @@ def run_collection_aggregate(
     measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
     sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} GROUP BY __cat"
     sql_rows = _fetch_rows(conn, sql, where_params)
-    return category_key, _pivot_measures(sql_rows, category_key=str(category_key), measures=measures)
+    return category_key, _pivot_measures(
+        sql_rows, category_key=str(category_key), measures=measures
+    )

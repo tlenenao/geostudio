@@ -5,6 +5,7 @@ le run "failed", jamais de run bloqué en queued/running ("zombie", même
 critère d'acceptation que SP-6a/run_ingestion_task). Tourne dans le worker
 partagé (docker-compose.yml, queue dédiée "etl", cf. app.jobs pour la
 raison de import_paths)."""
+
 import logging
 import os
 from collections.abc import Callable
@@ -78,13 +79,21 @@ def _analytics_base_uri() -> str:
 
 
 def _make_progress_callback(
-    session_factory, *, run_id: str, tenant_id: str,
+    session_factory,
+    *,
+    run_id: str,
+    tenant_id: str,
 ) -> Callable[[NodeStat], None]:
     def _on_node_complete(stat: NodeStat) -> None:
         with request_scoped_session(session_factory) as s:
             pipelines_repo.append_node_stat(
-                s, tenant_id=tenant_id, run_id=run_id, node_id=stat.nodeId, stat=stat.to_dict(),
+                s,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                node_id=stat.nodeId,
+                stat=stat.to_dict(),
             )
+
     return _on_node_complete
 
 
@@ -105,19 +114,28 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             payload = _get_pipeline_payload(session, item_id=item_id)
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
             stats = run_pipeline(
-                session, payload=payload, tenant_id=tenant_id, user=user,
+                session,
+                payload=payload,
+                tenant_id=tenant_id,
+                user=user,
                 endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"], secret_key=os.environ["S3_SECRET_KEY"],
+                access_key=os.environ["S3_ACCESS_KEY"],
+                secret_key=os.environ["S3_SECRET_KEY"],
                 base_uri=_analytics_base_uri(),
                 s3_client=_s3_client_from_env(),
                 exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
                 qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-                qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
-                on_node_complete=_make_progress_callback(session_factory, run_id=run_id, tenant_id=tenant_id),
+                qgis_worker_timeout_seconds=int(
+                    os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")
+                ),
+                on_node_complete=_make_progress_callback(
+                    session_factory, run_id=run_id, tenant_id=tenant_id
+                ),
             )
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_succeeded(
-                session, run_id=run_id,
+                session,
+                run_id=run_id,
                 node_stats={s.nodeId: s.to_dict() for s in stats},
             )
     except (PipelineRuntimeError, ValueError) as exc:

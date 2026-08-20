@@ -2,6 +2,7 @@
 """AlertRule listing + evaluation history (design SP-16b §6). Create/
 update/delete of the rule itself are handled entirely by the generic
 /configs routes (app.configs.routes) — nothing bespoke needed there."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -33,7 +34,9 @@ class EvaluationStatus(BaseModel):
 
 @router.get("/datasets/{item_id}/alerts", response_model=list[AlertRuleSummary])
 def list_alerts_for_dataset(
-    item_id: str, session: Session = Depends(get_session), user: User = Depends(get_current_user),
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> list[AlertRuleSummary]:
     results: list[AlertRuleSummary] = []
     # Tenant-scoped at the SQL level (app.configs.repository.
@@ -64,14 +67,22 @@ def _require_alert_read_access(session: Session, *, user: User, item_id: str) ->
 
 @router.get("/alerts/{item_id}/evaluations", response_model=list[EvaluationStatus])
 def get_alert_evaluations(
-    item_id: str, session: Session = Depends(get_session), user: User = Depends(get_current_user),
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> list[EvaluationStatus]:
     _require_alert_read_access(session, user=user, item_id=item_id)
-    rows = alerts_repo.list_evaluations(session, tenant_id=user.tenant_id, alert_rule_item_id=item_id)
+    rows = alerts_repo.list_evaluations(
+        session, tenant_id=user.tenant_id, alert_rule_item_id=item_id
+    )
     return [
         EvaluationStatus(
-            id=r.id, value=r.value, state=r.state, transitioned=r.transitioned,
-            error=r.error, createdAt=r.created_at.isoformat(),
+            id=r.id,
+            value=r.value,
+            state=r.state,
+            transitioned=r.transitioned,
+            error=r.error,
+            createdAt=r.created_at.isoformat(),
         )
         for r in rows
     ]

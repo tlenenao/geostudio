@@ -11,6 +11,7 @@ at save time. Bounded SQL expressions (filter.expr, derive.expr,
 aggregate.metrics values) and transform.join.on column existence are only
 checked at execution time (app.pipelines.expr_validation / runtime) — a bad
 expression fails the run clearly, it never blocks saving the pipeline."""
+
 from fastapi import HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -46,13 +47,18 @@ def _validate_params(node: PipelineNode) -> BaseModel:
 
 def _require_readable_collection(session: Session, *, user: User, collection_id: str) -> None:
     collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=collection_id,
+        session,
+        tenant_id=user.tenant_id,
+        collection_id=collection_id,
     )
     if collection is None:
         raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
     readable = can(
-        session, user_id=user.id, action="read",
-        item=collections_repo.get_access_facts(collection), kind="collection",
+        session,
+        user_id=user.id,
+        action="read",
+        item=collections_repo.get_access_facts(collection),
+        kind="collection",
         actor_is_admin=user.is_admin,
     )
     if not readable:
@@ -62,13 +68,18 @@ def _require_readable_collection(session: Session, *, user: User, collection_id:
 
 def _require_writable_collection(session: Session, *, user: User, collection_id: str) -> None:
     collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=collection_id,
+        session,
+        tenant_id=user.tenant_id,
+        collection_id=collection_id,
     )
     if collection is None:
         raise HTTPException(status_code=422, detail=f"collection '{collection_id}' not found")
     writable = can(
-        session, user_id=user.id, action="write",
-        item=collections_repo.get_access_facts(collection), kind="collection",
+        session,
+        user_id=user.id,
+        action="write",
+        item=collections_repo.get_access_facts(collection),
+        kind="collection",
         actor_is_admin=user.is_admin,
     )
     if not writable or not collection.editable:

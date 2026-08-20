@@ -6,6 +6,7 @@ réplication ne peut jamais avancer au-delà du message le plus ancien encore
 non flushé, TOUTES tables confondues (confirmed_flush_lsn est une position
 dans le flux WAL global, pas par table) — safe_ack_lsn() porte cette
 garantie."""
+
 import time
 from dataclasses import dataclass, field
 

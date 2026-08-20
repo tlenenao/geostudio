@@ -4,6 +4,7 @@ SP-15e §2/§4 —
 docs/superpowers/specs/2026-08-06-sp15e-connector-secrets-store-design.md).
 La clé maître ne doit JAMAIS être loguée, incluse dans un message d'erreur,
 un span OTel ou une entrée audit_log."""
+
 import base64
 import json
 import os

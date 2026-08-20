@@ -30,8 +30,9 @@ def catalog(*, base: str, collection_ids: list[str]) -> dict:
         {"rel": "search", "type": "application/geo+json", "href": f"{base}/stac/search"},
     ]
     for cid in collection_ids:
-        links.append({"rel": "child", "type": "application/json",
-                      "href": f"{base}/stac/collections/{cid}"})
+        links.append(
+            {"rel": "child", "type": "application/json", "href": f"{base}/stac/collections/{cid}"}
+        )
     return {
         "type": "Catalog",
         "stac_version": STAC_VERSION,
@@ -46,8 +47,15 @@ def catalog(*, base: str, collection_ids: list[str]) -> dict:
 WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 
 
-def collection(*, base: str, collection_id: str, title: str, description: str,
-               bbox: list[float] | None, temporal_start: str | None) -> dict:
+def collection(
+    *,
+    base: str,
+    collection_id: str,
+    title: str,
+    description: str,
+    bbox: list[float] | None,
+    temporal_start: str | None,
+) -> dict:
     doc = {
         "type": "Collection",
         "stac_version": STAC_VERSION,
@@ -60,12 +68,18 @@ def collection(*, base: str, collection_id: str, title: str, description: str,
             "temporal": {"interval": [[temporal_start, None]]},
         },
         "links": [
-            {"rel": "self", "type": "application/json",
-             "href": f"{base}/stac/collections/{collection_id}"},
+            {
+                "rel": "self",
+                "type": "application/json",
+                "href": f"{base}/stac/collections/{collection_id}",
+            },
             {"rel": "root", "type": "application/json", "href": f"{base}/stac"},
             {"rel": "parent", "type": "application/json", "href": f"{base}/stac"},
-            {"rel": "items", "type": "application/geo+json",
-             "href": f"{base}/stac/collections/{collection_id}/items"},
+            {
+                "rel": "items",
+                "type": "application/geo+json",
+                "href": f"{base}/stac/collections/{collection_id}/items",
+            },
         ],
     }
     if bbox is None:
@@ -109,12 +123,21 @@ def item(*, base: str, collection_id: str, feature: dict, datetime_value: str) -
         "properties": properties,
         "assets": {},
         "links": [
-            {"rel": "self", "type": "application/geo+json",
-             "href": f"{base}/stac/collections/{collection_id}/items/{fid}"},
-            {"rel": "parent", "type": "application/json",
-             "href": f"{base}/stac/collections/{collection_id}"},
-            {"rel": "collection", "type": "application/json",
-             "href": f"{base}/stac/collections/{collection_id}"},
+            {
+                "rel": "self",
+                "type": "application/geo+json",
+                "href": f"{base}/stac/collections/{collection_id}/items/{fid}",
+            },
+            {
+                "rel": "parent",
+                "type": "application/json",
+                "href": f"{base}/stac/collections/{collection_id}",
+            },
+            {
+                "rel": "collection",
+                "type": "application/json",
+                "href": f"{base}/stac/collections/{collection_id}",
+            },
             {"rel": "root", "type": "application/json", "href": f"{base}/stac"},
         ],
     }

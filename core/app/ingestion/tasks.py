@@ -5,6 +5,7 @@ Toute erreur (parsing ou inattendue) marque le job "error", jamais de job
 bloqué en pending/running ("zombie", critère d'acceptation SP-6a).
 L'instance procrastinate.App vit dans app.jobs (SP-7 Task 1) — partagée avec
 les tâches d'embedding d'app.items/app.collections."""
+
 import logging
 import os
 
@@ -43,22 +44,35 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 return
             ingestion_repo.mark_running(session, job_id=job_id)
             filename, source_key, collection_title, lat_field, lon_field, layer_name, created_by = (
-                job.filename, job.source_key, job.collection_title,
-                job.lat_field, job.lon_field, job.layer_name, job.created_by,
+                job.filename,
+                job.source_key,
+                job.collection_title,
+                job.lat_field,
+                job.lon_field,
+                job.layer_name,
+                job.created_by,
             )
 
         s3 = _make_s3_client_from_env()
         content = download_object(s3, bucket=_uploads_bucket(), key=source_key)
         with request_scoped_session(session_factory) as session:
             result = run_import(
-                session, tenant_id=tenant_id, created_by=created_by, filename=filename,
-                content=content, collection_title=collection_title,
-                lat_field=lat_field, lon_field=lon_field, layer_name=layer_name,
+                session,
+                tenant_id=tenant_id,
+                created_by=created_by,
+                filename=filename,
+                content=content,
+                collection_title=collection_title,
+                lat_field=lat_field,
+                lon_field=lon_field,
+                layer_name=layer_name,
             )
         with request_scoped_session(session_factory) as session:
             ingestion_repo.mark_done(
-                session, job_id=job_id,
-                collection_id=result.collection_id, item_id=result.item_id,
+                session,
+                job_id=job_id,
+                collection_id=result.collection_id,
+                item_id=result.item_id,
             )
     except IngestionParseError as exc:
         with request_scoped_session(session_factory) as session:
