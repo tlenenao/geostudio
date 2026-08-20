@@ -1,264 +1,173 @@
-### Task 2: `useUndoableDraft` hook
+## Task 2: Core — `is_copilot_enabled()` + `GET /instance.copilotEnabled`
 
 **Files:**
-- Create: `shell/src/builder/useUndoableDraft.ts`
-- Create: `shell/src/builder/useUndoableDraft.test.tsx`
+- Modify: `core/app/auth/dependency.py`
+- Modify: `core/app/instance/routes.py`
+- Create: `core/tests/test_copilot_enabled_flag.py`
+- Modify: `core/tests/test_etl_enabled_flag.py`, `core/tests/test_export_enabled_flag.py`, `core/tests/test_read_only_mode.py` (their `GET /instance` exact-dict assertions gain a `copilotEnabled` key — see Step 4)
 
 **Interfaces:**
-- Consumes: `createUndoStack`, `pushUndo`, `applyUndo`, `applyRedo`,
-  `UndoStack` (Task 1, `./undoStack`), `AppConfig` (`../api/types`).
-- Produces:
-  ```ts
-  export type UndoableDraft = {
-    draft: AppConfig | null;
-    setDraft: (update: AppConfig | null | ((prev: AppConfig | null) => AppConfig | null)) => void;
-    seedDraft: (value: AppConfig) => void;
-    undo: () => void;
-    redo: () => void;
-    canUndo: boolean;
-    canRedo: boolean;
-  };
-  export function useUndoableDraft(): UndoableDraft;
-  ```
-  `setDraft` has the exact same call signature as the `useState` setter it
-  replaces (value or updater function) — every existing call site in
-  `AppBuilderPage.tsx` (`setDraft(d => ...)` and `setDraft(value)` both) keeps
-  working unchanged (Task 3).
+- Produces: `is_copilot_enabled() -> bool` in `app.auth.dependency`, importable by `core/app/main.py` (Task 5).
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
-Create `shell/src/builder/useUndoableDraft.test.tsx`:
+Create `core/tests/test_copilot_enabled_flag.py`, mirroring `core/tests/test_etl_enabled_flag.py` exactly:
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { AppConfig } from "../api/types";
-import { useUndoableDraft } from "./useUndoableDraft";
+```python
+# SPDX-License-Identifier: Apache-2.0
+import pytest
+from fastapi.testclient import TestClient
 
-function config(text: string): AppConfig {
-  return {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text } },
-    ] },
-  };
-}
+from app import db
+from app.auth.dependency import get_current_user, get_current_user_optional, is_copilot_enabled
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
 
-test("seedDraft sets the initial draft without creating an undo step", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  expect(result.current.draft).toEqual(config("A"));
-  expect(result.current.canUndo).toBe(false);
-});
+def test_is_copilot_enabled_defaults_to_false(monkeypatch):
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
+    assert is_copilot_enabled() is False
 
-test("seedDraft never overwrites an already-seeded draft", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.seedDraft(config("B")));
-  expect(result.current.draft).toEqual(config("A"));
-});
 
-test("canUndo flips true once the coalesce window elapses after a setDraft call", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft(config("B")));
-  expect(result.current.canUndo).toBe(false); // still pending
-  act(() => vi.advanceTimersByTime(400));
-  expect(result.current.canUndo).toBe(true);
-});
+def test_is_copilot_enabled_true_for_any_non_empty_provider(monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
+    assert is_copilot_enabled() is True
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "fake")
+    assert is_copilot_enabled() is True
 
-test("undo restores the pre-edit config and flushes a still-pending burst immediately", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft(config("B")));
-  // No advanceTimersByTime: the window hasn't elapsed, but undo() must not
-  // need it to act correctly.
-  act(() => result.current.undo());
-  expect(result.current.draft).toEqual(config("A"));
-  expect(result.current.canUndo).toBe(false);
-  expect(result.current.canRedo).toBe(true);
-});
 
-test("a rapid burst of setDraft calls within the window collapses into one undo step", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => {
-    result.current.setDraft(config("Ab"));
-    vi.advanceTimersByTime(100);
-    result.current.setDraft(config("Abc"));
-    vi.advanceTimersByTime(100);
-    result.current.setDraft(config("Abcd"));
-  });
-  act(() => vi.advanceTimersByTime(400));
-  expect(result.current.draft).toEqual(config("Abcd"));
-  act(() => result.current.undo());
-  expect(result.current.draft).toEqual(config("A")); // one step back past the whole burst
-  expect(result.current.canUndo).toBe(false);
-});
+@pytest.fixture()
+def env():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
+            email=None, first_name="", last_name="", bootstrap_admin=True,
+        )
+        s.commit()
+    app = create_app()
 
-test("redo restores what undo just reverted", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft(config("B")));
-  act(() => vi.advanceTimersByTime(400));
-  act(() => result.current.undo());
-  act(() => result.current.redo());
-  expect(result.current.draft).toEqual(config("B"));
-  expect(result.current.canRedo).toBe(false);
-  expect(result.current.canUndo).toBe(true);
-});
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
 
-test("a new edit after undo purges the redo branch", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft(config("B")));
-  act(() => vi.advanceTimersByTime(400));
-  act(() => result.current.undo());
-  act(() => result.current.setDraft(config("C")));
-  act(() => vi.advanceTimersByTime(400));
-  expect(result.current.canRedo).toBe(false);
-  expect(result.current.draft).toEqual(config("C"));
-});
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: admin
+    app.dependency_overrides[get_current_user_optional] = lambda: admin
+    return TestClient(app)
 
-test("setDraft supports the functional-updater form", () => {
-  const { result } = renderHook(() => useUndoableDraft());
-  act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft((prev) => (prev ? config(`${String(prev.layout.items[0].props.text)}!`) : prev)));
-  expect(result.current.draft).toEqual(config("A!"));
-});
+
+def test_instance_reports_copilot_disabled_by_default(env, monkeypatch):
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json()["copilotEnabled"] is False
+
+
+def test_instance_reports_copilot_enabled(env, monkeypatch):
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
+    response = env.get("/instance")
+    assert response.status_code == 200
+    assert response.json()["copilotEnabled"] is True
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd shell && npx vitest run src/builder/useUndoableDraft.test.tsx`
-Expected: FAIL — `Cannot find module './useUndoableDraft'`.
+Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py -v`
+Expected: FAIL — `ImportError: cannot import name 'is_copilot_enabled'`.
 
-- [ ] **Step 3: Implement `useUndoableDraft.ts`**
+- [ ] **Step 3: Implement**
 
-Create `shell/src/builder/useUndoableDraft.ts`:
+In `core/app/auth/dependency.py`, add right after `is_terrain3d_enabled()` (before `admin_subs()`):
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-// Undo/redo for the builder's edited AppConfig (SP-19). Wraps the single
-// setDraft setter every panel already funnels edits through (verified
-// against the real code, not assumed — cf. docs/superpowers/specs/
-// 2026-08-05-undo-redo-builder-design.md §3): no other panel/widget file
-// needs to change.
-//
-// No panel buffers text input locally (every keystroke calls onChange →
-// setDraft directly, across ~20 widget PropsPanels plus PropsPanel/
-// ThemePanel/VariablesPanel/ActionsPanel/NavigationPanel/DataSourcePanel).
-// Pushing an undo snapshot on every call would explode the stack one entry
-// per keystroke. Instead: the *first* setDraft call after the stack was
-// last flushed captures the pre-burst config as the pending baseline; later
-// calls within COALESCE_WINDOW_MS extend the same burst without
-// re-capturing. A discrete action (one GridCanvas arrow click, one "add
-// widget" click) naturally flushes on its own since nothing else calls
-// setDraft within the window. undo()/redo() always flush a still-pending
-// burst synchronously first, so Ctrl+Z is correct even mid-burst.
-import { useCallback, useRef, useState } from "react";
-import type { AppConfig } from "../api/types";
-import { applyRedo, applyUndo, createUndoStack, pushUndo, type UndoStack } from "./undoStack";
+```python
+def is_copilot_enabled() -> bool:
+    """CORE_LLM_PROVIDER (SP-20) — contrairement aux autres capacités
+    instance-wide ci-dessus (is_etl_enabled et consorts), ce n'est pas un
+    booléen dédié : le copilote est actif dès qu'un fournisseur LLM est
+    configuré, quelle que soit sa valeur (CORE_LLM_PROVIDER=openai, ou
+    toute chaîne non vide). Lue à chaque appel, sans cache, même
+    convention que is_read_only_mode ci-dessus."""
+    return bool(os.environ.get("CORE_LLM_PROVIDER"))
+```
 
-const COALESCE_WINDOW_MS = 400;
+In `core/app/instance/routes.py`, update the import and response dict:
 
-export type UndoableDraft = {
-  draft: AppConfig | null;
-  setDraft: (update: AppConfig | null | ((prev: AppConfig | null) => AppConfig | null)) => void;
-  seedDraft: (value: AppConfig) => void;
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-};
+```python
+# SPDX-License-Identifier: Apache-2.0
+from fastapi import APIRouter
 
-export function useUndoableDraft(): UndoableDraft {
-  const [draft, setDraftState] = useState<AppConfig | null>(null);
-  const stackRef = useRef<UndoStack<AppConfig>>(createUndoStack());
-  const pendingBaselineRef = useRef<AppConfig | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
+from app.auth.dependency import (
+    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
+    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
+)
 
-  const flush = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+router = APIRouter()
+
+
+@router.get("/instance")
+def get_instance_info() -> dict:
+    return {
+        "readOnly": is_read_only_mode(),
+        "etlEnabled": is_etl_enabled(),
+        "exportEnabled": is_export_enabled(),
+        "appExportEnabled": is_appexport_enabled(),
+        "tileset3dEnabled": is_tileset3d_enabled(),
+        "terrain3dEnabled": is_terrain3d_enabled(),
+        "copilotEnabled": is_copilot_enabled(),
     }
-    if (pendingBaselineRef.current === null) return;
-    stackRef.current = pushUndo(stackRef.current, pendingBaselineRef.current);
-    pendingBaselineRef.current = null;
-    setCanUndo(true);
-    setCanRedo(false);
-  }, []);
-
-  const setDraft = useCallback<UndoableDraft["setDraft"]>((update) => {
-    setDraftState((prev) => {
-      const next = typeof update === "function"
-        ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
-        : update;
-      if (next !== prev && prev !== null) {
-        if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(flush, COALESCE_WINDOW_MS);
-      }
-      return next;
-    });
-  }, [flush]);
-
-  // Seeds the initial config once loaded, bypassing history entirely — the
-  // starting point of the session, not an edit. Undoing it would set draft
-  // back to null and break rendering. `prev ?? value` mirrors the original
-  // AppBuilderPage seeding effect (never clobbers in-flight edits on a
-  // refetch).
-  const seedDraft = useCallback((value: AppConfig) => {
-    setDraftState((prev) => prev ?? value);
-  }, []);
-
-  const undo = useCallback(() => {
-    flush();
-    setDraftState((prev) => {
-      if (prev === null) return prev;
-      const result = applyUndo(stackRef.current, prev);
-      if (result === null) return prev;
-      stackRef.current = result.stack;
-      setCanUndo(result.stack.past.length > 0);
-      setCanRedo(true);
-      return result.value;
-    });
-  }, [flush]);
-
-  const redo = useCallback(() => {
-    flush();
-    setDraftState((prev) => {
-      if (prev === null) return prev;
-      const result = applyRedo(stackRef.current, prev);
-      if (result === null) return prev;
-      stackRef.current = result.stack;
-      setCanUndo(true);
-      setCanRedo(result.stack.future.length > 0);
-      return result.value;
-    });
-  }, [flush]);
-
-  return { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo };
-}
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 4: Fix the three existing tests with brittle exact-dict assertions**
 
-Run: `cd shell && npx vitest run src/builder/useUndoableDraft.test.tsx`
-Expected: PASS (8 tests)
+`GET /instance` is now a 7-key dict; three existing test files assert exact dict equality on the old 6-key shape and will break. Add `"copilotEnabled": False` to each:
 
-- [ ] **Step 5: Commit**
+In `core/tests/test_etl_enabled_flag.py`, both occurrences of:
+```python
+        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False,
+    }
+```
+and
+```python
+        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "appExportEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False,
+    }
+```
+become (append the key on its own trailing line before the closing brace):
+```python
+        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
+        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
+    }
+```
+(and the `etlEnabled: True` variant keeps `copilotEnabled: False` — this file never sets `CORE_LLM_PROVIDER`).
+
+In `core/tests/test_export_enabled_flag.py`, the one occurrence starting `"readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,` gets the same `"copilotEnabled": False,` appended.
+
+In `core/tests/test_read_only_mode.py`, both occurrences (`"readOnly": False, ...` and `"readOnly": True, ...`) get `"copilotEnabled": False,` appended the same way.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py tests/test_etl_enabled_flag.py tests/test_export_enabled_flag.py tests/test_read_only_mode.py tests/test_tileset3d_enabled_flag.py tests/test_terrain3d_enabled_flag.py -v`
+Expected: PASS (all).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/builder/useUndoableDraft.ts shell/src/builder/useUndoableDraft.test.tsx
-git commit -m "feat(shell): useUndoableDraft — debounced undo/redo for the builder config (SP-19)"
+git add core/app/auth/dependency.py core/app/instance/routes.py core/tests/test_copilot_enabled_flag.py core/tests/test_etl_enabled_flag.py core/tests/test_export_enabled_flag.py core/tests/test_read_only_mode.py
+git commit -m "$(cat <<'EOF'
+feat(core): capacité copilotEnabled sur GET /instance (SP-20)
+
+is_copilot_enabled() reflète la présence de CORE_LLM_PROVIDER (pas un
+booléen dédié, contrairement aux autres capacités) ; GET /instance
+l'expose pour que le shell affiche ou non l'onglet copilote.
+EOF
+)"
 ```
 
 ---

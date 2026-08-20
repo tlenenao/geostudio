@@ -1,273 +1,446 @@
-### Task 5: `app.appexport.miniserver.items` — DuckDB-backed features listing
+## Task 5: Core — `POST /copilot/turn` + wiring
 
 **Files:**
-- Create: `core/app/appexport/miniserver/__init__.py`
-- Create: `core/app/appexport/miniserver/items.py`
-- Create: `core/tests/test_appexport_miniserver_items.py`
+- Create: `core/app/copilot/routes.py`
+- Modify: `core/app/main.py`
+- Modify: `core/pyproject.toml` (import-linter layers)
+- Create: `core/tests/test_copilot_routes.py`
 
 **Interfaces:**
-- Consumes: `open_local_connection` (Task 2), `TableInfo`/`ColumnInfo`
-  (`app.collections.introspection`, unchanged), `ChangeRow`/`write_geoparquet`
-  (`app.cdc.parquet_writer`, used only by the test fixture here, mirroring
-  what Task 4's writer produces).
-- Produces: `FeaturePage` dataclass (`features: list[dict]`,
-  `number_matched: int`, `number_returned: int`),
-  `select_features(conn, *, base_uri, tenant_id, collection_id, table_info,
-  limit, offset, bbox=None, geom_intersects=None) -> FeaturePage`,
-  `get_feature(conn, *, base_uri, tenant_id, collection_id, table_info,
-  fid: str) -> dict | None`. Mirrors `app.features.repository`'s function
-  names/shapes (same `FeatureCollection`-ready output), reading via DuckDB
-  SQL against a local GeoParquet snapshot instead of Postgres. Consumed by
-  Task 6's `main.py`.
+- Consumes: `get_llm_provider()`/`LLMTurn`/`ToolCall` (Task 3), `McpLoopbackSession`/`McpLoopbackError`/`ALLOWED_MCP_TOOL_NAMES` (Task 4), `get_current_user` (`app.auth.dependency`), `is_copilot_enabled` (Task 2).
+- Produces: `router` (FastAPI `APIRouter`) in `app.copilot.routes`, mounted at `POST /copilot/turn` when `is_copilot_enabled()`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `core/app/appexport/miniserver/__init__.py` (empty file):
-
-```python
-```
-
-Create `core/tests/test_appexport_miniserver_items.py`:
+Create `core/tests/test_copilot_routes.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-from app.analytics.duckdb_conn import open_local_connection
-from app.appexport.miniserver.items import get_feature, select_features
-from app.cdc.parquet_writer import ChangeRow, write_geoparquet
-from app.collections.introspection import ColumnInfo, TableInfo
+import pytest
+from fastapi.testclient import TestClient
+
+from app import db
+from app.copilot.llm_provider import FakeLLMProvider, LLMTurn, ToolCall
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 
 
-def _write_fixture(tmp_path, *, tenant_id="t1", collection_id="col1"):
-    rows = [
-        ChangeRow(op="insert", lsn=0, ts=0.0, pk_column="id", pk_value=1,
-                  columns={"name": "Alpha"}, geometry_column=None, geometry_wkb_hex=None),
-        ChangeRow(op="insert", lsn=0, ts=0.0, pk_column="id", pk_value=2,
-                  columns={"name": "Beta"}, geometry_column=None, geometry_wkb_hex=None),
-    ]
-    parquet_dir = tmp_path / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=snapshot"
-    parquet_dir.mkdir(parents=True)
-    write_geoparquet(rows, srid=4326, path=str(parquet_dir / "data.parquet"))
-    return TableInfo(
-        table_name="t_x", pk_column="id", geometry_column=None, geometry_type=None, srid=4326,
-        columns=[
-            ColumnInfo(name="id", type="integer", required=True),
-            ColumnInfo(name="name", type="string", required=False),
-        ],
+@pytest.fixture()
+def client(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "fake")
+    monkeypatch.setenv("CORE_BASE_URL", "http://test")
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    test_client = TestClient(app)
+    test_client.headers["Authorization"] = "Bearer mock:alice"
+    return test_client
+
+
+def test_route_is_not_mounted_when_copilot_disabled(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    app = create_app()
+    resp = TestClient(app).post("/copilot/turn", json={
+        "itemId": "1", "message": "hi", "history": [], "mcpToken": "x",
+        "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 404
+
+
+def test_rejects_unauthenticated_request(client, monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")  # bypass the mock-mode auto-accept
+    client.headers.pop("Authorization", None)
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "hi", "history": [], "mcpToken": "x",
+        "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 401
+
+
+def test_plain_text_reply_with_no_tool_calls(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[LLMTurn(text="Ce dataset contient des incidents.")]),
     )
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "explique ce dataset", "history": [],
+        "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"reply": "Ce dataset contient des incidents.", "clientOps": []}
 
 
-def test_select_features_reads_snapshot(tmp_path):
-    table_info = _write_fixture(tmp_path)
-    conn = open_local_connection()
-    try:
-        page = select_features(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
-            table_info=table_info, limit=10, offset=0,
-        )
-    finally:
-        conn.close()
-    assert page.number_matched == 2
-    assert sorted(f["properties"]["name"] for f in page.features) == ["Alpha", "Beta"]
-    assert all(f["type"] == "Feature" for f in page.features)
+def test_unallowlisted_tool_call_is_returned_as_client_op_not_executed(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[
+            LLMTurn(text="", tool_calls=[ToolCall(id="1", name="addWidget", arguments={"type": "text"})]),
+        ]),
+    )
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "ajoute un widget texte", "history": [],
+        "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["clientOps"] == [{"op": "addWidget", "args": {"type": "text"}}]
 
 
-def test_select_features_paginates(tmp_path):
-    table_info = _write_fixture(tmp_path)
-    conn = open_local_connection()
-    try:
-        page = select_features(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
-            table_info=table_info, limit=1, offset=1,
-        )
-    finally:
-        conn.close()
-    assert page.number_matched == 2
-    assert page.number_returned == 1
+def test_allowlisted_mcp_tool_call_is_executed_via_loopback(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[
+            LLMTurn(text="", tool_calls=[ToolCall(id="1", name="whoami", arguments={})]),
+            LLMTurn(text="Tu es connecté."),
+        ]),
+    )
+    # whoami is not in ALLOWED_MCP_TOOL_NAMES: substitute a real allowlisted,
+    # no-argument-friendly tool once verified in Task 4 (list_items with an
+    # empty filter is a safe, side-effect-free choice) if `whoami` is
+    # rejected as unallowlisted here — this test specifically wants a tool
+    # the loopback actually executes, so use one from ALLOWED_MCP_TOOL_NAMES:
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "qui suis-je", "history": [],
+        "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["reply"] == "Désolé, je n'ai pas réussi à conclure cette demande — reformule ou simplifie." \
+        or True  # placeholder replaced below once the real tool name is substituted
 
 
-def test_select_features_missing_collection_returns_empty_page(tmp_path):
-    table_info = _write_fixture(tmp_path)
-    conn = open_local_connection()
-    try:
-        page = select_features(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="ghost",
-            table_info=table_info, limit=10, offset=0,
-        )
-    finally:
-        conn.close()
-    assert page.features == []
-    assert page.number_matched == 0
-
-
-def test_get_feature_returns_single_row(tmp_path):
-    table_info = _write_fixture(tmp_path)
-    conn = open_local_connection()
-    try:
-        feature = get_feature(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
-            table_info=table_info, fid="2",
-        )
-    finally:
-        conn.close()
-    assert feature["properties"]["name"] == "Beta"
-
-
-def test_get_feature_missing_returns_none(tmp_path):
-    table_info = _write_fixture(tmp_path)
-    conn = open_local_connection()
-    try:
-        feature = get_feature(
-            conn, base_uri=str(tmp_path), tenant_id="t1", collection_id="col1",
-            table_info=table_info, fid="999",
-        )
-    finally:
-        conn.close()
-    assert feature is None
+def test_hits_max_iterations_gracefully(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    from app.copilot.routes import MAX_TOOL_ITERATIONS
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[
+            LLMTurn(text="", tool_calls=[ToolCall(id=str(i), name="list_items", arguments={})])
+            for i in range(MAX_TOOL_ITERATIONS + 2)
+        ]),
+    )
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "boucle", "history": [],
+        "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["clientOps"] == []
+    assert "n'ai pas réussi" in resp.json()["reply"]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+Fix `test_allowlisted_mcp_tool_call_is_executed_via_loopback` before running: replace `"whoami"` with `"list_items"` (a real allowlisted tool, per `ALLOWED_MCP_TOOL_NAMES` from Task 4) and its second scripted `LLMTurn` should be the final plain-text reply; assert `resp.json()["reply"] == "Tu es connecté."` and `resp.json()["clientOps"] == []` — this placeholder is intentionally left inconsistent above; correct it now to a real assertion:
 
-Run: `cd core && uv run pytest tests/test_appexport_miniserver_items.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.appexport.miniserver.items'`
+```python
+def test_allowlisted_mcp_tool_call_is_executed_via_loopback(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: FakeLLMProvider(responses=[
+            LLMTurn(text="", tool_calls=[ToolCall(id="1", name="list_items", arguments={})]),
+            LLMTurn(text="Voici tes items."),
+        ]),
+    )
+    resp = client.post("/copilot/turn", json={
+        "itemId": "1", "message": "liste mes items", "history": [],
+        "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+    })
+    assert resp.status_code == 200
+    assert resp.json() == {"reply": "Voici tes items.", "clientOps": []}
+```
 
-- [ ] **Step 3: Create `items.py`**
+(Use this corrected version, not the placeholder shown first — the plan's "no placeholders" rule applies to the file you actually write, not this intermediate note.)
 
-Create `core/app/appexport/miniserver/items.py`:
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd core && uv run pytest tests/test_copilot_routes.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.copilot.routes'`.
+
+- [ ] **Step 3: Implement `routes.py`**
+
+Create `core/app/copilot/routes.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Lecture des features via DuckDB contre un instantané GeoParquet local
-(SP-18c) — mirroir de app.features.repository (mêmes noms de fonctions, même
-forme de sortie FeatureCollection-ready), mais via SQL DuckDB au lieu de
-SQL Postgres paramétré : app.features.repository est Postgres-only,
-inutilisable dans le mini-serveur (pas de driver Postgres dans cette
-image). Même glob hive-partitionné que app.analytics.aggregate (tenant_id=/
-collection_id=/dt=*/*.parquet) — Task 4's write_snapshot écrit exactement
-cette disposition."""
-import json
-from dataclasses import dataclass
+import asyncio
 
-from app.collections.introspection import TableInfo
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
+from app.auth.dependency import get_current_user
+from app.copilot.llm_provider import LLMTurn, get_llm_provider
+from app.copilot.mcp_loopback import McpLoopbackError, McpLoopbackSession
+from app.copilot.tools_allowlist import ALLOWED_MCP_TOOL_NAMES
+from app.users.models import User
 
-@dataclass(frozen=True)
-class FeaturePage:
-    features: list[dict]
-    number_matched: int
-    number_returned: int
+router = APIRouter()
+
+MAX_TOOL_ITERATIONS = 6
+TURN_TIMEOUT_SECONDS = 30.0
 
 
-def _qi(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+class CopilotMessage(BaseModel):
+    role: str
+    content: str
 
 
-def _sql_lit(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+class CopilotTurnRequest(BaseModel):
+    itemId: str
+    message: str
+    history: list[CopilotMessage] = []
+    mcpToken: str
+    currentConfig: dict
+    clientTools: list[dict] = []
 
 
-def _glob(base_uri: str, tenant_id: str, collection_id: str) -> str:
-    return f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
+class ClientOp(BaseModel):
+    op: str
+    args: dict
 
 
-def _has_any_file(conn, base_uri: str, tenant_id: str, collection_id: str) -> bool:
-    glob = _glob(base_uri, tenant_id, collection_id)
-    matched = conn.execute(f"SELECT file FROM glob({_sql_lit(glob)})").fetchall()
-    return len(matched) > 0
+class CopilotTurnResponse(BaseModel):
+    reply: str
+    clientOps: list[ClientOp]
 
 
-def _property_columns(info: TableInfo) -> list:
-    return [c for c in info.columns if c.name not in (info.pk_column, "tenant_id", info.geometry_column)]
+def _system_message(item_id: str, current_config: dict) -> dict:
+    return {
+        "role": "system",
+        "content": (
+            "Tu es le copilote intégré au builder GeoStudio. Tu édites la "
+            "configuration affichée par petites actions ciblées (widgets, "
+            "sources de données), jamais en générant un tableau de bord "
+            "entier d'un coup. Utilise les outils fournis ; ne réponds en "
+            "texte libre que pour expliquer ou poser une question.\n\n"
+            f"Item en cours d'édition : {item_id}\n"
+            f"Configuration actuelle (JSON) : {current_config}"
+        ),
+    }
 
 
-def _select_list(info: TableInfo) -> str:
-    cols = [_qi(info.pk_column)]
-    cols += [_qi(c.name) for c in _property_columns(info)]
-    if info.geometry_column:
-        cols.append(f"ST_AsGeoJSON({_qi(info.geometry_column)}) AS __geo")
-    return ", ".join(cols)
+async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSession) -> CopilotTurnResponse:
+    try:
+        server_tools_raw = await mcp_session.list_tools()
+    except McpLoopbackError as exc:
+        raise HTTPException(status_code=502, detail=f"MCP loopback failed: {exc}") from exc
+    server_tools = [t for t in server_tools_raw if t["name"] in ALLOWED_MCP_TOOL_NAMES]
+    all_tools = server_tools + request.clientTools
 
+    messages: list[dict] = [_system_message(request.itemId, request.currentConfig)]
+    for m in request.history:
+        messages.append({"role": m.role, "content": m.content})
+    messages.append({"role": "user", "content": request.message})
 
-def _row_to_feature(info: TableInfo, row: dict) -> dict:
-    props = {c.name: row[c.name] for c in _property_columns(info)}
-    geometry = None
-    if info.geometry_column and row.get("__geo"):
-        geometry = json.loads(row["__geo"])
-    return {"type": "Feature", "id": row[info.pk_column], "geometry": geometry, "properties": props}
+    provider = get_llm_provider()
 
+    for _ in range(MAX_TOOL_ITERATIONS):
+        turn: LLMTurn = provider.chat(messages, all_tools)
+        if not turn.tool_calls:
+            return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
-def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
-    result = conn.execute(sql, params).fetchall()
-    cols = [d[0] for d in conn.description]
-    return [dict(zip(cols, r)) for r in result]
+        client_ops: list[ClientOp] = []
+        messages.append({
+            "role": "assistant", "content": turn.text,
+            "tool_calls": [
+                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": tc.arguments}}
+                for tc in turn.tool_calls
+            ],
+        })
 
+        for tc in turn.tool_calls:
+            if tc.name not in ALLOWED_MCP_TOOL_NAMES:
+                # Ni dans l'allowlist MCP : soit un outil client déclaré par
+                # le shell, soit un nom halluciné — dans les deux cas jamais
+                # exécuté côté serveur. Une opération client ne produit
+                # jamais de résultat réinjecté au LLM dans le même tour.
+                client_ops.append(ClientOp(op=tc.name, args=tc.arguments))
+                continue
+            try:
+                result = await mcp_session.call_tool(tc.name, tc.arguments)
+            except McpLoopbackError as exc:
+                raise HTTPException(status_code=502, detail=f"MCP loopback failed: {exc}") from exc
+            messages.append({
+                "role": "tool", "tool_call_id": tc.id,
+                "content": result.text or ("(erreur outil)" if result.is_error else ""),
+            })
 
-def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, list]:
-    clauses: list[str] = []
-    params: list = []
-    if bbox is not None:
-        minx, miny, maxx, maxy = bbox
-        clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))")
-        params.extend([minx, miny, maxx, maxy])
-    if geom_intersects is not None:
-        clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_GeomFromGeoJSON(?))")
-        params.append(json.dumps(geom_intersects))
-    return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
+        if client_ops:
+            return CopilotTurnResponse(reply=turn.text, clientOps=client_ops)
 
-
-def _coerce_fid(table_info: TableInfo, fid: str):
-    pk = next((c for c in table_info.columns if c.name == table_info.pk_column), None)
-    if pk is not None and pk.type == "integer":
-        try:
-            return int(fid)
-        except ValueError:
-            return None
-    return fid
-
-
-def select_features(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info: TableInfo,
-    limit: int, offset: int, bbox=None, geom_intersects=None,
-) -> FeaturePage:
-    if not _has_any_file(conn, base_uri, tenant_id, collection_id):
-        return FeaturePage(features=[], number_matched=0, number_returned=0)
-    glob = _glob(base_uri, tenant_id, collection_id)
-    where_sql, where_params = _build_where(table_info, bbox, geom_intersects)
-    count_sql = f"SELECT COUNT(*) FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) {where_sql}"
-    matched = conn.execute(count_sql, where_params).fetchone()[0]
-    sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
-        f"{where_sql} ORDER BY {_qi(table_info.pk_column)} LIMIT ? OFFSET ?"
+    return CopilotTurnResponse(
+        reply="Désolé, je n'ai pas réussi à conclure cette demande — reformule ou simplifie.",
+        clientOps=[],
     )
-    rows = _fetch_rows(conn, sql, [*where_params, limit, offset])
-    features = [_row_to_feature(table_info, r) for r in rows]
-    return FeaturePage(features=features, number_matched=matched, number_returned=len(features))
 
 
-def get_feature(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info: TableInfo, fid: str,
-) -> dict | None:
-    value = _coerce_fid(table_info, fid)
-    if value is None or not _has_any_file(conn, base_uri, tenant_id, collection_id):
-        return None
-    glob = _glob(base_uri, tenant_id, collection_id)
-    sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
-        f"WHERE {_qi(table_info.pk_column)} = ?"
-    )
-    rows = _fetch_rows(conn, sql, [value])
-    return _row_to_feature(table_info, rows[0]) if rows else None
+@router.post("/copilot/turn")
+async def copilot_turn(
+    body: CopilotTurnRequest,
+    user: User = Depends(get_current_user),
+) -> CopilotTurnResponse:
+    mcp_session = McpLoopbackSession(body.mcpToken)
+    try:
+        return await asyncio.wait_for(
+            _run_turn(request=body, mcp_session=mcp_session),
+            timeout=TURN_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Le copilote a mis trop de temps à répondre.") from exc
+    finally:
+        await mcp_session.aclose()
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 4: Wire into `main.py`**
 
-Run: `cd core && uv run pytest tests/test_appexport_miniserver_items.py -v`
-Expected: PASS (5 tests) — no `CORE_TEST_DATABASE_URL` needed, pure DuckDB/local files.
+In `core/app/main.py`, update the import block (insert `app.copilot` alphabetically between `app.configs` and `app.dcat`):
 
-- [ ] **Step 5: Commit**
+Change:
+```python
+from app.configs import routes as configs_routes
+from app.dcat import routes as dcat_routes
+```
+to:
+```python
+from app.configs import routes as configs_routes
+from app.copilot import routes as copilot_routes
+from app.dcat import routes as dcat_routes
+```
+
+Update the `app.auth.dependency` import (add `is_copilot_enabled`, alphabetically after `is_appexport_enabled`):
+
+Change:
+```python
+from app.auth.dependency import (
+    is_appexport_enabled, is_etl_enabled, is_export_enabled, is_read_only_mode,
+    is_terrain3d_enabled, is_tileset3d_enabled,
+)
+```
+to:
+```python
+from app.auth.dependency import (
+    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
+    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
+)
+```
+
+Add `/copilot/turn` to the `read_only_guard` exemption list — even a read-only "explain this dataset" prompt is a POST, and MCP tools already self-gate writes internally (mirroring why `/mcp` itself is exempted here):
+
+Change:
+```python
+    @app.middleware("http")
+    async def read_only_guard(request: Request, call_next):
+        if (
+            is_read_only_mode()
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path != "/mcp"
+            and request.url.path != "/analytics/sql"
+            and not _AGGREGATE_PATH_RE.match(request.url.path)
+            and not _EXPORT_PATH_RE.match(request.url.path)
+        ):
+```
+to:
+```python
+    @app.middleware("http")
+    async def read_only_guard(request: Request, call_next):
+        if (
+            is_read_only_mode()
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path != "/mcp"
+            and request.url.path != "/analytics/sql"
+            and request.url.path != "/copilot/turn"
+            and not _AGGREGATE_PATH_RE.match(request.url.path)
+            and not _EXPORT_PATH_RE.match(request.url.path)
+        ):
+```
+
+Add the conditional router mount, after the `is_terrain3d_enabled()` block:
+
+Change:
+```python
+    if is_terrain3d_enabled():
+        app.include_router(terrain3d_routes.router)
+
+    s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
+```
+to:
+```python
+    if is_terrain3d_enabled():
+        app.include_router(terrain3d_routes.router)
+    if is_copilot_enabled():
+        app.include_router(copilot_routes.router)
+
+    s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
+```
+
+- [ ] **Step 5: Import-linter contract**
+
+In `core/pyproject.toml`, `app.copilot` needs nothing app-internal beyond `app.auth.dependency` and `app.users.models` (both near the bottom of the stack) and never imports `app.mcp` (it's a real HTTP loopback, invisible to import-linter). Insert it right after `"app.mcp",`:
+
+Change:
+```python
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.public",
+```
+to:
+```python
+layers = [
+    "app.main",
+    "app.mcp",
+    "app.copilot",
+    "app.public",
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `cd core && uv run pytest tests/test_copilot_routes.py -v`
+Expected: PASS (all 6, with the corrected `test_allowlisted_mcp_tool_call_is_executed_via_loopback`).
+
+Then run the full backend suite and the import-linter check to make sure nothing else broke:
+
+Run: `cd core && uv run pytest -q && uv run lint-imports`
+Expected: all pass, `lint-imports` reports no contract violations.
+
+- [ ] **Step 7: OpenAPI regen — verify empty diff**
+
+Since the router is only mounted when `is_copilot_enabled()` is true (false by default, never set in CI), the generated OpenAPI spec should be unchanged — same precedent as `CORE_ETL_ENABLED`/pipelines.
+
+Run:
+```bash
+cd core && uv run python scripts/export_openapi.py
+git diff --stat core/openapi.json
+```
+Expected: no output from `git diff --stat` (empty diff). If it's NOT empty, do not silently accept it — investigate why the route leaked into the default-flags spec before proceeding, then run `cd shell && npm run gen:api-types` and commit the regenerated files too.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add core/app/appexport/miniserver/__init__.py core/app/appexport/miniserver/items.py core/tests/test_appexport_miniserver_items.py
-git commit -m "feat(core): mini-server DuckDB-backed features listing (SP-18c)"
+git add core/app/copilot/routes.py core/app/main.py core/pyproject.toml core/tests/test_copilot_routes.py
+git commit -m "$(cat <<'EOF'
+feat(core): POST /copilot/turn — boucle d'outils du copilote (SP-20)
+
+Boucle jusqu'à 6 itérations : les tool_calls du LLM dans l'allowlist MCP
+sont exécutés en loopback réel vers /mcp, tout le reste (outils client du
+shell, ou un nom halluciné) est renvoyé tel quel comme clientOps sans
+jamais s'exécuter côté serveur. Exempté du garde lecture-seule (comme
+/mcp) — les outils MCP se gardent déjà eux-mêmes en écriture. Monté
+seulement si CORE_LLM_PROVIDER est configuré.
+EOF
+)"
 ```
 
 ---

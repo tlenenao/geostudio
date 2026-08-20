@@ -758,6 +758,78 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   classe (`selectedId` non réconcilié). Re-revue : 0 Critical/Important
   résiduel, E2E re-exécuté par le contrôleur (2/2). **Prérequis de SP-20
   rempli.**
+- **SP-20** — copilote IA embarqué dans le builder (**jalon M16 atteint**,
+  arbitrages A32/A40) : panneau de chat dans le builder d'app, outils MCP
+  orchestrés par le cœur en **loopback HTTP réel** sur son propre `/mcp`
+  (jamais un appel direct aux fonctions d'outil), micro-actions appliquées
+  à la config en cours d'édition — annulables par le seul et même undo
+  stack SP-19, sans bouton dédié. Tout derrière `CORE_LLM_PROVIDER`
+  (défaut vide = capacité éteinte, routeur non monté, panneau absent).
+  - **Cœur** : `core/app/copilot/` (`llm_provider` — `LLMProvider`
+    enfichable, `FakeLLMProvider` déterministe pour dev/test +
+    `OpenAICompatibleLLMProvider` ; `mcp_loopback` — session HTTP vers
+    `/mcp`, poignée de main paresseuse ; `tools_allowlist` — 6 outils MCP
+    seulement, jamais `save_app_config`/`set_sharing` ; `routes` — `POST
+    /copilot/turn`, boucle d'outils bornée à 6 itérations, timeout 30 s,
+    session fermée en `finally`). `app.copilot` inséré sous `app.mcp` dans
+    le contrat de couches. Tout nom d'outil hors allowlist n'est **jamais**
+    exécuté côté serveur : il repart au shell en `clientOps`.
+  - **Shell** : `configSchema` sur `WidgetDefinition` (backfill des 22
+    widgets builtin + widgets d'extension), `clientTools.ts` (5 outils
+    client générés depuis le registre, pas maintenus à la main),
+    `applyClientOp.ts` (pur ; tout patch de prop filtré par le
+    `configSchema` du widget, un nom halluciné est rejeté),
+    `useMcpToken.ts` (jeton d'audience MCP distincte, en mémoire seule),
+    `CopilotPanel.tsx` (un seul `setDraft` par tour = une seule entrée
+    undo).
+  - Exécution en subagent-driven-development, 13 tâches, 0
+    Critical/Important non résolu sur les 13 revues de tâche. **Revue
+    finale de branche** : 3 Critical + 2 Important + 6 Minor, tous
+    invisibles à la revue par tâche (chaque tâche testait avec
+    `FakeLLMProvider`/mocks qui masquaient exactement les points cassés) —
+    schémas d'outils envoyés en forme MCP (`inputSchema`) au lieu de la
+    forme OpenAI (`parameters`), **présent verbatim dans le texte du
+    plan** ; `tool_calls[].function.arguments` réinjecté comme dict Python
+    au lieu d'une chaîne JSON (casse la 2e itération de toute boucle
+    d'outil) ; `signinSilent({scope})` ignoré silencieusement par
+    `oidc-client-ts` sur sa branche refresh-token, donc jeton MCP jamais à
+    la bonne audience en OIDC réel ; `provider.chat()` synchrone appelé
+    depuis une route `async` (gelait toute la boucle d'événements) ; jeton
+    MCP mis en cache indéfiniment. Une passe de fix (C1/C2/C3/I1/I2 +
+    M1/M2/M6), puis un **redesign de C3** en 2e tentative : l'appel direct
+    au endpoint de token a été abandonné après vérification empirique
+    contre un vrai Keycloak (un grant `refresh_token` ne réapplique jamais
+    le mapper d'audience, quelle que soit la combinaison de scopes) au
+    profit de `signinSilent({scope, forceIframeAuth: true})`.
+  - **Clôture** (2026-08-20) : croisement avec la revue de projet
+    `docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, qui portait
+    3 constats copilote de gravité Critique et 2 Important — chacun
+    re-vérifié contre le code avant correction, puis corrigé en TDD :
+    **confused deputy** sur `/copilot/turn` (la route authentifiait son
+    appelant puis agissait sous l'identité d'un **second** jeton fourni
+    par le client, jamais comparée — nouveau `app/copilot/mcp_token.py`,
+    `sub` du jeton MCP exigé égal à `user.oidc_sub`, 403 sinon, audience
+    MCP obligatoire pour qu'un jeton REST ne puisse pas satisfaire la
+    comparaison) ; **copilote cassé par construction en prod** (le rappel
+    `/mcp` ciblait `CORE_BASE_URL`, que l'overlay prod fixe à l'URL
+    publique en TLS — hairpin NAT, et rejeté de toute façon par la garde
+    anti-DNS-rebinding de FastMCP : nouvelle `CORE_INTERNAL_BASE_URL`,
+    câblage vérifié **par valeur** sur le compose résolu) ; **entrée non
+    bornée** (`CopilotTurnRequest` n'avait aucune contrainte et tout son
+    contenu repartait au LLM à chaque itération — bornes sur tous les
+    champs + taille sérialisée de `currentConfig`, `role` d'historique
+    borné à `user`/`assistant` pour qu'un `system` client ne réécrive pas
+    la consigne) ; **copilote éteint en mode démo lecture-seule** (les
+    écritures y étaient déjà bloquées, mais un visiteur anonyme pouvait
+    brûler le budget d'API LLM de l'opérateur — double verrou : capacité à
+    False *et* exemption du garde retirée) ; **surface d'injection de
+    prompt** via `currentConfig` (config interpolée nue dans la consigne,
+    alors qu'elle porte des textes rédigés par des utilisateurs et peut
+    venir d'un item partagé par un tiers — bloc désormais délimité par un
+    marqueur à **nonce tiré par tour**, annoncé comme de la donnée, avec
+    consigne de n'y obéir jamais). Le 3e Critique de cette revue (blocage
+    de la boucle d'événements) était déjà fermé par le fix I1 de la revue
+    de branche.
 
 ### À venir
 
@@ -792,15 +864,47 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   nuages de points).
 - **SP-18** — clos, jalon M15 atteint (cf. `### Fait`).
 - **SP-19** — clos (cf. `### Fait`).
-- **SP-20** — copilote IA embarqué dans le builder (panneau de chat, outils
-  MCP orchestrés en loopback réel, micro-actions sur la config en cours
-  d'édition). Dépendance amont (SP-19) livrée. Jalon M16. Arbitrages
-  A32/A40, brainstorm 2026-08-05 ; specs :
-  `docs/superpowers/specs/2026-08-05-undo-redo-builder-design.md` et
-  `docs/superpowers/specs/2026-08-05-copilote-embarque-design.md`.
+- **SP-20** — clos, **jalon M16 atteint** (cf. `### Fait`). Restent hors
+  périmètre livré, non planifiés : budget de temps **global** au tour (le
+  timeout 30 s est par appel LLM, et `asyncio.wait_for` ne peut pas
+  interrompre l'appel synchrone déjà parti dans son thread — borné en
+  pratique par le timeout httpx de 30 s) ; rate limiting applicatif par
+  utilisateur/tenant sur `/copilot/turn` (aujourd'hui seul le
+  `ratelimit` uniforme de Traefik) ; garde d'egress sur l'appel LLM
+  sortant (4e surface, les trois autres en ont une).
 
 ### Suivis non bloquants ouverts
 
+- SP-20, suivis non bloquants (revue finale de branche + clôture) : le
+  chemin OIDC **réel** de `useMcpToken` (`signinSilent({scope,
+  forceIframeAuth: true})`) n'est vérifié que statiquement et
+  unitairement — aucun bout-en-bout navigateur+iframe+Keycloak n'a pu être
+  produit dans cet environnement, à faire avant mise en production (même
+  précédent que les tests `@pytest.mark.qgis` de SP-15d) ; ce
+  `signinSilent` remplace l'utilisateur OIDC stocké de toute la session
+  shell (inoffensif sur ce realm, dont le mapper d'audience
+  `geostudio-core` est au niveau client, fragile sur un autre) ;
+  `CORE_LLM_PROVIDER` non vide mais **invalide** active le panneau et le
+  routeur sans échec au démarrage (échoue seulement en 500 à l'usage —
+  contraste avec `CORE_SECRETS_MASTER_KEY`, fail-fast au boot) ;
+  `configSchema` n'a pas de validation par valeurs autorisées (enum), donc
+  le copilote peut écrire une valeur qu'aucun `<select>` de l'UI manuelle
+  ne produirait (ex. `chartType` invalide) ; un nom d'outil client qui
+  entrerait en collision avec l'allowlist MCP s'exécuterait côté serveur
+  au lieu de repartir en `clientOp` (non exploitable aujourd'hui, les 5
+  noms client ne recoupent jamais les 6 noms MCP — à surveiller si le
+  vocabulaire client devient dynamique) ; `anyio` utilisé par
+  `app/copilot/routes.py` reste une dépendance transitive de Starlette,
+  non déclarée dans `core/pyproject.toml`.
+- `deploy/postgis/Dockerfile` + `deploy/postgis/pg_hba.conf` (non
+  commités, apparus pendant SP-20 pour faire tourner un vrai Keycloak) :
+  **inertes**, vérifié empiriquement — Postgres lit
+  `$PGDATA/pg_hba.conf`, jamais `/etc/postgresql/pg_hba.conf`, faute d'un
+  `-c hba_file=…` dans le `command:` du service ; et l'image se termine
+  déjà par `host all all all scram-sha-256`, que le fichier proposé
+  affaiblirait en `md5` s'il était câblé un jour. Le vrai problème de
+  démarrage de la stack par défaut reste le volume `pg-data` cassé
+  (bullet ci-dessous).
 - Connecteur ArcGIS v0 = services publics seulement (pas de token/OAuth distant) ;
   résiduel DNS-rebinding TOCTOU sur la garde egress (pinning-IP différé).
 - Tags d'images Docker `pgbouncer`/`martin`/`titiler` à repinner si dérive ;

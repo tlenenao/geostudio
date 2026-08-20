@@ -1,143 +1,84 @@
-### Task 1: pure undo/redo stack
+## Task 1: Keycloak realm — MCP-audience scope on `geostudio-shell`
+
+**Why this shape, not the design doc's original client-signinSilent-with-`resource`-param or a core-side token-exchange:** `deploy/keycloak/geostudio-realm.json` already defines a `geostudio-mcp-audience` client scope (custom-audience mapper, `consentRequired: false`) — provisioned in SP-2 for exactly this case, just never attached to `geostudio-shell`. Requesting it via the standard OIDC `scope` parameter on a second `signinSilent()` call is the established, version-independent mechanism (unlike RFC 8693 token-exchange, only available as a preview feature requiring fine-grained authorization config on Keycloak 24, the version pinned in `docker-compose.yml`).
 
 **Files:**
-- Create: `shell/src/builder/undoStack.ts`
-- Create: `shell/src/builder/undoStack.test.ts`
+- Modify: `deploy/keycloak/geostudio-realm.json` (the `geostudio-shell` client's `optionalClientScopes`)
 
-**Interfaces:**
-- Produces: `UndoStack<T> = { past: T[]; future: T[] }`,
-  `UNDO_STACK_MAX_DEPTH = 50`, `createUndoStack<T>(): UndoStack<T>`,
-  `pushUndo<T>(stack: UndoStack<T>, snapshot: T): UndoStack<T>`,
-  `applyUndo<T>(stack: UndoStack<T>, current: T): { stack: UndoStack<T>; value: T } | null`,
-  `applyRedo<T>(stack: UndoStack<T>, current: T): { stack: UndoStack<T>; value: T } | null`.
+- [ ] **Step 1: Add the scope**
 
-- [ ] **Step 1: Write the failing tests**
+In `deploy/keycloak/geostudio-realm.json`, find the `geostudio-shell` client object (`"clientId": "geostudio-shell"`) and change:
 
-Create `shell/src/builder/undoStack.test.ts`:
-
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
-import {
-  applyRedo, applyUndo, createUndoStack, pushUndo, UNDO_STACK_MAX_DEPTH,
-} from "./undoStack";
-
-test("a fresh stack has empty past and future", () => {
-  const stack = createUndoStack<number>();
-  expect(stack).toEqual({ past: [], future: [] });
-});
-
-test("pushUndo appends to past and clears future", () => {
-  let stack = createUndoStack<number>();
-  stack = pushUndo(stack, 1);
-  stack = { ...stack, future: [99] };
-  stack = pushUndo(stack, 2);
-  expect(stack).toEqual({ past: [1, 2], future: [] });
-});
-
-test(`pushUndo caps past at ${UNDO_STACK_MAX_DEPTH}, dropping the oldest`, () => {
-  let stack = createUndoStack<number>();
-  for (let i = 0; i < UNDO_STACK_MAX_DEPTH + 1; i++) stack = pushUndo(stack, i);
-  expect(stack.past).toHaveLength(UNDO_STACK_MAX_DEPTH);
-  expect(stack.past[0]).toBe(1); // snapshot 0 was dropped
-  expect(stack.past[UNDO_STACK_MAX_DEPTH - 1]).toBe(UNDO_STACK_MAX_DEPTH);
-});
-
-test("applyUndo returns null when past is empty", () => {
-  const stack = createUndoStack<number>();
-  expect(applyUndo(stack, 1)).toBeNull();
-});
-
-test("applyUndo pops the last past entry and pushes current onto future", () => {
-  const stack = pushUndo(createUndoStack<number>(), 1);
-  const result = applyUndo(stack, 2);
-  expect(result).not.toBeNull();
-  expect(result?.value).toBe(1);
-  expect(result?.stack).toEqual({ past: [], future: [2] });
-});
-
-test("applyRedo returns null when future is empty", () => {
-  const stack = createUndoStack<number>();
-  expect(applyRedo(stack, 1)).toBeNull();
-});
-
-test("applyRedo pops the first future entry and pushes current onto past", () => {
-  const afterUndo = applyUndo(pushUndo(createUndoStack<number>(), 1), 2);
-  const result = applyRedo(afterUndo!.stack, afterUndo!.value);
-  expect(result).not.toBeNull();
-  expect(result?.value).toBe(2);
-  expect(result?.stack).toEqual({ past: [1], future: [] });
-});
+```json
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+to:
 
-Run: `cd shell && npx vitest run src/builder/undoStack.test.ts`
-Expected: FAIL — `Cannot find module './undoStack'`.
-
-- [ ] **Step 3: Implement `undoStack.ts`**
-
-Create `shell/src/builder/undoStack.ts`:
-
-```ts
-// SPDX-License-Identifier: Apache-2.0
-// Pure past/future stack of full snapshots (SP-19). No React here — kept
-// framework-free so it's trivially unit-testable and reusable by
-// useUndoableDraft.ts's debounce wrapper.
-export type UndoStack<T> = { past: T[]; future: T[] };
-
-export const UNDO_STACK_MAX_DEPTH = 50;
-
-export function createUndoStack<T>(): UndoStack<T> {
-  return { past: [], future: [] };
-}
-
-// Pushes `snapshot` (the state *before* the change about to be applied) onto
-// `past`, discarding `future` — same convention as any editor: a new edit
-// after an undo replaces whatever could have been redone. Caps at
-// UNDO_STACK_MAX_DEPTH, dropping the oldest entry once exceeded.
-export function pushUndo<T>(stack: UndoStack<T>, snapshot: T): UndoStack<T> {
-  const past = [...stack.past, snapshot];
-  if (past.length > UNDO_STACK_MAX_DEPTH) past.shift();
-  return { past, future: [] };
-}
-
-// Pops the most recent snapshot off `past`, pushes `current` onto `future`
-// so a following applyRedo can restore it. Returns null when there's
-// nothing to undo (caller keeps whatever state it already has).
-export function applyUndo<T>(
-  stack: UndoStack<T>, current: T,
-): { stack: UndoStack<T>; value: T } | null {
-  if (stack.past.length === 0) return null;
-  const value = stack.past[stack.past.length - 1];
-  const past = stack.past.slice(0, -1);
-  const future = [current, ...stack.future];
-  return { stack: { past, future }, value };
-}
-
-// Mirror of applyUndo: pops the oldest `future` entry, pushes `current`
-// back onto `past`.
-export function applyRedo<T>(
-  stack: UndoStack<T>, current: T,
-): { stack: UndoStack<T>; value: T } | null {
-  if (stack.future.length === 0) return null;
-  const value = stack.future[0];
-  const future = stack.future.slice(1);
-  const past = [...stack.past, current];
-  return { stack: { past, future }, value };
-}
+```json
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt",
+        "geostudio-mcp-audience"
+      ]
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 2: Verify against a real Keycloak (docker compose)**
 
-Run: `cd shell && npx vitest run src/builder/undoStack.test.ts`
-Expected: PASS (7 tests)
-
-- [ ] **Step 5: Commit**
+Run:
 
 ```bash
-git add shell/src/builder/undoStack.ts shell/src/builder/undoStack.test.ts
-git commit -m "feat(shell): pure undo/redo stack module (SP-19)"
+docker compose up -d keycloak
+# Wait for it to report healthy:
+docker compose ps keycloak
+```
+
+Once healthy (`docker compose ps keycloak` shows `healthy`), request a token via the Direct Access Grant (ROPC) flow — `geostudio-shell` is a public client with `directAccessGrantsEnabled: true`, and `alice`/`Demo1234!` is a seeded dev-only user in this same realm file (already public in this open-source repo, not a real credential):
+
+```bash
+curl -s -X POST http://localhost:8180/realms/geostudio/protocol/openid-connect/token \
+  -d grant_type=password \
+  -d client_id=geostudio-shell \
+  -d username=alice \
+  -d password=Demo1234! \
+  -d scope="openid geostudio-mcp-audience" \
+  | python3 -c "
+import json, sys, base64
+tok = json.load(sys.stdin)['access_token']
+payload = tok.split('.')[1]
+payload += '=' * (-len(payload) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload))
+print('aud:', claims['aud'])
+assert 'geostudio-mcp' in claims['aud'], 'geostudio-mcp missing from aud!'
+print('OK: geostudio-mcp present in aud')
+"
+```
+
+Expected output: `aud: ['geostudio-core', 'geostudio-mcp']` (or similar, in some order) then `OK: geostudio-mcp present in aud`. If the realm didn't reload your edit (Keycloak only re-imports on a fresh volume), remove the `keycloak-data` volume first: `docker compose down keycloak && docker volume rm geostudio_keycloak-data && docker compose up -d keycloak` (check the exact volume name via `docker compose config --volumes` first — do not guess).
+
+If this fails (audience missing), stop and re-investigate — do not proceed to Task 11 (`useMcpToken.ts`) on an unverified assumption.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add deploy/keycloak/geostudio-realm.json
+git commit -m "$(cat <<'EOF'
+feat(deploy): geostudio-shell peut demander le scope d'audience MCP (SP-20)
+
+Ajoute geostudio-mcp-audience aux optionalClientScopes de geostudio-shell —
+scope déjà provisionné en SP-2, jusqu'ici jamais attaché à ce client.
+Permet au shell d'obtenir un second token (audience geostudio-mcp) via
+signinSilent({scope: "... geostudio-mcp-audience"}) sans passer par le
+grant token-exchange (preview feature sur Keycloak 24).
+EOF
+)"
 ```
 
 ---

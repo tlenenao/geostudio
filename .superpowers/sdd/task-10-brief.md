@@ -1,76 +1,171 @@
-### Task 10: `deploy/appexport-standalone/Dockerfile`
+## Task 10: Shell — `useMcpToken.ts`
 
 **Files:**
-- Create: `deploy/appexport-standalone/Dockerfile`
+- Modify: `shell/src/auth/useAuth.ts` (export `isMockMode()`)
+- Create: `shell/src/builder/copilot/useMcpToken.ts`
+- Create: `shell/src/builder/copilot/useMcpToken.test.tsx`
 
 **Interfaces:**
-- Produces: a Docker image serving `app.appexport.miniserver.main:app` on
-  port 8000, with the baked-in static shell runtime at `/runtime` and an
-  empty `/data` mount point (populated at `docker run`/`docker compose up`
-  time by whatever the exported zip's `docker-compose.yml` mounts there).
+- Consumes: `useAuth as useOidcAuth` from `react-oidc-context`, `isMockMode` from `../../auth/useAuth`.
+- Produces: `useMcpToken(): () => Promise<string>`. Consumed by Task 13 (`CopilotPanel.tsx`).
 
-- [ ] **Step 1: Create the Dockerfile**
+- [ ] **Step 1: Add `isMockMode()` to `useAuth.ts`**
 
-Create `deploy/appexport-standalone/Dockerfile`:
+In `shell/src/auth/useAuth.ts`, add right after `enableMockAuth`:
 
-```dockerfile
-# deploy/appexport-standalone/Dockerfile
-# Image générique de l'export d'app "Autoporté" (SP-18c) : bâtie UNE FOIS
-# (CI/release, jamais par export — même philosophie que
-# deploy/appexport-runtime-builder), publiée sur ghcr.io. Contexte = racine
-# du dépôt (comme appexport-runtime-builder) : la première étape a besoin de
-# shell/, la seconde de core/app/. Les données propres à un export (config
-# de l'app, instantané GeoParquet) ne sont JAMAIS dans l'image — montées au
-# runtime via le volume /data (cf. docker-compose.yml généré par
-# build_standalone_bundle_zip, core/app/appexport/bundler.py).
-FROM node:20-slim AS shell-runtime
-WORKDIR /build
-COPY shell/package.json shell/package-lock.json ./
-RUN npm ci
-COPY shell/ .
-RUN npm run build:export-runtime
-# StaticFiles(html=True) (core/app/appexport/miniserver/main.py) sert
-# index.html pour "/" — le build Vite produit index.export.html
-# (vite.export.config.ts's rollupOptions.input), jamais index.html.
-RUN mv dist-export/index.export.html dist-export/index.html
-
-FROM python:3.12-slim
-WORKDIR /app
-# Dépendances volontairement minimales — PAS `uv sync`/pyproject.toml
-# complet (psycopg/psycopg2-binary/Keycloak/dlt/Playwright...) : le
-# mini-serveur ne parle jamais à Postgres/Keycloak/MinIO, seulement à
-# DuckDB + des fichiers locaux montés en lecture seule. sqlalchemy reste
-# nécessaire : app.collections.introspection (TableInfo/ColumnInfo,
-# réutilisés tels quels par app.appexport.manifest) importe
-# sqlalchemy.orm.Session pour un alias de type non utilisé ici — coûte
-# l'installation du paquet, jamais une connexion réelle (aucun driver
-# psycopg présent dans cette image).
-RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic duckdb sqlalchemy
-RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL spatial')"
-# Copie l'arbre app/ complet (même convention que core/Dockerfile et
-# deploy/export-worker/Dockerfile) plutôt qu'un COPY sélectif fragile :
-# Python n'a besoin de paquets installés que pour les modules réellement
-# importés par app.appexport.miniserver.main — le reste, présent sur disque
-# mais jamais importé, est inoffensif.
-COPY core/app ./app
-COPY --from=shell-runtime /build/dist-export /runtime
-ENV APPEXPORT_STANDALONE_DATA_DIR=/data
-ENV APPEXPORT_STANDALONE_RUNTIME_DIR=/runtime
-EXPOSE 8000
-CMD ["uvicorn", "app.appexport.miniserver.main:app", "--host", "0.0.0.0", "--port", "8000"]
+Change:
+```ts
+let mockMode = false;
+export function enableMockAuth() {
+  mockMode = true;
+}
+```
+to:
+```ts
+let mockMode = false;
+export function enableMockAuth() {
+  mockMode = true;
+}
+export function isMockMode(): boolean {
+  return mockMode;
+}
 ```
 
-- [ ] **Step 2: Build it locally to verify**
+- [ ] **Step 2: Write the failing tests**
 
-Run (from repo root): `docker build -f deploy/appexport-standalone/Dockerfile -t geostudio-appexport-standalone:local .`
-Expected: build succeeds (two stages, no errors). This is a real build
-verification step, not a placeholder — do not skip it.
+Create `shell/src/builder/copilot/useMcpToken.test.tsx`:
 
-- [ ] **Step 3: Commit**
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { enableMockAuth } from "../../auth/useAuth";
+
+vi.mock("react-oidc-context", () => ({
+  useAuth: () => ({
+    signinSilent: vi.fn().mockResolvedValue({ access_token: "real-mcp-token" }),
+  }),
+}));
+
+describe("useMcpToken", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("returns a fixed mock token synchronously in mock mode", async () => {
+    enableMockAuth();
+    const { useMcpToken } = await import("./useMcpToken");
+    const { result } = renderHook(() => useMcpToken());
+    const token = await result.current();
+    expect(token).toBe("mock-mcp-token");
+  });
+});
+```
+
+Note: since `enableMockAuth()` sets a module-level flag with no reset function, this test file must run in isolation from `useMcpToken`'s non-mock behavior — cover the real-mode path (`signinSilent` called with the right scope, caching across calls) in a **separate** test file that never calls `enableMockAuth()`:
+
+Create `shell/src/builder/copilot/useMcpTokenOidc.test.tsx`:
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+const signinSilent = vi.fn().mockResolvedValue({ access_token: "real-mcp-token" });
+vi.mock("react-oidc-context", () => ({ useAuth: () => ({ signinSilent }) }));
+
+describe("useMcpToken (real OIDC mode)", () => {
+  it("calls signinSilent with the geostudio-mcp-audience scope and caches the result", async () => {
+    const { useMcpToken } = await import("./useMcpToken");
+    const { result } = renderHook(() => useMcpToken());
+    const first = await result.current();
+    expect(first).toBe("real-mcp-token");
+    expect(signinSilent).toHaveBeenCalledWith({ scope: "openid profile email geostudio-mcp-audience" });
+
+    const second = await result.current();
+    expect(second).toBe("real-mcp-token");
+    expect(signinSilent).toHaveBeenCalledTimes(1); // cached, not called again
+  });
+
+  it("throws a readable error when signinSilent resolves without a token", async () => {
+    signinSilent.mockResolvedValueOnce(null);
+    const { useMcpToken } = await import("./useMcpToken");
+    const { result } = renderHook(() => useMcpToken());
+    await expect(result.current()).rejects.toThrow(/Impossible d'obtenir un jeton MCP/);
+  });
+});
+```
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx`
+Expected: FAIL — `Cannot find module './useMcpToken'`.
+
+- [ ] **Step 4: Implement**
+
+Create `shell/src/builder/copilot/useMcpToken.ts`:
+
+```ts
+// SPDX-License-Identifier: Apache-2.0
+// Jeton d'audience MCP distincte pour le copilote (SP-20) — obtenu via un
+// second signinSilent() demandant le client-scope optionnel
+// geostudio-mcp-audience (déjà provisionné dans le realm, Task 1), jamais
+// via un paramètre resource ni token-exchange. Contourne délibérément le
+// useAuth() de l'app (../../auth/useAuth), qui n'expose pas signinSilent —
+// importe react-oidc-context directement, comme AuthProvider.tsx le fait
+// déjà pour construire son propre <AuthProvider>. Le jeton ne vit qu'en
+// mémoire (état React), jamais localStorage — même garantie que le jeton
+// REST normal (cf. AuthProvider.tsx, InMemoryStore).
+import { useCallback, useRef } from "react";
+import { useAuth as useOidcAuth } from "react-oidc-context";
+import { isMockMode } from "../../auth/useAuth";
+
+const MCP_SCOPE = "openid profile email geostudio-mcp-audience";
+
+export function useMcpToken(): () => Promise<string> {
+  const cachedRef = useRef<string | null>(null);
+
+  if (isMockMode()) {
+    // mockMode est un drapeau au niveau module, fixé une fois avant tout
+    // rendu (enableMockAuth() dans AuthProvider) — jamais togglé en cours
+    // de vie de l'app, donc ce retour anticipé avant l'appel conditionnel
+    // ci-dessous respecte quand même les rules-of-hooks en pratique, même
+    // patron que useAuth.ts.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return useCallback(async () => "mock-mcp-token", []);
+  }
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const oidc = useOidcAuth();
+  return useCallback(async () => {
+    if (cachedRef.current) return cachedRef.current;
+    const user = await oidc.signinSilent({ scope: MCP_SCOPE });
+    if (!user?.access_token) {
+      throw new Error("Impossible d'obtenir un jeton MCP (signinSilent a échoué).");
+    }
+    cachedRef.current = user.access_token;
+    return user.access_token;
+  }, [oidc]);
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx`
+Expected: PASS (all 3).
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add deploy/appexport-standalone/Dockerfile
-git commit -m "feat(deploy): standalone mini-server Docker image (SP-18c)"
+git add shell/src/auth/useAuth.ts shell/src/builder/copilot/useMcpToken.ts shell/src/builder/copilot/useMcpToken.test.tsx shell/src/builder/copilot/useMcpTokenOidc.test.tsx
+git commit -m "$(cat <<'EOF'
+feat(shell): useMcpToken — second signinSilent pour l'audience MCP (SP-20)
+
+Demande le scope geostudio-mcp-audience (Task 1) via react-oidc-context
+directement (useAuth() de l'app n'expose pas signinSilent). Jeton en
+mémoire uniquement, mis en cache pour la session du panneau.
+EOF
+)"
 ```
 
 ---

@@ -1,122 +1,96 @@
-# Task 2 Report: `useUndoableDraft` React Hook
-
-## Summary
-
-Successfully implemented `useUndoableDraft`, a React hook that wraps the pure `UndoStack` module (Task 1) to provide debounced undo/redo state management for the AppBuilder's AppConfig draft. The hook collapses rapid bursts of changes into single undo steps via a 400ms coalesce window, while supporting the same call signature as the plain `useState` setter it replaces (both value and updater function forms).
+# Task 2 Report — Core `is_copilot_enabled()` + `GET /instance.copilotEnabled`
 
 ## What Was Implemented
 
-### Files Created
+Added instance-wide capability flag `copilotEnabled` to the core's `GET /instance` endpoint, backed by an `is_copilot_enabled()` function that detects the presence of the `CORE_LLM_PROVIDER` environment variable. The flag defaults to `False` and returns `True` whenever `CORE_LLM_PROVIDER` is set to any non-empty value (mirroring the pattern of `is_read_only_mode()` rather than the `"true"|"false"` pattern used by `is_etl_enabled` et consorts).
 
-1. **`shell/src/builder/useUndoableDraft.test.tsx`** — 8 comprehensive tests:
-   - `seedDraft` sets initial draft without creating undo step
-   - `seedDraft` never overwrites already-seeded draft
-   - `canUndo` flips true once coalesce window elapses
-   - `undo` restores pre-edit config and flushes pending burst immediately
-   - Rapid burst of `setDraft` calls collapses into one undo step
-   - `redo` restores what undo reverted
-   - New edit after undo purges redo branch
-   - `setDraft` supports functional-updater form
+## TDD Evidence
 
-2. **`shell/src/builder/useUndoableDraft.ts`** — Hook implementation with:
-   - `UndoableDraft` type defining public API
-   - `useUndoableDraft()` hook function
-   - Debounced pending baseline capture (400ms idle flush)
-   - Proper cleanup of timers on flush/undo/redo
-   - Support for both value and functional updater forms in `setDraft`
-   - `seedDraft` that sets initial config without affecting history
-   - Full undo/redo state management via `canUndo`/`canRedo` flags
+### RED (Failing Test)
 
-### Key Implementation Details
-
-- **Coalesce window**: First `setDraft` within a burst captures the pre-burst config as pending baseline; subsequent calls within 400ms extend the burst without re-capturing
-- **Immediate flush on undo/redo**: Both operations call `flush()` synchronously first, so Ctrl+Z works mid-burst without waiting for the timer
-- **Seed bypass**: `seedDraft` uses `prev ?? value` to set initial config without creating history, preserving the original AppBuilderPage behavior
-- **Exact signature compatibility**: `setDraft` accepts both direct values and updater functions, identical to `useState` signature for seamless replacement
-- **Timer cleanup**: Properly clears pending timeout when flushing or taking any action
-
-## Test Results
-
-### TDD Verification
-
-**RED (failing tests before implementation):**
 ```
-Exit code 1
-FAIL  src/builder/useUndoableDraft.test.tsx
-Error: Failed to resolve import "./useUndoableDraft" from "src/builder/useUndoableDraft.test.tsx".
-Does the file exist?
+$ cd core && uv run pytest tests/test_copilot_enabled_flag.py -v
+
+============================= test session starts ==============================
+...
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests/test_copilot_enabled_flag.py ______________
+ImportError while importing test module '/home/lenen/projets/geostudio/core/tests/test_copilot_enabled_flag.py'.
+...
+E   ImportError: cannot import name 'is_copilot_enabled' from 'app.auth.dependency'
+=========================== short test summary info ============================
+ERROR tests/test_copilot_enabled_flag.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection ==============================
 ```
 
-**GREEN (all tests passing):**
-```
- ✓ src/builder/useUndoableDraft.test.tsx (8 tests) 46ms
+### GREEN (Passing Tests)
 
- Test Files  1 passed (1)
-      Tests  8 passed (8)
 ```
+$ cd core && uv run pytest tests/test_copilot_enabled_flag.py tests/test_etl_enabled_flag.py tests/test_export_enabled_flag.py tests/test_read_only_mode.py tests/test_tileset3d_enabled_flag.py tests/test_terrain3d_enabled_flag.py -v
 
-All 8 tests verify:
-- Initial state and seeding behavior
-- Debounce coalescing across multiple rapid edits
-- State restoration on undo/redo
-- History truncation on new edits after undo
-- Functional updater syntax support
+============================= test session starts ==============================
+...
+tests/test_copilot_enabled_flag.py::test_is_copilot_enabled_defaults_to_false PASSED [  2%]
+tests/test_copilot_enabled_flag.py::test_is_copilot_enabled_true_for_any_non_empty_provider PASSED [  5%]
+tests/test_copilot_enabled_flag.py::test_instance_reports_copilot_disabled_by_default PASSED [  8%]
+tests/test_copilot_enabled_flag.py::test_instance_reports_copilot_enabled PASSED [ 11%]
+tests/test_etl_enabled_flag.py::test_is_etl_enabled_defaults_to_false PASSED [ 14%]
+tests/test_etl_enabled_flag.py::test_is_etl_enabled_reads_env_var PASSED [ 17%]
+tests/test_etl_enabled_flag.py::test_instance_reports_etl_disabled_by_default PASSED [ 20%]
+tests/test_etl_enabled_flag.py::test_instance_reports_etl_enabled PASSED [ 23%]
+tests/test_export_enabled_flag.py::test_is_export_enabled_defaults_to_false PASSED [ 26%]
+tests/test_export_enabled_flag.py::test_is_export_enabled_reads_env_var PASSED [ 29%]
+tests/test_export_enabled_flag.py::test_instance_reports_export_disabled_by_default PASSED [ 32%]
+tests/test_export_enabled_flag.py::test_instance_reports_export_enabled PASSED [ 35%]
+tests/test_read_only_mode.py::test_instance_defaults_to_read_write PASSED [ 38%]
+tests/test_read_only_mode.py::test_instance_reports_read_only_without_needing_auth PASSED [ 41%]
+tests/test_read_only_mode.py::test_read_only_mode_blocks_every_mutation_even_for_admin[POST-/configs] PASSED [ 44%]
+... (15 more passed)
+tests/test_tileset3d_enabled_flag.py::test_upload_routes_absent_when_disabled PASSED [ 85%]
+tests/test_terrain3d_enabled_flag.py::test_is_terrain3d_enabled_defaults_to_false PASSED [ 88%]
+tests/test_terrain3d_enabled_flag.py::test_is_terrain3d_enabled_reads_env_var PASSED [ 91%]
+tests/test_terrain3d_enabled_flag.py::test_instance_reports_terrain3d_disabled_by_default PASSED [ 94%]
+tests/test_terrain3d_enabled_flag.py::test_instance_reports_terrain3d_enabled PASSED [ 97%]
+tests/test_terrain3d_enabled_flag.py::test_upload_routes_absent_when_disabled PASSED [100%]
+
+============================== 34 passed in 6.10s ==============================
+```
 
 ## Files Changed
 
-- **Created**: `shell/src/builder/useUndoableDraft.ts` (105 lines)
-- **Created**: `shell/src/builder/useUndoableDraft.test.tsx` (135 lines)
+1. **`core/app/auth/dependency.py`** — Added `is_copilot_enabled()` function after `is_terrain3d_enabled()`. Returns `bool(os.environ.get("CORE_LLM_PROVIDER"))`.
 
-## Commit Created
+2. **`core/app/instance/routes.py`** — Added import of `is_copilot_enabled` and added `"copilotEnabled": is_copilot_enabled()` key to `GET /instance` response dict.
 
-```
-fa614ad feat(shell): useUndoableDraft — debounced undo/redo for the builder config (SP-19)
-```
+3. **`core/tests/test_copilot_enabled_flag.py`** — Created new test file with 4 tests:
+   - `test_is_copilot_enabled_defaults_to_false` — verifies flag is False without env var
+   - `test_is_copilot_enabled_true_for_any_non_empty_provider` — verifies flag is True for any non-empty CORE_LLM_PROVIDER
+   - `test_instance_reports_copilot_disabled_by_default` — integration test for GET /instance
+   - `test_instance_reports_copilot_enabled` — integration test with flag enabled
+
+4. **`core/tests/test_etl_enabled_flag.py`** — Fixed two exact-dict assertions in `test_instance_reports_etl_disabled_by_default()` and `test_instance_reports_etl_enabled()` by appending `"copilotEnabled": False,` key.
+
+5. **`core/tests/test_export_enabled_flag.py`** — Fixed exact-dict assertion in `test_instance_reports_export_disabled_by_default()` by appending `"copilotEnabled": False,` key.
+
+6. **`core/tests/test_read_only_mode.py`** — Fixed two exact-dict assertions in `test_instance_defaults_to_read_write()` and `test_instance_reports_read_only_without_needing_auth()` by appending `"copilotEnabled": False,` key.
 
 ## Self-Review Findings
 
-### Completeness ✓
-- All 8 tests from brief implemented verbatim
-- Full implementation from brief transcribed exactly
-- All imports correct (AppConfig type, undoStack exports)
-- Commit message matches brief specification
+- Implementation follows the exact pattern specified in the brief
+- TDD workflow correctly executed: failing test → implementation → all tests passing
+- Brittle dict assertions in existing tests were properly fixed (all three test files updated without errors)
+- The function uses the correct semantics: `bool(os.environ.get("CORE_LLM_PROVIDER"))` evaluates to True for any non-empty string value, not just "true"
+- Function is placed in the correct location in `dependency.py` (between `is_terrain3d_enabled()` and `admin_subs()` as per brief)
+- Import in `routes.py` is in alphabetical order with other dependency imports
+- All 34 tests pass (4 new copilot tests + 8 etl + 4 export + 8 read_only + 5 tileset3d + 5 terrain3d)
 
-### Code Quality ✓
-- Follows React hooks best practices (useCallback, useRef, useState)
-- Proper dependency arrays on all useCallback hooks
-- Timer cleanup implemented in flush() to prevent memory leaks
-- No direct state mutations; all state updates via proper React patterns
-- TypeScript types correctly applied throughout
+## Issues or Concerns
 
-### Testing ✓
-- Tests use vitest fake timers correctly
-- beforeEach/afterEach restore real timers after each test
-- act() wraps all state changes
-- Tests verify both synchronous and asynchronous behavior
-- Burst coalescing verified with multiple sequential advanceTimersByTime calls
-- Edge cases covered: empty undo, redo after undo, new edit clearing redo
+None. The implementation is complete and all tests pass.
 
-### Architecture Alignment ✓
-- Hook maintains exact `useState` call signature for `setDraft` — seamless Task 3 replacement
-- `seedDraft` preserves original session start semantics (never overwrites)
-- Debouncing hides keystroke bursts from undo stack as designed
-- Immediate flush on undo/redo ensures Ctrl+Z responsiveness
-- No changes needed to caller code (AppBuilderPage)
+## Commit
 
-### No Concerns
-
-- Implementation follows brief specification precisely
-- All tests pass without modification
-- No linting issues (SPDX header present, code style matches project)
-- Ready for Task 3 integration with AppBuilderPage
-
-## Verification Steps
-
-1. ✓ Created test file (Step 1)
-2. ✓ Verified tests fail without implementation (Step 2)
-3. ✓ Created implementation file from brief (Step 3)
-4. ✓ Verified all 8 tests pass (Step 4)
-5. ✓ Committed with exact message (Step 5)
-6. ✓ Self-reviewed completeness, quality, discipline
-
-Ready for Task 3: Integration with AppBuilderPage.
+- **SHA**: f572c62
+- **Message**: `feat(core): capacité copilotEnabled sur GET /instance (SP-20)`
