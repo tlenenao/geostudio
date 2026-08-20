@@ -649,7 +649,8 @@ def test_bins_produces_equal_width_buckets(tmp_path, conn):
         request=request,
     )
 
-    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10] (last bin absorbs the max via LEAST clamp)
+    # pop in [1, 10], 3 bins of width 3 → [1,4), [4,7), [7,10]
+    # (last bin absorbs the max via LEAST clamp)
     by_index = {r["bucketIndex"]: r["count"] for r in rows}
     assert by_index == {
         0: 2,

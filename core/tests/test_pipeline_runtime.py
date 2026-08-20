@@ -493,7 +493,8 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
         conn.execute(
             text(
                 "DROP TABLE villes_propres; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -660,7 +661,8 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(
         conn.execute(
             text(
                 "DROP TABLE villes_replace; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -789,7 +791,8 @@ def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(
         conn.execute(
             text(
                 "DROP TABLE villes_append; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1220,7 +1223,8 @@ def test_writer_dataset_creates_new_dataset_item(pg_engine, monkeypatch, tmp_pat
         conn.execute(
             text(
                 "DROP TABLE villes_out; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1324,7 +1328,8 @@ def test_writer_dataset_updates_existing_dataset_preserving_metadata(
         conn.execute(
             text(
                 "DROP TABLE villes_out; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1430,7 +1435,8 @@ def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypat
         conn.execute(
             text(
                 "DROP TABLE villes_out; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1531,7 +1537,8 @@ def test_writer_dataset_refuses_update_without_write_access(pg_engine, monkeypat
         conn.execute(
             text(
                 "DROP TABLE villes_out; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1718,7 +1725,8 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
         conn.execute(
             text(
                 "DROP TABLE communes_incidents; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -1794,7 +1802,8 @@ def test_materialize_qgis_output_renames_non_geometry_named_column(tmp_path):
     conn.execute("CREATE TEMP TABLE src AS SELECT 1 AS id, ST_Point(3.0, 4.0) AS geometry")
     out_path = str(tmp_path / "out.gpkg")
     conn.execute(
-        f"COPY (SELECT * FROM src) TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
+        f"COPY (SELECT * FROM src) TO '{out_path}' "
+        "WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
     )
     # Sanity check on the fixture itself: confirms the premise of Finding 1 —
     # the round-tripped file really has no "geometry"-named column, only
@@ -2181,7 +2190,8 @@ def test_transform_qgis_end_to_end_dissolve_then_write(
         conn.execute(
             text(
                 "DROP TABLE dissolved_out; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 
@@ -2482,7 +2492,8 @@ def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatc
         conn.execute(
             text(
                 "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
-                "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
             )
         )
 

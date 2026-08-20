@@ -376,7 +376,9 @@ def _free_port() -> int:
 @pytest.mark.playwright
 def test_launch_and_navigate_real_chromium_waits_for_export_ready(tmp_path, chromium_available):
     (tmp_path / "index.html").write_text(
-        '<html><body><script>setTimeout(() => { document.body.dataset.exportReady = "true"; }, 200);</script></body></html>'
+        "<html><body><script>"
+        'setTimeout(() => { document.body.dataset.exportReady = "true"; }, 200);'
+        "</script></body></html>"
     )
     port = _free_port()
     server = http.server.ThreadingHTTPServer(

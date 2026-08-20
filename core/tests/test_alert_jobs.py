@@ -65,7 +65,8 @@ def env(pg_engine, monkeypatch, tmp_path):
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, description, "
                 "pk_column, geometry_column, is_public, editable, created_at, updated_at) "
-                "VALUES ('incidents', :t, :o, 'incidents', 'Incidents', '', 'id', 'geometry', false, true, "
+                "VALUES ('incidents', :t, :o, 'incidents', 'Incidents', '', 'id', "
+                "'geometry', false, true, "
                 "now(), now())"
             ),
             {"t": tenant.id, "o": user.id},
@@ -316,7 +317,8 @@ def test_evaluate_alert_task_evaluates_a_measures_declared_rule_without_explicit
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, description, "
                 "pk_column, geometry_column, is_public, editable, created_at, updated_at) "
-                "VALUES ('incidents', :t, :o, 'incidents', 'Incidents', '', 'id', 'geometry', false, true, "
+                "VALUES ('incidents', :t, :o, 'incidents', 'Incidents', '', 'id', "
+                "'geometry', false, true, "
                 "now(), now())"
             ),
             {"t": tenant.id, "o": user.id},

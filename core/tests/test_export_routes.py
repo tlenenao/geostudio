@@ -25,7 +25,8 @@ class _FakeS3Client:
 
 
 def _fake_deferrer():
-    # Même patron que core/tests/test_pipeline_routes.py::test_run_route_defers_job_and_returns_run_id
+    # Même patron que
+    # core/tests/test_pipeline_routes.py::test_run_route_defers_job_and_returns_run_id
     # (client.app.dependency_overrides[routes.get_task_deferrer] = ...) — sans
     # cet override, POST /export appellerait le vrai render_export_task.defer(...)
     # contre le connecteur procrastinate réel (DATABASE_URL non défini dans ces

@@ -212,7 +212,9 @@ def test_analyst_queries_readable_view(env_with_analyst):
     resp = client.post(
         "/analytics/sql",
         json={
-            "sql": f"SELECT region, sum(pop) AS total FROM {col['id']} GROUP BY region ORDER BY region"
+            "sql": (
+                f"SELECT region, sum(pop) AS total FROM {col['id']} GROUP BY region ORDER BY region"
+            )
         },
     )
     assert resp.status_code == 200
