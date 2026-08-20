@@ -4,7 +4,6 @@ import json
 import secrets
 from typing import Literal
 
-import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -121,12 +120,13 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
     provider = get_llm_provider()
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        # provider.chat est synchrone (httpx.post bloquant) : appelé
-        # directement ici, il gèlerait la boucle d'événements — donc tout le
-        # process, tous tenants confondus — pour la latence du LLM, et
-        # neutraliserait le asyncio.wait_for qui garde ce tour (wait_for ne
-        # peut pas interrompre un appel synchrone qui tient déjà le thread).
-        turn: LLMTurn = await anyio.to_thread.run_sync(provider.chat, messages, all_tools)
+        # `LLMProvider.chat` est asynchrone par contrat : un appel
+        # bloquant gèlerait la boucle d'événements de tout le process (la
+        # stack tourne sans `--workers`), et l'exécuter dans un thread de
+        # travail rendrait bien le 504 à l'heure mais **abandonnerait**
+        # l'appel — le thread tiendrait un jeton du pool jusqu'à son propre
+        # timeout, épuisable en répétant des tours lents.
+        turn: LLMTurn = await provider.chat(messages, all_tools)
         if not turn.tool_calls:
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
