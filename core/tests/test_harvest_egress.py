@@ -28,7 +28,7 @@ def test_assert_blocks_internal_ip_literals_without_dns(url):
 
 
 def test_assert_allows_public_ip_literal():
-    assert_egress_allowed("https://93.184.216.34/x") is None
+    assert_egress_allowed("https://93.184.216.34/x")
 
 
 def test_assert_blocks_non_http_scheme():
@@ -52,7 +52,7 @@ def test_assert_allows_hostname_resolving_to_public(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    assert_egress_allowed("https://public.example.com/x") is None
+    assert_egress_allowed("https://public.example.com/x")
 
 
 def test_allowlist_restricts_otherwise_allowed_public_host(monkeypatch):
@@ -64,7 +64,7 @@ def test_allowlist_restricts_otherwise_allowed_public_host(monkeypatch):
     with pytest.raises(EgressBlockedError):
         assert_egress_allowed("https://public.example.com/x")
     monkeypatch.setenv("CORE_HARVEST_EGRESS_ALLOWLIST", "public.example.com,other.example.com")
-    assert_egress_allowed("https://public.example.com/x") is None
+    assert_egress_allowed("https://public.example.com/x")
 
 
 def test_guarded_client_transport_blocks_before_connection():

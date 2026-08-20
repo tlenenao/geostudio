@@ -49,7 +49,13 @@ def test_evaluate_condition_rejects_table_function_file_read_bypass(conn):
     # scan improving, or (as implemented) by DuckDB's own connection
     # lockdown refusing the file access — not silently executed.
     expr = "(SELECT count(*) FROM read_csv_auto('/etc/hostname')) > -1"
-    with pytest.raises(Exception):
+    # Deliberately bounded to the two mechanisms the docstring above says
+    # are allowed to catch this (AST scan -> SqlSandboxError, or DuckDB's
+    # own connection lockdown -> duckdb.Error e.g. PermissionException,
+    # confirmed empirically), not a bare Exception — so this assertion
+    # can't be satisfied by an unrelated bug (e.g. a TypeError from a typo
+    # elsewhere in evaluate_condition).
+    with pytest.raises((SqlSandboxError, duckdb.Error)):
         evaluate_condition(conn, expr, 0.0)
 
 
