@@ -7,7 +7,11 @@ des logiciels sous GNU GPL** :
   GPL-2.0-or-later. Sources amont : <https://github.com/qgis/QGIS>, tag
   correspondant à QGIS 3.34.5.
 - **GRASS GIS** (fourni par l'image amont, plugin `grassprovider` activé) —
-  GPL-2.0-or-later. Sources amont : <https://github.com/OSGeo/grass>.
+  GRASS GIS 7.8.7 (paquet Debian `grass-core` 7.8.7-1, vérifié dans l'image
+  construite via `dpkg -l` et `grass --version`), GPL version >= 2 (donc
+  GPL-2.0-or-later, cohérent avec QGIS). Sources amont : tag
+  <https://github.com/OSGeo/grass/releases/tag/7.8.7> ; archive des sources
+  correspondante : <https://grass.osgeo.org/grass78/source/grass-7.8.7.tar.gz>.
 
 GeoStudio ne modifie pas les sources de QGIS ni de GRASS. La seule opération
 appliquée par-dessus l'image amont sur ces logiciels est l'activation du
