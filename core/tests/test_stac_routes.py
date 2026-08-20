@@ -158,7 +158,7 @@ def test_items_returns_stac_item_collection_with_next(env_repo):
     it = body["features"][0]
     assert it["stac_version"] == "1.0.0" and it["collection"] == "incidents"
     assert it["properties"]["datetime"].endswith("Z")
-    rels = {l["rel"]: l["href"] for l in body["links"]}
+    rels = {link["rel"]: link["href"] for link in body["links"]}
     assert "offset=1" in rels["next"]  # 1 renvoyé sur 3 → next
     assert repo.calls["limit"] == 1 and repo.calls["offset"] == 0
 

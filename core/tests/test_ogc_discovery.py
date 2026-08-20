@@ -118,7 +118,7 @@ def test_landing_page_wins_over_mcp_mount(env):
     _app, client, *_ = env
     r = client.get("/")
     assert r.status_code == 200
-    rels = {l["rel"] for l in r.json()["links"]}
+    rels = {link["rel"] for link in r.json()["links"]}
     assert {"self", "conformance", "data", "service-desc"} <= rels
     assert client.get("/health").status_code == 200  # le mount MCP n'est pas cassé
 
@@ -134,7 +134,7 @@ def test_collection_description_is_ogc(env):
     body = client.get("/collections/incidents").json()
     assert body["itemType"] == "feature"
     assert body["extent"] == {"spatial": {"bbox": [[1.0, 45.0, 2.0, 46.0]]}}
-    rels = {l["rel"]: l["href"] for l in body["links"]}
+    rels = {link["rel"]: link["href"] for link in body["links"]}
     assert rels["items"].endswith("/collections/incidents/items")
 
 

@@ -119,7 +119,7 @@ def test_search_pagination_token(env):
     app, client = env
     page1 = client.get("/stac/search?limit=1").json()
     assert len(page1["features"]) == 1
-    nxt = next(l["href"] for l in page1["links"] if l["rel"] == "next")
+    nxt = next(link["href"] for link in page1["links"] if link["rel"] == "next")
     page2 = client.get(nxt.replace("http://testserver", "")).json()
     assert len(page2["features"]) >= 1
     # Les deux pages ne renvoient pas exactement le même item du même collection.
@@ -140,7 +140,7 @@ def test_search_filter_preserved_across_pagination(env):
     page1 = client.get("/stac/search?collections=rivers&limit=1").json()
     assert len(page1["features"]) == 1
     assert page1["features"][0]["collection"] == "rivers"
-    nxt = next(l["href"] for l in page1["links"] if l["rel"] == "next")
+    nxt = next(link["href"] for link in page1["links"] if link["rel"] == "next")
     assert "collections=rivers" in nxt
     page2 = client.get(nxt.replace("http://testserver", "")).json()
     assert len(page2["features"]) >= 1
