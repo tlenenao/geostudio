@@ -167,6 +167,18 @@ services:
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
       CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
+      # chacune dupliquée délibérément — cf. leurs docstrings respectives).
+      # Trouvées non câblées à AUCUN service par l'élargissement de la règle
+      # ci-dessous (angle mort de l'ancienne regex ENV_READ_RE, qui ne voyait
+      # pas la lecture indirecte via `_ALLOWLIST_ENV = "CORE_..."`) — deux des
+      # trois étaient déjà documentées dans .env.example, donc *crues*
+      # câblées, sur une garde SSRF. Défaut vide = comportement inchangé
+      # (seules les plages réseau internes/privées sont bloquées, cf.
+      # `_allowlist()` de chaque module).
+      CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
@@ -252,6 +264,12 @@ services:
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
       CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Miroir des lignes du service `core` ci-dessus (mêmes commentaires) :
+      # les runs de pipeline (connector_runtime.py) et les notifications
+      # d'alerte (notify.py) tournent dans ce process.
+      CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —
