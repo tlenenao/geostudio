@@ -32,7 +32,12 @@ export type Me = {
   isAnalyst: boolean;
 };
 
-export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean };
+export type InstanceInfo = { readOnly: boolean; etlEnabled: boolean; exportEnabled: boolean; appExportEnabled: boolean; tileset3dEnabled: boolean; terrain3dEnabled: boolean; copilotEnabled: boolean };
+
+export type CopilotMessage = { role: "user" | "assistant"; content: string };
+export type CopilotClientOp = { op: string; args: Record<string, unknown> };
+export type CopilotTurnResult = { reply: string; clientOps: CopilotClientOp[] };
+export type CopilotToolSchema = { name: string; description: string; inputSchema: Record<string, unknown> };
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -134,6 +139,13 @@ export interface ItemClient {
   listPublicItems(params?: { type?: ResourceType; tag?: string; page?: number; pageSize?: number }): Promise<ItemPage>;
   getMe(): Promise<Me>;
   getInstanceInfo(): Promise<InstanceInfo>;
+  copilotTurn(itemId: string, payload: {
+    message: string;
+    history: CopilotMessage[];
+    mcpToken: string;
+    currentConfig: AppConfig;
+    clientTools: CopilotToolSchema[];
+  }): Promise<CopilotTurnResult>;
   createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item>;
   updateItem(pk: string, patch: UpdatePatch): Promise<Item>;
   uploadThumbnail(pk: string, file: File): Promise<void>;
