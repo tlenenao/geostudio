@@ -112,6 +112,18 @@ services:
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
 
+  # SP-21 : ces trois services restaient en `build:` (fichier de base), donc
+  # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
+  # du fichier de base — substituer l'image n'allume aucune capacité.
+  export-worker:
+    image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
+
+  qgis-worker:
+    image: ghcr.io/tlenenao/geostudio-qgis-worker:${GEOSTUDIO_VERSION:-latest}
+
+  appexport-runtime-builder:
+    image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:-latest}
+
   shell:
     image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
     ports: !reset []
@@ -154,7 +166,10 @@ services:
         condition: service_started
 
   backup:
-    build: ./deploy/backup
+    # SP-21 : `backup` n'existe que dans cet overlay et était le seul service
+    # de production encore construit sur place — le mécanisme censé être le
+    # dernier rempart contre la perte de données.
+    image: ghcr.io/tlenenao/geostudio-backup:${GEOSTUDIO_VERSION:-latest}
     restart: unless-stopped
     environment:
       PG_PASSWORD: ${PG_PASSWORD}
