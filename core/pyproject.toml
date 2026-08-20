@@ -87,6 +87,10 @@ dev = [
                                # reader.connector.rest sans réseau (dlt utilise
                                # `requests`, pas httpx — un mock httpx type respx
                                # n'intercepterait rien).
+    "pyyaml>=6.0",  # SP-21 : tests/test_deployability.py lit les docker-compose*.yml
+                    # et release.yml. Présent en transitif jusqu'ici — un import
+                    # direct d'une dépendance non déclarée casse au premier
+                    # changement d'arbre (même dette que le `anyio` de SP-20).
 ]
 
 [tool.pytest.ini_options]
