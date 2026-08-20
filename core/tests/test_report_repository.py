@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
@@ -158,11 +158,14 @@ def test_list_due_reports_respects_cron_cadence_against_last_run():
             s, tenant_id=tenant.id, oidc_sub="a", username="alice",
             email=None, first_name="", last_name="",
         )
-        # Every 5 minutes, but the only run is 1 minute old — not due yet.
+        # Every 5 minutes, and the only run just happened — not due yet.
+        # NOT "1 minute ago": the next slot of */5 is computed from the last
+        # run, so a run backdated by a minute is genuinely due whenever the
+        # test straddles a 5-minute boundary — a ~20% flake, observed.
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id, cron="*/5 * * * *")
         run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
         s.commit()
-        run.created_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        run.created_at = datetime.now(timezone.utc)
         s.commit()
 
         assert reports_repo.list_due_reports(s) == []
