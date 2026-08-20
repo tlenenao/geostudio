@@ -6,6 +6,7 @@ import { useAppConfig, useCreateDataset, useInstanceInfo, useSaveApp, useUploadT
 import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
+import { CopilotPanel } from "../builder/copilot/CopilotPanel";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
 import { NavigationPanel } from "../builder/NavigationPanel";
@@ -38,6 +39,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const thumbnail = useUploadThumbnail(pk);
   const instanceQuery = useInstanceInfo();
   const appExportEnabled = instanceQuery.data?.appExportEnabled === true;
+  const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
   const { username } = useAuth();
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
@@ -313,6 +315,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 <>
                   <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Export standalone</p>
                   <AppExportPanel itemId={pk} config={draft} />
+                </>
+              )}
+              {copilotEnabled && (
+                <>
+                  <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Copilote</p>
+                  <CopilotPanel itemId={pk} config={draft} activePageId={activePage} setDraft={setDraft} />
                 </>
               )}
             </aside>
