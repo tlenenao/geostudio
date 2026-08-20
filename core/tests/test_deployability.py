@@ -440,23 +440,23 @@ def test_images_are_pinned():
     )
 
 
-# Étape 2 — RED : ces cas pin down les trois écarts de la revue avant de
-# corriger `unpinned_reason`. Certains échouent contre la version encore
-# non corrigée ci-dessus (fix 1/2/3), les autres décrivent des tags réels du
-# dépôt qui doivent rester acceptés une fois les fixes en place.
+# Les neuf références d'images tierces réellement présentes dans les deux
+# compose, recopiées telles quelles. Le durcissement du regex flottant est
+# la seule chose qui pourrait les rejeter à tort : aucune n'est du semver
+# canonique (`RELEASE.2025-…`, `1.22.1-p0`), et le chemin de registre
+# multi-segment (`ghcr.io/maplibre/…`) est précisément ce que la résolution
+# du tag par dernier segment doit traverser sans se tromper.
 @pytest.mark.parametrize(
     "image",
     [
-        # Fix 2 — vrais tags déjà pinnés dans le dépôt : doivent rester
-        # acceptés après durcissement du regex flottant.
         "minio/minio:RELEASE.2025-09-07T16-13-09Z",
         "edoburu/pgbouncer:1.22.1-p0",
-        "traefik:v0.18.0",
-        "traefik:0.18.4",
-        "traefik:0.11.4",
-        "traefik:v0.20.1",
+        "ghcr.io/maplibre/martin:v0.18.0",
+        "ghcr.io/developmentseed/titiler:0.18.4",
+        "grafana/otel-lgtm:0.11.4",
+        "prometheuscommunity/postgres-exporter:v0.20.1",
         "traefik:v3.0.4",
-        "keycloak:24.0.5",
+        "quay.io/keycloak/keycloak:24.0.5",
         "tailscale/tailscale:v1.102.3",
     ],
 )
