@@ -141,6 +141,22 @@ services:
       CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
+      # Rôle analyste (SP-11c) : sans cette ligne, `CORE_ANALYST_SUBS` dans
+      # le .env de l'opérateur n'atteignait jamais le process.
+      CORE_ANALYST_SUBS: ${CORE_ANALYST_SUBS:-}
+      # Capacité ETL (SP-15a). Était documentée dans .env.example et nommée
+      # dans un commentaire de ce fichier, mais transmise à aucun service :
+      # toute la surface pipelines (REST + MCP + sidecar QGIS + cron) était
+      # inatteignable en stack packagée, sans le moindre signal. Doit valoir
+      # la même chose ici et sur `worker` (qui consomme la file `etl`) —
+      # même exigence que CORE_EXPORT_ENABLED entre core et export-worker.
+      CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Fournisseur d'embeddings de la recherche sémantique (SP-7). Non
+      # câblé jusqu'ici : le cœur retombait silencieusement sur son défaut.
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-}
+      CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
+      CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
@@ -213,6 +229,15 @@ services:
       # service plus haut), pas ici.
       CORE_TILESET3D_MAX_ENTRIES: ${CORE_TILESET3D_MAX_ENTRIES:-20000}
       CORE_TILESET3D_MAX_TOTAL_BYTES: ${CORE_TILESET3D_MAX_TOTAL_BYTES:-21474836480}
+      # Miroir des lignes du service `core` : le worker exécute les jobs
+      # d'indexation sémantique (file `search`) et les runs de pipeline
+      # (file `etl`). Une valeur divergente entre les deux services produit
+      # une capacité à moitié allumée — précédent SP-17a.
+      CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-}
+      CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
+      CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —

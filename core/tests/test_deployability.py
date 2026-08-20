@@ -183,3 +183,73 @@ def test_prod_overlay_substitutes_every_build_with_an_image():
     assert not introduced, (
         f"l'overlay de production introduit lui-même un build: {introduced}."
     )
+
+
+# Variables lues par le cœur mais légitimement absentes du compose de ce
+# dépôt. Liste fermée : toute variable nouvelle est soit câblée, soit
+# ajoutée ici avec sa raison — c'est cette contrainte qui a de la valeur.
+ENV_WIRING_EXEMPTIONS = {
+    # Couture de test : permet de lire des partitions CDC depuis le disque
+    # local au lieu de S3 (tests analytiques). Jamais réglée en production.
+    "S3_CDC_BUCKET_BASE_URI",
+    # Lues par l'image mini-serveur de l'export autoporté (SP-18c), dont le
+    # docker-compose est **généré** par build_standalone_bundle_zip et livré
+    # dans le zip — pas celui de ce dépôt.
+    "APPEXPORT_STANDALONE_DATA_DIR",
+    "APPEXPORT_STANDALONE_RUNTIME_DIR",
+}
+
+ENV_READ_RE = re.compile(
+    r"os\.environ(?:\.get\(|\[)\s*[\"']([A-Z0-9_]+)"
+    r"|os\.getenv\(\s*[\"']([A-Z0-9_]+)"
+)
+
+
+def core_env_vars() -> set[str]:
+    """Toute variable d'environnement lue par `core/app/`."""
+    found = set()
+    for module in CORE_APP.rglob("*.py"):
+        for direct, via_getenv in ENV_READ_RE.findall(module.read_text()):
+            found.add(direct or via_getenv)
+    return found
+
+
+def _wired_env_vars() -> set[str]:
+    wired = set()
+    for path in (BASE, PROD):
+        for service in services(path).values():
+            env = service.get("environment") or {}
+            if isinstance(env, dict):
+                wired |= set(env)
+            else:  # forme liste : "VAR=valeur"
+                wired |= {item.split("=", 1)[0] for item in env}
+    return wired
+
+
+def test_every_core_env_var_is_wired_to_a_service():
+    """Une variable lue par le cœur mais absente de l'environnement de tout
+    service est un réglage inatteignable : l'opérateur la met dans son .env,
+    rien ne change, aucun signal. C'est le mode d'échec de SP-17a, SP-17b,
+    tileset3d — et de CORE_ETL_ENABLED, trouvée par cette règle."""
+    unwired = core_env_vars() - _wired_env_vars() - ENV_WIRING_EXEMPTIONS
+    assert not unwired, (
+        f"variables lues par core/app/ et câblées sur aucun service : "
+        f"{sorted(unwired)}. Les ajouter à l'`environment` du service qui "
+        "les lit, ou à ENV_WIRING_EXEMPTIONS avec la raison écrite."
+    )
+
+
+def test_every_compose_substitution_is_documented():
+    """Toute valeur que l'opérateur doit fournir (`${VAR}`) doit être
+    découvrable dans .env.example. La règle ne porte QUE sur les
+    substitutions : les valeurs dérivées calculées dans le compose
+    (DATABASE_URL, OTEL_*) n'ont rien à y faire — les y mettre inviterait à
+    les régler à la main."""
+    substitutions = set()
+    for path in (BASE, PROD):
+        substitutions |= set(re.findall(r"\$\{([A-Z0-9_]+)", path.read_text()))
+    documented = set(re.findall(r"^#?\s*([A-Z0-9_]+)=", ENV_EXAMPLE.read_text(), re.MULTILINE))
+    undocumented = substitutions - documented
+    assert not undocumented, (
+        f"substitutions de compose absentes de .env.example : {sorted(undocumented)}."
+    )
