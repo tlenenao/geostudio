@@ -1,10 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
+import io
+import json
+import struct
+import zipfile
+
 import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 
 from app import db
 from app.auth.dependency import get_current_user
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig, Tileset3DPayload
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.ingestion import routes as ingestion_routes
 from app.main import create_app
@@ -155,15 +162,6 @@ def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
     r = client.get("/tileset3d/uploads/does-not-exist")
     assert r.status_code == 404
-
-
-import io
-import json
-import struct
-import zipfile
-
-from app.configs import repository as configs_repo
-from app.configs.schemas import BuilderConfig, Tileset3DPayload
 
 
 def _valid_zip_bytes() -> bytes:
