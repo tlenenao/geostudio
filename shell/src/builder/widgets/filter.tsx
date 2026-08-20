@@ -7,6 +7,10 @@ export function registerFilterWidget(): void {
     label: "Filtre",
     defaultProps: { field: "", label: "Filtrer" },
     defaultSize: { w: 3, h: 1 },
+    configSchema: [
+      { name: "field", type: "string", label: "Champ à filtrer", default: "" },
+      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
+    ],
     events: ["changed"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">

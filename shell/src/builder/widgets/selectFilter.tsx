@@ -13,6 +13,11 @@ export function registerSelectFilterWidget(): void {
     label: "Sélecteur",
     defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
     defaultSize: { w: 3, h: 3 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "field", type: "string", label: "Champ", default: "" },
+      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}

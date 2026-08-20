@@ -127,6 +127,12 @@ export function registerIndicatorWidget(): void {
     label: "Indicateur",
     defaultProps: { dataSourceId: "", label: "Indicateur", agg: "count", field: "" },
     defaultSize: { w: 2, h: 2 },
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "label", type: "string", label: "Libellé", default: "Indicateur" },
+      { name: "agg", type: "string", label: "Agrégation", default: "count" },
+      { name: "field", type: "string", label: "Champ", default: "" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}

@@ -18,6 +18,7 @@ export function registerModalWidget(): void {
     label: "Modale",
     defaultProps: { title: "Modale", items: [] },
     defaultSize: { w: 3, h: 1 },
+    configSchema: [{ name: "title", type: "string", label: "Titre", default: "Modale" }],
     actions: ["open", "close"],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const { title, items, wide } = props as ModalProps;

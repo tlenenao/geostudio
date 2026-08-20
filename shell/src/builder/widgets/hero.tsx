@@ -24,6 +24,14 @@ export function registerHeroWidget(): void {
     label: "Hero",
     defaultProps: { title: "Titre", subtitle: "", backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left" },
     defaultSize: { w: 12, h: 3 },
+    configSchema: [
+      { name: "title", type: "string", label: "Titre", default: "Titre" },
+      { name: "subtitle", type: "string", label: "Sous-titre", default: "" },
+      { name: "backgroundImageUrl", type: "string", label: "Image de fond (URL)", default: "" },
+      { name: "ctaLabel", type: "string", label: "Libellé du bouton", default: "" },
+      { name: "ctaHref", type: "string", label: "Lien du bouton", default: "" },
+      { name: "align", type: "string", label: "Alignement", default: "left" },
+    ],
     events: ["cta"],
     PropsPanel: ({ props, onChange }) => {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });

@@ -483,6 +483,13 @@ export function registerFormWidget(): void {
     label: "Formulaire",
     defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
     defaultSize: { w: 4, h: 6 },
+    // `fields` est array-shaped (hors de portée) ; `geometryType` est un
+    // enum nullable qui ne rentre pas dans les 4 types de
+    // WidgetPropDescriptor — laissé de côté plutôt que forcé.
+    configSchema: [
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      { name: "submitLabel", type: "string", label: "Libellé du bouton", default: "Enregistrer" },
+    ],
     events: ["submitted", "failed"],
     actions: ["reset", "loadRecord"],
     PropsPanel: FormPropsPanel,

@@ -85,6 +85,7 @@ export function registerMapWidget(): void {
     label: "Carte",
     defaultProps: { dataSourceId: "" },
     defaultSize: { w: 6, h: 6 },
+    configSchema: [{ name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" }],
     events: ["extentChanged", "itemSelected"],
     actions: ["flyTo", "highlight"],
     PropsPanel: ({ props, onChange, dataSources }) => {

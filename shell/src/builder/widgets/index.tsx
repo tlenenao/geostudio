@@ -48,6 +48,10 @@ export function registerBuiltinWidgets(): void {
     label: "Texte",
     defaultProps: { text: "Nouveau texte", dataSourceId: "" },
     defaultSize: { w: 4, h: 2 },
+    configSchema: [
+      { name: "text", type: "string", label: "Texte", default: "Nouveau texte" },
+      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+    ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
@@ -79,6 +83,10 @@ export function registerBuiltinWidgets(): void {
     label: "Image",
     defaultProps: { src: "", alt: "" },
     defaultSize: { w: 4, h: 4 },
+    configSchema: [
+      { name: "src", type: "string", label: "URL", default: "" },
+      { name: "alt", type: "string", label: "Texte alternatif", default: "" },
+    ],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
@@ -116,6 +124,10 @@ export function registerBuiltinWidgets(): void {
     label: "Bouton",
     defaultProps: { label: "Bouton", href: "" },
     defaultSize: { w: 2, h: 1 },
+    configSchema: [
+      { name: "label", type: "string", label: "Libellé", default: "Bouton" },
+      { name: "href", type: "string", label: "Lien", default: "" },
+    ],
     events: ["clicked"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
