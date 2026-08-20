@@ -331,7 +331,10 @@ def run_collection_aggregate(
             f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures)
         )
         group_cols = ", ".join(_qi(f) for f in fields)
-        sql = f"{dedup_cte} SELECT {group_cols}, {measure_cols} FROM live {where_sql} GROUP BY {group_cols}"
+        sql = (
+            f"{dedup_cte} SELECT {group_cols}, {measure_cols} "
+            f"FROM live {where_sql} GROUP BY {group_cols}"
+        )
         sql_rows = _fetch_rows(conn, sql, where_params)
         return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
 
@@ -354,7 +357,10 @@ def run_collection_aggregate(
 
     measures = _measures_for(request)
     measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
-    sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} GROUP BY __cat"
+    sql = (
+        f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} "
+        f"FROM live {where_sql} GROUP BY __cat"
+    )
     sql_rows = _fetch_rows(conn, sql, where_params)
     return category_key, _pivot_measures(
         sql_rows, category_key=str(category_key), measures=measures

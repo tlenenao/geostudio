@@ -103,7 +103,8 @@ def _collect_collection(
             return
         doc = _get_json(client, page_url)
         if not isinstance(doc, dict) or not isinstance(doc.get("features"), list):
-            return  # 1re page illisible: collection ignorée ; page suivante: partiel conservé (§4.1)
+            # 1re page illisible : collection ignorée ; page suivante : partiel conservé (§4.1)
+            return
         for feature in doc["features"]:
             if len(records) >= _MAX_OGC_RECORDS:
                 return

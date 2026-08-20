@@ -116,7 +116,8 @@ def check_export_guard(
         facts = collections_repo.get_access_facts(col)
         if not facts.is_public:
             reasons.append(
-                f"source '{source.id}' : collection '{collection_id}' n'est pas partagée publiquement"
+                f"source '{source.id}' : collection '{collection_id}' n'est pas "
+                "partagée publiquement"
             )
 
     if mode in _STRICT_WIDGET_MODES:

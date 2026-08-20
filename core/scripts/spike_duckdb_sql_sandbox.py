@@ -89,7 +89,8 @@ def write_fixture():
     local = f"/tmp/spike-{uuid.uuid4().hex}.parquet"
     gdf.to_parquet(local)
     conn.execute(
-        f"COPY (SELECT * FROM read_parquet('{local}')) TO '{GLOB.replace('*', 'part-1')}' (FORMAT parquet)"
+        f"COPY (SELECT * FROM read_parquet('{local}')) "
+        f"TO '{GLOB.replace('*', 'part-1')}' (FORMAT parquet)"
     )
     conn.close()
 
@@ -98,7 +99,8 @@ def probe_ast():
     conn = _open()
     doc = json.loads(
         conn.execute(
-            "SELECT json_serialize_sql('SELECT region, count(*) FROM villes t JOIN autre a ON a.id=t.id GROUP BY region')"
+            "SELECT json_serialize_sql("
+            "'SELECT region, count(*) FROM villes t JOIN autre a ON a.id=t.id GROUP BY region')"
         ).fetchone()[0]
     )
     print("AST SAMPLE:", json.dumps(doc)[:2000])
@@ -173,6 +175,7 @@ if __name__ == "__main__":
     probe_timeout()
     failed = [r for r in results if not r[1]]
     print(
-        f"\n{'GO' if not failed else 'NO-GO'} — {len(results) - len(failed)}/{len(results)} checks PASS"
+        f"\n{'GO' if not failed else 'NO-GO'} — "
+        f"{len(results) - len(failed)}/{len(results)} checks PASS"
     )
     raise SystemExit(1 if failed else 0)

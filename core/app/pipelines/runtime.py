@@ -352,7 +352,8 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
     if not geom_cols:
         raise PipelineRuntimeError(
-            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte aucune colonne géométrie"
+            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte "
+            "aucune colonne géométrie"
         )
     # Une seule colonne géométrie attendue (même contrat qu'une collection) :
     # en cas de pluralité inattendue, la première suffit à ne jamais perdre
@@ -407,7 +408,8 @@ def _execute_qgis_transform(
             ) from exc
         except httpx.HTTPError as exc:
             raise PipelineRuntimeError(
-                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar "
+                f"qgis-worker : {exc}"
             ) from exc
         if response.status_code != 200:
             # Défense en profondeur : le sidecar (server.py _respond) émet

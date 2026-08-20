@@ -77,7 +77,10 @@ def _write_batch(client, *, n_rows: int, id_start: int, lsn: int) -> None:
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     buf = BytesIO()
     gdf.to_parquet(buf)
-    key = f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/dt=2026-07-18/part-{uuid.uuid4().hex}.parquet"
+    key = (
+        f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/dt=2026-07-18/"
+        f"part-{uuid.uuid4().hex}.parquet"
+    )
     client.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue())
 
 

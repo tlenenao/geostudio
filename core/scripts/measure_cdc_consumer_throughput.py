@@ -117,7 +117,8 @@ def main() -> None:
 
     assert len(received) == n, f"perte de données : {len(received)}/{n} messages reçus"
     assert {r.row.columns.get("v") for r in received} == {f"row-{i}" for i in range(n)}, (
-        "perte/duplication de données : contenu des lignes reçues ne correspond pas exactement aux N écrites"
+        "perte/duplication de données : contenu des lignes reçues ne correspond pas "
+        "exactement aux N écrites"
     )
 
     throughput = n / consume_elapsed if consume_elapsed > 0 else float("inf")

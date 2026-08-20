@@ -122,7 +122,8 @@ def select_features(
     )
     matched = conn.execute(count_sql, where_params).fetchone()[0]
     sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
+        f"SELECT {_select_list(table_info)} "
+        f"FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
         f"{where_sql} ORDER BY {_qi(table_info.pk_column)} LIMIT ? OFFSET ?"
     )
     rows = _fetch_rows(conn, sql, [*where_params, limit, offset])
@@ -144,7 +145,8 @@ def get_feature(
         return None
     glob = _glob(base_uri, tenant_id, collection_id)
     sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
+        f"SELECT {_select_list(table_info)} "
+        f"FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
         f"WHERE {_qi(table_info.pk_column)} = ?"
     )
     rows = _fetch_rows(conn, sql, [value])
