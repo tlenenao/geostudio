@@ -100,7 +100,7 @@ conséquence, la restauration continue.
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps --entrypoint sh backup -c "
   mc alias set local http://minio:9000 \$MINIO_USER \$MINIO_PASSWORD
-  mc mb --ignore-existing local/geostudio-thumbnails local/geostudio-uploads local/geostudio-cdc
+  mc mb --ignore-existing local/\$S3_THUMBNAILS_BUCKET local/\$S3_UPLOADS_BUCKET local/\$S3_CDC_BUCKET local/\$S3_TILESET3D_BUCKET local/\$S3_TERRAIN3D_BUCKET
 "
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
   -v "$(pwd)/<horodatage>/minio:/backup/restore-minio:ro" --no-deps --entrypoint sh backup -c "
@@ -111,6 +111,17 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
   done
 "
 ```
+
+**Note :** la commande `mc mb` ci-dessus recrée les cinq buckets déclarés dans
+la section « Périmètre de la sauvegarde » ci-dessus, en lisant les mêmes variables
+d'environnement que `deploy/backup/backup.sh` (`S3_THUMBNAILS_BUCKET`,
+`S3_UPLOADS_BUCKET`, `S3_CDC_BUCKET`, `S3_TILESET3D_BUCKET`,
+`S3_TERRAIN3D_BUCKET`) plutôt que des noms de buckets recopiés en dur — ces
+cinq variables sont déjà injectées dans le service `backup` par
+`docker-compose.prod.yml`, dans lequel cette commande tourne
+(`docker compose run --rm ... backup`). Si un futur bucket est ajouté au
+périmètre de sauvegarde, une seule liste (`backup.sh`) doit changer ; cette
+commande suit automatiquement.
 
 **Bug trouvé en exécutant réellement cette étape (Task 2, Step 2)** : si
 l'archive ne contient aucun bucket (cas d'un environnement où aucun fichier
