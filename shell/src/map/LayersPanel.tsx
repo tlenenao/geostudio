@@ -28,14 +28,40 @@ export function LayersPanel({
         {layers.map((layer, i) => (
           <li key={layer.id} className="flex items-center gap-2 text-sm">
             <span className="flex-1 truncate">{layer.title}</span>
-            <button type="button" aria-label={`Monter ${layer.title}`} disabled={i === 0}
-              className="px-1 disabled:opacity-30" onClick={() => move(i, -1)}>↑</button>
-            <button type="button" aria-label={`Descendre ${layer.title}`} disabled={i === layers.length - 1}
-              className="px-1 disabled:opacity-30" onClick={() => move(i, 1)}>↓</button>
-            <button type="button" aria-label={`${layer.visible ? "Masquer" : "Afficher"} ${layer.title}`}
-              className="px-1" onClick={() => toggle(layer.id)}>{layer.visible ? "👁" : "🚫"}</button>
-            <button type="button" aria-label={`Retirer ${layer.title}`}
-              className="px-1 text-red-600" onClick={() => remove(layer.id)}>✕</button>
+            <button
+              type="button"
+              aria-label={`Monter ${layer.title}`}
+              disabled={i === 0}
+              className="px-1 disabled:opacity-30"
+              onClick={() => move(i, -1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label={`Descendre ${layer.title}`}
+              disabled={i === layers.length - 1}
+              className="px-1 disabled:opacity-30"
+              onClick={() => move(i, 1)}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              aria-label={`${layer.visible ? "Masquer" : "Afficher"} ${layer.title}`}
+              className="px-1"
+              onClick={() => toggle(layer.id)}
+            >
+              {layer.visible ? "👁" : "🚫"}
+            </button>
+            <button
+              type="button"
+              aria-label={`Retirer ${layer.title}`}
+              className="px-1 text-red-600"
+              onClick={() => remove(layer.id)}
+            >
+              ✕
+            </button>
           </li>
         ))}
         {layers.length === 0 && <li className="text-xs text-slate-400">Aucune couche.</li>}

@@ -34,11 +34,19 @@ export function registerDataWidgets(): void {
     actions: ["setFilter"],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
-        <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-          onChange={(id) => onChange({ ...props, dataSourceId: id })} />
-        <label className="flex flex-col gap-1">Champ titre
-          <input aria-label="Champ titre" className="h-9 rounded-md border border-slate-300 px-2"
-            value={String(props.titleField ?? "")} onChange={(e) => onChange({ ...props, titleField: e.target.value })} />
+        <DataSourceSelect
+          value={String(props.dataSourceId ?? "")}
+          dataSources={dataSources}
+          onChange={(id) => onChange({ ...props, dataSourceId: id })}
+        />
+        <label className="flex flex-col gap-1">
+          Champ titre
+          <input
+            aria-label="Champ titre"
+            className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.titleField ?? "")}
+            onChange={(e) => onChange({ ...props, titleField: e.target.value })}
+          />
         </label>
       </div>
     ),
@@ -50,21 +58,35 @@ export function registerDataWidgets(): void {
         if (dsId) setFilter(dsId, (payload as Record<string, unknown>) ?? {});
       });
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (!data || data.loading)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+      if (data.records.length === 0)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const field = String(props.titleField || firstField(data.records) || "");
 
       function selectRecord(r: DataRecord) {
         ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
         const datasetId = ctx.data?.datasetId;
         const pkColumn = ctx.data?.pkColumn;
-        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""), r.geometry);
+        if (datasetId && pkColumn)
+          setCrossFilter(
+            datasetId,
+            pkColumn,
+            String(r.id),
+            String(props.dataSourceId ?? ""),
+            r.geometry,
+          );
       }
 
       return (
         <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
+          <ExplorerMenu
+            datasetId={data.datasetId}
+            dataSourceId={String(props.dataSourceId ?? "")}
+            resolvedSource={data.resolvedSource}
+            hasGeometry={data.hasGeometry}
+          />
           <ul className="flex flex-col gap-0.5 text-sm">
             {data.records.map((r) => (
               <li
@@ -101,42 +123,79 @@ export function registerDataWidgets(): void {
         onChange({ ...props, columns: [...next, ...calculatedColumns] });
       }
       function addCalculatedColumn() {
-        onChange({ ...props, columns: [...plainColumns, ...calculatedColumns, { label: "Nouvelle colonne", expr: "" }] });
+        onChange({
+          ...props,
+          columns: [...plainColumns, ...calculatedColumns, { label: "Nouvelle colonne", expr: "" }],
+        });
       }
       function updateCalculatedColumn(index: number, patch: Partial<CalculatedColumn>) {
         const next = calculatedColumns.map((c, i) => (i === index ? { ...c, ...patch } : c));
         onChange({ ...props, columns: [...plainColumns, ...next] });
       }
       function removeCalculatedColumn(index: number) {
-        onChange({ ...props, columns: [...plainColumns, ...calculatedColumns.filter((_, i) => i !== index)] });
+        onChange({
+          ...props,
+          columns: [...plainColumns, ...calculatedColumns.filter((_, i) => i !== index)],
+        });
       }
 
       return (
         <div className="flex flex-col gap-2 text-sm">
-          <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-            onChange={(id) => onChange({ ...props, dataSourceId: id })} />
-          <label className="flex flex-col gap-1">Colonnes (séparées par des virgules)
-            <input aria-label="Colonnes" className="h-9 rounded-md border border-slate-300 px-2"
+          <DataSourceSelect
+            value={String(props.dataSourceId ?? "")}
+            dataSources={dataSources}
+            onChange={(id) => onChange({ ...props, dataSourceId: id })}
+          />
+          <label className="flex flex-col gap-1">
+            Colonnes (séparées par des virgules)
+            <input
+              aria-label="Colonnes"
+              className="h-9 rounded-md border border-slate-300 px-2"
               value={plainColumns.join(",")}
-              onChange={(e) => setPlainColumns(e.target.value.split(",").map((c) => c.trim()).filter(Boolean))} />
+              onChange={(e) =>
+                setPlainColumns(
+                  e.target.value
+                    .split(",")
+                    .map((c) => c.trim())
+                    .filter(Boolean),
+                )
+              }
+            />
           </label>
           {calculatedColumns.map((col, i) => (
             <div key={i} className="flex flex-col gap-1 rounded border border-slate-200 p-2">
-              <label className="flex flex-col gap-1">Libellé
-                <input aria-label={`Libellé de la colonne calculée ${i + 1}`} className="h-9 rounded-md border border-slate-300 px-2"
-                  value={col.label} onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })} />
+              <label className="flex flex-col gap-1">
+                Libellé
+                <input
+                  aria-label={`Libellé de la colonne calculée ${i + 1}`}
+                  className="h-9 rounded-md border border-slate-300 px-2"
+                  value={col.label}
+                  onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })}
+                />
               </label>
-              <label className="flex flex-col gap-1">Expression
-                <input aria-label={`Expression de la colonne calculée ${i + 1}`} className="h-9 rounded-md border border-slate-300 px-2 font-mono"
-                  value={col.expr} onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })} />
+              <label className="flex flex-col gap-1">
+                Expression
+                <input
+                  aria-label={`Expression de la colonne calculée ${i + 1}`}
+                  className="h-9 rounded-md border border-slate-300 px-2 font-mono"
+                  value={col.expr}
+                  onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })}
+                />
               </label>
-              <button type="button" className="self-start text-xs text-red-600 underline" onClick={() => removeCalculatedColumn(i)}>
+              <button
+                type="button"
+                className="self-start text-xs text-red-600 underline"
+                onClick={() => removeCalculatedColumn(i)}
+              >
                 Supprimer la colonne
               </button>
             </div>
           ))}
-          <button type="button" className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
-            onClick={addCalculatedColumn}>
+          <button
+            type="button"
+            className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={addCalculatedColumn}
+          >
             Ajouter une colonne calculée
           </button>
         </div>
@@ -153,11 +212,15 @@ export function registerDataWidgets(): void {
       const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
       const [page, setPage] = useState(0);
       const data = ctx.data;
-      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (!data || data.loading)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+      if (data.records.length === 0)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const rawColumns = (props.columns as TableColumn[] | undefined) ?? [];
-      const columns: TableColumn[] = rawColumns.length ? rawColumns : Object.keys(data.records[0]?.properties ?? {});
+      const columns: TableColumn[] = rawColumns.length
+        ? rawColumns
+        : Object.keys(data.records[0]?.properties ?? {});
 
       function columnKey(c: TableColumn): string {
         return isCalculatedColumn(c) ? c.label : c;
@@ -167,7 +230,11 @@ export function registerDataWidgets(): void {
       }
       function cellValue(c: TableColumn, r: DataRecord): string {
         if (!isCalculatedColumn(c)) return String(r.properties[c] ?? "");
-        const value = evaluateExpression(c.expr, { vars: ctx.variables ?? {}, record: r.properties, user: ctx.user ?? { name: "" } });
+        const value = evaluateExpression(c.expr, {
+          vars: ctx.variables ?? {},
+          record: r.properties,
+          user: ctx.user ?? { name: "" },
+        });
         return value === undefined || value === null ? "" : String(value);
       }
 
@@ -188,7 +255,10 @@ export function registerDataWidgets(): void {
 
       function toggleSort(c: string) {
         if (sortCol === c) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        else { setSortCol(c); setSortDir("asc"); }
+        else {
+          setSortCol(c);
+          setSortDir("asc");
+        }
         setPage(0);
       }
 
@@ -196,12 +266,24 @@ export function registerDataWidgets(): void {
         ctx.bus?.emit(ctx.widgetId ?? "", "itemSelected", r);
         const datasetId = ctx.data?.datasetId;
         const pkColumn = ctx.data?.pkColumn;
-        if (datasetId && pkColumn) setCrossFilter(datasetId, pkColumn, String(r.id), String(props.dataSourceId ?? ""), r.geometry);
+        if (datasetId && pkColumn)
+          setCrossFilter(
+            datasetId,
+            pkColumn,
+            String(r.id),
+            String(props.dataSourceId ?? ""),
+            r.geometry,
+          );
       }
 
       return (
         <div className="relative flex h-full flex-col text-xs">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={String(props.dataSourceId ?? "")} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
+          <ExplorerMenu
+            datasetId={data.datasetId}
+            dataSourceId={String(props.dataSourceId ?? "")}
+            resolvedSource={data.resolvedSource}
+            hasGeometry={data.hasGeometry}
+          />
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
               <tr>
@@ -212,8 +294,13 @@ export function registerDataWidgets(): void {
                       {isCalculatedColumn(c) ? (
                         <span className="font-medium">{columnLabel(c)}</span>
                       ) : (
-                        <button type="button" className="flex items-center gap-1 font-medium" onClick={() => toggleSort(key)}>
-                          {columnLabel(c)}{sortCol === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 font-medium"
+                          onClick={() => toggleSort(key)}
+                        >
+                          {columnLabel(c)}
+                          {sortCol === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                         </button>
                       )}
                     </th>
@@ -228,18 +315,36 @@ export function registerDataWidgets(): void {
                   className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
                   onClick={() => selectRecord(r)}
                 >
-                  {columns.map((c) => <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">{cellValue(c, r)}</td>)}
+                  {columns.map((c) => (
+                    <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">
+                      {cellValue(c, r)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
           </table>
           {pageCount > 1 && (
             <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-[var(--gs-color-muted)]">
-              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-                disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
-              <span>Page {current + 1} / {pageCount}</span>
-              <button type="button" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-                disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
+              <button
+                type="button"
+                className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+                disabled={current === 0}
+                onClick={() => setPage(current - 1)}
+              >
+                Précédent
+              </button>
+              <span>
+                Page {current + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+                disabled={current >= pageCount - 1}
+                onClick={() => setPage(current + 1)}
+              >
+                Suivant
+              </button>
             </div>
           )}
         </div>

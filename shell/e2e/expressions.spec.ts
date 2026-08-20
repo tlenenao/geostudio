@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un Filtre pilote par expression la visibilité d'un widget et une colonne calculée, sans code", async ({ page }) => {
+test("un Filtre pilote par expression la visibilité d'un widget et une colonne calculée, sans code", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

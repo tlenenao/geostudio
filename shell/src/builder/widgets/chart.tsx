@@ -5,29 +5,57 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useAnalyticsContext, useSetCrossFilter } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
-import { bucketFor, referenceWindow, windowedStatisticsSource, type ReferenceMode } from "../../lib/comparisonWindow";
-import { buildOption, buildCompareOption, resolveClickFilter, type ChartProps, type ClickParams, type ComparePoint } from "./chartOption";
+import {
+  bucketFor,
+  referenceWindow,
+  windowedStatisticsSource,
+  type ReferenceMode,
+} from "../../lib/comparisonWindow";
+import {
+  buildOption,
+  buildCompareOption,
+  resolveClickFilter,
+  type ChartProps,
+  type ClickParams,
+  type ComparePoint,
+} from "./chartOption";
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
 const CHART_TYPES: [string, string][] = [
-  ["bar", "Barres"], ["line", "Lignes"], ["area", "Aires"], ["scatter", "Nuage de points"],
-  ["pie", "Camembert"], ["doughnut", "Anneau"], ["radar", "Radar"], ["heatmap", "Carte de chaleur"],
-  ["gauge", "Jauge"], ["boxplot", "Boîte à moustaches"],
-  ["sankey", "Flux (sankey)"], ["treemap", "Zones hiérarchiques (treemap)"],
-  ["sunburst", "Soleil hiérarchique (sunburst)"], ["funnel", "Entonnoir"], ["histogram", "Histogramme"],
+  ["bar", "Barres"],
+  ["line", "Lignes"],
+  ["area", "Aires"],
+  ["scatter", "Nuage de points"],
+  ["pie", "Camembert"],
+  ["doughnut", "Anneau"],
+  ["radar", "Radar"],
+  ["heatmap", "Carte de chaleur"],
+  ["gauge", "Jauge"],
+  ["boxplot", "Boîte à moustaches"],
+  ["sankey", "Flux (sankey)"],
+  ["treemap", "Zones hiérarchiques (treemap)"],
+  ["sunburst", "Soleil hiérarchique (sunburst)"],
+  ["funnel", "Entonnoir"],
+  ["histogram", "Histogramme"],
 ];
 const AXIS_TYPES: [string, string][] = [
-  ["category", "Catégorie"], ["value", "Valeur"], ["time", "Temps"], ["log", "Logarithmique"],
+  ["category", "Catégorie"],
+  ["value", "Valeur"],
+  ["time", "Temps"],
+  ["log", "Logarithmique"],
 ];
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
 
 function toComparePoints(records: DataRecord[] | undefined, timeField: string): ComparePoint[] {
-  return (records ?? []).map((r) => ({ bucket: String(r.properties[timeField] ?? ""), value: Number(r.properties.value ?? 0) }));
+  return (records ?? []).map((r) => ({
+    bucket: String(r.properties[timeField] ?? ""),
+    value: Number(r.properties.value ?? 0),
+  }));
 }
 
 export function registerChartWidget(): void {
@@ -35,10 +63,21 @@ export function registerChartWidget(): void {
     type: "chart",
     label: "Graphique",
     defaultProps: {
-      dataSourceId: "", chartType: "bar", categoryField: "", valueField: "",
-      stack: false, legend: true, zoom: false,
-      xAxisType: "category", yAxisType: "value", yAxisFormat: "", yAxisUnit: "",
-      title: "", advancedOption: "", compareEnabled: false, comparePeriod: "previous",
+      dataSourceId: "",
+      chartType: "bar",
+      categoryField: "",
+      valueField: "",
+      stack: false,
+      legend: true,
+      zoom: false,
+      xAxisType: "category",
+      yAxisType: "value",
+      yAxisFormat: "",
+      yAxisUnit: "",
+      title: "",
+      advancedOption: "",
+      compareEnabled: false,
+      comparePeriod: "previous",
     },
     configSchema: [
       { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
@@ -53,9 +92,19 @@ export function registerChartWidget(): void {
       { name: "yAxisFormat", type: "string", label: "Format axe Y", default: "" },
       { name: "yAxisUnit", type: "string", label: "Unité axe Y", default: "" },
       { name: "title", type: "string", label: "Titre", default: "" },
-      { name: "advancedOption", type: "string", label: "Option ECharts avancée (JSON)", default: "" },
+      {
+        name: "advancedOption",
+        type: "string",
+        label: "Option ECharts avancée (JSON)",
+        default: "",
+      },
       { name: "compareEnabled", type: "boolean", label: "Comparaison de période", default: false },
-      { name: "comparePeriod", type: "string", label: "Période de comparaison", default: "previous" },
+      {
+        name: "comparePeriod",
+        type: "string",
+        label: "Période de comparaison",
+        default: "previous",
+      },
     ],
     defaultSize: { w: 6, h: 4 },
     events: ["categorySelected"],
@@ -63,43 +112,77 @@ export function registerChartWidget(): void {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       const chartType = String(props.chartType ?? "bar");
       const showCompare = chartType === "line" || chartType === "area";
-      const showCategoryValue = chartType !== "sankey" && chartType !== "treemap" && chartType !== "sunburst";
+      const showCategoryValue =
+        chartType !== "sankey" && chartType !== "treemap" && chartType !== "sunburst";
       const showSankeyEncodings = chartType === "sankey";
       const showHierarchyEncodings = chartType === "treemap" || chartType === "sunburst";
       const encodings = (props.encodings as ChartProps["encodings"]) ?? {};
-      const setEncodings = (patch: Record<string, unknown>) => set({ encodings: { ...encodings, ...patch } });
+      const setEncodings = (patch: Record<string, unknown>) =>
+        set({ encodings: { ...encodings, ...patch } });
       const levels = encodings.levels ?? [];
       return (
         <div className="flex flex-col gap-2 text-sm">
-          <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-            onChange={(id) => set({ dataSourceId: id })} />
-          <label className={labelCls}>Type de graphique
-            <select aria-label="Type de graphique" className={inputCls}
-              value={chartType} onChange={(e) => set({ chartType: e.target.value })}>
-              {CHART_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <DataSourceSelect
+            value={String(props.dataSourceId ?? "")}
+            dataSources={dataSources}
+            onChange={(id) => set({ dataSourceId: id })}
+          />
+          <label className={labelCls}>
+            Type de graphique
+            <select
+              aria-label="Type de graphique"
+              className={inputCls}
+              value={chartType}
+              onChange={(e) => set({ chartType: e.target.value })}
+            >
+              {CHART_TYPES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
             </select>
           </label>
           {showCategoryValue && (
             <>
-              <label className={labelCls}>Champ catégorie / X
-                <input aria-label="Champ catégorie" className={inputCls}
-                  value={String(props.categoryField ?? "")} onChange={(e) => set({ categoryField: e.target.value })} />
+              <label className={labelCls}>
+                Champ catégorie / X
+                <input
+                  aria-label="Champ catégorie"
+                  className={inputCls}
+                  value={String(props.categoryField ?? "")}
+                  onChange={(e) => set({ categoryField: e.target.value })}
+                />
               </label>
-              <label className={labelCls}>Champ valeur (camembert / jauge / comparaison)
-                <input aria-label="Champ valeur" className={inputCls}
-                  value={String(props.valueField ?? "")} onChange={(e) => set({ valueField: e.target.value })} />
+              <label className={labelCls}>
+                Champ valeur (camembert / jauge / comparaison)
+                <input
+                  aria-label="Champ valeur"
+                  className={inputCls}
+                  value={String(props.valueField ?? "")}
+                  onChange={(e) => set({ valueField: e.target.value })}
+                />
               </label>
             </>
           )}
           {showSankeyEncodings && (
             <>
-              <label className={labelCls}>Champ source
-                <input aria-label="Champ source" className={inputCls}
-                  value={String(encodings.source ?? "")} onChange={(e) => setEncodings({ source: e.target.value })} />
+              <label className={labelCls}>
+                Champ source
+                <input
+                  aria-label="Champ source"
+                  className={inputCls}
+                  value={String(encodings.source ?? "")}
+                  onChange={(e) => setEncodings({ source: e.target.value })}
+                />
               </label>
-              <label className={labelCls}>Champ cible
-                <input aria-label="Champ cible" className={inputCls}
-                  value={String(encodings.target ?? "")} onChange={(e) => setEncodings({ target: e.target.value })} />
+              <label className={labelCls}>
+                Champ cible
+                <input
+                  aria-label="Champ cible"
+                  className={inputCls}
+                  value={String(encodings.target ?? "")}
+                  onChange={(e) => setEncodings({ target: e.target.value })}
+                />
               </label>
             </>
           )}
@@ -108,15 +191,30 @@ export function registerChartWidget(): void {
               <span>Niveaux (hiérarchie)</span>
               {levels.map((lvl, i) => (
                 <div key={i} className="flex items-center gap-1">
-                  <input aria-label={`Niveau ${i + 1}`} className={inputCls}
-                    value={lvl} onChange={(e) => setEncodings({ levels: levels.map((l, j) => (j === i ? e.target.value : l)) })} />
-                  <button type="button" aria-label={`Retirer le niveau ${i + 1}`} className="text-xs text-red-600"
-                    onClick={() => setEncodings({ levels: levels.filter((_, j) => j !== i) })}>✕</button>
+                  <input
+                    aria-label={`Niveau ${i + 1}`}
+                    className={inputCls}
+                    value={lvl}
+                    onChange={(e) =>
+                      setEncodings({ levels: levels.map((l, j) => (j === i ? e.target.value : l)) })
+                    }
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Retirer le niveau ${i + 1}`}
+                    className="text-xs text-red-600"
+                    onClick={() => setEncodings({ levels: levels.filter((_, j) => j !== i) })}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
               {levels.length < 3 && (
-                <button type="button" className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
-                  onClick={() => setEncodings({ levels: [...levels, ""] })}>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  onClick={() => setEncodings({ levels: [...levels, ""] })}
+                >
                   + Niveau
                 </button>
               )}
@@ -125,59 +223,113 @@ export function registerChartWidget(): void {
           {showCompare && (
             <>
               <label className="flex items-center gap-2">
-                <input type="checkbox" aria-label="Comparer les périodes"
-                  checked={Boolean(props.compareEnabled)} onChange={(e) => set({ compareEnabled: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  aria-label="Comparer les périodes"
+                  checked={Boolean(props.compareEnabled)}
+                  onChange={(e) => set({ compareEnabled: e.target.checked })}
+                />
                 Comparer les périodes
               </label>
-              <label className={labelCls}>Période de référence
-                <select aria-label="Période de référence" className={inputCls}
-                  value={String(props.comparePeriod ?? "previous")} onChange={(e) => set({ comparePeriod: e.target.value })}>
+              <label className={labelCls}>
+                Période de référence
+                <select
+                  aria-label="Période de référence"
+                  className={inputCls}
+                  value={String(props.comparePeriod ?? "previous")}
+                  onChange={(e) => set({ comparePeriod: e.target.value })}
+                >
                   <option value="previous">Période précédente</option>
                   <option value="sameLastYear">Même période l'an dernier</option>
                 </select>
               </label>
             </>
           )}
-          <label className={labelCls}>Type d'axe X
-            <select aria-label="Type d'axe X" className={inputCls}
-              value={String(props.xAxisType ?? "category")} onChange={(e) => set({ xAxisType: e.target.value })}>
-              {AXIS_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <label className={labelCls}>
+            Type d'axe X
+            <select
+              aria-label="Type d'axe X"
+              className={inputCls}
+              value={String(props.xAxisType ?? "category")}
+              onChange={(e) => set({ xAxisType: e.target.value })}
+            >
+              {AXIS_TYPES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
             </select>
           </label>
-          <label className={labelCls}>Type d'axe Y
-            <select aria-label="Type d'axe Y" className={inputCls}
-              value={String(props.yAxisType ?? "value")} onChange={(e) => set({ yAxisType: e.target.value })}>
-              {AXIS_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <label className={labelCls}>
+            Type d'axe Y
+            <select
+              aria-label="Type d'axe Y"
+              className={inputCls}
+              value={String(props.yAxisType ?? "value")}
+              onChange={(e) => set({ yAxisType: e.target.value })}
+            >
+              {AXIS_TYPES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
             </select>
           </label>
-          <label className={labelCls}>Unité de l'axe Y
-            <input aria-label="Unité de l'axe Y" className={inputCls}
-              value={String(props.yAxisUnit ?? "")} onChange={(e) => set({ yAxisUnit: e.target.value })} />
+          <label className={labelCls}>
+            Unité de l'axe Y
+            <input
+              aria-label="Unité de l'axe Y"
+              className={inputCls}
+              value={String(props.yAxisUnit ?? "")}
+              onChange={(e) => set({ yAxisUnit: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Titre
-            <input aria-label="Titre du graphique" className={inputCls}
-              value={String(props.title ?? "")} onChange={(e) => set({ title: e.target.value })} />
+          <label className={labelCls}>
+            Titre
+            <input
+              aria-label="Titre du graphique"
+              className={inputCls}
+              value={String(props.title ?? "")}
+              onChange={(e) => set({ title: e.target.value })}
+            />
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" aria-label="Empiler les séries"
-              checked={Boolean(props.stack)} onChange={(e) => set({ stack: e.target.checked })} />
+            <input
+              type="checkbox"
+              aria-label="Empiler les séries"
+              checked={Boolean(props.stack)}
+              onChange={(e) => set({ stack: e.target.checked })}
+            />
             Empiler les séries
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" aria-label="Afficher la légende"
-              checked={props.legend !== false} onChange={(e) => set({ legend: e.target.checked })} />
+            <input
+              type="checkbox"
+              aria-label="Afficher la légende"
+              checked={props.legend !== false}
+              onChange={(e) => set({ legend: e.target.checked })}
+            />
             Afficher la légende
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" aria-label="Activer le zoom"
-              checked={Boolean(props.zoom)} onChange={(e) => set({ zoom: e.target.checked })} />
+            <input
+              type="checkbox"
+              aria-label="Activer le zoom"
+              checked={Boolean(props.zoom)}
+              onChange={(e) => set({ zoom: e.target.checked })}
+            />
             Activer le zoom
           </label>
-          <label className={labelCls}>Option ECharts avancée (JSON)
-            <textarea aria-label="Option ECharts avancée (JSON)"
-              className="rounded-md border border-slate-300 p-2 font-mono text-xs" rows={4}
+          <label className={labelCls}>
+            Option ECharts avancée (JSON)
+            <textarea
+              aria-label="Option ECharts avancée (JSON)"
+              className="rounded-md border border-slate-300 p-2 font-mono text-xs"
+              rows={4}
               placeholder='{"color":["#f00"]}'
-              value={String(props.advancedOption ?? "")} onChange={(e) => set({ advancedOption: e.target.value })} />
+              value={String(props.advancedOption ?? "")}
+              onChange={(e) => set({ advancedOption: e.target.value })}
+            />
           </label>
         </div>
       );
@@ -190,7 +342,8 @@ export function registerChartWidget(): void {
       const datasetId = data?.datasetId;
       const chartType = String(props.chartType ?? "bar");
       const originSourceId = String(props.dataSourceId ?? "");
-      const compareRequested = Boolean(props.compareEnabled) && (chartType === "line" || chartType === "area");
+      const compareRequested =
+        Boolean(props.compareEnabled) && (chartType === "line" || chartType === "area");
       const comparePeriod = (props.comparePeriod as ReferenceMode | undefined) ?? "previous";
       const valueField = String(props.valueField ?? "");
       const agg = valueField ? "sum" : "count";
@@ -204,7 +357,8 @@ export function registerChartWidget(): void {
       const timeRange = analyticsCtx.timeRange;
       const compareActive = compareRequested && Boolean(dataset?.timeField) && Boolean(timeRange);
       const bucket = compareActive && timeRange ? bucketFor(timeRange) : "day";
-      const referenceRange = compareActive && timeRange ? referenceWindow(timeRange, comparePeriod) : null;
+      const referenceRange =
+        compareActive && timeRange ? referenceWindow(timeRange, comparePeriod) : null;
 
       // Cache-key deviation from the naive ["chart-compare-current", datasetId,
       // timeRange, ...] form (see Task 5 brief): resolve the DataSource FIRST via
@@ -214,21 +368,43 @@ export function registerChartWidget(): void {
       // folds the widget's own source id (`originSourceId`) and the fully
       // resolved, cross-filter-patched query into the key, so two chart widgets
       // on the same dataset+metric can't collide in the TanStack Query cache.
-      const currentSource: DataSource | null = compareActive && timeRange
-        ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, timeRange, {
-            groupBy: (dataset as DatasetConfig).timeField as string, bucket, agg, field: valueField || undefined,
-          })
-        : null;
+      const currentSource: DataSource | null =
+        compareActive && timeRange
+          ? windowedStatisticsSource(
+              originSourceId,
+              datasetId as string,
+              dataset as DatasetConfig,
+              analyticsCtx,
+              timeRange,
+              {
+                groupBy: (dataset as DatasetConfig).timeField as string,
+                bucket,
+                agg,
+                field: valueField || undefined,
+              },
+            )
+          : null;
       const currentQuery = useQuery({
         queryKey: ["chart-compare-current", currentSource?.id, currentSource?.query],
         queryFn: () => client.queryDataSource(currentSource as DataSource),
         enabled: Boolean(compareActive && currentSource),
       });
-      const referenceSource: DataSource | null = compareActive && referenceRange
-        ? windowedStatisticsSource(originSourceId, datasetId as string, dataset as DatasetConfig, analyticsCtx, referenceRange, {
-            groupBy: (dataset as DatasetConfig).timeField as string, bucket, agg, field: valueField || undefined,
-          })
-        : null;
+      const referenceSource: DataSource | null =
+        compareActive && referenceRange
+          ? windowedStatisticsSource(
+              originSourceId,
+              datasetId as string,
+              dataset as DatasetConfig,
+              analyticsCtx,
+              referenceRange,
+              {
+                groupBy: (dataset as DatasetConfig).timeField as string,
+                bucket,
+                agg,
+                field: valueField || undefined,
+              },
+            )
+          : null;
       const referenceQuery = useQuery({
         queryKey: ["chart-compare-reference", referenceSource?.id, referenceSource?.query],
         queryFn: () => client.queryDataSource(referenceSource as DataSource),
@@ -236,15 +412,25 @@ export function registerChartWidget(): void {
       });
 
       if (compareActive) {
-        if (currentQuery.isLoading || referenceQuery.isLoading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-        if (currentQuery.isError || referenceQuery.isError) return <p className="text-xs text-red-600">Erreur de données</p>;
+        if (currentQuery.isLoading || referenceQuery.isLoading)
+          return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+        if (currentQuery.isError || referenceQuery.isError)
+          return <p className="text-xs text-red-600">Erreur de données</p>;
         const timeField = (dataset as DatasetConfig).timeField as string;
         const option = buildCompareOption(
-          props as unknown as ChartProps, toComparePoints(currentQuery.data, timeField), toComparePoints(referenceQuery.data, timeField), bucket,
+          props as unknown as ChartProps,
+          toComparePoints(currentQuery.data, timeField),
+          toComparePoints(referenceQuery.data, timeField),
+          bucket,
         );
         return (
           <div className="relative h-full">
-            <ExplorerMenu datasetId={datasetId} dataSourceId={originSourceId} resolvedSource={data?.resolvedSource} hasGeometry={data?.hasGeometry} />
+            <ExplorerMenu
+              datasetId={datasetId}
+              dataSourceId={originSourceId}
+              resolvedSource={data?.resolvedSource}
+              hasGeometry={data?.hasGeometry}
+            />
             <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
               <EChart option={option} />
             </Suspense>
@@ -252,19 +438,27 @@ export function registerChartWidget(): void {
         );
       }
 
-      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (!data || data.loading)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+      if (data.records.length === 0)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);
       function handleClick(params: ClickParams) {
         const resolved = resolveClickFilter(chartType, props as unknown as ChartProps, params);
         if (!resolved) return;
         ctx.bus?.emit(ctx.widgetId ?? "", "categorySelected", { [resolved.field]: resolved.value });
-        if (data?.datasetId) setCrossFilter(data.datasetId, resolved.field, resolved.value, originSourceId);
+        if (data?.datasetId)
+          setCrossFilter(data.datasetId, resolved.field, resolved.value, originSourceId);
       }
       return (
         <div className="relative h-full">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={originSourceId} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
+          <ExplorerMenu
+            datasetId={data.datasetId}
+            dataSourceId={originSourceId}
+            resolvedSource={data.resolvedSource}
+            hasGeometry={data.hasGeometry}
+          />
           <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
             <EChart option={option} onClick={handleClick} />
           </Suspense>

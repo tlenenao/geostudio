@@ -39,20 +39,27 @@ export function ActionsPanel({
 }) {
   const emitters = items.filter((i) => (getWidget(i.widget)?.events?.length ?? 0) > 0);
   const widgetReceivers = items.filter((i) => (getWidget(i.widget)?.actions?.length ?? 0) > 0);
-  const variableReceivers = variables.map((v) => ({ id: `var:${v.id}`, label: `Variable : ${v.name}` }));
+  const variableReceivers = variables.map((v) => ({
+    id: `var:${v.id}`,
+    label: `Variable : ${v.name}`,
+  }));
   const [from, setFrom] = useState("");
   const [event, setEvent] = useState("");
   const [to, setTo] = useState("");
   const [action, setAction] = useState("");
 
   const visibleMessages = messages.filter(
-    (m) => resolvesOnThisPage(items, variables, m.from) && resolvesOnThisPage(items, variables, m.to),
+    (m) =>
+      resolvesOnThisPage(items, variables, m.from) && resolvesOnThisPage(items, variables, m.to),
   );
 
   function add() {
     if (!from || !event || !to || !action) return;
     onChange([...messages, { id: crypto.randomUUID(), from, event, to, action }]);
-    setFrom(""); setEvent(""); setTo(""); setAction("");
+    setFrom("");
+    setEvent("");
+    setTo("");
+    setAction("");
   }
   function remove(id: string) {
     onChange(messages.filter((m) => m.id !== id));
@@ -68,10 +75,23 @@ export function ActionsPanel({
           const when = m.when ?? "";
           const error = when ? validateExpression(when) : null;
           return (
-            <li key={m.id} className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs">
+            <li
+              key={m.id}
+              className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs"
+            >
               <div className="flex items-center justify-between">
-                <span>{widgetLabel(items, variables, m.from)}.{m.event} → {widgetLabel(items, variables, m.to)}.{m.action}</span>
-                <button type="button" aria-label={`Retirer l'action ${m.id}`} className="text-red-600" onClick={() => remove(m.id)}>✕</button>
+                <span>
+                  {widgetLabel(items, variables, m.from)}.{m.event} →{" "}
+                  {widgetLabel(items, variables, m.to)}.{m.action}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Retirer l'action ${m.id}`}
+                  className="text-red-600"
+                  onClick={() => remove(m.id)}
+                >
+                  ✕
+                </button>
               </div>
               <input
                 aria-label={`Condition de l'action ${m.id}`}
@@ -80,34 +100,86 @@ export function ActionsPanel({
                 value={when}
                 onChange={(e) => updateWhen(m.id, e.target.value)}
               />
-              {error && <span role="alert" className="text-red-600">{error}</span>}
+              {error && (
+                <span role="alert" className="text-red-600">
+                  {error}
+                </span>
+              )}
             </li>
           );
         })}
         {visibleMessages.length === 0 && <li className="text-xs text-slate-400">Aucune action.</li>}
       </ul>
-      <select aria-label="Widget émetteur" className={selectCls} value={from}
-        onChange={(e) => { setFrom(e.target.value); setEvent(""); }}>
+      <select
+        aria-label="Widget émetteur"
+        className={selectCls}
+        value={from}
+        onChange={(e) => {
+          setFrom(e.target.value);
+          setEvent("");
+        }}
+      >
         <option value="">Widget émetteur…</option>
-        {emitters.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, variables, i.id)}</option>)}
+        {emitters.map((i) => (
+          <option key={i.id} value={i.id}>
+            {widgetLabel(items, variables, i.id)}
+          </option>
+        ))}
       </select>
-      <select aria-label="Événement" className={selectCls} value={event} disabled={!from}
-        onChange={(e) => setEvent(e.target.value)}>
+      <select
+        aria-label="Événement"
+        className={selectCls}
+        value={event}
+        disabled={!from}
+        onChange={(e) => setEvent(e.target.value)}
+      >
         <option value="">Événement…</option>
-        {eventsOf(items, from).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
+        {eventsOf(items, from).map((ev) => (
+          <option key={ev} value={ev}>
+            {ev}
+          </option>
+        ))}
       </select>
-      <select aria-label="Widget cible" className={selectCls} value={to}
-        onChange={(e) => { setTo(e.target.value); setAction(""); }}>
+      <select
+        aria-label="Widget cible"
+        className={selectCls}
+        value={to}
+        onChange={(e) => {
+          setTo(e.target.value);
+          setAction("");
+        }}
+      >
         <option value="">Widget cible…</option>
-        {widgetReceivers.map((i) => <option key={i.id} value={i.id}>{widgetLabel(items, variables, i.id)}</option>)}
-        {variableReceivers.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        {widgetReceivers.map((i) => (
+          <option key={i.id} value={i.id}>
+            {widgetLabel(items, variables, i.id)}
+          </option>
+        ))}
+        {variableReceivers.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.label}
+          </option>
+        ))}
       </select>
-      <select aria-label="Action" className={selectCls} value={action} disabled={!to}
-        onChange={(e) => setAction(e.target.value)}>
+      <select
+        aria-label="Action"
+        className={selectCls}
+        value={action}
+        disabled={!to}
+        onChange={(e) => setAction(e.target.value)}
+      >
         <option value="">Action…</option>
-        {actionsOf(items, to).map((a) => <option key={a} value={a}>{a}</option>)}
+        {actionsOf(items, to).map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
       </select>
-      <button type="button" className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100" onClick={add}>
+      <button
+        type="button"
+        className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+        onClick={add}
+      >
         Ajouter une action
       </button>
     </div>

@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer une entité", async ({ page }) => {
+test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer une entité", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 
@@ -48,7 +50,9 @@ test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer u
   await expect(page.getByText(/Modification de l'enregistrement/)).toBeHidden();
 });
 
-test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est refusée (403)", async ({ page }) => {
+test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est refusée (403)", async ({
+  page,
+}) => {
   await mockCore(page);
   // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
   // récemment enregistrée qui matche, donc ceci l'emporte sur le
@@ -56,8 +60,15 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
   await page.route("**/collections/incidents", async (route) => {
     await route.fulfill({
       json: {
-        id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-        isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id",
+        id: "incidents",
+        title: "Incidents",
+        description: "",
+        tableName: "incidents",
+        isPublic: true,
+        editable: true,
+        geometryType: null,
+        srid: null,
+        pkColumn: "id",
         canWrite: false,
       },
     });
@@ -88,7 +99,11 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
     const res = await fetch("https://core.test/collections/incidents/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "Feature", properties: { titre: "Forcé", gravite: "haute" }, geometry: null }),
+      body: JSON.stringify({
+        type: "Feature",
+        properties: { titre: "Forcé", gravite: "haute" },
+        geometry: null,
+      }),
     });
     return res.status;
   });

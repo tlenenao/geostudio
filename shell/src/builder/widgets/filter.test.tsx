@@ -6,7 +6,10 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("filter widget emits changed with the configured field", async () => {
   const bus = new ActionBus();
@@ -14,7 +17,12 @@ test("filter widget emits changed with the configured field", async () => {
   bus.register("list1", "setFilter", handler);
   bus.configure([{ id: "m", from: "flt1", event: "changed", to: "list1", action: "setFilter" }]);
   const Filter = getWidget("filter")!.Component;
-  render(<Filter props={{ field: "nom", label: "Filtrer" }} ctx={{ mode: "runtime", bus, widgetId: "flt1" } as WidgetContext} />);
+  render(
+    <Filter
+      props={{ field: "nom", label: "Filtrer" }}
+      ctx={{ mode: "runtime", bus, widgetId: "flt1" } as WidgetContext}
+    />,
+  );
   await userEvent.type(screen.getByLabelText("Valeur du filtre"), "A");
   expect(handler).toHaveBeenLastCalledWith({ nom: "A" });
 });

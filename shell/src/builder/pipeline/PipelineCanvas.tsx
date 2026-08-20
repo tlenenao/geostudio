@@ -1,12 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useState } from "react";
 import {
-  Background, Controls, EdgeLabelRenderer, Handle, Position, ReactFlow, ReactFlowProvider,
+  Background,
+  Controls,
+  EdgeLabelRenderer,
+  Handle,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
   getBezierPath,
-  type Edge, type EdgeChange, type EdgeProps, type Node, type NodeChange, type NodeProps, type OnConnect,
+  type Edge,
+  type EdgeChange,
+  type EdgeProps,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  type OnConnect,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { PipelineEdge, PipelineNode, PipelineNodeStat, PipelineOpsCatalog } from "../../api/types";
+import type {
+  PipelineEdge,
+  PipelineNode,
+  PipelineNodeStat,
+  PipelineOpsCatalog,
+} from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 
 // Les 6 op transform.* insérables sur une arête (cf. plan Task 6 — clic sur
@@ -47,10 +64,17 @@ type CanvasNodeData = PipelineNode & {
 function PipelineNodeBox({ data, selected }: NodeProps) {
   const node = data as unknown as CanvasNodeData;
   return (
-    <div className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-blue-500" : ""}`}>
+    <div
+      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-blue-500" : ""}`}
+    >
       <Handle type="target" position={Position.Left} id="primary" />
       {node.acceptsSecondaryInput && (
-        <Handle type="target" position={Position.Top} id="secondary" style={{ borderStyle: "dashed" }} />
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="secondary"
+          style={{ borderStyle: "dashed" }}
+        />
       )}
       <div className="font-medium">{node.title ?? node.op}</div>
       <div className="text-[10px] text-slate-500">{node.op}</div>
@@ -75,7 +99,13 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
 }
 
 function InsertOnEdgeButton({
-  id, sourceX, sourceY, targetX, targetY, data, onInsert,
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  data,
+  onInsert,
 }: EdgeProps & { onInsert: (edgeId: string, op: string) => void }) {
   const [open, setOpen] = useState(false);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
@@ -89,7 +119,13 @@ function InsertOnEdgeButton({
         style={role === "secondary" ? { strokeDasharray: "4 4" } : undefined}
       />
       <EdgeLabelRenderer>
-        <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, pointerEvents: "all" }}>
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: "all",
+          }}
+        >
           <button
             type="button"
             aria-label="Insérer une étape sur cette arête"
@@ -99,14 +135,20 @@ function InsertOnEdgeButton({
             +
           </button>
           {open && (
-            <ul role="menu" className="absolute z-10 mt-1 rounded border border-slate-300 bg-white text-xs shadow">
+            <ul
+              role="menu"
+              className="absolute z-10 mt-1 rounded border border-slate-300 bg-white text-xs shadow"
+            >
               {INSERTABLE_TRANSFORMS.map((t) => (
                 <li key={t.op}>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full whitespace-nowrap px-2 py-1 text-left hover:bg-slate-100"
-                    onClick={() => { onInsert(id, t.op); setOpen(false); }}
+                    onClick={() => {
+                      onInsert(id, t.op);
+                      setOpen(false);
+                    }}
                   >
                     {t.label}
                   </button>
@@ -121,26 +163,40 @@ function InsertOnEdgeButton({
 }
 
 function toFlowNode(
-  n: PipelineNode, selected: boolean,
+  n: PipelineNode,
+  selected: boolean,
   extra: { acceptsSecondaryInput: boolean; nodeStat?: PipelineNodeStat; isNext: boolean },
 ): Node {
   return {
-    id: n.id, position: { x: n.x, y: n.y },
+    id: n.id,
+    position: { x: n.x, y: n.y },
     data: { ...n, ...extra } as unknown as Record<string, unknown>,
-    type: "pipelineNode", selected,
+    type: "pipelineNode",
+    selected,
   };
 }
 function toFlowEdge(e: PipelineEdge): Edge {
   return {
-    id: e.id, source: e.from, target: e.to, type: "insertable",
+    id: e.id,
+    source: e.from,
+    target: e.to,
+    type: "insertable",
     targetHandle: e.role === "secondary" ? "secondary" : "primary",
     data: { role: e.role },
   };
 }
 
 function PipelineCanvasInner({
-  nodes, edges, selectedNodeId, onSelectNode, onNodesChange, onEdgesChange, onInsertOnEdge,
-  opsCatalog, nodeStats, runStatus,
+  nodes,
+  edges,
+  selectedNodeId,
+  onSelectNode,
+  onNodesChange,
+  onEdgesChange,
+  onInsertOnEdge,
+  opsCatalog,
+  nodeStats,
+  runStatus,
 }: {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
@@ -154,43 +210,62 @@ function PipelineCanvasInner({
   runStatus?: "queued" | "running" | "succeeded" | "failed";
 }) {
   const nodeTypes = { pipelineNode: PipelineNodeBox };
-  const edgeTypes = { insertable: (props: EdgeProps) => <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} /> };
+  const edgeTypes = {
+    insertable: (props: EdgeProps) => <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} />,
+  };
 
-  const onConnect: OnConnect = useCallback((connection) => {
-    if (!connection.source || !connection.target) return;
-    const role: "primary" | "secondary" = connection.targetHandle === "secondary" ? "secondary" : "primary";
-    if (hasIncomingEdge(edges, connection.target, role)) return; // garde §3.4/§4.3 : ≤ 1 arête entrante par rôle
-    if (wouldCreateCycle(nodes, edges, { from: connection.source, to: connection.target })) return;
-    const newEdge: PipelineEdge = { id: genEdgeId(), from: connection.source, to: connection.target };
-    if (role === "secondary") newEdge.role = "secondary";
-    onEdgesChange([...edges, newEdge]);
-  }, [nodes, edges, onEdgesChange]);
+  const onConnect: OnConnect = useCallback(
+    (connection) => {
+      if (!connection.source || !connection.target) return;
+      const role: "primary" | "secondary" =
+        connection.targetHandle === "secondary" ? "secondary" : "primary";
+      if (hasIncomingEdge(edges, connection.target, role)) return; // garde §3.4/§4.3 : ≤ 1 arête entrante par rôle
+      if (wouldCreateCycle(nodes, edges, { from: connection.source, to: connection.target }))
+        return;
+      const newEdge: PipelineEdge = {
+        id: genEdgeId(),
+        from: connection.source,
+        to: connection.target,
+      };
+      if (role === "secondary") newEdge.role = "secondary";
+      onEdgesChange([...edges, newEdge]);
+    },
+    [nodes, edges, onEdgesChange],
+  );
 
-  const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    let next = nodes;
-    for (const change of changes) {
-      if (change.type === "position" && change.position) {
-        next = next.map((n) => (n.id === change.id ? { ...n, x: change.position!.x, y: change.position!.y } : n));
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      let next = nodes;
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          next = next.map((n) =>
+            n.id === change.id ? { ...n, x: change.position!.x, y: change.position!.y } : n,
+          );
+        }
+        if (change.type === "remove") {
+          next = next.filter((n) => n.id !== change.id);
+        }
+        // Ne réagit qu'à l'événement "sélectionné" (jamais "déselectionné") :
+        // un clic sur un nouveau nœud émet deux changements dans un ordre non
+        // garanti (ancien nœud selected:false, nouveau selected:true) — ne
+        // traiter que selected:true rend la sélection robuste à cet ordre.
+        // La désélection (clic sur le fond) passe par onPaneClick ci-dessous.
+        if (change.type === "select" && change.selected) {
+          onSelectNode(change.id);
+        }
       }
-      if (change.type === "remove") {
-        next = next.filter((n) => n.id !== change.id);
-      }
-      // Ne réagit qu'à l'événement "sélectionné" (jamais "déselectionné") :
-      // un clic sur un nouveau nœud émet deux changements dans un ordre non
-      // garanti (ancien nœud selected:false, nouveau selected:true) — ne
-      // traiter que selected:true rend la sélection robuste à cet ordre.
-      // La désélection (clic sur le fond) passe par onPaneClick ci-dessous.
-      if (change.type === "select" && change.selected) {
-        onSelectNode(change.id);
-      }
-    }
-    if (next !== nodes) onNodesChange(next);
-  }, [nodes, onNodesChange, onSelectNode]);
+      if (next !== nodes) onNodesChange(next);
+    },
+    [nodes, onNodesChange, onSelectNode],
+  );
 
-  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
-    if (removedIds.size) onEdgesChange(edges.filter((e) => !removedIds.has(e.id)));
-  }, [edges, onEdgesChange]);
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
+      if (removedIds.size) onEdgesChange(edges.filter((e) => !removedIds.has(e.id)));
+    },
+    [edges, onEdgesChange],
+  );
 
   const order = topologicalOrder(nodes, edges);
   const nextNodeId = runStatus === "running" ? order.find((id) => !nodeStats?.[id]) : undefined;
@@ -198,11 +273,13 @@ function PipelineCanvasInner({
   return (
     <div style={{ height: 480 }}>
       <ReactFlow
-        nodes={nodes.map((n) => toFlowNode(n, n.id === selectedNodeId, {
-          acceptsSecondaryInput: opsCatalog[n.op]?.acceptsSecondaryInput ?? false,
-          nodeStat: nodeStats?.[n.id],
-          isNext: n.id === nextNodeId,
-        }))}
+        nodes={nodes.map((n) =>
+          toFlowNode(n, n.id === selectedNodeId, {
+            acceptsSecondaryInput: opsCatalog[n.op]?.acceptsSecondaryInput ?? false,
+            nodeStat: nodeStats?.[n.id],
+            isNext: n.id === nextNodeId,
+          }),
+        )}
         edges={edges.map(toFlowEdge)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("creating an app from a template shows its widgets immediately in the editor", async ({ page }) => {
+test("creating an app from a template shows its widgets immediately in the editor", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

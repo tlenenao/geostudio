@@ -16,14 +16,32 @@ function previewConfig(collectionId: string): AppConfig {
   return {
     kind: "app",
     theme: {},
-    dataSources: [{ id: dataSourceId, type: "features", service: "core", layer: collectionId, query: {} }],
+    dataSources: [
+      { id: dataSourceId, type: "features", service: "core", layer: collectionId, query: {} },
+    ],
     messages: [],
     layout: {
       type: "grid",
       breakpoints: {},
       items: [
-        { id: "dataset-preview-map", widget: "map", x: 0, y: 0, w: 6, h: 6, props: { dataSourceId } },
-        { id: "dataset-preview-table", widget: "table", x: 6, y: 0, w: 6, h: 6, props: { dataSourceId, columns: [], pageSize: 10 } },
+        {
+          id: "dataset-preview-map",
+          widget: "map",
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 6,
+          props: { dataSourceId },
+        },
+        {
+          id: "dataset-preview-table",
+          widget: "table",
+          x: 6,
+          y: 0,
+          w: 6,
+          h: 6,
+          props: { dataSourceId, columns: [], pageSize: 10 },
+        },
       ],
     },
   };
@@ -43,7 +61,9 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   if (query.isError || !query.data) {
     return (
       <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-slate-600">Jeu de données introuvable.</p>
+        <p role="alert" className="text-sm text-slate-600">
+          Jeu de données introuvable.
+        </p>
       </div>
     );
   }

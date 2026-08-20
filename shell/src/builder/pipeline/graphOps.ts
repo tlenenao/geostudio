@@ -17,7 +17,9 @@ export function genEdgeId(): string {
 }
 
 export function hasIncomingEdge(
-  edges: PipelineEdge[], nodeId: string, role: "primary" | "secondary" = "primary",
+  edges: PipelineEdge[],
+  nodeId: string,
+  role: "primary" | "secondary" = "primary",
 ): boolean {
   return edges.some((e) => {
     if (e.to !== nodeId) return false;
@@ -33,7 +35,9 @@ export function hasCycle(nodes: PipelineNode[], edges: { from: string; to: strin
   const adjacency = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
   for (const e of edges) adjacency.get(e.from)?.push(e.to);
 
-  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const WHITE = 0,
+    GRAY = 1,
+    BLACK = 2;
   const color = new Map<string, number>(nodes.map((n) => [n.id, WHITE]));
 
   function visit(nodeId: string): boolean {
@@ -96,7 +100,10 @@ export function topologicalOrder(nodes: PipelineNode[], edges: PipelineEdge[]): 
     adjacency.get(e.from)?.push(e.to);
     indegree.set(e.to, (indegree.get(e.to) ?? 0) + 1);
   }
-  let queue = nodes.filter((n) => indegree.get(n.id) === 0).map((n) => n.id).sort();
+  let queue = nodes
+    .filter((n) => indegree.get(n.id) === 0)
+    .map((n) => n.id)
+    .sort();
   const ordered: string[] = [];
   while (queue.length > 0) {
     const current = queue.shift()!;

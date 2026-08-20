@@ -14,8 +14,17 @@ describe("sqlLabHistory", () => {
   });
 
   test("appendSqlHistory prepends the newest entry and persists it", () => {
-    appendSqlHistory({ sql: "select 1", executedAt: "2026-08-03T10:00:00Z", status: "ok", rowCount: 1 });
-    const after = appendSqlHistory({ sql: "select 2", executedAt: "2026-08-03T10:01:00Z", status: "error" });
+    appendSqlHistory({
+      sql: "select 1",
+      executedAt: "2026-08-03T10:00:00Z",
+      status: "ok",
+      rowCount: 1,
+    });
+    const after = appendSqlHistory({
+      sql: "select 2",
+      executedAt: "2026-08-03T10:01:00Z",
+      status: "error",
+    });
     expect(after).toEqual([
       { sql: "select 2", executedAt: "2026-08-03T10:01:00Z", status: "error" },
       { sql: "select 1", executedAt: "2026-08-03T10:00:00Z", status: "ok", rowCount: 1 },

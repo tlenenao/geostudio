@@ -49,17 +49,55 @@ export function GridCanvas({
                 }}
               />
             )}
-            <div className={`h-full w-full p-1 ${editable ? "pointer-events-none" : ""}`}>{renderItem(item)}</div>
+            <div className={`h-full w-full p-1 ${editable ? "pointer-events-none" : ""}`}>
+              {renderItem(item)}
+            </div>
             {selected && (
               <div className="absolute right-0 top-0 z-20 flex gap-0.5">
-                <button type="button" aria-label={`Déplacer widget-${item.id} à gauche`}
-                  className="bg-blue-500 px-1 text-xs text-white" onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, -1, 0); }}>←</button>
-                <button type="button" aria-label={`Déplacer widget-${item.id} à droite`}
-                  className="bg-blue-500 px-1 text-xs text-white" onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, 1, 0); }}>→</button>
-                <button type="button" aria-label={`Déplacer widget-${item.id} en bas`}
-                  className="bg-blue-500 px-1 text-xs text-white" onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, 0, 1); }}>↓</button>
-                <button type="button" aria-label={`Déplacer widget-${item.id} en haut`}
-                  className="bg-blue-500 px-1 text-xs text-white" onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, 0, -1); }}>↑</button>
+                <button
+                  type="button"
+                  aria-label={`Déplacer widget-${item.id} à gauche`}
+                  className="bg-blue-500 px-1 text-xs text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveItem(item.id, -1, 0);
+                  }}
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Déplacer widget-${item.id} à droite`}
+                  className="bg-blue-500 px-1 text-xs text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveItem(item.id, 1, 0);
+                  }}
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Déplacer widget-${item.id} en bas`}
+                  className="bg-blue-500 px-1 text-xs text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveItem(item.id, 0, 1);
+                  }}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Déplacer widget-${item.id} en haut`}
+                  className="bg-blue-500 px-1 text-xs text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveItem(item.id, 0, -1);
+                  }}
+                >
+                  ↑
+                </button>
               </div>
             )}
           </div>

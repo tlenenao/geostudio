@@ -16,20 +16,38 @@ async function seedExprBoundButton(page: Page) {
     seeded = true;
     await route.fulfill({
       json: {
-        id: "cfg-9", itemId: "9", kind: "app",
+        id: "cfg-9",
+        itemId: "9",
+        kind: "app",
         config: {
-          kind: "app", theme: {}, dataSources: [], messages: [],
-          layout: { type: "grid", breakpoints: {}, items: [
-            { id: "btn-expr", widget: "button", x: 0, y: 4, w: 2, h: 1,
-              props: { label: { $expr: "vars.selected.properties.region" }, href: "" } },
-          ] },
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
+          layout: {
+            type: "grid",
+            breakpoints: {},
+            items: [
+              {
+                id: "btn-expr",
+                widget: "button",
+                x: 0,
+                y: 4,
+                w: 2,
+                h: 1,
+                props: { label: { $expr: "vars.selected.properties.region" }, href: "" },
+              },
+            ],
+          },
         },
       },
     });
   });
 }
 
-test("un binding { \$expr } sur une prop non-Texte lit un champ imbriqué d'une variable record, sans code pour le câblage", async ({ page }) => {
+test("un binding { $expr } sur une prop non-Texte lit un champ imbriqué d'une variable record, sans code pour le câblage", async ({
+  page,
+}) => {
   await mockCore(page);
   await seedExprBoundButton(page);
   await page.goto("/");

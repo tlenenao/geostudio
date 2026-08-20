@@ -3,7 +3,6 @@ import { expect, test } from "vitest";
 import { buildCompareOption, buildOption, resolveClickFilter } from "./chartOption";
 import type { DataRecord } from "../../api/types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const series = (o: unknown): any[] => {
   const s = (o as { series?: unknown }).series;
   return Array.isArray(s) ? s : s ? [s] : [];
@@ -45,12 +44,18 @@ test("pie/doughnut build a single pie series", () => {
   const pie = buildOption({ chartType: "pie", categoryField: "region", valueField: "2025" }, wide);
   expect(series(pie)).toHaveLength(1);
   expect(series(pie)[0].type).toBe("pie");
-  const doughnut = buildOption({ chartType: "doughnut", categoryField: "region", valueField: "2025" }, wide);
+  const doughnut = buildOption(
+    { chartType: "doughnut", categoryField: "region", valueField: "2025" },
+    wide,
+  );
   expect(Array.isArray(series(doughnut)[0].radius)).toBe(true);
 });
 
 test("axis types are configurable (time / log)", () => {
-  const opt = buildOption({ chartType: "line", categoryField: "region", xAxisType: "time", yAxisType: "log" }, wide);
+  const opt = buildOption(
+    { chartType: "line", categoryField: "region", xAxisType: "time", yAxisType: "log" },
+    wide,
+  );
   expect((opt as { xAxis?: { type?: string } }).xAxis?.type).toBe("time");
   expect((opt as { yAxis?: { type?: string } }).yAxis?.type).toBe("log");
 });
@@ -66,7 +71,12 @@ test("tooltip and legend are on by default; zoom adds dataZoom", () => {
 
 test("advanced option JSON deep-merges over the built option", () => {
   const opt = buildOption(
-    { chartType: "bar", categoryField: "region", title: "Base", advancedOption: JSON.stringify({ backgroundColor: "#000", title: { text: "Override" } }) },
+    {
+      chartType: "bar",
+      categoryField: "region",
+      title: "Base",
+      advancedOption: JSON.stringify({ backgroundColor: "#000", title: { text: "Override" } }),
+    },
     wide,
   );
   expect((opt as { backgroundColor?: string }).backgroundColor).toBe("#000");
@@ -76,7 +86,10 @@ test("advanced option JSON deep-merges over the built option", () => {
 });
 
 test("invalid advanced JSON is ignored, not thrown", () => {
-  const opt = buildOption({ chartType: "bar", categoryField: "region", advancedOption: "{ not json" }, wide);
+  const opt = buildOption(
+    { chartType: "bar", categoryField: "region", advancedOption: "{ not json" },
+    wide,
+  );
   expect(series(opt)).toHaveLength(2);
 });
 
@@ -89,7 +102,10 @@ test("heatmap encodes category × series into cells with a visualMap", () => {
 });
 
 test("gauge shows a single value", () => {
-  const opt = buildOption({ chartType: "gauge", categoryField: "region", valueField: "2025" }, wide);
+  const opt = buildOption(
+    { chartType: "gauge", categoryField: "region", valueField: "2025" },
+    wide,
+  );
   expect(series(opt)[0].type).toBe("gauge");
   expect(series(opt)[0].data[0].value).toBe(10);
 });
@@ -102,8 +118,14 @@ test("radar builds one radar series per column", () => {
 });
 
 test("buildCompareOption renders two aligned series on a relative offset axis", () => {
-  const current = [{ bucket: "2026-01-01 00:00:00", value: 10 }, { bucket: "2026-01-02 00:00:00", value: 12 }];
-  const reference = [{ bucket: "2025-01-01 00:00:00", value: 8 }, { bucket: "2025-01-02 00:00:00", value: 9 }];
+  const current = [
+    { bucket: "2026-01-01 00:00:00", value: 10 },
+    { bucket: "2026-01-02 00:00:00", value: 12 },
+  ];
+  const reference = [
+    { bucket: "2025-01-01 00:00:00", value: 8 },
+    { bucket: "2025-01-02 00:00:00", value: 9 },
+  ];
   const opt = buildCompareOption({ chartType: "line" }, current, reference, "day");
   expect(series(opt)).toHaveLength(2);
   expect(series(opt).map((s) => s.name)).toEqual(["Période courante", "Référence"]);
@@ -114,15 +136,31 @@ test("buildCompareOption renders two aligned series on a relative offset axis", 
 });
 
 test("buildCompareOption labels the offset axis by week/month depending on bucket", () => {
-  const weekOpt = buildCompareOption({ chartType: "line" }, [{ bucket: "w", value: 1 }], [], "week");
+  const weekOpt = buildCompareOption(
+    { chartType: "line" },
+    [{ bucket: "w", value: 1 }],
+    [],
+    "week",
+  );
   expect((weekOpt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Semaine 1"]);
-  const monthOpt = buildCompareOption({ chartType: "area" }, [{ bucket: "m", value: 1 }], [], "month");
+  const monthOpt = buildCompareOption(
+    { chartType: "area" },
+    [{ bucket: "m", value: 1 }],
+    [],
+    "month",
+  );
   expect((monthOpt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Mois 1"]);
 });
 
 test("buildCompareOption applies the yAxisUnit/yAxisFormat formatter like buildOption", () => {
-  const opt = buildCompareOption({ chartType: "line", yAxisUnit: "kg" }, [{ bucket: "d", value: 1 }], [], "day");
-  const formatter = (opt as { yAxis?: { axisLabel?: { formatter?: (v: unknown) => string } } }).yAxis?.axisLabel?.formatter;
+  const opt = buildCompareOption(
+    { chartType: "line", yAxisUnit: "kg" },
+    [{ bucket: "d", value: 1 }],
+    [],
+    "day",
+  );
+  const formatter = (opt as { yAxis?: { axisLabel?: { formatter?: (v: unknown) => string } } })
+    .yAxis?.axisLabel?.formatter;
   expect(formatter?.(5)).toBe("5 kg");
 });
 
@@ -136,10 +174,16 @@ test("funnel builds one funnel series from category/value fields", () => {
     { id: "1", properties: { stage: "Visite", value: 100 } },
     { id: "2", properties: { stage: "Panier", value: 40 } },
   ];
-  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  const opt = buildOption(
+    { chartType: "funnel", categoryField: "stage", valueField: "value" },
+    funnelRows,
+  );
   expect(series(opt)).toHaveLength(1);
   expect(series(opt)[0].type).toBe("funnel");
-  expect(series(opt)[0].data).toEqual([{ name: "Visite", value: 100 }, { name: "Panier", value: 40 }]);
+  expect(series(opt)[0].data).toEqual([
+    { name: "Visite", value: 100 },
+    { name: "Panier", value: 40 },
+  ]);
 });
 
 test("funnel uses an item tooltip trigger, not axis", () => {
@@ -147,7 +191,10 @@ test("funnel uses an item tooltip trigger, not axis", () => {
     { id: "1", properties: { stage: "Visite", value: 100 } },
     { id: "2", properties: { stage: "Panier", value: 40 } },
   ];
-  const opt = buildOption({ chartType: "funnel", categoryField: "stage", valueField: "value" }, funnelRows);
+  const opt = buildOption(
+    { chartType: "funnel", categoryField: "stage", valueField: "value" },
+    funnelRows,
+  );
   expect((opt as { tooltip?: { trigger?: string } }).tooltip?.trigger).toBe("item");
 });
 
@@ -167,7 +214,8 @@ const flows: DataRecord[] = [
 
 test("sankey builds nodes (tagged by role) and links from source/target/value encodings", () => {
   const opt = buildOption(
-    { chartType: "sankey", encodings: { source: "origin", target: "destination", value: "value" } }, flows,
+    { chartType: "sankey", encodings: { source: "origin", target: "destination", value: "value" } },
+    flows,
   );
   expect(series(opt)).toHaveLength(1);
   expect(series(opt)[0].type).toBe("sankey");
@@ -176,7 +224,9 @@ test("sankey builds nodes (tagged by role) and links from source/target/value en
     { source: "Paris", target: "Marseille", value: 5 },
     { source: "Lyon", target: "Marseille", value: 3 },
   ]);
-  const nodesByName = Object.fromEntries(series(opt)[0].data.map((n: { name: string; _role: string }) => [n.name, n._role]));
+  const nodesByName = Object.fromEntries(
+    series(opt)[0].data.map((n: { name: string; _role: string }) => [n.name, n._role]),
+  );
   expect(nodesByName.Paris).toBe("source");
   expect(nodesByName.Marseille).toBe("target");
   // Lyon is both a target (row 1) and a source (row 3) — source wins (documented tie-break).
@@ -191,20 +241,31 @@ const sales: DataRecord[] = [
 
 test("treemap builds a hierarchy from levels, summing values bottom-up", () => {
   const opt = buildOption(
-    { chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, sales,
+    { chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } },
+    sales,
   );
   expect(series(opt)).toHaveLength(1);
   expect(series(opt)[0].type).toBe("treemap");
-  const tree = series(opt)[0].data as { name: string; value: number; children?: { name: string; value: number }[] }[];
+  const tree = series(opt)[0].data as {
+    name: string;
+    value: number;
+    children?: { name: string; value: number }[];
+  }[];
   const nord = tree.find((n) => n.name === "Nord")!;
   expect(nord.value).toBe(15);
-  expect(nord.children).toEqual([{ name: "Lille", value: 10 }, { name: "Reims", value: 5 }]);
+  expect(nord.children).toEqual([
+    { name: "Lille", value: 10 },
+    { name: "Reims", value: 5 },
+  ]);
   const sud = tree.find((n) => n.name === "Sud")!;
   expect(sud.value).toBe(7);
 });
 
 test("sunburst uses the same hierarchy builder as treemap", () => {
-  const opt = buildOption({ chartType: "sunburst", encodings: { levels: ["region"], value: "value" } }, sales);
+  const opt = buildOption(
+    { chartType: "sunburst", encodings: { levels: ["region"], value: "value" } },
+    sales,
+  );
   expect(series(opt)[0].type).toBe("sunburst");
   const tree = series(opt)[0].data as { name: string; value: number }[];
   expect(tree.find((n) => n.name === "Nord")?.value).toBe(15);
@@ -215,24 +276,46 @@ test("treemap groups missing intermediate-level values under a literal placehold
     { id: "1", properties: { region: "Nord", city: null, value: 4 } },
     { id: "2", properties: { region: "Nord", city: "Lille", value: 6 } },
   ];
-  const opt = buildOption({ chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } }, withGap);
-  const nord = (series(opt)[0].data as { name: string; children?: { name: string; value: number }[] }[]).find((n) => n.name === "Nord")!;
-  expect(nord.children).toEqual(expect.arrayContaining([{ name: "—", value: 4 }, { name: "Lille", value: 6 }]));
+  const opt = buildOption(
+    { chartType: "treemap", encodings: { levels: ["region", "city"], value: "value" } },
+    withGap,
+  );
+  const nord = (
+    series(opt)[0].data as { name: string; children?: { name: string; value: number }[] }[]
+  ).find((n) => n.name === "Nord")!;
+  expect(nord.children).toEqual(
+    expect.arrayContaining([
+      { name: "—", value: 4 },
+      { name: "Lille", value: 6 },
+    ]),
+  );
 });
 
 test("resolveClickFilter: default types (bar/pie/...) resolve categoryField, like today", () => {
-  expect(resolveClickFilter("bar", { categoryField: "region" }, { name: "Nord" })).toEqual({ field: "region", value: "Nord" });
+  expect(resolveClickFilter("bar", { categoryField: "region" }, { name: "Nord" })).toEqual({
+    field: "region",
+    value: "Nord",
+  });
   expect(resolveClickFilter("bar", {}, { name: "Nord" })).toBeNull(); // no categoryField → no filter, unchanged
 });
 
 test("resolveClickFilter: default types resolve an empty-string value when name is missing, matching today's chart.tsx behavior (not a null bail-out)", () => {
-  expect(resolveClickFilter("bar", { categoryField: "region" }, {})).toEqual({ field: "region", value: "" });
-  expect(resolveClickFilter("pie", { categoryField: "stage" }, {})).toEqual({ field: "stage", value: "" });
+  expect(resolveClickFilter("bar", { categoryField: "region" }, {})).toEqual({
+    field: "region",
+    value: "",
+  });
+  expect(resolveClickFilter("pie", { categoryField: "stage" }, {})).toEqual({
+    field: "stage",
+    value: "",
+  });
   expect(resolveClickFilter("line", { categoryField: "x" }, {})).toEqual({ field: "x", value: "" });
 });
 
 test("resolveClickFilter: funnel resolves categoryField same as pie/bar", () => {
-  expect(resolveClickFilter("funnel", { categoryField: "stage" }, { name: "Panier" })).toEqual({ field: "stage", value: "Panier" });
+  expect(resolveClickFilter("funnel", { categoryField: "stage" }, { name: "Panier" })).toEqual({
+    field: "stage",
+    value: "Panier",
+  });
 });
 
 test("resolveClickFilter: histogram never resolves a filter", () => {
@@ -242,18 +325,33 @@ test("resolveClickFilter: histogram never resolves a filter", () => {
 test("resolveClickFilter: treemap/sunburst resolve the deepest clicked level", () => {
   const props = { chartType: "treemap", encodings: { levels: ["region", "city"] } };
   // Clicking a leaf: treePathInfo has 2 entries (region, city) → depth 1 → levels[1] = "city".
-  expect(resolveClickFilter("treemap", props, { name: "Lille", treePathInfo: [{ name: "Nord" }, { name: "Lille" }] }))
-    .toEqual({ field: "city", value: "Lille" });
+  expect(
+    resolveClickFilter("treemap", props, {
+      name: "Lille",
+      treePathInfo: [{ name: "Nord" }, { name: "Lille" }],
+    }),
+  ).toEqual({ field: "city", value: "Lille" });
   // Clicking a root: treePathInfo has 1 entry → depth 0 → levels[0] = "region".
-  expect(resolveClickFilter("treemap", props, { name: "Nord", treePathInfo: [{ name: "Nord" }] }))
-    .toEqual({ field: "region", value: "Nord" });
+  expect(
+    resolveClickFilter("treemap", props, { name: "Nord", treePathInfo: [{ name: "Nord" }] }),
+  ).toEqual({ field: "region", value: "Nord" });
 });
 
 test("resolveClickFilter: sankey resolves source or target depending on the clicked node's role, ignores edge clicks", () => {
   const props = { chartType: "sankey", encodings: { source: "origin", target: "destination" } };
-  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Paris", data: { _role: "source" } }))
-    .toEqual({ field: "origin", value: "Paris" });
-  expect(resolveClickFilter("sankey", props, { dataType: "node", name: "Lyon", data: { _role: "target" } }))
-    .toEqual({ field: "destination", value: "Lyon" });
+  expect(
+    resolveClickFilter("sankey", props, {
+      dataType: "node",
+      name: "Paris",
+      data: { _role: "source" },
+    }),
+  ).toEqual({ field: "origin", value: "Paris" });
+  expect(
+    resolveClickFilter("sankey", props, {
+      dataType: "node",
+      name: "Lyon",
+      data: { _role: "target" },
+    }),
+  ).toEqual({ field: "destination", value: "Lyon" });
   expect(resolveClickFilter("sankey", props, { dataType: "edge", name: "Paris" })).toBeNull();
 });

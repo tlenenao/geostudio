@@ -4,13 +4,20 @@ import { mockCore } from "./mocks";
 
 const CSW_URL = "https://geonetwork.example.com/geonetwork/srv/eng/csw";
 
-test("un admin déclare une source CSW, la moissonne, et l'item apparaît au catalogue, cherchable", async ({ page }) => {
+test("un admin déclare une source CSW, la moissonne, et l'item apparaît au catalogue, cherchable", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -25,8 +32,15 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
       await route.fulfill({
         status: 201,
         json: {
-          id: "src-1", type: "csw", url: CSW_URL, mode: "reference", enabled: true,
-          intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
+          id: "src-1",
+          type: "csw",
+          url: CSW_URL,
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
         },
       });
       return;
@@ -34,12 +48,19 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
     await route.fulfill({
       json: {
         sources: created
-          ? [{
-              id: "src-1", type: "csw", url: CSW_URL, mode: "reference", enabled: true,
-              intervalMinutes: null,
-              lastRunAt: runCount > 0 ? "2026-07-24T10:00:00Z" : null,
-              lastStatus: runCount > 0 ? "ok" : null, lastError: null,
-            }]
+          ? [
+              {
+                id: "src-1",
+                type: "csw",
+                url: CSW_URL,
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: runCount > 0 ? "2026-07-24T10:00:00Z" : null,
+                lastStatus: runCount > 0 ? "ok" : null,
+                lastError: null,
+              },
+            ]
           : [],
       },
     });
@@ -48,9 +69,15 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
   await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("iso-1", {
-      pk: "iso-1", resourceType: "external", title: "Batiments cadastraux (CSW distant)",
-      abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-      configId: null, isPublished: false,
+      pk: "iso-1",
+      resourceType: "external",
+      title: "Batiments cadastraux (CSW distant)",
+      abstract: "",
+      owner: "mockuser",
+      thumbnailUrl: null,
+      date: "2026-01-01",
+      configId: null,
+      isPublished: false,
     });
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
@@ -66,9 +93,14 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
   await dialog.getByLabel("URL").fill(CSW_URL);
   await dialog.getByLabel("Type").selectOption("csw");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => created).toEqual({
-    type: "csw", url: CSW_URL, mode: "reference", enabled: true,
-  });
+  await expect
+    .poll(() => created)
+    .toEqual({
+      type: "csw",
+      url: CSW_URL,
+      mode: "reference",
+      enabled: true,
+    });
 
   await page.getByRole("button", { name: "Moissonner maintenant" }).click();
   await expect.poll(() => runCount).toBe(1);
@@ -78,7 +110,9 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
   await expect(page.getByText("Batiments cadastraux (CSW distant)")).toBeVisible();
   await expect(page.getByText("Externe")).toBeVisible();
 
-  const request = page.waitForRequest((req) => req.url().includes("/items?") && req.url().includes("q=cadastraux"));
+  const request = page.waitForRequest(
+    (req) => req.url().includes("/items?") && req.url().includes("q=cadastraux"),
+  );
   await page.getByRole("textbox", { name: "Rechercher" }).fill("cadastraux");
   await request;
   await expect(page.getByText("Batiments cadastraux (CSW distant)")).toBeVisible();

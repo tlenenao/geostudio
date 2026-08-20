@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("statistics source with a split field feeds a multi-series Chart in the runtime", async ({ page }) => {
+test("statistics source with a split field feeds a multi-series Chart in the runtime", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

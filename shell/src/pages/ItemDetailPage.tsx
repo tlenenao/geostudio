@@ -3,7 +3,15 @@ import { useItem } from "../api/hooks";
 import { Button } from "../ui/button";
 import { ItemActions } from "../shell/ItemActions";
 
-export function ItemDetailPage({ pk, onDeleted, onOpenEditor }: { pk: string; onDeleted?: () => void; onOpenEditor?: (type: string) => void }) {
+export function ItemDetailPage({
+  pk,
+  onDeleted,
+  onOpenEditor,
+}: {
+  pk: string;
+  onDeleted?: () => void;
+  onOpenEditor?: (type: string) => void;
+}) {
   const query = useItem(pk);
 
   if (query.isLoading) return <p role="status">Chargement…</p>;
@@ -27,7 +35,9 @@ export function ItemDetailPage({ pk, onDeleted, onOpenEditor }: { pk: string; on
       <p className="text-sm text-slate-500">Propriétaire : {item.owner}</p>
       <p className="text-sm">{item.abstract}</p>
       {["map", "app", "dashboard", "dataset", "pipeline"].includes(item.resourceType) ? (
-        <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>Ouvrir dans l'éditeur</Button>
+        <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>
+          Ouvrir dans l'éditeur
+        </Button>
       ) : (
         <Button className="w-fit" disabled title="Éditeur indisponible pour ce type">
           Ouvrir dans l'éditeur

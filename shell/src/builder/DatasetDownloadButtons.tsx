@@ -42,7 +42,8 @@ export function DatasetDownloadButtons({
       </button>
       {csvTooLarge(featureCount) && (
         <p className="w-full text-[10px] text-slate-500">
-          Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).
+          Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir
+          (SP-15).
         </p>
       )}
     </div>

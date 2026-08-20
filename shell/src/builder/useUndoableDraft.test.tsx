@@ -7,10 +7,15 @@ import { useUndoableDraft } from "./useUndoableDraft";
 
 function config(text: string): AppConfig {
   return {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text } },
-    ] },
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text } }],
+    },
   };
 }
 
@@ -36,7 +41,7 @@ test("canUndo flips true once the coalesce window elapses after a setDraft call"
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   expect(result.current.canUndo).toBe(false); // still pending
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   expect(result.current.canUndo).toBe(true);
 });
 
@@ -62,7 +67,7 @@ test("a rapid burst of setDraft calls within the window collapses into one undo 
     vi.advanceTimersByTime(100);
     result.current.setDraft(config("Abcd"));
   });
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   expect(result.current.draft).toEqual(config("Abcd"));
   act(() => result.current.undo());
   expect(result.current.draft).toEqual(config("A")); // one step back past the whole burst
@@ -73,7 +78,7 @@ test("redo restores what undo just reverted", () => {
   const { result } = renderHook(() => useUndoableDraft());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   act(() => result.current.undo());
   act(() => result.current.redo());
   expect(result.current.draft).toEqual(config("B"));
@@ -85,10 +90,10 @@ test("a new edit after undo purges the redo branch", () => {
   const { result } = renderHook(() => useUndoableDraft());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   act(() => result.current.undo());
   act(() => result.current.setDraft(config("C")));
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   expect(result.current.canRedo).toBe(false);
   expect(result.current.draft).toEqual(config("C"));
 });
@@ -96,7 +101,11 @@ test("a new edit after undo purges the redo branch", () => {
 test("setDraft supports the functional-updater form", () => {
   const { result } = renderHook(() => useUndoableDraft());
   act(() => result.current.seedDraft(config("A")));
-  act(() => result.current.setDraft((prev) => (prev ? config(`${String(prev.layout.items[0].props.text)}!`) : prev)));
+  act(() =>
+    result.current.setDraft((prev) =>
+      prev ? config(`${String(prev.layout.items[0].props.text)}!`) : prev,
+    ),
+  );
   expect(result.current.draft).toEqual(config("A!"));
 });
 
@@ -113,8 +122,12 @@ test("two setDraft calls issued synchronously in the same handler each build on 
   const { result } = renderHook(() => useUndoableDraft());
   act(() => result.current.seedDraft(config("A")));
   act(() => {
-    result.current.setDraft((prev) => (prev ? config(`${String(prev.layout.items[0].props.text)}B`) : prev));
-    result.current.setDraft((prev) => (prev ? config(`${String(prev.layout.items[0].props.text)}C`) : prev));
+    result.current.setDraft((prev) =>
+      prev ? config(`${String(prev.layout.items[0].props.text)}B`) : prev,
+    );
+    result.current.setDraft((prev) =>
+      prev ? config(`${String(prev.layout.items[0].props.text)}C`) : prev,
+    );
   });
   expect(result.current.draft).toEqual(config("ABC"));
 });
@@ -133,9 +146,9 @@ test("undo/redo remain correct under <StrictMode> double-invocation of state upd
   const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   act(() => result.current.setDraft(config("C")));
-  act(() => vi.advanceTimersByTime(400));
+  void act(() => vi.advanceTimersByTime(400));
   expect(result.current.draft).toEqual(config("C"));
 
   // Depth-2 stack: a single Ctrl+Z must revert exactly one step, not corrupt

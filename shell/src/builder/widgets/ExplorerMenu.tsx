@@ -26,7 +26,10 @@ function exportErrorMessage(err: unknown): string {
 }
 
 export function ExplorerMenu({
-  datasetId, dataSourceId, resolvedSource, hasGeometry,
+  datasetId,
+  dataSourceId,
+  resolvedSource,
+  hasGeometry,
 }: {
   datasetId: string | undefined;
   dataSourceId: string;
@@ -99,7 +102,7 @@ export function ExplorerMenu({
               type="button"
               aria-label={`Exporter en ${format.toUpperCase()}`}
               className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-              onClick={() => handleExport(format)}
+              onClick={() => void handleExport(format)}
             >
               Exporter en {format.toUpperCase()}
             </button>
@@ -107,7 +110,10 @@ export function ExplorerMenu({
         </div>
       )}
       {exportError && (
-        <p role="alert" className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-red-600 shadow-sm">
+        <p
+          role="alert"
+          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-red-600 shadow-sm"
+        >
           {exportError}
         </p>
       )}

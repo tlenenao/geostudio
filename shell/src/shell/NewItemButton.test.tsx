@@ -108,9 +108,7 @@ test("creates a Map and navigates to the editor route", async () => {
 });
 
 test("shows an alert and stays on the page when creation fails", async () => {
-  server.use(
-    http.post("https://core.test/configs", () => new HttpResponse(null, { status: 500 })),
-  );
+  server.use(http.post("https://core.test/configs", () => new HttpResponse(null, { status: 500 })));
   render(
     <Harness>
       <NewItemButton />
@@ -143,7 +141,13 @@ test("creating from a template posts its layout", async () => {
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-9", kind: "app", itemId: "9", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-9",
+        kind: "app",
+        itemId: "9",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
   render(
@@ -286,9 +290,7 @@ test("creating a dataset posts collectionId and navigates to the dataset editor"
 test("creates an arcgis-sourced dataset from a feature-layer picker", async () => {
   let body: any;
   server.use(
-    http.get("https://core.test/collections", () =>
-      HttpResponse.json({ collections: [] }),
-    ),
+    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
     http.get("https://core.test/harvest/feature-layers", () =>
       HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
     ),
@@ -343,7 +345,9 @@ test("the Pipeline option is absent from the Type select when etlEnabled is fals
 
 test("the Pipeline option is present when etlEnabled is true", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+    http.get("https://core.test/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
   );
   render(
     <Harness>
@@ -356,7 +360,9 @@ test("the Pipeline option is present when etlEnabled is true", async () => {
 
 test("selecting Pipeline only asks for a title, and navigates to /pipelines/new with the title in route state, without calling the create API", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+    http.get("https://core.test/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
   );
   let configPosted = false;
   server.use(
@@ -395,11 +401,16 @@ test("selecting Pipeline only asks for a title, and navigates to /pipelines/new 
 
 test("selecting « Dataset par requête visuelle » only asks for a title, and navigates to /datasets/visual-query/new with the title in route state, without calling the create API", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: true })),
+    http.get("https://core.test/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
   );
   let configPosted = false;
   server.use(
-    http.post("https://core.test/configs", () => { configPosted = true; return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" }); }),
+    http.post("https://core.test/configs", () => {
+      configPosted = true;
+      return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" });
+    }),
   );
   function VisualQueryNewProbe() {
     const location = useLocation();
@@ -430,9 +441,19 @@ test("selecting « Dataset par requête visuelle » only asks for a title, and n
 
 test("the visual-query option is hidden when etlEnabled is false", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: false, etlEnabled: false })),
+    http.get("https://core.test/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: false }),
+    ),
   );
-  render(<Harness><NewItemButton /></Harness>);
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
-  await waitFor(() => expect(screen.queryByRole("option", { name: "Dataset par requête visuelle" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("option", { name: "Dataset par requête visuelle" }),
+    ).not.toBeInTheDocument(),
+  );
 });

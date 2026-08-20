@@ -18,33 +18,54 @@ import { fileURLToPath } from "node:url";
 const DIST_EXPORT = fileURLToPath(new URL("../dist-export", import.meta.url));
 
 const CONNECTED_CONFIG = {
-  kind: "app", theme: {}, navigationMode: "tabs", variables: [], messages: [],
-  dataSources: [
-    { id: "s1", type: "features", service: "core", layer: "col1", query: {} },
+  kind: "app",
+  theme: {},
+  navigationMode: "tabs",
+  variables: [],
+  messages: [],
+  dataSources: [{ id: "s1", type: "features", service: "core", layer: "col1", query: {} }],
+  pages: [
+    {
+      id: "p1",
+      name: "P1",
+      onEnter: [],
+      layout: {
+        type: "grid",
+        breakpoints: {},
+        items: [
+          { id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } },
+        ],
+      },
+    },
   ],
-  pages: [{
-    id: "p1", name: "P1", onEnter: [],
-    layout: { type: "grid", breakpoints: {}, items: [{ id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } }] },
-  }],
 };
 
 async function skipIfNoBuild() {
   await access(path.join(DIST_EXPORT, "index.export.html")).catch(() => {
-    test.skip(true, "dist-export/index.export.html absent — lancer `npm run build:export-runtime` avant ce test");
+    test.skip(
+      true,
+      "dist-export/index.export.html absent — lancer `npm run build:export-runtime` avant ce test",
+    );
   });
 }
 
-async function startFakeCore(): Promise<{ server: Server; url: string; sawAuthHeader: () => boolean }> {
+async function startFakeCore(): Promise<{
+  server: Server;
+  url: string;
+  sawAuthHeader: () => boolean;
+}> {
   let sawAuthHeader = false;
   const server = createServer((req, res) => {
     if (req.headers.authorization) sawAuthHeader = true;
     res.setHeader("Access-Control-Allow-Origin", "*");
     if (req.url === "/collections/col1/items") {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({
-        type: "FeatureCollection",
-        features: [{ id: 1, type: "Feature", properties: { name: "Alpha" }, geometry: null }],
-      }));
+      res.end(
+        JSON.stringify({
+          type: "FeatureCollection",
+          features: [{ id: 1, type: "Feature", properties: { name: "Alpha" }, geometry: null }],
+        }),
+      );
       return;
     }
     res.statusCode = 404;
@@ -56,7 +77,9 @@ async function startFakeCore(): Promise<{ server: Server; url: string; sawAuthHe
   return { server, url: `http://127.0.0.1:${port}`, sawAuthHeader: () => sawAuthHeader };
 }
 
-test("connected export bundle renders live data from a real cross-origin core, with no auth header", async ({ page }) => {
+test("connected export bundle renders live data from a real cross-origin core, with no auth header", async ({
+  page,
+}) => {
   await skipIfNoBuild();
 
   const fakeCore = await startFakeCore();
@@ -77,7 +100,11 @@ test("connected export bundle renders live data from a real cross-origin core, w
     const filePath = reqUrl === "/" ? "/index.export.html" : reqUrl;
     try {
       const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
-      const contentType = filePath.endsWith(".js") ? "application/javascript" : filePath.endsWith(".css") ? "text/css" : "text/html";
+      const contentType = filePath.endsWith(".js")
+        ? "application/javascript"
+        : filePath.endsWith(".css")
+          ? "text/css"
+          : "text/html";
       res.setHeader("Content-Type", contentType);
       res.end(body);
     } catch {

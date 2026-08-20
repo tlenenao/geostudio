@@ -2,14 +2,20 @@ import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 const GAUGE_MANIFEST = {
-  id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+  id: "acme.gauge",
+  tag: "gauge-extension-widget",
+  label: "Jauge (extension)",
   moduleUrl: "/fixtures/gauge-extension-widget.js",
   props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
-  events: ["changed"], actions: ["reset"],
-  defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+  events: ["changed"],
+  actions: ["reset"],
+  defaultSize: { w: 2, h: 2 },
+  permissions: { collections: "all" },
 };
 
-test("un widget d'extension chargé dynamiquement par URL se pose dans le builder et se comporte comme un widget WC ordinaire", async ({ page }) => {
+test("un widget d'extension chargé dynamiquement par URL se pose dans le builder et se comporte comme un widget WC ordinaire", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/extensions*", async (route) => {
     await route.fulfill({ json: { extensions: [GAUGE_MANIFEST] } });
@@ -68,7 +74,9 @@ test("un widget d'extension chargé dynamiquement par URL se pose dans le builde
   await expect(runtimeGauge.getByText("0", { exact: true })).toBeVisible();
 });
 
-test("désactiver une extension affiche un placeholder au lieu de casser une app qui l'utilisait", async ({ page }) => {
+test("désactiver une extension affiche un placeholder au lieu de casser une app qui l'utilisait", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/extensions*", async (route) => {
     await route.fulfill({ json: { extensions: [GAUGE_MANIFEST] } });

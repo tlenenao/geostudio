@@ -37,7 +37,12 @@ test("each entry is draggable and sets the op id on dragstart", async () => {
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   const entry = screen.getByText("reader.collection").closest("[draggable]") as HTMLElement;
   expect(entry).toHaveAttribute("draggable", "true");
-  const dataTransfer = { setData: (type: string, value: string) => { (dataTransfer as any)[type] = value; }, effectAllowed: "" };
+  const dataTransfer = {
+    setData: (type: string, value: string) => {
+      (dataTransfer as any)[type] = value;
+    },
+    effectAllowed: "",
+  };
   fireEvent.dragStart(entry, { dataTransfer });
   expect((dataTransfer as any)["application/x-geostudio-pipeline-op"]).toBe("reader.collection");
 });

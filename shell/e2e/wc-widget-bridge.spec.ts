@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un widget Web Component se pose dans le builder, suit le thème, émet un event vers une action composée et répond à une action du bus", async ({ page }) => {
+test("un widget Web Component se pose dans le builder, suit le thème, émet un event vers une action composée et répond à une action du bus", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

@@ -19,11 +19,20 @@ export function SqlLabPage() {
     mutationFn: (query: string) => client.runAnalyticsSql(query),
     onSuccess: (data, query) => {
       setResult(data);
-      setHistory(appendSqlHistory({ sql: query, executedAt: new Date().toISOString(), status: "ok", rowCount: data.rows.length }));
+      setHistory(
+        appendSqlHistory({
+          sql: query,
+          executedAt: new Date().toISOString(),
+          status: "ok",
+          rowCount: data.rows.length,
+        }),
+      );
     },
     onError: (_error, query) => {
       setResult(null);
-      setHistory(appendSqlHistory({ sql: query, executedAt: new Date().toISOString(), status: "error" }));
+      setHistory(
+        appendSqlHistory({ sql: query, executedAt: new Date().toISOString(), status: "error" }),
+      );
     },
   });
 
@@ -67,7 +76,9 @@ export function SqlLabPage() {
             <thead>
               <tr>
                 {result.columns.map((col) => (
-                  <th key={col} className="border-b border-slate-200 p-1">{col}</th>
+                  <th key={col} className="border-b border-slate-200 p-1">
+                    {col}
+                  </th>
                 ))}
               </tr>
             </thead>

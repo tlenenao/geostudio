@@ -6,7 +6,10 @@ import { _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { WidgetPalette } from "./WidgetPalette";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("lists widgets and emits the type on click", async () => {
   const onAdd = vi.fn();

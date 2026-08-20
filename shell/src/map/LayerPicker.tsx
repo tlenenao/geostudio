@@ -40,7 +40,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
 
   function addTiles3D() {
     if (!tiles3dTitle.trim() || !tiles3dUrl.trim()) return;
-    onAdd({ id: crypto.randomUUID(), title: tiles3dTitle, visible: true, kind: "tiles3d", url: tiles3dUrl });
+    onAdd({
+      id: crypto.randomUUID(),
+      title: tiles3dTitle,
+      visible: true,
+      kind: "tiles3d",
+      url: tiles3dUrl,
+    });
     setTiles3dTitle("");
     setTiles3dUrl("");
   }
@@ -60,7 +66,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
       {isError && (
         <div className="text-sm text-red-600">
           <p role="alert">Impossible de charger les sources de couches.</p>
-          <button type="button" className="underline" onClick={() => refetch()}>
+          <button type="button" className="underline" onClick={() => void refetch()}>
             Réessayer
           </button>
         </div>
@@ -80,9 +86,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
                 {source.title}
                 <span className="ml-2 text-xs text-slate-400">{source.kind}</span>
                 {typeof source.featureCount === "number" && (
-                  <span className="ml-2 text-xs text-slate-400">
-                    {source.featureCount} entités
-                  </span>
+                  <span className="ml-2 text-xs text-slate-400">{source.featureCount} entités</span>
                 )}
               </button>
             </li>

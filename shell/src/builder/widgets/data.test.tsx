@@ -14,16 +14,29 @@ import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
 import { ExplorerProvider } from "../ExplorerContext";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
-const state = (over: Partial<DataSourceState> = {}): DataSourceState =>
-  ({ loading: false, error: false, records: [], ...over });
+const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
+  loading: false,
+  error: false,
+  records: [],
+  ...over,
+});
 
 test("list renders a record per row using the title field", () => {
   const List = getWidget("list")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [
-    { id: 1, properties: { nom: "Parc A" } }, { id: 2, properties: { nom: "Parc B" } },
-  ] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({
+      records: [
+        { id: 1, properties: { nom: "Parc A" } },
+        { id: 2, properties: { nom: "Parc B" } },
+      ],
+    }),
+  } as WidgetContext;
   render(<List props={{ dataSourceId: "d", titleField: "nom" }} ctx={ctx} />);
   expect(screen.getByText("Parc A")).toBeInTheDocument();
   expect(screen.getByText("Parc B")).toBeInTheDocument();
@@ -31,7 +44,9 @@ test("list renders a record per row using the title field", () => {
 
 test("list shows loading and empty states", () => {
   const List = getWidget("list")!.Component;
-  const { rerender } = render(<List props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />);
+  const { rerender } = render(
+    <List props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />,
+  );
   expect(screen.getByText(/chargement/i)).toBeInTheDocument();
   rerender(<List props={{}} ctx={{ mode: "runtime", data: state() } as WidgetContext} />);
   expect(screen.getByText(/aucune donnée/i)).toBeInTheDocument();
@@ -39,9 +54,10 @@ test("list shows loading and empty states", () => {
 
 test("table renders headers from columns and a cell per column", () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [
-    { id: 1, properties: { nom: "A", ville: "X" } },
-  ] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "A", ville: "X" } }] }),
+  } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom", "ville"] }} ctx={ctx} />);
   expect(screen.getByRole("columnheader", { name: "nom" })).toBeInTheDocument();
   expect(screen.getByRole("cell", { name: "A" })).toBeInTheDocument();
@@ -55,7 +71,9 @@ test("list emits itemSelected with the clicked record", async () => {
   bus.configure([{ id: "m", from: "list1", event: "itemSelected", to: "map1", action: "flyTo" }]);
   const List = getWidget("list")!.Component;
   const ctx = {
-    mode: "runtime", bus, widgetId: "list1",
+    mode: "runtime",
+    bus,
+    widgetId: "list1",
     data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
   } as WidgetContext;
   render(<List props={{ titleField: "nom" }} ctx={ctx} />);
@@ -71,14 +89,23 @@ test("list and table declare itemSelected event and setFilter action", () => {
 });
 
 test("list setFilter action filters its bound source", async () => {
-  const queryDataSource = vi.fn()
-    .mockResolvedValueOnce([{ id: 1, properties: { nom: "A" } }, { id: 2, properties: { nom: "B" } }])
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValueOnce([
+      { id: 1, properties: { nom: "A" } },
+      { id: 2, properties: { nom: "B" } },
+    ])
     .mockResolvedValueOnce([{ id: 1, properties: { nom: "A" } }]);
-  const client = { queryDataSource, featuresUrl: vi.fn().mockReturnValue("u") } as unknown as ItemClient;
+  const client = {
+    queryDataSource,
+    featuresUrl: vi.fn().mockReturnValue("u"),
+  } as unknown as ItemClient;
   const bus = new ActionBus();
   bus.configure([{ id: "m", from: "flt", event: "changed", to: "list1", action: "setFilter" }]);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const sources: DataSource[] = [{ id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} }];
+  const sources: DataSource[] = [
+    { id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} },
+  ];
   const List = getWidget("list")!.Component;
 
   function Bound() {
@@ -95,7 +122,9 @@ test("list setFilter action filters its bound source", async () => {
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
-        <DataProvider sources={sources}><Bound /></DataProvider>
+        <DataProvider sources={sources}>
+          <Bound />
+        </DataProvider>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -104,16 +133,25 @@ test("list setFilter action filters its bound source", async () => {
   await act(async () => {
     bus.emit("flt", "changed", { nom: "A" });
   });
-  await waitFor(() => expect(queryDataSource).toHaveBeenLastCalledWith(expect.objectContaining({ query: { nom: "A" } })));
+  await waitFor(() =>
+    expect(queryDataSource).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: { nom: "A" } }),
+    ),
+  );
 });
 
 test("table sorts rows when a column header is clicked", async () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [
-    { id: 1, properties: { nom: "B" } },
-    { id: 2, properties: { nom: "A" } },
-    { id: 3, properties: { nom: "C" } },
-  ] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({
+      records: [
+        { id: 1, properties: { nom: "B" } },
+        { id: 2, properties: { nom: "A" } },
+        { id: 3, properties: { nom: "C" } },
+      ],
+    }),
+  } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   await userEvent.click(screen.getByRole("button", { name: /nom/ }));
   let cells = screen.getAllByRole("cell");
@@ -136,7 +174,10 @@ test("table paginates with a configured page size", async () => {
 
 test("list item uses the theme border/surface/text tokens", () => {
   const List = getWidget("list")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
+  } as WidgetContext;
   render(<List props={{ titleField: "nom" }} ctx={ctx} />);
   expect(screen.getByText("Parc A")).toHaveClass(
     "border-[var(--gs-color-border)]",
@@ -147,7 +188,10 @@ test("list item uses the theme border/surface/text tokens", () => {
 
 test("table cells and headers use the theme border/text tokens", () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "A" } }] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "A" } }] }),
+  } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   expect(screen.getByRole("cell", { name: "A" })).toHaveClass("border-[var(--gs-color-border)]");
   expect(screen.getByRole("table")).toHaveClass("text-[var(--gs-color-text)]");
@@ -160,7 +204,9 @@ test("table emits itemSelected with the clicked row", async () => {
   bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "map1", action: "flyTo" }]);
   const Table = getWidget("table")!.Component;
   const ctx = {
-    mode: "runtime", bus, widgetId: "table1",
+    mode: "runtime",
+    bus,
+    widgetId: "table1",
     data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
   } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
@@ -170,11 +216,25 @@ test("table emits itemSelected with the clicked row", async () => {
 
 test("table renders a calculated column evaluated per row against record and vars", () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", variables: { seuil: "haute" }, data: state({ records: [
-    { id: 1, properties: { nom: "A", gravite: "haute" } },
-    { id: 2, properties: { nom: "B", gravite: "faible" } },
-  ] }) } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom", { label: "Urgent", expr: "record.gravite == vars.seuil" }] }} ctx={ctx} />);
+  const ctx = {
+    mode: "runtime",
+    variables: { seuil: "haute" },
+    data: state({
+      records: [
+        { id: 1, properties: { nom: "A", gravite: "haute" } },
+        { id: 2, properties: { nom: "B", gravite: "faible" } },
+      ],
+    }),
+  } as WidgetContext;
+  render(
+    <Table
+      props={{
+        dataSourceId: "d",
+        columns: ["nom", { label: "Urgent", expr: "record.gravite == vars.seuil" }],
+      }}
+      ctx={ctx}
+    />,
+  );
   expect(screen.getByRole("columnheader", { name: "Urgent" })).toBeInTheDocument();
   const cells = screen.getAllByRole("cell");
   expect(cells[1]).toHaveTextContent("true"); // ligne 1 : gravite == seuil
@@ -183,8 +243,13 @@ test("table renders a calculated column evaluated per row against record and var
 
 test("a calculated column header has no sort button", () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "A" } }] }) } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: [{ label: "Calc", expr: "1 + 1" }] }} ctx={ctx} />);
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "A" } }] }),
+  } as WidgetContext;
+  render(
+    <Table props={{ dataSourceId: "d", columns: [{ label: "Calc", expr: "1 + 1" }] }} ctx={ctx} />,
+  );
   expect(screen.queryByRole("button", { name: /Calc/ })).not.toBeInTheDocument();
   expect(screen.getByText("Calc")).toBeInTheDocument();
 });
@@ -202,20 +267,37 @@ function renderWithItemClient(ui: ReactElement) {
 test("table PropsPanel adds a calculated column without disturbing existing plain columns", async () => {
   const Table = getWidget("table")!;
   const onChange = vi.fn();
-  renderWithItemClient(<Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />);
+  renderWithItemClient(
+    <Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une colonne calculée" }));
-  expect(onChange).toHaveBeenCalledWith({ columns: ["nom", { label: "Nouvelle colonne", expr: "" }] });
+  expect(onChange).toHaveBeenCalledWith({
+    columns: ["nom", { label: "Nouvelle colonne", expr: "" }],
+  });
 });
 
 function CrossFilterProbe({ datasetId }: { datasetId: string }) {
   const ctx = useAnalyticsContext();
   const entry = ctx.crossFilter[datasetId];
-  return <p>cf:{entry ? `${entry.field}=${entry.value};geom=${JSON.stringify(entry.geometry ?? null)}` : "none"}</p>;
+  return (
+    <p>
+      cf:
+      {entry
+        ? `${entry.field}=${entry.value};geom=${JSON.stringify(entry.geometry ?? null)}`
+        : "none"}
+    </p>
+  );
 }
 
 test("table row click sets the cross-filter by pkColumn when dataset-bound and interactions is auto", async () => {
   const Table = getWidget("table")!.Component;
-  const data = { loading: false, error: false, records: [{ id: 1, properties: { nom: "Parc A" } }], datasetId: "dataset-1", pkColumn: "id" };
+  const data = {
+    loading: false,
+    error: false,
+    records: [{ id: 1, properties: { nom: "Parc A" } }],
+    datasetId: "dataset-1",
+    pkColumn: "id",
+  };
   render(
     <AnalyticsContextProvider interactions="auto">
       <Table props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
@@ -229,9 +311,13 @@ test("table row click sets the cross-filter by pkColumn when dataset-bound and i
 test("table row click forwards the record's geometry to the cross-filter entry when present", async () => {
   const Table = getWidget("table")!.Component;
   const data = {
-    loading: false, error: false,
-    records: [{ id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [5, 6] } }],
-    datasetId: "dataset-1", pkColumn: "id",
+    loading: false,
+    error: false,
+    records: [
+      { id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [5, 6] } },
+    ],
+    datasetId: "dataset-1",
+    pkColumn: "id",
   };
   render(
     <AnalyticsContextProvider interactions="auto">
@@ -240,15 +326,24 @@ test("table row click forwards the record's geometry to the cross-filter entry w
     </AnalyticsContextProvider>,
   );
   await userEvent.click(screen.getByText("Parc A").closest("tr")!);
-  expect(await screen.findByText('cf:id=1;geom={"type":"Point","coordinates":[5,6]}')).toBeInTheDocument();
+  expect(
+    await screen.findByText('cf:id=1;geom={"type":"Point","coordinates":[5,6]}'),
+  ).toBeInTheDocument();
 });
 
 test("list item click does not set a cross-filter when the source isn't dataset-bound", async () => {
   const List = getWidget("list")!.Component;
-  const data = { loading: false, error: false, records: [{ id: 1, properties: { nom: "Parc A" } }] };
+  const data = {
+    loading: false,
+    error: false,
+    records: [{ id: 1, properties: { nom: "Parc A" } }],
+  };
   render(
     <AnalyticsContextProvider interactions="auto">
-      <List props={{ dataSourceId: "src-1", titleField: "nom" }} ctx={{ mode: "runtime", data } as WidgetContext} />
+      <List
+        props={{ dataSourceId: "src-1", titleField: "nom" }}
+        ctx={{ mode: "runtime", data } as WidgetContext}
+      />
       <CrossFilterProbe datasetId="dataset-1" />
     </AnalyticsContextProvider>,
   );
@@ -260,11 +355,15 @@ test("table PropsPanel edits a calculated column's label and expression", async 
   const Table = getWidget("table")!;
   const onChange = vi.fn();
   const props = { columns: ["nom", { label: "Nouvelle colonne", expr: "" }] };
-  const { rerender } = renderWithItemClient(<Table.PropsPanel props={props} onChange={onChange} dataSources={[]} />);
+  const { rerender } = renderWithItemClient(
+    <Table.PropsPanel props={props} onChange={onChange} dataSources={[]} />,
+  );
   await userEvent.type(screen.getByLabelText(/Libellé de la colonne calculée/), "!");
   const afterLabel = onChange.mock.calls.at(-1)![0];
   rerender(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
       <ItemClientProvider client={{} as unknown as ItemClient}>
         <Table.PropsPanel props={afterLabel} onChange={onChange} dataSources={[]} />
       </ItemClientProvider>
@@ -278,14 +377,28 @@ test("table PropsPanel edits a calculated column's label and expression", async 
 
 test("list shows an explorer menu when bound to a dataset and interactions are auto", async () => {
   const List = getWidget("list")!.Component;
-  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
-  render(<ExplorerProvider enabled><List props={{ dataSourceId: "src1" }} ctx={ctx} /></ExplorerProvider>);
+  const ctx = {
+    mode: "runtime",
+    data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }),
+  } as WidgetContext;
+  render(
+    <ExplorerProvider enabled>
+      <List props={{ dataSourceId: "src1" }} ctx={ctx} />
+    </ExplorerProvider>,
+  );
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });
 
 test("table shows an explorer menu when bound to a dataset and interactions are auto", async () => {
   const Table = getWidget("table")!.Component;
-  const ctx = { mode: "runtime", data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }) } as WidgetContext;
-  render(<ExplorerProvider enabled><Table props={{ dataSourceId: "src1", columns: ["nom"] }} ctx={ctx} /></ExplorerProvider>);
+  const ctx = {
+    mode: "runtime",
+    data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }),
+  } as WidgetContext;
+  render(
+    <ExplorerProvider enabled>
+      <Table props={{ dataSourceId: "src1", columns: ["nom"] }} ctx={ctx} />
+    </ExplorerProvider>,
+  );
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });

@@ -30,7 +30,11 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
   // array/object (colonnes de table, items de tiroir, encodages...) restent
   // hors de portée, non listées ici.
   configSchema?: WidgetPropDescriptor[];
-  PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
+  PropsPanel: (p: {
+    props: P;
+    onChange: (props: P) => void;
+    dataSources: DataSource[];
+  }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };
 

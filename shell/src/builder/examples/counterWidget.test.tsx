@@ -6,7 +6,10 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { registerCounterExampleWidget } from "./counterWidget";
 
-beforeEach(() => { _resetRegistry(); registerCounterExampleWidget(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerCounterExampleWidget();
+});
 
 test("starts at its initial value and increments on click", async () => {
   const Counter = getWidget("example.counter")!.Component;
@@ -22,7 +25,12 @@ test("emits changed with the new count", async () => {
   bus.register("t1", "setFilter", handler);
   bus.configure([{ id: "m", from: "c1", event: "changed", to: "t1", action: "setFilter" }]);
   const Counter = getWidget("example.counter")!.Component;
-  render(<Counter props={{ initial: 0 }} ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext} />);
+  render(
+    <Counter
+      props={{ initial: 0 }}
+      ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "+1" }));
   expect(handler).toHaveBeenCalledWith({ count: 1 });
 });
@@ -31,7 +39,12 @@ test("declares a reset action that resets to the initial value", async () => {
   const bus = new ActionBus();
   bus.configure([{ id: "m", from: "emitter", event: "go", to: "c1", action: "reset" }]);
   const Counter = getWidget("example.counter")!.Component;
-  render(<Counter props={{ initial: 3 }} ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext} />);
+  render(
+    <Counter
+      props={{ initial: 3 }}
+      ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "+1" }));
   expect(screen.getByText("4")).toBeInTheDocument();
   await act(async () => {

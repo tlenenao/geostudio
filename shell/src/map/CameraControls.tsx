@@ -2,7 +2,9 @@
 import { Button } from "../ui/button";
 
 export function CameraControls({
-  pitch, bearing, onChange,
+  pitch,
+  bearing,
+  onChange,
 }: {
   pitch: number;
   bearing: number;
@@ -41,7 +43,13 @@ export function CameraControls({
           onChange={(e) => onChange({ pitch, bearing: Number(e.target.value) })}
         />
       </label>
-      <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => onChange({ pitch: 0, bearing: 0 })}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-fit"
+        onClick={() => onChange({ pitch: 0, bearing: 0 })}
+      >
         Réinitialiser en 2D
       </Button>
     </div>

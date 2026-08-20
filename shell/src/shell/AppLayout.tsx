@@ -64,10 +64,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Link>
           {meQuery.data?.isAdmin === true && (
             <>
-              <Link to="/admin/extensions" className="mt-2 block text-sm font-medium hover:underline">
+              <Link
+                to="/admin/extensions"
+                className="mt-2 block text-sm font-medium hover:underline"
+              >
                 Extensions
               </Link>
-              <Link to="/admin/collections" className="mt-1 block text-sm font-medium hover:underline">
+              <Link
+                to="/admin/collections"
+                className="mt-1 block text-sm font-medium hover:underline"
+              >
                 Collections
               </Link>
               <Link to="/admin/harvest" className="mt-1 block text-sm font-medium hover:underline">

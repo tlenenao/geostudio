@@ -21,7 +21,9 @@ type Phase = "form" | "uploading" | "finalizing" | "error";
 
 // pollTimeoutMs is injectable for tests only (this file's suite is MSW-based
 // with real timers, where fake timers would fight userEvent's own scheduler).
-export function Tileset3DUploadButton({ pollTimeoutMs = POLL_TIMEOUT_MS }: { pollTimeoutMs?: number } = {}) {
+export function Tileset3DUploadButton({
+  pollTimeoutMs = POLL_TIMEOUT_MS,
+}: { pollTimeoutMs?: number } = {}) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -67,7 +69,10 @@ export function Tileset3DUploadButton({ pollTimeoutMs = POLL_TIMEOUT_MS }: { pol
     setPhase("uploading");
     setError("");
     try {
-      const { jobId } = await client.createTileset3DUpload({ filename: file.name, title: title.trim() });
+      const { jobId } = await client.createTileset3DUpload({
+        filename: file.name,
+        title: title.trim(),
+      });
       const partCount = Math.max(1, Math.ceil(file.size / PART_SIZE_BYTES));
       setProgress({ done: 0, total: partCount });
       const parts: { partNumber: number; etag: string }[] = [];
@@ -109,7 +114,7 @@ export function Tileset3DUploadButton({ pollTimeoutMs = POLL_TIMEOUT_MS }: { pol
         Nouveau tileset 3D
       </Button>
       <Dialog open={open} onClose={requestClose} title="Nouveau tileset 3D">
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Archive du tileset (.zip)
             <input
@@ -132,7 +137,9 @@ export function Tileset3DUploadButton({ pollTimeoutMs = POLL_TIMEOUT_MS }: { pol
             <p className="text-sm text-slate-500">Validation du tileset…</p>
           )}
           {phase === "error" && (
-            <p role="alert" className="text-sm text-red-600">{error}</p>
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>

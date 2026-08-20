@@ -5,11 +5,23 @@ import type { AppConfig } from "../api/types";
 
 function config(): AppConfig {
   return {
-    kind: "app", theme: {}, dataSources: [
-      { id: "s1", type: "static", service: "core", layer: "", query: { records: [{ id: 1, properties: { name: "Alpha" } }] } },
+    kind: "app",
+    theme: {},
+    dataSources: [
+      {
+        id: "s1",
+        type: "static",
+        service: "core",
+        layer: "",
+        query: { records: [{ id: 1, properties: { name: "Alpha" } }] },
+      },
     ],
-    messages: [], pages: [{ id: "p1", name: "P1", layout: { type: "grid", breakpoints: {}, items: [] }, onEnter: [] }],
-    navigationMode: "tabs", variables: [],
+    messages: [],
+    pages: [
+      { id: "p1", name: "P1", layout: { type: "grid", breakpoints: {}, items: [] }, onEnter: [] },
+    ],
+    navigationMode: "tabs",
+    variables: [],
   } as unknown as AppConfig;
 }
 

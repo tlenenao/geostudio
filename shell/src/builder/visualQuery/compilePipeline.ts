@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRefreshPolicy, CollectionSchema } from "../../api/types";
+import type {
+  PipelineEdge,
+  PipelineNode,
+  PipelinePayload,
+  PipelineRefreshPolicy,
+  CollectionSchema,
+} from "../../api/types";
 import { genEdgeId, genNodeId } from "../pipeline/graphOps";
-import { FilterRow, compileFilterRowsToSql, decompileSqlToFilterRows, quoteIdent } from "./compileFilter";
+import {
+  FilterRow,
+  compileFilterRowsToSql,
+  decompileSqlToFilterRows,
+  quoteIdent,
+} from "./compileFilter";
 import { JoinConfig, MetricConfig, SummaryConfig, inferOutputColumns } from "./inferSchema";
 
 export type VisualQueryState = {
@@ -19,14 +30,21 @@ function metricExpr(metric: MetricConfig): string {
 }
 
 export function compileVisualQueryToPipeline(
-  state: VisualQueryState, baseSchema: CollectionSchema, joinedSchema: CollectionSchema | null,
-  outputCollectionId: string, datasetItemId: string,
+  state: VisualQueryState,
+  baseSchema: CollectionSchema,
+  joinedSchema: CollectionSchema | null,
+  outputCollectionId: string,
+  datasetItemId: string,
 ): PipelinePayload {
   const nodes: PipelineNode[] = [];
   const edges: PipelineEdge[] = [];
   let x = 0;
 
-  function addNode(kind: PipelineNode["kind"], op: string, params: Record<string, unknown>): PipelineNode {
+  function addNode(
+    kind: PipelineNode["kind"],
+    op: string,
+    params: Record<string, unknown>,
+  ): PipelineNode {
     const n: PipelineNode = { id: genNodeId(), kind, op, x: (x += 200), y: 0, params };
     nodes.push(n);
     return n;
@@ -35,7 +53,9 @@ export function compileVisualQueryToPipeline(
     edges.push({ id: genEdgeId(), from: from.id, to: to.id, role: role ?? null });
   }
 
-  const baseReader = addNode("reader", "reader.collection", { collectionId: state.baseCollectionId });
+  const baseReader = addNode("reader", "reader.collection", {
+    collectionId: state.baseCollectionId,
+  });
   let mainTail = baseReader;
 
   if (state.filters.length > 0) {
@@ -47,17 +67,25 @@ export function compileVisualQueryToPipeline(
   }
 
   if (state.join && joinedSchema) {
-    const joinedReader = addNode("reader", "reader.collection", { collectionId: state.join.collectionId });
+    const joinedReader = addNode("reader", "reader.collection", {
+      collectionId: state.join.collectionId,
+    });
     const baseNames = new Set(baseSchema.fields.map((f) => f.name));
     const joinedColumns: Record<string, string | null> = {};
     for (const f of joinedSchema.fields) {
-      if (f.name === state.join.on) { joinedColumns[f.name] = null; continue; }
+      if (f.name === state.join.on) {
+        joinedColumns[f.name] = null;
+        continue;
+      }
       joinedColumns[f.name] = baseNames.has(f.name) ? `joined_${f.name}` : null;
     }
     const joinedSelect = addNode("transform", "transform.select", { columns: joinedColumns });
     addEdge(joinedReader, joinedSelect);
 
-    const joinNode = addNode("transform", "transform.join", { on: state.join.on, how: state.join.how });
+    const joinNode = addNode("transform", "transform.join", {
+      on: state.join.on,
+      how: state.join.how,
+    });
     addEdge(mainTail, joinNode);
     addEdge(joinedSelect, joinNode, "secondary");
     mainTail = joinNode;
@@ -67,7 +95,8 @@ export function compileVisualQueryToPipeline(
     const metrics: Record<string, string> = {};
     for (const metric of state.summary.metrics) metrics[metric.alias] = metricExpr(metric);
     const aggregateNode = addNode("transform", "transform.aggregate", {
-      groupBy: state.summary.groupBy, metrics,
+      groupBy: state.summary.groupBy,
+      metrics,
     });
     addEdge(mainTail, aggregateNode);
     mainTail = aggregateNode;
@@ -91,7 +120,9 @@ export function compileVisualQueryToPipeline(
   }
 
   const writerNode = addNode("writer", "writer.dataset", {
-    collectionId: outputCollectionId, datasetId: datasetItemId, mode: "replace",
+    collectionId: outputCollectionId,
+    datasetId: datasetItemId,
+    mode: "replace",
   });
   addEdge(mainTail, writerNode);
 
@@ -101,11 +132,16 @@ export function compileVisualQueryToPipeline(
 function decompileMetrics(metrics: Record<string, string>): MetricConfig[] | null {
   const result: MetricConfig[] = [];
   for (const [alias, expr] of Object.entries(metrics)) {
-    if (expr === "count(*)") { result.push({ alias, function: "count", sourceColumn: null }); continue; }
+    if (expr === "count(*)") {
+      result.push({ alias, function: "count", sourceColumn: null });
+      continue;
+    }
     const match = expr.match(/^(sum|avg|min|max)\("((?:[^"]|"")+)"\)$/);
     if (!match) return null;
     result.push({
-      alias, function: match[1] as MetricConfig["function"], sourceColumn: match[2].replace(/""/g, '"'),
+      alias,
+      function: match[1] as MetricConfig["function"],
+      sourceColumn: match[2].replace(/""/g, '"'),
     });
   }
   return result;
@@ -118,8 +154,12 @@ function decompileMetrics(metrics: Record<string, string>): MetricConfig[] | nul
 // null — le point d'appel (Task 13) traite ça comme un repli attendu vers
 // PipelineBuilderPage, pas une erreur.
 export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
-  baseCollectionId: string; filters: FilterRow[]; join: JoinConfig | null; summary: SummaryConfig | null;
-  outputCollectionId: string; datasetItemId: string;
+  baseCollectionId: string;
+  filters: FilterRow[];
+  join: JoinConfig | null;
+  summary: SummaryConfig | null;
+  outputCollectionId: string;
+  datasetItemId: string;
 } | null {
   const byId = new Map(pipeline.nodes.map((n) => [n.id, n]));
   const readerNodes = pipeline.nodes.filter((n) => n.kind === "reader");
@@ -161,7 +201,12 @@ export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
       if (!secondaryEdge || !joinedReader) return null;
       const selectEdge = pipeline.edges.find((e) => e.from === joinedReader.id);
       const selectNode = selectEdge ? byId.get(selectEdge.to) : undefined;
-      if (!selectNode || selectNode.op !== "transform.select" || selectEdge!.to !== secondaryEdge.from) return null;
+      if (
+        !selectNode ||
+        selectNode.op !== "transform.select" ||
+        selectEdge!.to !== secondaryEdge.from
+      )
+        return null;
       join = {
         collectionId: String(joinedReader.params.collectionId),
         on: String(next.params.on),
@@ -195,7 +240,10 @@ export function decompilePipelineToWizardState(pipeline: PipelinePayload): {
   }
 
   return {
-    baseCollectionId: String(primaryReader.params.collectionId), filters, join, summary,
+    baseCollectionId: String(primaryReader.params.collectionId),
+    filters,
+    join,
+    summary,
     outputCollectionId: String(writerNodes[0].params.collectionId),
     datasetItemId: String(writerNodes[0].params.datasetId),
   };

@@ -6,8 +6,13 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -27,7 +32,13 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     await route.fulfill({
       json: {
         candidates: [
-          { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+          {
+            tableName: "points_interet",
+            registrable: true,
+            geometryType: "Point",
+            srid: 4326,
+            columnCount: 3,
+          },
         ],
       },
     });
@@ -39,9 +50,18 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
       await route.fulfill({
         status: 201,
         json: {
-          id: "points_interet", title: "Points d'intérêt", description: "", tableName: "points_interet",
-          isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-          pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+          id: "points_interet",
+          title: "Points d'intérêt",
+          description: "",
+          tableName: "points_interet",
+          isPublic: false,
+          editable: true,
+          geometryType: "Point",
+          srid: 4326,
+          pkColumn: "id",
+          canWrite: true,
+          featureCount: 0,
+          owner: "mockuser",
         },
       });
       return;
@@ -51,11 +71,22 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
         collections: deleted
           ? []
           : registered
-            ? [{
-                id: "points_interet", title: patchedTitle ?? "Points d'intérêt", description: "",
-                tableName: "points_interet", isPublic: false, editable: true, geometryType: "Point",
-                srid: 4326, pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
-              }]
+            ? [
+                {
+                  id: "points_interet",
+                  title: patchedTitle ?? "Points d'intérêt",
+                  description: "",
+                  tableName: "points_interet",
+                  isPublic: false,
+                  editable: true,
+                  geometryType: "Point",
+                  srid: 4326,
+                  pkColumn: "id",
+                  canWrite: true,
+                  featureCount: 0,
+                  owner: "mockuser",
+                },
+              ]
             : [],
       },
     });
@@ -68,9 +99,18 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
       patchedTitle = body.title ?? patchedTitle;
       await route.fulfill({
         json: {
-          id: "points_interet", title: patchedTitle, description: "", tableName: "points_interet",
-          isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-          pkColumn: "id", canWrite: true, featureCount: 0, owner: "mockuser",
+          id: "points_interet",
+          title: patchedTitle,
+          description: "",
+          tableName: "points_interet",
+          isPublic: false,
+          editable: true,
+          geometryType: "Point",
+          srid: 4326,
+          pkColumn: "id",
+          canWrite: true,
+          featureCount: 0,
+          owner: "mockuser",
         },
       });
       return;
@@ -113,7 +153,9 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   // dialog overlay, still in the DOM) is a substring superstring match of
   // "Enregistrer" and would otherwise trip Playwright's strict mode.
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => registered).toEqual({ tableName: "points_interet", title: "Points d'intérêt", isPublic: false });
+  await expect
+    .poll(() => registered)
+    .toEqual({ tableName: "points_interet", title: "Points d'intérêt", isPublic: false });
   await expect(page.getByText("Points d'intérêt")).toBeVisible();
 
   await page.getByRole("button", { name: "Éditer" }).click();
@@ -128,7 +170,9 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await page.getByLabel("Groupe Équipe terrain").click();
   await page.getByLabel("Rôle Équipe terrain").selectOption("editor");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => sharedBody).toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
+  await expect
+    .poll(() => sharedBody)
+    .toEqual({ public: false, groups: [{ groupId: "g1", role: "editor" }] });
 
   await page.getByRole("button", { name: "Supprimer" }).click();
   // The row-action button and the ConfirmDialog's confirm button share the
@@ -148,7 +192,9 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await expect(page.getByRole("cell", { name: "POI (édité)" })).not.toBeVisible();
 });
 
-test("un utilisateur non-admin ne voit pas le lien Collections et une navigation forcée affiche un message d'accès refusé", async ({ page }) => {
+test("un utilisateur non-admin ne voit pas le lien Collections et une navigation forcée affiche un message d'accès refusé", async ({
+  page,
+}) => {
   await mockCore(page);
   let collectionsAdminCalled = false;
   await page.route("https://core.test/collections", async (route) => {

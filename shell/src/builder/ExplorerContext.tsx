@@ -9,21 +9,26 @@ type CloseExplorer = () => void;
 const ExplorerTargetContext = createContext<ExplorerTarget>(null);
 const ExplorerEnabledContext = createContext<boolean>(false);
 const ExplorerSettersContext = createContext<{ open: OpenExplorer; close: CloseExplorer }>({
-  open: () => {}, close: () => {},
+  open: () => {},
+  close: () => {},
 });
 
 export function ExplorerProvider({
-  enabled = false, children,
+  enabled = false,
+  children,
 }: {
   enabled?: boolean;
   children: ReactNode;
 }) {
   const [target, setTarget] = useState<ExplorerTarget>(null);
 
-  const open = useCallback<OpenExplorer>((next) => {
-    if (!enabled) return;
-    setTarget(next);
-  }, [enabled]);
+  const open = useCallback<OpenExplorer>(
+    (next) => {
+      if (!enabled) return;
+      setTarget(next);
+    },
+    [enabled],
+  );
 
   const close = useCallback<CloseExplorer>(() => {
     setTarget(null);

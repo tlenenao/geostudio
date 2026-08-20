@@ -5,7 +5,9 @@ import { mockCore } from "./mocks";
 // SP-14m — enregistrer le contexte analytique courant comme une vue nommée,
 // la retrouver dans "Mes vues", la rouvrir restaure exactement le même
 // contexte ; une vue non partagée reste invisible pour un autre utilisateur.
-test("save a view with a cross-filter and a time range, find it in Mes vues, reopen restores the context", async ({ page }) => {
+test("save a view with a cross-filter and a time range, find it in Mes vues, reopen restores the context", async ({
+  page,
+}) => {
   await mockCore(page);
 
   let bookmarkCreated = false;
@@ -16,14 +18,36 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     await route.fulfill({
       json: {
         collections: [
-          { id: "events", title: "Événements", description: "", tableName: "events", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 2, owner: "mockuser" },
+          {
+            id: "events",
+            title: "Événements",
+            description: "",
+            tableName: "events",
+            isPublic: true,
+            editable: true,
+            geometryType: null,
+            srid: null,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 2,
+            owner: "mockuser",
+          },
         ],
       },
     });
   });
   await page.route("**/collections/events/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "events", pk: "id", geometry: null, fields: [{ name: "nom", type: "string" }, { name: "date", type: "string" }, { name: "score", type: "number" }] },
+      json: {
+        collection: "events",
+        pk: "id",
+        geometry: null,
+        fields: [
+          { name: "nom", type: "string" },
+          { name: "date", type: "string" },
+          { name: "score", type: "number" },
+        ],
+      },
     });
   });
   // "score" (numérique) porte le cross-filter : le curseur ("Curseur" widget)
@@ -50,19 +74,37 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   });
   // Bornes min/max du curseur (requête statistics du widget sliderFilter).
   await page.route("**/collections/events/aggregate", async (route) => {
-    await route.fulfill({ json: { categoryKey: "group", rows: [{ group: "Total", min: 10, max: 90 }] } });
+    await route.fulfill({
+      json: { categoryKey: "group", rows: [{ group: "Total", min: 10, max: 90 }] },
+    });
   });
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
       json: {
-        id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "events", columns: {}, timeField: "date" } },
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "events", columns: {}, timeField: "date" },
+        },
       },
     });
   });
   await page.route("https://core.test/items/dataset-1", async (route) => {
     await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Événements partagés", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
+      json: {
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Événements partagés",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-dataset",
+        isPublished: false,
+        keywords: [],
+      },
     });
   });
 
@@ -72,13 +114,19 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     if (route.request().method() !== "POST") return route.fallback();
     const body = await route.request().postDataJSON();
     if (body?.config?.kind === "dataset") {
-      await route.fulfill({ status: 201, json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" },
+      });
       return;
     }
     if (body?.config?.kind === "bookmark") {
       bookmarkCreated = true;
       bookmarkConfigBody = body.config;
-      await route.fulfill({ status: 201, json: { id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" },
+      });
       return;
     }
     return route.fallback();
@@ -100,13 +148,25 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   // l'id diffère de son originSourceId — lier curseur et table à la même
   // source ne l'exercerait donc jamais.
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  await page.getByLabel(/Collection de la source/).last().fill("events");
-  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).last().click();
+  await page
+    .getByLabel(/Collection de la source/)
+    .last()
+    .fill("events");
+  await page
+    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .last()
+    .click();
   await expect(page.getByText("Dataset partagé actif")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  await page.getByLabel(/Collection de la source/).last().fill("events");
-  await page.getByRole("button", { name: /Promouvoir en dataset partagé/ }).last().click();
+  await page
+    .getByLabel(/Collection de la source/)
+    .last()
+    .fill("events");
+  await page
+    .getByRole("button", { name: /Promouvoir en dataset partagé/ })
+    .last()
+    .click();
   await expect(page.getByText("Dataset partagé actif")).toHaveCount(2);
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
@@ -131,9 +191,14 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
 
   const minInput = page.getByLabel("Borne minimale");
   await expect(minInput).toHaveValue("10");
-  const crossFilteredReq = page.waitForRequest((r) => r.url().includes("/collections/events/items") && r.url().includes("score__gte=50"));
+  const crossFilteredReq = page.waitForRequest(
+    (r) => r.url().includes("/collections/events/items") && r.url().includes("score__gte=50"),
+  );
   await minInput.evaluate((el: HTMLInputElement) => {
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
     setter.call(el, "50");
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -155,9 +220,16 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
   expect(bookmarkConfigBody).toMatchObject({
     kind: "bookmark",
     bookmark: {
-      appId: "9", pageId: expect.any(String),
+      appId: "9",
+      pageId: expect.any(String),
       timeRange: { from: "2026-01-01", to: "2026-12-31" },
-      crossFilter: { "dataset-1": { field: "score", value: { from: "50", to: "90" }, originSourceId: expect.any(String) } },
+      crossFilter: {
+        "dataset-1": {
+          field: "score",
+          value: { from: "50", to: "90" },
+          originSourceId: expect.any(String),
+        },
+      },
     },
   });
 
@@ -168,16 +240,30 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     await route.fulfill({
       json: {
         items: [
-          { pk: "bookmark-1", resourceType: "bookmark", title: "Récents 2026", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-bookmark", isPublished: false },
+          {
+            pk: "bookmark-1",
+            resourceType: "bookmark",
+            title: "Récents 2026",
+            abstract: "",
+            owner: "mockuser",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: "cfg-bookmark",
+            isPublished: false,
+          },
         ],
-        total: 1, page: 1, pageSize: 12,
+        total: 1,
+        page: 1,
+        pageSize: 12,
       },
     });
   });
   await page.route("https://core.test/configs/by-item/bookmark-1", async (route) => {
     await route.fulfill({
       json: {
-        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        id: "cfg-bookmark",
+        itemId: "bookmark-1",
+        kind: "bookmark",
         config: { version: 1, kind: "bookmark", bookmark: bookmarkConfigBody.bookmark },
       },
     });
@@ -188,7 +274,12 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
 
   // 4. L'ouvrir restaure exactement le même contexte — plage temporelle et
   // cross-filter, pas seulement la première.
-  const reopenedReq = page.waitForRequest((r) => r.url().includes("/collections/events/items") && r.url().includes("score__gte=50") && r.url().includes("date__gte=2026-01-01"));
+  const reopenedReq = page.waitForRequest(
+    (r) =>
+      r.url().includes("/collections/events/items") &&
+      r.url().includes("score__gte=50") &&
+      r.url().includes("date__gte=2026-01-01"),
+  );
   await page.getByRole("button", { name: "Ouvrir" }).click();
   await expect(page).toHaveURL(/\/apps\/9\/.*\?ctx=/);
   await reopenedReq;

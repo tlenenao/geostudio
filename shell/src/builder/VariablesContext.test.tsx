@@ -19,22 +19,38 @@ function Probe() {
 
 test("seeds values from each variable's initialValue", () => {
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "salut" }];
-  render(<VariablesProvider variables={variables}><Probe /></VariablesProvider>);
+  render(
+    <VariablesProvider variables={variables}>
+      <Probe />
+    </VariablesProvider>,
+  );
   expect(screen.getByText("message:salut")).toBeInTheDocument();
 });
 
 test("useSetVariable updates the value read by useVariables", async () => {
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "" }];
-  render(<VariablesProvider variables={variables}><Probe /></VariablesProvider>);
+  render(
+    <VariablesProvider variables={variables}>
+      <Probe />
+    </VariablesProvider>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "set" }));
   expect(screen.getByText("message:hello")).toBeInTheDocument();
 });
 
 test("picks up a variable added after the provider first mounted", async () => {
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "salut" }];
-  const { rerender } = render(<VariablesProvider variables={variables}><Probe /></VariablesProvider>);
+  const { rerender } = render(
+    <VariablesProvider variables={variables}>
+      <Probe />
+    </VariablesProvider>,
+  );
   const next: Variable[] = [...variables, { id: "v2", name: "count", initialValue: "0" }];
-  rerender(<VariablesProvider variables={next}><Probe /></VariablesProvider>);
+  rerender(
+    <VariablesProvider variables={next}>
+      <Probe />
+    </VariablesProvider>,
+  );
   await waitFor(() => expect(screen.getByText("count:0")).toBeInTheDocument());
   expect(screen.getByText("message:salut")).toBeInTheDocument(); // untouched
 });
@@ -51,7 +67,11 @@ test("useVariables and useSetVariable carry non-string values (number, bool, obj
       </div>
     );
   }
-  render(<VariablesProvider variables={[{ id: "v1", name: "count", type: "number", initialValue: 0 }]}><Probe2 /></VariablesProvider>);
+  render(
+    <VariablesProvider variables={[{ id: "v1", name: "count", type: "number", initialValue: 0 }]}>
+      <Probe2 />
+    </VariablesProvider>,
+  );
   expect(screen.getByText("count:0")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "set-number" }));
   expect(screen.getByText("count:42")).toBeInTheDocument();

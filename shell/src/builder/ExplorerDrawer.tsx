@@ -48,10 +48,20 @@ export function ExplorerDrawer() {
   const dataset = datasetQuery.data;
 
   const source: DataSource | null = target
-    ? { id: "__explorer__", type: "features", service: "core", layer: "", datasetId: target.datasetId, query: { limit: EXPLORER_LIMIT } }
+    ? {
+        id: "__explorer__",
+        type: "features",
+        service: "core",
+        layer: "",
+        datasetId: target.datasetId,
+        query: { limit: EXPLORER_LIMIT },
+      }
     : null;
-  const patch = source && dataset ? derivePatch(source, analyticsCtx, { [target!.datasetId]: dataset }) : {};
-  const merged: DataSource | null = source ? { ...source, query: { ...source.query, ...patch } } : null;
+  const patch =
+    source && dataset ? derivePatch(source, analyticsCtx, { [target!.datasetId]: dataset }) : {};
+  const merged: DataSource | null = source
+    ? { ...source, query: { ...source.query, ...patch } }
+    : null;
 
   const recordsQuery = useQuery({
     queryKey: ["datasource-explorer", target?.datasetId, merged?.query],
@@ -70,7 +80,17 @@ export function ExplorerDrawer() {
   const mapConfig: MapConfig = {
     basemap: { style: DEFAULT_STYLE },
     view: { center: [2.4, 46.6], zoom: 5 },
-    layers: merged ? [{ id: "explorer", title: "Entités", visible: true, kind: "feature", url: client.featuresUrl(merged) }] : [],
+    layers: merged
+      ? [
+          {
+            id: "explorer",
+            title: "Entités",
+            visible: true,
+            kind: "feature",
+            url: client.featuresUrl(merged),
+          },
+        ]
+      : [],
   };
 
   function selectRecord(r: DataRecord) {
@@ -82,24 +102,41 @@ export function ExplorerDrawer() {
     <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-lg">
       <div className="flex items-center justify-between border-b border-[var(--gs-color-border)] p-2">
         <h2 className="text-sm font-medium text-[var(--gs-color-text)]">
-          Entités — {dataset ? (dataset.source === "collection" ? dataset.collectionId : dataset.arcgisItemId) : target.datasetId}
+          Entités —{" "}
+          {dataset
+            ? dataset.source === "collection"
+              ? dataset.collectionId
+              : dataset.arcgisItemId
+            : target.datasetId}
         </h2>
-        <button type="button" aria-label="Fermer le panneau" className="text-lg text-[var(--gs-color-muted)]" onClick={close}>
+        <button
+          type="button"
+          aria-label="Fermer le panneau"
+          className="text-lg text-[var(--gs-color-muted)]"
+          onClick={close}
+        >
           ×
         </button>
       </div>
       <div className="h-48 shrink-0">
         <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
-          <MapView ref={mapHandle} config={mapConfig} getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
+          <MapView
+            ref={mapHandle}
+            config={mapConfig}
+            getAuthToken={client.getAuthToken}
+            getCoreUrl={client.getCoreUrl}
+          />
         </Suspense>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto p-2 text-xs">
         {(datasetQuery.isLoading || recordsQuery.isLoading) && (
           <p className="text-[var(--gs-color-muted)]">Chargement…</p>
         )}
-        {!datasetQuery.isLoading && !recordsQuery.isLoading && (datasetQuery.isError || recordsQuery.isError) && (
-          <p className="text-red-600">Erreur de données</p>
-        )}
+        {!datasetQuery.isLoading &&
+          !recordsQuery.isLoading &&
+          (datasetQuery.isError || recordsQuery.isError) && (
+            <p className="text-red-600">Erreur de données</p>
+          )}
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&
           !datasetQuery.isError &&
@@ -107,7 +144,8 @@ export function ExplorerDrawer() {
           records.length === 0 && <p className="text-[var(--gs-color-muted)]">Aucune entité</p>}
         {records.length >= EXPLORER_LIMIT && (
           <p className="mb-2 text-[var(--gs-color-muted)]">
-            Affinez le contexte (période, emprise, filtre) pour voir l'ensemble des entités — {EXPLORER_LIMIT} premières affichées.
+            Affinez le contexte (période, emprise, filtre) pour voir l'ensemble des entités —{" "}
+            {EXPLORER_LIMIT} premières affichées.
           </p>
         )}
         {shown.length > 0 && (
@@ -149,11 +187,27 @@ export function ExplorerDrawer() {
         )}
         {pageCount > 1 && (
           <div className="mt-auto flex items-center justify-between pt-2 text-[10px] text-[var(--gs-color-muted)]">
-            <button type="button" aria-label="Page précédente" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-              disabled={current === 0} onClick={() => setPage(current - 1)}>Précédent</button>
-            <span>Page {current + 1} / {pageCount}</span>
-            <button type="button" aria-label="Page suivante" className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
-              disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>Suivant</button>
+            <button
+              type="button"
+              aria-label="Page précédente"
+              className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+              disabled={current === 0}
+              onClick={() => setPage(current - 1)}
+            >
+              Précédent
+            </button>
+            <span>
+              Page {current + 1} / {pageCount}
+            </span>
+            <button
+              type="button"
+              aria-label="Page suivante"
+              className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
+              disabled={current >= pageCount - 1}
+              onClick={() => setPage(current + 1)}
+            >
+              Suivant
+            </button>
           </div>
         )}
       </div>

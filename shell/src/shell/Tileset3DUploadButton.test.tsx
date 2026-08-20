@@ -26,48 +26,79 @@ function zipFile() {
 test("uploads a small (single-part) tileset and closes on success", async () => {
   let completedParts: unknown;
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post("https://core.test/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" })),
-    http.put("https://minio.test/part-1", () =>
-      new HttpResponse(null, { status: 200, headers: { ETag: "\"etag-1\"" } })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
     http.post("https://core.test/tileset3d/uploads/job-1/complete", async ({ request }) => {
       completedParts = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
     http.get("https://core.test/tileset3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" })),
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
+    ),
   );
 
-  render(<Harness><Tileset3DUploadButton /></Harness>);
+  render(
+    <Harness>
+      <Tileset3DUploadButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByText("Nouveau tileset 3D"));
   await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
   await userEvent.type(screen.getByLabelText("Titre"), "Ville");
   await userEvent.click(screen.getByText("Importer"));
 
-  await waitFor(() => expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument());
-  expect(completedParts).toEqual({ parts: [{ partNumber: 1, etag: "\"etag-1\"" }] });
+  await waitFor(() =>
+    expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument(),
+  );
+  expect(completedParts).toEqual({ parts: [{ partNumber: 1, etag: '"etag-1"' }] });
 });
 
 test("surfaces a job error instead of closing", async () => {
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post("https://core.test/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" })),
-    http.put("https://minio.test/part-1", () =>
-      new HttpResponse(null, { status: 200, headers: { ETag: "\"etag-1\"" } })),
-    http.post("https://core.test/tileset3d/uploads/job-1/complete", () => new HttpResponse(null, { status: 204 })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
+    http.post(
+      "https://core.test/tileset3d/uploads/job-1/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
     http.get("https://core.test/tileset3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "error", errorMessage: "aucun tileset.json à la racine de l'archive", itemId: null })),
+      HttpResponse.json({
+        status: "error",
+        errorMessage: "aucun tileset.json à la racine de l'archive",
+        itemId: null,
+      }),
+    ),
   );
 
-  render(<Harness><Tileset3DUploadButton /></Harness>);
+  render(
+    <Harness>
+      <Tileset3DUploadButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByText("Nouveau tileset 3D"));
   await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
   await userEvent.type(screen.getByLabelText("Titre"), "Ville");
   await userEvent.click(screen.getByText("Importer"));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("aucun tileset.json à la racine de l'archive");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "aucun tileset.json à la racine de l'archive",
+  );
 });
 
 test("gives up on a job that never finishes, and lets the dialog be closed again", async () => {
@@ -76,21 +107,34 @@ test("gives up on a job that never finishes, and lets the dialog be closed again
   // "finalizing" compte comme busy), un job procrastinate bloqué/perdu
   // rendait la boîte de dialogue définitivement infermable.
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post("https://core.test/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" })),
-    http.put("https://minio.test/part-1", () =>
-      new HttpResponse(null, { status: 200, headers: { ETag: "\"etag-1\"" } })),
-    http.post("https://core.test/tileset3d/uploads/job-1/complete", () => new HttpResponse(null, { status: 204 })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
+    http.post(
+      "https://core.test/tileset3d/uploads/job-1/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
     // Never terminal: the job stays "finalizing" for every poll.
     http.get("https://core.test/tileset3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "finalizing", errorMessage: null, itemId: null })),
+      HttpResponse.json({ status: "finalizing", errorMessage: null, itemId: null }),
+    ),
   );
 
   // pollTimeoutMs={0} : le délai est vérifié APRÈS chaque lecture de statut,
   // donc 0 fait expirer la première lecture non terminale — déterministe, et
   // sans attendre les 1,5 s de l'intervalle de poll.
-  render(<Harness><Tileset3DUploadButton pollTimeoutMs={0} /></Harness>);
+  render(
+    <Harness>
+      <Tileset3DUploadButton pollTimeoutMs={0} />
+    </Harness>,
+  );
   await userEvent.click(screen.getByText("Nouveau tileset 3D"));
   await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
   await userEvent.type(screen.getByLabelText("Titre"), "Ville");
@@ -120,15 +164,26 @@ test("blocks closing (Annuler, Escape, backdrop) while an upload is in progress"
       return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
     }),
     http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" })),
-    http.put("https://minio.test/part-1", () =>
-      new HttpResponse(null, { status: 200, headers: { ETag: "\"etag-1\"" } })),
-    http.post("https://core.test/tileset3d/uploads/job-1/complete", () => new HttpResponse(null, { status: 204 })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
+    http.post(
+      "https://core.test/tileset3d/uploads/job-1/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
     http.get("https://core.test/tileset3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" })),
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
+    ),
   );
 
-  const { container } = render(<Harness><Tileset3DUploadButton /></Harness>);
+  const { container } = render(
+    <Harness>
+      <Tileset3DUploadButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByText("Nouveau tileset 3D"));
   await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
   await userEvent.type(screen.getByLabelText("Titre"), "Ville");
@@ -156,5 +211,7 @@ test("blocks closing (Annuler, Escape, backdrop) while an upload is in progress"
   // Let the held request settle so the upload completes normally and
   // doesn't leak a pending promise into the next test.
   releaseCreate();
-  await waitFor(() => expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument(),
+  );
 });

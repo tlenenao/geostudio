@@ -33,24 +33,33 @@ function Harness({ children }: { children: ReactNode }) {
 }
 
 function geojsonFile() {
-  return new File(
-    ['{"type":"FeatureCollection","features":[]}'],
-    "villes.geojson",
-    { type: "application/geo+json" },
-  );
+  return new File(['{"type":"FeatureCollection","features":[]}'], "villes.geojson", {
+    type: "application/geo+json",
+  });
 }
 
 test("uploads a file and navigates to the created map once the job is done", async () => {
   server.use(
     http.post("https://core.test/uploads/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/upload-1", key: "t/abc-villes.geojson" })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-1", key: "t/abc-villes.geojson" }),
+    ),
     http.put("https://minio.test/upload-1", () => new HttpResponse(null, { status: 200 })),
     http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-1" })),
     http.get("https://core.test/uploads/job-1", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, collectionId: "ingest_abc", itemId: "42" })),
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_abc",
+        itemId: "42",
+      }),
+    ),
   );
 
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
@@ -62,14 +71,25 @@ test("uploads a file and navigates to the created map once the job is done", asy
 test("shows the job's error message and lets the user retry", async () => {
   server.use(
     http.post("https://core.test/uploads/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/upload-2", key: "t/def-broken.geojson" })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-2", key: "t/def-broken.geojson" }),
+    ),
     http.put("https://minio.test/upload-2", () => new HttpResponse(null, { status: 200 })),
     http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-2" })),
     http.get("https://core.test/uploads/job-2", () =>
-      HttpResponse.json({ status: "error", errorMessage: "JSON invalide", collectionId: null, itemId: null })),
+      HttpResponse.json({
+        status: "error",
+        errorMessage: "JSON invalide",
+        collectionId: null,
+        itemId: null,
+      }),
+    ),
   );
 
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Casse");
@@ -80,7 +100,11 @@ test("shows the job's error message and lets the user retry", async () => {
 });
 
 test("shows manual lat/lon selectors when a CSV's columns cannot be auto-detected", async () => {
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   const csv = new File(["nom,valeur\nA,1\n"], "data.csv", { type: "text/csv" });
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), csv);
@@ -90,7 +114,11 @@ test("shows manual lat/lon selectors when a CSV's columns cannot be auto-detecte
 });
 
 test("does not show manual lat/lon selectors when a CSV's columns are auto-detectable", async () => {
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   const csv = new File(["nom,lat,lon\nParis,48.85,2.35\n"], "villes.csv", { type: "text/csv" });
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), csv);
@@ -106,20 +134,32 @@ function gpkgFile(name = "villes.gpkg") {
 test("auto-selects the only layer of a GeoPackage without showing a picker", async () => {
   server.use(
     http.post("https://core.test/uploads/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/upload-3", key: "t/ghi-villes.gpkg" })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-3", key: "t/ghi-villes.gpkg" }),
+    ),
     http.put("https://minio.test/upload-3", () => new HttpResponse(null, { status: 200 })),
     http.post("https://core.test/uploads/inspect", () =>
-      HttpResponse.json({ layers: [{ name: "villes", featureCount: 2, geometryType: "Point" }] })),
+      HttpResponse.json({ layers: [{ name: "villes", featureCount: 2, geometryType: "Point" }] }),
+    ),
     http.post("https://core.test/uploads", async ({ request }) => {
       const body = (await request.json()) as { layerName?: string };
       expect(body.layerName).toBe("villes");
       return HttpResponse.json({ jobId: "job-3" });
     }),
     http.get("https://core.test/uploads/job-3", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, collectionId: "ingest_x", itemId: "99" })),
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_x",
+        itemId: "99",
+      }),
+    ),
   );
 
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), gpkgFile());
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
@@ -131,7 +171,8 @@ test("auto-selects the only layer of a GeoPackage without showing a picker", asy
 test("shows a layer picker for a multi-layer GeoPackage and imports the chosen layer", async () => {
   server.use(
     http.post("https://core.test/uploads/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/upload-4", key: "t/jkl-multi.gpkg" })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-4", key: "t/jkl-multi.gpkg" }),
+    ),
     http.put("https://minio.test/upload-4", () => new HttpResponse(null, { status: 200 })),
     http.post("https://core.test/uploads/inspect", () =>
       HttpResponse.json({
@@ -139,17 +180,28 @@ test("shows a layer picker for a multi-layer GeoPackage and imports the chosen l
           { name: "villes", featureCount: 2, geometryType: "Point" },
           { name: "routes", featureCount: 5, geometryType: "LineString" },
         ],
-      })),
+      }),
+    ),
     http.post("https://core.test/uploads", async ({ request }) => {
       const body = (await request.json()) as { layerName?: string };
       expect(body.layerName).toBe("routes");
       return HttpResponse.json({ jobId: "job-4" });
     }),
     http.get("https://core.test/uploads/job-4", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, collectionId: "ingest_y", itemId: "100" })),
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_y",
+        itemId: "100",
+      }),
+    ),
   );
 
-  render(<Harness><ImportFileButton /></Harness>);
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), gpkgFile("multi.gpkg"));
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Multi");

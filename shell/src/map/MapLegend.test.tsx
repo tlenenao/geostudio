@@ -15,7 +15,14 @@ test("lists visible non-deck layer titles", () => {
 
 test("lists visible deck layers in the legend", () => {
   const layers: MapConfig["layers"] = [
-    { id: "heat", title: "Chaleur", visible: true, kind: "deck", deckType: "heatmap", dataUrl: "d" },
+    {
+      id: "heat",
+      title: "Chaleur",
+      visible: true,
+      kind: "deck",
+      deckType: "heatmap",
+      dataUrl: "d",
+    },
     { id: "off", title: "Cachée", visible: false, kind: "deck", deckType: "heatmap", dataUrl: "d" },
   ];
   render(<MapLegend layers={layers} />);

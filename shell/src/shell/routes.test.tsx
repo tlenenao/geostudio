@@ -37,7 +37,11 @@ vi.mock("../pages/AppBuilderPage", () => ({
 }));
 
 vi.mock("../pages/AppRuntimePage", () => ({
-  AppRuntimePage: ({ pk, pageId }: { pk: string; pageId?: string }) => <div>app-runtime-{pk}-{pageId ?? "none"}</div>,
+  AppRuntimePage: ({ pk, pageId }: { pk: string; pageId?: string }) => (
+    <div>
+      app-runtime-{pk}-{pageId ?? "none"}
+    </div>
+  ),
 }));
 
 vi.mock("../pages/AdminExtensionsPage", () => ({
@@ -66,7 +70,17 @@ test("navigates from catalog to app builder on open (app item)", async () => {
     http.get("https://core.test/items", () =>
       HttpResponse.json({
         items: [
-          { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          {
+            pk: "1",
+            resourceType: "app",
+            title: "Alpha",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
         ],
         total: 1,
         page: 1,
@@ -121,9 +135,21 @@ test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", a
       lastUrl = request.url;
       return HttpResponse.json({
         items: [
-          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          {
+            pk: "bm-1",
+            resourceType: "bookmark",
+            title: "Ma vue",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
         ],
-        total: 1, page: 1, pageSize: 12,
+        total: 1,
+        page: 1,
+        pageSize: 12,
       });
     }),
   );
@@ -137,17 +163,38 @@ test("opening a bookmark navigates to its app+page+ctx URL, not an editor", asyn
     http.get("https://core.test/items", () =>
       HttpResponse.json({
         items: [
-          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          {
+            pk: "bm-1",
+            resourceType: "bookmark",
+            title: "Ma vue",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
         ],
-        total: 1, page: 1, pageSize: 12,
+        total: 1,
+        page: 1,
+        pageSize: 12,
       }),
     ),
     http.get("https://core.test/configs/by-item/bm-1", () =>
       HttpResponse.json({
-        id: "cfg-bm-1", itemId: "bm-1", kind: "bookmark",
+        id: "cfg-bm-1",
+        itemId: "bm-1",
+        kind: "bookmark",
         config: {
-          version: 1, kind: "bookmark",
-          bookmark: { appId: "42", pageId: "page-1", timeRange: null, extent: null, crossFilter: {} },
+          version: 1,
+          kind: "bookmark",
+          bookmark: {
+            appId: "42",
+            pageId: "page-1",
+            timeRange: null,
+            extent: null,
+            crossFilter: {},
+          },
         },
       }),
     ),
@@ -184,12 +231,27 @@ test("a failed bookmark config fetch surfaces an error instead of silently doing
     http.get("https://core.test/items", () =>
       HttpResponse.json({
         items: [
-          { pk: "bm-1", resourceType: "bookmark", title: "Ma vue", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          {
+            pk: "bm-1",
+            resourceType: "bookmark",
+            title: "Ma vue",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
         ],
-        total: 1, page: 1, pageSize: 12,
+        total: 1,
+        page: 1,
+        pageSize: 12,
       }),
     ),
-    http.get("https://core.test/configs/by-item/bm-1", () => new HttpResponse(null, { status: 500 })),
+    http.get(
+      "https://core.test/configs/by-item/bm-1",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
   );
   wrap(<AppRoutes />, "/bookmarks");
   await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);

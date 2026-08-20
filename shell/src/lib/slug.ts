@@ -6,7 +6,10 @@ const MAX_LEN = 100;
 
 export function slugify(text: string): string {
   const ascii = text.normalize("NFKD").replace(/[̀-ͯ]/g, "");
-  const dashed = ascii.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const dashed = ascii
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   const result = dashed.slice(0, MAX_LEN).replace(/^-+|-+$/g, "");
   return result || "site";
 }

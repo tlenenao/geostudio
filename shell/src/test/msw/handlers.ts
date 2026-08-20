@@ -18,15 +18,22 @@ function item(pk: string, type = "app", title = `Item ${pk}`) {
 }
 
 export const handlers = [
-  http.get(`${CORE}/items`, () => HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 })),
+  http.get(`${CORE}/items`, () =>
+    HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),
+  ),
   http.get(`${CORE}/items/:pk`, ({ params }) => {
     if (params.pk === "404") return new HttpResponse(null, { status: 404 });
     return HttpResponse.json(item(String(params.pk)));
   }),
   http.get(`${CORE}/me`, () =>
     HttpResponse.json({
-      id: "u1", username: "alice", firstName: "Alice", lastName: "Martin",
-      email: "alice@example.com", tenantId: "t1", isAdmin: false,
+      id: "u1",
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Martin",
+      email: "alice@example.com",
+      tenantId: "t1",
+      isAdmin: false,
     }),
   ),
   http.get(`${CORE}/instance`, () => HttpResponse.json({ readOnly: false })),

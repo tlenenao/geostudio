@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useDeleteHarvestSource, useHarvestSources, useInstanceInfo, useMe, useRunHarvestSource } from "../api/hooks";
+import {
+  useDeleteHarvestSource,
+  useHarvestSources,
+  useInstanceInfo,
+  useMe,
+  useRunHarvestSource,
+} from "../api/hooks";
 import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -83,13 +89,28 @@ export function HarvestSourcesAdminPage() {
                 <td className="py-2 flex gap-2">
                   {!readOnly && (
                     <>
-                      <Button type="button" variant="outline" size="sm" onClick={() => runSource.mutate(source.id)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => runSource.mutate(source.id)}
+                      >
                         Moissonner maintenant
                       </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditing(source)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditing(source)}
+                      >
                         Éditer
                       </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setDeleting(source)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeleting(source)}
+                      >
                         Supprimer
                       </Button>
                     </>
@@ -107,11 +128,15 @@ export function HarvestSourcesAdminPage() {
       <ConfirmDialog
         open={!!deleting}
         title="Supprimer la source"
-        message={deleting ? `Supprimer la source « ${deleting.url} » ? Les items/collections déjà produits survivent.` : ""}
+        message={
+          deleting
+            ? `Supprimer la source « ${deleting.url} » ? Les items/collections déjà produits survivent.`
+            : ""
+        }
         confirmLabel="Supprimer"
         pending={deleteSource.isPending}
         onCancel={() => setDeleting(null)}
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
       />
     </div>
   );

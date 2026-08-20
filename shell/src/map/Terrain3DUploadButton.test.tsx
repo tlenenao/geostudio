@@ -36,7 +36,9 @@ test("uploads a DEM and calls onUploaded once the conversion job is done", async
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
     ),
@@ -59,7 +61,9 @@ test("shows the conversion error message and does not call onUploaded", async ()
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "error", errorMessage: "GeoTIFF illisible", itemId: null }),
     ),
@@ -108,7 +112,9 @@ test("presigns on the terrain3d route with the file's real content type", async 
       return HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" });
     }),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () => HttpResponse.json({ jobId: "job-1" }, { status: 201 })),
+    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
     http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
     ),

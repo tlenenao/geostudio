@@ -21,7 +21,11 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
   }
   render() {
     if (this.state.failed) {
-      return <div className="flex h-full items-center justify-center bg-red-50 text-xs text-red-600">Erreur du widget</div>;
+      return (
+        <div className="flex h-full items-center justify-center bg-red-50 text-xs text-red-600">
+          Erreur du widget
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -50,17 +54,48 @@ export function WidgetHost({
   const data = dsId ? states[dsId] : undefined;
   const def = getWidget(item.widget);
   if (!def) {
-    return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Widget inconnu : {item.widget}</div>;
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+        Widget inconnu : {item.widget}
+      </div>
+    );
   }
-  const visible = mode === "edit" || !item.visibleWhen
-    || Boolean(evaluateExpression(item.visibleWhen, { vars: variables, record: data?.records[0]?.properties, user, ctx: analyticsCtx }));
+  const visible =
+    mode === "edit" ||
+    !item.visibleWhen ||
+    Boolean(
+      evaluateExpression(item.visibleWhen, {
+        vars: variables,
+        record: data?.records[0]?.properties,
+        user,
+        ctx: analyticsCtx,
+      }),
+    );
   if (!visible) return null;
   const Widget = def.Component;
-  const exprCtx = { vars: variables, record: data?.records[0]?.properties, user, ctx: analyticsCtx };
+  const exprCtx = {
+    vars: variables,
+    record: data?.records[0]?.properties,
+    user,
+    ctx: analyticsCtx,
+  };
   const resolvedProps = resolveExprBindings(item.props, exprCtx) as Record<string, unknown>;
   return (
     <WidgetErrorBoundary>
-      <Widget props={resolvedProps} ctx={{ mode, data, bus: bus ?? undefined, widgetId: item.id, pages, navigate, variables, user, breakpoint }} />
+      <Widget
+        props={resolvedProps}
+        ctx={{
+          mode,
+          data,
+          bus: bus ?? undefined,
+          widgetId: item.id,
+          pages,
+          navigate,
+          variables,
+          user,
+          breakpoint,
+        }}
+      />
     </WidgetErrorBoundary>
   );
 }

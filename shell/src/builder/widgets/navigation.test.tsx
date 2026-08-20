@@ -6,7 +6,10 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import type { Page } from "../../api/types";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 const emptyLayout = { type: "grid" as const, breakpoints: {}, items: [] };
 const pages: Page[] = [
@@ -31,7 +34,10 @@ test("shows a placeholder when there are no pages", () => {
 test("supports a vertical orientation prop", () => {
   const Nav = getWidget("nav")!.Component;
   const { container } = render(
-    <Nav props={{ direction: "vertical" }} ctx={{ mode: "runtime", pages, navigate: vi.fn() } as WidgetContext} />,
+    <Nav
+      props={{ direction: "vertical" }}
+      ctx={{ mode: "runtime", pages, navigate: vi.fn() } as WidgetContext}
+    />,
   );
   expect(container.querySelector("nav")).toHaveClass("flex-col");
 });

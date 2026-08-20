@@ -2,13 +2,20 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne duplique pas", async ({ page }) => {
+test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne duplique pas", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -28,9 +35,15 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
       await route.fulfill({
         status: 201,
         json: {
-          id: "src-1", type: "stac", url: "https://stac.example.com/collections",
-          mode: "reference", enabled: true, intervalMinutes: null,
-          lastRunAt: null, lastStatus: null, lastError: null,
+          id: "src-1",
+          type: "stac",
+          url: "https://stac.example.com/collections",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
         },
       });
       return;
@@ -38,12 +51,19 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
     await route.fulfill({
       json: {
         sources: created
-          ? [{
-              id: "src-1", type: "stac", url: "https://stac.example.com/collections",
-              mode: "reference", enabled: true, intervalMinutes: null,
-              lastRunAt: runCount > 0 ? "2026-07-19T10:00:00Z" : null,
-              lastStatus: runCount > 0 ? "ok" : null, lastError: null,
-            }]
+          ? [
+              {
+                id: "src-1",
+                type: "stac",
+                url: "https://stac.example.com/collections",
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: runCount > 0 ? "2026-07-19T10:00:00Z" : null,
+                lastStatus: runCount > 0 ? "ok" : null,
+                lastError: null,
+              },
+            ]
           : [],
       },
     });
@@ -52,9 +72,15 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("ext-1", {
-      pk: "ext-1", resourceType: "external", title: "Bâtiments (STAC distant)",
-      abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-      configId: null, isPublished: false,
+      pk: "ext-1",
+      resourceType: "external",
+      title: "Bâtiments (STAC distant)",
+      abstract: "",
+      owner: "mockuser",
+      thumbnailUrl: null,
+      date: "2026-01-01",
+      configId: null,
+      isPublished: false,
     });
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
@@ -74,9 +100,14 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
   await dialog.getByLabel("URL").fill("https://stac.example.com/collections");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => created).toEqual({
-    type: "stac", url: "https://stac.example.com/collections", mode: "reference", enabled: true,
-  });
+  await expect
+    .poll(() => created)
+    .toEqual({
+      type: "stac",
+      url: "https://stac.example.com/collections",
+      mode: "reference",
+      enabled: true,
+    });
   await expect(page.getByText("https://stac.example.com/collections")).toBeVisible();
 
   await page.getByRole("button", { name: "Moissonner maintenant" }).click();

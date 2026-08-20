@@ -43,7 +43,12 @@ test("emitting from a button invokes the wired action across two widgets", async
     useBusAction(bus, "sink", "run", (p) => spy(p));
     return null;
   }
-  render(<><Emitter /><Sink /></>);
+  render(
+    <>
+      <Emitter />
+      <Sink />
+    </>,
+  );
   await userEvent.click(screen.getByText("go"));
   expect(spy).toHaveBeenCalledWith({ ok: true });
 });

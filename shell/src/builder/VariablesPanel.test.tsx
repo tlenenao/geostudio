@@ -73,12 +73,16 @@ test("toggles a bool variable's initial value", async () => {
   const variables: Variable[] = [{ id: "v1", name: "gate", type: "bool", initialValue: false }];
   render(<VariablesPanel variables={variables} onChange={onChange} />);
   await userEvent.click(screen.getByLabelText("Valeur initiale de la variable v1"));
-  expect(onChange).toHaveBeenCalledWith([{ id: "v1", name: "gate", type: "bool", initialValue: true }]);
+  expect(onChange).toHaveBeenCalledWith([
+    { id: "v1", name: "gate", type: "bool", initialValue: true },
+  ]);
 });
 
 test("shows no editable initial value for a record-typed variable", () => {
   const onChange = vi.fn();
-  const variables: Variable[] = [{ id: "v1", name: "selected", type: "record", initialValue: null }];
+  const variables: Variable[] = [
+    { id: "v1", name: "selected", type: "record", initialValue: null },
+  ];
   render(<VariablesPanel variables={variables} onChange={onChange} />);
   expect(screen.queryByLabelText("Valeur initiale de la variable v1")).not.toBeInTheDocument();
   expect(screen.getByText("Définie par câblage d'action")).toBeInTheDocument();

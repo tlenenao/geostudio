@@ -39,7 +39,8 @@ export class ActionBus {
 
   emit(widgetId: string, event: string, payload?: unknown): void {
     const list = this.wiring.get(`${widgetId} ${event}`) ?? [];
-    const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
+    const record =
+      payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
     for (const m of list) {
       if (m.when && !evaluateExpression(m.when, { ...this.context, record })) continue;
       try {

@@ -30,7 +30,9 @@ export function CollectionParamSelect({
     >
       <option value="">Choisir…</option>
       {options.map((c) => (
-        <option key={c.id} value={c.id}>{c.title}</option>
+        <option key={c.id} value={c.id}>
+          {c.title}
+        </option>
       ))}
     </select>
   );

@@ -6,7 +6,10 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("hero declares a cta event", () => {
   expect(getWidget("hero")!.events).toContain("cta");
@@ -14,7 +17,12 @@ test("hero declares a cta event", () => {
 
 test("hero renders title and subtitle", () => {
   const Hero = getWidget("hero")!.Component;
-  render(<Hero props={{ title: "Bienvenue", subtitle: "Un sous-titre" }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  render(
+    <Hero
+      props={{ title: "Bienvenue", subtitle: "Un sous-titre" }}
+      ctx={{ mode: "runtime" } as WidgetContext}
+    />,
+  );
   expect(screen.getByText("Bienvenue")).toBeInTheDocument();
   expect(screen.getByText("Un sous-titre")).toBeInTheDocument();
 });
@@ -34,7 +42,12 @@ test("hero without backgroundImageUrl falls back to a theme color flat backgroun
 
 test("hero with backgroundImageUrl renders it as a CSS background-image", () => {
   const Hero = getWidget("hero")!.Component;
-  render(<Hero props={{ title: "Bienvenue", backgroundImageUrl: "https://example.com/bg.png" }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  render(
+    <Hero
+      props={{ title: "Bienvenue", backgroundImageUrl: "https://example.com/bg.png" }}
+      ctx={{ mode: "runtime" } as WidgetContext}
+    />,
+  );
   const container = screen.getByText("Bienvenue").parentElement!;
   expect(container.style.backgroundImage).toContain("https://example.com/bg.png");
 });

@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, test } from "vitest";
 import type { CollectionSchema } from "../../api/types";
-import { compileFilterRowsToSql, decompileSqlToFilterRows, isFilterRowValueValid } from "./compileFilter";
+import {
+  compileFilterRowsToSql,
+  decompileSqlToFilterRows,
+  isFilterRowValueValid,
+} from "./compileFilter";
 
 const SCHEMA: CollectionSchema = {
-  collection: "incidents", pk: "id", geometry: null,
+  collection: "incidents",
+  pk: "id",
+  geometry: null,
   fields: [
     { name: "commune", type: "string", required: true },
     { name: "gravite", type: "integer", required: false },
@@ -30,13 +36,19 @@ describe("compileFilterRowsToSql", () => {
   });
 
   test("échappe les apostrophes dans une valeur texte", () => {
-    const sql = compileFilterRowsToSql([{ column: "commune", operator: "eq", value: "L'Île" }], SCHEMA);
-    expect(sql).toBe('"commune" = \'L\'\'Île\'');
+    const sql = compileFilterRowsToSql(
+      [{ column: "commune", operator: "eq", value: "L'Île" }],
+      SCHEMA,
+    );
+    expect(sql).toBe("\"commune\" = 'L''Île'");
   });
 
   test("contains produit un LIKE encadré de %", () => {
-    const sql = compileFilterRowsToSql([{ column: "commune", operator: "contains", value: "par" }], SCHEMA);
-    expect(sql).toBe('"commune" LIKE \'%par%\'');
+    const sql = compileFilterRowsToSql(
+      [{ column: "commune", operator: "contains", value: "par" }],
+      SCHEMA,
+    );
+    expect(sql).toBe("\"commune\" LIKE '%par%'");
   });
 });
 
@@ -64,11 +76,14 @@ describe("decompileSqlToFilterRows", () => {
   });
 
   test("forme non reconnue -> null (repli attendu vers le canvas complet)", () => {
-    expect(decompileSqlToFilterRows("length(\"commune\") > 3")).toBeNull();
+    expect(decompileSqlToFilterRows('length("commune") > 3')).toBeNull();
   });
 
   test("limite documentée : une valeur contenant littéralement ' AND ' casse le round-trip proprement (renvoie null, pas un crash)", () => {
-    const sql = compileFilterRowsToSql([{ column: "commune", operator: "eq", value: "ROCK AND ROLL" }], SCHEMA);
+    const sql = compileFilterRowsToSql(
+      [{ column: "commune", operator: "eq", value: "ROCK AND ROLL" }],
+      SCHEMA,
+    );
     // Ambigu avec un split naïf sur " AND " — comportement documenté et
     // accepté : renvoie null (repli vers le canvas), jamais une exception ni
     // un résultat silencieusement faux.
@@ -78,22 +93,32 @@ describe("decompileSqlToFilterRows", () => {
 
 describe("isFilterRowValueValid", () => {
   test("valeur vide -> invalide, quel que soit le type", () => {
-    expect(isFilterRowValueValid({ column: "commune", operator: "eq", value: "" }, SCHEMA)).toBe(false);
+    expect(isFilterRowValueValid({ column: "commune", operator: "eq", value: "" }, SCHEMA)).toBe(
+      false,
+    );
   });
 
   test("colonne entière avec une valeur non numérique -> invalide", () => {
-    expect(isFilterRowValueValid({ column: "gravite", operator: "eq", value: "abc" }, SCHEMA)).toBe(false);
+    expect(isFilterRowValueValid({ column: "gravite", operator: "eq", value: "abc" }, SCHEMA)).toBe(
+      false,
+    );
   });
 
   test("colonne entière avec une valeur numérique -> valide", () => {
-    expect(isFilterRowValueValid({ column: "gravite", operator: "gt", value: "3" }, SCHEMA)).toBe(true);
+    expect(isFilterRowValueValid({ column: "gravite", operator: "gt", value: "3" }, SCHEMA)).toBe(
+      true,
+    );
   });
 
   test("colonne texte avec n'importe quelle valeur non vide -> valide", () => {
-    expect(isFilterRowValueValid({ column: "commune", operator: "eq", value: "Paris" }, SCHEMA)).toBe(true);
+    expect(
+      isFilterRowValueValid({ column: "commune", operator: "eq", value: "Paris" }, SCHEMA),
+    ).toBe(true);
   });
 
   test("opérateur contains -> toute valeur non vide est valide, même sur colonne entière", () => {
-    expect(isFilterRowValueValid({ column: "gravite", operator: "contains", value: "3" }, SCHEMA)).toBe(true);
+    expect(
+      isFilterRowValueValid({ column: "gravite", operator: "contains", value: "3" }, SCHEMA),
+    ).toBe(true);
   });
 });

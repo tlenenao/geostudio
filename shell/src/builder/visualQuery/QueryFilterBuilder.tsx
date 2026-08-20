@@ -4,13 +4,24 @@ import { FilterOperator, FilterRow } from "./compileFilter";
 import { Button } from "../../ui/button";
 
 const OPERATOR_LABELS: Record<FilterOperator, string> = {
-  eq: "égal à", neq: "différent de", gt: "supérieur à", gte: "supérieur ou égal à",
-  lt: "inférieur à", lte: "inférieur ou égal à", contains: "contient",
+  eq: "égal à",
+  neq: "différent de",
+  gt: "supérieur à",
+  gte: "supérieur ou égal à",
+  lt: "inférieur à",
+  lte: "inférieur ou égal à",
+  contains: "contient",
 };
 
 export function QueryFilterBuilder({
-  schema, rows, onChange,
-}: { schema: CollectionSchema; rows: FilterRow[]; onChange: (rows: FilterRow[]) => void }) {
+  schema,
+  rows,
+  onChange,
+}: {
+  schema: CollectionSchema;
+  rows: FilterRow[];
+  onChange: (rows: FilterRow[]) => void;
+}) {
   function updateRow(index: number, patch: Partial<FilterRow>) {
     onChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
@@ -34,7 +45,11 @@ export function QueryFilterBuilder({
               value={row.column}
               onChange={(e) => updateRow(i, { column: e.target.value })}
             >
-              {schema.fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+              {schema.fields.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.name}
+                </option>
+              ))}
             </select>
             <select
               aria-label={`Opérateur du filtre ${i + 1}`}
@@ -43,7 +58,9 @@ export function QueryFilterBuilder({
               onChange={(e) => updateRow(i, { operator: e.target.value as FilterOperator })}
             >
               {Object.entries(OPERATOR_LABELS).map(([op, label]) => (
-                <option key={op} value={op}>{label}</option>
+                <option key={op} value={op}>
+                  {label}
+                </option>
               ))}
             </select>
             <input

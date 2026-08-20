@@ -9,15 +9,29 @@ import { DatasetPage } from "./DatasetPage";
 import type { AuthState } from "../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: false, username: null,
-  error: null, getAccessToken: () => undefined, signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: false,
+  username: null,
+  error: null,
+  getAccessToken: () => undefined,
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
 const collection: CollectionAdmin = {
-  id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
-  isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
-  canWrite: false, featureCount: 2, owner: null,
+  id: "parcs",
+  title: "Parcs",
+  description: "Parcs publics",
+  tableName: "parcs",
+  isPublic: true,
+  editable: false,
+  geometryType: null,
+  srid: null,
+  pkColumn: "id",
+  canWrite: false,
+  featureCount: 2,
+  owner: null,
 };
 
 function renderPage(client: Partial<ItemClient>, collectionId = "parcs") {
@@ -36,7 +50,9 @@ function renderPage(client: Partial<ItemClient>, collectionId = "parcs") {
 test("200: renders the collection's chrome, download buttons, and the AppRenderer preview", async () => {
   renderPage({
     getCollection: vi.fn().mockResolvedValue(collection),
-    getCollectionSchema: vi.fn().mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
     featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
     queryDataSource: vi.fn().mockResolvedValue([]),
   });

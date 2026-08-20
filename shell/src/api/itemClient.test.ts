@@ -60,7 +60,13 @@ test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
     ),
   );
   const me = await makeClient().getMe();
-  expect(me).toEqual({ username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false, isAnalyst: false });
+  expect(me).toEqual({
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Martin",
+    isAdmin: false,
+    isAnalyst: false,
+  });
 });
 
 test("getMe surfaces isAdmin", async () => {
@@ -85,10 +91,17 @@ test("createConfigItem does not send owner in the request body", async () => {
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", itemId: "99", kind: "app", version: 1, config: {} }, { status: 201 });
+      return HttpResponse.json(
+        { id: "cfg-1", itemId: "99", kind: "app", version: 1, config: {} },
+        { status: 201 },
+      );
     }),
   );
-  const item = await makeClient().createConfigItem({ kind: "app", title: "My App", owner: "alice" });
+  const item = await makeClient().createConfigItem({
+    kind: "app",
+    title: "My App",
+    owner: "alice",
+  });
   expect(body).not.toHaveProperty("owner");
   expect(item.owner).toBe("alice");
   expect(item.pk).toBe("99");
@@ -112,8 +125,15 @@ test("updateItem sends the patch camelCase, unchanged", async () => {
     http.patch("https://core.test/items/:pk", async ({ params, request }) => {
       body = await request.json();
       return HttpResponse.json({
-        pk: String(params.pk), resourceType: "app", title: "Renamed", abstract: "", owner: "alice",
-        thumbnailUrl: null, date: "", configId: null, isPublished: true,
+        pk: String(params.pk),
+        resourceType: "app",
+        title: "Renamed",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "",
+        configId: null,
+        isPublished: true,
       });
     }),
   );
@@ -135,13 +155,21 @@ test("uploadThumbnail POSTs multipart form data", async () => {
 });
 
 test("deleteItem tolerates a 404 as success", async () => {
-  server.use(http.delete("https://core.test/configs/by-item/:pk", () => new HttpResponse(null, { status: 404 })));
+  server.use(
+    http.delete(
+      "https://core.test/configs/by-item/:pk",
+      () => new HttpResponse(null, { status: 404 }),
+    ),
+  );
   await expect(makeClient().deleteItem("nope")).resolves.toBeUndefined();
 });
 
 test("listGroups maps name to title", async () => {
   const groups = await makeClient().listGroups();
-  expect(groups).toEqual([{ id: "10", title: "Équipe A" }, { id: "11", title: "Équipe B" }]);
+  expect(groups).toEqual([
+    { id: "10", title: "Équipe A" },
+    { id: "11", title: "Équipe B" },
+  ]);
 });
 
 test("getSharing passes through the core's Sharing shape directly", async () => {
@@ -157,7 +185,10 @@ test("setSharing PUTs the sharing object as-is", async () => {
       return new HttpResponse(null, { status: 204 });
     }),
   );
-  await makeClient().setSharing("7", { public: false, groups: [{ groupId: "10", role: "viewer" }] });
+  await makeClient().setSharing("7", {
+    public: false,
+    groups: [{ groupId: "10", role: "viewer" }],
+  });
   expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
 });
 
@@ -210,11 +241,15 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
       return HttpResponse.json({
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
             moduleUrl: "https://example.com/gauge.js",
             props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
-            events: ["changed"], actions: ["reset"],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+            events: ["changed"],
+            actions: ["reset"],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
           },
         ],
       });
@@ -224,11 +259,15 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
   expect(auth).toBe("Bearer abc");
   expect(result).toEqual([
     {
-      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+      type: "acme.gauge",
+      tag: "gauge-extension-widget",
+      label: "Jauge (extension)",
       moduleUrl: "https://example.com/gauge.js",
       props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
-      events: ["changed"], actions: ["reset"],
-      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+      events: ["changed"],
+      actions: ["reset"],
+      defaultSize: { w: 2, h: 2 },
+      permissions: { collections: "all" },
     },
   ]);
 });
@@ -297,15 +336,29 @@ test("getMapConfig reads and maps the builder map config", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
         config: {
           kind: "map",
           map: {
             basemap: { style: "https://demo/s.json" },
             view: { center: [1, 47], zoom: 8 },
             layers: [
-              { id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a",
-                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+              {
+                id: "a",
+                title: "A",
+                visible: true,
+                kind: "feature",
+                url: "https://fs/a",
+                tilesUrl: null,
+                sourceLayer: null,
+                opacity: null,
+                deckType: null,
+                dataUrl: null,
+                paint: null,
+                props: null,
+              },
             ],
           },
         },
@@ -314,27 +367,44 @@ test("getMapConfig reads and maps the builder map config", async () => {
   );
   const cfg = await makeClient().getMapConfig("77");
   expect(cfg.view.zoom).toBe(8);
-  expect(cfg.layers[0]).toEqual({ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" });
+  expect(cfg.layers[0]).toEqual({
+    id: "a",
+    title: "A",
+    visible: true,
+    kind: "feature",
+    url: "https://fs/a",
+  });
 });
 
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
-      HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "app", config: { kind: "app", map: null } }),
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "app",
+        config: { kind: "app", map: null },
+      }),
     ),
   );
   await expect(makeClient().getMapConfig("77")).rejects.toThrow();
 });
 
 test("saveMapConfig PUTs the map config by item", async () => {
-  let method = ""; let body: any;
+  let method = "";
+  let body: any;
   server.use(
     http.put("https://core.test/configs/by-item/77", async ({ request }) => {
-      method = request.method; body = await request.json();
+      method = request.method;
+      body = await request.json();
       return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", map: body.map });
     }),
   );
-  const cfg = { basemap: { style: "s" }, view: { center: [0, 0] as [number, number], zoom: 3 }, layers: [] };
+  const cfg = {
+    basemap: { style: "s" },
+    view: { center: [0, 0] as [number, number], zoom: 3 },
+    layers: [],
+  };
   await makeClient().saveMapConfig("77", cfg);
   expect(method).toBe("PUT");
   expect(body.kind).toBe("map");
@@ -345,15 +415,29 @@ test("getMapConfig maps a tiles3d layer", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
         config: {
           kind: "map",
           map: {
             basemap: { style: "https://demo/s.json" },
             view: { center: [1, 47], zoom: 8 },
             layers: [
-              { id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json",
-                tilesUrl: null, sourceLayer: null, opacity: null, deckType: null, dataUrl: null, paint: null, props: null },
+              {
+                id: "bldg",
+                title: "Bâtiments",
+                visible: true,
+                kind: "tiles3d",
+                url: "https://example.test/tileset.json",
+                tilesUrl: null,
+                sourceLayer: null,
+                opacity: null,
+                deckType: null,
+                dataUrl: null,
+                paint: null,
+                props: null,
+              },
             ],
           },
         },
@@ -361,21 +445,33 @@ test("getMapConfig maps a tiles3d layer", async () => {
     ),
   );
   const cfg = await makeClient().getMapConfig("77");
-  expect(cfg.layers[0]).toEqual({ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" });
+  expect(cfg.layers[0]).toEqual({
+    id: "bldg",
+    title: "Bâtiments",
+    visible: true,
+    kind: "tiles3d",
+    url: "https://example.test/tileset.json",
+  });
 });
 
 test("getMapConfig reads terrain and camera pitch/bearing", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
         config: {
           kind: "map",
           map: {
             basemap: { style: "https://demo/s.json" },
             view: { center: [1, 47], zoom: 8, pitch: 40, bearing: 200 },
             layers: [],
-            terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+            terrain: {
+              tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+              encoding: "terrarium",
+              exaggeration: 1.5,
+            },
           },
         },
       }),
@@ -384,14 +480,20 @@ test("getMapConfig reads terrain and camera pitch/bearing", async () => {
   const cfg = await makeClient().getMapConfig("77");
   expect(cfg.view.pitch).toBe(40);
   expect(cfg.view.bearing).toBe(200);
-  expect(cfg.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 });
+  expect(cfg.terrain).toEqual({
+    tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+    encoding: "terrarium",
+    exaggeration: 1.5,
+  });
 });
 
 test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
         config: {
           kind: "map",
           map: {
@@ -424,7 +526,10 @@ test("saveMapConfig sends terrain nested under map, not at the top level (unlike
     layers: [],
     terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
   });
-  expect(body.map.terrain).toEqual({ tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" });
+  expect(body.map.terrain).toEqual({
+    tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+    encoding: "terrarium",
+  });
   expect(body.map.view).toEqual({ center: [0, 0], zoom: 1, pitch: 30, bearing: 60 });
   expect(body.terrain).toBeUndefined();
 });
@@ -437,28 +542,48 @@ test("createDatasetItem posts a dataset payload and returns a dataset Item", asy
       return HttpResponse.json({ id: "cfg-ds1", kind: "dataset", itemId: "ds-1" }, { status: 201 });
     }),
   );
-  const item = await makeClient().createDatasetItem({ title: "Parcs", owner: "alice", source: "collection", collectionId: "parcs" });
+  const item = await makeClient().createDatasetItem({
+    title: "Parcs",
+    owner: "alice",
+    source: "collection",
+    collectionId: "parcs",
+  });
   expect(body.config.kind).toBe("dataset");
   expect(body.config.dataset).toEqual({ source: "collection", collectionId: "parcs", columns: {} });
-  expect(item).toMatchObject({ pk: "ds-1", resourceType: "dataset", title: "Parcs", configId: "cfg-ds1" });
+  expect(item).toMatchObject({
+    pk: "ds-1",
+    resourceType: "dataset",
+    title: "Parcs",
+    configId: "cfg-ds1",
+  });
 });
 
 test("getDatasetConfig reads the dataset payload from the by-item config", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/ds-2", () =>
       HttpResponse.json({
-        id: "cfg-ds2", itemId: "ds-2", kind: "dataset",
+        id: "cfg-ds2",
+        itemId: "ds-2",
+        kind: "dataset",
         config: {
           kind: "dataset",
-          dataset: { source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } } },
+          dataset: {
+            source: "collection",
+            collectionId: "parcs",
+            columns: { nom: { label: "Nom" } },
+          },
         },
       }),
     ),
   );
   const cfg = await makeClient().getDatasetConfig("ds-2");
   expect(cfg).toEqual({
-    source: "collection", collectionId: "parcs", columns: { nom: { label: "Nom" } },
-    timeField: null, reactsToExtent: false, crossFilterLinks: [],
+    source: "collection",
+    collectionId: "parcs",
+    columns: { nom: { label: "Nom" } },
+    timeField: null,
+    reactsToExtent: false,
+    crossFilterLinks: [],
     sourcePipelineId: null,
   });
 });
@@ -480,21 +605,38 @@ test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", 
         version: 1,
         kind: "bookmark",
         bookmark: {
-          appId: "app-1", pageId: "page-1",
+          appId: "app-1",
+          pageId: "page-1",
           timeRange: { from: "2026-01-01", to: "2026-02-01" },
-          extent: null, crossFilter: {},
+          extent: null,
+          crossFilter: {},
         },
       });
-      return HttpResponse.json({ id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" }, { status: 201 });
+      return HttpResponse.json(
+        { id: "cfg-bookmark", kind: "bookmark", itemId: "bookmark-1" },
+        { status: 201 },
+      );
     }),
   );
   const item = await makeClient().createBookmarkItem({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+    title: "Ma vue",
+    owner: "alice",
+    appId: "app-1",
+    pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" },
+    extent: null,
+    crossFilter: {},
   });
   expect(item).toEqual({
-    pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue", abstract: "",
-    owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-bookmark", isPublished: false,
+    pk: "bookmark-1",
+    resourceType: "bookmark",
+    title: "Ma vue",
+    abstract: "",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "",
+    configId: "cfg-bookmark",
+    isPublished: false,
   });
 });
 
@@ -502,13 +644,18 @@ test("getBookmarkConfig reads the bookmark payload from the by-item config", asy
   server.use(
     http.get("https://core.test/configs/by-item/bookmark-1", () =>
       HttpResponse.json({
-        id: "cfg-bookmark", itemId: "bookmark-1", kind: "bookmark",
+        id: "cfg-bookmark",
+        itemId: "bookmark-1",
+        kind: "bookmark",
         config: {
-          version: 1, kind: "bookmark",
+          version: 1,
+          kind: "bookmark",
           bookmark: {
-            appId: "app-1", pageId: "page-1",
+            appId: "app-1",
+            pageId: "page-1",
             timeRange: { from: "2026-01-01", to: "2026-02-01" },
-            extent: null, crossFilter: {},
+            extent: null,
+            crossFilter: {},
           },
         },
       }),
@@ -516,29 +663,48 @@ test("getBookmarkConfig reads the bookmark payload from the by-item config", asy
   );
   const payload = await makeClient().getBookmarkConfig("bookmark-1");
   expect(payload).toEqual({
-    appId: "app-1", pageId: "page-1",
-    timeRange: { from: "2026-01-01", to: "2026-02-01" }, extent: null, crossFilter: {},
+    appId: "app-1",
+    pageId: "page-1",
+    timeRange: { from: "2026-01-01", to: "2026-02-01" },
+    extent: null,
+    crossFilter: {},
   });
 });
 
 test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/bookmark-2", () =>
-      HttpResponse.json({ id: "cfg-x", itemId: "bookmark-2", kind: "bookmark", config: { version: 1, kind: "bookmark" } }),
+      HttpResponse.json({
+        id: "cfg-x",
+        itemId: "bookmark-2",
+        kind: "bookmark",
+        config: { version: 1, kind: "bookmark" },
+      }),
     ),
   );
   await expect(makeClient().getBookmarkConfig("bookmark-2")).rejects.toThrow();
 });
 
 test("saveDatasetConfig PUTs the dataset config by item", async () => {
-  let method = ""; let body: any;
+  let method = "";
+  let body: any;
   server.use(
     http.put("https://core.test/configs/by-item/ds-4", async ({ request }) => {
-      method = request.method; body = await request.json();
-      return HttpResponse.json({ id: "cfg-ds4", itemId: "ds-4", kind: "dataset", dataset: body.dataset });
+      method = request.method;
+      body = await request.json();
+      return HttpResponse.json({
+        id: "cfg-ds4",
+        itemId: "ds-4",
+        kind: "dataset",
+        dataset: body.dataset,
+      });
     }),
   );
-  await makeClient().saveDatasetConfig("ds-4", { source: "collection", collectionId: "parcs", columns: {} });
+  await makeClient().saveDatasetConfig("ds-4", {
+    source: "collection",
+    collectionId: "parcs",
+    columns: {},
+  });
   expect(method).toBe("PUT");
   expect(body.kind).toBe("dataset");
   expect(body.dataset.collectionId).toBe("parcs");
@@ -548,7 +714,15 @@ test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", a
   server.use(
     http.get("https://core.test/configs/by-item/ds-1", () =>
       HttpResponse.json({
-        config: { dataset: { source: "collection", collectionId: "parcs", columns: {}, timeField: "date_releve", reactsToExtent: true } },
+        config: {
+          dataset: {
+            source: "collection",
+            collectionId: "parcs",
+            columns: {},
+            timeField: "date_releve",
+            reactsToExtent: true,
+          },
+        },
       }),
     ),
   );
@@ -571,12 +745,24 @@ test("getDatasetConfig includes crossFilterLinks from the wire response", async 
   server.use(
     http.get("https://core.test/configs/by-item/ds-1", () =>
       HttpResponse.json({
-        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
+        id: "cfg-ds1",
+        itemId: "ds-1",
+        kind: "dataset",
         config: {
-          version: 1, kind: "dataset",
+          version: 1,
+          kind: "dataset",
           dataset: {
-            source: "collection", collectionId: "parcs", columns: {},
-            crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute", sourceField: "commune", targetField: "nom" }],
+            source: "collection",
+            collectionId: "parcs",
+            columns: {},
+            crossFilterLinks: [
+              {
+                targetDatasetId: "ds-2",
+                mode: "attribute",
+                sourceField: "commune",
+                targetField: "nom",
+              },
+            ],
           },
         },
       }),
@@ -592,8 +778,14 @@ test("getDatasetConfig defaults crossFilterLinks to an empty array when absent f
   server.use(
     http.get("https://core.test/configs/by-item/ds-1", () =>
       HttpResponse.json({
-        id: "cfg-ds1", itemId: "ds-1", kind: "dataset",
-        config: { version: 1, kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+        id: "cfg-ds1",
+        itemId: "ds-1",
+        kind: "dataset",
+        config: {
+          version: 1,
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "parcs", columns: {} },
+        },
       }),
     ),
   );
@@ -610,7 +802,9 @@ test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later rea
     }),
   );
   await makeClient().saveDatasetConfig("ds-1", {
-    source: "collection", collectionId: "parcs", columns: {},
+    source: "collection",
+    collectionId: "parcs",
+    columns: {},
     crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" }],
   });
   expect((posted as { dataset: { crossFilterLinks: unknown } }).dataset.crossFilterLinks).toEqual([
@@ -622,26 +816,52 @@ test("featuresUrl resolves datasetId to the dataset's collectionId once cached",
   server.use(
     http.get("https://core.test/configs/by-item/ds-5", () =>
       HttpResponse.json({
-        id: "cfg-ds5", itemId: "ds-5", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+        id: "cfg-ds5",
+        itemId: "ds-5",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "parcs", columns: {} },
+        },
       }),
     ),
   );
   const client = makeClient();
   // Cache-miss: falls back to source.layer (empty) until something warms the cache.
-  expect(client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-5", query: {} }))
-    .toBe("https://core.test/collections//items");
+  expect(
+    client.featuresUrl({
+      id: "s1",
+      type: "features",
+      service: "core",
+      layer: "",
+      datasetId: "ds-5",
+      query: {},
+    }),
+  ).toBe("https://core.test/collections//items");
   await client.getDatasetConfig("ds-5"); // warms the cache
-  expect(client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-5", query: {} }))
-    .toBe("https://core.test/collections/parcs/items");
+  expect(
+    client.featuresUrl({
+      id: "s1",
+      type: "features",
+      service: "core",
+      layer: "",
+      datasetId: "ds-5",
+      query: {},
+    }),
+  ).toBe("https://core.test/collections/parcs/items");
 });
 
 test("queryDataSource resolves datasetId to the dataset's collectionId before fetching features", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/ds-6", () =>
       HttpResponse.json({
-        id: "cfg-ds6", itemId: "ds-6", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: {} } },
+        id: "cfg-ds6",
+        itemId: "ds-6",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "parcs", columns: {} },
+        },
       }),
     ),
     http.get("https://core.test/collections/parcs/items", () =>
@@ -649,7 +869,12 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-6", query: {},
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "",
+    datasetId: "ds-6",
+    query: {},
   });
   expect(records).toEqual([{ id: 1, properties: { nom: "Le Parc" }, geometry: undefined }]);
 });
@@ -658,15 +883,27 @@ test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/
   server.use(
     http.get("https://core.test/configs/by-item/ds-arcgis-1", () =>
       HttpResponse.json({
-        id: "cfg-arc1", itemId: "ds-arcgis-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-9", columns: {} } },
+        id: "cfg-arc1",
+        itemId: "ds-arcgis-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "layer-9", columns: {} },
+        },
       }),
     ),
   );
   const client = makeClient();
   await client.getDatasetConfig("ds-arcgis-1"); // warms the cache
   expect(
-    client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-1", query: {} }),
+    client.featuresUrl({
+      id: "s1",
+      type: "features",
+      service: "core",
+      layer: "",
+      datasetId: "ds-arcgis-1",
+      query: {},
+    }),
   ).toBe("https://core.test/datasets/ds-arcgis-1/arcgis/items");
 });
 
@@ -674,7 +911,9 @@ test("featuresUrl keys the arcgis proxy URL on the dataset item id, not the arcg
   server.use(
     http.get("https://core.test/configs/by-item/ds-999", () =>
       HttpResponse.json({
-        id: "cfg-arc999", itemId: "ds-999", kind: "dataset",
+        id: "cfg-arc999",
+        itemId: "ds-999",
+        kind: "dataset",
         config: {
           kind: "dataset",
           dataset: { source: "arcgis", arcgisItemId: "totally-different-layer-id", columns: {} },
@@ -685,7 +924,14 @@ test("featuresUrl keys the arcgis proxy URL on the dataset item id, not the arcg
   const client = makeClient();
   await client.getDatasetConfig("ds-999"); // warms the cache
   expect(
-    client.featuresUrl({ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-999", query: {} }),
+    client.featuresUrl({
+      id: "s1",
+      type: "features",
+      service: "core",
+      layer: "",
+      datasetId: "ds-999",
+      query: {},
+    }),
   ).toBe("https://core.test/datasets/ds-999/arcgis/items");
 });
 
@@ -693,16 +939,29 @@ test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourc
   server.use(
     http.get("https://core.test/configs/by-item/ds-arcgis-2", () =>
       HttpResponse.json({
-        id: "cfg-arc2", itemId: "ds-arcgis-2", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-10", columns: {} } },
+        id: "cfg-arc2",
+        itemId: "ds-arcgis-2",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "layer-10", columns: {} },
+        },
       }),
     ),
     http.get("https://core.test/datasets/ds-arcgis-2/arcgis/items", () =>
-      HttpResponse.json({ type: "FeatureCollection", features: [{ id: 1, properties: { nom: "Bât" } }] }),
+      HttpResponse.json({
+        type: "FeatureCollection",
+        features: [{ id: 1, properties: { nom: "Bât" } }],
+      }),
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-arcgis-2", query: {},
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "",
+    datasetId: "ds-arcgis-2",
+    query: {},
   });
   expect(records).toEqual([{ id: 1, properties: { nom: "Bât" }, geometry: undefined }]);
 });
@@ -711,8 +970,13 @@ test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-
   server.use(
     http.get("https://core.test/configs/by-item/ds-arcgis-3", () =>
       HttpResponse.json({
-        id: "cfg-arc3", itemId: "ds-arcgis-3", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-11", columns: {} } },
+        id: "cfg-arc3",
+        itemId: "ds-arcgis-3",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "layer-11", columns: {} },
+        },
       }),
     ),
     http.post("https://core.test/datasets/ds-arcgis-3/arcgis/aggregate", () =>
@@ -720,7 +984,12 @@ test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds-arcgis-3", query: { agg: "count" },
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "",
+    datasetId: "ds-arcgis-3",
+    query: { agg: "count" },
   });
   expect(records).toEqual([{ id: "Total", properties: { group: "Total", value: 4 } }]);
 });
@@ -729,8 +998,13 @@ test("getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sour
   server.use(
     http.get("https://core.test/configs/by-item/ds-arcgis-4", () =>
       HttpResponse.json({
-        id: "cfg-arc4", itemId: "ds-arcgis-4", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-12", columns: {} } },
+        id: "cfg-arc4",
+        itemId: "ds-arcgis-4",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "layer-12", columns: {} },
+        },
       }),
     ),
   );
@@ -747,7 +1021,10 @@ test("createDatasetItem with source=arcgis posts an arcgis dataset payload", asy
     }),
   );
   const item = await makeClient().createDatasetItem({
-    title: "Bâtiments (live)", owner: "alice", source: "arcgis", arcgisItemId: "layer-13",
+    title: "Bâtiments (live)",
+    owner: "alice",
+    source: "arcgis",
+    arcgisItemId: "layer-13",
   });
   expect(item.pk).toBe("ds-9");
   const config = postBody!.config as Record<string, unknown>;
@@ -768,12 +1045,19 @@ test("getAppConfig reads the app config (kind/theme/layout)", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
-        id: "cfg-5", itemId: "5", kind: "app",
+        id: "cfg-5",
+        itemId: "5",
+        kind: "app",
         config: {
-          kind: "app", theme: { primary: "#123" }, dataSources: [], messages: [],
-          layout: { type: "grid", breakpoints: {}, items: [
-            { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
-          ] },
+          kind: "app",
+          theme: { primary: "#123" },
+          dataSources: [],
+          messages: [],
+          layout: {
+            type: "grid",
+            breakpoints: {},
+            items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+          },
         },
       }),
     ),
@@ -786,7 +1070,12 @@ test("getAppConfig reads the app config (kind/theme/layout)", async () => {
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/5", () =>
-      HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "map", config: { kind: "map", layout: null } }),
+      HttpResponse.json({
+        id: "cfg-5",
+        itemId: "5",
+        kind: "map",
+        config: { kind: "map", layout: null },
+      }),
     ),
   );
   await expect(makeClient().getAppConfig("5")).rejects.toThrow();
@@ -798,9 +1087,16 @@ test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
     http.get("https://core.test/configs/by-item/5", ({ request }) => {
       requestedUrl = request.url;
       return HttpResponse.json({
-        id: "cfg-5", itemId: "5", kind: "app",
-        config: { kind: "app", theme: {}, dataSources: [], messages: [],
-          layout: { type: "grid", breakpoints: {}, items: [] } },
+        id: "cfg-5",
+        itemId: "5",
+        kind: "app",
+        config: {
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
+          layout: { type: "grid", breakpoints: {}, items: [] },
+        },
       });
     }),
   );
@@ -817,7 +1113,10 @@ test("saveAppConfig PUTs the app config by item", async () => {
     }),
   );
   await makeClient().saveAppConfig("5", {
-    kind: "app", theme: {}, dataSources: [], messages: [],
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
     layout: { type: "grid", breakpoints: {}, items: [] },
   });
   expect(body.kind).toBe("app");
@@ -827,7 +1126,13 @@ test("saveAppConfig PUTs the app config by item", async () => {
 test("getAppConfig/saveAppConfig round-trip interactions", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/9", () =>
-      HttpResponse.json({ config: { kind: "app", layout: { type: "grid", breakpoints: {}, items: [] }, interactions: "auto" } }),
+      HttpResponse.json({
+        config: {
+          kind: "app",
+          layout: { type: "grid", breakpoints: {}, items: [] },
+          interactions: "auto",
+        },
+      }),
     ),
   );
   const config = await makeClient().getAppConfig("9");
@@ -845,7 +1150,13 @@ test("getAppConfig/saveAppConfig round-trip interactions", async () => {
 });
 
 test("featuresUrl builds the core items url", () => {
-  const url = makeClient().featuresUrl({ id: "d", type: "features", service: "core", layer: "public.parcs", query: {} });
+  const url = makeClient().featuresUrl({
+    id: "d",
+    type: "features",
+    service: "core",
+    layer: "public.parcs",
+    query: {},
+  });
   expect(url).toBe("https://core.test/collections/public.parcs/items");
 });
 
@@ -855,13 +1166,24 @@ test("queryDataSource maps a feature collection to records", async () => {
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
-          { type: "Feature", id: 1, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } },
+          {
+            type: "Feature",
+            id: 1,
+            properties: { nom: "Parc A" },
+            geometry: { type: "Point", coordinates: [1, 2] },
+          },
           { type: "Feature", properties: { nom: "Parc B" }, geometry: null },
         ],
       }),
     ),
   );
-  const records = await makeClient().queryDataSource({ id: "d", type: "features", service: "core", layer: "public.parcs", query: {} });
+  const records = await makeClient().queryDataSource({
+    id: "d",
+    type: "features",
+    service: "core",
+    layer: "public.parcs",
+    query: {},
+  });
   expect(records).toHaveLength(2);
   expect(records[0]).toMatchObject({ id: 1, properties: { nom: "Parc A" } });
   // Missing feature id falls back to the index.
@@ -870,7 +1192,10 @@ test("queryDataSource maps a feature collection to records", async () => {
 
 test("queryDataSource returns inline records for a static source", async () => {
   const records = await makeClient().queryDataSource({
-    id: "s", type: "static", service: "", layer: "",
+    id: "s",
+    type: "static",
+    service: "",
+    layer: "",
     query: { records: [{ id: "a", properties: { v: 1 } }] },
   });
   expect(records).toEqual([{ id: "a", properties: { v: 1 } }]);
@@ -878,16 +1203,28 @@ test("queryDataSource returns inline records for a static source", async () => {
 
 test("queryDataSource throws when the feature request fails", async () => {
   server.use(
-    http.get("https://core.test/collections/x/items", () => new HttpResponse(null, { status: 500 })),
+    http.get(
+      "https://core.test/collections/x/items",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
   );
   await expect(
-    makeClient().queryDataSource({ id: "d", type: "features", service: "core", layer: "x", query: {} }),
+    makeClient().queryDataSource({
+      id: "d",
+      type: "features",
+      service: "core",
+      layer: "x",
+      query: {},
+    }),
   ).rejects.toThrow();
 });
 
 test("featuresUrl appends scalar query entries as sorted filter params", () => {
   const url = makeClient().featuresUrl({
-    id: "d", type: "features", service: "core", layer: "parcs",
+    id: "d",
+    type: "features",
+    service: "core",
+    layer: "parcs",
     query: { nom: "Parc A", limit: 10 },
   });
   expect(url).toBe("https://core.test/collections/parcs/items?limit=10&nom=Parc+A");
@@ -895,7 +1232,10 @@ test("featuresUrl appends scalar query entries as sorted filter params", () => {
 
 test("featuresUrl omits empty/nullish query entries", () => {
   const url = makeClient().featuresUrl({
-    id: "d", type: "features", service: "core", layer: "parcs",
+    id: "d",
+    type: "features",
+    service: "core",
+    layer: "parcs",
     query: { nom: "", ville: undefined as unknown as string },
   });
   expect(url).toBe("https://core.test/collections/parcs/items");
@@ -914,7 +1254,10 @@ test("queryDataSource aggregates a statistics source by count per group", async 
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "region", agg: "count" },
   });
   expect(records).toEqual([
@@ -930,14 +1273,20 @@ test("queryDataSource supports sum/avg/min/max aggregations per group", async ()
         HttpResponse.json({
           categoryKey: "region",
           rows: [
-            { region: "Nord", value: agg === "sum" ? 30 : agg === "avg" ? 15 : agg === "min" ? 10 : 20 },
+            {
+              region: "Nord",
+              value: agg === "sum" ? 30 : agg === "avg" ? 15 : agg === "min" ? 10 : 20,
+            },
             { region: "Sud", value: 6 },
           ],
         }),
       ),
     );
     return makeClient().queryDataSource({
-      id: "s", type: "statistics", service: "core", layer: "villes",
+      id: "s",
+      type: "statistics",
+      service: "core",
+      layer: "villes",
       query: { groupBy: "region", agg, field: "pop" },
     });
   };
@@ -972,7 +1321,10 @@ test("queryDataSource pivots a statistics source into one column per split value
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "region", split: "annee", agg: "sum", field: "pop" },
   });
   expect(records).toEqual([
@@ -986,14 +1338,15 @@ test("queryDataSource produces one wide column per measure", async () => {
     http.post("https://core.test/collections/villes/aggregate", () =>
       HttpResponse.json({
         categoryKey: "region",
-        rows: [
-          { region: "Nord", Population: 30, avg_rev: 6 },
-        ],
+        rows: [{ region: "Nord", Population: 30, avg_rev: 6 }],
       }),
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: {
       groupBy: "region",
       measures: [
@@ -1016,7 +1369,10 @@ test("queryDataSource sends a bbox query key as body.bbox, not as a filter", asy
     }),
   );
   await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "region", agg: "count", bbox: "1,2,3,4" },
   });
   expect(posted!.bbox).toEqual([1, 2, 3, 4]);
@@ -1033,7 +1389,10 @@ test("queryDataSource sends a geomIntersects query key as body.geomIntersects", 
     }),
   );
   await makeClient().queryDataSource({
-    id: "src-1", type: "statistics", service: "core", layer: "villes",
+    id: "src-1",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "region", agg: "count", geomIntersects: geom },
   });
   expect(posted!.geomIntersects).toEqual(geom);
@@ -1048,7 +1407,10 @@ test("queryDataSource sends a bucket query key as body.bucket, not as a filter",
     }),
   );
   await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "annee", bucket: "week", agg: "count" },
   });
   expect(posted!.bucket).toBe("week");
@@ -1064,7 +1426,10 @@ test("queryDataSource sends an array groupBy as-is in the aggregate request body
     }),
   );
   await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: ["region", "annee"], agg: "count" },
   });
   expect(posted!.groupBy).toEqual(["region", "annee"]);
@@ -1080,7 +1445,10 @@ test("queryDataSource builds a composite id when categoryKey is a multi-field ar
     ),
   );
   const records = await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: ["region", "annee"], agg: "sum", field: "pop" },
   });
   expect(records).toEqual([
@@ -1097,7 +1465,10 @@ test("queryDataSource sends a bins query key as body.bins, not as a filter", asy
     }),
   );
   await makeClient().queryDataSource({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { field: "pop", bins: 5 },
   });
   expect(posted!.bins).toBe(5);
@@ -1106,7 +1477,10 @@ test("queryDataSource sends a bins query key as body.bins, not as a filter", asy
 
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
-    id: "s", type: "statistics", service: "core", layer: "villes",
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
     query: { groupBy: "region", split: "annee", agg: "sum", field: "pop", annee_filtre: 2026 },
   });
   expect(url).toBe("https://core.test/collections/villes/items?annee_filtre=2026");
@@ -1116,9 +1490,14 @@ test("getAppConfig passes through the pages array when present", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
-        id: "cfg-5", itemId: "5", kind: "app",
+        id: "cfg-5",
+        itemId: "5",
+        kind: "app",
         config: {
-          kind: "app", theme: {}, dataSources: [], messages: [],
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
           layout: { type: "grid", breakpoints: {}, items: [] },
           pages: [
             { id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [] } },
@@ -1142,7 +1521,10 @@ test("saveAppConfig PUTs the pages array when present", async () => {
     }),
   );
   await makeClient().saveAppConfig("5", {
-    kind: "app", theme: {}, dataSources: [], messages: [],
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
     layout: { type: "grid", breakpoints: {}, items: [] },
     pages: [{ id: "p1", name: "Accueil", layout: { type: "grid", breakpoints: {}, items: [] } }],
   });
@@ -1154,9 +1536,14 @@ test("getAppConfig passes through the variables array when present", async () =>
   server.use(
     http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
-        id: "cfg-5", itemId: "5", kind: "app",
+        id: "cfg-5",
+        itemId: "5",
+        kind: "app",
         config: {
-          kind: "app", theme: {}, dataSources: [], messages: [],
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
           layout: { type: "grid", breakpoints: {}, items: [] },
           variables: [{ id: "v1", name: "message", initialValue: "salut" }],
         },
@@ -1176,7 +1563,10 @@ test("saveAppConfig PUTs the variables array when present", async () => {
     }),
   );
   await makeClient().saveAppConfig("5", {
-    kind: "app", theme: {}, dataSources: [], messages: [],
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
     layout: { type: "grid", breakpoints: {}, items: [] },
     variables: [{ id: "v1", name: "message", initialValue: "salut" }],
   });
@@ -1189,10 +1579,21 @@ test("createConfigItem seeds the layout from a template when templateId is given
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        kind: body.config.kind,
+        itemId: "1",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
-  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "two-column" });
+  await makeClient().createConfigItem({
+    kind: "app",
+    title: "T",
+    owner: "o",
+    templateId: "two-column",
+  });
   expect(body.config.layout.items).toHaveLength(2);
   expect(body.config.layout.items[0].widget).toBe("text");
 });
@@ -1202,10 +1603,21 @@ test("createConfigItem falls back to an empty layout when templateId is unknown"
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        kind: body.config.kind,
+        itemId: "1",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
-  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "does-not-exist" });
+  await makeClient().createConfigItem({
+    kind: "app",
+    title: "T",
+    owner: "o",
+    templateId: "does-not-exist",
+  });
   expect(body.config.layout).toEqual({ type: "grid", breakpoints: {}, items: [] });
 });
 
@@ -1227,7 +1639,12 @@ test("getCollectionSchema returns the introspected fields", async () => {
   const schema = await makeClient().getCollectionSchema("incidents");
   expect(schema.geometry).toEqual({ column: "geom", type: "Point", srid: 4326 });
   expect(schema.fields).toHaveLength(3);
-  expect(schema.fields[0]).toEqual({ name: "titre", type: "string", required: true, maxLength: 120 });
+  expect(schema.fields[0]).toEqual({
+    name: "titre",
+    type: "string",
+    required: true,
+    maxLength: 120,
+  });
 });
 
 test("createFeature sends a GeoJSON Feature with the bearer token and returns the new id", async () => {
@@ -1254,7 +1671,11 @@ test("createFeature throws FeatureValidationError with field errors on 400", asy
   server.use(
     http.post("https://core.test/collections/incidents/items", () =>
       HttpResponse.json(
-        { detail: { errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }] } },
+        {
+          detail: {
+            errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
+          },
+        },
         { status: 400 },
       ),
     ),
@@ -1302,7 +1723,11 @@ test("updateFeature throws a plain Error with the server message on 404", async 
     ),
   );
   await expect(
-    makeClient().updateFeature("incidents", "999", { type: "Feature", properties: {}, geometry: null }),
+    makeClient().updateFeature("incidents", "999", {
+      type: "Feature",
+      properties: {},
+      geometry: null,
+    }),
   ).rejects.toThrow("feature not found");
 });
 
@@ -1340,17 +1765,35 @@ test("getCollection returns the full collection metadata for a single id", async
   server.use(
     http.get("https://core.test/collections/parcs", () =>
       HttpResponse.json({
-        id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
-        isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
-        canWrite: false, featureCount: 2, owner: null,
+        id: "parcs",
+        title: "Parcs",
+        description: "Parcs publics",
+        tableName: "parcs",
+        isPublic: true,
+        editable: false,
+        geometryType: null,
+        srid: null,
+        pkColumn: "id",
+        canWrite: false,
+        featureCount: 2,
+        owner: null,
       }),
     ),
   );
   const col = await makeClient(undefined).getCollection("parcs");
   expect(col).toEqual({
-    id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
-    isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
-    canWrite: false, featureCount: 2, owner: null,
+    id: "parcs",
+    title: "Parcs",
+    description: "Parcs publics",
+    tableName: "parcs",
+    isPublic: true,
+    editable: false,
+    geometryType: null,
+    srid: null,
+    pkColumn: "id",
+    canWrite: false,
+    featureCount: 2,
+    owner: null,
   });
 });
 
@@ -1368,10 +1811,21 @@ test("createConfigItem seeds dataSources and messages from a template that defin
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        kind: body.config.kind,
+        itemId: "1",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
-  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "application-de-saisie" });
+  await makeClient().createConfigItem({
+    kind: "app",
+    title: "T",
+    owner: "o",
+    templateId: "application-de-saisie",
+  });
   expect(body.config.dataSources).toHaveLength(1);
   expect(body.config.dataSources[0]).toMatchObject({ type: "features", layer: "incidents" });
   expect(body.config.messages).toHaveLength(1);
@@ -1382,10 +1836,21 @@ test("createConfigItem seeds pages and navigationMode from a story template", as
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", kind: body.config.kind, itemId: "1", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        kind: body.config.kind,
+        itemId: "1",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
-  await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o", templateId: "story-cartographique" });
+  await makeClient().createConfigItem({
+    kind: "app",
+    title: "T",
+    owner: "o",
+    templateId: "story-cartographique",
+  });
   expect(body.config.navigationMode).toBe("story");
   expect(body.config.pages).toHaveLength(3);
   expect(body.config.pages[0].onEnter[0].action).toBe("flyTo");
@@ -1401,9 +1866,16 @@ test("listAllExtensions requests all=true and keeps the enabled flag", async () 
       return HttpResponse.json({
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [],
+            events: [],
+            actions: [],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
+            enabled: false,
           },
         ],
       });
@@ -1413,9 +1885,16 @@ test("listAllExtensions requests all=true and keeps the enabled flag", async () 
   expect(url).toContain("all=true");
   expect(result).toEqual([
     {
-      type: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-      moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-      defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+      type: "acme.gauge",
+      tag: "gauge-extension-widget",
+      label: "Jauge (extension)",
+      moduleUrl: "https://example.com/gauge.js",
+      props: [],
+      events: [],
+      actions: [],
+      defaultSize: { w: 2, h: 2 },
+      permissions: { collections: "all" },
+      enabled: false,
     },
   ]);
 });
@@ -1438,9 +1917,18 @@ test("listCollections returns the admin collection shape including owner", async
       HttpResponse.json({
         collections: [
           {
-            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+            id: "incidents",
+            title: "Incidents",
+            description: "",
+            tableName: "incidents",
+            isPublic: false,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "admin",
           },
         ],
       }),
@@ -1449,9 +1937,18 @@ test("listCollections returns the admin collection shape including owner", async
   const result = await makeClient().listCollections();
   expect(result).toEqual([
     {
-      id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-      isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-      pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+      id: "incidents",
+      title: "Incidents",
+      description: "",
+      tableName: "incidents",
+      isPublic: false,
+      editable: true,
+      geometryType: "Point",
+      srid: 4326,
+      pkColumn: "id",
+      canWrite: true,
+      featureCount: 3,
+      owner: "admin",
     },
   ]);
 });
@@ -1462,7 +1959,13 @@ test("listCandidateTables returns the candidates array as-is", async () => {
       HttpResponse.json({
         candidates: [
           { tableName: "widgets", registrable: false, reason: "table has no primary key" },
-          { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+          {
+            tableName: "points_interet",
+            registrable: true,
+            geometryType: "Point",
+            srid: 4326,
+            columnCount: 3,
+          },
         ],
       }),
     ),
@@ -1470,7 +1973,13 @@ test("listCandidateTables returns the candidates array as-is", async () => {
   const result = await makeClient().listCandidateTables();
   expect(result).toEqual([
     { tableName: "widgets", registrable: false, reason: "table has no primary key" },
-    { tableName: "points_interet", registrable: true, geometryType: "Point", srid: 4326, columnCount: 3 },
+    {
+      tableName: "points_interet",
+      registrable: true,
+      geometryType: "Point",
+      srid: 4326,
+      columnCount: 3,
+    },
   ]);
 });
 
@@ -1480,13 +1989,25 @@ test("createCollection POSTs the input and returns the created collection", asyn
     http.post("https://core.test/collections", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
-        id: "points_interet", title: "Points d'intérêt", description: "", tableName: "points_interet",
-        isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-        pkColumn: "id", canWrite: true, featureCount: 0, owner: "admin",
+        id: "points_interet",
+        title: "Points d'intérêt",
+        description: "",
+        tableName: "points_interet",
+        isPublic: false,
+        editable: true,
+        geometryType: "Point",
+        srid: 4326,
+        pkColumn: "id",
+        canWrite: true,
+        featureCount: 0,
+        owner: "admin",
       });
     }),
   );
-  const result = await makeClient().createCollection({ tableName: "points_interet", title: "Points d'intérêt" });
+  const result = await makeClient().createCollection({
+    tableName: "points_interet",
+    title: "Points d'intérêt",
+  });
   expect(body).toEqual({ tableName: "points_interet", title: "Points d'intérêt" });
   expect(result.id).toBe("points_interet");
 });
@@ -1497,13 +2018,25 @@ test("updateCollection PATCHes the patch and returns the updated collection", as
     http.patch("https://core.test/collections/incidents", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
-        id: "incidents", title: "Incidents (v2)", description: "", tableName: "incidents",
-        isPublic: true, editable: true, geometryType: "Point", srid: 4326,
-        pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+        id: "incidents",
+        title: "Incidents (v2)",
+        description: "",
+        tableName: "incidents",
+        isPublic: true,
+        editable: true,
+        geometryType: "Point",
+        srid: 4326,
+        pkColumn: "id",
+        canWrite: true,
+        featureCount: 3,
+        owner: "admin",
       });
     }),
   );
-  const result = await makeClient().updateCollection("incidents", { title: "Incidents (v2)", isPublic: true });
+  const result = await makeClient().updateCollection("incidents", {
+    title: "Incidents (v2)",
+    isPublic: true,
+  });
   expect(body).toEqual({ title: "Incidents (v2)", isPublic: true });
   expect(result.title).toBe("Incidents (v2)");
 });
@@ -1538,7 +2071,10 @@ test("setCollectionSharing PUTs the sharing object as-is", async () => {
       return HttpResponse.json({ public: false, groups: [] });
     }),
   );
-  await makeClient().setCollectionSharing("incidents", { public: false, groups: [{ groupId: "g1", role: "viewer" }] });
+  await makeClient().setCollectionSharing("incidents", {
+    public: false,
+    groups: [{ groupId: "g1", role: "viewer" }],
+  });
   expect(body).toEqual({ public: false, groups: [{ groupId: "g1", role: "viewer" }] });
 });
 
@@ -1548,8 +2084,16 @@ test("getItemBySlug requests /public/sites/{slug} and returns the item", async (
     http.get("https://core.test/public/sites/mon-portail", ({ request }) => {
       url = request.url;
       return HttpResponse.json({
-        pk: "s1", resourceType: "site", slug: "mon-portail", title: "Portail",
-        abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: "cfg-1", isPublished: true,
+        pk: "s1",
+        resourceType: "site",
+        slug: "mon-portail",
+        title: "Portail",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "",
+        configId: "cfg-1",
+        isPublished: true,
       });
     }),
   );
@@ -1561,7 +2105,10 @@ test("getItemBySlug requests /public/sites/{slug} and returns the item", async (
 
 test("getItemBySlug propagates a 404 as a rejection", async () => {
   server.use(
-    http.get("https://core.test/public/sites/nexiste-pas", () => new HttpResponse(null, { status: 404 })),
+    http.get(
+      "https://core.test/public/sites/nexiste-pas",
+      () => new HttpResponse(null, { status: 404 }),
+    ),
   );
   await expect(makeClient().getItemBySlug("nexiste-pas")).rejects.toThrow();
 });
@@ -1570,12 +2117,23 @@ test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not 
   server.use(
     http.get("https://core.test/public/configs/by-item/s1", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "s1", kind: "site", version: 1,
+        id: "cfg-1",
+        itemId: "s1",
+        kind: "site",
+        version: 1,
         config: {
-          kind: "site", theme: {}, dataSources: [], messages: [], pages: [],
-          layout: { type: "grid", breakpoints: {}, items: [
-            { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Bienvenue" } },
-          ] },
+          kind: "site",
+          theme: {},
+          dataSources: [],
+          messages: [],
+          pages: [],
+          layout: {
+            type: "grid",
+            breakpoints: {},
+            items: [
+              { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Bienvenue" } },
+            ],
+          },
         },
       }),
     ),
@@ -1588,7 +2146,12 @@ test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not 
 test("getPublicAppConfig throws when the config has no layout", async () => {
   server.use(
     http.get("https://core.test/public/configs/by-item/s1", () =>
-      HttpResponse.json({ id: "cfg-1", itemId: "s1", kind: "site", config: { kind: "site", layout: null } }),
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "s1",
+        kind: "site",
+        config: { kind: "site", layout: null },
+      }),
     ),
   );
   await expect(makeClient().getPublicAppConfig("s1")).rejects.toThrow();
@@ -1599,10 +2162,21 @@ test("createConfigItem transmits the slug in the POST body when given", async ()
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", itemId: "s1", kind: "site", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        itemId: "s1",
+        kind: "site",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
-  const item = await makeClient().createConfigItem({ kind: "site", title: "Portail", owner: "alice", slug: "mon-portail" });
+  const item = await makeClient().createConfigItem({
+    kind: "site",
+    title: "Portail",
+    owner: "alice",
+    slug: "mon-portail",
+  });
   expect(body.slug).toBe("mon-portail");
   expect(body.config.kind).toBe("site");
   expect(item.slug).toBe("mon-portail");
@@ -1613,7 +2187,13 @@ test("createConfigItem omits slug from the POST body when not given", async () =
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
       body = await request.json();
-      return HttpResponse.json({ id: "cfg-1", itemId: "1", kind: "app", version: 1, config: body.config });
+      return HttpResponse.json({
+        id: "cfg-1",
+        itemId: "1",
+        kind: "app",
+        version: 1,
+        config: body.config,
+      });
     }),
   );
   await makeClient().createConfigItem({ kind: "app", title: "T", owner: "o" });
@@ -1639,11 +2219,23 @@ test("listPublicItems round-trips keywords from the response", async () => {
   server.use(
     http.get("https://core.test/public/items", () =>
       HttpResponse.json({
-        items: [{
-          pk: "8", resourceType: "app", title: "Carte des risques", abstract: "", owner: "alice",
-          thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: true, keywords: ["risques"],
-        }],
-        total: 1, page: 1, pageSize: 12,
+        items: [
+          {
+            pk: "8",
+            resourceType: "app",
+            title: "Carte des risques",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: null,
+            isPublished: true,
+            keywords: ["risques"],
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
       }),
     ),
   );
@@ -1671,12 +2263,24 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
   server.use(
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
-        { detail: { errors: [{ field: "sql", code: "sql_error", message: "Binder Error: table 'x' does not exist" }] } },
+        {
+          detail: {
+            errors: [
+              {
+                field: "sql",
+                code: "sql_error",
+                message: "Binder Error: table 'x' does not exist",
+              },
+            ],
+          },
+        },
         { status: 400 },
       ),
     ),
   );
-  const err = await makeClient().runAnalyticsSql("select * from x").catch((e) => e);
+  const err = await makeClient()
+    .runAnalyticsSql("select * from x")
+    .catch((e) => e);
   expect(err).toBeInstanceOf(SqlQueryError);
   expect((err as SqlQueryError).message).toBe("Binder Error: table 'x' does not exist");
 });
@@ -1700,24 +2304,61 @@ test("createPipelineItem posts a pipeline payload and returns a pipeline Item", 
   );
   const payload = {
     nodes: [
-      { id: "r1", kind: "reader" as const, op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" } },
-      { id: "w1", kind: "writer" as const, op: "writer.collection", x: 200, y: 0, params: { collectionId: "villes_propres" } },
+      {
+        id: "r1",
+        kind: "reader" as const,
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+      },
+      {
+        id: "w1",
+        kind: "writer" as const,
+        op: "writer.collection",
+        x: 200,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+      },
     ],
     edges: [{ id: "e1", from: "r1", to: "w1" }],
   };
-  const item = await makeClient().createPipelineItem({ title: "Nettoyer villes", owner: "alice", pipeline: payload });
+  const item = await makeClient().createPipelineItem({
+    title: "Nettoyer villes",
+    owner: "alice",
+    pipeline: payload,
+  });
   expect(body.config).toEqual({ version: 1, kind: "pipeline", pipeline: payload });
-  expect(item).toMatchObject({ pk: "p-1", resourceType: "pipeline", title: "Nettoyer villes", configId: "cfg-p1" });
+  expect(item).toMatchObject({
+    pk: "p-1",
+    resourceType: "pipeline",
+    title: "Nettoyer villes",
+    configId: "cfg-p1",
+  });
 });
 
 test("getPipelineConfig reads the pipeline payload from the by-item config", async () => {
   const payload = {
-    nodes: [{ id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: { collectionId: "villes" } }],
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+      },
+    ],
     edges: [],
   };
   server.use(
     http.get("https://core.test/configs/by-item/p-2", () =>
-      HttpResponse.json({ id: "cfg-p2", itemId: "p-2", kind: "pipeline", config: { kind: "pipeline", pipeline: payload } }),
+      HttpResponse.json({
+        id: "cfg-p2",
+        itemId: "p-2",
+        kind: "pipeline",
+        config: { kind: "pipeline", pipeline: payload },
+      }),
     ),
   );
   const cfg = await makeClient().getPipelineConfig("p-2");
@@ -1750,7 +2391,9 @@ test("savePipelineConfig PUTs the pipeline payload wrapped in a kind=pipeline en
 });
 
 test("getPipelineOps returns the op catalogue as-is", async () => {
-  const catalog = { "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } } };
+  const catalog = {
+    "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } },
+  };
   server.use(http.get("https://core.test/pipelines/ops", () => HttpResponse.json(catalog)));
   const result = await makeClient().getPipelineOps();
   expect(result).toEqual(catalog);
@@ -1758,14 +2401,25 @@ test("getPipelineOps returns the op catalogue as-is", async () => {
 
 test("runPipeline posts with no body and returns the runId", async () => {
   server.use(
-    http.post("https://core.test/pipelines/p-5/run", () => HttpResponse.json({ runId: "run-1" }, { status: 202 })),
+    http.post("https://core.test/pipelines/p-5/run", () =>
+      HttpResponse.json({ runId: "run-1" }, { status: 202 }),
+    ),
   );
   const result = await makeClient().runPipeline("p-5");
   expect(result).toEqual({ runId: "run-1" });
 });
 
 test("getPipelineRuns returns the run history", async () => {
-  const runs = [{ id: "run-1", status: "succeeded", startedAt: "2026-08-06T10:00:00Z", finishedAt: "2026-08-06T10:00:05Z", error: null, nodeStats: {} }];
+  const runs = [
+    {
+      id: "run-1",
+      status: "succeeded",
+      startedAt: "2026-08-06T10:00:00Z",
+      finishedAt: "2026-08-06T10:00:05Z",
+      error: null,
+      nodeStats: {},
+    },
+  ];
   server.use(http.get("https://core.test/pipelines/p-6/runs", () => HttpResponse.json(runs)));
   const result = await makeClient().getPipelineRuns("p-6");
   expect(result).toEqual(runs);
@@ -1793,26 +2447,44 @@ test("createAlertRuleItem posts a kind=alert config and returns the item", async
     }),
   );
   const alert = {
-    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    datasetItemId: "ds-1",
+    query: { agg: "count" },
+    condition: { expr: "value > 100" },
     refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
     channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
     messageTemplate: "Alert {ruleName}: value={value} ({state})",
   };
-  const item = await makeClient().createAlertRuleItem({ title: "High counts", owner: "alice", alert });
+  const item = await makeClient().createAlertRuleItem({
+    title: "High counts",
+    owner: "alice",
+    alert,
+  });
   expect(body.config).toEqual({ version: 1, kind: "alert", alert });
-  expect(item).toMatchObject({ pk: "a-1", resourceType: "alert", title: "High counts", configId: "cfg-a1" });
+  expect(item).toMatchObject({
+    pk: "a-1",
+    resourceType: "alert",
+    title: "High counts",
+    configId: "cfg-a1",
+  });
 });
 
 test("getAlertRuleConfig reads the alert payload from the by-item config", async () => {
   const alert = {
-    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    datasetItemId: "ds-1",
+    query: { agg: "count" },
+    condition: { expr: "value > 100" },
     refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
     channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
     messageTemplate: "Alert {ruleName}: value={value} ({state})",
   };
   server.use(
     http.get("https://core.test/configs/by-item/a-2", () =>
-      HttpResponse.json({ id: "cfg-a2", itemId: "a-2", kind: "alert", config: { kind: "alert", alert } }),
+      HttpResponse.json({
+        id: "cfg-a2",
+        itemId: "a-2",
+        kind: "alert",
+        config: { kind: "alert", alert },
+      }),
     ),
   );
   const cfg = await makeClient().getAlertRuleConfig("a-2");
@@ -1839,7 +2511,9 @@ test("saveAlertRuleConfig PUTs the alert payload wrapped in a kind=alert envelop
     }),
   );
   const alert = {
-    datasetItemId: "ds-1", query: { agg: "count" }, condition: { expr: "value > 100" },
+    datasetItemId: "ds-1",
+    query: { agg: "count" },
+    condition: { expr: "value > 100" },
     refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
     channels: [{ kind: "webhook" as const, url: "https://example.test/hook" }],
     messageTemplate: "Alert {ruleName}: value={value} ({state})",
@@ -1862,7 +2536,16 @@ test("listAlertRulesForDataset calls GET /datasets/{id}/alerts", async () => {
 test("getAlertEvaluations calls GET /alerts/{id}/evaluations", async () => {
   server.use(
     http.get("https://core.test/alerts/a-1/evaluations", () =>
-      HttpResponse.json([{ id: "e1", value: 150, state: "firing", transitioned: true, error: null, createdAt: "2026-08-07T00:00:00Z" }]),
+      HttpResponse.json([
+        {
+          id: "e1",
+          value: 150,
+          state: "firing",
+          transitioned: true,
+          error: null,
+          createdAt: "2026-08-07T00:00:00Z",
+        },
+      ]),
     ),
   );
   const evaluations = await makeClient().getAlertEvaluations("a-1");
@@ -1884,7 +2567,13 @@ test("exportDataSource posts the aggregate body and extracts the filename for a 
       });
     }),
   );
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region", agg: "count" } };
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "parcs",
+    query: { groupBy: "region", agg: "count" },
+  };
   const { blob, filename } = await makeClient("tok").exportDataSource(source, "csv");
   expect(filename).toBe("parcs-20260807-120000.csv");
   expect(await blob.text()).toBe("region,count\nNord,3\n");
@@ -1897,11 +2586,20 @@ test("exportDataSource GETs the items-export route for a non-statistics source",
       const url = new URL(request.url);
       expect(url.searchParams.get("format")).toBe("geojson");
       return new HttpResponse('{"type":"FeatureCollection","features":[]}', {
-        headers: { "Content-Type": "application/geo+json", "Content-Disposition": 'attachment; filename="parcs.geojson"' },
+        headers: {
+          "Content-Type": "application/geo+json",
+          "Content-Disposition": 'attachment; filename="parcs.geojson"',
+        },
       });
     }),
   );
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
   expect(filename).toBe("parcs.geojson");
 });
@@ -1909,26 +2607,47 @@ test("exportDataSource GETs the items-export route for a non-statistics source",
 test("exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/ds1", () =>
-      HttpResponse.json({ config: { dataset: { source: "arcgis", arcgisItemId: "ext1", columns: {} } } }),
-    ),
-    http.post("https://core.test/datasets/ds1/arcgis/export", () =>
-      new HttpResponse("a,b\n1,2\n", {
-        headers: { "Content-Type": "text/csv", "Content-Disposition": 'attachment; filename="x.csv"' },
+      HttpResponse.json({
+        config: { dataset: { source: "arcgis", arcgisItemId: "ext1", columns: {} } },
       }),
     ),
+    http.post(
+      "https://core.test/datasets/ds1/arcgis/export",
+      () =>
+        new HttpResponse("a,b\n1,2\n", {
+          headers: {
+            "Content-Type": "text/csv",
+            "Content-Disposition": 'attachment; filename="x.csv"',
+          },
+        }),
+    ),
   );
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "", datasetId: "ds1", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "",
+    datasetId: "ds1",
+    query: {},
+  };
   const { filename } = await makeClient("tok").exportDataSource(source, "csv");
   expect(filename).toBe("x.csv");
 });
 
 test("exportDataSource falls back to a generic filename when Content-Disposition is missing", async () => {
   server.use(
-    http.get("https://core.test/collections/parcs/export/items", () =>
-      new HttpResponse("[]", { headers: { "Content-Type": "application/geo+json" } }),
+    http.get(
+      "https://core.test/collections/parcs/export/items",
+      () => new HttpResponse("[]", { headers: { "Content-Type": "application/geo+json" } }),
     ),
   );
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   const { filename } = await makeClient("tok").exportDataSource(source, "geojson");
   expect(filename).toBe("export");
 });
@@ -1937,17 +2656,31 @@ test("getMapConfig reads printLayout from the top level of the config, not neste
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
       HttpResponse.json({
-        id: "cfg-1", itemId: "77", kind: "map",
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
         config: {
           kind: "map",
           map: { basemap: { style: "s" }, view: { center: [0, 0], zoom: 1 }, layers: [] },
-          printLayout: { pageSize: "a3", orientation: "landscape", showLegend: true, showScaleBar: true, showNorthArrow: false },
+          printLayout: {
+            pageSize: "a3",
+            orientation: "landscape",
+            showLegend: true,
+            showScaleBar: true,
+            showNorthArrow: false,
+          },
         },
       }),
     ),
   );
   const config = await makeClient().getMapConfig("77");
-  expect(config.printLayout).toEqual({ pageSize: "a3", orientation: "landscape", showLegend: true, showScaleBar: true, showNorthArrow: false });
+  expect(config.printLayout).toEqual({
+    pageSize: "a3",
+    orientation: "landscape",
+    showLegend: true,
+    showScaleBar: true,
+    showNorthArrow: false,
+  });
 });
 
 test("saveMapConfig sends printLayout back at the top level, sibling of map", async () => {
@@ -1959,10 +2692,24 @@ test("saveMapConfig sends printLayout back at the top level, sibling of map", as
     }),
   );
   await makeClient().saveMapConfig("77", {
-    basemap: { style: "s" }, view: { center: [0, 0], zoom: 1 }, layers: [],
-    printLayout: { pageSize: "a4", orientation: "portrait", showLegend: false, showScaleBar: false, showNorthArrow: false },
+    basemap: { style: "s" },
+    view: { center: [0, 0], zoom: 1 },
+    layers: [],
+    printLayout: {
+      pageSize: "a4",
+      orientation: "portrait",
+      showLegend: false,
+      showScaleBar: false,
+      showNorthArrow: false,
+    },
   });
-  expect(body.printLayout).toEqual({ pageSize: "a4", orientation: "portrait", showLegend: false, showScaleBar: false, showNorthArrow: false });
+  expect(body.printLayout).toEqual({
+    pageSize: "a4",
+    orientation: "portrait",
+    showLegend: false,
+    showScaleBar: false,
+    showNorthArrow: false,
+  });
   expect(body.map).toBeDefined();
   expect(body.map.printLayout).toBeUndefined();
 });
@@ -1972,7 +2719,10 @@ test("getAppConfig reads printLayout", async () => {
     http.get("https://core.test/configs/by-item/5", () =>
       HttpResponse.json({
         config: {
-          kind: "app", theme: {}, dataSources: [], messages: [],
+          kind: "app",
+          theme: {},
+          dataSources: [],
+          messages: [],
           layout: { type: "grid", breakpoints: {}, items: [] },
           printLayout: { pageSize: "a4", orientation: "portrait", title: "Rapport" },
         },
@@ -1992,7 +2742,10 @@ test("saveAppConfig round-trips printLayout without dropping it", async () => {
     }),
   );
   await makeClient().saveAppConfig("5", {
-    kind: "app", theme: {}, dataSources: [], messages: [],
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
     layout: { type: "grid", breakpoints: {}, items: [] },
     printLayout: { pageSize: "a3", orientation: "landscape" },
   });
@@ -2000,10 +2753,12 @@ test("saveAppConfig round-trips printLayout without dropping it", async () => {
 });
 
 test("createExport POSTs itemId and format", async () => {
-  let body: any; let method = "";
+  let body: any;
+  let method = "";
   server.use(
     http.post("https://core.test/export", async ({ request }) => {
-      method = request.method; body = await request.json();
+      method = request.method;
+      body = await request.json();
       return HttpResponse.json({ jobId: "job-1" }, { status: 202 });
     }),
   );
@@ -2016,11 +2771,21 @@ test("createExport POSTs itemId and format", async () => {
 test("getExportJob GETs the job status by id", async () => {
   server.use(
     http.get("https://core.test/export/jobs/job-1", () =>
-      HttpResponse.json({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null }),
+      HttpResponse.json({
+        id: "job-1",
+        status: "done",
+        resultUrl: "https://minio.test/x.pdf",
+        error: null,
+      }),
     ),
   );
   const job = await makeClient().getExportJob("job-1");
-  expect(job).toEqual({ id: "job-1", status: "done", resultUrl: "https://minio.test/x.pdf", error: null });
+  expect(job).toEqual({
+    id: "job-1",
+    status: "done",
+    resultUrl: "https://minio.test/x.pdf",
+    error: null,
+  });
 });
 
 test("createEmptyCollection posts to /collections/empty and returns the created id", async () => {
@@ -2032,12 +2797,16 @@ test("createEmptyCollection posts to /collections/empty and returns the created 
     }),
   );
   const result = await makeClient().createEmptyCollection({
-    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
-    geometryType: null, srid: null,
+    title: "Ma requête",
+    columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null,
+    srid: null,
   });
   expect(body).toEqual({
-    title: "Ma requête", columns: [{ name: "commune", sqlType: "text" }],
-    geometryType: null, srid: null,
+    title: "Ma requête",
+    columns: [{ name: "commune", sqlType: "text" }],
+    geometryType: null,
+    srid: null,
   });
   expect(result).toEqual({ id: "query_abc123" });
 });
@@ -2050,7 +2819,10 @@ test("createTileset3DUpload posts filename/title and returns jobId", async () =>
       return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
     }),
   );
-  const result = await makeClient("abc").createTileset3DUpload({ filename: "city.zip", title: "Ville" });
+  const result = await makeClient("abc").createTileset3DUpload({
+    filename: "city.zip",
+    title: "Ville",
+  });
   expect(result).toEqual({ jobId: "job-1" });
   expect(body).toEqual({ filename: "city.zip", title: "Ville" });
 });
@@ -2058,7 +2830,8 @@ test("createTileset3DUpload posts filename/title and returns jobId", async () =>
 test("presignTileset3DUploadPart posts to the job/part route and returns an upload URL", async () => {
   server.use(
     http.post("https://core.test/tileset3d/uploads/job-1/parts/2/presign", () =>
-      HttpResponse.json({ uploadUrl: "https://minio.test/part-2" })),
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-2" }),
+    ),
   );
   const result = await makeClient("abc").presignTileset3DUploadPart("job-1", 2);
   expect(result).toEqual({ uploadUrl: "https://minio.test/part-2" });
@@ -2072,14 +2845,15 @@ test("completeTileset3DUpload posts the parts list", async () => {
       return new HttpResponse(null, { status: 204 });
     }),
   );
-  await makeClient("abc").completeTileset3DUpload("job-1", [{ partNumber: 1, etag: "\"abc\"" }]);
-  expect(body).toEqual({ parts: [{ partNumber: 1, etag: "\"abc\"" }] });
+  await makeClient("abc").completeTileset3DUpload("job-1", [{ partNumber: 1, etag: '"abc"' }]);
+  expect(body).toEqual({ parts: [{ partNumber: 1, etag: '"abc"' }] });
 });
 
 test("getTileset3DUploadJob returns the job status", async () => {
   server.use(
     http.get("https://core.test/tileset3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" })),
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
+    ),
   );
   const result = await makeClient("abc").getTileset3DUploadJob("job-1");
   expect(result).toEqual({ status: "done", errorMessage: null, itemId: "item-1" });
@@ -2118,7 +2892,9 @@ test("createTerrain3DUpload posts key/filename/title and returns jobId", async (
     }),
   );
   const result = await makeClient("abc").createTerrain3DUpload({
-    key: "tenant/x/dem.tif", filename: "dem.tif", title: "Relief",
+    key: "tenant/x/dem.tif",
+    filename: "dem.tif",
+    title: "Relief",
   });
   expect(result).toEqual({ jobId: "job-1" });
   expect(body).toEqual({ key: "tenant/x/dem.tif", filename: "dem.tif", title: "Relief" });
@@ -2127,7 +2903,8 @@ test("createTerrain3DUpload posts key/filename/title and returns jobId", async (
 test("getTerrain3DUploadJob returns the job status", async () => {
   server.use(
     http.get("https://core.test/terrain3d/uploads/job-1", () =>
-      HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" })),
+      HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
+    ),
   );
   const result = await makeClient("abc").getTerrain3DUploadJob("job-1");
   expect(result).toEqual({ status: "done", errorMessage: null, itemId: "t-1" });
@@ -2141,15 +2918,31 @@ test("listLayerSources includes hosted tileset3d items", async () => {
     http.get("https://core.test/items", ({ request }) => {
       expect(new URL(request.url).searchParams.get("type")).toBe("tileset3d");
       return HttpResponse.json({
-        items: [{ pk: "t1", resourceType: "tileset3d", title: "Ville", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
-        total: 1, page: 1, pageSize: 200,
+        items: [
+          {
+            pk: "t1",
+            resourceType: "tileset3d",
+            title: "Ville",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 200,
       });
     }),
   );
   const sources = await makeClient("abc").listLayerSources();
   const hosted = sources.find((s) => s.id === "t1");
   expect(hosted).toMatchObject({
-    title: "Ville", service: "tileset3d", kind: "tiles3d",
+    title: "Ville",
+    service: "tileset3d",
+    kind: "tiles3d",
     url: "https://core.test/tileset3d/t1/tileset.json",
   });
 });

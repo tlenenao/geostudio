@@ -2,7 +2,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("create an arcgis-sourced dataset from a harvested layer, consume it live in an app", async ({ page }) => {
+test("create an arcgis-sourced dataset from a harvested layer, consume it live in an app", async ({
+  page,
+}) => {
   await mockCore(page);
 
   await page.route("**/harvest/feature-layers*", async (route) => {
@@ -15,7 +17,10 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
     const body = await route.request().postDataJSON();
     if (body?.config?.kind === "dataset") {
       datasetCreated = body.config.dataset;
-      await route.fulfill({ status: 201, json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" },
+      });
       return;
     }
     return route.fallback();
@@ -24,8 +29,13 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
   await page.route("**/configs/by-item/dataset-1", async (route) => {
     await route.fulfill({
       json: {
-        id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "arcgis", arcgisItemId: "layer-1", columns: {} } },
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "arcgis", arcgisItemId: "layer-1", columns: {} },
+        },
       },
     });
   });
@@ -33,9 +43,16 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
   await page.route("https://core.test/items/dataset-1", async (route) => {
     await route.fulfill({
       json: {
-        pk: "dataset-1", resourceType: "dataset", title: "Bâtiments (live)", abstract: "",
-        owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset",
-        isPublished: false, keywords: [],
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Bâtiments (live)",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-dataset",
+        isPublished: false,
+        keywords: [],
       },
     });
   });
@@ -48,12 +65,22 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
     if (url.searchParams.get("type") !== "dataset") return route.fallback();
     await route.fulfill({
       json: {
-        items: [{
-          pk: "dataset-1", resourceType: "dataset", title: "Bâtiments (live)", abstract: "",
-          owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset",
-          isPublished: false,
-        }],
-        total: 1, page: 1, pageSize: 100,
+        items: [
+          {
+            pk: "dataset-1",
+            resourceType: "dataset",
+            title: "Bâtiments (live)",
+            abstract: "",
+            owner: "mockuser",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: "cfg-dataset",
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 100,
       },
     });
   });
@@ -63,7 +90,9 @@ test("create an arcgis-sourced dataset from a harvested layer, consume it live i
       json: {
         type: "FeatureCollection",
         features: [{ type: "Feature", id: 1, properties: { nom: "Bâtiment A" }, geometry: null }],
-        numberMatched: 1, numberReturned: 1, links: [],
+        numberMatched: 1,
+        numberReturned: 1,
+        links: [],
       },
     });
   });

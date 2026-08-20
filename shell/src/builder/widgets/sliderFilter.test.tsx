@@ -5,10 +5,17 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerSliderFilterWidget } from "./sliderFilter";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import { AnalyticsContextProvider, useAnalyticsContext, useClearCrossFilter } from "../AnalyticsContext";
+import {
+  AnalyticsContextProvider,
+  useAnalyticsContext,
+  useClearCrossFilter,
+} from "../AnalyticsContext";
 import type { ItemClient } from "../../api/types";
 
-beforeEach(() => { _resetRegistry(); registerSliderFilterWidget(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerSliderFilterWidget();
+});
 
 function CrossFilterProbe() {
   const ctx = useAnalyticsContext();
@@ -25,14 +32,18 @@ function renderSlider(queryDataSource = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const SliderFilter = getWidget("sliderFilter")!.Component;
   const ctx = {
-    mode: "runtime", widgetId: "w1",
+    mode: "runtime",
+    widgetId: "w1",
     data: { loading: false, error: false, records: [], datasetId: "ds-1" },
   } as unknown as WidgetContext;
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <AnalyticsContextProvider interactions="auto">
-          <SliderFilter props={{ dataSourceId: "src-1", field: "score", label: "Score" }} ctx={ctx} />
+          <SliderFilter
+            props={{ dataSourceId: "src-1", field: "score", label: "Score" }}
+            ctx={ctx}
+          />
           <CrossFilterProbe />
         </AnalyticsContextProvider>
       </ItemClientProvider>
@@ -49,7 +60,10 @@ test("shows a discreet message when not bound to a dataset source", () => {
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <AnalyticsContextProvider interactions="auto">
-          <SliderFilter props={{ dataSourceId: "", field: "", label: "Filtrer" }} ctx={{ mode: "runtime" } as WidgetContext} />
+          <SliderFilter
+            props={{ dataSourceId: "", field: "", label: "Filtrer" }}
+            ctx={{ mode: "runtime" } as WidgetContext}
+          />
         </AnalyticsContextProvider>
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -59,27 +73,41 @@ test("shows a discreet message when not bound to a dataset source", () => {
 });
 
 test("fetches min/max via a two-measure statistics query and renders the bounds", async () => {
-  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
   renderSlider(queryDataSource);
   expect(await screen.findByText("Score (10 – 90)")).toBeInTheDocument();
-  expect(queryDataSource).toHaveBeenCalledWith(expect.objectContaining({
-    type: "statistics", datasetId: "ds-1",
-    query: { measures: [{ field: "score", agg: "min", label: "min" }, { field: "score", agg: "max", label: "max" }] },
-  }));
+  expect(queryDataSource).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "statistics",
+      datasetId: "ds-1",
+      query: {
+        measures: [
+          { field: "score", agg: "min", label: "min" },
+          { field: "score", agg: "max", label: "max" },
+        ],
+      },
+    }),
+  );
 });
 
 test("moving the min handle sets a range cross-filter", async () => {
-  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
   renderSlider(queryDataSource);
-  const minInput = await screen.findByLabelText("Borne minimale") as HTMLInputElement;
+  const minInput = (await screen.findByLabelText("Borne minimale")) as HTMLInputElement;
   fireEvent.change(minInput, { target: { value: "50" } });
   expect(await screen.findByText(/"value":\{"from":"50","to":"90"\}/)).toBeInTheDocument();
 });
 
 test("moving back to the full bounds clears the filter", async () => {
-  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
   renderSlider(queryDataSource);
-  const minInput = await screen.findByLabelText("Borne minimale") as HTMLInputElement;
+  const minInput = (await screen.findByLabelText("Borne minimale")) as HTMLInputElement;
   fireEvent.change(minInput, { target: { value: "50" } });
   await screen.findByText(/"from":"50"/);
   fireEvent.change(minInput, { target: { value: "10" } });
@@ -94,26 +122,32 @@ test("shows the error message (not a perpetual loading message) when the bounds 
 });
 
 test("resets the displayed range to the full bounds when the cross-filter is cleared externally", async () => {
-  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
+  const queryDataSource = vi
+    .fn()
+    .mockResolvedValue([{ id: "Total", properties: { group: "Total", min: 10, max: 90 } }]);
   const client = { queryDataSource } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const SliderFilter = getWidget("sliderFilter")!.Component;
   const ctx = {
-    mode: "runtime", widgetId: "w1",
+    mode: "runtime",
+    widgetId: "w1",
     data: { loading: false, error: false, records: [], datasetId: "ds-1" },
   } as unknown as WidgetContext;
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <AnalyticsContextProvider interactions="auto">
-          <SliderFilter props={{ dataSourceId: "src-1", field: "score", label: "Score" }} ctx={ctx} />
+          <SliderFilter
+            props={{ dataSourceId: "src-1", field: "score", label: "Score" }}
+            ctx={ctx}
+          />
           <ExternalClearButton datasetId="ds-1" />
           <CrossFilterProbe />
         </AnalyticsContextProvider>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  const minInput = await screen.findByLabelText("Borne minimale") as HTMLInputElement;
+  const minInput = (await screen.findByLabelText("Borne minimale")) as HTMLInputElement;
   fireEvent.change(minInput, { target: { value: "50" } });
   expect(await screen.findByText("Score (50 – 90)")).toBeInTheDocument();
   fireEvent.click(screen.getByText("Effacer (externe)"));

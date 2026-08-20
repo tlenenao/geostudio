@@ -34,7 +34,11 @@ export function PropsPanel({
           value={visibleWhen}
           onChange={(e) => onVisibleWhenChange(e.target.value)}
         />
-        {error && <span role="alert" className="text-xs text-red-600">{error}</span>}
+        {error && (
+          <span role="alert" className="text-xs text-red-600">
+            {error}
+          </span>
+        )}
       </label>
       <Panel props={item.props} dataSources={dataSources} onChange={(p) => onChange(p)} />
     </div>

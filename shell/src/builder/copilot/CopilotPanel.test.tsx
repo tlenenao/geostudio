@@ -19,7 +19,10 @@ enableMockAuth();
 
 function emptyConfig(): AppConfig {
   return {
-    kind: "app", theme: {} as AppConfig["theme"], dataSources: [], messages: [],
+    kind: "app",
+    theme: {} as AppConfig["theme"],
+    dataSources: [],
+    messages: [],
     layout: { type: "grid", breakpoints: {}, items: [] },
   };
 }
@@ -35,13 +38,17 @@ function renderPanel(client: Partial<ItemClient>, setDraft: ReturnType<typeof vi
 describe("CopilotPanel", () => {
   it("sends a message and shows the reply, without changing the draft when there are no clientOps", async () => {
     const setDraft = vi.fn();
-    const copilotTurn = vi.fn().mockResolvedValue({ reply: "Ce dataset contient des incidents.", clientOps: [] });
+    const copilotTurn = vi
+      .fn()
+      .mockResolvedValue({ reply: "Ce dataset contient des incidents.", clientOps: [] });
     renderPanel({ copilotTurn }, setDraft);
 
     await userEvent.type(screen.getByLabelText("Message au copilote"), "Explique ce dataset");
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 
-    await waitFor(() => expect(screen.getByText("Ce dataset contient des incidents.")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Ce dataset contient des incidents.")).toBeInTheDocument(),
+    );
     expect(setDraft).not.toHaveBeenCalled();
   });
 
@@ -62,11 +69,21 @@ describe("CopilotPanel", () => {
   it("applies clientOps against the page active when the reply lands, not the one active at send time", async () => {
     const setDraft = vi.fn();
     let resolveTurn: (value: unknown) => void = () => {};
-    const copilotTurn = vi.fn(() => new Promise((resolve) => { resolveTurn = resolve; }));
+    const copilotTurn = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveTurn = resolve;
+        }),
+    );
     const client = { copilotTurn } as unknown as ItemClient;
     const panel = (activePageId: string) => (
       <ItemClientProvider client={client}>
-        <CopilotPanel itemId="1" config={emptyConfig()} activePageId={activePageId} setDraft={setDraft} />
+        <CopilotPanel
+          itemId="1"
+          config={emptyConfig()}
+          activePageId={activePageId}
+          setDraft={setDraft}
+        />
       </ItemClientProvider>
     );
     const { rerender } = render(panel("page-1"));
@@ -79,7 +96,10 @@ describe("CopilotPanel", () => {
     rerender(panel("page-2"));
 
     vi.mocked(applyClientOp).mockClear();
-    resolveTurn({ reply: "J'ai ajouté un indicateur.", clientOps: [{ op: "addWidget", args: { type: "text" } }] });
+    resolveTurn({
+      reply: "J'ai ajouté un indicateur.",
+      clientOps: [{ op: "addWidget", args: { type: "text" } }],
+    });
     await waitFor(() => expect(setDraft).toHaveBeenCalledTimes(1));
 
     setDraft.mock.calls[0][0](emptyConfig());

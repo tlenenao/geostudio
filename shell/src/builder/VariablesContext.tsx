@@ -7,7 +7,13 @@ type SetVariable = (name: string, value: unknown) => void;
 const VariablesContext = createContext<Record<string, unknown>>({});
 const SetVariableContext = createContext<SetVariable>(() => {});
 
-export function VariablesProvider({ variables, children }: { variables: Variable[]; children: ReactNode }) {
+export function VariablesProvider({
+  variables,
+  children,
+}: {
+  variables: Variable[];
+  children: ReactNode;
+}) {
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {};
     for (const v of variables) initial[v.name] = v.initialValue;

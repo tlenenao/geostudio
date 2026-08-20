@@ -12,7 +12,10 @@ import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 const schema: CollectionSchema = {
   collection: "incidents",
@@ -25,7 +28,9 @@ const schema: CollectionSchema = {
   ],
 };
 
-const dataSources: DataSource[] = [{ id: "ds1", type: "features", service: "core", layer: "incidents", query: {} }];
+const dataSources: DataSource[] = [
+  { id: "ds1", type: "features", service: "core", layer: "incidents", query: {} },
+];
 
 function renderPanel(
   initialProps: Record<string, unknown>,
@@ -71,11 +76,21 @@ test("form widget is registered with submitted/failed events and reset/loadRecor
   expect(def.label).toBe("Formulaire");
   expect(def.events).toEqual(["submitted", "failed"]);
   expect(def.actions).toEqual(["reset", "loadRecord"]);
-  expect(def.defaultProps).toEqual({ dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null });
+  expect(def.defaultProps).toEqual({
+    dataSourceId: "",
+    fields: [],
+    submitLabel: "Enregistrer",
+    geometryType: null,
+  });
 });
 
 test("props panel offers a button to load fields once the schema resolves", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: [], submitLabel: "Enregistrer", geometryType: null });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: [],
+    submitLabel: "Enregistrer",
+    geometryType: null,
+  });
   const button = await screen.findByRole("button", { name: "Charger les champs du schéma" });
   await userEvent.click(button);
   expect(onChange).toHaveBeenCalledWith({
@@ -83,9 +98,32 @@ test("props panel offers a button to load fields once the schema resolves", asyn
     submitLabel: "Enregistrer",
     geometryType: "Point",
     fields: [
-      { name: "titre", type: "string", label: "titre", order: 0, hidden: false, required: true, maxLength: 120 },
-      { name: "gravite", type: "enum", label: "gravite", order: 1, hidden: false, required: true, values: ["faible", "moyenne", "haute"] },
-      { name: "nb_victimes", type: "integer", label: "nb_victimes", order: 2, hidden: false, required: false },
+      {
+        name: "titre",
+        type: "string",
+        label: "titre",
+        order: 0,
+        hidden: false,
+        required: true,
+        maxLength: 120,
+      },
+      {
+        name: "gravite",
+        type: "enum",
+        label: "gravite",
+        order: 1,
+        hidden: false,
+        required: true,
+        values: ["faible", "moyenne", "haute"],
+      },
+      {
+        name: "nb_victimes",
+        type: "integer",
+        label: "nb_victimes",
+        order: 2,
+        hidden: false,
+        required: false,
+      },
     ],
   });
 });
@@ -93,11 +131,15 @@ test("props panel offers a button to load fields once the schema resolves", asyn
 test("props panel hides the load button once fields are already loaded", () => {
   renderPanel({
     dataSourceId: "ds1",
-    fields: [{ name: "titre", type: "string", label: "Titre", order: 0, hidden: false, required: true }],
+    fields: [
+      { name: "titre", type: "string", label: "Titre", order: 0, hidden: false, required: true },
+    ],
     submitLabel: "Enregistrer",
     geometryType: null,
   });
-  expect(screen.queryByRole("button", { name: "Charger les champs du schéma" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Charger les champs du schéma" }),
+  ).not.toBeInTheDocument();
 });
 
 test("props panel shows an error when the schema fails to load", async () => {
@@ -111,41 +153,88 @@ test("props panel shows an error when the schema fails to load", async () => {
 
 test("props panel shows nothing schema-related when no data source is bound", () => {
   renderPanel({ dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null });
-  expect(screen.queryByRole("button", { name: "Charger les champs du schéma" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Charger les champs du schéma" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 const loadedFields = [
-  { name: "titre", type: "string" as const, label: "titre", order: 0, hidden: false, required: true, maxLength: 120 },
-  { name: "gravite", type: "enum" as const, label: "gravite", order: 1, hidden: false, required: true, values: ["faible", "moyenne", "haute"] },
-  { name: "nb_victimes", type: "integer" as const, label: "nb_victimes", order: 2, hidden: false, required: false },
+  {
+    name: "titre",
+    type: "string" as const,
+    label: "titre",
+    order: 0,
+    hidden: false,
+    required: true,
+    maxLength: 120,
+  },
+  {
+    name: "gravite",
+    type: "enum" as const,
+    label: "gravite",
+    order: 1,
+    hidden: false,
+    required: true,
+    values: ["faible", "moyenne", "haute"],
+  },
+  {
+    name: "nb_victimes",
+    type: "integer" as const,
+    label: "nb_victimes",
+    order: 2,
+    hidden: false,
+    required: false,
+  },
 ];
 
 test("field overrides let you rename a field's label", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   const input = await screen.findByLabelText("Label du champ titre");
   await userEvent.clear(input);
   await userEvent.type(input, "Titre de l'incident");
   const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
-  expect(lastCall.fields.find((f: { name: string }) => f.name === "titre").label).toBe("Titre de l'incident");
+  expect(lastCall.fields.find((f: { name: string }) => f.name === "titre").label).toBe(
+    "Titre de l'incident",
+  );
 });
 
 test("field overrides toggle hidden and required", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   await userEvent.click(await screen.findByLabelText("Masquer nb_victimes"));
   const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
   expect(lastCall.fields.find((f: { name: string }) => f.name === "nb_victimes").hidden).toBe(true);
 });
 
 test("field overrides set min/max on a numeric field", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   await userEvent.type(await screen.findByLabelText("Min nb_victimes"), "0");
   const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
   expect(lastCall.fields.find((f: { name: string }) => f.name === "nb_victimes").min).toBe(0);
 });
 
 test("field overrides set a validation pattern on a string field", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   // "[" is a special-key delimiter for userEvent.type; double it to type a literal "[". "]" alone is literal.
   await userEvent.type(await screen.findByLabelText("Motif titre"), "^[[A-Z]");
   const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
@@ -153,14 +242,24 @@ test("field overrides set a validation pattern on a string field", async () => {
 });
 
 test("field overrides do not offer min/max/pattern for an enum field", async () => {
-  renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   await screen.findByLabelText("Label du champ gravite");
   expect(screen.queryByLabelText("Min gravite")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Motif gravite")).not.toBeInTheDocument();
 });
 
 test("dragging a field row onto another reorders the list and renumbers order", async () => {
-  const { onChange } = renderPanel({ dataSourceId: "ds1", fields: loadedFields, submitLabel: "Enregistrer", geometryType: "Point" });
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
   const rows = await screen.findAllByRole("listitem");
   const dataTransfer = { setData: vi.fn() };
   fireEvent.dragStart(rows[0], { dataTransfer });
@@ -174,10 +273,40 @@ test("dragging a field row onto another reorders the list and renumbers order", 
 });
 
 const visibleFields = [
-  { name: "titre", type: "string" as const, label: "Titre", order: 0, hidden: false, required: true },
-  { name: "gravite", type: "enum" as const, label: "Gravité", order: 1, hidden: false, required: true, values: ["faible", "moyenne", "haute"] },
-  { name: "nb_victimes", type: "integer" as const, label: "Victimes", order: 2, hidden: false, required: false, min: 0 },
-  { name: "notes_internes", type: "string" as const, label: "Notes internes", order: 3, hidden: true, required: false },
+  {
+    name: "titre",
+    type: "string" as const,
+    label: "Titre",
+    order: 0,
+    hidden: false,
+    required: true,
+  },
+  {
+    name: "gravite",
+    type: "enum" as const,
+    label: "Gravité",
+    order: 1,
+    hidden: false,
+    required: true,
+    values: ["faible", "moyenne", "haute"],
+  },
+  {
+    name: "nb_victimes",
+    type: "integer" as const,
+    label: "Victimes",
+    order: 2,
+    hidden: false,
+    required: false,
+    min: 0,
+  },
+  {
+    name: "notes_internes",
+    type: "string" as const,
+    label: "Notes internes",
+    order: 3,
+    hidden: true,
+    required: false,
+  },
 ];
 
 function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
@@ -187,7 +316,10 @@ function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
-        <Form props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }} ctx={{ mode: "runtime", ...ctx } as WidgetContext} />
+        <Form
+          props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }}
+          ctx={{ mode: "runtime", ...ctx } as WidgetContext}
+        />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -223,7 +355,17 @@ test("form validates a numeric field against its min bound", async () => {
 });
 
 test("form validates a string field against its pattern", async () => {
-  const fields = [{ name: "titre", type: "string" as const, label: "Titre", order: 0, hidden: false, required: false, pattern: "^[A-Z]" }];
+  const fields = [
+    {
+      name: "titre",
+      type: "string" as const,
+      label: "Titre",
+      order: 0,
+      hidden: false,
+      required: false,
+      pattern: "^[A-Z]",
+    },
+  ];
   renderForm(fields);
   const titre = screen.getByLabelText("Titre");
   await userEvent.type(titre, "fuite");
@@ -264,7 +406,14 @@ function renderConnectedForm({
       <ItemClientProvider client={client}>
         <Form
           props={{ dataSourceId: "ds1", fields, submitLabel: "Enregistrer" }}
-          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer }, bus, widgetId } as WidgetContext}
+          ctx={
+            {
+              mode: "runtime",
+              data: { loading: false, error: false, records: [], layer },
+              bus,
+              widgetId,
+            } as WidgetContext
+          }
         />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -295,30 +444,45 @@ test("a successful submit clears the form, invalidates data sources, and emits s
   await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
   await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
-  await waitFor(() => expect(handler).toHaveBeenCalledWith({ properties: { titre: "Fuite d'eau", gravite: "haute" } }));
+  await waitFor(() =>
+    expect(handler).toHaveBeenCalledWith({
+      properties: { titre: "Fuite d'eau", gravite: "haute" },
+    }),
+  );
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
   expect(screen.getByLabelText("Titre")).toHaveValue("");
 });
 
 test("submit is disabled while the write is pending", async () => {
   let resolveWrite!: (v: { id: number }) => void;
-  const createFeature = vi.fn(() => new Promise<{ id: number }>((resolve) => { resolveWrite = resolve; }));
+  const createFeature = vi.fn(
+    () =>
+      new Promise<{ id: number }>((resolve) => {
+        resolveWrite = resolve;
+      }),
+  );
   renderConnectedForm({ client: { createFeature } });
   await userEvent.type(screen.getByLabelText("Titre"), "Fuite d'eau");
   await userEvent.selectOptions(screen.getByLabelText("Gravité"), "haute");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
   resolveWrite({ id: 1 });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Enregistrer" })).not.toBeDisabled(),
+  );
 });
 
 test("a 400 response maps field errors onto the matching inputs", async () => {
   // titre/gravité are both filled (client validation passes) — the server
   // still rejects on a rule the client doesn't know about (e.g. a uniqueness
   // constraint), proving the 400 mapping runs independently of client checks.
-  const createFeature = vi.fn().mockRejectedValue(
-    new FeatureValidationError([{ field: "titre", code: "duplicate", message: "un incident « Fuite d'eau » existe déjà" }]),
-  );
+  const createFeature = vi
+    .fn()
+    .mockRejectedValue(
+      new FeatureValidationError([
+        { field: "titre", code: "duplicate", message: "un incident « Fuite d'eau » existe déjà" },
+      ]),
+    );
   const bus = new ActionBus();
   const failed = vi.fn();
   bus.register("sink", "log", failed);
@@ -364,8 +528,18 @@ function renderConnectedFormWithGeometry(geometryType: string | null) {
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
-          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType }}
-          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" } } as WidgetContext}
+          props={{
+            dataSourceId: "ds1",
+            fields: visibleFields,
+            submitLabel: "Enregistrer",
+            geometryType,
+          }}
+          ctx={
+            {
+              mode: "runtime",
+              data: { loading: false, error: false, records: [], layer: "incidents" },
+            } as WidgetContext
+          }
         />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -417,9 +591,14 @@ test("submitting a Point collection with empty coordinates sends a null geometry
 
 test("loadRecord pre-fills the form from the selected record's properties", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   renderConnectedForm({ bus, widgetId: "form1" });
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Fuite existante"));
   expect(screen.getByLabelText("Gravité")).toHaveValue("moyenne");
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
@@ -427,7 +606,9 @@ test("loadRecord pre-fills the form from the selected record's properties", asyn
 
 test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const client = {
     createFeature: vi.fn().mockResolvedValue({ id: 1 }),
     getCollectionPermission: vi.fn().mockResolvedValue(true),
@@ -438,14 +619,27 @@ test("loadRecord pre-fills longitude/latitude for a Point geometry", async () =>
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
-          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Point" }}
-          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+          props={{
+            dataSourceId: "ds1",
+            fields: visibleFields,
+            submitLabel: "Enregistrer",
+            geometryType: "Point",
+          }}
+          ctx={
+            {
+              mode: "runtime",
+              data: { loading: false, error: false, records: [], layer: "incidents" },
+              bus,
+              widgetId: "form1",
+            } as WidgetContext
+          }
         />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
   bus.emit("table1", "itemSelected", {
-    id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" },
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
     geometry: { type: "Point", coordinates: [2.35, 48.85] },
   });
   await waitFor(() => expect(screen.getByLabelText("Longitude")).toHaveValue(2.35));
@@ -454,9 +648,14 @@ test("loadRecord pre-fills longitude/latitude for a Point geometry", async () =>
 
 test("the Annuler button exits edit mode and clears the form", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   renderConnectedForm({ bus, widgetId: "form1" });
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
   expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
@@ -469,10 +668,15 @@ test("form declares loadRecord alongside reset", () => {
 
 test("submitting while editing calls updateFeature with the record id and stays on the record", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const updateFeature = vi.fn().mockResolvedValue(undefined);
   const { client } = renderConnectedForm({ client: { updateFeature }, bus });
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await screen.findByDisplayValue("Fuite existante");
   await userEvent.clear(screen.getByLabelText("Titre"));
   await userEvent.type(screen.getByLabelText("Titre"), "Fuite corrigée");
@@ -500,7 +704,9 @@ test("createFeature is still called (not updateFeature) when not editing", async
 
 test("updating a record resubmits a hidden field's original value unchanged", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const updateFeature = vi.fn().mockResolvedValue(undefined);
   const { client } = renderConnectedForm({ client: { updateFeature }, bus });
   bus.emit("table1", "itemSelected", {
@@ -521,10 +727,15 @@ test("updating a record resubmits a hidden field's original value unchanged", as
 test("Supprimer calls deleteFeature after confirmation, invalidates, and exits edit mode", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const deleteFeature = vi.fn().mockResolvedValue(undefined);
   const { client, invalidateSpy } = renderConnectedForm({ client: { deleteFeature }, bus });
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
@@ -534,7 +745,9 @@ test("Supprimer calls deleteFeature after confirmation, invalidates, and exits e
 
 test("updating a non-Point record resubmits its original geometry unchanged", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const updateFeature = vi.fn().mockResolvedValue(undefined);
   const client = {
     createFeature: vi.fn().mockResolvedValue({ id: 1 }),
@@ -547,8 +760,20 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
-          props={{ dataSourceId: "ds1", fields: visibleFields, submitLabel: "Enregistrer", geometryType: "Polygon" }}
-          ctx={{ mode: "runtime", data: { loading: false, error: false, records: [], layer: "incidents" }, bus, widgetId: "form1" } as WidgetContext}
+          props={{
+            dataSourceId: "ds1",
+            fields: visibleFields,
+            submitLabel: "Enregistrer",
+            geometryType: "Polygon",
+          }}
+          ctx={
+            {
+              mode: "runtime",
+              data: { loading: false, error: false, records: [], layer: "incidents" },
+              bus,
+              widgetId: "form1",
+            } as WidgetContext
+          }
         />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -556,7 +781,17 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
   bus.emit("table1", "itemSelected", {
     id: 7,
     properties: { titre: "Fuite existante", gravite: "moyenne" },
-    geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    },
   });
   await screen.findByDisplayValue("Fuite existante");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
@@ -564,7 +799,17 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
     expect(updateFeature).toHaveBeenCalledWith("incidents", "7", {
       type: "Feature",
       properties: { titre: "Fuite existante", gravite: "moyenne" },
-      geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 0],
+          ],
+        ],
+      },
     }),
   );
 });
@@ -572,10 +817,15 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
 test("Supprimer does nothing when the confirmation is declined", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(false);
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const deleteFeature = vi.fn();
   const { client } = renderConnectedForm({ client: { deleteFeature }, bus });
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
   expect(client.deleteFeature).not.toHaveBeenCalled();
@@ -584,12 +834,19 @@ test("Supprimer does nothing when the confirmation is declined", async () => {
 
 test("hides the write buttons once the collection permission resolves to canWrite=false", async () => {
   const bus = new ActionBus();
-  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" }]);
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
   const getCollectionPermission = vi.fn().mockResolvedValue(false);
   const { client } = renderConnectedForm({ client: { getCollectionPermission }, bus });
   await waitFor(() => expect(client.getCollectionPermission).toHaveBeenCalledWith("incidents"));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
-  bus.emit("table1", "itemSelected", { id: 7, properties: { titre: "Fuite existante", gravite: "moyenne" } });
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument(),
+  );
+  bus.emit("table1", "itemSelected", {
+    id: 7,
+    properties: { titre: "Fuite existante", gravite: "moyenne" },
+  });
   await screen.findByText(/Modification de l'enregistrement #7/);
   expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
   // Réinitialiser/Annuler restent visibles : ce ne sont pas des actions d'écriture.
@@ -601,7 +858,9 @@ test("hides the write buttons when the instance is in read-only demo mode, even 
   const getInstanceInfo = vi.fn().mockResolvedValue({ readOnly: true });
   renderConnectedForm({ client: { getInstanceInfo } });
   await waitFor(() => expect(getInstanceInfo).toHaveBeenCalled());
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument(),
+  );
 });
 
 // I5 regression: `permissionQuery.data ?? true` used to fail open when the
@@ -609,8 +868,12 @@ test("hides the write buttons when the instance is in read-only demo mode, even 
 // zero-backend `unsupported()` rejection in a static export — rendering the
 // form as writable when a submit could never actually succeed.
 test("hides the write buttons when getCollectionPermission rejects (query genuinely fails, e.g. static export)", async () => {
-  const getCollectionPermission = vi.fn().mockRejectedValue(new Error("Non disponible dans un export statique."));
+  const getCollectionPermission = vi
+    .fn()
+    .mockRejectedValue(new Error("Non disponible dans un export statique."));
   const { client } = renderConnectedForm({ client: { getCollectionPermission } });
   await waitFor(() => expect(client.getCollectionPermission).toHaveBeenCalledWith("incidents"));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument(),
+  );
 });

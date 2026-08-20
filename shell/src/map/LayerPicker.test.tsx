@@ -8,16 +8,44 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { LayerPicker } from "./LayerPicker";
 
 const sources: LayerSource[] = [
-  { id: "communes", title: "Communes", service: "martin", kind: "vector",
-    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}", sourceLayer: "communes" },
-  { id: "public.parcs", title: "Parcs", service: "core", kind: "feature",
-    url: "https://core.test/collections/public.parcs/items", featureCount: 128 },
-  { id: "public.legacy", title: "Legacy", service: "core", kind: "feature",
-    url: "https://core.test/collections/public.legacy/items", featureCount: null },
-  { id: "ext-ortho", title: "Orthophoto (WMS)", service: "external", kind: "raster",
-    tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}" },
-  { id: "t1", title: "Ville hébergée", service: "tileset3d", kind: "tiles3d",
-    url: "https://core.test/tileset3d/t1/tileset.json" },
+  {
+    id: "communes",
+    title: "Communes",
+    service: "martin",
+    kind: "vector",
+    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
+    sourceLayer: "communes",
+  },
+  {
+    id: "public.parcs",
+    title: "Parcs",
+    service: "core",
+    kind: "feature",
+    url: "https://core.test/collections/public.parcs/items",
+    featureCount: 128,
+  },
+  {
+    id: "public.legacy",
+    title: "Legacy",
+    service: "core",
+    kind: "feature",
+    url: "https://core.test/collections/public.legacy/items",
+    featureCount: null,
+  },
+  {
+    id: "ext-ortho",
+    title: "Orthophoto (WMS)",
+    service: "external",
+    kind: "raster",
+    tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}",
+  },
+  {
+    id: "t1",
+    title: "Ville hébergée",
+    service: "tileset3d",
+    kind: "tiles3d",
+    url: "https://core.test/tileset3d/t1/tileset.json",
+  },
 ];
 
 function renderPicker(onAdd: (l: MapLayer) => void) {
@@ -84,7 +112,9 @@ test("clicking a hosted tileset3d source emits a tiles3d MapLayer with its proxy
   expect(onAdd).toHaveBeenCalledTimes(1);
   const layer = onAdd.mock.calls[0][0] as MapLayer;
   expect(layer).toMatchObject({
-    kind: "tiles3d", url: "https://core.test/tileset3d/t1/tileset.json", visible: true,
+    kind: "tiles3d",
+    url: "https://core.test/tileset3d/t1/tileset.json",
+    visible: true,
   });
 });
 
@@ -136,7 +166,10 @@ test("adds a tiles3d layer from the manual URL form", async () => {
   const onAdd = vi.fn();
   renderPicker(onAdd);
   await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
-  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  await userEvent.type(
+    screen.getByLabelText("URL du tileset.json"),
+    "https://example.test/tileset.json",
+  );
   await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
   expect(onAdd).toHaveBeenCalledTimes(1);
   const layer = onAdd.mock.calls[0][0] as MapLayer;
@@ -157,7 +190,10 @@ test("disables the tiles3d add button until both title and URL are filled", asyn
   expect(button).toBeDisabled();
   await userEvent.type(screen.getByLabelText("Titre du tileset 3D"), "Bâtiments");
   expect(button).toBeDisabled();
-  await userEvent.type(screen.getByLabelText("URL du tileset.json"), "https://example.test/tileset.json");
+  await userEvent.type(
+    screen.getByLabelText("URL du tileset.json"),
+    "https://example.test/tileset.json",
+  );
   expect(button).toBeEnabled();
 });
 

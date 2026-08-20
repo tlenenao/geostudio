@@ -2,21 +2,32 @@ import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 const GAUGE_MANIFEST = {
-  id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
+  id: "acme.gauge",
+  tag: "gauge-extension-widget",
+  label: "Jauge (extension)",
   moduleUrl: "/fixtures/gauge-extension-widget.js",
   props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
-  events: ["changed"], actions: ["reset"],
-  defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+  events: ["changed"],
+  actions: ["reset"],
+  defaultSize: { w: 2, h: 2 },
+  permissions: { collections: "all" },
 };
 
 const THROWING_MANIFEST = {
-  id: "test.throwing", tag: "throwing-extension-widget", label: "Widget qui plante",
+  id: "test.throwing",
+  tag: "throwing-extension-widget",
+  label: "Widget qui plante",
   moduleUrl: "/fixtures/throwing-extension-widget.js",
-  props: [], events: [], actions: ["boom"],
-  defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+  props: [],
+  events: [],
+  actions: ["boom"],
+  defaultSize: { w: 2, h: 2 },
+  permissions: { collections: "all" },
 };
 
-test("une extension dont l'action lève une exception ne bloque pas le message composé suivant vers un autre widget", async ({ page }) => {
+test("une extension dont l'action lève une exception ne bloque pas le message composé suivant vers un autre widget", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/extensions*", async (route) => {
     await route.fulfill({ json: { extensions: [GAUGE_MANIFEST, THROWING_MANIFEST] } });

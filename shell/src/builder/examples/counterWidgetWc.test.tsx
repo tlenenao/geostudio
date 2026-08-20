@@ -33,7 +33,10 @@ test("emits changed with the new count", async () => {
   bus.configure([{ id: "m", from: "c1", event: "changed", to: "t1", action: "setFilter" }]);
   const Component = getWidget("example.counter-wc")!.Component;
   const { container } = render(
-    <Component props={{ initial: 0 }} ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext} />,
+    <Component
+      props={{ initial: 0 }}
+      ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext}
+    />,
   );
   const el = container.querySelector("gs-counter") as GsCounter;
   await el.updateComplete;
@@ -46,7 +49,10 @@ test("declares a reset action that resets to the initial value", async () => {
   bus.configure([{ id: "m", from: "emitter", event: "go", to: "c1", action: "reset" }]);
   const Component = getWidget("example.counter-wc")!.Component;
   const { container } = render(
-    <Component props={{ initial: 3 }} ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext} />,
+    <Component
+      props={{ initial: 3 }}
+      ctx={{ mode: "runtime", bus, widgetId: "c1" } as WidgetContext}
+    />,
   );
   const el = container.querySelector("gs-counter") as GsCounter;
   await el.updateComplete;

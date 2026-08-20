@@ -29,22 +29,41 @@ export function registerPivotWidget(): void {
     ],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const encodings = (props.encodings as PivotEncodings | undefined) ?? {};
-      const setEncodings = (patch: PivotEncodings) => onChange({ ...props, encodings: { ...encodings, ...patch } });
+      const setEncodings = (patch: PivotEncodings) =>
+        onChange({ ...props, encodings: { ...encodings, ...patch } });
       return (
         <div className="flex flex-col gap-2 text-sm">
-          <DataSourceSelect value={String(props.dataSourceId ?? "")} dataSources={dataSources}
-            onChange={(id) => onChange({ ...props, dataSourceId: id })} />
-          <label className={labelCls}>Champ lignes
-            <input aria-label="Champ lignes" className={inputCls}
-              value={String(encodings.rows ?? "")} onChange={(e) => setEncodings({ rows: e.target.value })} />
+          <DataSourceSelect
+            value={String(props.dataSourceId ?? "")}
+            dataSources={dataSources}
+            onChange={(id) => onChange({ ...props, dataSourceId: id })}
+          />
+          <label className={labelCls}>
+            Champ lignes
+            <input
+              aria-label="Champ lignes"
+              className={inputCls}
+              value={String(encodings.rows ?? "")}
+              onChange={(e) => setEncodings({ rows: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Champ colonnes
-            <input aria-label="Champ colonnes" className={inputCls}
-              value={String(encodings.columns ?? "")} onChange={(e) => setEncodings({ columns: e.target.value })} />
+          <label className={labelCls}>
+            Champ colonnes
+            <input
+              aria-label="Champ colonnes"
+              className={inputCls}
+              value={String(encodings.columns ?? "")}
+              onChange={(e) => setEncodings({ columns: e.target.value })}
+            />
           </label>
-          <label className={labelCls}>Titre
-            <input aria-label="Titre du tableau croisé" className={inputCls}
-              value={String(props.title ?? "")} onChange={(e) => onChange({ ...props, title: e.target.value })} />
+          <label className={labelCls}>
+            Titre
+            <input
+              aria-label="Titre du tableau croisé"
+              className={inputCls}
+              value={String(props.title ?? "")}
+              onChange={(e) => onChange({ ...props, title: e.target.value })}
+            />
           </label>
         </div>
       );
@@ -57,12 +76,19 @@ export function registerPivotWidget(): void {
       const colsField = String(encodings.columns ?? "");
       const dataSourceId = String(props.dataSourceId ?? "");
 
-      if (!data || data.loading) return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+      if (!data || data.loading)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
-      if (data.records.length === 0) return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+      if (data.records.length === 0)
+        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
 
       const grid = buildPivotGrid(data.records, rowsField, colsField);
-      if (!grid) return <p className="text-xs text-[var(--gs-color-muted)]">Configurez les champs lignes et colonnes</p>;
+      if (!grid)
+        return (
+          <p className="text-xs text-[var(--gs-color-muted)]">
+            Configurez les champs lignes et colonnes
+          </p>
+        );
 
       function clickRow(rowValue: string) {
         if (data?.datasetId) setCrossFilter(data.datasetId, rowsField, rowValue, dataSourceId);
@@ -75,7 +101,12 @@ export function registerPivotWidget(): void {
 
       return (
         <div className="relative h-full overflow-auto text-xs">
-          <ExplorerMenu datasetId={data.datasetId} dataSourceId={dataSourceId} resolvedSource={data.resolvedSource} hasGeometry={data.hasGeometry} />
+          <ExplorerMenu
+            datasetId={data.datasetId}
+            dataSourceId={dataSourceId}
+            resolvedSource={data.resolvedSource}
+            hasGeometry={data.hasGeometry}
+          />
           {props.title ? <p className="mb-1 font-medium">{String(props.title)}</p> : null}
           <table className="w-full text-left text-[var(--gs-color-text)]">
             <thead>
@@ -83,19 +114,35 @@ export function registerPivotWidget(): void {
                 <th className={thCls} />
                 {grid.colValues.map((col) => (
                   <th key={col} colSpan={grid.measures.length} className={thCls}>
-                    <button type="button" className="font-medium" onClick={() => clickCol(col)}>{col}</button>
+                    <button type="button" className="font-medium" onClick={() => clickCol(col)}>
+                      {col}
+                    </button>
                   </th>
                 ))}
-                <th colSpan={grid.measures.length} className={`${thCls} font-medium`}>Total</th>
+                <th colSpan={grid.measures.length} className={`${thCls} font-medium`}>
+                  Total
+                </th>
               </tr>
               {showMeasureRow && (
                 <tr>
                   <th className={thCls} />
-                  {grid.colValues.flatMap((col) => grid.measures.map((m) => (
-                    <th key={`${col}-${m}`} className={`${thCls} font-normal text-[var(--gs-color-muted)]`}>{m}</th>
-                  )))}
+                  {grid.colValues.flatMap((col) =>
+                    grid.measures.map((m) => (
+                      <th
+                        key={`${col}-${m}`}
+                        className={`${thCls} font-normal text-[var(--gs-color-muted)]`}
+                      >
+                        {m}
+                      </th>
+                    )),
+                  )}
                   {grid.measures.map((m) => (
-                    <th key={`total-${m}`} className={`${thCls} font-normal text-[var(--gs-color-muted)]`}>{m}</th>
+                    <th
+                      key={`total-${m}`}
+                      className={`${thCls} font-normal text-[var(--gs-color-muted)]`}
+                    >
+                      {m}
+                    </th>
                   ))}
                 </tr>
               )}
@@ -104,23 +151,39 @@ export function registerPivotWidget(): void {
               {grid.rowValues.map((row) => (
                 <tr key={row}>
                   <th scope="row" className={`${thCls} text-left font-medium`}>
-                    <button type="button" onClick={() => clickRow(row)}>{row}</button>
+                    <button type="button" onClick={() => clickRow(row)}>
+                      {row}
+                    </button>
                   </th>
-                  {grid.colValues.flatMap((col) => grid.measures.map((m) => (
-                    <td key={`${col}-${m}`} className={thCls}>{grid.cell(row, col, m)}</td>
-                  )))}
+                  {grid.colValues.flatMap((col) =>
+                    grid.measures.map((m) => (
+                      <td key={`${col}-${m}`} className={thCls}>
+                        {grid.cell(row, col, m)}
+                      </td>
+                    )),
+                  )}
                   {grid.measures.map((m) => (
-                    <td key={`total-${m}`} className={`${thCls} font-medium`}>{grid.rowTotal(row, m)}</td>
+                    <td key={`total-${m}`} className={`${thCls} font-medium`}>
+                      {grid.rowTotal(row, m)}
+                    </td>
                   ))}
                 </tr>
               ))}
               <tr>
-                <th scope="row" className="p-1 text-left font-medium">Total</th>
-                {grid.colValues.flatMap((col) => grid.measures.map((m) => (
-                  <td key={`total-${col}-${m}`} className="p-1 font-medium">{grid.colTotal(col, m)}</td>
-                )))}
+                <th scope="row" className="p-1 text-left font-medium">
+                  Total
+                </th>
+                {grid.colValues.flatMap((col) =>
+                  grid.measures.map((m) => (
+                    <td key={`total-${col}-${m}`} className="p-1 font-medium">
+                      {grid.colTotal(col, m)}
+                    </td>
+                  )),
+                )}
                 {grid.measures.map((m) => (
-                  <td key={`grand-${m}`} className="p-1 font-medium">{grid.grandTotal(m)}</td>
+                  <td key={`grand-${m}`} className="p-1 font-medium">
+                    {grid.grandTotal(m)}
+                  </td>
                 ))}
               </tr>
             </tbody>

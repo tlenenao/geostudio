@@ -19,12 +19,19 @@ function renderWithClient(client: Partial<ItemClient>) {
 }
 
 test("renders the list of existing rules with their firing state", async () => {
-  const listAlertRulesForDataset = vi.fn().mockResolvedValue(
-    [{ itemId: "rule-1", title: "High counts" }] satisfies AlertRuleSummary[],
-  );
-  const getAlertEvaluations = vi.fn().mockResolvedValue(
-    [{ id: "e1", value: 150, state: "firing", transitioned: true, error: null, createdAt: "2026-08-07T00:00:00Z" }] satisfies AlertEvaluation[],
-  );
+  const listAlertRulesForDataset = vi
+    .fn()
+    .mockResolvedValue([{ itemId: "rule-1", title: "High counts" }] satisfies AlertRuleSummary[]);
+  const getAlertEvaluations = vi.fn().mockResolvedValue([
+    {
+      id: "e1",
+      value: 150,
+      state: "firing",
+      transitioned: true,
+      error: null,
+      createdAt: "2026-08-07T00:00:00Z",
+    },
+  ] satisfies AlertEvaluation[]);
   renderWithClient({ listAlertRulesForDataset, getAlertEvaluations });
 
   expect(await screen.findByText("High counts")).toBeInTheDocument();
@@ -53,7 +60,9 @@ test("shows an error banner instead of a silent empty list when the rules fetch 
   const listAlertRulesForDataset = vi.fn().mockRejectedValue(new Error("Request failed: 500"));
   renderWithClient({ listAlertRulesForDataset });
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("Impossible de charger les règles d'alerte.");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Impossible de charger les règles d'alerte.",
+  );
 });
 
 test("shows a save error inline instead of failing silently", async () => {

@@ -40,8 +40,15 @@ async function mockGpkgIngestionFlow(page: Page) {
   await page.route("https://core.test/items/88", async (route) => {
     await route.fulfill({
       json: {
-        pk: "88", resourceType: "map", title: "Réseau", abstract: "", owner: "mockuser",
-        thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false,
+        pk: "88",
+        resourceType: "map",
+        title: "Réseau",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: null,
+        isPublished: false,
       },
     });
   });
@@ -51,16 +58,25 @@ async function mockGpkgIngestionFlow(page: Page) {
     }
     await route.fulfill({
       json: {
-        id: "cfg-88", itemId: "88", kind: "map",
+        id: "cfg-88",
+        itemId: "88",
+        kind: "map",
         config: {
-          kind: "map", theme: {}, dataSources: [],
+          kind: "map",
+          theme: {},
+          dataSources: [],
           map: {
             basemap: { style: "https://demotiles.maplibre.org/style.json" },
             view: { center: [1.5, 45.5], zoom: 10 },
-            layers: [{
-              id: "l1", title: "Réseau", visible: true, kind: "feature",
-              url: "https://core.test/collections/ingest_multi/items",
-            }],
+            layers: [
+              {
+                id: "l1",
+                title: "Réseau",
+                visible: true,
+                kind: "feature",
+                url: "https://core.test/collections/ingest_multi/items",
+              },
+            ],
           },
         },
       },
@@ -68,7 +84,9 @@ async function mockGpkgIngestionFlow(page: Page) {
   });
 }
 
-test("importer un GeoPackage à plusieurs couches force la sélection d'une couche", async ({ page }) => {
+test("importer un GeoPackage à plusieurs couches force la sélection d'une couche", async ({
+  page,
+}) => {
   await mockCore(page);
   await mockGpkgIngestionFlow(page);
   await page.goto("/");

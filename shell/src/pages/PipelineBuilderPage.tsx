@@ -1,9 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCreatePipeline, usePipelineConfig, usePipelineOps, useSavePipeline } from "../api/hooks";
+import {
+  useCreatePipeline,
+  usePipelineConfig,
+  usePipelineOps,
+  useSavePipeline,
+} from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
-import type { PipelineEdge, PipelineNode, PipelinePayload, PipelineRefreshPolicy, PipelineRun } from "../api/types";
+import type {
+  PipelineEdge,
+  PipelineNode,
+  PipelinePayload,
+  PipelineRefreshPolicy,
+  PipelineRun,
+} from "../api/types";
 import { Button } from "../ui/button";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
@@ -20,7 +31,13 @@ const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 // rien n'est persisté avant le premier "Enregistrer" (choix de session : le
 // validateur serveur exige déjà ≥1 reader/≥1 writer, donc il n'existe pas de
 // payload trivial à créer immédiatement comme pour app/dashboard/map/site).
-export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; initialTitle?: string }) {
+export function PipelineBuilderPage({
+  pk,
+  initialTitle,
+}: {
+  pk: string | null;
+  initialTitle?: string;
+}) {
   const navigate = useNavigate();
   const { username } = useAuth();
   const opsQuery = usePipelineOps();
@@ -61,20 +78,33 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
   function onInsertOnEdge(edgeId: string, op: string) {
     const kind = catalog[op]?.kind ?? "transform";
     const result = insertNodeOnEdge(draft.nodes, draft.edges, edgeId, {
-      id: genNodeId(), kind, op, x: 0, y: 0, params: {}, title: op,
+      id: genNodeId(),
+      kind,
+      op,
+      x: 0,
+      y: 0,
+      params: {},
+      title: op,
     });
     setDraft(result);
   }
   function onDropOnCanvas(op: string, position: { x: number; y: number }) {
     const kind = catalog[op]?.kind ?? "transform";
-    setNodes([...draft.nodes, { id: genNodeId(), kind, op, x: position.x, y: position.y, params: {}, title: op }]);
+    setNodes([
+      ...draft.nodes,
+      { id: genNodeId(), kind, op, x: position.x, y: position.y, params: {}, title: op },
+    ]);
   }
 
   async function onSave() {
     setSaveError(null);
     try {
       if (pk === null) {
-        const item = await createPipeline.mutateAsync({ title: initialTitle ?? "", owner: username ?? "", pipeline: draft });
+        const item = await createPipeline.mutateAsync({
+          title: initialTitle ?? "",
+          owner: username ?? "",
+          pipeline: draft,
+        });
         navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
@@ -98,11 +128,19 @@ export function PipelineBuilderPage({ pk, initialTitle }: { pk: string | null; i
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{initialTitle ?? "Pipeline"}</h2>
-          <Button size="sm" onClick={onSave} disabled={!valid || createPipeline.isPending || savePipeline.isPending}>
+          <Button
+            size="sm"
+            onClick={() => void onSave()}
+            disabled={!valid || createPipeline.isPending || savePipeline.isPending}
+          >
             Enregistrer
           </Button>
         </div>
-        {saveError && <p role="alert" className="text-red-600 text-xs">{saveError}</p>}
+        {saveError && (
+          <p role="alert" className="text-red-600 text-xs">
+            {saveError}
+          </p>
+        )}
         <PipelineCanvas
           nodes={draft.nodes}
           edges={draft.edges}

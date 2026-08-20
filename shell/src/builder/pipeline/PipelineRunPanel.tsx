@@ -5,28 +5,43 @@ import type { PipelineRun } from "../../api/types";
 import { Button } from "../../ui/button";
 
 const STATUS_LABEL: Record<PipelineRun["status"], string> = {
-  queued: "En attente", running: "En cours", succeeded: "succeeded", failed: "failed",
+  queued: "En attente",
+  running: "En cours",
+  succeeded: "succeeded",
+  failed: "failed",
 };
 
 // Patron de poll identique à shell/src/shell/ImportFileButton.tsx (SP-6a) —
 // boucle récursive manuelle via le client, pas un refetchInterval react-query
 // (cf. plan Global Constraints).
 export function PipelineRunPanel({
-  pipelineId, onLatestRunChange,
-}: { pipelineId: string; onLatestRunChange?: (run: PipelineRun | null) => void }) {
+  pipelineId,
+  onLatestRunChange,
+}: {
+  pipelineId: string;
+  onLatestRunChange?: (run: PipelineRun | null) => void;
+}) {
   const client = useItemClient();
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
   async function loadRuns() {
-    const latest = await client.getPipelineRuns(pipelineId);
-    setRuns(latest);
-    onLatestRunChange?.(latest[0] ?? null);
+    try {
+      const latest = await client.getPipelineRuns(pipelineId);
+      setRuns(latest);
+      onLatestRunChange?.(latest[0] ?? null);
+    } catch {
+      // Un chargement initial en échec restait silencieux (liste vide
+      // indiscernable d'un « aucune exécution » légitime) — même défaut que
+      // celui corrigé dans ReportRunPanel (SP-17b) ; on réutilise runError,
+      // déjà rendu dans ce composant.
+      setRunError("Impossible de charger l'historique des exécutions.");
+    }
   }
 
   useEffect(() => {
-    loadRuns();
+    void loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineId]);
 
@@ -59,16 +74,24 @@ export function PipelineRunPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <Button size="sm" onClick={onRun} disabled={running}>
+      <Button size="sm" onClick={() => void onRun()} disabled={running}>
         {running ? "Exécution…" : "Exécuter"}
       </Button>
-      {runError && <p role="alert" className="text-red-600 text-xs">{runError}</p>}
+      {runError && (
+        <p role="alert" className="text-red-600 text-xs">
+          {runError}
+        </p>
+      )}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
           <li key={run.id} className="border-t border-slate-200 pt-1">
             <span>{STATUS_LABEL[run.status]}</span>
             {run.startedAt && <span className="ml-2 text-slate-500">{run.startedAt}</span>}
-            {run.error && <p role="alert" className="text-red-600">{run.error}</p>}
+            {run.error && (
+              <p role="alert" className="text-red-600">
+                {run.error}
+              </p>
+            )}
           </li>
         ))}
       </ul>

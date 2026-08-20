@@ -22,7 +22,11 @@ test("does not treat an object with extra keys alongside $expr as a binding", ()
 });
 
 test("recurses into arrays, resolving each element", () => {
-  expect(resolveExprBindings([{ $expr: "1 + 1" }, "plain", { $expr: "2 + 2" }], ctx)).toEqual([2, "plain", 4]);
+  expect(resolveExprBindings([{ $expr: "1 + 1" }, "plain", { $expr: "2 + 2" }], ctx)).toEqual([
+    2,
+    "plain",
+    4,
+  ]);
 });
 
 test("recurses into nested plain objects", () => {

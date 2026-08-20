@@ -41,10 +41,13 @@ export function derivePatch(
   for (const [originDatasetId, entry] of Object.entries(ctx.crossFilter)) {
     if (!entry || originDatasetId === source.datasetId) continue;
     const originDataset = datasets[originDatasetId];
-    const link = originDataset?.crossFilterLinks?.find((l) => l.targetDatasetId === source.datasetId);
+    const link = originDataset?.crossFilterLinks?.find(
+      (l) => l.targetDatasetId === source.datasetId,
+    );
     if (!link) continue;
     if (link.mode === "attribute") {
-      if (entry.field === link.sourceField) applyCrossFilterValue(patch, link.targetField, entry.value);
+      if (entry.field === link.sourceField)
+        applyCrossFilterValue(patch, link.targetField, entry.value);
     } else if (entry.geometry !== undefined) {
       if (link.precision === "bbox") {
         const bbox = bboxFromGeometry(entry.geometry);
@@ -58,7 +61,11 @@ export function derivePatch(
   return patch;
 }
 
-function applyCrossFilterValue(patch: Record<string, unknown>, field: string, value: CrossFilterValue): void {
+function applyCrossFilterValue(
+  patch: Record<string, unknown>,
+  field: string,
+  value: CrossFilterValue,
+): void {
   if (Array.isArray(value)) {
     patch[`${field}__in`] = value.join(",");
   } else if (typeof value === "object") {

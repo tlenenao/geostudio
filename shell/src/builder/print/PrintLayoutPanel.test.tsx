@@ -19,9 +19,21 @@ describe("PrintLayoutPanel", () => {
     // `value=""` entre chaque frappe (le prop ne change jamais), et seul le
     // DERNIER caractère tapé survivrait dans le dernier appel à onChange.
     const onChange = vi.fn();
-    render(<PrintLayoutPanel value={{ pageSize: "a3", orientation: "landscape", showLegend: false }} onChange={onChange} />);
+    render(
+      <PrintLayoutPanel
+        value={{ pageSize: "a3", orientation: "landscape", showLegend: false }}
+        onChange={onChange}
+      />,
+    );
     fireEvent.change(screen.getByLabelText("Titre"), { target: { value: "Rapport" } });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: "a3", orientation: "landscape", showLegend: false, title: "Rapport" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pageSize: "a3",
+        orientation: "landscape",
+        showLegend: false,
+        title: "Rapport",
+      }),
+    );
   });
 
   it("toggles showLegend", async () => {

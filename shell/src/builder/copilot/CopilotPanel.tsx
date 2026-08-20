@@ -22,7 +22,10 @@ const OP_LABELS: Record<string, string> = {
 };
 
 export function CopilotPanel({
-  itemId, config, activePageId, setDraft,
+  itemId,
+  config,
+  activePageId,
+  setDraft,
 }: {
   itemId: string;
   config: AppConfig;
@@ -57,16 +60,22 @@ export function CopilotPanel({
     try {
       const mcpToken = await getMcpToken();
       const result = await client.copilotTurn(itemId, {
-        message, history: priorHistory, mcpToken, currentConfig: config,
+        message,
+        history: priorHistory,
+        mcpToken,
+        currentConfig: config,
         clientTools: buildClientToolSchemas(),
       });
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
       if (result.clientOps.length > 0) {
-        setLastOpsSummary(result.clientOps.map((o) => OP_LABELS[o.op] ?? `Action inconnue ignorée : ${o.op}`));
+        setLastOpsSummary(
+          result.clientOps.map((o) => OP_LABELS[o.op] ?? `Action inconnue ignorée : ${o.op}`),
+        );
         setDraft((d) => {
           if (!d) return d;
           return (result.clientOps as RawClientOp[]).reduce(
-            (acc, op) => applyClientOp(op, acc, activePageIdRef.current), d,
+            (acc, op) => applyClientOp(op, acc, activePageIdRef.current),
+            d,
           );
         });
       } else {
@@ -96,15 +105,21 @@ export function CopilotPanel({
           onChange={(e) => setInput(e.target.value)}
         />
       </label>
-      <Button size="sm" disabled={sending || !input.trim()} onClick={send}>
+      <Button size="sm" disabled={sending || !input.trim()} onClick={() => void send()}>
         Envoyer
       </Button>
       {lastOpsSummary.length > 0 && (
         <ul className="text-xs text-slate-500">
-          {lastOpsSummary.map((s, i) => <li key={i}>{s}</li>)}
+          {lastOpsSummary.map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
         </ul>
       )}
-      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

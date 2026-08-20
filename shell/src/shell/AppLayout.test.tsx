@@ -36,7 +36,9 @@ function renderLayout() {
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
         <MemoryRouter>
-          <AppLayout><div>content</div></AppLayout>
+          <AppLayout>
+            <div>content</div>
+          </AppLayout>
         </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -55,7 +57,13 @@ test("shows brand, username and sign-out", async () => {
 test("shows the Extensions and Collections admin links only when the current user is admin", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: true,
+      }),
     ),
   );
   renderLayout();
@@ -71,12 +79,12 @@ test("hides the admin links for a non-admin user", async () => {
 });
 
 test("shows the read-only demo banner when the instance is in read-only mode", async () => {
-  server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
-  );
+  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })));
   renderLayout();
   expect(
-    await screen.findByText("Mode démo — lecture seule, les modifications ne sont pas enregistrées."),
+    await screen.findByText(
+      "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
+    ),
   ).toBeInTheDocument();
 });
 
@@ -89,7 +97,14 @@ test("hides the read-only demo banner by default", async () => {
 test("shows the SQL Lab link only when the current user is an analyst", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false, isAnalyst: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+        isAnalyst: true,
+      }),
     ),
   );
   renderLayout();
