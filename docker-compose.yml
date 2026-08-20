@@ -212,6 +212,16 @@ services:
     networks: [gis-net]
     depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
+    # `start_period` généreux : ce service applique les migrations Alembic
+    # avant de servir (cf. `command:`), et rien n'attendait la fin de cette
+    # étape avant de router vers lui (I5 du plan d'action 2026-08-20).
+    # `python`, pas `curl` : l'image est python:3.12-slim, sans curl.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     labels:
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
@@ -297,6 +307,16 @@ services:
       minio:
         condition: service_started
     restart: unless-stopped
+    # `procrastinate healthchecks` vérifie la connexion et le schéma de la
+    # file. Limite connue et assumée : un worker occupé par une tâche qui ne
+    # rend jamais la main reste « healthy » — cette sonde détecte un worker
+    # mort ou déconnecté de la base, pas un worker coincé.
+    healthcheck:
+      test: ["CMD", "python", "-m", "procrastinate", "--app", "app.jobs.app", "healthchecks"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Bâtit une fois le runtime d'export statique générique et le dépose dans
   # le volume `appexport-runtime`, consommé par `worker` (SP-18a). Tourne
@@ -360,7 +380,13 @@ services:
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
     networks: [gis-net]
-    depends_on: [pgbouncer, minio]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      core:
+        condition: service_healthy
     restart: unless-stopped
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
@@ -386,6 +412,15 @@ services:
       minio:
         condition: service_healthy
     restart: unless-stopped
+    # Sonde côté serveur (scripts/healthcheck_cdc.py) : le slot de
+    # réplication n'est `active` que tant qu'un consommateur le tient. Seule
+    # des quatre à détecter le « vivant mais ne consomme plus ».
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.healthcheck_cdc"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 
@@ -461,6 +496,20 @@ services:
       - "8300:8300"
     networks: [gis-net]
     restart: unless-stopped
+    # Attend que `core` ait fini ses migrations et réponde : le shell sans
+    # cœur n'affiche qu'une page d'erreur. Dépendance dure volontairement
+    # limitée à `shell` et `export-worker` — SP-18a a dû *retirer* celle de
+    # `worker` parce qu'elle bloquait le démarrage pour une capacité
+    # désactivée par défaut.
+    depends_on:
+      core:
+        condition: service_healthy
+    # `wget` de busybox — l'image est nginx:1.27-alpine, sans curl.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8300/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     labels:
       - traefik.enable=true
       - traefik.http.routers.shell.rule=Host(`${DOMAIN}`)
