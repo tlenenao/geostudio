@@ -7,6 +7,7 @@ pick up the task before the row is visible). v1 evaluates collection-sourced
 datasets only — an arcgis-sourced dataset fails cleanly with an
 AlertEvaluationError rather than being silently mis-evaluated (Global
 Constraints)."""
+
 import logging
 import os
 
@@ -119,13 +120,17 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
             f"alert evaluation only supports collection-sourced datasets (got '{dataset.source}')"
         )
 
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.datasetItemId)
+    facts = items_repo.get_access_facts(
+        session, tenant_id=user.tenant_id, item_id=payload.datasetItemId
+    )
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise AlertEvaluationError(f"dataset '{payload.datasetItemId}' not readable by rule owner")
 
     collection_id = dataset.collectionId
     assert collection_id is not None
-    col = collections_repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    col = collections_repo.get_collection(
+        session, tenant_id=user.tenant_id, collection_id=collection_id
+    )
     if col is None:
         raise AlertEvaluationError(f"collection '{collection_id}' not found")
     table_info = introspect_table(session, col.table_name)
@@ -137,8 +142,12 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     )
     try:
         category_key, rows = run_collection_aggregate(
-            conn, base_uri=_analytics_base_uri(), tenant_id=col.tenant_id,
-            collection_id=col.id, table_info=table_info, request=payload.query,
+            conn,
+            base_uri=_analytics_base_uri(),
+            tenant_id=col.tenant_id,
+            collection_id=col.id,
+            table_info=table_info,
+            request=payload.query,
         )
     finally:
         conn.close()
@@ -168,27 +177,62 @@ def _render_message(payload: AlertRulePayload, *, rule_name: str, value: float, 
     # `.format(...)` probe in app.configs.schemas — that validator can't
     # import this function (app.configs sits below app.alerts in the
     # layers contract), so it re-derives the same call shape by hand.
-    return payload.messageTemplate.format(ruleName=rule_name, value=value, state=state, datasetName=payload.datasetItemId)
+    return payload.messageTemplate.format(
+        ruleName=rule_name, value=value, state=state, datasetName=payload.datasetItemId
+    )
 
 
-def _notify(session, *, tenant_id: str, item_id: str, payload: AlertRulePayload, rule_name: str, value: float, state: str) -> None:
+def _notify(
+    session,
+    *,
+    tenant_id: str,
+    item_id: str,
+    payload: AlertRulePayload,
+    rule_name: str,
+    value: float,
+    state: str,
+) -> None:
     message = _render_message(payload, rule_name=rule_name, value=value, state=state)
     for channel in payload.channels:
         success = False
         error_detail = None
         try:
             if isinstance(channel, AlertChannelWebhook):
-                send_webhook(channel, payload={"ruleName": rule_name, "state": state, "value": value, "message": message})
+                send_webhook(
+                    channel,
+                    payload={
+                        "ruleName": rule_name,
+                        "state": state,
+                        "value": value,
+                        "message": message,
+                    },
+                )
             elif isinstance(channel, AlertChannelEmail):
-                send_email(session, tenant_id=tenant_id, channel=channel, subject=f"[GeoStudio] {rule_name}: {state}", body=message)
+                send_email(
+                    session,
+                    tenant_id=tenant_id,
+                    channel=channel,
+                    subject=f"[GeoStudio] {rule_name}: {state}",
+                    body=message,
+                )
             success = True
         except NotifyError as exc:
             error_detail = str(exc)
             logger.warning("alert notification failed for rule %s: %s", item_id, exc)
         write_audit(
-            session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-            action="alert.notify", object_type="item", object_id=item_id,
-            payload={"channel": channel.kind, "state": state, "success": success, "error": error_detail},
+            session,
+            tenant_id=tenant_id,
+            actor_id=None,
+            actor_kind="agent",
+            action="alert.notify",
+            object_type="item",
+            object_id=item_id,
+            payload={
+                "channel": channel.kind,
+                "state": state,
+                "success": success,
+                "error": error_detail,
+            },
         )
 
 
@@ -197,7 +241,9 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
 
     with request_scoped_session(session_factory) as session:
-        evaluation = alerts_repo.get_evaluation(session, tenant_id=tenant_id, evaluation_id=evaluation_id)
+        evaluation = alerts_repo.get_evaluation(
+            session, tenant_id=tenant_id, evaluation_id=evaluation_id
+        )
         if evaluation is None:
             logger.error("alert evaluation %s introuvable (tenant %s)", evaluation_id, tenant_id)
             return
@@ -211,7 +257,8 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
 
             conn = open_connection(
                 endpoint_url=os.environ["S3_ENDPOINT_URL"],
-                access_key=os.environ["S3_ACCESS_KEY"], secret_key=os.environ["S3_SECRET_KEY"],
+                access_key=os.environ["S3_ACCESS_KEY"],
+                secret_key=os.environ["S3_SECRET_KEY"],
             )
             try:
                 condition_holds = evaluate_condition(conn, payload.condition.expr, value)
@@ -230,7 +277,9 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             # crash/restart can leave a stuck pending evaluation that
             # list_due_rules later reclaims and supersedes — see
             # _previous_terminal_state) instead of relying on ordering alone.
-            history = alerts_repo.list_evaluations(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
+            history = alerts_repo.list_evaluations(
+                session, tenant_id=tenant_id, alert_rule_item_id=item_id
+            )
             previous_state = _previous_terminal_state(history, current_evaluation_id=evaluation_id)
             # A rule with no prior real (terminal) evaluation always counts
             # as a transition into its first observed state — same "first
@@ -238,20 +287,39 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             transitioned = previous_state is None or previous_state != new_state
 
             alerts_repo.mark_evaluated(
-                session, evaluation_id=evaluation_id, value=value, state=new_state, transitioned=transitioned,
+                session,
+                evaluation_id=evaluation_id,
+                value=value,
+                state=new_state,
+                transitioned=transitioned,
             )
             write_audit(
-                session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                action="alert.evaluate", object_type="item", object_id=item_id,
+                session,
+                tenant_id=tenant_id,
+                actor_id=None,
+                actor_kind="agent",
+                action="alert.evaluate",
+                object_type="item",
+                object_id=item_id,
                 payload={"value": value, "state": new_state, "transitioned": transitioned},
             )
         except AlertEvaluationError as exc:
             alerts_repo.mark_evaluated(
-                session, evaluation_id=evaluation_id, value=None, state="error", transitioned=False, error=str(exc),
+                session,
+                evaluation_id=evaluation_id,
+                value=None,
+                state="error",
+                transitioned=False,
+                error=str(exc),
             )
             write_audit(
-                session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                action="alert.evaluate", object_type="item", object_id=item_id,
+                session,
+                tenant_id=tenant_id,
+                actor_id=None,
+                actor_kind="agent",
+                action="alert.evaluate",
+                object_type="item",
+                object_id=item_id,
                 payload={"error": str(exc)},
             )
             return
@@ -259,7 +327,11 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
             error_detail = f"erreur interne : {exc}"
             alerts_repo.mark_evaluated(
-                session, evaluation_id=evaluation_id, value=None, state="error", transitioned=False,
+                session,
+                evaluation_id=evaluation_id,
+                value=None,
+                state="error",
+                transitioned=False,
                 error=error_detail,
             )
             # Sibling of the AlertEvaluationError branch above: an
@@ -269,8 +341,13 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             # transition to "error" and must be audited exactly like the
             # "expected" error path is — this was previously missing here.
             write_audit(
-                session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                action="alert.evaluate", object_type="item", object_id=item_id,
+                session,
+                tenant_id=tenant_id,
+                actor_id=None,
+                actor_kind="agent",
+                action="alert.evaluate",
+                object_type="item",
+                object_id=item_id,
                 payload={"error": error_detail},
             )
             return
@@ -293,7 +370,15 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
             rule_name = item.title if item else item_id
             try:
-                _notify(session, tenant_id=tenant_id, item_id=item_id, payload=payload, rule_name=rule_name, value=value, state=new_state)
+                _notify(
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
+                    payload=payload,
+                    rule_name=rule_name,
+                    value=value,
+                    state=new_state,
+                )
             except Exception as exc:
                 # _notify itself already catches NotifyError per-channel and
                 # audits per-channel; this is the backstop for anything else
@@ -302,11 +387,23 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
                 # AlertRulePayload._require_valid_message_template makes this
                 # unreachable for new rules, but pre-existing rules saved
                 # before that validator existed are still possible).
-                logger.exception("alert notification pipeline %s : erreur inattendue", evaluation_id)
+                logger.exception(
+                    "alert notification pipeline %s : erreur inattendue", evaluation_id
+                )
                 write_audit(
-                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                    action="alert.notify", object_type="item", object_id=item_id,
-                    payload={"channel": None, "state": new_state, "success": False, "error": f"erreur interne : {exc}"},
+                    session,
+                    tenant_id=tenant_id,
+                    actor_id=None,
+                    actor_kind="agent",
+                    action="alert.notify",
+                    object_type="item",
+                    object_id=item_id,
+                    payload={
+                        "channel": None,
+                        "state": new_state,
+                        "success": False,
+                        "error": f"erreur interne : {exc}",
+                    },
                 )
 
 
@@ -320,7 +417,9 @@ def sweep_alert_rules_task(timestamp: int) -> None:
     with request_scoped_session(session_factory) as session:
         due = alerts_repo.list_due_rules(session)
         for item_id, tenant_id in due:
-            evaluation = alerts_repo.create_evaluation(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
+            evaluation = alerts_repo.create_evaluation(
+                session, tenant_id=tenant_id, alert_rule_item_id=item_id
+            )
             # Commit avant de déférer — même raison que run_pipeline_sweep_task.
             session.commit()
             evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=tenant_id)

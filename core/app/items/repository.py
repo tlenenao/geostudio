@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import procrastinate
 from opentelemetry import metrics
@@ -24,15 +24,19 @@ _RRF_CANDIDATE_LIMIT = 200
 
 _meter = metrics.get_meter(__name__)
 _items_created_counter = _meter.create_counter(
-    "geostudio.items.created", unit="1", description="Items created via REST or MCP",
+    "geostudio.items.created",
+    unit="1",
+    description="Items created via REST or MCP",
 )
 _items_published_counter = _meter.create_counter(
-    "geostudio.configs.published", unit="1", description="Items patched with isPublished=True",
+    "geostudio.configs.published",
+    unit="1",
+    description="Items patched with isPublished=True",
 )
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
@@ -46,6 +50,7 @@ def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
     # jobs importe app.items.models, importé transitivement très tôt par
     # app.db.core_table_names().
     from app.items.jobs import embed_item_task
+
     try:
         embed_item_task.defer(item_id=item_id, tenant_id=tenant_id)
     except procrastinate.exceptions.ProcrastinateException:
@@ -95,9 +100,7 @@ def ensure_unique_slug(session: Session, *, tenant_id: str, base: str) -> str:
     return f"{base}-{n}"
 
 
-def _resolve_site_slug(
-    session: Session, *, tenant_id: str, title: str, slug: str | None
-) -> str:
+def _resolve_site_slug(session: Session, *, tenant_id: str, title: str, slug: str | None) -> str:
     if slug is None:
         return ensure_unique_slug(session, tenant_id=tenant_id, base=slugify(title))
     if not is_valid_slug(slug):
@@ -108,15 +111,24 @@ def _resolve_site_slug(
 
 
 def create_item(
-    session: Session, *, tenant_id: str, owner_id: str, resource_type: str, title: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    owner_id: str,
+    resource_type: str,
+    title: str,
     slug: str | None = None,
 ) -> Item:
     resolved_slug = None
     if resource_type == "site":
         resolved_slug = _resolve_site_slug(session, tenant_id=tenant_id, title=title, slug=slug)
     item = Item(
-        id=uuid.uuid4().hex, tenant_id=tenant_id, owner_id=owner_id,
-        resource_type=resource_type, title=title, slug=resolved_slug,
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type=resource_type,
+        title=title,
+        slug=resolved_slug,
     )
     session.add(item)
     session.flush()
@@ -140,14 +152,18 @@ def get_item(session: Session, *, tenant_id: str, item_id: str) -> ItemRead | No
 
 def get_access_facts(session: Session, *, tenant_id: str, item_id: str) -> ItemAccessFacts | None:
     row = session.execute(
-        select(Item.id, Item.tenant_id, Item.owner_id, Item.is_public, Item.is_published)
-        .where(Item.id == item_id, Item.tenant_id == tenant_id)
+        select(Item.id, Item.tenant_id, Item.owner_id, Item.is_public, Item.is_published).where(
+            Item.id == item_id, Item.tenant_id == tenant_id
+        )
     ).first()
     if row is None:
         return None
     return ItemAccessFacts(
-        id=row.id, tenant_id=row.tenant_id, owner_id=row.owner_id,
-        is_public=row.is_public, is_published=row.is_published,
+        id=row.id,
+        tenant_id=row.tenant_id,
+        owner_id=row.owner_id,
+        is_public=row.is_public,
+        is_published=row.is_published,
     )
 
 
@@ -162,7 +178,11 @@ def list_items(
     page: int,
     page_size: int,
 ) -> ItemPage:
-    query = select(Item, User.username).join(User, User.id == Item.owner_id).where(Item.tenant_id == tenant_id)
+    query = (
+        select(Item, User.username)
+        .join(User, User.id == Item.owner_id)
+        .where(Item.tenant_id == tenant_id)
+    )
     if resource_type:
         query = query.where(Item.resource_type == resource_type)
 
@@ -200,14 +220,20 @@ def list_items(
     if q and session.get_bind().dialect.name == "postgresql":
         provider = get_embedding_provider()
         candidate_ids = hybrid_search_ids(
-            session, base_stmt=query, id_column=Item.id,
-            text_columns=[Item.title, Item.abstract], embedding_column=Item.embedding,
-            query_text=q, query_vector=provider.embed(q), limit=_RRF_CANDIDATE_LIMIT,
+            session,
+            base_stmt=query,
+            id_column=Item.id,
+            text_columns=[Item.title, Item.abstract],
+            embedding_column=Item.embedding,
+            query_text=q,
+            query_vector=provider.embed(q),
+            limit=_RRF_CANDIDATE_LIMIT,
         )
         total = len(candidate_ids)
-        page_ids = candidate_ids[(page - 1) * page_size: (page - 1) * page_size + page_size]
+        page_ids = candidate_ids[(page - 1) * page_size : (page - 1) * page_size + page_size]
         rows = session.execute(
-            select(Item, User.username).join(User, User.id == Item.owner_id)
+            select(Item, User.username)
+            .join(User, User.id == Item.owner_id)
             .where(Item.id.in_(page_ids))
         ).all()
         by_id = {item.id: (item, owner_username) for item, owner_username in rows}
@@ -261,7 +287,9 @@ def list_published_items(
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 
-def set_thumbnail_key(session: Session, *, tenant_id: str, item_id: str, thumbnail_key: str) -> None:
+def set_thumbnail_key(
+    session: Session, *, tenant_id: str, item_id: str, thumbnail_key: str
+) -> None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
     ).scalar_one_or_none()

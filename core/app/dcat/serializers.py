@@ -17,7 +17,9 @@ CONTEXT = {
 
 LICENSE_OTHER = "http://publications.europa.eu/resource/authority/licence/OTHER"
 ACCESS_RIGHTS_PUBLIC = "http://publications.europa.eu/resource/authority/access-right/PUBLIC"
-ACCESS_RIGHTS_RESTRICTED = "http://publications.europa.eu/resource/authority/access-right/RESTRICTED"
+ACCESS_RIGHTS_RESTRICTED = (
+    "http://publications.europa.eu/resource/authority/access-right/RESTRICTED"
+)
 WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 
 
@@ -33,8 +35,9 @@ def _bbox_polygon(bbox: list[float] | None) -> dict:
     }
 
 
-def distribution(*, title: str, access_url: str,
-                 media_type: str | None = None, format_uri: str | None = None) -> dict:
+def distribution(
+    *, title: str, access_url: str, media_type: str | None = None, format_uri: str | None = None
+) -> dict:
     doc = {
         "@type": "dcat:Distribution",
         "dct:title": title,
@@ -47,9 +50,18 @@ def distribution(*, title: str, access_url: str,
     return doc
 
 
-def dataset(*, base: str, collection_id: str, title: str, description: str,
-           created_at: str, updated_at: str, is_public: bool,
-           publisher_name: str, bbox: list[float] | None) -> dict:
+def dataset(
+    *,
+    base: str,
+    collection_id: str,
+    title: str,
+    description: str,
+    created_at: str,
+    updated_at: str,
+    is_public: bool,
+    publisher_name: str,
+    bbox: list[float] | None,
+) -> dict:
     return {
         "@id": f"{base}/dcat/datasets/{collection_id}",
         "@type": "dcat:Dataset",
@@ -59,7 +71,9 @@ def dataset(*, base: str, collection_id: str, title: str, description: str,
         "dct:issued": {"@value": created_at, "@type": "xsd:dateTime"},
         "dct:modified": {"@value": updated_at, "@type": "xsd:dateTime"},
         "dct:license": {"@id": LICENSE_OTHER},
-        "dct:accessRights": {"@id": ACCESS_RIGHTS_PUBLIC if is_public else ACCESS_RIGHTS_RESTRICTED},
+        "dct:accessRights": {
+            "@id": ACCESS_RIGHTS_PUBLIC if is_public else ACCESS_RIGHTS_RESTRICTED
+        },
         "dct:publisher": publisher(base=base, name=publisher_name),
         "dct:spatial": {
             "@type": "dct:Location",

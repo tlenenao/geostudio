@@ -2,20 +2,23 @@
 """Stockage S3/MinIO pour l'ingestion (SP-6a) : URL présignée pour l'upload
 direct navigateur→bucket (arbitrage A6 — le cœur ne doit pas être sur le
 chemin des octets pour les uploads de données) et lecture par le worker."""
+
 from botocore.exceptions import ClientError
 
 _CORS_CONFIGURATION = {
-    "CORSRules": [{
-        "AllowedMethods": ["PUT"],
-        "AllowedOrigins": ["*"],
-        "AllowedHeaders": ["*"],
-        # ETag n'est PAS un en-tête de réponse safelisté CORS : sans cette
-        # ligne, un PUT présigné multipart lancé depuis le navigateur ne peut
-        # pas relire res.headers.get("ETag"), et /complete reçoit un etag vide
-        # (422 systématique contre un vrai S3/MinIO).
-        "ExposeHeaders": ["ETag"],
-        "MaxAgeSeconds": 3000,
-    }]
+    "CORSRules": [
+        {
+            "AllowedMethods": ["PUT"],
+            "AllowedOrigins": ["*"],
+            "AllowedHeaders": ["*"],
+            # ETag n'est PAS un en-tête de réponse safelisté CORS : sans cette
+            # ligne, un PUT présigné multipart lancé depuis le navigateur ne peut
+            # pas relire res.headers.get("ETag"), et /complete reçoit un etag vide
+            # (422 systématique contre un vrai S3/MinIO).
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 3000,
+        }
+    ]
 }
 # CORS large (dev) : l'upload présigné se fait depuis le navigateur, une
 # origine différente du cœur (A6). À resserrer aux origines réelles avant
@@ -26,8 +29,10 @@ def make_s3_client(*, endpoint_url: str, access_key: str, secret_key: str):
     import boto3
 
     return boto3.client(
-        "s3", endpoint_url=endpoint_url,
-        aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
     )
 
 
@@ -41,7 +46,12 @@ def ensure_uploads_bucket(client, bucket: str) -> None:
 
 
 def generate_presigned_put_url(
-    client, *, bucket: str, key: str, content_type: str, expires_in: int = 900,
+    client,
+    *,
+    bucket: str,
+    key: str,
+    content_type: str,
+    expires_in: int = 900,
 ) -> str:
     return client.generate_presigned_url(
         "put_object",
@@ -52,7 +62,9 @@ def generate_presigned_put_url(
 
 def generate_presigned_get_url(client, *, bucket: str, key: str, expires_in: int = 3600) -> str:
     return client.generate_presigned_url(
-        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires_in,
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=expires_in,
     )
 
 

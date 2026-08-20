@@ -13,14 +13,19 @@ DATA_DIR/RUNTIME_DIR sont lus une fois à l'import (le mount StaticFiles ne
 peut être configuré qu'au démarrage dans Starlette) — les tests rechargent
 ce module après avoir positionné les variables d'environnement
 (importlib.reload), jamais une lecture par requête ici."""
+
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.analytics.aggregate import AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.aggregate import (
+    AggregateRequestBody,
+    UnknownAggregateField,
+    run_collection_aggregate,
+)
 from app.analytics.duckdb_conn import open_local_connection
 from app.appexport.manifest import read_manifest
 from app.appexport.miniserver.items import MissingGeometryColumn, get_feature, select_features
@@ -78,7 +83,11 @@ def get_collection(collection_id: str, request: Request):
     body["extent"] = None
     body["links"] = [
         {"rel": "self", "type": "application/json", "href": f"{base}/collections/{entry.id}"},
-        {"rel": "items", "type": "application/geo+json", "href": f"{base}/collections/{entry.id}/items"},
+        {
+            "rel": "items",
+            "type": "application/geo+json",
+            "href": f"{base}/collections/{entry.id}/items",
+        },
     ]
     return body
 
@@ -90,8 +99,10 @@ def get_schema(collection_id: str):
 
 @app.get("/collections/{collection_id}/items")
 def list_items(
-    collection_id: str, request: Request,
-    limit: int = Query(100, ge=1), offset: int = Query(0, ge=0),
+    collection_id: str,
+    request: Request,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
     bbox: str | None = None,
 ):
     entry = _get_entry(collection_id)
@@ -99,18 +110,25 @@ def list_items(
     try:
         try:
             page = select_features(
-                conn, base_uri=_snapshot_base_uri(), tenant_id=entry.tenant_id,
-                collection_id=collection_id, table_info=entry.table_info,
-                limit=min(limit, 1000), offset=offset, bbox=_parse_bbox(bbox),
+                conn,
+                base_uri=_snapshot_base_uri(),
+                tenant_id=entry.tenant_id,
+                collection_id=collection_id,
+                table_info=entry.table_info,
+                limit=min(limit, 1000),
+                offset=offset,
+                bbox=_parse_bbox(bbox),
             )
         except MissingGeometryColumn as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     finally:
         conn.close()
     return {
-        "type": "FeatureCollection", "features": page.features,
-        "numberMatched": page.number_matched, "numberReturned": page.number_returned,
-        "timeStamp": datetime.now(timezone.utc).isoformat(),
+        "type": "FeatureCollection",
+        "features": page.features,
+        "numberMatched": page.number_matched,
+        "numberReturned": page.number_returned,
+        "timeStamp": datetime.now(UTC).isoformat(),
         "links": [{"rel": "self", "type": "application/geo+json", "href": str(request.url)}],
     }
 
@@ -121,8 +139,12 @@ def get_single_item(collection_id: str, fid: str):
     conn = open_local_connection()
     try:
         feature = get_feature(
-            conn, base_uri=_snapshot_base_uri(), tenant_id=entry.tenant_id,
-            collection_id=collection_id, table_info=entry.table_info, fid=fid,
+            conn,
+            base_uri=_snapshot_base_uri(),
+            tenant_id=entry.tenant_id,
+            collection_id=collection_id,
+            table_info=entry.table_info,
+            fid=fid,
         )
     finally:
         conn.close()
@@ -138,13 +160,21 @@ def aggregate(collection_id: str, body: AggregateRequestBody):
     try:
         try:
             category_key, rows = run_collection_aggregate(
-                conn, base_uri=_snapshot_base_uri(), tenant_id=entry.tenant_id,
-                collection_id=collection_id, table_info=entry.table_info, request=body,
+                conn,
+                base_uri=_snapshot_base_uri(),
+                tenant_id=entry.tenant_id,
+                collection_id=collection_id,
+                table_info=entry.table_info,
+                request=body,
             )
         except UnknownAggregateField as exc:
             raise HTTPException(
                 status_code=400,
-                detail={"errors": [{"field": exc.field, "code": "unknown_field", "message": exc.message}]},
+                detail={
+                    "errors": [
+                        {"field": exc.field, "code": "unknown_field", "message": exc.message}
+                    ]
+                },
             )
     finally:
         conn.close()

@@ -4,6 +4,7 @@
 Tourne dans le worker partagé (docker-compose.yml, cf. app.jobs pour la
 raison de import_paths). Court-circuite en mode lecture seule/démo (SP-9) :
 mutation hors requête HTTP, invisible au middleware ASGI read_only_guard."""
+
 import logging
 import os
 

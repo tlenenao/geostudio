@@ -8,13 +8,24 @@ from app.tileset3d.models import Tileset3DJob
 
 
 def create_job(
-    session: Session, *, tenant_id: str, created_by: str, source_key: str,
-    upload_id: str, filename: str, title: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    created_by: str,
+    source_key: str,
+    upload_id: str,
+    filename: str,
+    title: str,
 ) -> Tileset3DJob:
     job = Tileset3DJob(
-        id=uuid.uuid4().hex, tenant_id=tenant_id, created_by=created_by,
-        status="pending", source_key=source_key, upload_id=upload_id,
-        filename=filename, title=title,
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        created_by=created_by,
+        status="pending",
+        source_key=source_key,
+        upload_id=upload_id,
+        filename=filename,
+        title=title,
     )
     session.add(job)
     session.flush()
@@ -24,9 +35,7 @@ def create_job(
 
 def get_job(session: Session, *, tenant_id: str, job_id: str) -> Tileset3DJob | None:
     return session.scalar(
-        select(Tileset3DJob).where(
-            Tileset3DJob.id == job_id, Tileset3DJob.tenant_id == tenant_id
-        )
+        select(Tileset3DJob).where(Tileset3DJob.id == job_id, Tileset3DJob.tenant_id == tenant_id)
     )
 
 

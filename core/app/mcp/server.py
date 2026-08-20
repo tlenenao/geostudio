@@ -17,9 +17,7 @@ def create_mcp_server(base_url: str, session_factory) -> FastMCP:
         instructions="GeoStudio cœur MCP endpoint.",
         token_verifier=get_token_verifier(),
         auth=AuthSettings(
-            issuer_url=os.environ.get(
-                "CORE_OIDC_ISSUER", "http://localhost:8180/realms/geostudio"
-            ),
+            issuer_url=os.environ.get("CORE_OIDC_ISSUER", "http://localhost:8180/realms/geostudio"),
             required_scopes=[],
             resource_server_url=f"{base_url}/mcp",
         ),

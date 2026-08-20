@@ -25,6 +25,7 @@ def make_engine(url: str) -> Engine:
         engine = create_engine(url, connect_args=connect_args)
 
     if engine.dialect.name == "sqlite":
+
         @event.listens_for(engine, "connect")
         def _enable_sqlite_fk(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()

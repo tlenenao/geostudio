@@ -7,6 +7,7 @@ CREATE TABLE + apply_collection_ddl + create_collection déjà écrit dans
 app.ingestion.importer.run_import (SP-6a), sans insertion de lignes et avec
 geometry_type/srid nullables (l'ingestion importe toujours un fichier
 géoréférencé ; le cas non-spatial ne lui a jamais été nécessaire)."""
+
 import uuid
 from collections.abc import Callable
 from typing import Literal
@@ -23,19 +24,28 @@ from app.collections.schemas import EmptyCollectionColumn
 
 
 def create_empty_collection(
-    session: Session, *, tenant_id: str, owner_id: str, title: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    owner_id: str,
+    title: str,
     columns: list[EmptyCollectionColumn],
     geometry_type: Literal[
-        "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon",
-    ] | None,
+        "Point",
+        "MultiPoint",
+        "LineString",
+        "MultiLineString",
+        "Polygon",
+        "MultiPolygon",
+    ]
+    | None,
     srid: int | None,
-    introspect: Introspector, apply_ddl: Callable[[Session, str], None],
+    introspect: Introspector,
+    apply_ddl: Callable[[Session, str], None],
 ) -> Collection:
     table_name = f"query_{uuid.uuid4().hex[:12]}"
     t = quote_ident(session, table_name)
-    col_defs = ", ".join(
-        f"{quote_ident(session, c.name)} {c.sqlType}" for c in columns
-    )
+    col_defs = ", ".join(f"{quote_ident(session, c.name)} {c.sqlType}" for c in columns)
     create_sql = f"CREATE TABLE public.{t} (id serial PRIMARY KEY, tenant_id text NOT NULL"
     if col_defs:
         create_sql += f", {col_defs}"
@@ -47,14 +57,27 @@ def create_empty_collection(
     info = introspect(session, table_name)
     apply_ddl(session, table_name)
     col = collections_repo.create_collection(
-        session, tenant_id=tenant_id, owner_id=owner_id, table_name=table_name,
-        title=title, description="", is_public=False, pk_column=info.pk_column,
-        geometry_column=info.geometry_column, geometry_type=info.geometry_type,
-        srid=info.srid, feature_count=0,
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        table_name=table_name,
+        title=title,
+        description="",
+        is_public=False,
+        pk_column=info.pk_column,
+        geometry_column=info.geometry_column,
+        geometry_type=info.geometry_type,
+        srid=info.srid,
+        feature_count=0,
     )
     write_audit(
-        session, tenant_id=tenant_id, actor_id=owner_id, actor_kind="user",
-        action="collection.create", object_type="collection", object_id=col.id,
+        session,
+        tenant_id=tenant_id,
+        actor_id=owner_id,
+        actor_kind="user",
+        action="collection.create",
+        object_type="collection",
+        object_id=col.id,
         payload={"tableName": col.table_name},
     )
     return col

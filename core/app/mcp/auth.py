@@ -12,9 +12,7 @@ def _jwks_client() -> jwt.PyJWKClient:
     # than imported — the two auth surfaces (shell REST API vs. MCP) must be
     # free to evolve independently (see plan Architecture).
     issuer = os.environ["CORE_OIDC_ISSUER"]
-    jwks_url = os.environ.get(
-        "CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs"
-    )
+    jwks_url = os.environ.get("CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs")
     return jwt.PyJWKClient(jwks_url, lifespan=600)
 
 

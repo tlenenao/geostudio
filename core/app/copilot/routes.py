@@ -104,7 +104,9 @@ def _system_message(item_id: str, current_config: dict) -> dict:
     }
 
 
-async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSession) -> CopilotTurnResponse:
+async def _run_turn(
+    *, request: CopilotTurnRequest, mcp_session: McpLoopbackSession
+) -> CopilotTurnResponse:
     try:
         server_tools_raw = await mcp_session.list_tools()
     except McpLoopbackError as exc:
@@ -131,16 +133,23 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
         client_ops: list[ClientOp] = []
-        messages.append({
-            "role": "assistant", "content": turn.text,
-            "tool_calls": [
-                # arguments doit être une **chaîne** JSON : le schéma de
-                # message OpenAI rejette un objet à la réinjection du tour
-                # suivant.
-                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                for tc in turn.tool_calls
-            ],
-        })
+        messages.append(
+            {
+                "role": "assistant",
+                "content": turn.text,
+                "tool_calls": [
+                    # arguments doit être une **chaîne** JSON : le schéma de
+                    # message OpenAI rejette un objet à la réinjection du tour
+                    # suivant.
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                    }
+                    for tc in turn.tool_calls
+                ],
+            }
+        )
 
         for tc in turn.tool_calls:
             if tc.name not in ALLOWED_MCP_TOOL_NAMES:
@@ -154,10 +163,13 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
                 result = await mcp_session.call_tool(tc.name, tc.arguments)
             except McpLoopbackError as exc:
                 raise HTTPException(status_code=502, detail=f"MCP loopback failed: {exc}") from exc
-            messages.append({
-                "role": "tool", "tool_call_id": tc.id,
-                "content": result.text or ("(erreur outil)" if result.is_error else ""),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result.text or ("(erreur outil)" if result.is_error else ""),
+                }
+            )
 
         if client_ops:
             return CopilotTurnResponse(reply=turn.text, clientOps=client_ops)
@@ -192,7 +204,9 @@ async def copilot_turn(
             _run_turn(request=body, mcp_session=mcp_session),
             timeout=TURN_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Le copilote a mis trop de temps à répondre.") from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=504, detail="Le copilote a mis trop de temps à répondre."
+        ) from exc
     finally:
         await mcp_session.aclose()

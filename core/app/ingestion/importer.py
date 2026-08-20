@@ -4,6 +4,7 @@ partir d'un flux de (géométrie, propriétés) déjà parsé (app.ingestion.par
 Séparé de tasks.py pour rester testable sans procrastinate ni S3 (postgis
 seulement) — mêmes fonctions internes qu'un admin enregistrant une collection
 à la main (app.collections.routes.register_collection)."""
+
 import math
 import os
 import uuid
@@ -20,7 +21,11 @@ from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, MapView
 from app.ingestion.parsers import (
-    IngestionParseError, parse_csv_latlon, parse_geojson, parse_gpkg, parse_shapefile_zip,
+    IngestionParseError,
+    parse_csv_latlon,
+    parse_geojson,
+    parse_gpkg,
+    parse_shapefile_zip,
 )
 from app.items import repository as items_repo
 
@@ -28,9 +33,12 @@ from app.items import repository as items_repo
 _DEFAULT_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
 
 _GEOM_TYPE_MAP = {
-    "Point": "Point", "MultiPoint": "MultiPoint",
-    "LineString": "LineString", "MultiLineString": "MultiLineString",
-    "Polygon": "Polygon", "MultiPolygon": "MultiPolygon",
+    "Point": "Point",
+    "MultiPoint": "MultiPoint",
+    "LineString": "LineString",
+    "MultiLineString": "MultiLineString",
+    "Polygon": "Polygon",
+    "MultiPolygon": "MultiPolygon",
 }
 
 
@@ -72,9 +80,16 @@ def _zoom_for_extent(bbox: list[float]) -> float:
 
 
 def run_import(
-    session: Session, *, tenant_id: str, created_by: str, filename: str,
-    content: bytes, collection_title: str,
-    lat_field: str | None, lon_field: str | None, layer_name: str | None = None,
+    session: Session,
+    *,
+    tenant_id: str,
+    created_by: str,
+    filename: str,
+    content: bytes,
+    collection_title: str,
+    lat_field: str | None,
+    lon_field: str | None,
+    layer_name: str | None = None,
 ) -> ImportResult:
     fmt = _pick_format(filename)
     if fmt == "geojson":
@@ -128,7 +143,11 @@ def run_import(
     insert_cols = ", ".join(quote_ident(session, name) for name in col_names)
     insert_cols_full = "tenant_id, " + (insert_cols + ", " if insert_cols else "") + "geom"
     placeholders = ", ".join(f":{name}" for name in col_names)
-    values_clause = ":tenant_id, " + (placeholders + ", " if placeholders else "") + "ST_GeomFromText(:geom_wkt, 4326)"
+    values_clause = (
+        ":tenant_id, "
+        + (placeholders + ", " if placeholders else "")
+        + "ST_GeomFromText(:geom_wkt, 4326)"
+    )
     insert_sql = f"INSERT INTO public.{t} ({insert_cols_full}) VALUES ({values_clause})"
     params = []
     for geom, props in rows:
@@ -141,14 +160,27 @@ def run_import(
     info = introspect_table(session, table_name)
     apply_collection_ddl(session, table_name)
     col = collections_repo.create_collection(
-        session, tenant_id=tenant_id, owner_id=created_by, table_name=table_name,
-        title=collection_title, description="", is_public=False,
-        pk_column=info.pk_column, geometry_column=info.geometry_column,
-        geometry_type=info.geometry_type, srid=info.srid, feature_count=len(rows),
+        session,
+        tenant_id=tenant_id,
+        owner_id=created_by,
+        table_name=table_name,
+        title=collection_title,
+        description="",
+        is_public=False,
+        pk_column=info.pk_column,
+        geometry_column=info.geometry_column,
+        geometry_type=info.geometry_type,
+        srid=info.srid,
+        feature_count=len(rows),
     )
     write_audit(
-        session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
-        action="collection.create", object_type="collection", object_id=col.id,
+        session,
+        tenant_id=tenant_id,
+        actor_id=created_by,
+        actor_kind="user",
+        action="collection.create",
+        object_type="collection",
+        object_id=col.id,
         payload={"tableName": col.table_name},
     )
 
@@ -161,12 +193,20 @@ def run_import(
 
     core_base_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=created_by,
-        resource_type="map", title=collection_title,
+        session,
+        tenant_id=tenant_id,
+        owner_id=created_by,
+        resource_type="map",
+        title=collection_title,
     )
     write_audit(
-        session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
-        action="item.create", object_type="item", object_id=item.id,
+        session,
+        tenant_id=tenant_id,
+        actor_id=created_by,
+        actor_kind="user",
+        action="item.create",
+        object_type="item",
+        object_id=item.id,
         payload={"title": collection_title},
     )
     config = BuilderConfig(
@@ -174,10 +214,15 @@ def run_import(
         map=MapConfig(
             basemap=BaseMap(style=_DEFAULT_BASEMAP_STYLE),
             view=MapView(center=center, zoom=zoom),
-            layers=[MapLayer(
-                id=str(uuid.uuid4()), title=collection_title, visible=True,
-                kind="feature", url=f"{core_base_url}/collections/{col.id}/items",
-            )],
+            layers=[
+                MapLayer(
+                    id=str(uuid.uuid4()),
+                    title=collection_title,
+                    visible=True,
+                    kind="feature",
+                    url=f"{core_base_url}/collections/{col.id}/items",
+                )
+            ],
         ),
     )
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)

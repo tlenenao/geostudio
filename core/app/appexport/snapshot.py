@@ -19,6 +19,7 @@ d'un GeoDataFrame vide dont le schéma serait mal inféré) — le mini-serveur
 Une même collection référencée par plusieurs DataSources (ex. une carte et
 un widget d'agrégat sur la même collection) n'est écrite qu'une fois —
 dédoublonnage par collection_id."""
+
 import os
 
 from shapely.geometry import shape as shapely_shape
@@ -37,10 +38,18 @@ _PAGE_SIZE = 1000
 
 def _collection_json(col, *, feature_count: int) -> dict:
     return {
-        "id": col.id, "title": col.title, "description": col.description,
-        "tableName": col.table_name, "isPublic": col.is_public, "editable": False,
-        "geometryType": col.geometry_type, "srid": col.srid, "pkColumn": col.pk_column,
-        "canWrite": False, "featureCount": feature_count, "owner": None,
+        "id": col.id,
+        "title": col.title,
+        "description": col.description,
+        "tableName": col.table_name,
+        "isPublic": col.is_public,
+        "editable": False,
+        "geometryType": col.geometry_type,
+        "srid": col.srid,
+        "pkColumn": col.pk_column,
+        "canWrite": False,
+        "featureCount": feature_count,
+        "owner": None,
     }
 
 
@@ -50,17 +59,29 @@ def _fetch_rows(session, *, tenant_id: str, info, max_records: int) -> list[Chan
     with rls_scope(session, tenant_id):
         while len(rows) < max_records:
             page = select_features(
-                session, info, limit=_PAGE_SIZE, offset=offset,
-                bbox=None, geom_intersects=None, filters=None,
+                session,
+                info,
+                limit=_PAGE_SIZE,
+                offset=offset,
+                bbox=None,
+                geom_intersects=None,
+                filters=None,
             )
             for feature in page.features:
                 geometry = feature["geometry"]
                 wkb_hex = shapely_shape(geometry).wkb_hex if geometry else None
-                rows.append(ChangeRow(
-                    op="insert", lsn=0, ts=0.0, pk_column=info.pk_column,
-                    pk_value=feature["id"], columns=feature["properties"],
-                    geometry_column=info.geometry_column, geometry_wkb_hex=wkb_hex,
-                ))
+                rows.append(
+                    ChangeRow(
+                        op="insert",
+                        lsn=0,
+                        ts=0.0,
+                        pk_column=info.pk_column,
+                        pk_value=feature["id"],
+                        columns=feature["properties"],
+                        geometry_column=info.geometry_column,
+                        geometry_wkb_hex=wkb_hex,
+                    )
+                )
             if len(page.features) < _PAGE_SIZE:
                 break
             offset += _PAGE_SIZE
@@ -68,7 +89,11 @@ def _fetch_rows(session, *, tenant_id: str, info, max_records: int) -> list[Chan
 
 
 def write_snapshot(
-    session, *, tenant_id: str, config: BuilderConfig, snapshot_dir: str,
+    session,
+    *,
+    tenant_id: str,
+    config: BuilderConfig,
+    snapshot_dir: str,
     max_records_per_source: int = 50_000,
 ) -> list[CollectionSnapshotEntry]:
     entries: list[CollectionSnapshotEntry] = []
@@ -82,24 +107,36 @@ def write_snapshot(
             continue
         seen.add(collection_id)
 
-        col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
+        col = collections_repo.get_collection(
+            session, tenant_id=tenant_id, collection_id=collection_id
+        )
         info = introspect_table(session, col.table_name)
-        rows = _fetch_rows(session, tenant_id=tenant_id, info=info, max_records=max_records_per_source)
+        rows = _fetch_rows(
+            session, tenant_id=tenant_id, info=info, max_records=max_records_per_source
+        )
 
         if rows:
             parquet_dir = os.path.join(
-                snapshot_dir, "snapshot", f"tenant_id={tenant_id}",
-                f"collection_id={collection_id}", "dt=snapshot",
+                snapshot_dir,
+                "snapshot",
+                f"tenant_id={tenant_id}",
+                f"collection_id={collection_id}",
+                "dt=snapshot",
             )
             os.makedirs(parquet_dir, exist_ok=True)
-            write_geoparquet(rows, srid=info.srid or 4326, path=os.path.join(parquet_dir, "data.parquet"))
+            write_geoparquet(
+                rows, srid=info.srid or 4326, path=os.path.join(parquet_dir, "data.parquet")
+            )
 
-        entries.append(CollectionSnapshotEntry(
-            id=col.id, tenant_id=tenant_id,
-            collection_json=_collection_json(col, feature_count=len(rows)),
-            schema_json=table_info_to_schema(info),
-            table_info=info,
-        ))
+        entries.append(
+            CollectionSnapshotEntry(
+                id=col.id,
+                tenant_id=tenant_id,
+                collection_json=_collection_json(col, feature_count=len(rows)),
+                schema_json=table_info_to_schema(info),
+                table_info=info,
+            )
+        )
 
     os.makedirs(snapshot_dir, exist_ok=True)
     write_manifest(entries, os.path.join(snapshot_dir, "manifest.json"))

@@ -4,6 +4,7 @@ app.configs.dataset_validation for why this indirection exists). Imported for
 its side effect by app.main, which is the only layer allowed to know about
 both app.collections and app.configs.
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -18,13 +19,18 @@ def _validate_dataset_payload(session: Session, config: BuilderConfig, user: Use
     payload = config.dataset
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
     collection = collections_repo.get_collection(
-        session, tenant_id=user.tenant_id, collection_id=payload.collectionId,
+        session,
+        tenant_id=user.tenant_id,
+        collection_id=payload.collectionId,
     )
     if collection is None:
         raise HTTPException(status_code=422, detail="collection not found")
     readable = can(
-        session, user_id=user.id, action="read",
-        item=collections_repo.get_access_facts(collection), kind="collection",
+        session,
+        user_id=user.id,
+        action="read",
+        item=collections_repo.get_access_facts(collection),
+        kind="collection",
         actor_is_admin=user.is_admin,
     )
     if not readable:

@@ -16,6 +16,7 @@ re-checks egress on every hop `resolve_redirects()` sends through it (see
 below (kept for a fast, clear failure before doing anything else) is
 belt-and-suspenders on top of the session-level guard that actually
 matters for redirects."""
+
 import smtplib
 from email.message import EmailMessage
 
@@ -52,15 +53,20 @@ def send_webhook(channel: AlertChannelWebhook, *, payload: dict) -> None:
 
 
 def send_email(
-    session: Session, *, tenant_id: str, channel: AlertChannelEmail, subject: str, body: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    channel: AlertChannelEmail,
+    subject: str,
+    body: str,
 ) -> None:
-    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=channel.smtpSecretName)
+    payload = secrets_repo.get_secret_payload(
+        session, tenant_id=tenant_id, name=channel.smtpSecretName
+    )
     if payload is None:
         raise NotifyError(f"secret '{channel.smtpSecretName}' not found")
     if payload.kind != "smtp":
-        raise NotifyError(
-            f"secret has kind '{payload.kind}', not usable for email (expected smtp)"
-        )
+        raise NotifyError(f"secret has kind '{payload.kind}', not usable for email (expected smtp)")
 
     message = EmailMessage()
     message["Subject"] = subject

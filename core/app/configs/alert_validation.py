@@ -6,6 +6,7 @@ item of resourceType "dataset", and app.configs already imports app.items
 dependency to route around. The condition expression itself is already
 validated at the Pydantic level (AlertCondition._require_valid_expr,
 Task 2) — nothing to re-check here."""
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,9 @@ def validate_alert_payload(session: Session, config: BuilderConfig, *, user: Use
     payload = config.alert
     assert payload is not None  # guaranteed by BuilderConfig._require_kind_payload
 
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=payload.datasetItemId)
+    facts = items_repo.get_access_facts(
+        session, tenant_id=user.tenant_id, item_id=payload.datasetItemId
+    )
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         # Same message for not-found and not-readable: don't leak dataset
         # existence, same convention as app.configs.bookmark_validation.

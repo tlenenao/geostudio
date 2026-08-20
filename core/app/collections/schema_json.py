@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Mapping pur TableInfo -> contrat JSON du schéma d'une collection (spec §3).
 Aucune dépendance DB ici : uniquement une transformation de données."""
+
 from app.collections.introspection import TableInfo
 
 
@@ -17,7 +18,10 @@ def table_info_to_schema(info: TableInfo) -> dict:
         fields.append(entry)
     geometry = None
     if info.geometry_column:
-        geometry = {"column": info.geometry_column, "type": info.geometry_type,
-                    "srid": info.srid}
-    return {"collection": info.table_name, "pk": info.pk_column,
-            "geometry": geometry, "fields": fields}
+        geometry = {"column": info.geometry_column, "type": info.geometry_type, "srid": info.srid}
+    return {
+        "collection": info.table_name,
+        "pk": info.pk_column,
+        "geometry": geometry,
+        "fields": fields,
+    }

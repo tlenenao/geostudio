@@ -2,6 +2,7 @@
 """Routes REST du Pipeline (SP-15a) — montées uniquement quand
 CORE_ETL_ENABLED est actif (app.main, à la construction de l'app, jamais
 par requête : cf. design §3.2 et ce plan, Global Constraints)."""
+
 import os
 from collections.abc import Callable
 
@@ -56,6 +57,7 @@ def _require_pipeline_config(session: Session, item_id: str):
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(run_id: str, tenant_id: str) -> None:
         run_pipeline_task.defer(run_id=run_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -80,8 +82,13 @@ def run_pipeline_route(
     _require_pipeline_config(session, item_id)
     run = pipelines_repo.create_run(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="pipeline.run", object_type="pipeline_run", object_id=run.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="pipeline.run",
+        object_type="pipeline_run",
+        object_id=run.id,
         payload={"pipelineItemId": item_id},
     )
     # Commit avant de déférer : même raison que ingestion/routes.py
@@ -103,10 +110,12 @@ def list_pipeline_runs(
     runs = pipelines_repo.list_runs(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
     return [
         RunStatus(
-            id=r.id, status=r.status,
+            id=r.id,
+            status=r.status,
             startedAt=r.started_at.isoformat() if r.started_at else None,
             finishedAt=r.finished_at.isoformat() if r.finished_at else None,
-            error=r.error, nodeStats=r.node_stats,
+            error=r.error,
+            nodeStats=r.node_stats,
         )
         for r in runs
     ]
@@ -123,9 +132,14 @@ def preview_pipeline_route(
     config = _require_pipeline_config(session, item_id)
     try:
         return preview_pipeline(
-            session=session, payload=config.config.pipeline, tenant_id=user.tenant_id, user=user,
-            up_to=upTo, endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
-            access_key=os.environ.get("S3_ACCESS_KEY", ""), secret_key=os.environ.get("S3_SECRET_KEY", ""),
+            session=session,
+            payload=config.config.pipeline,
+            tenant_id=user.tenant_id,
+            user=user,
+            up_to=upTo,
+            endpoint_url=os.environ.get("S3_ENDPOINT_URL", ""),
+            access_key=os.environ.get("S3_ACCESS_KEY", ""),
+            secret_key=os.environ.get("S3_SECRET_KEY", ""),
             base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
             qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
             qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),

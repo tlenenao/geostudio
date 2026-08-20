@@ -7,6 +7,7 @@ précédent de jeton à usage unique n'existe dans ce dépôt (les liens S3
 présignés, seul mécanisme comparable, sont eux aussi révoqués par TTL
 seul). Colocalisé dans app.auth (pas app.export) : voir la note de
 placement dans le plan d'implémentation, tâche 4."""
+
 import os
 import time
 
@@ -35,8 +36,12 @@ def _secret() -> str:
 def mint_export_token(*, tenant_id: str, user_id: str, job_id: str, ttl_seconds: int = 120) -> str:
     now = int(time.time())
     claims = {
-        "typ": _TYP, "tenant_id": tenant_id, "user_id": user_id, "job_id": job_id,
-        "iat": now, "exp": now + ttl_seconds,
+        "typ": _TYP,
+        "tenant_id": tenant_id,
+        "user_id": user_id,
+        "job_id": job_id,
+        "iat": now,
+        "exp": now + ttl_seconds,
     }
     return jwt.encode(claims, _secret(), algorithm=_ALGORITHM)
 
@@ -64,5 +69,7 @@ def decode_export_token(token: str) -> ExportTokenClaims:
     if missing:
         raise ExportTokenError(f"missing claims: {missing}")
     return ExportTokenClaims(
-        tenant_id=claims["tenant_id"], user_id=claims["user_id"], job_id=claims["job_id"],
+        tenant_id=claims["tenant_id"],
+        user_id=claims["user_id"],
+        job_id=claims["job_id"],
     )

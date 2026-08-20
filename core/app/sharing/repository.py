@@ -77,9 +77,7 @@ def add_member(
 
 
 def list_shares(session: Session, *, item_id: str) -> list[ItemShare]:
-    return list(
-        session.scalars(select(ItemShare).where(ItemShare.item_id == item_id)).all()
-    )
+    return list(session.scalars(select(ItemShare).where(ItemShare.item_id == item_id)).all())
 
 
 def replace_shares(

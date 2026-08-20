@@ -4,6 +4,7 @@ téléchargement complet) et, si valide, crée l'item + le BuilderConfig
 résultants. Toute erreur (validation ou inattendue) marque le job "error",
 jamais de job bloqué en pending/finalizing ("zombie") — même critère que
 app.ingestion.tasks/app.export.jobs."""
+
 import logging
 import os
 
@@ -58,30 +59,47 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
         if job is None:
             logger.error("tileset3d job %s introuvable (tenant %s)", job_id, tenant_id)
             return
-        source_key, filename, title, created_by = job.source_key, job.filename, job.title, job.created_by
+        source_key, filename, title, created_by = (
+            job.source_key,
+            job.filename,
+            job.title,
+            job.created_by,
+        )
 
     try:
         s3 = s3_client_from_env()
         range_file = S3RangeFile(s3, bucket=_tileset3d_bucket(), key=source_key)
         result = validate_tileset_zip(
-            range_file, max_entries=_max_entries(),
-            max_total_bytes=_max_total_bytes(), max_entry_bytes=_max_entry_bytes(),
+            range_file,
+            max_entries=_max_entries(),
+            max_total_bytes=_max_total_bytes(),
+            max_entry_bytes=_max_entry_bytes(),
         )
         with request_scoped_session(session_factory) as session:
             item = items_repo.create_item(
-                session, tenant_id=tenant_id, owner_id=created_by,
-                resource_type="tileset3d", title=title,
+                session,
+                tenant_id=tenant_id,
+                owner_id=created_by,
+                resource_type="tileset3d",
+                title=title,
             )
             write_audit(
-                session, tenant_id=tenant_id, actor_id=created_by, actor_kind="user",
-                action="item.create", object_type="item", object_id=item.id,
+                session,
+                tenant_id=tenant_id,
+                actor_id=created_by,
+                actor_kind="user",
+                action="item.create",
+                object_type="item",
+                object_id=item.id,
                 payload={"title": title, "filename": filename},
             )
             config = BuilderConfig(
                 kind="tileset3d",
                 tileset3d=Tileset3DPayload(
-                    sourceKey=source_key, tilesetJsonPath="tileset.json",
-                    totalBytes=result.total_bytes, entryCount=result.entry_count,
+                    sourceKey=source_key,
+                    tilesetJsonPath="tileset.json",
+                    totalBytes=result.total_bytes,
+                    entryCount=result.entry_count,
                 ),
             )
             configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
@@ -100,16 +118,25 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
             s3_client_from_env().delete_object(Bucket=_tileset3d_bucket(), Key=source_key)
             purged = True
         except Exception:
-            logger.exception("tileset3d job %s : échec de la purge du zip rejeté (%s)", job_id, source_key)
+            logger.exception(
+                "tileset3d job %s : échec de la purge du zip rejeté (%s)", job_id, source_key
+            )
         with request_scoped_session(session_factory) as session:
             if purged:
                 write_audit(
-                    session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-                    action="tileset3d.purge", object_type="tileset3d_job", object_id=job_id,
+                    session,
+                    tenant_id=tenant_id,
+                    actor_id=None,
+                    actor_kind="agent",
+                    action="tileset3d.purge",
+                    object_type="tileset3d_job",
+                    object_id=job_id,
                     payload={"sourceKey": source_key, "reason": str(exc)},
                 )
             tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("tileset3d job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
-            tileset3d_repo.mark_error(session, job_id=job_id, error_message=f"erreur interne : {exc}")
+            tileset3d_repo.mark_error(
+                session, job_id=job_id, error_message=f"erreur interne : {exc}"
+            )

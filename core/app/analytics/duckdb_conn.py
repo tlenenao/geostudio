@@ -14,10 +14,13 @@ Les valeurs SET ci-dessous viennent de variables d'environnement serveur
 (pas d'entrée utilisateur) : interpolées directement, comme le reste du
 cœur fait déjà confiance à ses propres variables d'environnement (ex.
 CORE_BASE_URL dans app/main.py)."""
+
 import duckdb
 
 
-def open_connection(*, endpoint_url: str, access_key: str, secret_key: str) -> duckdb.DuckDBPyConnection:
+def open_connection(
+    *, endpoint_url: str, access_key: str, secret_key: str
+) -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(":memory:")
     conn.execute("INSTALL httpfs; LOAD httpfs;")
     conn.execute("INSTALL spatial; LOAD spatial;")

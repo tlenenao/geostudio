@@ -3,13 +3,13 @@
 app.search.providers.EmbeddingProvider (SP-7) : un provider HTTP compatible
 OpenAI pour la production, un provider déterministe sans réseau pour
 dev/test/mock (CORE_LLM_PROVIDER=fake, ou absent)."""
+
 import json
 import os
 from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
-
 
 # Plafond par appel, sous le budget global du tour (app.copilot.routes).
 LLM_CALL_TIMEOUT_SECONDS = 30.0
@@ -54,7 +54,11 @@ class FakeLLMProvider:
 
 class OpenAICompatibleLLMProvider:
     def __init__(
-        self, *, api_url: str, api_key: str, model: str,
+        self,
+        *,
+        api_url: str,
+        api_key: str,
+        model: str,
         http_client: httpx.AsyncClient | None = None,
     ):
         self._api_url = api_url

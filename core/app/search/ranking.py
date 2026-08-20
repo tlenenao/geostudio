@@ -5,6 +5,7 @@ paramétrique qui construit ces deux listes candidates au-dessus d'un
 `base_stmt` déjà filtré par permissions. Module pur / sans dépendance
 domaine (comme app.db) — app.items.repository et app.collections.repository
 l'utilisent tous deux (Task 6, Task 7)."""
+
 from sqlalchemy import Select, func
 from sqlalchemy.orm import Session
 

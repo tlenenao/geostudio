@@ -13,31 +13,36 @@ from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
-    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
-    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
+    is_appexport_enabled,
+    is_copilot_enabled,
+    is_etl_enabled,
+    is_export_enabled,
+    is_read_only_mode,
+    is_terrain3d_enabled,
+    is_tileset3d_enabled,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
-from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
-from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
-from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.dcat import routes as dcat_routes
 from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
+from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.mcp.server import create_mcp_server
+from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.reports import routes as reports_routes
+from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
-from app.schemas_routes import router as schemas_router
 from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 from app.terrain3d import routes as terrain3d_routes
@@ -133,6 +138,7 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     if is_appexport_enabled():
+
         @app.middleware("http")
         async def appexport_cors(request: Request, call_next):
             path = request.url.path
@@ -200,8 +206,10 @@ def create_app() -> FastAPI:
         from app.items.storage import S3ThumbnailStore
 
         app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: S3ThumbnailStore(
-            endpoint_url=s3_endpoint, access_key=s3_access_key,
-            secret_key=s3_secret_key, bucket=s3_bucket,
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+            bucket=s3_bucket,
         )
 
     s3_uploads_bucket = os.environ.get("S3_UPLOADS_BUCKET", "geostudio-uploads")
@@ -210,7 +218,9 @@ def create_app() -> FastAPI:
         from app.ingestion.storage import make_s3_client
 
         app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: make_s3_client(
-            endpoint_url=s3_endpoint, access_key=s3_access_key, secret_key=s3_secret_key,
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
         )
         app.dependency_overrides[ingestion_routes.get_uploads_bucket] = lambda: s3_uploads_bucket
         # app.export.routes réutilise ingestion_routes.get_s3_client verbatim
@@ -219,11 +229,17 @@ def create_app() -> FastAPI:
         # override ici (revue SP-17a, finding Important task 7, fix round 1).
         app.dependency_overrides[export_routes.get_exports_bucket] = lambda: s3_exports_bucket
         s3_appexports_bucket = os.environ.get("S3_APPEXPORTS_BUCKET", "geostudio-appexports")
-        app.dependency_overrides[appexport_routes.get_appexports_bucket] = lambda: s3_appexports_bucket
+        app.dependency_overrides[appexport_routes.get_appexports_bucket] = lambda: (
+            s3_appexports_bucket
+        )
         s3_tileset3d_bucket = os.environ.get("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
-        app.dependency_overrides[tileset3d_routes.get_tileset3d_bucket] = lambda: s3_tileset3d_bucket
+        app.dependency_overrides[tileset3d_routes.get_tileset3d_bucket] = lambda: (
+            s3_tileset3d_bucket
+        )
         s3_terrain3d_bucket = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
-        app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: s3_terrain3d_bucket
+        app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: (
+            s3_terrain3d_bucket
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:

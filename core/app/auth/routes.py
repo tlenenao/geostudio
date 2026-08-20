@@ -90,9 +90,7 @@ def patch_user(
             and count_admins(session, tenant_id=user.tenant_id) == 1
         ):
             raise HTTPException(status_code=409, detail="cannot demote the last admin")
-        set_admin(
-            session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin
-        )
+        set_admin(session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin)
         write_audit(
             session,
             tenant_id=user.tenant_id,
@@ -104,9 +102,7 @@ def patch_user(
             payload={"isAdmin": body.isAdmin},
         )
     if body.isAnalyst is not None:
-        set_analyst(
-            session, tenant_id=user.tenant_id, user_id=user_id, is_analyst=body.isAnalyst
-        )
+        set_analyst(session, tenant_id=user.tenant_id, user_id=user_id, is_analyst=body.isAnalyst)
         write_audit(
             session,
             tenant_id=user.tenant_id,

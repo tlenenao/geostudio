@@ -6,6 +6,7 @@ déjà exercé par core/tests/test_mcp_routes.py (initialize ->
 notifications/initialized -> tools/list ou tools/call, réponse en SSE) :
 un httpx.AsyncClient brut suffit, pas besoin du SDK client `mcp` (deuxième
 dépendance client pour un seul appelant)."""
+
 import json
 import os
 import uuid
@@ -64,7 +65,8 @@ class McpLoopbackSession:
     def __init__(self, mcp_token: str, *, http_client: httpx.AsyncClient | None = None):
         self._mcp_token = mcp_token
         self._client = http_client or httpx.AsyncClient(
-            base_url=loopback_base_url(), timeout=15.0,
+            base_url=loopback_base_url(),
+            timeout=15.0,
         )
         self._owns_client = http_client is None
         self._session_id: str | None = None
@@ -88,9 +90,12 @@ class McpLoopbackSession:
         response = await self._client.post(
             "/mcp",
             json={
-                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "initialize",
+                "jsonrpc": "2.0",
+                "id": str(uuid.uuid4()),
+                "method": "initialize",
                 "params": {
-                    "protocolVersion": "2025-06-18", "capabilities": {},
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
                     "clientInfo": {"name": "geostudio-copilot", "version": "0"},
                 },
             },
@@ -135,7 +140,9 @@ class McpLoopbackSession:
         response = await self._client.post(
             "/mcp",
             json={
-                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/call",
+                "jsonrpc": "2.0",
+                "id": str(uuid.uuid4()),
+                "method": "tools/call",
                 "params": {"name": name, "arguments": arguments},
             },
             headers=self._headers(),

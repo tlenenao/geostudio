@@ -9,6 +9,7 @@ indépendamment de ce flag). Sans OTEL_EXPORTER_OTLP_ENDPOINT (comportement
 par défaut, toute la suite de tests), aucun exportateur n'est attaché :
 spans/métriques/logs sont créés mais jamais envoyés, coût négligeable, zéro
 appel réseau."""
+
 import json
 import logging
 import os
@@ -169,10 +170,12 @@ def register_jobs_backlog_gauge(engine, *, meter=None) -> None:
     def _callback(options):
         try:
             with engine.connect() as conn:
-                rows = conn.execute(text(
-                    "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
-                    "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
-                ))
+                rows = conn.execute(
+                    text(
+                        "SELECT queue_name, COUNT(*) AS n FROM procrastinate_jobs "
+                        "WHERE status IN ('todo', 'doing') GROUP BY queue_name"
+                    )
+                )
                 return [Observation(count, {"queue": queue_name}) for queue_name, count in rows]
         except ProgrammingError:
             # procrastinate_jobs peut ne pas encore exister (worker pas
@@ -217,7 +220,6 @@ def register_cdc_lag_gauge(get_lag_seconds, *, meter=None) -> None:
         callbacks=[_callback],
         unit="s",
         description=(
-            "Écart entre l'horloge murale et le dernier flush GeoParquet "
-            "réussi, par collection"
+            "Écart entre l'horloge murale et le dernier flush GeoParquet réussi, par collection"
         ),
     )

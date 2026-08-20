@@ -10,6 +10,7 @@ re-confirmé directement en Task 7 via `SELECT 1 UNION SELECT 2`.
 Correction empirique reportée du spike (Task 1) : `duckdb.Exception` n'existe
 pas en DuckDB 1.5.4 (AttributeError à l'exécution) — la base commune réelle
 de toutes les exceptions DuckDB est `duckdb.Error`, utilisée ci-dessous."""
+
 import json
 import threading
 from datetime import date, datetime
@@ -126,6 +127,8 @@ def run_analyst_sql(conn, *, sql, allowed, base_uri, tenant_id):
     refs = collect_table_refs(ast)
     _apply_limits(conn)
     for name in sorted(refs & set(allowed)):
-        _materialize(conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id)
+        _materialize(
+            conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id
+        )
     _lock_down(conn)
     return _execute_bounded(conn, sql)

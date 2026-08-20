@@ -2,6 +2,7 @@
 """Connecteur WFS (SP-12e) — GetCapabilities → un FeatureType = un record
 vecteur ; copie GeoJSON paginée (startIndex/count, WFS 2.0.0), bornée et
 tolérante. HTTP uniquement, zéro I/O DB."""
+
 import json
 import logging
 from collections.abc import Iterable
@@ -57,16 +58,18 @@ class WfsConnector:
             name = ows.child_text(ft, "Name")
             if name is None:
                 continue
-            records.append(HarvestedRecord(
-                external_id=f"{base}#{name}",
-                title=ows.child_text(ft, "Title") or name,
-                abstract=ows.child_text(ft, "Abstract") or "",
-                keywords=_ft_keywords(ft),
-                bbox=_ft_bbox(ft),
-                external_url=caps_url,
-                items_url=_getfeature_template(base, name),
-                raster_tiles_url=None,
-            ))
+            records.append(
+                HarvestedRecord(
+                    external_id=f"{base}#{name}",
+                    title=ows.child_text(ft, "Title") or name,
+                    abstract=ows.child_text(ft, "Abstract") or "",
+                    keywords=_ft_keywords(ft),
+                    bbox=_ft_bbox(ft),
+                    external_url=caps_url,
+                    items_url=_getfeature_template(base, name),
+                    raster_tiles_url=None,
+                )
+            )
         return records
 
     def fetch_copy_geojson(self, record, *, http_get) -> bytes | None:
@@ -78,7 +81,11 @@ class WfsConnector:
         while True:
             pages += 1
             if pages >= _MAX_COPY_PAGES:
-                logger.warning("wfs harvest: plafond de %d pages pour %s, tronqué", _MAX_COPY_PAGES, record.external_id)
+                logger.warning(
+                    "wfs harvest: plafond de %d pages pour %s, tronqué",
+                    _MAX_COPY_PAGES,
+                    record.external_id,
+                )
                 break
             page_url = f"{record.items_url}&startIndex={offset}&count={_COPY_PAGE_SIZE}"
             try:
@@ -95,7 +102,11 @@ class WfsConnector:
             features.extend(page_features)
             offset += len(page_features)
             if len(features) >= _MAX_COPY_FEATURES:
-                logger.warning("wfs harvest: plafond de %d entités pour %s, tronqué", _MAX_COPY_FEATURES, record.external_id)
+                logger.warning(
+                    "wfs harvest: plafond de %d entités pour %s, tronqué",
+                    _MAX_COPY_FEATURES,
+                    record.external_id,
+                )
                 features = features[:_MAX_COPY_FEATURES]
                 break
         return json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
@@ -122,7 +133,12 @@ def _ft_bbox(ft) -> list[float]:
     ll = ows.child(ft, "LatLongBoundingBox")
     if ll is not None:
         try:
-            return [float(ll.get("minx")), float(ll.get("miny")), float(ll.get("maxx")), float(ll.get("maxy"))]
+            return [
+                float(ll.get("minx")),
+                float(ll.get("miny")),
+                float(ll.get("maxx")),
+                float(ll.get("maxy")),
+            ]
         except (TypeError, ValueError):
             pass
     return list(ows._WORLD_BBOX)

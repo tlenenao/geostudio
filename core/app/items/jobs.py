@@ -4,6 +4,7 @@ create/update (app.items.routes), asynchrone (jamais de blocage de
 l'écriture sur un fournisseur d'embeddings lent/indisponible). Échec
 = log, embedding reste NULL, l'item reste cherchable par trigram seul
 (dégradation gracieuse, spec §Pipeline d'embedding)."""
+
 import logging
 import os
 
@@ -31,7 +32,9 @@ def embed_item_task(item_id: str, tenant_id: str) -> None:
                 select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
             )
             if item is None:
-                logger.warning("embed_item_task: item %s introuvable (tenant %s)", item_id, tenant_id)
+                logger.warning(
+                    "embed_item_task: item %s introuvable (tenant %s)", item_id, tenant_id
+                )
                 return
             provider = get_embedding_provider()
             item.embedding = provider.embed(_embed_text(item))

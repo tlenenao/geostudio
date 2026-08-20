@@ -3,6 +3,7 @@
 GRANTs au rôle non-propriétaire gis_rls. Idempotent — ré-enregistrer une table
 ou rejouer un seed ne casse rien. Les identifiants sont quotés via le preparer
 SQLAlchemy (le nom vient du registre, mais la défense vaut pour tout appelant)."""
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -38,11 +39,13 @@ def apply_collection_ddl(session: Session, table_name: str) -> None:
         session.execute(text(stmt))
     # Les INSERT sous gis_rls doivent pouvoir tirer la séquence de la PK (serial).
     seq = session.execute(
-        text("SELECT pg_get_serial_sequence('public.' || quote_ident(:t), a.attname) "
-             "FROM pg_index i "
-             "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
-             "WHERE i.indrelid = ('public.' || quote_ident(:t))::regclass "
-             "AND i.indisprimary"),
+        text(
+            "SELECT pg_get_serial_sequence('public.' || quote_ident(:t), a.attname) "
+            "FROM pg_index i "
+            "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
+            "WHERE i.indrelid = ('public.' || quote_ident(:t))::regclass "
+            "AND i.indisprimary"
+        ),
         {"t": table_name},
     ).scalar()
     if seq:

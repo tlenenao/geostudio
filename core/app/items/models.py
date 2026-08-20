@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
@@ -10,7 +10,7 @@ from app.db import Base
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Item(Base):
@@ -19,7 +19,9 @@ class Item(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    resource_type: Mapped[str] = mapped_column(String, nullable=False)  # "app" | "dashboard" | "map"
+    resource_type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # "app" | "dashboard" | "map"
     title: Mapped[str] = mapped_column(String, nullable=False)
     abstract: Mapped[str] = mapped_column(String, default="")
     keywords: Mapped[list] = mapped_column(JSON, default=list)

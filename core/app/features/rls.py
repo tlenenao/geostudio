@@ -10,6 +10,7 @@ la même transaction. Seul l'échec du RESET ROLE sur transaction déjà avorté
 (SQLSTATE 25P02) est avalé, pour laisser remonter l'erreur SQL d'origine.
 Validé à travers PgBouncer pool=transaction par
 scripts/spike_pgbouncer_rls.py."""
+
 from contextlib import contextmanager
 
 from sqlalchemy import text
@@ -19,9 +20,7 @@ from sqlalchemy.orm import Session
 
 @contextmanager
 def rls_scope(session: Session, tenant_id: str):
-    session.execute(
-        text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id}
-    )
+    session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
     session.execute(text("SET LOCAL ROLE gis_rls"))
     try:
         yield

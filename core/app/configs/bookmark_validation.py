@@ -4,6 +4,7 @@ no registry indirection is needed here: appId always refers to an app/dashboard
 item, and app.configs already imports app.items (see routes.py's _require_access),
 so there is no forbidden cross-module dependency to route around (SP-14m §3).
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 

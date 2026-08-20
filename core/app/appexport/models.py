@@ -3,7 +3,8 @@
 autoporté. Mode "static" seul supporté pour l'instant ; "connected" et
 "standalone" (SP-18b/c) réutiliseront la même table (colonne `mode`
 existe déjà, pas de migration à refaire)."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,7 +13,7 @@ from app.db import Base
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AppExportJob(Base):

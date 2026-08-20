@@ -26,7 +26,9 @@ class EmptyCollectionColumn(BaseModel):
     # plus courte possible côté nom de colonne ; en pratique une colonne
     # inférée par le wizard ne colle jamais à cette limite.
     name: str = Field(min_length=1, max_length=59)
-    sqlType: Literal["text", "integer", "bigint", "double precision", "boolean", "date", "timestamptz"]
+    sqlType: Literal[
+        "text", "integer", "bigint", "double precision", "boolean", "date", "timestamptz"
+    ]
 
     @field_validator("name")
     @classmethod
@@ -43,7 +45,15 @@ class EmptyCollectionColumn(BaseModel):
 class EmptyCollectionCreate(BaseModel):
     title: str = Field(min_length=1)
     columns: list[EmptyCollectionColumn] = Field(default_factory=list)
-    geometryType: Literal[
-        "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon",
-    ] | None = None
+    geometryType: (
+        Literal[
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon",
+        ]
+        | None
+    ) = None
     srid: int | None = None

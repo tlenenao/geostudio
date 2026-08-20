@@ -6,6 +6,7 @@ contract: both sit above app.configs). Validators are registered per
 (app.collections for "collection", app.harvest for "arcgis" — SP-14k);
 app.main wires both imports together at startup.
 """
+
 from collections.abc import Callable
 
 from fastapi import HTTPException
@@ -26,7 +27,9 @@ def register_dataset_validator(source: str, validator: DatasetValidator) -> None
 
 
 def _validate_source_pipeline(session: Session, source_pipeline_id: str, *, user: User) -> None:
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=source_pipeline_id)
+    facts = items_repo.get_access_facts(
+        session, tenant_id=user.tenant_id, item_id=source_pipeline_id
+    )
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         # Same message for not-found and not-readable: don't leak pipeline
         # existence, same convention as app.configs.alert_validation.

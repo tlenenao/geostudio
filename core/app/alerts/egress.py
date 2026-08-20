@@ -6,6 +6,7 @@ admin-configured, cf. Global Constraints), same threat model as the two
 existing guards. Own CORE_ALERTS_EGRESS_ALLOWLIST env var, distinct from
 CORE_PIPELINES_EGRESS_ALLOWLIST/CORE_HARVEST_EGRESS_ALLOWLIST — same
 duplication rationale as the guard itself."""
+
 import ipaddress
 import logging
 import os

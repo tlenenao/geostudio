@@ -111,7 +111,9 @@ def list_configs_by_kind(session: Session, kind: str) -> list[tuple[str, str, Bu
             # traitement de tous les autres tenants.
             logger.warning(
                 "list_configs_by_kind: config invalide ignorée (item_id=%s, tenant_id=%s, kind=%s)",
-                record.item_id, record.tenant_id, kind,
+                record.item_id,
+                record.tenant_id,
+                kind,
             )
             continue
         result.append((record.item_id, record.tenant_id, config))
@@ -143,7 +145,9 @@ def list_configs_by_kind_and_tenant(
             # planter la requête pour tout le tenant.
             logger.warning(
                 "list_configs_by_kind_and_tenant: config invalide ignorée (item_id=%s, tenant_id=%s, kind=%s)",
-                record.item_id, record.tenant_id, kind,
+                record.item_id,
+                record.tenant_id,
+                kind,
             )
             continue
         result.append((record.item_id, config))
@@ -186,8 +190,9 @@ def rollback_config(
     if record is None:
         return None
     source = session.scalar(
-        select(ConfigRevision)
-        .where(ConfigRevision.config_id == config_id, ConfigRevision.version == version)
+        select(ConfigRevision).where(
+            ConfigRevision.config_id == config_id, ConfigRevision.version == version
+        )
     )
     if source is None:
         return None

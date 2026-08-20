@@ -52,9 +52,7 @@ def get_or_create_user(
 
 
 def set_admin(session: Session, *, tenant_id: str, user_id: str, is_admin: bool) -> User | None:
-    user = session.scalar(
-        select(User).where(User.tenant_id == tenant_id, User.id == user_id)
-    )
+    user = session.scalar(select(User).where(User.tenant_id == tenant_id, User.id == user_id))
     if user is None:
         return None
     user.is_admin = is_admin
@@ -63,9 +61,7 @@ def set_admin(session: Session, *, tenant_id: str, user_id: str, is_admin: bool)
 
 
 def set_analyst(session: Session, *, tenant_id: str, user_id: str, is_analyst: bool) -> User | None:
-    user = session.scalar(
-        select(User).where(User.tenant_id == tenant_id, User.id == user_id)
-    )
+    user = session.scalar(select(User).where(User.tenant_id == tenant_id, User.id == user_id))
     if user is None:
         return None
     user.is_analyst = is_analyst
@@ -75,9 +71,9 @@ def set_analyst(session: Session, *, tenant_id: str, user_id: str, is_analyst: b
 
 def count_admins(session: Session, *, tenant_id: str) -> int:
     return session.scalar(
-        select(func.count()).select_from(User).where(
-            User.tenant_id == tenant_id, User.is_admin.is_(True)
-        )
+        select(func.count())
+        .select_from(User)
+        .where(User.tenant_id == tenant_id, User.is_admin.is_(True))
     )
 
 
@@ -86,7 +82,9 @@ def list_users(
 ) -> tuple[list[User], int]:
     base = select(User).where(User.tenant_id == tenant_id)
     total = session.scalar(select(func.count()).select_from(base.subquery()))
-    users = list(session.scalars(
-        base.order_by(User.username).offset((page - 1) * page_size).limit(page_size)
-    ).all())
+    users = list(
+        session.scalars(
+            base.order_by(User.username).offset((page - 1) * page_size).limit(page_size)
+        ).all()
+    )
     return users, total
