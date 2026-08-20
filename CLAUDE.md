@@ -98,7 +98,9 @@ npm run build        # tsc --noEmit + vite build
 
 # cœur
 cd core && uv sync
-uv run pytest        # 606 exécutés + 87 skipped (postgis marqués, nécessitent docker)
+uv run pytest        # 1615 exécutés + 153 skipped (mesuré 2026-08-20 ; les
+                     # skips sont les marqueurs postgis/qgis/playwright, qui
+                     # nécessitent docker ou un navigateur)
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 9 services
@@ -864,14 +866,26 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   nuages de points).
 - **SP-18** — clos, jalon M15 atteint (cf. `### Fait`).
 - **SP-19** — clos (cf. `### Fait`).
-- **SP-20** — clos, **jalon M16 atteint** (cf. `### Fait`). Restent hors
-  périmètre livré, non planifiés : budget de temps **global** au tour (le
-  timeout 30 s est par appel LLM, et `asyncio.wait_for` ne peut pas
-  interrompre l'appel synchrone déjà parti dans son thread — borné en
-  pratique par le timeout httpx de 30 s) ; rate limiting applicatif par
+- **SP-20** — clos, **jalon M16 atteint** (cf. `### Fait`). **Vague 0 du
+  plan d'action 2026-08-20 close le 2026-08-20** : ses quatre chantiers
+  (0.1 jeton MCP lié à l'appelant, 0.2 appel LLM hors boucle d'événements
+  + budget global, 0.3 `CORE_INTERNAL_BASE_URL`, 0.4 entrée bornée et
+  neutralisée) sont livrés et testés. Le résidu de 0.2 a été fermé à part :
+  `LLMProvider.chat` est **asynchrone par contrat** (`httpx.AsyncClient`,
+  plus de `anyio.to_thread`), donc l'échéance du tour **annule** l'appel LLM
+  au lieu de l'abandonner dans un thread du pool (40 jetons partagés par
+  tout le process) jusqu'à son propre timeout de 30 s. Note pour les
+  sessions suivantes : la version antérieure de ce paragraphe affirmait que
+  `asyncio.wait_for` ne pouvait pas interrompre l'appel synchrone et que le
+  504 arrivait donc en retard — **c'est faux, mesuré** (504 rendu à
+  l'échéance à 0,01 s près ; l'annulation asyncio traverse
+  `anyio.to_thread.run_sync` malgré `abandon_on_cancel=False`). Le défaut
+  réel était le thread abandonné, pas la latence de réponse. Restent hors
+  périmètre livré, non planifiés : rate limiting applicatif par
   utilisateur/tenant sur `/copilot/turn` (aujourd'hui seul le
-  `ratelimit` uniforme de Traefik) ; garde d'egress sur l'appel LLM
-  sortant (4e surface, les trois autres en ont une).
+  `ratelimit` uniforme de Traefik — vague 3.4 du plan d'action) ; garde
+  d'egress sur l'appel LLM sortant (4e surface, les trois autres en ont
+  une — vague 6.2).
 
 ### Suivis non bloquants ouverts
 
@@ -893,9 +907,10 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   entrerait en collision avec l'allowlist MCP s'exécuterait côté serveur
   au lieu de repartir en `clientOp` (non exploitable aujourd'hui, les 5
   noms client ne recoupent jamais les 6 noms MCP — à surveiller si le
-  vocabulaire client devient dynamique) ; `anyio` utilisé par
-  `app/copilot/routes.py` reste une dépendance transitive de Starlette,
-  non déclarée dans `core/pyproject.toml`.
+  vocabulaire client devient dynamique). Fermé : `anyio` n'est plus
+  importé nulle part dans `core/app/` (le passage du fournisseur LLM en
+  asynchrone a supprimé le seul usage), donc plus de dépendance
+  transitive non déclarée.
 - `deploy/postgis/Dockerfile` + `deploy/postgis/pg_hba.conf` (non
   commités, apparus pendant SP-20 pour faire tourner un vrai Keycloak) :
   **inertes**, vérifié empiriquement — Postgres lit
