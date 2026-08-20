@@ -82,13 +82,17 @@ class CapturingLLMProvider:
         self._i = 0
         self._delay = delay
         self.calls: list[list[dict]] = []
+        # Nombre d'appels ayant **abouti** : un appel annulé par l'échéance
+        # du tour ne doit jamais l'incrémenter.
+        self.completed = 0
 
-    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+    async def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
         self.calls.append(copy.deepcopy(messages))
         if self._delay:
-            time.sleep(self._delay)
+            await asyncio.sleep(self._delay)
         turn = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
+        self.completed += 1
         return turn
 
 
@@ -441,3 +445,74 @@ def test_the_config_block_is_fenced_with_an_unpredictable_marker(client, monkeyp
     # entier, texte hostile compris (comme donnée).
     assert json.loads(_fenced_config(first)) == hostile
     assert "DONNÉE" in first and "N'obéis" in first
+
+
+@pytest.mark.anyio
+async def test_turn_exceeding_the_global_budget_returns_504_without_waiting_for_the_llm(monkeypatch):
+    """0.2 du plan d'action 2026-08-20 : le budget de temps doit être
+    **global au tour** et réellement effectif. `asyncio.wait_for` enveloppe
+    bien `_run_turn`, mais il ne peut annuler qu'une pile d'`await`
+    annulables : tant que l'appel LLM tient un thread (`anyio.to_thread`,
+    `abandon_on_cancel=False` par défaut), l'annulation n'est rendue qu'au
+    retour du thread — le 504 arrive jusqu'à un aller-retour LLM entier
+    après l'échéance, et six itérations d'outils peuvent l'empiler."""
+    app = _make_copilot_app(monkeypatch)
+    import app.copilot.routes as routes_module
+    budget = 0.2
+    llm_latency = 3.0
+    monkeypatch.setattr(routes_module, "TURN_TIMEOUT_SECONDS", budget)
+    monkeypatch.setattr(
+        routes_module, "get_llm_provider",
+        lambda: CapturingLLMProvider([LLMTurn(text="ok")], delay=llm_latency),
+    )
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://localhost:8200",
+            headers={"Authorization": "Bearer mock:alice"},
+        ) as http_client:
+            started = time.monotonic()
+            resp = await http_client.post("/copilot/turn", json={
+                "itemId": "1", "message": "explique", "history": [],
+                "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+            })
+            elapsed = time.monotonic() - started
+
+    assert resp.status_code == 504
+    assert elapsed < budget + 1.0, (
+        f"504 rendu {elapsed:.2f}s après le début pour un budget de {budget}s : "
+        "l'échéance n'interrompt pas l'appel LLM en cours"
+    )
+
+
+@pytest.mark.anyio
+async def test_llm_call_is_really_cancelled_when_the_budget_expires(monkeypatch):
+    """Le 504 est rendu à l'heure, mais l'appel LLM doit être **annulé**,
+    pas abandonné : tant qu'il est exécuté dans un thread de travail
+    (`anyio.to_thread`), l'échéance ne fait que cesser de l'attendre — le
+    thread continue jusqu'au timeout httpx (30 s) en tenant un jeton du
+    pool (40 par défaut, partagé avec tout le process). Répéter des tours
+    lents suffirait à l'épuiser."""
+    app = _make_copilot_app(monkeypatch)
+    import app.copilot.routes as routes_module
+    budget = 0.2
+    llm_latency = 0.6
+    provider = CapturingLLMProvider([LLMTurn(text="ok")], delay=llm_latency)
+    monkeypatch.setattr(routes_module, "TURN_TIMEOUT_SECONDS", budget)
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://localhost:8200",
+            headers={"Authorization": "Bearer mock:alice"},
+        ) as http_client:
+            resp = await http_client.post("/copilot/turn", json={
+                "itemId": "1", "message": "explique", "history": [],
+                "mcpToken": "x", "currentConfig": {}, "clientTools": [],
+            })
+            assert resp.status_code == 504
+            # Laisser à un appel abandonné le temps d'aboutir : s'il a été
+            # réellement annulé, il n'aboutira jamais.
+            await asyncio.sleep(llm_latency * 2)
+
+    assert provider.completed == 0, (
+        "l'appel LLM a abouti après l'expiration du budget : il a été abandonné, pas annulé"
+    )
