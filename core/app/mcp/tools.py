@@ -299,10 +299,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
             col = _require_collection_read(session, user=user, collection_id=collectionId)
             try:
                 info = introspect_table(session, col.table_name)
-            except TableNotFound:
-                raise ValueError("collection backing table not found")
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
-                raise ValueError(exc.reason)
+                raise ValueError(exc.reason) from exc
             parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
             try:
                 with rls_scope(session, col.tenant_id):
@@ -315,7 +315,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                         filters=filters or None,
                     )
             except FilterError as exc:
-                raise ValueError(f"unknown filter field: {exc.field}")
+                raise ValueError(f"unknown filter field: {exc.field}") from exc
             return {
                 "type": "FeatureCollection",
                 "features": page.features,
@@ -448,10 +448,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
             col = _require_collection_read(session, user=user, collection_id=collectionId)
             try:
                 info = introspect_table(session, col.table_name)
-            except TableNotFound:
-                raise ValueError("collection backing table not found")
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
-                raise ValueError(exc.reason)
+                raise ValueError(exc.reason) from exc
             schema = table_info_to_schema(info)
             include_form = form_app.can_write_collection(session, user=user, col=col)
             config = form_app.build_config(
@@ -638,10 +638,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 )
                 try:
                     info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
+                except TableNotFound as exc:
+                    raise ValueError("collection backing table not found") from exc
                 except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
+                    raise ValueError(exc.reason) from exc
                 conn = features_routes.get_duckdb_connection_factory()()
                 try:
                     try:
@@ -654,7 +654,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                             request=query,
                         )
                     except UnknownAggregateField as exc:
-                        raise ValueError(f"{exc.field}: {exc.message}")
+                        raise ValueError(f"{exc.field}: {exc.message}") from exc
                 finally:
                     conn.close()
                 return {"categoryKey": category_key, "rows": rows}
@@ -685,14 +685,14 @@ def register_tools(server: FastMCP, session_factory) -> None:
                     bbox=query.bbox,
                 )
             except live_query.ArcgisQueryError as exc:
-                raise ValueError(f"{exc.field}: {exc.message}")
+                raise ValueError(f"{exc.field}: {exc.message}") from exc
             client = harvest_routes.get_arcgis_http_client()
             try:
                 raw = live_query.fetch_query(client, external_url, params)
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
+            except EgressBlockedError as exc:
+                raise ValueError("arcgis service unavailable") from exc
+            except httpx.HTTPError as exc:
+                raise ValueError("arcgis service unavailable") from exc
             finally:
                 client.close()
             category_key, rows = live_query.aggregate_response(
@@ -728,10 +728,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 )
                 try:
                     info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
+                except TableNotFound as exc:
+                    raise ValueError("collection backing table not found") from exc
                 except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
+                    raise ValueError(exc.reason) from exc
                 schema = table_info_to_schema(info)
                 fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
                 return {**base, "fields": fields}
@@ -743,10 +743,10 @@ def register_tools(server: FastMCP, session_factory) -> None:
             try:
                 response = client.get(f"{external_url}?f=json")
                 response.raise_for_status()
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
+            except EgressBlockedError as exc:
+                raise ValueError("arcgis service unavailable") from exc
+            except httpx.HTTPError as exc:
+                raise ValueError("arcgis service unavailable") from exc
             finally:
                 client.close()
             data = response.json()

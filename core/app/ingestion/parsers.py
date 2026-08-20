@@ -118,7 +118,7 @@ def parse_csv_latlon(
         except (TypeError, ValueError):
             raise IngestionParseError(
                 f"ligne {i} : lat/lon invalide ('{row.get(lat_field)}', '{row.get(lon_field)}')"
-            )
+            ) from None
         properties = {k: v for k, v in row.items() if k not in (lat_field, lon_field)}
         yield Point(lon, lat), properties
 

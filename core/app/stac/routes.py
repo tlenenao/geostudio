@@ -142,7 +142,7 @@ def _parse_bbox(raw: str | None):
     try:
         return tuple(float(p) for p in parts)
     except ValueError:
-        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy") from None
 
 
 @router.get("/collections/{collection_id}/items")

@@ -125,7 +125,7 @@ def _parse_bbox(raw: str | None):
                     "message": "bbox must be minx,miny,maxx,maxy",
                 }
             ]
-        )
+        ) from None
 
 
 def _parse_geom_intersects(raw: str | None):
@@ -142,7 +142,7 @@ def _parse_geom_intersects(raw: str | None):
                     "message": "geom_intersects must be a GeoJSON geometry encoded as JSON",
                 }
             ]
-        )
+        ) from None
     if not isinstance(parsed, dict) or "type" not in parsed or "coordinates" not in parsed:
         raise _validation_error(
             [
@@ -208,7 +208,7 @@ def list_features(
     except FilterError as exc:
         raise _validation_error(
             [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
-        )
+        ) from exc
     return {
         "type": "FeatureCollection",
         "features": page.features,
@@ -263,7 +263,7 @@ def aggregate_features(
         except UnknownAggregateField as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_field", "message": exc.message}]
-            )
+            ) from exc
     finally:
         conn.close()
     return {"categoryKey": category_key, "rows": rows}
@@ -309,7 +309,7 @@ def export_collection_aggregate(
         except UnknownAggregateField as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_field", "message": exc.message}]
-            )
+            ) from exc
     finally:
         conn.close()
     content = rows_to_format(rows, format=format)
@@ -381,7 +381,7 @@ def export_collection_items(
         except FilterError as exc:
             raise _validation_error(
                 [{"field": exc.field, "code": "unknown_filter", "message": exc.message}]
-            )
+            ) from exc
         features.extend(page.features)
         if len(features) > EXPORT_ITEMS_CAP:
             raise HTTPException(
@@ -466,7 +466,9 @@ def analytics_sql(
         # the audit row here (this route is otherwise read-only, so the audit is
         # the only pending write). The later rollback is then a harmless no-op.
         session.commit()
-        raise _validation_error([{"field": "sql", "code": "sql_error", "message": str(exc)}])
+        raise _validation_error(
+            [{"field": "sql", "code": "sql_error", "message": str(exc)}]
+        ) from exc
     finally:
         conn.close()
     _sql_queries_counter.add(1, {"outcome": "success"})
@@ -548,8 +550,10 @@ def create_feature(
                 properties=payload.get("properties") or {},
                 geometry=payload.get("geometry"),
             )
-    except IntegrityError:
-        raise HTTPException(status_code=409, detail="feature conflicts with an existing row")
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=409, detail="feature conflicts with an existing row"
+        ) from exc
     session.execute(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},

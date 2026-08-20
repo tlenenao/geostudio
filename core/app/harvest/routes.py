@@ -50,7 +50,7 @@ def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
     try:
         return tuple(float(p) for p in parts)  # type: ignore[return-value]
     except ValueError:
-        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
+        raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy") from None
 
 
 def _resolve_arcgis_dataset(session: Session, *, item_id: str, user: User) -> str:
@@ -312,13 +312,13 @@ def get_dataset_arcgis_items(
             detail={
                 "errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]
             },
-        )
+        ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
-    except EgressBlockedError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except EgressBlockedError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
     finally:
         client.close()
     features = raw.get("features", []) if isinstance(raw, dict) else []
@@ -364,13 +364,13 @@ def get_dataset_arcgis_aggregate(
                     {"field": exc.field, "code": "invalid_aggregate", "message": exc.message}
                 ]
             },
-        )
+        ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
-    except EgressBlockedError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except EgressBlockedError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
     finally:
         client.close()
     category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
@@ -426,13 +426,13 @@ def export_dataset_arcgis_aggregate(
                     {"field": exc.field, "code": "invalid_aggregate", "message": exc.message}
                 ]
             },
-        )
+        ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
-    except EgressBlockedError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+    except EgressBlockedError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
     finally:
         client.close()
     _category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
@@ -523,11 +523,11 @@ def export_dataset_arcgis_items(
             detail={
                 "errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]
             },
-        )
-    except EgressBlockedError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="arcgis service unavailable")
+        ) from exc
+    except EgressBlockedError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc
     finally:
         client.close()
 
