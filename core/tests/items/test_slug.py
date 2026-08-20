@@ -34,13 +34,13 @@ def test_slugify_deterministe(text, expected):
         ("mon-portail", True),
         ("a", True),
         ("a1-b2", True),
-        ("Mon-Portail", False),   # majuscules
+        ("Mon-Portail", False),  # majuscules
         ("-lead", False),
         ("trail-", False),
         ("double--tiret", False),
         ("avec espace", False),
         ("", False),
-        ("a" * 101, False),       # trop long
+        ("a" * 101, False),  # trop long
     ],
 )
 def test_is_valid_slug(slug, valid):

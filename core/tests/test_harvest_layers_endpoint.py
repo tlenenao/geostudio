@@ -19,14 +19,26 @@ def env(monkeypatch):
     Session = make_session_factory(engine)
     with Session() as s:
         from app.tenants.repository import get_or_create_default_tenant
+
         tenant = get_or_create_default_tenant(s)
         admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         regular = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     app = create_app()
@@ -58,45 +70,77 @@ def seed(env):
 
     with Session() as s:
         source = harvest_repo.create_source(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id, type="wms",
-            url="https://ows.example.com/wms", mode="reference",
-            enabled=True, interval_minutes=None,
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            type="wms",
+            url="https://ows.example.com/wms",
+            mode="reference",
+            enabled=True,
+            interval_minutes=None,
         )
 
         # (a) item raster visible : possédé par admin, tiles_url non-null.
         visible_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Ortho visible",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="external",
+            title="Ortho visible",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="a",
-            item_id=visible_item.id, collection_id=None, content_hash=None,
-            tiles_url="https://ows.example.com/wms?layer=ortho", layer_kind="raster",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="a",
+            item_id=visible_item.id,
+            collection_id=None,
+            content_hash=None,
+            tiles_url="https://ows.example.com/wms?layer=ortho",
+            layer_kind="raster",
         )
         seed.visible_raster_item_id = visible_item.id
 
         # (b) record "feature" (référence WFS) sans tiles_url : exclu par tiles_url IS NULL.
         feature_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Couche vecteur",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="external",
+            title="Couche vecteur",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="b",
-            item_id=feature_item.id, collection_id=None, content_hash=None,
-            tiles_url=None, layer_kind="feature",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="b",
+            item_id=feature_item.id,
+            collection_id=None,
+            content_hash=None,
+            tiles_url=None,
+            layer_kind="feature",
         )
         seed.feature_item_id = feature_item.id
 
         # (c) item raster caché : possédé par regular, non publié/non public
         # (valeurs par défaut du modèle) → can(read) refuse l'accès à admin.
         hidden_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=regular.id,
-            resource_type="external", title="Ortho cachée",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=regular.id,
+            resource_type="external",
+            title="Ortho cachée",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="c",
-            item_id=hidden_item.id, collection_id=None, content_hash=None,
-            tiles_url="https://ows.example.com/wms?hidden", layer_kind="raster",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="c",
+            item_id=hidden_item.id,
+            collection_id=None,
+            content_hash=None,
+            tiles_url="https://ows.example.com/wms?hidden",
+            layer_kind="raster",
         )
         seed.hidden_raster_item_id = hidden_item.id
 

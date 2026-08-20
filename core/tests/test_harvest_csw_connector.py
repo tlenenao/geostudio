@@ -196,7 +196,7 @@ def test_records_capped_at_max_within_single_page():
     from app.harvest.connectors.csw import _MAX_CSW_RECORDS
 
     blocks = "".join(
-        f'<gmd:MD_Metadata><gmd:fileIdentifier><gco:CharacterString>iso-{i}</gco:CharacterString></gmd:fileIdentifier></gmd:MD_Metadata>'
+        f"<gmd:MD_Metadata><gmd:fileIdentifier><gco:CharacterString>iso-{i}</gco:CharacterString></gmd:fileIdentifier></gmd:MD_Metadata>"
         for i in range(600)
     )
     page = (
@@ -279,8 +279,13 @@ def test_record_without_identifier_is_skipped():
 
 def test_fetch_copy_geojson_is_none():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=None,
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=None,
     )
     assert CswConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
 

@@ -4,10 +4,12 @@ Revision ID: 0002
 Revises: 0001
 Create Date: 2026-07-05
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "0002"
 down_revision = "0001"
@@ -34,21 +36,21 @@ def upgrade() -> None:
     )
     op.bulk_insert(
         tenants_table,
-        [{
-            "id": DEFAULT_TENANT_ID,
-            "slug": "default",
-            "name": "Default",
-            "created_at": datetime.now(timezone.utc),
-        }],
+        [
+            {
+                "id": DEFAULT_TENANT_ID,
+                "slug": "default",
+                "name": "Default",
+                "created_at": datetime.now(UTC),
+            }
+        ],
     )
 
     for table in ("configs", "config_revisions"):
         op.add_column(table, sa.Column("tenant_id", sa.String(), nullable=True))
         op.execute(f"UPDATE {table} SET tenant_id = '{DEFAULT_TENANT_ID}'")
         op.alter_column(table, "tenant_id", nullable=False)
-        op.create_foreign_key(
-            f"fk_{table}_tenant", table, "tenants", ["tenant_id"], ["id"]
-        )
+        op.create_foreign_key(f"fk_{table}_tenant", table, "tenants", ["tenant_id"], ["id"])
 
 
 def downgrade() -> None:

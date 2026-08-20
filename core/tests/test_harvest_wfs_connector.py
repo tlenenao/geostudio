@@ -31,6 +31,7 @@ WFS_200 = b"""<?xml version="1.0"?>
 def _connector(body: bytes) -> WfsConnector:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=body)
+
     return WfsConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
@@ -48,22 +49,35 @@ def test_feature_type_becomes_vector_record():
 
 
 def _feature(i):
-    return {"type": "Feature", "properties": {"n": i}, "geometry": {"type": "Point", "coordinates": [float(i), 0.0]}}
+    return {
+        "type": "Feature",
+        "properties": {"n": i},
+        "geometry": {"type": "Point", "coordinates": [float(i), 0.0]},
+    }
 
 
 def test_copy_geojson_paginates_via_startindex_count():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{BASE}?service=WFS&request=GetFeature&typeNames=t&outputFormat=application/json",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{BASE}?service=WFS&request=GetFeature&typeNames=t&outputFormat=application/json",
     )
     calls = []
 
     def http_get(url: str) -> httpx.Response:
         calls.append(url)
         if "startIndex=0" in url:
-            return httpx.Response(200, json={"type": "FeatureCollection", "features": [_feature(0), _feature(1)]})
+            return httpx.Response(
+                200, json={"type": "FeatureCollection", "features": [_feature(0), _feature(1)]}
+            )
         if "startIndex=2" in url:
-            return httpx.Response(200, json={"type": "FeatureCollection", "features": [_feature(2)]})
+            return httpx.Response(
+                200, json={"type": "FeatureCollection", "features": [_feature(2)]}
+            )
         return httpx.Response(200, json={"type": "FeatureCollection", "features": []})
 
     content = WfsConnector().fetch_copy_geojson(rec, http_get=http_get)
@@ -74,21 +88,33 @@ def test_copy_geojson_paginates_via_startindex_count():
 
 def test_copy_geojson_none_when_no_items_url():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=None,
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=None,
     )
     assert WfsConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
 
 
 def test_copy_geojson_stops_cleanly_on_malformed_page():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{BASE}?request=GetFeature",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{BASE}?request=GetFeature",
     )
 
     def http_get(url: str) -> httpx.Response:
         if "startIndex=0" in url:
-            return httpx.Response(200, json={"type": "FeatureCollection", "features": [_feature(0)]})
+            return httpx.Response(
+                200, json={"type": "FeatureCollection", "features": [_feature(0)]}
+            )
         return httpx.Response(200, json={"features": "not-a-list"})
 
     fc = json.loads(WfsConnector().fetch_copy_geojson(rec, http_get=http_get))
@@ -99,15 +125,22 @@ def test_copy_geojson_bounded_by_max_pages():
     from app.harvest.connectors.wfs import _MAX_COPY_PAGES
 
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{BASE}?request=GetFeature",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{BASE}?request=GetFeature",
     )
     seen = {"n": 0}
 
     def http_get(url: str) -> httpx.Response:
         seen["n"] += 1
         # Toujours une page pleine → sans borne, boucle infinie.
-        return httpx.Response(200, json={"type": "FeatureCollection", "features": [_feature(0)] * 1000})
+        return httpx.Response(
+            200, json={"type": "FeatureCollection", "features": [_feature(0)] * 1000}
+        )
 
     json.loads(WfsConnector().fetch_copy_geojson(rec, http_get=http_get))
     assert seen["n"] <= _MAX_COPY_PAGES

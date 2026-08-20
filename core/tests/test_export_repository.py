@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db import init_db, make_engine, make_session_factory
 from app.export import repository as export_repo
@@ -17,10 +17,22 @@ def _session():
 def test_create_job_starts_pending():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     assert job.status == "pending"
     assert job.error is None
@@ -33,10 +45,22 @@ def test_create_job_starts_pending():
 def test_mark_running_then_done():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=job.id)
     export_repo.mark_done(session, job_id=job.id, result_key="exports/item-1/x.pdf")
@@ -51,10 +75,22 @@ def test_mark_running_then_done():
 def test_mark_error_never_leaves_status_running():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=job.id)
     export_repo.mark_error(session, job_id=job.id, error="render timeout")
@@ -67,10 +103,22 @@ def test_mark_error_never_leaves_status_running():
 def test_get_job_scoped_to_tenant():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     assert export_repo.get_job(session, tenant_id="other-tenant", job_id=job.id) is None
 
@@ -83,15 +131,27 @@ def test_get_job_scoped_to_tenant():
 def test_reclaim_stuck_jobs_marks_old_running_jobs_as_error():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=job.id)
     # Simule un job démarré il y a 2h (au-delà du seuil par défaut de 60min) —
     # écrase directement started_at, aucun setter public ne permet d'antidater.
-    job.started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    job.started_at = datetime.now(UTC) - timedelta(hours=2)
     session.commit()
 
     reclaimed = export_repo.reclaim_stuck_jobs(session)
@@ -107,10 +167,22 @@ def test_reclaim_stuck_jobs_marks_old_running_jobs_as_error():
 def test_reclaim_stuck_jobs_leaves_recent_running_jobs_alone():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=job.id)  # started_at = maintenant
     session.commit()
@@ -126,34 +198,65 @@ def test_reclaim_stuck_jobs_leaves_recent_running_jobs_alone():
 def test_reclaim_stuck_jobs_ignores_pending_and_done_jobs():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    pending_job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
-    done_job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf")
+    pending_job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    done_job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=done_job.id)
     export_repo.mark_done(session, job_id=done_job.id, result_key="x")
-    done_job.finished_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    done_job.finished_at = datetime.now(UTC) - timedelta(hours=2)
     session.commit()
 
     reclaimed = export_repo.reclaim_stuck_jobs(session)
     session.commit()
 
     assert reclaimed == []
-    assert export_repo.get_job(session, tenant_id=tenant.id, job_id=pending_job.id).status == "pending"
+    assert (
+        export_repo.get_job(session, tenant_id=tenant.id, job_id=pending_job.id).status == "pending"
+    )
     assert export_repo.get_job(session, tenant_id=tenant.id, job_id=done_job.id).status == "done"
 
 
 def test_create_job_accepts_optional_page_id_and_ctx():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
     job = export_repo.create_job(
-        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="pdf",
-        page_id="page-2", ctx="eyJ0aW1lUmFuZ2UiOm51bGx9",
+        session,
+        tenant_id=tenant.id,
+        item_id=item.id,
+        user_id=user.id,
+        format="pdf",
+        page_id="page-2",
+        ctx="eyJ0aW1lUmFuZ2UiOm51bGx9",
     )
     session.commit()
     assert job.page_id == "page-2"
@@ -163,10 +266,22 @@ def test_create_job_accepts_optional_page_id_and_ctx():
 def test_create_job_defaults_page_id_and_ctx_to_none():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     assert job.page_id is None
     assert job.ctx is None
@@ -175,13 +290,25 @@ def test_create_job_defaults_page_id_and_ctx_to_none():
 def test_reclaim_stuck_jobs_respects_custom_threshold():
     session = _session()
     tenant = get_or_create_default_tenant(session)
-    user = get_or_create_user(session, tenant_id=tenant.id, oidc_sub="user-1", username="user1", email="user1@test.com", first_name="User", last_name="One")
-    item = items_repo.create_item(session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App")
+    user = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="user-1",
+        username="user1",
+        email="user1@test.com",
+        first_name="User",
+        last_name="One",
+    )
+    item = items_repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Test App"
+    )
     session.commit()
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
     session.commit()
     export_repo.mark_running(session, job_id=job.id)
-    job.started_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+    job.started_at = datetime.now(UTC) - timedelta(minutes=10)
     session.commit()
 
     # 10 minutes-old running job is NOT stuck under the default 60min

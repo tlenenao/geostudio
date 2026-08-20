@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from sqlalchemy.exc import IntegrityError
 
-from app.db import make_engine, make_session_factory, init_db
+from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
 from app.sharing.models import Group, GroupMember, ItemShare
 from app.tenants.repository import get_or_create_default_tenant
@@ -22,16 +21,29 @@ def session():
 def test_group_member_and_item_share_round_trip(session):
     tenant = get_or_create_default_tenant(session)
     alice = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-1",
-        username="alice", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-1",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     bob = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-2",
-        username="bob", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-2",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = items_repo.create_item(
-        session, tenant_id=tenant.id, owner_id=alice.id,
-        resource_type="app", title="Shared app",
+        session,
+        tenant_id=tenant.id,
+        owner_id=alice.id,
+        resource_type="app",
+        title="Shared app",
     )
 
     group = Group(id="g1", tenant_id=tenant.id, name="Reviewers", created_by=alice.id)
@@ -51,12 +63,20 @@ def test_group_member_and_item_share_round_trip(session):
 def test_item_share_cascades_on_item_delete(session):
     tenant = get_or_create_default_tenant(session)
     alice = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-1",
-        username="alice", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-1",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = items_repo.create_item(
-        session, tenant_id=tenant.id, owner_id=alice.id,
-        resource_type="app", title="Will be deleted",
+        session,
+        tenant_id=tenant.id,
+        owner_id=alice.id,
+        resource_type="app",
+        title="Will be deleted",
     )
     group = Group(id="g1", tenant_id=tenant.id, name="Reviewers", created_by=alice.id)
     session.add(group)
@@ -65,6 +85,7 @@ def test_item_share_cascades_on_item_delete(session):
     session.flush()
 
     from sqlalchemy import delete
+
     from app.items.models import Item
 
     session.execute(delete(Item).where(Item.id == item.id))
@@ -76,11 +97,19 @@ def test_item_share_cascades_on_item_delete(session):
 def test_item_is_public_defaults_false(session):
     tenant = get_or_create_default_tenant(session)
     alice = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="sub-1",
-        username="alice", email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-1",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = items_repo.create_item(
-        session, tenant_id=tenant.id, owner_id=alice.id,
-        resource_type="app", title="X",
+        session,
+        tenant_id=tenant.id,
+        owner_id=alice.id,
+        resource_type="app",
+        title="X",
     )
     assert item.is_public is False

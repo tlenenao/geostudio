@@ -4,13 +4,13 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
 from app.items import routes as items_routes
 from app.items.storage import InMemoryThumbnailStore
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -23,8 +23,13 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email=None, first_name="", last_name="",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         # Repository functions only flush now; commit here to stand in for
         # "a prior successful request that provisioned this tenant/user".
@@ -52,8 +57,11 @@ def _seed_item(client, title="My App") -> str:
     # configId (see plan Architecture — app.items must not import app.configs).
     with client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=client.tenant.id, owner_id=client.user.id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title=title,
         )
         # create_item only flushes now; this block bypasses the request
         # boundary, so commit explicitly to persist the seed row.
@@ -135,8 +143,13 @@ def _other_user(client, username="mallory"):
     with client.session_factory() as session:
         tenant = get_or_create_default_tenant(session)
         user = get_or_create_user(
-            session, tenant_id=tenant.id, oidc_sub=f"sub-{username}",
-            username=username, email=None, first_name="", last_name="",
+            session,
+            tenant_id=tenant.id,
+            oidc_sub=f"sub-{username}",
+            username=username,
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.commit()
         session.refresh(user)
@@ -171,11 +184,15 @@ def test_patch_item_by_group_viewer_returns_403(client):
     item_id = _seed_item(client)
     bob = _other_user(client, "bob")
     with client.session_factory() as session:
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
+        group = Group(
+            id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id
+        )
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
-        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.add(
+            ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer")
+        )
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: bob
@@ -216,7 +233,9 @@ def test_put_then_get_sharing_round_trips(client):
 
     item_id = _seed_item(client)
     with client.session_factory() as session:
-        session.add(Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id))
+        session.add(
+            Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
+        )
         session.commit()
 
     put_response = client.put(
@@ -228,7 +247,8 @@ def test_put_then_get_sharing_round_trips(client):
     get_response = client.get(f"/items/{item_id}/sharing")
     assert get_response.status_code == 200
     assert get_response.json() == {
-        "public": True, "groups": [{"groupId": "g1", "role": "viewer"}],
+        "public": True,
+        "groups": [{"groupId": "g1", "role": "viewer"}],
     }
 
 
@@ -246,7 +266,9 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
 
     item_id = _seed_item(client)
     with client.session_factory() as session:
-        session.add(Group(id="g-real", tenant_id=client.tenant.id, name="Real", created_by=client.user.id))
+        session.add(
+            Group(id="g-real", tenant_id=client.tenant.id, name="Real", created_by=client.user.id)
+        )
         session.commit()
 
     # Establish a known-good baseline sharing state first.
@@ -258,7 +280,13 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
     # Attempt a rejected update mixing one real group with one unknown group.
     rejected = client.put(
         f"/items/{item_id}/sharing",
-        json={"public": False, "groups": [{"groupId": "g-real", "role": "editor"}, {"groupId": "nope", "role": "viewer"}]},
+        json={
+            "public": False,
+            "groups": [
+                {"groupId": "g-real", "role": "editor"},
+                {"groupId": "nope", "role": "viewer"},
+            ],
+        },
     )
     assert rejected.status_code == 404
 
@@ -269,6 +297,7 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
 
 def test_put_sharing_writes_audit_log(client):
     from sqlalchemy import select
+
     from app.audit.models import AuditLog
 
     item_id = _seed_item(client)
@@ -295,11 +324,15 @@ def test_put_sharing_by_group_viewer_returns_403(client):
     item_id = _seed_item(client)
     bob = _other_user(client, "bob")
     with client.session_factory() as session:
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id)
+        group = Group(
+            id="g1", tenant_id=client.tenant.id, name="Reviewers", created_by=client.user.id
+        )
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
-        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.add(
+            ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer")
+        )
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: bob

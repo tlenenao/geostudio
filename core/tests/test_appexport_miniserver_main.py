@@ -15,21 +15,37 @@ def _build_data_dir(tmp_path):
     (data_dir / "geostudio-app-config.json").write_text(json.dumps({"kind": "app"}))
 
     table_info = TableInfo(
-        table_name="t_x", pk_column="id", geometry_column=None, geometry_type=None, srid=4326,
+        table_name="t_x",
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=4326,
         columns=[
             ColumnInfo(name="id", type="integer", required=True),
             ColumnInfo(name="name", type="string", required=False),
         ],
     )
     entry = CollectionSnapshotEntry(
-        id="col1", tenant_id="t1",
+        id="col1",
+        tenant_id="t1",
         collection_json={
-            "id": "col1", "title": "X", "description": "", "tableName": "t_x",
-            "isPublic": True, "editable": False, "geometryType": None, "srid": 4326,
-            "pkColumn": "id", "canWrite": False, "featureCount": 1, "owner": None,
+            "id": "col1",
+            "title": "X",
+            "description": "",
+            "tableName": "t_x",
+            "isPublic": True,
+            "editable": False,
+            "geometryType": None,
+            "srid": 4326,
+            "pkColumn": "id",
+            "canWrite": False,
+            "featureCount": 1,
+            "owner": None,
         },
         schema_json={
-            "collection": "t_x", "pk": "id", "geometry": None,
+            "collection": "t_x",
+            "pk": "id",
+            "geometry": None,
             "fields": [{"name": "name", "type": "string", "required": False}],
         },
         table_info=table_info,
@@ -39,9 +55,20 @@ def _build_data_dir(tmp_path):
     parquet_dir = data_dir / "snapshot" / "tenant_id=t1" / "collection_id=col1" / "dt=snapshot"
     parquet_dir.mkdir(parents=True)
     write_geoparquet(
-        [ChangeRow(op="insert", lsn=0, ts=0.0, pk_column="id", pk_value=1,
-                   columns={"name": "Alpha"}, geometry_column=None, geometry_wkb_hex=None)],
-        srid=4326, path=str(parquet_dir / "data.parquet"),
+        [
+            ChangeRow(
+                op="insert",
+                lsn=0,
+                ts=0.0,
+                pk_column="id",
+                pk_value=1,
+                columns={"name": "Alpha"},
+                geometry_column=None,
+                geometry_wkb_hex=None,
+            )
+        ],
+        srid=4326,
+        path=str(parquet_dir / "data.parquet"),
     )
     return data_dir
 
@@ -55,6 +82,7 @@ def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("APPEXPORT_STANDALONE_RUNTIME_DIR", str(runtime_dir))
 
     import app.appexport.miniserver.main as main_module
+
     importlib.reload(main_module)
     return TestClient(main_module.app)
 

@@ -47,18 +47,39 @@ def env(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="", bootstrap_admin=False,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
         )
         stranger = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="", bootstrap_admin=False,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
         )
-        item = create_item(s, tenant_id=tenant.id, owner_id=owner.id, resource_type="map", title="Carte")
+        item = create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="map", title="Carte"
+        )
         configs_repo.create_config(
             s,
-            BuilderConfig(kind="map", map={"basemap": {"style": "https://x.test/s.json"}, "view": {"center": [0.0, 0.0], "zoom": 2.0}}),
-            item.id, tenant_id=tenant.id,
+            BuilderConfig(
+                kind="map",
+                map={
+                    "basemap": {"style": "https://x.test/s.json"},
+                    "view": {"center": [0.0, 0.0], "zoom": 2.0},
+                },
+            ),
+            item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
 
@@ -90,7 +111,9 @@ def env(monkeypatch):
 def test_post_export_requires_flag_enabled(env, monkeypatch):
     make_client, _owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
-    client, _calls = make_client()  # le flag est lu à la construction (patron pipelines) : re-créer l'app
+    client, _calls = (
+        make_client()
+    )  # le flag est lu à la construction (patron pipelines) : re-créer l'app
     response = client.post("/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 404  # routeur jamais monté quand le flag est off
 

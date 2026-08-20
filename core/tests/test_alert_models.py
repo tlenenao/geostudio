@@ -13,17 +13,31 @@ def test_alert_evaluation_round_trips_through_sqlite():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="High counts",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="alert",
+            title="High counts",
         )
         s.commit()
 
         evaluation = AlertEvaluation(
-            id="eval-1", tenant_id=tenant.id, alert_rule_item_id=item.id,
-            value=150.0, state="firing", transitioned=True, error=None,
+            id="eval-1",
+            tenant_id=tenant.id,
+            alert_rule_item_id=item.id,
+            value=150.0,
+            state="firing",
+            transitioned=True,
+            error=None,
         )
         s.add(evaluation)
         s.commit()

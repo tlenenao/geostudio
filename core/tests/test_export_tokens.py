@@ -11,7 +11,6 @@ from app.auth.export_tokens import (
     mint_export_token,
 )
 
-
 _SECRET = "test-export-secret-padding-01234"  # >=32 bytes: avoids PyJWT's
 # InsecureKeyLengthWarning for HS256, which this repo's pytest config
 # (filterwarnings = ["error", ...], pyproject.toml) promotes to a hard
@@ -57,8 +56,18 @@ def test_decode_rejects_tampered_signature(monkeypatch):
 
 
 def test_decode_rejects_wrong_typ_claim():
-    bad = jwt.encode({"typ": "not-export", "tenant_id": "t1", "user_id": "u1", "job_id": "j1",
-                       "iat": int(time.time()), "exp": int(time.time()) + 60}, _SECRET, algorithm="HS256")
+    bad = jwt.encode(
+        {
+            "typ": "not-export",
+            "tenant_id": "t1",
+            "user_id": "u1",
+            "job_id": "j1",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 60,
+        },
+        _SECRET,
+        algorithm="HS256",
+    )
     with pytest.raises(ExportTokenError):
         decode_export_token(bad)
 

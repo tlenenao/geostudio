@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
 from app.pipelines import repository as repo
-from app.configs import repository as configs_repo
-from app.configs.schemas import BuilderConfig
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -26,11 +26,19 @@ def _make_pipeline_item(session, *, tenant_id):
     # faut un Item réel, pas un identifiant arbitraire, sinon la contrainte
     # FK échoue à l'insertion (PRAGMA foreign_keys=ON, cf. app/db.py).
     user = get_or_create_user(
-        session, tenant_id=tenant_id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant_id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=user.id, resource_type="pipeline",
+        session,
+        tenant_id=tenant_id,
+        owner_id=user.id,
+        resource_type="pipeline",
         title="Pipeline de test",
     )
     return item.id
@@ -41,8 +49,18 @@ def _make_pipeline_config(session, *, tenant_id, item_id, refresh_policy=None):
         "kind": "pipeline",
         "pipeline": {
             "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.collection",
+                    "params": {"collectionId": "villes_propres"},
+                },
             ],
             "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
         },
@@ -99,7 +117,10 @@ def test_list_runs_ordered_most_recent_first():
         second = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
         s.commit()
         runs = repo.list_runs(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
-        assert [r.id for r in runs] == [second.id, first.id] or set(r.id for r in runs) == {first.id, second.id}
+        assert [r.id for r in runs] == [second.id, first.id] or set(r.id for r in runs) == {
+            first.id,
+            second.id,
+        }
 
 
 def test_mark_running_then_succeeded():
@@ -149,15 +170,23 @@ def test_append_node_stat_merges_into_existing_node_stats():
         s.commit()
 
         repo.append_node_stat(
-            s, tenant_id=tenant.id, run_id=run.id, node_id="r1",
+            s,
+            tenant_id=tenant.id,
+            run_id=run.id,
+            node_id="r1",
             stat={"nodeId": "r1", "op": "reader.collection", "rowCount": 3},
         )
         s.commit()
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
-        assert fetched.node_stats == {"r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 3}}
+        assert fetched.node_stats == {
+            "r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 3}
+        }
 
         repo.append_node_stat(
-            s, tenant_id=tenant.id, run_id=run.id, node_id="w1",
+            s,
+            tenant_id=tenant.id,
+            run_id=run.id,
+            node_id="w1",
             stat={"nodeId": "w1", "op": "writer.collection", "rowCount": 3},
         )
         s.commit()
@@ -177,7 +206,11 @@ def test_append_node_stat_scoped_to_tenant():
         run = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
         s.commit()
         repo.append_node_stat(
-            s, tenant_id="other-tenant", run_id=run.id, node_id="r1", stat={"rowCount": 1},
+            s,
+            tenant_id="other-tenant",
+            run_id=run.id,
+            node_id="r1",
+            stat={"rowCount": 1},
         )
         s.commit()
         fetched = repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
@@ -190,7 +223,9 @@ def test_get_latest_run_returns_none_when_no_runs():
         tenant = get_or_create_default_tenant(s)
         pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         s.commit()
-        assert repo.get_latest_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id) is None
+        assert (
+            repo.get_latest_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id) is None
+        )
 
 
 def test_get_latest_run_returns_most_recent():
@@ -215,7 +250,10 @@ def test_get_latest_run_scoped_to_tenant():
         s.commit()
         repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
         s.commit()
-        assert repo.get_latest_run(s, tenant_id="other-tenant", pipeline_item_id=pipeline_item_id) is None
+        assert (
+            repo.get_latest_run(s, tenant_id="other-tenant", pipeline_item_id=pipeline_item_id)
+            is None
+        )
 
 
 def test_list_due_pipelines_excludes_pipelines_without_refresh_policy():
@@ -234,7 +272,9 @@ def test_list_due_pipelines_excludes_disabled_policy():
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             refresh_policy={"enabled": False, "cron": "*/5 * * * *"},
         )
         s.commit()
@@ -247,7 +287,9 @@ def test_list_due_pipelines_includes_never_run_enabled_pipeline():
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
         )
         s.commit()
@@ -260,7 +302,9 @@ def test_list_due_pipelines_excludes_pipeline_not_yet_due():
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             # cron quotidien a 02:00 ; le run le plus récent vient d'avoir
             # lieu -> le prochain tick est dans le futur, jamais dû.
             refresh_policy={"enabled": True, "cron": "0 2 * * *"},
@@ -277,7 +321,9 @@ def test_list_due_pipelines_skips_run_already_in_progress():
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
         )
         s.commit()
@@ -293,7 +339,9 @@ def test_list_due_pipelines_reclaims_stale_running_run():
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
         )
         s.commit()
@@ -309,7 +357,7 @@ def test_list_due_pipelines_reclaims_stale_running_run():
         # long séjour en file" que le fix protège explicitement (cf.
         # test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_queue
         # ci-dessous).
-        stale = datetime.now(timezone.utc) - timedelta(minutes=61)
+        stale = datetime.now(UTC) - timedelta(minutes=61)
         run.created_at = stale
         run.started_at = stale
         s.commit()
@@ -322,7 +370,9 @@ def test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_qu
         tenant = get_or_create_default_tenant(s)
         item_id = _make_pipeline_item(s, tenant_id=tenant.id)
         _make_pipeline_config(
-            s, tenant_id=tenant.id, item_id=item_id,
+            s,
+            tenant_id=tenant.id,
+            item_id=item_id,
             refresh_policy={"enabled": True, "cron": "*/5 * * * *"},
         )
         s.commit()
@@ -331,7 +381,7 @@ def test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_qu
         # avant de démarrer réellement il y a quelques secondes seulement :
         # created_at très ancien, mais started_at (posé par mark_running)
         # est frais -> ne doit PAS être réclamé.
-        run.created_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+        run.created_at = datetime.now(UTC) - timedelta(minutes=61)
         s.commit()
         repo.mark_running(s, run_id=run.id)
         s.commit()

@@ -40,27 +40,46 @@ def _make_app_and_session():
 def _seed(session):
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     app_item = items_repo.create_item(
-        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Dashboard",
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="Dashboard",
     )
     report_item = items_repo.create_item(
-        session, tenant_id=tenant.id, owner_id=user.id, resource_type="report", title="Weekly report",
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="report",
+        title="Weekly report",
     )
-    config = BuilderConfig.model_validate({
-        "kind": "report",
-        "report": {
-            "bookmarkItemId": "bookmark-x",
-            "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-            "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-        },
-    })
+    config = BuilderConfig.model_validate(
+        {
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": "bookmark-x",
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        }
+    )
     configs_repo.create_config(session, config, item_id=report_item.id, tenant_id=tenant.id)
-    job = export_repo.create_job(session, tenant_id=tenant.id, item_id=app_item.id, user_id=user.id, format="pdf")
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=app_item.id, user_id=user.id, format="pdf"
+    )
     export_repo.mark_done(session, job_id=job.id, result_key="renders/job-1.pdf")
-    run = reports_repo.create_run(session, tenant_id=tenant.id, report_item_id=report_item.id, export_job_id=job.id)
+    run = reports_repo.create_run(
+        session, tenant_id=tenant.id, report_item_id=report_item.id, export_job_id=job.id
+    )
     session.commit()
     return tenant, user, report_item.id, run.id
 
@@ -87,8 +106,13 @@ def test_get_report_runs_404s_for_unreadable_report():
     with Session() as s:
         tenant, user, report_id, run_id = _seed(s)
         other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
     app.dependency_overrides[get_current_user] = lambda: other
     client = TestClient(app)
@@ -107,7 +131,10 @@ def test_get_report_runs_reports_failed_trigger_run_as_error():
     with Session() as s:
         tenant, user, report_id, _ = _seed(s)
         reports_repo.create_run(
-            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=None,
+            s,
+            tenant_id=tenant.id,
+            report_item_id=report_id,
+            export_job_id=None,
         )
         s.commit()
     app.dependency_overrides[get_current_user] = lambda: user

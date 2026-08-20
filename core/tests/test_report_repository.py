@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
@@ -29,7 +29,11 @@ def _report_body(cron="*/5 * * * *", enabled=True) -> dict:
 
 def _seed_report(session, *, tenant_id, owner_id, **body_kwargs) -> str:
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="report", title="Report",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="report",
+        title="Report",
     )
     config = BuilderConfig.model_validate(_report_body(**body_kwargs))
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
@@ -41,11 +45,18 @@ def test_create_run_and_get_run_round_trip():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1"
+        )
         s.commit()
 
         fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
@@ -59,12 +70,21 @@ def test_list_runs_orders_most_recent_first():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
-        first = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
-        second = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-2")
+        first = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1"
+        )
+        second = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-2"
+        )
         s.commit()
 
         runs = reports_repo.list_runs(s, tenant_id=tenant.id, report_item_id=report_id)
@@ -76,8 +96,13 @@ def test_get_latest_run_returns_none_when_no_run_exists():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
         assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
@@ -88,11 +113,18 @@ def test_mark_notified_sets_timestamp():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1"
+        )
         s.commit()
 
         reports_repo.mark_notified(s, run_id=run.id)
@@ -107,12 +139,21 @@ def test_list_unnotified_runs_excludes_already_notified():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
-        notified = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
-        pending = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-2")
+        notified = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1"
+        )
+        pending = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-2"
+        )
         s.commit()
         reports_repo.mark_notified(s, run_id=notified.id)
         s.commit()
@@ -126,8 +167,13 @@ def test_list_due_reports_returns_report_with_no_prior_run():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -141,8 +187,13 @@ def test_list_due_reports_ignores_disabled_refresh_policy():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_report(s, tenant_id=tenant.id, owner_id=user.id, enabled=False)
         s.commit()
@@ -155,17 +206,24 @@ def test_list_due_reports_respects_cron_cadence_against_last_run():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         # Every 5 minutes, and the only run just happened — not due yet.
         # NOT "1 minute ago": the next slot of */5 is computed from the last
         # run, so a run backdated by a minute is genuinely due whenever the
         # test straddles a 5-minute boundary — a ~20% flake, observed.
         report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id, cron="*/5 * * * *")
-        run = reports_repo.create_run(s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1")
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id="job-1"
+        )
         s.commit()
-        run.created_at = datetime.now(timezone.utc)
+        run.created_at = datetime.now(UTC)
         s.commit()
 
         assert reports_repo.list_due_reports(s) == []

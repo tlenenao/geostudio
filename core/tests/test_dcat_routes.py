@@ -6,16 +6,21 @@ from app import db
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
-from app.dcat import routes as dcat_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.dcat import routes as dcat_routes
 from app.features import routes as features_routes
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="incidents", pk_column="id", geometry_column="geom",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="titre", type="string", required=True)])
+INFO = TableInfo(
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
+    columns=[ColumnInfo(name="titre", type="string", required=True)],
+)
 
 
 def fake_introspector(session, table_name):
@@ -31,9 +36,16 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="",
-                                   bootstrap_admin=True)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
         s.commit()
     app = create_app()
 
@@ -43,13 +55,14 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = (
-        lambda: lambda session, table: None)
-    app.dependency_overrides[features_routes.get_rls_scope] = (
-        lambda: features_routes.null_rls_scope)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     # ST_EstimatedExtent n'existe pas sur SQLite : stub d'emprise.
-    app.dependency_overrides[dcat_routes.get_bbox_provider] = (
-        lambda: lambda session, info: [1.0, 44.0, 2.0, 45.0])
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: (
+        lambda session, info: [1.0, 44.0, 2.0, 45.0]
+    )
     return app, TestClient(app), admin
 
 
@@ -60,8 +73,10 @@ def _as(app, user):
 
 def _register(app, client, admin, *, public=False, description=""):
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": public,
-                                      "description": description})
+    client.post(
+        "/collections",
+        json={"tableName": "incidents", "isPublic": public, "description": description},
+    )
 
 
 def test_catalog_content_type_and_shape(env):
@@ -94,8 +109,10 @@ def test_dataset_detail_is_self_contained_with_context(env):
     assert resp.headers["content-type"] == "application/ld+json"
     body = resp.json()
     assert body["@context"] == {
-        "dcat": "http://www.w3.org/ns/dcat#", "dct": "http://purl.org/dc/terms/",
-        "foaf": "http://xmlns.com/foaf/0.1/", "locn": "http://www.w3.org/ns/locn#",
+        "dcat": "http://www.w3.org/ns/dcat#",
+        "dct": "http://purl.org/dc/terms/",
+        "foaf": "http://xmlns.com/foaf/0.1/",
+        "locn": "http://www.w3.org/ns/locn#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
     }
     assert body["dct:identifier"] == "incidents"

@@ -2,10 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -17,9 +17,14 @@ def _make_client(*, username: str, oidc_sub: str, bootstrap_admin: bool = False)
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub=oidc_sub,
-            username=username, email=f"{username}@example.com",
-            first_name="Alice", last_name="Doe", bootstrap_admin=bootstrap_admin,
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub=oidc_sub,
+            username=username,
+            email=f"{username}@example.com",
+            first_name="Alice",
+            last_name="Doe",
+            bootstrap_admin=bootstrap_admin,
         )
         setup_session.commit()
 
@@ -58,19 +63,25 @@ def test_tileset3d_config_round_trips(client_env):
     client, Session, tenant, user = client_env
     with Session() as s:
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id,
-            resource_type="tileset3d", title="Bâtiments du centre-ville",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="tileset3d",
+            title="Bâtiments du centre-ville",
         )
         configs_repo.create_config(
             s,
             BuilderConfig(
                 kind="tileset3d",
                 tileset3d=Tileset3DPayload(
-                    sourceKey="tenant-1/abc/city.zip", tilesetJsonPath="tileset.json",
-                    totalBytes=123456789, entryCount=4200,
+                    sourceKey="tenant-1/abc/city.zip",
+                    tilesetJsonPath="tileset.json",
+                    totalBytes=123456789,
+                    entryCount=4200,
                 ),
             ),
-            item_id=item.id, tenant_id=tenant.id,
+            item_id=item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
         item_id = item.id

@@ -2,26 +2,55 @@
 from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
 
 EXPECTED_IDS = {
-    "native:dissolve", "native:simplifygeometries", "native:smoothgeometry",
-    "native:centroids", "native:convexhull", "native:multiparttosingleparts",
-    "native:fixgeometries", "native:deleteholes", "native:extractvertices",
-    "native:pointsalonglines", "native:densifygeometriesgivenaninterval",
-    "native:snapgeometries", "qgis:minimumboundinggeometry",
-    "native:voronoipolygons", "native:delaunaytriangulation",
-    "native:union", "native:difference", "native:symmetricaldifference",
-    "native:clip", "native:mergevectorlayers", "native:splitvectorlayer",
+    "native:dissolve",
+    "native:simplifygeometries",
+    "native:smoothgeometry",
+    "native:centroids",
+    "native:convexhull",
+    "native:multiparttosingleparts",
+    "native:fixgeometries",
+    "native:deleteholes",
+    "native:extractvertices",
+    "native:pointsalonglines",
+    "native:densifygeometriesgivenaninterval",
+    "native:snapgeometries",
+    "qgis:minimumboundinggeometry",
+    "native:voronoipolygons",
+    "native:delaunaytriangulation",
+    "native:union",
+    "native:difference",
+    "native:symmetricaldifference",
+    "native:clip",
+    "native:mergevectorlayers",
+    "native:splitvectorlayer",
     "native:multiringconstantbuffer",
-    "native:joinattributesbylocation", "native:extractbylocation",
-    "native:extractbyattribute", "native:polygonstolines",
-    "native:nearestneighbouranalysis", "native:zonalstatisticsfb",
-    "native:rasterlayerzonalstats", "qgis:heatmapkerneldensityestimation",
-    "native:creategrid", "native:fieldcalculator",
-    "qgis:tininterpolation", "qgis:idwinterpolation",
-    "native:shortestpathpointtopoint", "native:serviceareafrompoint",
-    "native:hillshade", "native:slope", "native:aspect",
-    "gdal:contour", "gdal:polygonize", "gdal:rasterize", "gdal:sieve",
-    "gdal:proximity", "gdal:warpreproject", "gdal:viewshed",
-    "grass7:r.watershed", "grass7:r.slope.aspect", "grass7:r.fill.dir",
+    "native:joinattributesbylocation",
+    "native:extractbylocation",
+    "native:extractbyattribute",
+    "native:polygonstolines",
+    "native:nearestneighbouranalysis",
+    "native:zonalstatisticsfb",
+    "native:rasterlayerzonalstats",
+    "qgis:heatmapkerneldensityestimation",
+    "native:creategrid",
+    "native:fieldcalculator",
+    "qgis:tininterpolation",
+    "qgis:idwinterpolation",
+    "native:shortestpathpointtopoint",
+    "native:serviceareafrompoint",
+    "native:hillshade",
+    "native:slope",
+    "native:aspect",
+    "gdal:contour",
+    "gdal:polygonize",
+    "gdal:rasterize",
+    "gdal:sieve",
+    "gdal:proximity",
+    "gdal:warpreproject",
+    "gdal:viewshed",
+    "grass7:r.watershed",
+    "grass7:r.slope.aspect",
+    "grass7:r.fill.dir",
     "grass7:r.flow",
 }
 
@@ -45,7 +74,8 @@ def test_each_entry_has_name_and_nonempty_parameters():
 
 def test_simplify_required_params_match_spike_findings():
     required = {
-        n for n, p in QGIS_ALGORITHMS["native:simplifygeometries"]["parameters"].items()
+        n
+        for n, p in QGIS_ALGORITHMS["native:simplifygeometries"]["parameters"].items()
         if not p["optional"]
     }
     assert required == {"INPUT", "METHOD", "OUTPUT", "TOLERANCE"}
@@ -53,8 +83,7 @@ def test_simplify_required_params_match_spike_findings():
 
 def test_centroids_required_params_match_spike_findings():
     required = {
-        n for n, p in QGIS_ALGORITHMS["native:centroids"]["parameters"].items()
-        if not p["optional"]
+        n for n, p in QGIS_ALGORITHMS["native:centroids"]["parameters"].items() if not p["optional"]
     }
     assert required == {"ALL_PARTS", "INPUT", "OUTPUT"}
 

@@ -14,7 +14,8 @@ def pg_session(pg_session_factory, pg_engine):
         conn.execute(text("DROP TABLE IF EXISTS t_incidents"))
         conn.execute(text("DROP TYPE IF EXISTS t_gravite"))
         conn.execute(text("CREATE TYPE t_gravite AS ENUM ('faible','moyenne','haute')"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE t_incidents (
                 id serial PRIMARY KEY,
                 titre varchar(200) NOT NULL,
@@ -23,7 +24,8 @@ def pg_session(pg_session_factory, pg_engine):
                 resolu boolean DEFAULT false,
                 payload jsonb,
                 geom geometry(Point, 4326)
-            )"""))
+            )""")
+        )
     with pg_session_factory() as session:
         yield session
     with pg_engine.begin() as conn:
@@ -95,9 +97,12 @@ def test_table_without_pk_refused(pg_session, pg_engine):
 def test_two_geometry_columns_refused(pg_session, pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_twogeom"))
-        conn.execute(text(
-            "CREATE TABLE t_twogeom (id serial PRIMARY KEY, "
-            "g1 geometry(Point,4326), g2 geometry(Point,4326))"))
+        conn.execute(
+            text(
+                "CREATE TABLE t_twogeom (id serial PRIMARY KEY, "
+                "g1 geometry(Point,4326), g2 geometry(Point,4326))"
+            )
+        )
     try:
         with pytest.raises(UnsupportedTable):
             introspect_table(pg_session, "t_twogeom")

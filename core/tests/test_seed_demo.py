@@ -8,7 +8,11 @@ from scripts.seed_demo import seed
 pytestmark = pytest.mark.postgis
 
 _CORE_TABLES_IN_FK_ORDER = (
-    "collection_shares", "collections", "audit_log", "users", "tenants",
+    "collection_shares",
+    "collections",
+    "audit_log",
+    "users",
+    "tenants",
 )
 
 
@@ -35,20 +39,25 @@ def pg_core(pg_engine, pg_session_factory, monkeypatch):
     monkeypatch.setenv("CORE_ADMIN_SUBS", "demo-admin-seed-test")
     Base.metadata.create_all(pg_engine)
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "CREATE TABLE IF NOT EXISTS incidents (id serial PRIMARY KEY, "
-            "titre text NOT NULL, geom geometry(Point, 4326))"))
-        conn.execute(text(
-            "CREATE TABLE IF NOT EXISTS points_interet (id serial PRIMARY KEY, "
-            "nom text NOT NULL, geom geometry(Point, 4326))"))
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS incidents (id serial PRIMARY KEY, "
+                "titre text NOT NULL, geom geometry(Point, 4326))"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS points_interet (id serial PRIMARY KEY, "
+                "nom text NOT NULL, geom geometry(Point, 4326))"
+            )
+        )
         # Table propre au démarrage : l'idempotence du test repose sur l'état
         # du registre, pas sur des lignes laissées par une exécution précédente.
         conn.execute(text("DELETE FROM collections"))
     yield pg_session_factory
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS incidents, points_interet CASCADE"))
-        conn.execute(text(
-            "TRUNCATE TABLE " + ", ".join(_CORE_TABLES_IN_FK_ORDER) + " CASCADE"))
+        conn.execute(text("TRUNCATE TABLE " + ", ".join(_CORE_TABLES_IN_FK_ORDER) + " CASCADE"))
 
 
 def test_seed_registers_demo_collections(pg_core):
@@ -57,10 +66,13 @@ def test_seed_registers_demo_collections(pg_core):
         session.commit()
     assert set(created) == {"incidents", "points_interet"}
     with pg_core() as session:
-        rows = session.execute(text(
-            "SELECT id, is_public, editable, feature_count FROM collections ORDER BY id")).all()
+        rows = session.execute(
+            text("SELECT id, is_public, editable, feature_count FROM collections ORDER BY id")
+        ).all()
     assert [(r[0], r[1], r[2], r[3]) for r in rows] == [
-        ("incidents", True, True, 0), ("points_interet", True, True, 0)]
+        ("incidents", True, True, 0),
+        ("points_interet", True, True, 0),
+    ]
 
 
 def test_seed_is_idempotent(pg_core):
@@ -76,6 +88,5 @@ def test_seed_writes_audit(pg_core):
         seed(session)
         session.commit()
     with pg_core() as session:
-        rows = session.execute(text(
-            "SELECT action, actor_kind FROM audit_log")).all()
+        rows = session.execute(text("SELECT action, actor_kind FROM audit_log")).all()
     assert ("collection.create", "system") in [(r[0], r[1]) for r in rows]

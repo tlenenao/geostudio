@@ -3,6 +3,7 @@ Idempotent — utilisable à chaque démarrage d'environnement de démo.
 
 Usage : DATABASE_URL=postgresql+psycopg://… uv run python -m scripts.seed_demo [--owner alice]
 """
+
 import argparse
 import os
 
@@ -24,21 +25,28 @@ DEMO_TABLES = {"incidents": "Incidents", "points_interet": "Points d'intérêt"}
 
 def _owner(session: Session, tenant_id: str, username: str | None) -> User:
     if username:
-        user = session.scalar(select(User).where(
-            User.tenant_id == tenant_id, User.username == username))
+        user = session.scalar(
+            select(User).where(User.tenant_id == tenant_id, User.username == username)
+        )
         if user is None:
             raise SystemExit(f"owner '{username}' introuvable")
         return user
-    admin = session.scalar(select(User).where(
-        User.tenant_id == tenant_id, User.is_admin.is_(True)))
+    admin = session.scalar(select(User).where(User.tenant_id == tenant_id, User.is_admin.is_(True)))
     if admin:
         return admin
     subs = [s.strip() for s in os.environ.get("CORE_ADMIN_SUBS", "").split(",") if s.strip()]
     if not subs:
         raise SystemExit("aucun admin : définir CORE_ADMIN_SUBS ou passer --owner")
-    return get_or_create_user(session, tenant_id=tenant_id, oidc_sub=subs[0],
-                              username=subs[0], email=None, first_name="", last_name="",
-                              bootstrap_admin=True)
+    return get_or_create_user(
+        session,
+        tenant_id=tenant_id,
+        oidc_sub=subs[0],
+        username=subs[0],
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=True,
+    )
 
 
 def seed(session: Session, owner_username: str | None = None) -> list[str]:
@@ -58,20 +66,31 @@ def seed(session: Session, owner_username: str | None = None) -> list[str]:
             continue
         apply_collection_ddl(session, table)
         t = quote_ident(session, table)
-        feature_count = session.execute(
-            text(f"SELECT count(*) FROM public.{t}")
-        ).scalar_one()
+        feature_count = session.execute(text(f"SELECT count(*) FROM public.{t}")).scalar_one()
         create_collection(
-            session, tenant_id=tenant.id, owner_id=owner.id, table_name=table,
-            title=title, description="Collection de démonstration", is_public=True,
-            pk_column=info.pk_column, geometry_column=info.geometry_column,
-            geometry_type=info.geometry_type, srid=info.srid,
+            session,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            table_name=table,
+            title=title,
+            description="Collection de démonstration",
+            is_public=True,
+            pk_column=info.pk_column,
+            geometry_column=info.geometry_column,
+            geometry_type=info.geometry_type,
+            srid=info.srid,
             feature_count=feature_count,
         )
-        write_audit(session, tenant_id=tenant.id, actor_id=owner.id,
-                    actor_kind="system", action="collection.create",
-                    object_type="collection", object_id=table,
-                    payload={"tableName": table, "seed": True})
+        write_audit(
+            session,
+            tenant_id=tenant.id,
+            actor_id=owner.id,
+            actor_kind="system",
+            action="collection.create",
+            object_type="collection",
+            object_id=table,
+            payload={"tableName": table, "seed": True},
+        )
         created.append(table)
     return created
 

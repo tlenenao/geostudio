@@ -19,14 +19,26 @@ def env(monkeypatch):
     Session = make_session_factory(engine)
     with Session() as s:
         from app.tenants.repository import get_or_create_default_tenant
+
         tenant = get_or_create_default_tenant(s)
         admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         regular = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     app = create_app()
@@ -58,41 +70,73 @@ def seed(env):
 
     with Session() as s:
         source = harvest_repo.create_source(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id, type="arcgis",
-            url="https://gis.example.com/FeatureServer", mode="reference",
-            enabled=True, interval_minutes=None,
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            type="arcgis",
+            url="https://gis.example.com/FeatureServer",
+            mode="reference",
+            enabled=True,
+            interval_minutes=None,
         )
 
         visible_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Bâtiments visibles",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="external",
+            title="Bâtiments visibles",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="a",
-            item_id=visible_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="a",
+            item_id=visible_item.id,
+            collection_id=None,
+            content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/0",
+            layer_kind="feature",
         )
         seed.visible_feature_item_id = visible_item.id
 
         raster_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=admin.id,
-            resource_type="external", title="Ortho",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="external",
+            title="Ortho",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="b",
-            item_id=raster_item.id, collection_id=None, content_hash=None,
-            tiles_url="https://ows.example.com/wms?layer=x", layer_kind="raster",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="b",
+            item_id=raster_item.id,
+            collection_id=None,
+            content_hash=None,
+            tiles_url="https://ows.example.com/wms?layer=x",
+            layer_kind="raster",
         )
         seed.raster_item_id = raster_item.id
 
         hidden_item = items_repo.create_item(
-            s, tenant_id=admin.tenant_id, owner_id=regular.id,
-            resource_type="external", title="Couche cachée",
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=regular.id,
+            resource_type="external",
+            title="Couche cachée",
         )
         harvest_repo.create_record(
-            s, tenant_id=admin.tenant_id, source_id=source.id, external_id="c",
-            item_id=hidden_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/1", layer_kind="feature",
+            s,
+            tenant_id=admin.tenant_id,
+            source_id=source.id,
+            external_id="c",
+            item_id=hidden_item.id,
+            collection_id=None,
+            content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/1",
+            layer_kind="feature",
         )
         seed.hidden_feature_item_id = hidden_item.id
 

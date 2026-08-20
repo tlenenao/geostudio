@@ -20,21 +20,43 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         collection = Collection(
-            id="parcs", tenant_id=tenant.id, owner_id=user.id, table_name="parcs",
-            title="Parcs", pk_column="id", is_public=True, editable=True,
+            id="parcs",
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            table_name="parcs",
+            title="Parcs",
+            pk_column="id",
+            is_public=True,
+            editable=True,
         )
         setup_session.add(collection)
         bob = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
-            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-2",
+            username="bob",
+            email="bob@example.com",
+            first_name="Bob",
+            last_name="Doe",
         )
         private_collection = Collection(
-            id="prives", tenant_id=tenant.id, owner_id=bob.id, table_name="prives",
-            title="Privées", pk_column="id", is_public=False, editable=True,
+            id="prives",
+            tenant_id=tenant.id,
+            owner_id=bob.id,
+            table_name="prives",
+            title="Privées",
+            pk_column="id",
+            is_public=False,
+            editable=True,
         )
         setup_session.add(private_collection)
         setup_session.commit()
@@ -82,7 +104,8 @@ def test_update_dataset_collection_inexistante_rejete(client):
     created = client.post("/configs", json=_dataset_body("parcs"))
     item_id = created.json()["itemId"]
     bad_config = {
-        "version": 1, "kind": "dataset",
+        "version": 1,
+        "kind": "dataset",
         "dataset": {"source": "collection", "collectionId": "inexistante", "columns": {}},
     }
     res = client.put(f"/configs/by-item/{item_id}", json=bad_config)

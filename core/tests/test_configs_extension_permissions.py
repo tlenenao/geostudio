@@ -19,14 +19,25 @@ def client():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="sub-1", username="alice",
-            email="alice@example.com", first_name="Alice", last_name="Doe",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         ext_repo.create_extension(
-            s, tenant_id=tenant.id, owner_id=user.id, id="acme.gauge",
-            tag="gauge-extension-widget", label="Jauge", module_url="https://x/gauge.js",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            id="acme.gauge",
+            tag="gauge-extension-widget",
+            label="Jauge",
+            module_url="https://x/gauge.js",
             props=[{"name": "source", "type": "dataSource", "label": "Source", "default": None}],
-            events=None, actions=None,
+            events=None,
+            actions=None,
             default_size={"w": 2, "h": 2},
             permissions={"collections": ["communes"]},
         )
@@ -49,25 +60,61 @@ def client():
 def _config_body(data_source_layer: str) -> dict:
     return {
         "kind": "app",
-        "dataSources": [{"id": "ds1", "type": "features", "service": "core", "layer": data_source_layer, "query": {}}],
-        "layout": {"type": "grid", "items": [
-            {"widget": "acme.gauge", "x": 0, "y": 0, "w": 2, "h": 2, "props": {"source": "ds1"}},
-        ]},
+        "dataSources": [
+            {
+                "id": "ds1",
+                "type": "features",
+                "service": "core",
+                "layer": data_source_layer,
+                "query": {},
+            }
+        ],
+        "layout": {
+            "type": "grid",
+            "items": [
+                {
+                    "widget": "acme.gauge",
+                    "x": 0,
+                    "y": 0,
+                    "w": 2,
+                    "h": 2,
+                    "props": {"source": "ds1"},
+                },
+            ],
+        },
     }
 
 
 def _config_body_with_pages(data_source_layer: str) -> dict:
     return {
         "kind": "app",
-        "dataSources": [{"id": "ds1", "type": "features", "service": "core", "layer": data_source_layer, "query": {}}],
+        "dataSources": [
+            {
+                "id": "ds1",
+                "type": "features",
+                "service": "core",
+                "layer": data_source_layer,
+                "query": {},
+            }
+        ],
         "layout": {"type": "grid", "items": []},
         "pages": [
             {
                 "id": "page1",
                 "name": "Page 1",
-                "layout": {"type": "grid", "items": [
-                    {"widget": "acme.gauge", "x": 0, "y": 0, "w": 2, "h": 2, "props": {"source": "ds1"}},
-                ]},
+                "layout": {
+                    "type": "grid",
+                    "items": [
+                        {
+                            "widget": "acme.gauge",
+                            "x": 0,
+                            "y": 0,
+                            "w": 2,
+                            "h": 2,
+                            "props": {"source": "ds1"},
+                        },
+                    ],
+                },
             },
         ],
     }
@@ -78,7 +125,9 @@ def test_create_config_rejects_extension_prop_outside_scope_in_pages(client):
     # layout racine a une liste d'items vide) : ce test ne peut passer que
     # si _all_layout_items parcourt bien config.pages, pas seulement
     # config.layout.
-    response = client.post("/configs", json={"title": "App", "config": _config_body_with_pages("incidents")})
+    response = client.post(
+        "/configs", json={"title": "App", "config": _config_body_with_pages("incidents")}
+    )
     assert response.status_code == 400
     assert "acme.gauge" in response.json()["detail"]
 
@@ -105,7 +154,9 @@ def test_create_config_ignores_non_extension_widgets(client):
 
 
 def test_update_config_rejects_extension_prop_outside_scope(client):
-    created = client.post("/configs", json={"title": "App", "config": _config_body("communes")}).json()
+    created = client.post(
+        "/configs", json={"title": "App", "config": _config_body("communes")}
+    ).json()
     response = client.put(f"/configs/{created['id']}", json=_config_body("incidents"))
     assert response.status_code == 400
 
@@ -120,7 +171,9 @@ def test_rollback_restores_a_revision_even_if_it_would_now_violate_a_narrowed_sc
     from app.extensions import repository as ext_repo
 
     # v1 : "communes" est dans le scope déclaré de l'extension au moment de la création.
-    created = client.post("/configs", json={"title": "App", "config": _config_body("communes")}).json()
+    created = client.post(
+        "/configs", json={"title": "App", "config": _config_body("communes")}
+    ).json()
 
     # Un admin resserre ensuite le scope de l'extension : "communes" n'est
     # plus autorisée. On le fait directement en base (pas via l'API

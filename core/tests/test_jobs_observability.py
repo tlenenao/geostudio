@@ -15,7 +15,9 @@ def anyio_backend():
 
 
 def _make_context(*, task_name="app.demo.task", queue="default", job_id=7):
-    job = Job(id=job_id, status="doing", queue=queue, lock=None, queueing_lock=None, task_name=task_name)
+    job = Job(
+        id=job_id, status="doing", queue=queue, lock=None, queueing_lock=None, task_name=task_name
+    )
     return JobContext(app=None, job=job, start_timestamp=0.0, abort_reason=lambda: None)
 
 

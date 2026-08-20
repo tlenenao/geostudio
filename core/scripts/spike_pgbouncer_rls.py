@@ -13,6 +13,7 @@ Usage :
     uv run python -m scripts.spike_pgbouncer_rls
 Sort avec code 0 (PASS) ou 1 (FAIL, assertion affichée).
 """
+
 import os
 import sys
 

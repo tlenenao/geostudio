@@ -18,10 +18,17 @@ from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="villes", pk_column="id", geometry_column="geometry",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="region", type="string", required=True),
-                          ColumnInfo(name="pop", type="integer", required=True)])
+INFO = TableInfo(
+    table_name="villes",
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+    ],
+)
 
 
 def fake_introspector(session, table_name):
@@ -46,27 +53,42 @@ def make_fake_items_repo():
         state["rows"][fid] = {"properties": dict(properties), "geometry": geometry}
         return fid
 
-    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
+    def select_features(
+        session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None
+    ):
         items = sorted(state["rows"].items())
-        page_items = items[offset:offset + limit]
+        page_items = items[offset : offset + limit]
         features = [
             {"type": "Feature", "id": fid, "properties": v["properties"], "geometry": v["geometry"]}
             for fid, v in page_items
         ]
-        return FeaturePage(features=features, number_matched=len(items), number_returned=len(features))
+        return FeaturePage(
+            features=features, number_matched=len(items), number_returned=len(features)
+        )
 
     def get_feature(session, info, *, fid):
         v = state["rows"].get(int(fid))
         if v is None:
             return None
-        return {"type": "Feature", "id": int(fid), "properties": v["properties"], "geometry": v["geometry"]}
+        return {
+            "type": "Feature",
+            "id": int(fid),
+            "properties": v["properties"],
+            "geometry": v["geometry"],
+        }
 
-    return SimpleNamespace(insert_feature=insert_feature, select_features=select_features,
-                           get_feature=get_feature, state=state)
+    return SimpleNamespace(
+        insert_feature=insert_feature,
+        select_features=select_features,
+        get_feature=get_feature,
+        state=state,
+    )
 
 
 def _write_partition(base_dir, *, tenant_id, collection_id, rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-07"
+    partition_dir = (
+        base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-07"
+    )
     partition_dir.mkdir(parents=True, exist_ok=True)
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     gdf.to_parquet(partition_dir / "part-1.parquet")
@@ -79,10 +101,25 @@ def env(tmp_path):
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
         tenant_id = tenant.id
     app = create_app()
@@ -93,20 +130,23 @@ def env(tmp_path):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (lambda session, table: None)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
     fake_items_repo = make_fake_items_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_items_repo
     # SQLite ne connaît pas set_config (GUC PostGIS RLS) : neutraliser le
     # scope, même patron que test_features_routes_read.py.
-    app.dependency_overrides[features_routes.get_rls_scope] = (
-        lambda: features_routes.null_rls_scope)
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
 
     def fake_duckdb_factory():
         conn = duckdb.connect(":memory:")
         conn.execute("INSTALL spatial; LOAD spatial;")
         return conn
 
-    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: fake_duckdb_factory
+    app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: (
+        fake_duckdb_factory
+    )
     app.dependency_overrides[features_routes.get_analytics_base_uri] = lambda: str(tmp_path)
 
     client = TestClient(app)
@@ -124,17 +164,40 @@ def _register(app, client, admin, public=False):
 
 
 def _seed(tmp_path, tenant_id, collection_id):
-    _write_partition(tmp_path, tenant_id=tenant_id, collection_id=collection_id, rows=[
-        {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)},
-        {"id": 2, "region": "Sud", "pop": 5, "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(1, 1)},
-    ])
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=collection_id,
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            },
+            {
+                "id": 2,
+                "region": "Sud",
+                "pop": 5,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(1, 1),
+            },
+        ],
+    )
 
 
 def test_export_aggregate_csv_returns_a_csv_attachment(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
     _seed(tmp_path, tenant_id, col["id"])
-    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region", "agg": "count"})
+    resp = client.post(
+        f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region", "agg": "count"}
+    )
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "text/csv; charset=utf-8"
     assert 'attachment; filename="' in resp.headers["content-disposition"]
@@ -145,9 +208,14 @@ def test_export_aggregate_xlsx_returns_an_xlsx_attachment(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
     _seed(tmp_path, tenant_id, col["id"])
-    resp = client.post(f"/collections/{col['id']}/export?format=xlsx", json={"groupBy": "region", "agg": "count"})
+    resp = client.post(
+        f"/collections/{col['id']}/export?format=xlsx", json={"groupBy": "region", "agg": "count"}
+    )
     assert resp.status_code == 200
-    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert (
+        resp.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 def test_export_aggregate_rejects_unknown_format(env):
@@ -186,6 +254,7 @@ def test_export_aggregate_writes_an_audit_log_row(env):
     client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
     with Session() as s:
         from app.audit.models import AuditLog
+
         rows = s.query(AuditLog).filter_by(action="export.run").all()
     assert len(rows) == 1
     assert rows[0].payload == {"format": "csv", "mode": "aggregate"}
@@ -203,10 +272,14 @@ def test_export_items_geojson_returns_a_feature_collection(env):
     # the items path meaningfully, create features through the normal write
     # route first.
     _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "type": "Feature",
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
+    client.post(
+        f"/collections/{col['id']}/items",
+        json={
+            "type": "Feature",
+            "properties": {"region": "Nord", "pop": 10},
+            "geometry": {"type": "Point", "coordinates": [0, 0]},
+        },
+    )
     resp = client.get(f"/collections/{col['id']}/export/items?format=geojson")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/geo+json"
@@ -220,10 +293,14 @@ def test_export_items_csv_flattens_properties(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
     _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "type": "Feature",
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
+    client.post(
+        f"/collections/{col['id']}/items",
+        json={
+            "type": "Feature",
+            "properties": {"region": "Nord", "pop": 10},
+            "geometry": {"type": "Point", "coordinates": [0, 0]},
+        },
+    )
     resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 200
     assert "Nord" in resp.text
@@ -234,10 +311,14 @@ def test_export_items_gpkg_returns_a_sqlite_container(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
     _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "type": "Feature",
-        "properties": {"region": "Nord", "pop": 10}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
+    client.post(
+        f"/collections/{col['id']}/items",
+        json={
+            "type": "Feature",
+            "properties": {"region": "Nord", "pop": 10},
+            "geometry": {"type": "Point", "coordinates": [0, 0]},
+        },
+    )
     resp = client.get(f"/collections/{col['id']}/export/items?format=gpkg")
     assert resp.status_code == 200
     assert resp.content[:16] == b"SQLite format 3\x00"
@@ -253,16 +334,25 @@ def test_export_items_rejects_unknown_format(env):
 def test_export_items_caps_at_10000_entities(env, monkeypatch):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     import app.features.routes as routes_module
+
     monkeypatch.setattr(routes_module, "EXPORT_ITEMS_CAP", 1)
     col = _register(app, client, admin, public=True)
     _as(app, admin)
-    client.post(f"/collections/{col['id']}/items", json={
-        "type": "Feature",
-        "properties": {"region": "Nord", "pop": 1}, "geometry": {"type": "Point", "coordinates": [0, 0]},
-    })
-    client.post(f"/collections/{col['id']}/items", json={
-        "type": "Feature",
-        "properties": {"region": "Sud", "pop": 2}, "geometry": {"type": "Point", "coordinates": [1, 1]},
-    })
+    client.post(
+        f"/collections/{col['id']}/items",
+        json={
+            "type": "Feature",
+            "properties": {"region": "Nord", "pop": 1},
+            "geometry": {"type": "Point", "coordinates": [0, 0]},
+        },
+    )
+    client.post(
+        f"/collections/{col['id']}/items",
+        json={
+            "type": "Feature",
+            "properties": {"region": "Sud", "pop": 2},
+            "geometry": {"type": "Point", "coordinates": [1, 1]},
+        },
+    )
     resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 413

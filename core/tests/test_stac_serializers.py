@@ -37,9 +37,14 @@ def test_catalog_is_valid_and_links_children():
 
 
 def test_collection_valid_with_bbox_and_temporal():
-    col = s.collection(base=BASE, collection_id="roads", title="Routes",
-                       description="Réseau routier", bbox=[1.0, 44.0, 2.0, 45.0],
-                       temporal_start="2026-07-01T00:00:00Z")
+    col = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="Réseau routier",
+        bbox=[1.0, 44.0, 2.0, 45.0],
+        temporal_start="2026-07-01T00:00:00Z",
+    )
     assert col["type"] == "Collection"
     assert col["license"] == "other"
     assert col["extent"]["spatial"]["bbox"] == [[1.0, 44.0, 2.0, 45.0]]
@@ -52,8 +57,14 @@ def test_collection_valid_with_bbox_and_temporal():
 
 
 def test_collection_without_bbox_falls_back_to_world():
-    col = s.collection(base=BASE, collection_id="empty", title="Vide",
-                       description="", bbox=None, temporal_start=None)
+    col = s.collection(
+        base=BASE,
+        collection_id="empty",
+        title="Vide",
+        description="",
+        bbox=None,
+        temporal_start=None,
+    )
     assert col["extent"]["spatial"]["bbox"] == [[-180.0, -90.0, 180.0, 90.0]]
     assert col["extent"]["temporal"]["interval"] == [[None, None]]
     assert "note" in col
@@ -64,9 +75,12 @@ def test_collection_without_bbox_falls_back_to_world():
 
 
 DT = "2026-07-10T12:00:00Z"
-FEAT = {"type": "Feature", "id": 7,
-        "geometry": {"type": "Point", "coordinates": [1.85, 45.27]},
-        "properties": {"titre": "Nid de poule", "datetime": "OVERRIDE-ME"}}
+FEAT = {
+    "type": "Feature",
+    "id": 7,
+    "geometry": {"type": "Point", "coordinates": [1.85, 45.27]},
+    "properties": {"titre": "Nid de poule", "datetime": "OVERRIDE-ME"},
+}
 
 
 def test_item_valid_with_bbox_and_synthetic_datetime():

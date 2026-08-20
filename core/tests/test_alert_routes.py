@@ -30,28 +30,47 @@ def _setup(monkeypatch, tmp_path):
         # directly through the repository below (same idiom as
         # test_alert_validation.py).
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="mock-sub", username="mockuser",
-            email=None, first_name="Mock", last_name="User",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         dataset_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Dataset",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="Dataset",
         )
         rule_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="High counts",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="alert",
+            title="High counts",
         )
-        config = BuilderConfig.model_validate({
-            "kind": "alert",
-            "alert": {
-                "datasetItemId": dataset_item.id,
-                "query": {"agg": "count"},
-                "condition": {"expr": "value > 100"},
-                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
-                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "alert",
+                "alert": {
+                    "datasetItemId": dataset_item.id,
+                    "query": {"agg": "count"},
+                    "condition": {"expr": "value > 100"},
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
         configs_repo.create_config(s, config, item_id=rule_item.id, tenant_id=tenant.id)
-        evaluation = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_item.id)
-        alerts_repo.mark_evaluated(s, evaluation_id=evaluation.id, value=150.0, state="firing", transitioned=True)
+        evaluation = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=rule_item.id
+        )
+        alerts_repo.mark_evaluated(
+            s, evaluation_id=evaluation.id, value=150.0, state="firing", transitioned=True
+        )
         s.commit()
         dataset_item_id, rule_item_id = dataset_item.id, rule_item.id
     client = TestClient(app)

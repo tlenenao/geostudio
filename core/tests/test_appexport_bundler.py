@@ -8,11 +8,19 @@ from app.configs.schemas import BuilderConfig, Layout, LayoutItem, Page
 
 def _config() -> BuilderConfig:
     return BuilderConfig(
-        kind="app", dataSources=[],
+        kind="app",
+        dataSources=[],
         layout=Layout(type="grid", items=[]),
-        pages=[Page(id="p1", name="Page 1", layout=Layout(
-            type="grid", items=[LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2)],
-        ))],
+        pages=[
+            Page(
+                id="p1",
+                name="Page 1",
+                layout=Layout(
+                    type="grid",
+                    items=[LayoutItem(id="w1", widget="text", x=0, y=0, w=4, h=2)],
+                ),
+            )
+        ],
     )
 
 
@@ -48,7 +56,9 @@ def test_bundle_includes_connection_json_when_provided(tmp_path):
     (runtime_dir / "index.export.html").write_text("<html></html>")
 
     zip_bytes = build_bundle_zip(
-        _config(), runtime_dir=str(runtime_dir), connection={"coreUrl": "https://core.example.org"},
+        _config(),
+        runtime_dir=str(runtime_dir),
+        connection={"coreUrl": "https://core.example.org"},
     )
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:

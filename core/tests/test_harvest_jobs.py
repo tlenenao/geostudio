@@ -2,7 +2,8 @@
 """Bout en bout : run_harvest_task/run_harvest_sweep_task, connecteur
 procrastinate remplacé par InMemoryConnector (même pattern que
 test_ingestion_tasks.py) ; PostGIS réel pour les tables harvest_*/items."""
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import pytest
@@ -20,8 +21,13 @@ from app.users.repository import get_or_create_user
 pytestmark = pytest.mark.postgis
 
 RECORD = HarvestedRecord(
-    external_id="buildings", title="Bâtiments", abstract="", keywords=[],
-    bbox=[-180.0, -90.0, 180.0, 90.0], external_url="https://a", items_url=None,
+    external_id="buildings",
+    title="Bâtiments",
+    abstract="",
+    keywords=[],
+    bbox=[-180.0, -90.0, 180.0, 90.0],
+    external_url="https://a",
+    items_url=None,
 )
 
 
@@ -32,8 +38,13 @@ def env(pg_engine, monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
@@ -42,10 +53,12 @@ def env(pg_engine, monkeypatch):
     with harvest_jobs.app.replace_connector(in_memory) as app:
         yield app, Session, tenant, user
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE harvest_records, harvest_sources, items, configs, "
-            "config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE harvest_records, harvest_sources, items, configs, "
+                "config_revisions, collections, audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_run_harvest_task_harvests_a_reference_source(env, monkeypatch):
@@ -53,8 +66,14 @@ def test_run_harvest_task_harvests_a_reference_source(env, monkeypatch):
     monkeypatch.setattr(service, "get_connector", lambda t: Mock(fetch=Mock(return_value=[RECORD])))
     with Session() as s:
         source = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=user.id, type="stac", url="https://a",
-            mode="reference", enabled=True, interval_minutes=None,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://a",
+            mode="reference",
+            enabled=True,
+            interval_minutes=None,
         )
         s.commit()
         source_id = source.id
@@ -65,7 +84,9 @@ def test_run_harvest_task_harvests_a_reference_source(env, monkeypatch):
     with Session() as s:
         fetched = harvest_repo.get_source(s, tenant_id=tenant.id, source_id=source_id)
         assert fetched.last_status == "ok"
-        rec = harvest_repo.get_record(s, tenant_id=tenant.id, source_id=source_id, external_id="buildings")
+        rec = harvest_repo.get_record(
+            s, tenant_id=tenant.id, source_id=source_id, external_id="buildings"
+        )
         assert rec is not None
 
 
@@ -81,8 +102,14 @@ def test_run_harvest_task_short_circuits_in_read_only_mode(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with Session() as s:
         source = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=user.id, type="stac", url="https://a",
-            mode="reference", enabled=True, interval_minutes=None,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://a",
+            mode="reference",
+            enabled=True,
+            interval_minutes=None,
         )
         s.commit()
         source_id = source.id
@@ -100,14 +127,26 @@ def test_sweep_defers_due_sources_only(env, monkeypatch):
     monkeypatch.setattr(service, "get_connector", lambda t: Mock(fetch=Mock(return_value=[RECORD])))
     with Session() as s:
         due = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=user.id, type="stac", url="https://due",
-            mode="reference", enabled=True, interval_minutes=30,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://due",
+            mode="reference",
+            enabled=True,
+            interval_minutes=30,
         )
         not_due = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=user.id, type="stac", url="https://not-due",
-            mode="reference", enabled=True, interval_minutes=30,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://not-due",
+            mode="reference",
+            enabled=True,
+            interval_minutes=30,
         )
-        not_due.last_run_at = datetime.now(timezone.utc)
+        not_due.last_run_at = datetime.now(UTC)
         s.commit()
         due_id, not_due_id = due.id, not_due.id
 
@@ -116,7 +155,10 @@ def test_sweep_defers_due_sources_only(env, monkeypatch):
 
     with Session() as s:
         assert harvest_repo.get_source(s, tenant_id=tenant.id, source_id=due_id).last_status == "ok"
-        assert harvest_repo.get_source(s, tenant_id=tenant.id, source_id=not_due_id).last_status is None
+        assert (
+            harvest_repo.get_source(s, tenant_id=tenant.id, source_id=not_due_id).last_status
+            is None
+        )
 
 
 def test_sweep_short_circuits_in_read_only_mode(env, monkeypatch):
@@ -125,8 +167,14 @@ def test_sweep_short_circuits_in_read_only_mode(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     with Session() as s:
         due = harvest_repo.create_source(
-            s, tenant_id=tenant.id, owner_id=user.id, type="stac", url="https://due",
-            mode="reference", enabled=True, interval_minutes=30,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://due",
+            mode="reference",
+            enabled=True,
+            interval_minutes=30,
         )
         s.commit()
         due_id = due.id

@@ -11,13 +11,19 @@ SEARCH = f"{PORTAL}/api/3/action/package_search"
 
 
 def _search_response(results, *, count=None):
-    return {"success": True, "result": {"count": count if count is not None else len(results), "results": results}}
+    return {
+        "success": True,
+        "result": {"count": count if count is not None else len(results), "results": results},
+    }
 
 
 def _pkg(**overrides):
     pkg = {
-        "id": "pkg-1", "name": "batiments-ville", "title": "Bâtiments de la ville",
-        "notes": "Empreintes de bâtiments", "tags": [{"name": "bati"}, {"name": "urbain"}],
+        "id": "pkg-1",
+        "name": "batiments-ville",
+        "title": "Bâtiments de la ville",
+        "notes": "Empreintes de bâtiments",
+        "tags": [{"name": "bati"}, {"name": "urbain"}],
         "resources": [],
     }
     pkg.update(overrides)
@@ -49,9 +55,14 @@ def test_single_page_extracts_fields():
 
 def test_title_falls_back_to_name_and_external_url_to_id():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_search_response([
-            _pkg(title=None, name=None, id="pkg-2"),
-        ]))
+        return httpx.Response(
+            200,
+            json=_search_response(
+                [
+                    _pkg(title=None, name=None, id="pkg-2"),
+                ]
+            ),
+        )
 
     rec = list(_connector(handler).fetch(PORTAL))[0]
     assert rec.title == "pkg-2"
@@ -139,7 +150,9 @@ def test_pages_capped_at_max_when_page_barely_advances():
         calls["n"] += 1
         qs = dict(request.url.params)
         start = int(qs["start"])
-        return httpx.Response(200, json=_search_response([_pkg(id=f"p{start}", name=f"p{start}")], count=10_000))
+        return httpx.Response(
+            200, json=_search_response([_pkg(id=f"p{start}", name=f"p{start}")], count=10_000)
+        )
 
     records = list(_connector(handler).fetch(PORTAL))
     assert calls["n"] <= _MAX_CKAN_PAGES
@@ -147,10 +160,21 @@ def test_pages_capped_at_max_when_page_barely_advances():
 
 
 def test_bbox_from_valid_spatial_extra():
-    pkg = _pkg(extras=[{"key": "spatial", "value": json.dumps({
-        "type": "Polygon",
-        "coordinates": [[[1.0, 45.0], [2.0, 45.0], [2.0, 46.0], [1.0, 46.0], [1.0, 45.0]]],
-    })}])
+    pkg = _pkg(
+        extras=[
+            {
+                "key": "spatial",
+                "value": json.dumps(
+                    {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [[1.0, 45.0], [2.0, 45.0], [2.0, 46.0], [1.0, 46.0], [1.0, 45.0]]
+                        ],
+                    }
+                ),
+            }
+        ]
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_search_response([pkg]))
@@ -178,11 +202,13 @@ def test_bbox_defaults_to_world_when_spatial_extra_is_malformed_json():
 
 
 def test_copy_resource_selection_prefers_geojson_over_gpkg_over_shp():
-    pkg = _pkg(resources=[
-        {"format": "SHP", "url": f"{PORTAL}/r/a.zip"},
-        {"format": "GPKG", "url": f"{PORTAL}/r/a.gpkg"},
-        {"format": "GeoJSON", "url": f"{PORTAL}/r/a.geojson"},
-    ])
+    pkg = _pkg(
+        resources=[
+            {"format": "SHP", "url": f"{PORTAL}/r/a.zip"},
+            {"format": "GPKG", "url": f"{PORTAL}/r/a.gpkg"},
+            {"format": "GeoJSON", "url": f"{PORTAL}/r/a.geojson"},
+        ]
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_search_response([pkg]))
@@ -290,8 +316,14 @@ def test_next_page_failure_keeps_partial_results():
 
 def test_fetch_copy_geojson_calls_http_get_on_items_url():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=f"{PORTAL}/r/a.gpkg", copy_filename="harvest.gpkg",
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=f"{PORTAL}/r/a.gpkg",
+        copy_filename="harvest.gpkg",
     )
     calls = []
 
@@ -306,8 +338,13 @@ def test_fetch_copy_geojson_calls_http_get_on_items_url():
 
 def test_fetch_copy_geojson_none_when_no_items_url():
     rec = HarvestedRecord(
-        external_id="x", title="X", abstract="", keywords=[], bbox=[0, 0, 1, 1],
-        external_url="x", items_url=None,
+        external_id="x",
+        title="X",
+        abstract="",
+        keywords=[],
+        bbox=[0, 0, 1, 1],
+        external_url="x",
+        items_url=None,
     )
     assert CkanConnector().fetch_copy_geojson(rec, http_get=lambda u: None) is None
 

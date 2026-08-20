@@ -5,14 +5,14 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.auth.dependency import get_current_user
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.items import repository as repo
+from app.main import create_app
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
-from app.items import repository as repo
 
 
 @pytest.fixture()
@@ -23,8 +23,13 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email=None, first_name="", last_name="",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         setup_session.commit()
 
@@ -132,12 +137,20 @@ def test_leakage_matrix_unpublished_other_tenant_and_default_published(client):
         session.add(other_tenant)
         session.flush()
         bob = get_or_create_user(
-            session, tenant_id="other", oidc_sub="sub-other",
-            username="bob", email=None, first_name="", last_name="",
+            session,
+            tenant_id="other",
+            oidc_sub="sub-other",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
         other_item = repo.create_item(
-            session, tenant_id="other", owner_id=bob.id,
-            resource_type="app", title="Autre tenant",
+            session,
+            tenant_id="other",
+            owner_id=bob.id,
+            resource_type="app",
+            title="Autre tenant",
         )
         other_item.is_published = True
         session.commit()
@@ -161,6 +174,15 @@ def test_never_exposes_a_sensitive_field(client):
     response = client.get("/public/items")
     body = response.json()["items"][0]
     assert set(body.keys()) == {
-        "pk", "resourceType", "slug", "title", "abstract", "owner",
-        "thumbnailUrl", "date", "configId", "isPublished", "keywords",
+        "pk",
+        "resourceType",
+        "slug",
+        "title",
+        "abstract",
+        "owner",
+        "thumbnailUrl",
+        "date",
+        "configId",
+        "isPublished",
+        "keywords",
     }

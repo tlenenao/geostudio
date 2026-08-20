@@ -3,6 +3,7 @@
 pure SQLite, evaluate_alert_task.defer is monkeypatched so this test proves
 "is a rule due, was create_evaluation+defer called correctly", never a real
 evaluation (covered by test_alert_jobs.py, postgis-marked)."""
+
 from app.alerts import jobs as alert_jobs
 from app.alerts import repository as alerts_repo
 from app.configs import repository as configs_repo
@@ -34,7 +35,11 @@ def _alert_body(refresh_policy=None) -> dict:
 
 def _seed_due_rule(session, *, tenant_id, owner_id):
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="alert", title="Rule",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="alert",
+        title="Rule",
     )
     config = BuilderConfig.model_validate(_alert_body())
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
@@ -46,8 +51,13 @@ def test_sweep_defers_evaluate_alert_task_for_a_due_rule(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         rule_id = _seed_due_rule(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -62,7 +72,9 @@ def test_sweep_defers_evaluate_alert_task_for_a_due_rule(monkeypatch):
     assert len(deferred) == 1
     assert deferred[0]["tenant_id"] == tenant.id
     with Session() as s:
-        evaluation = alerts_repo.get_latest_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        evaluation = alerts_repo.get_latest_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=rule_id
+        )
         assert evaluation is not None
         assert evaluation.state == "pending"
         assert evaluation.id == deferred[0]["evaluation_id"]
@@ -85,8 +97,13 @@ def test_sweep_short_circuits_in_read_only_mode(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_rule(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -114,8 +131,13 @@ def test_sweep_commits_evaluation_before_deferring(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_rule(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -125,7 +147,9 @@ def test_sweep_commits_evaluation_before_deferring(monkeypatch, tmp_path):
 
     def fake_defer(**kw):
         with SeparateSession() as s2:
-            evaluation = alerts_repo.get_evaluation(s2, tenant_id=tenant_id, evaluation_id=kw["evaluation_id"])
+            evaluation = alerts_repo.get_evaluation(
+                s2, tenant_id=tenant_id, evaluation_id=kw["evaluation_id"]
+            )
             seen_from_separate_session.append(evaluation is not None)
 
     monkeypatch.setattr(alert_jobs.evaluate_alert_task, "defer", fake_defer)
@@ -152,13 +176,20 @@ def test_previous_terminal_state_skips_stuck_pending_rows_after_reclaim():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         rule_id = _seed_due_rule(s, tenant_id=tenant.id, owner_id=user.id)
 
         old_real = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
-        alerts_repo.mark_evaluated(s, evaluation_id=old_real.id, value=5.0, state="firing", transitioned=True)
+        alerts_repo.mark_evaluated(
+            s, evaluation_id=old_real.id, value=5.0, state="firing", transitioned=True
+        )
 
         stuck = alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
         # stuck stays "pending" — never reached mark_evaluated, as if the
@@ -170,7 +201,9 @@ def test_previous_terminal_state_skips_stuck_pending_rows_after_reclaim():
         history = alerts_repo.list_evaluations(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
         assert [e.id for e in history] == [current.id, stuck.id, old_real.id]  # most-recent-first
 
-        previous_state = alert_jobs._previous_terminal_state(history, current_evaluation_id=current.id)
+        previous_state = alert_jobs._previous_terminal_state(
+            history, current_evaluation_id=current.id
+        )
         assert previous_state == "firing"
 
         # Same formula evaluate_alert_task uses: stable firing -> firing

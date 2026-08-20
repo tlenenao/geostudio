@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -17,9 +16,14 @@ from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="incidents", pk_column="id", geometry_column="geom",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="titre", type="string", required=True)])
+INFO = TableInfo(
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
+    columns=[ColumnInfo(name="titre", type="string", required=True)],
+)
 
 
 def fake_introspector(session, table_name):
@@ -58,9 +62,12 @@ def make_fake_write_repo():
         return None
 
     return SimpleNamespace(
-        insert_feature=insert_feature, replace_feature=replace_feature,
-        delete_feature=delete_feature, select_features=select_features,
-        get_feature=get_feature, state=state,
+        insert_feature=insert_feature,
+        replace_feature=replace_feature,
+        delete_feature=delete_feature,
+        select_features=select_features,
+        get_feature=get_feature,
+        state=state,
     )
 
 
@@ -74,12 +81,25 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="",
-                                   bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r",
-                                     username="regular", email=None,
-                                     first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -89,16 +109,16 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = (
-        lambda: lambda session, table: None)
-    app.dependency_overrides[collections_routes.get_feature_counter] = (
-        lambda: (lambda session, table_name: 0)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
+    app.dependency_overrides[collections_routes.get_feature_counter] = lambda: (
+        lambda session, table_name: 0
     )
     fake_repo = make_fake_write_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_repo
     # SQLite ne connaît ni SET LOCAL ROLE ni set_config : neutraliser le scope.
-    app.dependency_overrides[features_routes.get_rls_scope] = (
-        lambda: features_routes.null_rls_scope)
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     client = TestClient(app)
     return app, client, Session, admin, regular, fake_repo
 
@@ -162,8 +182,9 @@ def test_validation_errors_are_structured_400(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    r = client.post("/collections/incidents/items",
-                    json={"type": "Feature", "properties": {"inconnu": 1}})
+    r = client.post(
+        "/collections/incidents/items", json={"type": "Feature", "properties": {"inconnu": 1}}
+    )
     assert r.status_code == 400
     codes = {(e["field"], e["code"]) for e in r.json()["detail"]["errors"]}
     assert ("inconnu", "unknown_property") in codes and ("titre", "missing_required") in codes
@@ -173,8 +194,9 @@ def test_pk_conflict_is_409(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    r = client.post("/collections/incidents/items",
-                    json={"type": "Feature", "properties": {"titre": "conflit"}})
+    r = client.post(
+        "/collections/incidents/items", json={"type": "Feature", "properties": {"titre": "conflit"}}
+    )
     assert r.status_code == 409
 
 
@@ -199,6 +221,7 @@ def test_writes_are_audited(env):
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
+
     with Session() as s:
         actions = set(s.scalars(select(AuditLog.action)))
     assert {"feature.create", "feature.update", "feature.delete"} <= actions

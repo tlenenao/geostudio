@@ -3,7 +3,11 @@ import httpx
 import pytest
 
 from app.copilot.llm_provider import (
-    FakeLLMProvider, LLMTurn, OpenAICompatibleLLMProvider, ToolCall, get_llm_provider,
+    FakeLLMProvider,
+    LLMTurn,
+    OpenAICompatibleLLMProvider,
+    ToolCall,
+    get_llm_provider,
 )
 
 
@@ -18,17 +22,23 @@ def _provider_on(handler) -> OpenAICompatibleLLMProvider:
     test_copilot_routes.py), donc plus de `httpx.post` module-level à
     remplacer — on injecte le client, même couture que McpLoopbackSession."""
     return OpenAICompatibleLLMProvider(
-        api_url="https://example/v1/chat", api_key="test-key", model="gpt-4o-mini",
+        api_url="https://example/v1/chat",
+        api_key="test-key",
+        model="gpt-4o-mini",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
 
 
 @pytest.mark.anyio
 async def test_fake_provider_returns_scripted_responses_in_order():
-    provider = FakeLLMProvider(responses=[
-        LLMTurn(text="", tool_calls=[ToolCall(id="1", name="search_catalog", arguments={"q": "x"})]),
-        LLMTurn(text="Voici le résultat."),
-    ])
+    provider = FakeLLMProvider(
+        responses=[
+            LLMTurn(
+                text="", tool_calls=[ToolCall(id="1", name="search_catalog", arguments={"q": "x"})]
+            ),
+            LLMTurn(text="Voici le résultat."),
+        ]
+    )
     first = await provider.chat(messages=[], tools=[])
     assert first.tool_calls[0].name == "search_catalog"
     second = await provider.chat(messages=[], tools=[])
@@ -60,21 +70,34 @@ async def test_openai_compatible_provider_parses_tool_calls():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer test-key"
         import json as json_module
+
         assert json_module.loads(request.content)["model"] == "gpt-4o-mini"
-        return httpx.Response(200, json={
-            "choices": [{
-                "message": {
-                    "content": "",
-                    "tool_calls": [{
-                        "id": "call_1",
-                        "function": {"name": "search_catalog", "arguments": '{"q": "incidents"}'},
-                    }],
-                },
-            }],
-        })
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "function": {
+                                        "name": "search_catalog",
+                                        "arguments": '{"q": "incidents"}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+        )
 
     turn = await _provider_on(handler).chat(messages=[{"role": "user", "content": "hi"}], tools=[])
-    assert turn.tool_calls == [ToolCall(id="call_1", name="search_catalog", arguments={"q": "incidents"})]
+    assert turn.tool_calls == [
+        ToolCall(id="call_1", name="search_catalog", arguments={"q": "incidents"})
+    ]
 
 
 @pytest.mark.anyio
@@ -119,4 +142,8 @@ async def test_openai_compatible_provider_tolerates_tools_without_description_or
     await _provider_on(handler).chat(messages=[], tools=[{"name": "addWidget"}])
 
     tool = captured["payload"]["tools"][0]["function"]
-    assert tool == {"name": "addWidget", "description": "", "parameters": {"type": "object", "properties": {}}}
+    assert tool == {
+        "name": "addWidget",
+        "description": "",
+        "parameters": {"type": "object", "properties": {}},
+    }

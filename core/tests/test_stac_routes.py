@@ -16,9 +16,14 @@ from app.stac import routes as stac_routes
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="incidents", pk_column="id", geometry_column="geom",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="titre", type="string", required=True)])
+INFO = TableInfo(
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
+    columns=[ColumnInfo(name="titre", type="string", required=True)],
+)
 
 
 def fake_introspector(session, table_name):
@@ -34,9 +39,16 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="",
-                                   bootstrap_admin=True)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
         s.commit()
     app = create_app()
 
@@ -46,13 +58,14 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = (
-        lambda: lambda session, table: None)
-    app.dependency_overrides[features_routes.get_rls_scope] = (
-        lambda: features_routes.null_rls_scope)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     # ST_EstimatedExtent n'existe pas sur SQLite : stub d'emprise.
-    app.dependency_overrides[stac_routes.get_bbox_provider] = (
-        lambda: lambda session, info: [1.0, 44.0, 2.0, 45.0])
+    app.dependency_overrides[stac_routes.get_bbox_provider] = lambda: (
+        lambda session, info: [1.0, 44.0, 2.0, 45.0]
+    )
     return app, TestClient(app), admin
 
 
@@ -108,9 +121,12 @@ def test_anonymous_lists_public_only(env):
     assert client.get("/stac/collections").json()["collections"] == []
 
 
-FEAT = {"type": "Feature", "id": 1,
-        "geometry": {"type": "Point", "coordinates": [1.0, 44.0]},
-        "properties": {"titre": "a"}}
+FEAT = {
+    "type": "Feature",
+    "id": 1,
+    "geometry": {"type": "Point", "coordinates": [1.0, 44.0]},
+    "properties": {"titre": "a"},
+}
 
 
 def make_fake_repo(matched=3):

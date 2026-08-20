@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
 
 import numpy as np
 import pytest
@@ -7,7 +6,7 @@ import rasterio
 from rasterio.transform import from_origin
 
 from app.configs import repository as configs_repo
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory
 from app.items import repository as items_repo
 from app.tenants.repository import get_or_create_default_tenant
 from app.terrain3d import jobs as terrain3d_jobs
@@ -28,8 +27,13 @@ def _write_test_geotiff_bytes() -> bytes:
     transform = from_origin(2.0, 45.0, 0.001, 0.001)
     with rasterio.io.MemoryFile() as mem:
         with mem.open(
-            driver="GTiff", width=64, height=64, count=1, dtype="float32",
-            crs="EPSG:4326", transform=transform,
+            driver="GTiff",
+            width=64,
+            height=64,
+            count=1,
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=transform,
         ) as dst:
             dst.write(data, 1)
         buf.write(mem.read())
@@ -88,8 +92,13 @@ def env(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     return Session, tenant, alice
@@ -98,8 +107,12 @@ def env(monkeypatch, tmp_path):
 def _make_job(Session, tenant, alice, *, source_key: str, title: str = "Relief"):
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id,
-            source_key=source_key, filename="dem.tif", title=title,
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key=source_key,
+            filename="dem.tif",
+            title=title,
         )
         s.commit()
         return job.id
@@ -176,10 +189,14 @@ def test_convert_cleans_up_scratch_files_on_success_and_failure(env, monkeypatch
 def test_convert_missing_job_is_a_noop(env, monkeypatch):
     Session, tenant, _alice = env
     monkeypatch.setattr(terrain3d_jobs, "_session_factory", lambda: Session)
-    terrain3d_jobs.convert_terrain3d_task(job_id="does-not-exist", tenant_id=tenant.id)  # must not raise
+    terrain3d_jobs.convert_terrain3d_task(
+        job_id="does-not-exist", tenant_id=tenant.id
+    )  # must not raise
 
 
-def test_convert_marks_error_and_cleans_scratch_when_s3_client_creation_fails(env, monkeypatch, tmp_path):
+def test_convert_marks_error_and_cleans_scratch_when_s3_client_creation_fails(
+    env, monkeypatch, tmp_path
+):
     # Finding 1: s3_client_from_env()/_terrain3d_bucket() used to run before
     # the try/finally — a KeyError from a missing S3 env var would propagate
     # straight out of the task, leaving the job stuck "converting" and the
@@ -223,8 +240,12 @@ def test_purge_raw_upload_never_raises_when_audit_write_fails(env, monkeypatch):
 
     # Must not raise despite delete_object succeeding and write_audit failing.
     terrain3d_jobs._purge_raw_upload(
-        fake_s3, bucket=BUCKET, source_key=f"{tenant.id}/x/dem.tif",
-        tenant_id=tenant.id, job_id=job_id, session_factory=Session,
+        fake_s3,
+        bucket=BUCKET,
+        source_key=f"{tenant.id}/x/dem.tif",
+        tenant_id=tenant.id,
+        job_id=job_id,
+        session_factory=Session,
     )
 
     assert (BUCKET, f"{tenant.id}/x/dem.tif") not in fake_s3.objects  # delete still happened
@@ -240,7 +261,8 @@ def test_convert_rejects_upload_over_max_bytes_without_downloading(env, monkeypa
     monkeypatch.setattr(terrain3d_jobs, "_max_upload_bytes", lambda: 1)
     download_calls = []
     monkeypatch.setattr(
-        terrain3d_jobs, "download_to_file",
+        terrain3d_jobs,
+        "download_to_file",
         lambda *a, **k: download_calls.append((a, k)),
     )
 

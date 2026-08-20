@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 
 
 def test_schema_http_endpoint_returns_builder_config_json_schema(monkeypatch):

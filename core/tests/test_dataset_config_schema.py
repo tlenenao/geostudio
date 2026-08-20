@@ -49,7 +49,8 @@ def test_dataset_config_time_field_and_reacts_to_extent_default():
 
 def test_dataset_config_arcgis_source_valide():
     body = {
-        "version": 1, "kind": "dataset",
+        "version": 1,
+        "kind": "dataset",
         "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "columns": {}},
     }
     config = BuilderConfig.model_validate(body)
@@ -72,8 +73,14 @@ def test_dataset_config_arcgis_source_sans_arcgis_item_id_rejete():
 
 def test_dataset_config_arcgis_source_avec_collection_id_rejete():
     body = {
-        "version": 1, "kind": "dataset",
-        "dataset": {"source": "arcgis", "arcgisItemId": "item-1", "collectionId": "parcs", "columns": {}},
+        "version": 1,
+        "kind": "dataset",
+        "dataset": {
+            "source": "arcgis",
+            "arcgisItemId": "item-1",
+            "collectionId": "parcs",
+            "columns": {},
+        },
     }
     with pytest.raises(ValidationError):
         BuilderConfig.model_validate(body)
@@ -87,7 +94,12 @@ def test_dataset_config_cross_filter_links_default_empty():
 def test_dataset_config_attribute_cross_filter_link():
     body = _dataset_body()
     body["dataset"]["crossFilterLinks"] = [
-        {"mode": "attribute", "targetDatasetId": "ds-2", "sourceField": "commune", "targetField": "nom_commune"},
+        {
+            "mode": "attribute",
+            "targetDatasetId": "ds-2",
+            "sourceField": "commune",
+            "targetField": "nom_commune",
+        },
     ]
     config = BuilderConfig.model_validate(body)
     link = config.dataset.crossFilterLinks[0]

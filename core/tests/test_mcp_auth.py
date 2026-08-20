@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
 
+import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-import jwt
 
 from app.mcp import auth as mcp_auth
 
@@ -27,7 +26,13 @@ def rsa_keypair():
     return private_key, private_key.public_key()
 
 
-def _make_token(private_key, *, audience="geostudio-mcp", issuer="https://keycloak.example/realms/geostudio", **claims):
+def _make_token(
+    private_key,
+    *,
+    audience="geostudio-mcp",
+    issuer="https://keycloak.example/realms/geostudio",
+    **claims,
+):
     payload = {"sub": "sub-123", "aud": audience, "iss": issuer, **claims}
     return jwt.encode(payload, private_key, algorithm="RS256")
 

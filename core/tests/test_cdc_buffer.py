@@ -4,8 +4,16 @@ from app.cdc.parquet_writer import ChangeRow
 
 
 def _row(lsn: int) -> ChangeRow:
-    return ChangeRow(op="insert", lsn=lsn, ts=0.0, pk_column="id", pk_value=lsn,
-                      columns={"id": lsn}, geometry_column=None, geometry_wkb_hex=None)
+    return ChangeRow(
+        op="insert",
+        lsn=lsn,
+        ts=0.0,
+        pk_column="id",
+        pk_value=lsn,
+        columns={"id": lsn},
+        geometry_column=None,
+        geometry_wkb_hex=None,
+    )
 
 
 def test_flush_due_on_row_count_threshold():

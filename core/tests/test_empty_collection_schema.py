@@ -12,7 +12,8 @@ def test_accepts_a_valid_payload_with_known_sql_types():
             EmptyCollectionColumn(name="commune", sqlType="text"),
             EmptyCollectionColumn(name="total", sqlType="integer"),
         ],
-        geometryType="Point", srid=4326,
+        geometryType="Point",
+        srid=4326,
     )
     assert payload.columns[0].sqlType == "text"
 

@@ -12,8 +12,10 @@ Revision ID: 0024
 Revises: 0023
 Create Date: 2026-08-09
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0024"
 down_revision = "0023"
@@ -23,11 +25,17 @@ depends_on = None
 
 def upgrade() -> None:
     op.alter_column(
-        "report_runs", "export_job_id", existing_type=sa.String(), nullable=True,
+        "report_runs",
+        "export_job_id",
+        existing_type=sa.String(),
+        nullable=True,
     )
 
 
 def downgrade() -> None:
     op.alter_column(
-        "report_runs", "export_job_id", existing_type=sa.String(), nullable=False,
+        "report_runs",
+        "export_job_id",
+        existing_type=sa.String(),
+        nullable=False,
     )

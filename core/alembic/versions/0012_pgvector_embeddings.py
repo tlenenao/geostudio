@@ -5,9 +5,11 @@ Revision ID: 0012
 Revises: 0011
 Create Date: 2026-07-13
 """
+
 import sqlalchemy as sa
-from alembic import op
 from pgvector.sqlalchemy import Vector
+
+from alembic import op
 
 revision = "0012"
 down_revision = "0011"
@@ -27,8 +29,7 @@ def upgrade() -> None:
     op.add_column("collections", sa.Column("embedding", Vector(1536), nullable=True))
 
     op.execute(
-        "CREATE INDEX ix_items_trgm ON items "
-        "USING gin ((title || ' ' || abstract) gin_trgm_ops)"
+        "CREATE INDEX ix_items_trgm ON items USING gin ((title || ' ' || abstract) gin_trgm_ops)"
     )
     op.execute(
         "CREATE INDEX ix_collections_trgm ON collections "

@@ -22,8 +22,15 @@ def _write_test_geotiff(path: str, *, width: int = 1024, height: int = 1024) -> 
     # comportement testé ici (conversion COG d'un raster valide).
     transform = from_origin(2.0, 45.0, 0.001, 0.001)
     with rasterio.open(
-        path, "w", driver="GTiff", width=width, height=height, count=1,
-        dtype="float32", crs="EPSG:4326", transform=transform,
+        path,
+        "w",
+        driver="GTiff",
+        width=width,
+        height=height,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
     ) as dst:
         dst.write(data, 1)
 
@@ -56,7 +63,13 @@ def test_convert_to_cog_rejects_a_raster_without_a_crs(tmp_path):
     dst = tmp_path / "cog.tif"
     data = np.zeros((8, 8), dtype="float32")
     with rasterio.open(
-        src, "w", driver="GTiff", width=8, height=8, count=1, dtype="float32",
+        src,
+        "w",
+        driver="GTiff",
+        width=8,
+        height=8,
+        count=1,
+        dtype="float32",
     ) as ds:  # no crs=, no transform=
         ds.write(data, 1)
     with pytest.raises(Terrain3DConversionError, match="CRS"):

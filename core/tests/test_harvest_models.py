@@ -22,19 +22,33 @@ def test_harvest_source_and_record_round_trip():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         source = HarvestSource(
-            id="src-1", tenant_id=tenant.id, owner_id=user.id, type="stac",
-            url="https://example.com/stac", mode="reference", enabled=True,
+            id="src-1",
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            type="stac",
+            url="https://example.com/stac",
+            mode="reference",
+            enabled=True,
             interval_minutes=60,
         )
         s.add(source)
         s.flush()
         record = HarvestRecord(
-            id="rec-1", tenant_id=tenant.id, source_id=source.id,
-            external_id="ext-1", item_id=None, collection_id=None,
+            id="rec-1",
+            tenant_id=tenant.id,
+            source_id=source.id,
+            external_id="ext-1",
+            item_id=None,
+            collection_id=None,
         )
         s.add(record)
         s.commit()

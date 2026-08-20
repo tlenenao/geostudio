@@ -4,8 +4,10 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-07-08
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0006"
 down_revision = "0005"
@@ -28,8 +30,10 @@ def upgrade() -> None:
     op.create_table(
         "group_members",
         sa.Column(
-            "group_id", sa.String(),
-            sa.ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True,
+            "group_id",
+            sa.String(),
+            sa.ForeignKey("groups.id", ondelete="CASCADE"),
+            primary_key=True,
         ),
         sa.Column("user_id", sa.String(), sa.ForeignKey("users.id"), primary_key=True),
         sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
@@ -37,12 +41,16 @@ def upgrade() -> None:
     op.create_table(
         "item_shares",
         sa.Column(
-            "item_id", sa.String(),
-            sa.ForeignKey("items.id", ondelete="CASCADE"), primary_key=True,
+            "item_id",
+            sa.String(),
+            sa.ForeignKey("items.id", ondelete="CASCADE"),
+            primary_key=True,
         ),
         sa.Column(
-            "group_id", sa.String(),
-            sa.ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True,
+            "group_id",
+            sa.String(),
+            sa.ForeignKey("groups.id", ondelete="CASCADE"),
+            primary_key=True,
         ),
         sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("role", sa.String(), nullable=False),

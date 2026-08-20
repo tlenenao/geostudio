@@ -8,6 +8,7 @@ neutralisé la lecture de /app/allowlist.txt (chemin en dur, valide
 seulement à l'intérieur du conteneur qgis-worker) — jamais exercée par les
 tests ci-dessous, tous rejetés par le guard de parsing avant le contrôle
 d'appartenance à l'allowlist."""
+
 import importlib.util
 import sys
 import threading
@@ -71,7 +72,9 @@ def test_do_post_missing_inputs_returns_clean_400(running_worker):
     """A well-formed JSON body missing "inputs" used to raise an unhandled
     KeyError."""
     response = httpx.post(
-        f"{running_worker}/run", json={"algorithmId": "native:centroids"}, timeout=5,
+        f"{running_worker}/run",
+        json={"algorithmId": "native:centroids"},
+        timeout=5,
     )
     assert response.status_code == 400
     assert "error" in response.json()
