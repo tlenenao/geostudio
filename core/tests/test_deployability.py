@@ -107,3 +107,24 @@ def test_every_referenced_ghcr_image_is_released():
     assert not missing, (
         f"images GHCR référencées mais jamais publiées : {missing}."
     )
+
+
+def test_prod_overlay_substitutes_every_build_with_an_image():
+    """L'overlay de production annonce en en-tête servir des « images depuis
+    GHCR (au lieu de build:) ». Tout service construit dans le fichier de
+    base doit donc y être substitué par un `image:`, et l'overlay ne doit
+    pas introduire de `build:` de son cru."""
+    prod = services(PROD)
+    not_substituted = [
+        name for name, service in services(BASE).items()
+        if build_target(service) and not (prod.get(name) or {}).get("image")
+    ]
+    introduced = [name for name, service in prod.items() if build_target(service)]
+    assert not not_substituted, (
+        "services encore construits depuis les sources en production : "
+        f"{not_substituted}. Ajouter `image: ghcr.io/tlenenao/geostudio-"
+        "<nom>:${GEOSTUDIO_VERSION:-latest}` dans docker-compose.prod.yml."
+    )
+    assert not introduced, (
+        f"l'overlay de production introduit lui-même un build: {introduced}."
+    )
