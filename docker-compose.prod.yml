@@ -193,6 +193,8 @@ services:
       S3_THUMBNAILS_BUCKET: geostudio-thumbnails
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
+      S3_TILESET3D_BUCKET: geostudio-tileset3d
+      S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
       BACKUP_HOUR: ${BACKUP_HOUR:-3}

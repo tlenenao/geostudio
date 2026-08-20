@@ -332,3 +332,28 @@ def test_every_compose_substitution_is_documented():
     assert not undocumented, (
         f"substitutions de compose absentes de .env.example : {sorted(undocumented)}."
     )
+
+
+# Buckets volontairement hors sauvegarde, avec la raison. `exports` et
+# `appexports` ne contiennent que des artefacts régénérables : un PDF de
+# rapport ou un bundle d'app se re-demande en un clic.
+BACKUP_EXCLUDED_BUCKETS = {
+    "S3_EXPORTS_BUCKET",
+    "S3_APPEXPORTS_BUCKET",
+}
+
+
+def test_backup_covers_every_bucket_the_core_uses():
+    """Un bucket utilisé par le cœur et absent de la sauvegarde produit le
+    pire mode d'échec possible : après restauration, l'item réapparaît
+    intact en pointant sur une clé S3 disparue — cassé pour toujours, sans
+    erreur au moment de la restauration. Le cas réel est `tileset3d` : un
+    tileset uploadé est un objet S3 jamais extrait, sans autre copie."""
+    used = {v for v in core_env_vars() if v.startswith("S3_") and v.endswith("_BUCKET")}
+    mirrored = set(re.findall(r"\$\{(S3_[A-Z0-9_]*_BUCKET)", BACKUP_SH.read_text()))
+    missing = used - mirrored - BACKUP_EXCLUDED_BUCKETS
+    assert not missing, (
+        f"buckets utilisés par le cœur et jamais sauvegardés : {sorted(missing)}. "
+        "Les ajouter à la boucle de miroir de deploy/backup/backup.sh, ou à "
+        "BACKUP_EXCLUDED_BUCKETS avec la raison écrite."
+    )
