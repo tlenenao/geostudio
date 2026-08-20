@@ -75,8 +75,15 @@ def is_copilot_enabled() -> bool:
     booléen dédié : le copilote est actif dès qu'un fournisseur LLM est
     configuré, quelle que soit sa valeur (CORE_LLM_PROVIDER=openai, ou
     toute chaîne non vide). Lue à chaque appel, sans cache, même
-    convention que is_read_only_mode ci-dessus."""
-    return bool(os.environ.get("CORE_LLM_PROVIDER"))
+    convention que is_read_only_mode ci-dessus.
+
+    Éteint en mode démo lecture-seule (I6 de la revue de projet
+    2026-08-20) : les écritures y sont déjà bloquées par les outils MCP,
+    mais chaque tour consomme jusqu'à 6 appels LLM payés par l'opérateur —
+    un visiteur anonyme pouvait donc brûler son budget d'API. Renvoyer
+    False ici coupe d'un coup le montage du routeur (main.py) et le
+    panneau côté shell (copilotEnabled sur GET /instance)."""
+    return bool(os.environ.get("CORE_LLM_PROVIDER")) and not is_read_only_mode()
 
 
 def admin_subs() -> set[str]:
