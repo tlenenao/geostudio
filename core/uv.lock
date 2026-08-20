@@ -562,6 +562,7 @@ dev = [
     { name = "pyshacl" },
     { name = "pytest" },
     { name = "pytest-httpserver" },
+    { name = "pyyaml" },
     { name = "rdflib" },
     { name = "stac-pydantic" },
 ]
@@ -612,6 +613,7 @@ dev = [
     { name = "pyshacl", specifier = ">=0.25" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-httpserver", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rdflib", specifier = ">=7.0" },
     { name = "stac-pydantic", specifier = ">=3.1" },
 ]
