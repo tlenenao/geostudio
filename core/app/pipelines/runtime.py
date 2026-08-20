@@ -579,7 +579,7 @@ def preview_pipeline(
             f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
         ).fetchall()
         cols = [d[0] for d in conn.description]
-        result = [dict(zip(cols, r)) for r in rows]
+        result = [dict(zip(cols, r, strict=True)) for r in rows]
         if has_geometry:
             # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
             # décode en objet pour que la réponse HTTP porte une géométrie
@@ -632,7 +632,7 @@ def _write_collection(
         if p.mode == "replace":
             deleted = delete_all_features(session, info)
         for raw in rows:
-            row = dict(zip(cols, raw))
+            row = dict(zip(cols, raw, strict=True))
             geometry = (
                 json.loads(row.pop("geometry"))
                 if has_geometry and row.get("geometry") is not None
@@ -804,7 +804,7 @@ def _write_export(
     else:
         features = []
         for row in rows:
-            properties = dict(zip(columns, row))
+            properties = dict(zip(columns, row, strict=True))
             # La géométrie ne doit apparaître qu'au niveau "geometry" du
             # Feature, jamais dupliquée dans "properties" (même contrat que
             # _write_collection).

@@ -71,7 +71,7 @@ def _row_to_feature(info: TableInfo, row: dict) -> dict:
 def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
     result = conn.execute(sql, params).fetchall()
     cols = [d[0] for d in conn.description]
-    return [dict(zip(cols, r)) for r in result]
+    return [dict(zip(cols, r, strict=True)) for r in result]
 
 
 def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, list]:

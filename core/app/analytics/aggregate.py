@@ -290,7 +290,7 @@ def _has_any_file(conn, base_uri: str, tenant_id: str, collection_id: str) -> bo
 def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
     result = conn.execute(sql, params).fetchall()
     cols = [d[0] for d in conn.description]
-    return [dict(zip(cols, r)) for r in result]
+    return [dict(zip(cols, r, strict=True)) for r in result]
 
 
 def run_collection_aggregate(

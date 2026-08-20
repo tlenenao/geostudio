@@ -59,7 +59,9 @@ def _synthetic_gpkg_bytes(tmp_path) -> bytes:
     rng = np.random.default_rng(42)
     lons = rng.uniform(-5.0, 9.0, N_FEATURES)
     lats = rng.uniform(41.0, 51.0, N_FEATURES)
-    geometry = shapely.to_wkb(np.array([Point(x, y) for x, y in zip(lons, lats)], dtype=object))
+    geometry = shapely.to_wkb(
+        np.array([Point(x, y) for x, y in zip(lons, lats, strict=True)], dtype=object)
+    )
     path = tmp_path / "big.gpkg"
     pyogrio_write(
         str(path),

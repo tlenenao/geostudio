@@ -60,7 +60,7 @@ def _read_all_current(client, keys: list[str]) -> list[tuple]:
         return []
     current = all_rows.sort_values("_lsn").groupby("id").tail(1)
     current = current[current["_op"] != "delete"]
-    return sorted(zip(current["id"], current["titre"]))
+    return sorted(zip(current["id"], current["titre"], strict=True))
 
 
 PARTITION = "cdc/tenant_id=t1/collection_id=c1/dt=2026-07-18/"
