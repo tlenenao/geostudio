@@ -125,6 +125,22 @@ extend-exclude = ["tests/test_deployability.py"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# B008 (function-call-in-default-argument) faux-positif documenté sur le
+# patron d'injection de dépendances FastAPI (`def route(x = Depends(get_x))`)
+# — ces appels sont volontairement évalués à chaque requête, ce n'est pas un
+# défaut mutable partagé comme le suppose B008. Liste vérifiée par grep
+# (2026-08-20) contre les usages réels de core/ : seuls Depends/Query/Header/
+# File sont utilisés en position de défaut d'argument ; Body/Path/Cookie/Form/
+# Security n'apparaissent nulle part sous cette forme (et les occurrences de
+# `Path(` trouvées sont toutes `pathlib.Path`, pas `fastapi.Path`).
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.File",
+]
+
 [tool.importlinter]
 root_package = "app"
 
