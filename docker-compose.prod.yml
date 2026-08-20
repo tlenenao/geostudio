@@ -82,6 +82,11 @@ services:
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
       CORE_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
+      # Rappelé explicitement ici : c'est cet overlay qui donne à
+      # CORE_BASE_URL une valeur que le conteneur ne peut pas s'appeler
+      # lui-même (TLS + hôte public). Le rappel /mcp du copilote (SP-20)
+      # doit rester local au process.
+      CORE_INTERNAL_BASE_URL: http://localhost:8200
     labels: !override
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/api`)

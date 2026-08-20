@@ -35,6 +35,28 @@ class ToolCallResult:
         self.is_error = is_error
 
 
+def loopback_base_url() -> str:
+    """Cible du rappel HTTP vers `/mcp`, à l'intérieur du process `core`.
+
+    `CORE_BASE_URL` porte l'identité **publique** du cœur (métadonnées
+    OAuth du serveur MCP depuis SP-2a, `geostudio-connection.json` de
+    SP-18b) : en production l'overlay compose la fixe à
+    `https://<hôte public>/api`. La prendre comme cible de rappel oblige le
+    conteneur à joindre son propre nom d'hôte public en TLS depuis le
+    réseau Docker — hairpin NAT, et de toute façon rejeté par la garde
+    anti-DNS-rebinding de FastMCP (`allowed_hosts`, cf. SP-20 Task 4). En
+    dev ça marchait par accident, les deux valeurs coïncidant.
+
+    D'où `CORE_INTERNAL_BASE_URL` (wiring compose : `http://localhost:8200`,
+    le process lui-même). Repli sur `CORE_BASE_URL` quand elle n'est pas
+    définie, pour ne pas casser un dev déjà configuré.
+    """
+    internal = os.environ.get("CORE_INTERNAL_BASE_URL")
+    if internal:
+        return internal
+    return os.environ["CORE_BASE_URL"]
+
+
 class McpLoopbackSession:
     """Une session par requête POST /copilot/turn — la poignée de main
     n'a lieu qu'une fois, paresseusement, au premier appel."""
@@ -42,7 +64,7 @@ class McpLoopbackSession:
     def __init__(self, mcp_token: str, *, http_client: httpx.AsyncClient | None = None):
         self._mcp_token = mcp_token
         self._client = http_client or httpx.AsyncClient(
-            base_url=os.environ["CORE_BASE_URL"], timeout=15.0,
+            base_url=loopback_base_url(), timeout=15.0,
         )
         self._owns_client = http_client is None
         self._session_id: str | None = None

@@ -107,3 +107,35 @@ async def test_call_tool_raises_on_genuine_protocol_level_failure(app):
                 await session.call_tool("whoami", {})
         finally:
             await session.aclose()
+
+
+def test_loopback_prefers_the_internal_base_url(monkeypatch):
+    """C3 : `CORE_BASE_URL` est l'identité **publique** du cœur (métadonnées
+    OAuth MCP depuis SP-2a, fichier de connexion SP-18b) — en prod
+    `https://<hôte public>/api`. La cible du rappel HTTP vers `/mcp`, elle,
+    doit rester interne au conteneur : sinon `core` doit joindre son propre
+    nom d'hôte public en TLS depuis le réseau Docker (hairpin NAT), et la
+    garde anti-DNS-rebinding de FastMCP rejette de toute façon cet hôte."""
+    from app.copilot.mcp_loopback import loopback_base_url
+
+    monkeypatch.setenv("CORE_BASE_URL", "https://geostudio.example/api")
+    monkeypatch.setenv("CORE_INTERNAL_BASE_URL", "http://localhost:8200")
+    assert loopback_base_url() == "http://localhost:8200"
+
+
+def test_loopback_falls_back_to_the_public_base_url(monkeypatch):
+    """Repli de commodité pour le dev, où les deux coïncident."""
+    from app.copilot.mcp_loopback import loopback_base_url
+
+    monkeypatch.setenv("CORE_BASE_URL", "http://localhost:8200")
+    monkeypatch.delenv("CORE_INTERNAL_BASE_URL", raising=False)
+    assert loopback_base_url() == "http://localhost:8200"
+
+
+def test_session_targets_the_internal_base_url(monkeypatch):
+    from app.copilot.mcp_loopback import McpLoopbackSession
+
+    monkeypatch.setenv("CORE_BASE_URL", "https://geostudio.example/api")
+    monkeypatch.setenv("CORE_INTERNAL_BASE_URL", "http://localhost:8200")
+    session = McpLoopbackSession("jeton")
+    assert str(session._client.base_url) == "http://localhost:8200"
