@@ -60,12 +60,14 @@ def test_user_is_admin_defaults_false():
 
 
 def test_collection_share_composite_pk():
-    Session = _session_factory()
-    with Session() as session:
-        assert {c.name for c in CollectionShare.__table__.primary_key.columns} == {
-            "collection_id",
-            "group_id",
-        }
+    # Pure class-level SQLAlchemy metadata assertion — no DB session/engine
+    # needed (unlike every other test in this file, which reads through
+    # SQLAlchemy metadata configured on the model, not through a live
+    # connection).
+    assert {c.name for c in CollectionShare.__table__.primary_key.columns} == {
+        "collection_id",
+        "group_id",
+    }
 
 
 def test_collection_row_stores_feature_count():

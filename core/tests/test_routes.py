@@ -400,7 +400,7 @@ def test_create_config_is_atomic_when_a_later_step_fails(client, monkeypatch):
 
 
 def test_create_config_writes_audit_log(client):
-    created = _create(client)
+    _create(client)
     with client.session_factory() as session:
         rows = session.scalars(select(AuditLog)).all()
         actions = {r.action for r in rows}

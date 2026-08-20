@@ -194,7 +194,10 @@ def test_list_items_scope_shared_and_all(session, tenant_and_user):
     session.flush()
     session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=tenant.id))
 
-    owned_by_owner = repo.create_item(
+    # Negative control: owner's own item, not shared with bob, not public —
+    # must not leak into bob's "shared"/"all" scope results (asserted below
+    # by title, the created row itself is never referenced again).
+    repo.create_item(
         session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Owner's"
     )
     shared_with_bob = repo.create_item(
@@ -207,7 +210,9 @@ def test_list_items_scope_shared_and_all(session, tenant_and_user):
         session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Public"
     )
     public_item.is_public = True
-    invisible = repo.create_item(
+    # Negative control: neither shared with bob nor public — must not leak
+    # into bob's "shared"/"all" scope results (asserted below by title).
+    repo.create_item(
         session, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Invisible"
     )
     session.flush()
@@ -445,7 +450,7 @@ def test_list_items_hybrid_search_ranks_semantic_match_ahead_of_weak_text_match(
     # (['incidents', 'Sujet totalement différent']) malgré une implémentation
     # correcte de list_items(). Cet item pousse "incidents" au rang 2
     # trigramme, départageant les deux candidats sans ambiguïté.
-    unrelated_but_unembedded = repo.create_item(
+    repo.create_item(
         pg_session,
         tenant_id=tenant.id,
         owner_id=user.id,

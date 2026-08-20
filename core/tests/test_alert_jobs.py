@@ -104,7 +104,7 @@ def env(pg_engine, monkeypatch, tmp_path):
         alert_config = BuilderConfig.model_validate(_alert_body(dataset_item.id))
         configs_repo.create_config(s, alert_config, item_id=alert_item.id, tenant_id=tenant.id)
         s.commit()
-        dataset_item_id, alert_item_id = dataset_item.id, alert_item.id
+        alert_item_id = alert_item.id
 
     _write_partition(
         tmp_path,
