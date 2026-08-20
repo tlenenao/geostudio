@@ -20,7 +20,7 @@ from tests.test_mcp_tools_create import (  # noqa: F401
 )
 
 
-def _register_collection(app_client, *, public=True, owner=None):
+def _register_collection(app_client, *, public=True, owner=None):  # noqa: F811
     with app_client.session_factory() as session:
         col = collections_repo.create_collection(
             session,
@@ -39,7 +39,7 @@ def _register_collection(app_client, *, public=True, owner=None):
         return col.id
 
 
-def _register_arcgis_layer(app_client, *, public=True, owner=None):
+def _register_arcgis_layer(app_client, *, public=True, owner=None):  # noqa: F811
     with app_client.session_factory() as session:
         layer_owner = owner or app_client.mock_user
         source = harvest_repo.create_source(
@@ -81,7 +81,7 @@ def _register_arcgis_layer(app_client, *, public=True, owner=None):
         return layer_item.id
 
 
-def test_create_dataset_collection_source_creates_item_and_config(app_client):
+def test_create_dataset_collection_source_creates_item_and_config(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_collection(app_client)
         result = call_tool(
@@ -102,7 +102,7 @@ def test_create_dataset_collection_source_creates_item_and_config(app_client):
         assert config.config.dataset.collectionId == collection_id
 
 
-def test_create_dataset_arcgis_source_creates_item_and_config(app_client):
+def test_create_dataset_arcgis_source_creates_item_and_config(app_client):  # noqa: F811
     with app_client:
         arcgis_item_id = _register_arcgis_layer(app_client)
         result = call_tool(
@@ -122,7 +122,7 @@ def test_create_dataset_arcgis_source_creates_item_and_config(app_client):
         assert config.config.dataset.arcgisItemId == arcgis_item_id
 
 
-def test_create_dataset_accepts_columns_time_field_and_reacts_to_extent(app_client):
+def test_create_dataset_accepts_columns_time_field_and_reacts_to_extent(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_collection(app_client)
         result = call_tool(
@@ -145,7 +145,7 @@ def test_create_dataset_accepts_columns_time_field_and_reacts_to_extent(app_clie
         assert config.config.dataset.reactsToExtent is True
 
 
-def test_create_dataset_writes_audit_log_with_agent_actor(app_client):
+def test_create_dataset_writes_audit_log_with_agent_actor(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_collection(app_client)
         call_tool(
@@ -166,7 +166,7 @@ def test_create_dataset_writes_audit_log_with_agent_actor(app_client):
         assert all(r.actor_kind == "agent" for r in rows)
 
 
-def test_create_dataset_unreadable_collection_errors_without_leaking_existence(app_client):
+def test_create_dataset_unreadable_collection_errors_without_leaking_existence(app_client):  # noqa: F811
     with app_client.session_factory() as session:
         other_owner = get_or_create_user(
             session,
@@ -192,7 +192,7 @@ def test_create_dataset_unreadable_collection_errors_without_leaking_existence(a
     assert "not found" in error_text
 
 
-def test_create_dataset_unreadable_arcgis_layer_errors(app_client):
+def test_create_dataset_unreadable_arcgis_layer_errors(app_client):  # noqa: F811
     with app_client.session_factory() as session:
         other_owner = get_or_create_user(
             session,

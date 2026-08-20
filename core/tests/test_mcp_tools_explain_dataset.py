@@ -15,7 +15,7 @@ from tests.test_mcp_tools_query_features import (  # noqa: F401
 pytestmark = pytest.mark.postgis
 
 
-def test_explain_dataset_collection_source_returns_fields_and_metadata(app_client):
+def test_explain_dataset_collection_source_returns_fields_and_metadata(app_client):  # noqa: F811
     with app_client:
         collection_id = _register_incidents_collection(app_client)
         create_result = call_tool(
@@ -42,7 +42,7 @@ def test_explain_dataset_collection_source_returns_fields_and_metadata(app_clien
     assert "titre" in field_names
 
 
-def test_explain_dataset_dataset_not_found_errors(app_client):
+def test_explain_dataset_dataset_not_found_errors(app_client):  # noqa: F811
     with app_client:
         error_text = call_tool_expecting_error(
             app_client, "explain_dataset", {"datasetId": "does-not-exist"}

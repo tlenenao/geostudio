@@ -17,7 +17,7 @@ from tests.test_mcp_tools_create import (  # noqa: F401
 )
 
 
-def _register_app(app_client, *, owner=None) -> str:
+def _register_app(app_client, *, owner=None) -> str:  # noqa: F811
     with app_client.session_factory() as session:
         item_owner = owner or app_client.mock_user
         item = items_repo.create_item(
@@ -39,7 +39,7 @@ def _register_app(app_client, *, owner=None) -> str:
         return item.id
 
 
-def test_create_bookmark_creates_item_and_config(app_client):
+def test_create_bookmark_creates_item_and_config(app_client):  # noqa: F811
     with app_client:
         app_id = _register_app(app_client)
         result = call_tool(
@@ -62,7 +62,7 @@ def test_create_bookmark_creates_item_and_config(app_client):
         assert config.config.bookmark.timeRange.from_ == "2026-01-01"
 
 
-def test_create_bookmark_accepts_extent_and_cross_filter(app_client):
+def test_create_bookmark_accepts_extent_and_cross_filter(app_client):  # noqa: F811
     with app_client:
         app_id = _register_app(app_client)
         result = call_tool(
@@ -85,7 +85,7 @@ def test_create_bookmark_accepts_extent_and_cross_filter(app_client):
         assert config.config.bookmark.crossFilter["dataset-1"].field == "region"
 
 
-def test_create_bookmark_writes_audit_log_with_agent_actor(app_client):
+def test_create_bookmark_writes_audit_log_with_agent_actor(app_client):  # noqa: F811
     with app_client:
         app_id = _register_app(app_client)
         call_tool(
@@ -100,7 +100,7 @@ def test_create_bookmark_writes_audit_log_with_agent_actor(app_client):
         assert all(r.actor_kind == "agent" for r in rows)
 
 
-def test_create_bookmark_unreadable_app_errors_without_leaking_existence(app_client):
+def test_create_bookmark_unreadable_app_errors_without_leaking_existence(app_client):  # noqa: F811
     with app_client.session_factory() as session:
         other_owner = get_or_create_user(
             session,
@@ -126,7 +126,7 @@ def test_create_bookmark_unreadable_app_errors_without_leaking_existence(app_cli
     assert "app not found" in error_text
 
 
-def test_create_bookmark_empty_page_id_errors(app_client):
+def test_create_bookmark_empty_page_id_errors(app_client):  # noqa: F811
     with app_client:
         app_id = _register_app(app_client)
         error_text = call_tool_expecting_error(

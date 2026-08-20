@@ -8,7 +8,7 @@ from tests.test_mcp_tools_create import (  # noqa: F401 (fixtures/helpers réuti
 )
 
 
-def test_search_catalog_returns_items_matching_q(app_client):
+def test_search_catalog_returns_items_matching_q(app_client):  # noqa: F811
     with app_client:
         call_tool(
             app_client,
@@ -33,7 +33,7 @@ def test_search_catalog_returns_items_matching_q(app_client):
     assert [i["title"] for i in result["items"]] == ["Incidents voirie"]
 
 
-def test_search_catalog_respects_scope(app_client):
+def test_search_catalog_respects_scope(app_client):  # noqa: F811
     with app_client:
         result = call_tool(app_client, "search_catalog", {"scope": "mine"})
     assert result["items"] == []  # aucun item créé par le caller dans ce test
