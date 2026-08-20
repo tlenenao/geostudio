@@ -14,6 +14,7 @@ non câblées dans la stack packagée (SP-17a, SP-17b, tileset3d, et
 correspond à une de ces découvertes, et échoue sur le dépôt tel qu'il était
 avant SP-21.
 """
+import ast
 import pathlib
 import re
 
@@ -199,18 +200,93 @@ ENV_WIRING_EXEMPTIONS = {
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
 }
 
-ENV_READ_RE = re.compile(
-    r"os\.environ(?:\.get\(|\[)\s*[\"']([A-Z0-9_]+)"
-    r"|os\.getenv\(\s*[\"']([A-Z0-9_]+)"
-)
+def _string_literal(node: ast.AST) -> str | None:
+    """Valeur si `node` est une constante chaîne littérale (`"CORE_FOO"`) —
+    None pour tout le reste (f-string, concaténation, appel, nom non
+    résolu)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _module_string_constants(tree: ast.Module) -> dict[str, str]:
+    """Résout les affectations de niveau module d'une constante chaîne à un
+    nom simple (`_ALLOWLIST_ENV = "CORE_FOO"`) — motif réel de
+    `app/pipelines/egress.py`, `app/harvest/egress.py`, `app/alerts/egress.py`.
+    Une seule passe sur le corps du module, sans suivi de ré-affectation ni
+    de flux de contrôle : une deuxième affectation au même nom plus bas dans
+    le fichier écrase la première (comme à l'exécution), une affectation à
+    l'intérieur d'une fonction ou d'une classe n'est pas vue."""
+    constants: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                value = _string_literal(node.value)
+                if value is not None:
+                    constants[target.id] = value
+    return constants
+
+
+def _is_os_attr(node: ast.AST, attr: str) -> bool:
+    """Vrai pour `os.<attr>` — reconnaît seulement le nom de module littéral
+    `os` (pas un alias d'import comme `import os as o`, pas `getattr(os,
+    ...)`)."""
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == attr
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+    )
+
+
+def _env_key_node(node: ast.AST) -> ast.AST | None:
+    """Si `node` est un appel/accès qui lit une variable d'environnement
+    (`os.environ.get(KEY, ...)`, `os.getenv(KEY, ...)`, `os.environ[KEY]`),
+    renvoie le nœud de la clé — sinon None."""
+    if isinstance(node, ast.Call):
+        func = node.func
+        if _is_os_attr(func, "getenv") and node.args:
+            return node.args[0]
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "get"
+            and _is_os_attr(func.value, "environ")
+            and node.args
+        ):
+            return node.args[0]
+        return None
+    if isinstance(node, ast.Subscript) and _is_os_attr(node.value, "environ"):
+        return node.slice
+    return None
 
 
 def core_env_vars() -> set[str]:
-    """Toute variable d'environnement lue par `core/app/`."""
+    """Toute variable d'environnement lue par `core/app/`, littéralement
+    (`os.environ.get("CORE_FOO")`) ou par indirection via une constante de
+    niveau module (`_ALLOWLIST_ENV = "CORE_FOO"` puis
+    `os.environ.get(_ALLOWLIST_ENV)`) — motif des trois gardes d'egress SSRF
+    (pipelines/harvest/alerts). Parcourt l'AST plutôt qu'une regex : une
+    regex sur le texte ne peut pas voir qu'un nom désigne une constante,
+    l'AST le peut. Limites assumées, pas couvertes : une valeur calculée
+    (f-string, concaténation, retour de fonction), une indirection plus
+    profonde qu'un nom simple (attribut d'objet, `getattr`, alias d'import
+    de `os`), ou une clé passée par un nom réaffecté ailleurs qu'au niveau
+    module. Un futur lecteur ne doit pas sur-faire confiance à cette
+    fonction au-delà de ce périmètre."""
     found = set()
     for module in CORE_APP.rglob("*.py"):
-        for direct, via_getenv in ENV_READ_RE.findall(module.read_text()):
-            found.add(direct or via_getenv)
+        tree = ast.parse(module.read_text())
+        constants = _module_string_constants(tree)
+        for node in ast.walk(tree):
+            key_node = _env_key_node(node)
+            if key_node is None:
+                continue
+            literal = _string_literal(key_node)
+            if literal is not None:
+                found.add(literal)
+            elif isinstance(key_node, ast.Name) and key_node.id in constants:
+                found.add(constants[key_node.id])
     return found
 
 
@@ -221,8 +297,11 @@ def _wired_env_vars() -> set[str]:
             env = service.get("environment") or {}
             if isinstance(env, dict):
                 wired |= set(env)
-            else:  # forme liste : "VAR=valeur"
+            elif isinstance(env, list):  # forme liste : "VAR=valeur"
                 wired |= {item.split("=", 1)[0] for item in env}
+            # Sinon (ex. `environment: !reset null` → sentinel RESET,
+            # truthy mais non itérable) : traité comme absent plutôt que de
+            # lever un TypeError sur `for item in env`.
     return wired
 
 
