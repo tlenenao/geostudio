@@ -357,3 +357,35 @@ def test_backup_covers_every_bucket_the_core_uses():
         "Les ajouter à la boucle de miroir de deploy/backup/backup.sh, ou à "
         "BACKUP_EXCLUDED_BUCKETS avec la raison écrite."
     )
+
+
+# Un tag « flottant » : v3.0 suit tous les patches à venir, 24.0 aussi. La
+# règle est une liste noire volontaire (absence de tag, `latest`, mineur
+# flottant) et non une exigence de forme : des tags parfaitement pinnés ne
+# sont pas semver (minio publie RELEASE.2025-09-07T16-13-09Z, pgbouncer
+# 1.22.1-p0), et une exigence de forme les rejetterait à tort.
+FLOATING_TAG_RE = re.compile(r"^v?\d+\.\d+$")
+
+
+def test_images_are_pinned():
+    """Une image sans tag, en `latest`, ou pinnée au mineur, change sous les
+    pieds de l'opérateur : deux `docker compose pull` à un mois d'écart ne
+    donnent pas la même stack, et un incident devient irreproductible."""
+    unpinned = {}
+    for path in (BASE, PROD):
+        for name, service in services(path).items():
+            image = service.get("image")
+            if not image or "${" in image:
+                continue  # nos propres images : pinnées par le tag de release
+            _, _, tag = image.rpartition(":")
+            if tag == image or not tag:
+                unpinned[f"{path.name}:{name}"] = f"{image} (aucun tag)"
+            elif tag == "latest":
+                unpinned[f"{path.name}:{name}"] = f"{image} (latest)"
+            elif FLOATING_TAG_RE.fullmatch(tag):
+                unpinned[f"{path.name}:{name}"] = f"{image} (mineur flottant)"
+    assert not unpinned, (
+        f"images non pinnées : {unpinned}. Résoudre le tag exact contre le "
+        "registre — jamais l'inventer (précédent SP-15d : qgis/qgis:latest "
+        "pointait vers un build 4.3.0-master instable)."
+    )
