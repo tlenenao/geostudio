@@ -161,7 +161,8 @@ def test_select_features_bbox_on_non_spatial_raises_error(tmp_path):
 
 
 def test_select_features_geom_intersects_on_non_spatial_raises_error(tmp_path):
-    """Verify that spatial filters (geom_intersects) on non-spatial collections raise MissingGeometryColumn."""
+    """Verify that spatial filters (geom_intersects) on non-spatial collections
+    raise MissingGeometryColumn."""
     table_info = _write_fixture(tmp_path)
     conn = open_local_connection()
     try:

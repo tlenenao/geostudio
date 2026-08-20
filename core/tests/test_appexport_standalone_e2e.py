@@ -90,7 +90,8 @@ def test_cold_started_container_serves_app_and_snapshot(pg_session, standalone_i
     s = pg_session
     s.execute(
         text(
-            "CREATE TABLE t_standalone_e2e (id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
+            "CREATE TABLE t_standalone_e2e "
+            "(id serial PRIMARY KEY, tenant_id text NOT NULL, name text)"
         )
     )
     s.commit()

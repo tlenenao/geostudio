@@ -20,7 +20,9 @@ ISO_PAGE_1 = b"""<?xml version="1.0" encoding="UTF-8"?>
               <gmd:title><gco:CharacterString>Batiments</gco:CharacterString></gmd:title>
             </gmd:CI_Citation>
           </gmd:citation>
-          <gmd:abstract><gco:CharacterString>Empreintes de batiments</gco:CharacterString></gmd:abstract>
+          <gmd:abstract>
+            <gco:CharacterString>Empreintes de batiments</gco:CharacterString>
+          </gmd:abstract>
           <gmd:descriptiveKeywords>
             <gmd:MD_Keywords>
               <gmd:keyword><gco:CharacterString>bati</gco:CharacterString></gmd:keyword>
@@ -62,7 +64,11 @@ NO_ID_PAGE = b"""<?xml version="1.0" encoding="UTF-8"?>
     <gmd:MD_Metadata>
       <gmd:identificationInfo>
         <gmd:MD_DataIdentification>
-          <gmd:citation><gmd:CI_Citation><gmd:title><gco:CharacterString>Sans identifiant</gco:CharacterString></gmd:title></gmd:CI_Citation></gmd:citation>
+          <gmd:citation>
+            <gmd:CI_Citation>
+              <gmd:title><gco:CharacterString>Sans identifiant</gco:CharacterString></gmd:title>
+            </gmd:CI_Citation>
+          </gmd:citation>
         </gmd:MD_DataIdentification>
       </gmd:identificationInfo>
     </gmd:MD_Metadata>
@@ -108,12 +114,17 @@ def _iso_page(identifier: str, next_record: int) -> bytes:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
     xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">
-  <csw:SearchResults numberOfRecordsMatched="2" numberOfRecordsReturned="1" nextRecord="{next_record}">
+  <csw:SearchResults numberOfRecordsMatched="2" numberOfRecordsReturned="1"
+      nextRecord="{next_record}">
     <gmd:MD_Metadata>
       <gmd:fileIdentifier><gco:CharacterString>{identifier}</gco:CharacterString></gmd:fileIdentifier>
       <gmd:identificationInfo>
         <gmd:MD_DataIdentification>
-          <gmd:citation><gmd:CI_Citation><gmd:title><gco:CharacterString>{identifier}-title</gco:CharacterString></gmd:title></gmd:CI_Citation></gmd:citation>
+          <gmd:citation>
+            <gmd:CI_Citation>
+              <gmd:title><gco:CharacterString>{identifier}-title</gco:CharacterString></gmd:title>
+            </gmd:CI_Citation>
+          </gmd:citation>
         </gmd:MD_DataIdentification>
       </gmd:identificationInfo>
     </gmd:MD_Metadata>
@@ -203,7 +214,8 @@ def test_records_capped_at_max_within_single_page():
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" '
         'xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:gco="http://www.isotc211.org/2005/gco">'
-        '<csw:SearchResults numberOfRecordsMatched="600" numberOfRecordsReturned="600" nextRecord="0">'
+        '<csw:SearchResults numberOfRecordsMatched="600" numberOfRecordsReturned="600" '
+        'nextRecord="0">'
         f"{blocks}"
         "</csw:SearchResults></csw:GetRecordsResponse>"
     ).encode()
