@@ -92,6 +92,7 @@ dev = [
     # direct d'une dépendance non déclarée casse au premier
     # changement d'arbre (même dette que le `anyio` de SP-20).
     "ruff>=0.16.3",
+    "mypy>=2.3.1",
 ]
 
 [tool.pytest.ini_options]
@@ -124,6 +125,22 @@ extend-exclude = ["tests/test_deployability.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# SP-22 Task 4 : sans ce réglage, `mypy --strict app/auth app/secrets
+# app/analytics app/copilot` type-vérifie aussi, sous --strict, tout module
+# importé transitivement (app/db.py, app/users/repository.py, plusieurs
+# models.py…) qui n'est ni dans le périmètre strict déclaré ni dans le
+# périmètre de ce plan (13 erreurs mesurées hors des 4 modules avant ce
+# réglage). "silent" continue d'utiliser ces modules pour l'inférence de
+# types mais n'en fait remonter aucune erreur — seuls les fichiers passés
+# explicitement en ligne de commande (les 4 modules stricts, ou tout `app/`
+# pour la passe informative) sont rapportés.
+follow_imports = "silent"
 
 [tool.ruff.lint.flake8-bugbear]
 # B008 (function-call-in-default-argument) faux-positif documenté sur le
