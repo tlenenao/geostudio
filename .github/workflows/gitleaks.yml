@@ -1,0 +1,32 @@
+name: gitleaks
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # gitleaks-action scanne les commits du push/PR via `git log` (pas
+      # seulement l'arbre de travail) : il lui faut l'historique complet,
+      # pas le clone superficiel par défaut (profondeur 1), sans quoi
+      # `git log base^..head` échoue sur un push de plusieurs commits.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          # Requis inconditionnellement par l'action sur événement
+          # `pull_request` (sans quoi le job échoue avant même de scanner,
+          # comments ou pas) ; recommandé aussi sur `push` pour éviter la
+          # limite de taux anonyme de l'API GitHub. `GITLEAKS_CONFIG` n'est
+          # volontairement pas fixé ici : le CLI gitleaks détecte tout seul
+          # un `.gitleaks.toml` à la racine du dépôt s'il existe, et une
+          # variable pointant vers un fichier absent ferait échouer le job
+          # sur *tout* push, faux positif ou pas.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"

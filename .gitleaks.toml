@@ -1,0 +1,29 @@
+title = "Configuration gitleaks — GeoStudio"
+
+# On repart du jeu de règles par défaut de gitleaks (celui embarqué dans le
+# binaire) et on y superpose seulement une liste d'exclusions ciblée — sans
+# `useDefault = true`, un fichier de config personnalisé remplace *toutes*
+# les règles de détection, pas seulement les allowlists.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Faux positifs triés le 2026-08-21 — tous des secrets de test/fixture ou des placeholders documentaires, jamais des identifiants réels."
+regexes = [
+  # Clé AES-256-GCM factice (bytes(range(32)) encodés en base64) utilisée
+  # comme CORE_SECRETS_MASTER_KEY de test dans core/tests/*.py, dans
+  # .github/workflows/ci.yml (job api-types-drift) et documentée dans
+  # plusieurs docs/superpowers/plans/*.md et .superpowers/sdd/*.md
+  # historiques — jamais une clé de production.
+  '''AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=''',
+  # Placeholder littéral pour un SUPERSET_SECRET, module sorti du périmètre
+  # au jalon M1 (GeoNode/Superset/Redis retirés) — un seul doc de plan
+  # historique le mentionne encore.
+  '''remplacez-par-une-cle-aleatoire-de-64-caracteres''',
+]
+paths = [
+  # Identifiants par défaut de Grafana en local (admin:admin) dans des
+  # exemples curl du runbook d'observabilité SP-10b — identifiant par
+  # défaut documenté, pas un secret déployé.
+  '''docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo\.md''',
+]
