@@ -834,9 +834,11 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     de branche.
 - **SP-21** — « Déployabilité » (vague 1 du plan d'action
   `docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, constats C4, C5,
-  I5, I8, I14) : un garde-fou de 7 règles dans `core/tests/test_deployability.py`
-  qui teste le **dépôt** (compose, overlay prod, `release.yml`,
-  `.env.example`, `deploy/backup/backup.sh`) plutôt que `core/app/` —
+  I5, I8, I14) : un garde-fou de 9 règles (7 à la livraison, 2 ajoutées par la
+  revue finale puis par la publication de la release) dans
+  `core/tests/test_deployability.py` qui teste le **dépôt** (compose, overlay
+  prod, `release.yml`, `.env.example`, `deploy/backup/backup.sh`, `ci.yml`)
+  plutôt que `core/app/` —
   entorse assumée au découpage, écrite en réaction à quatre capacités
   livrées-testées-mergées qui se sont révélées non câblées dans la stack
   packagée (SP-17a, SP-17b, tileset3d, et `CORE_ETL_ENABLED` — trouvée en
@@ -963,7 +965,7 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     4 Important + 5 Minor, tous invisibles tâche par tâche. Ce qu'elle
     confirme par ailleurs : les 9 références GHCR trouvent toutes une entrée
     de matrice (aucune faute de frappe), le graphe de `depends_on` est
-    acyclique, et les 7 règles sont toutes non vacuous sur le dépôt
+    acyclique, et les règles sont toutes non vacuous sur le dépôt
     d'aujourd'hui. Les 4 Important et 4 des 5 Minor sont corrigés
     (`4a6bf6b`..`25e8309`) : sonde `shell` qui ne pouvait jamais passer
     (`localhost` → `::1` sous busybox, nginx n'écoute qu'en IPv4 — mesuré
@@ -986,14 +988,78 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     **Reste ouvert, seul point bloquant le merge : C1.** Effacer les
     `build:` de l'overlay prod (tâche 2, `!reset`) a supprimé le seul repli
     qui faisait fonctionner la prod sans release publiée. Mesuré : aucun tag
-    git n'existe (`git ls-remote --tags origin` → 0, donc `release.yml` n'a
-    jamais tourné) et 5 des 8 images sont absentes de ghcr.io, dont
-    `geostudio-backup`, que `scripts/install.sh` tire sans profil →
-    l'installation échoue au `pull`. **Décision Tanguy : publier la première
-    release d'abord** (PR `dev`→`main`, tag `v0.1.0` cohérent avec
-    `core/pyproject.toml` et `shell/package.json`, puis basculer la
-    visibilité des paquets GHCR, privée au premier push) — non exécuté à ce
-    jour.
+    git n'existe (`git ls-remote --tags origin` → 0) et 5 des 8 images sont
+    absentes de ghcr.io, dont `geostudio-backup`, que `scripts/install.sh`
+    tire sans profil → l'installation échoue au `pull`. **Une affirmation de
+    la revue est fausse, corrigée ici** : elle déduisait de l'absence de tag
+    que `release.yml` n'avait jamais tourné, donc que `core`/`shell`/
+    `postgis` avaient été poussées à la main. `gh run list` dit le contraire —
+    le workflow a tourné une fois, avec succès, le 2026-07-15 sur le tag
+    `v0.1.0-rc1` (supprimé depuis, d'où les 0 tags), et c'est cette exécution
+    qui a publié ces trois images ; la matrice n'en comptait que trois à
+    l'époque. **Décision Tanguy : publier la première release d'abord** —
+    exécutée le 2026-08-21 (cf. ci-dessous).
+
+### Release v0.1.0 (2026-08-21) — fermeture de C1
+
+Première release publiée du dépôt (PR #75 `dev`→`main`, tag annoté `v0.1.0`,
+huit images `ghcr.io/tlenenao/geostudio-*`). Elle ferme C1 de la revue finale
+SP-21 : l'overlay prod ne porte plus de `build:`, il n'avait donc plus de repli
+tant que cinq des huit images manquaient au registre.
+
+**Ce que la publication a coûté avant même de démarrer** : trois jobs de CI
+rouges sur `dev`, hérités de la session SP-22 dont les 49 commits n'avaient
+jamais été poussés — aucune CI n'avait donc tourné dessus depuis SP-20.
+Corrigés ici parce qu'ils bloquaient la release :
+- `ruff check` — `tests/test_check_coverage.py` livré avec un `import pytest`
+  inutilisé, refusé par la porte `ruff` que le même chantier venait d'ajouter ;
+- `lint-imports` — `app.analytics` ajouté au contrat, au plus bas, alors que
+  ses modules lisent `app.collections.introspection`. **Aucune place linéaire
+  ne résout ça** : le graphe réel porte un cycle au niveau paquet
+  (`app.analytics` → `app.collections` → `app.configs` → `app.analytics`),
+  antérieur à l'entrée d'`app.analytics` dans le contrat. Deux `ignore_imports`
+  nommant l'arête au module près (patron des 18 entrées `app.db -> *.models`),
+  étroitesse prouvée par sonde ;
+- `api-types-drift` — la passe `mypy --strict` a annoté le retour de
+  `GET /users` et `PATCH /users/{user_id}`, donc changé la spec OpenAPI. Spec
+  et types régénérés (classe d'oubli la plus récurrente du dépôt).
+
+**Puis deux défauts du chemin de release lui-même**, invisibles jusqu'à ce
+qu'on tague pour de vrai — un premier tag `v0.1.0` a échoué et a été supprimé
+sans avoir publié aucun artefact :
+- `release.yml` démarrait Postgres **sans** `wal_level=logical`, que le job
+  `core` de `ci.yml` lui donne : les deux tests `@pytest.mark.postgis` du
+  consommateur CDC (SP-11) ne pouvaient pas y passer. CI verte, release rouge.
+  Dérive structurellement invisible — la dernière release taguée
+  (`v0.1.0-rc1`, 2026-07-15) précède ces tests. **9ᵉ règle** ajoutée,
+  `test_release_gate_starts_postgres_like_ci`, qui compare les flags des deux
+  workflows plutôt que d'attendre le prochain tag ;
+- `pip-audit --strict` s'audite lui-même : l'avis PYSEC-2026-3721 sur `pip`
+  26.1.2 (transitif via `pip-api`, dépendance de `pip-audit`) a été publié
+  entre deux exécutions du même job, vert vingt minutes plus tôt. `pip>=26.2`
+  contraint dans le groupe `dev` plutôt qu'un `--ignore-vuln`.
+
+**Résultat, vérifié au registre et non sur le vert du workflow** : les huit
+images existent en `v0.1.0` **et sont anonymement téléchargeables** — jeton
+anonyme `ghcr.io/token` puis `GET /v2/…/manifests/v0.1.0` → HTTP 200, sans
+aucune credential ghcr dans le `~/.docker/config.json` local. La supposition de
+la revue « visibilité privée au premier push, à basculer à la main » ne vaut
+donc pas pour ce dépôt (paquets poussés par le `GITHUB_TOKEN` du dépôt, qui est
+public) : rien à faire à la main.
+
+Conséquence directe : **I3 est fermé pour de bon**. `.env.example` passe de
+`GEOSTUDIO_VERSION=latest` à `v0.1.0`, ce qui n'était pas possible avant qu'une
+release existe (`scripts/install.sh` aurait échoué au `pull`). Mesuré sur le
+compose de production résolu avec le défaut du gabarit : `grep -c ":latest"`
+→ **0**, contre 6 avant.
+
+**Constaté, non corrigé** (fichier non commité d'une autre session) : les deux
+hooks `bash -c` de `.pre-commit-config.yaml` (`eslint`, `prettier`) ne
+reçoivent jamais les fichiers — pre-commit les passe en arguments du `bash -c`,
+où ils deviennent `$0`/`$1`. `prettier` échoue en « No parser and no file path
+given » et bloque tout commit touchant `shell/src/**` ; `eslint` « passe » en
+lintant tout le projet au lieu des fichiers indexés. Il manque un `"$@"` aux
+deux (et un `--` côté entry).
 
 ### À venir
 
