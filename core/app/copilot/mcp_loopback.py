@@ -10,6 +10,7 @@ dépendance client pour un seul appelant)."""
 import json
 import os
 import uuid
+from typing import Any
 
 import httpx
 
@@ -115,13 +116,14 @@ class McpLoopbackSession:
         if notify.status_code != 202:
             raise McpLoopbackError(f"MCP notifications/initialized failed: {notify.status_code}")
 
-    def _parse_sse(self, response: httpx.Response) -> dict:
+    def _parse_sse(self, response: httpx.Response) -> dict[str, Any]:
         for line in response.text.splitlines():
             if line.startswith("data: "):
-                return json.loads(line.removeprefix("data: "))
+                doc: dict[str, Any] = json.loads(line.removeprefix("data: "))
+                return doc
         raise McpLoopbackError("no SSE data line in MCP response")
 
-    async def list_tools(self) -> list[dict]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         await self._ensure_initialized()
         response = await self._client.post(
             "/mcp",
@@ -133,9 +135,10 @@ class McpLoopbackSession:
         payload = self._parse_sse(response)
         if "error" in payload:
             raise McpLoopbackError(f"MCP tools/list error: {payload['error']}")
-        return payload["result"]["tools"]
+        tools: list[dict[str, Any]] = payload["result"]["tools"]
+        return tools
 
-    async def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> ToolCallResult:
         await self._ensure_initialized()
         response = await self._client.post(
             "/mcp",

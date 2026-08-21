@@ -8,6 +8,7 @@ un span OTel ou une entrée audit_log."""
 import base64
 import json
 import os
+from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -31,7 +32,7 @@ def load_master_key() -> bytes:
     return key
 
 
-def encrypt(payload: dict) -> tuple[bytes, bytes]:
+def encrypt(payload: dict[str, Any]) -> tuple[bytes, bytes]:
     key = load_master_key()
     nonce = os.urandom(_NONCE_SIZE_BYTES)
     plaintext = json.dumps(payload).encode("utf-8")
@@ -39,7 +40,8 @@ def encrypt(payload: dict) -> tuple[bytes, bytes]:
     return ciphertext, nonce
 
 
-def decrypt(ciphertext: bytes, nonce: bytes) -> dict:
+def decrypt(ciphertext: bytes, nonce: bytes) -> dict[str, Any]:
     key = load_master_key()
     plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
-    return json.loads(plaintext)
+    doc: dict[str, Any] = json.loads(plaintext)
+    return doc

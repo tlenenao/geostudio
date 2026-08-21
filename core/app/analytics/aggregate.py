@@ -14,9 +14,12 @@ n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
 
 import json
-from typing import Literal
+from typing import Any, Literal
 
+import duckdb
 from pydantic import BaseModel
+
+from app.collections.introspection import TableInfo
 
 
 class AggregateMeasure(BaseModel):
@@ -33,7 +36,7 @@ class AggregateRequestBody(BaseModel):
     measures: list[AggregateMeasure] | None = None
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
-    geomIntersects: dict | None = None
+    geomIntersects: dict[str, Any] | None = None
     bucket: Literal["day", "week", "month"] | None = None
     bins: int | None = None
 
@@ -65,7 +68,7 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
-def _valid_column_names(table_info) -> set[str]:
+def _valid_column_names(table_info: TableInfo) -> set[str]:
     names = {c.name for c in table_info.columns} | {table_info.pk_column}
     if table_info.geometry_column:
         names.add(table_info.geometry_column)
@@ -78,7 +81,7 @@ def _groupby_fields(request: AggregateRequestBody) -> list[str]:
     return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
 
 
-def _validate_fields(request: AggregateRequestBody, table_info) -> None:
+def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> None:
     valid = _valid_column_names(table_info)
 
     def check(name: str | None, label: str) -> None:
@@ -144,9 +147,9 @@ def _measures_for(request: AggregateRequestBody) -> list[AggregateMeasure]:
     return [AggregateMeasure(field=request.field, agg=request.agg, label="value")]
 
 
-def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
+def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[str, list[Any]]:
     clauses = []
-    params: list = []
+    params: list[Any] = []
     for raw_name, value in request.filters.items():
         name, suffix = _split_filter_key(raw_name)
         if suffix == "__in":
@@ -161,6 +164,10 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
             params.append(value)
     if request.bbox is not None:
         minx, miny, maxx, maxy = request.bbox
+        # _validate_fields refuse déjà bbox sans colonne géométrie (appelé
+        # avant _build_where par le seul appelant, run_collection_aggregate)
+        # — narrowing explicite, pas une nouvelle règle.
+        assert table_info.geometry_column is not None
         # Native GEOMETRY : la colonne géométrie du GeoParquet CDC est déjà
         # lue par DuckDB comme un type GEOMETRY (spike Task 1, vérifié
         # contre MinIO réel) — pas de ST_GeomFromWKB(...) ici.
@@ -169,6 +176,8 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
         )
         params.extend([minx, miny, maxx, maxy])
     if request.geomIntersects is not None:
+        # Même invariant que ci-dessus, pour geomIntersects.
+        assert table_info.geometry_column is not None
         # SP-14n : intersection géométrique exacte, complément précis du bbox
         # ci-dessus (rectangle). Même colonne, même opérateur ST_Intersects —
         # seule la forme du second argument change (GeoJSON arbitraire, pas
@@ -178,9 +187,9 @@ def _build_where(request: AggregateRequestBody, table_info) -> tuple[str, list]:
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 
 
-def _pivot_split(sql_rows: list[dict], *, category_key: str) -> list[dict]:
+def _pivot_split(sql_rows: list[dict[str, Any]], *, category_key: str) -> list[dict[str, Any]]:
     categories: list[str] = []
-    by_cat: dict[str, dict] = {}
+    by_cat: dict[str, dict[str, Any]] = {}
     splits: list[str] = []
     seen_splits: set[str] = set()
     for r in sql_rows:
@@ -201,11 +210,11 @@ def _pivot_split(sql_rows: list[dict], *, category_key: str) -> list[dict]:
 
 
 def _pivot_measures(
-    sql_rows: list[dict], *, category_key: str, measures: list[AggregateMeasure]
-) -> list[dict]:
-    out = []
+    sql_rows: list[dict[str, Any]], *, category_key: str, measures: list[AggregateMeasure]
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for r in sql_rows:
-        row = {category_key: str(r["__cat"])}
+        row: dict[str, Any] = {category_key: str(r["__cat"])}
         for i, m in enumerate(measures):
             row[_measure_label(m)] = r[f"m{i}"]
         out.append(row)
@@ -213,11 +222,11 @@ def _pivot_measures(
 
 
 def _pivot_multi_measures(
-    sql_rows: list[dict], *, fields: list[str], measures: list[AggregateMeasure]
-) -> list[dict]:
-    out = []
+    sql_rows: list[dict[str, Any]], *, fields: list[str], measures: list[AggregateMeasure]
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for r in sql_rows:
-        row = {f: r[f] for f in fields}
+        row: dict[str, Any] = {f: r[f] for f in fields}
         for i, m in enumerate(measures):
             row[_measure_label(m)] = r[f"m{i}"]
         out.append(row)
@@ -225,14 +234,14 @@ def _pivot_multi_measures(
 
 
 def _run_binned_histogram(
-    conn,
+    conn: duckdb.DuckDBPyConnection,
     *,
     dedup_cte: str,
     where_sql: str,
-    where_params: list,
+    where_params: list[Any],
     field: str,
     bins: int,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
     minmax_sql = (
         f"{dedup_cte} SELECT MIN({field_expr}) AS lo, MAX({field_expr}) AS hi FROM live {where_sql}"
@@ -270,7 +279,7 @@ def _run_binned_histogram(
     ]
 
 
-def _dedup_cte(table_info, base_uri: str, tenant_id: str, collection_id: str) -> str:
+def _dedup_cte(table_info: TableInfo, base_uri: str, tenant_id: str, collection_id: str) -> str:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     pk = _qi(table_info.pk_column)
     return (
@@ -281,27 +290,31 @@ def _dedup_cte(table_info, base_uri: str, tenant_id: str, collection_id: str) ->
     )
 
 
-def _has_any_file(conn, base_uri: str, tenant_id: str, collection_id: str) -> bool:
+def _has_any_file(
+    conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
+) -> bool:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     matched = conn.execute(f"SELECT file FROM glob({_sql_lit(glob)})").fetchall()
     return len(matched) > 0
 
 
-def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
+def _fetch_rows(
+    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any]
+) -> list[dict[str, Any]]:
     result = conn.execute(sql, params).fetchall()
     cols = [d[0] for d in conn.description]
     return [dict(zip(cols, r, strict=True)) for r in result]
 
 
 def run_collection_aggregate(
-    conn,
+    conn: duckdb.DuckDBPyConnection,
     *,
     base_uri: str,
     tenant_id: str,
     collection_id: str,
-    table_info,
+    table_info: TableInfo,
     request: AggregateRequestBody,
-) -> tuple[str | list[str], list[dict]]:
+) -> tuple[str | list[str], list[dict[str, Any]]]:
     fields = _groupby_fields(request)
     category_key: str | list[str] = (
         fields if len(fields) > 1 else (fields[0] if fields else "group")
@@ -315,6 +328,10 @@ def run_collection_aggregate(
     where_sql, where_params = _build_where(request, table_info)
 
     if request.bins is not None:
+        # _validate_fields a déjà refusé bins sans field (voir plus haut) —
+        # narrowing explicite pour le vérificateur de types, pas une
+        # nouvelle règle.
+        assert request.field is not None
         rows = _run_binned_histogram(
             conn,
             dedup_cte=dedup_cte,
@@ -340,6 +357,9 @@ def run_collection_aggregate(
 
     single_field = fields[0] if fields else None
     if request.bucket:
+        # _validate_fields exige déjà exactement un groupBy quand bucket est
+        # posé (voir plus haut) — narrowing explicite, pas une nouvelle règle.
+        assert single_field is not None
         cat_expr = (
             f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
         )
