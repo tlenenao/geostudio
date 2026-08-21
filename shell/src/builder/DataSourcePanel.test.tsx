@@ -150,3 +150,77 @@ test("edits the histogram bin count on a statistics source", async () => {
   await userEvent.type(screen.getByLabelText("Nombre de classes (source d1)"), "8");
   expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.bins).toBe(8);
 });
+
+const STATS_SOURCE: DataSource = {
+  id: "s1",
+  type: "statistics",
+  service: "core",
+  layer: "villes",
+  query: { groupBy: "region", agg: "count" },
+};
+
+test("propose les neuf agrégats analytiques", () => {
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={() => {}} />);
+
+  const select = screen.getByLabelText("Agrégation (source s1)");
+  const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+  expect(values).toEqual([
+    "count",
+    "countDistinct",
+    "sum",
+    "avg",
+    "median",
+    "percentile",
+    "stddev",
+    "min",
+    "max",
+  ]);
+});
+
+test("le champ centile n'apparaît que pour percentile et se patche avec un centile par défaut de 50", async () => {
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={onChange} />);
+
+  expect(screen.queryByLabelText("Centile (source s1)")).toBeNull();
+
+  await userEvent.selectOptions(screen.getByLabelText("Agrégation (source s1)"), "percentile");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...STATS_SOURCE, query: { groupBy: "region", agg: "percentile", p: 50 } },
+  ]);
+});
+
+test("affiche le champ centile quand la source est déjà en percentile", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "percentile", p: 90 },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  const p = screen.getByLabelText("Centile (source s1)");
+  expect((p as HTMLInputElement).value).toBe("90");
+
+  // fireEvent.change plutôt que clear()+type() : onChange est un espion sans
+  // rerender ici, donc React restaure la valeur DOM contrôlée ("90") après
+  // chaque frappe individuelle — clear()+type("95") produirait un dernier
+  // événement à "905" (même piège que le champ "Grouper par" plus haut dans
+  // ce fichier, qui utilise déjà fireEvent.change pour la même raison).
+  fireEvent.change(p, { target: { value: "95" } });
+  expect(onChange).toHaveBeenLastCalledWith([
+    { ...source, query: { groupBy: "region", agg: "percentile", p: 95 } },
+  ]);
+});
+
+test("repasser d'un agrégat percentile à un autre efface le centile p", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "percentile", p: 90 },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  await userEvent.selectOptions(screen.getByLabelText("Agrégation (source s1)"), "avg");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...source, query: { groupBy: "region", agg: "avg", p: undefined } },
+  ]);
+});

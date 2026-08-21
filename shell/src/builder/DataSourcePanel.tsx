@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../api/types";
+import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 
-type Measure = { field?: string; agg: string; label?: string };
+type Measure = { field?: string; agg: string; label?: string; p?: number };
 
 // A single field ("region") is passed through unchanged; a comma-separated
 // value ("origin,destination") becomes a string[] — the multi-field tidy
@@ -125,13 +126,18 @@ export function DataSourcePanel({
                     aria-label={`Agrégation (source ${s.id})`}
                     className={selectCls}
                     value={String(s.query.agg ?? "count")}
-                    onChange={(e) => patchQuery(s.id, { agg: e.target.value })}
+                    onChange={(e) =>
+                      patchQuery(s.id, {
+                        agg: e.target.value,
+                        p: aggregateNeedsP(e.target.value) ? DEFAULT_PERCENTILE : undefined,
+                      })
+                    }
                   >
-                    <option value="count">Nombre</option>
-                    <option value="sum">Somme</option>
-                    <option value="avg">Moyenne</option>
-                    <option value="min">Min</option>
-                    <option value="max">Max</option>
+                    {ANALYTICS_AGGREGATES.map((a) => (
+                      <option key={a.value} value={a.value}>
+                        {a.label}
+                      </option>
+                    ))}
                   </select>
                   <input
                     aria-label={`Champ agrégé (source ${s.id})`}
@@ -141,6 +147,22 @@ export function DataSourcePanel({
                     onChange={(e) => patchQuery(s.id, { field: e.target.value })}
                   />
                 </div>
+                {aggregateNeedsP(String(s.query.agg ?? "count")) && (
+                  <input
+                    aria-label={`Centile (source ${s.id})`}
+                    type="number"
+                    min={1}
+                    max={99}
+                    placeholder="centile (1–99)"
+                    className={inputCls}
+                    value={String(s.query.p ?? "")}
+                    onChange={(e) =>
+                      patchQuery(s.id, {
+                        p: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                  />
+                )}
                 <input
                   aria-label={`Nombre de classes (source ${s.id})`}
                   type="number"
@@ -165,16 +187,24 @@ export function DataSourcePanel({
                             setMeasures(
                               s,
                               measuresOf(s).map((x, i) =>
-                                i === mi ? { ...x, agg: e.target.value } : x,
+                                i === mi
+                                  ? {
+                                      ...x,
+                                      agg: e.target.value,
+                                      p: aggregateNeedsP(e.target.value)
+                                        ? DEFAULT_PERCENTILE
+                                        : undefined,
+                                    }
+                                  : x,
                               ),
                             )
                           }
                         >
-                          <option value="count">Nombre</option>
-                          <option value="sum">Somme</option>
-                          <option value="avg">Moyenne</option>
-                          <option value="min">Min</option>
-                          <option value="max">Max</option>
+                          {ANALYTICS_AGGREGATES.map((a) => (
+                            <option key={a.value} value={a.value}>
+                              {a.label}
+                            </option>
+                          ))}
                         </select>
                         <input
                           aria-label={`Champ mesure ${mi + 1} (source ${s.id})`}
@@ -190,6 +220,30 @@ export function DataSourcePanel({
                             )
                           }
                         />
+                        {aggregateNeedsP(m.agg) && (
+                          <input
+                            aria-label={`Centile mesure ${mi + 1} (source ${s.id})`}
+                            type="number"
+                            min={1}
+                            max={99}
+                            placeholder="centile"
+                            className={inputCls}
+                            value={String(m.p ?? "")}
+                            onChange={(e) =>
+                              setMeasures(
+                                s,
+                                measuresOf(s).map((x, i) =>
+                                  i === mi
+                                    ? {
+                                        ...x,
+                                        p: e.target.value ? Number(e.target.value) : undefined,
+                                      }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                        )}
                         <button
                           type="button"
                           aria-label={`Retirer la mesure ${mi + 1} de ${s.id}`}
