@@ -7730,7 +7730,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Users Users Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -7787,7 +7791,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch User Users  User Id  Patch",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
