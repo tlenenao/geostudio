@@ -6,8 +6,17 @@ updates:
   # n'est PAS supportée pour cet écosystème (doc GitHub : seulement bundler, composer,
   # mix, maven, npm, pip). Une config invalide y est silencieusement ignorée par
   # GitHub, donc pas de groupement dev/prod ici pour rester réellement actif.
+  #
+  # `target-branch: "dev"` sur les trois entrées ci-dessous : la branche par
+  # défaut du dépôt est `main`, mais CLAUDE.md fixe `dev` comme branche de
+  # travail — `main` ne reçoit que des merges stables. Sans ce champ,
+  # Dependabot ouvrirait ses PR hebdomadaires directement sur `main`, la
+  # faisant dériver en avance de `dev` (dépendances/lockfiles mis à jour d'un
+  # côté et pas de l'autre) et posant des conflits de lockfile au prochain
+  # merge `dev`→`main`.
   - package-ecosystem: "uv"
     directory: "/core"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
 
@@ -15,6 +24,7 @@ updates:
   # "npm" supporte dependency-type dans groups : groupement dev/prod conservé.
   - package-ecosystem: "npm"
     directory: "/shell"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
     groups:
@@ -27,5 +37,6 @@ updates:
   # pas d'actions composites réutilisables ailleurs.
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
