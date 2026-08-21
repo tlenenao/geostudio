@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
+
 import httpx
 import pytest
 
 from app.harvest import live_query
+from app.harvest.live_query import ArcgisQueryError, translate_aggregate_query
 
 
 @pytest.fixture(autouse=True)
@@ -217,3 +220,29 @@ def test_aggregate_response_no_features_empty_rows():
     )
     assert key == "group"
     assert rows == []
+
+
+def test_stddev_is_translated_to_the_native_arcgis_statistic_type():
+    params = translate_aggregate_query(
+        group_by=["region"],
+        measures=[("stddev", "pop", "ecart")],
+        filters={},
+        bbox=None,
+    )
+
+    assert json.loads(params["outStatistics"]) == [
+        {"statisticType": "stddev", "onStatisticField": "pop", "outStatisticFieldName": "m0"}
+    ]
+
+
+@pytest.mark.parametrize("agg", ["countDistinct", "median", "percentile"])
+def test_aggregates_without_an_arcgis_equivalent_are_refused(agg):
+    with pytest.raises(ArcgisQueryError) as exc:
+        translate_aggregate_query(
+            group_by=["region"],
+            measures=[(agg, "pop", "x")],
+            filters={},
+            bbox=None,
+        )
+
+    assert exc.value.field == "agg"
