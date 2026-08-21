@@ -14,7 +14,7 @@ import {
   windowedStatisticsSource,
   type ReferenceMode,
 } from "../../lib/comparisonWindow";
-import type { DataSource, DatasetConfig } from "../../api/types";
+import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -149,6 +149,38 @@ function useKpiComparison(
       (sparklineEnabled && sparklineQuery.isLoading));
 
   return { active, loading, hasResolvedValue, value, delta, deltaPct, sparklinePoints };
+}
+
+// SP-23 Task 7b : pour une source `type: "statistics"`, le serveur a déjà
+// agrégé — compter les lignes de la réponse (typiquement 1) n'a aucun sens.
+// Le comptage/somme côté client ne s'applique qu'aux sources `features`/
+// `static`, dont chaque ligne est une feature brute.
+function resolveFlatValue(
+  data: Pick<DataSourceState, "records" | "resolvedSource">,
+  agg: string,
+  field: string,
+): number | null {
+  if (data.resolvedSource?.type === "statistics") {
+    const measures = data.resolvedSource.query?.measures;
+    if (Array.isArray(measures) && measures.length > 0) {
+      // Mesures explicites à libellés personnalisés (DataSourcePanel) : rien
+      // ne garantit une clé `value` dans la ligne, et deviner laquelle des
+      // mesures afficher serait arbitraire — tiret honnête plutôt qu'une
+      // valeur devinée.
+      return null;
+    }
+    // Chemin mesure unique (agg+field du panneau de l'indicateur) : le cœur
+    // émet toujours le libellé littéral "value"
+    // (AggregateMeasure(field=…, agg=…, label="value"), core/app/analytics/
+    // aggregate.py). Une source groupée renvoie plusieurs lignes ; on prend
+    // la première, comme le fait déjà useKpiComparison ci-dessus pour le
+    // chemin de comparaison — un indicateur sur une source groupée affiche
+    // donc le premier groupe.
+    return parseAggregateValue(data.records[0]?.properties.value);
+  }
+  return agg === "sum"
+    ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
+    : data.records.length;
 }
 
 function displayValue(value: number | null | undefined): string {
@@ -306,10 +338,7 @@ export function registerIndicatorWidget(): void {
         return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur</p>;
 
-      const flatValue =
-        agg === "sum"
-          ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
-          : data.records.length;
+      const flatValue = resolveFlatValue(data, agg, field);
       const value =
         comparison.active && referencePeriod && comparison.hasResolvedValue
           ? comparison.value
