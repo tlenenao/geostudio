@@ -74,3 +74,20 @@ test("catalog search still sends q to the core (regression)", async ({ page }) =
   await page.getByRole("textbox", { name: "Rechercher" }).fill("Alp");
   await request;
 });
+
+test("filtrer sur Dataset ne ramène que les datasets", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/");
+
+  await page.getByLabel("Type").selectOption("dataset");
+
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeHidden();
+  // .last(), not .first(): the "Type" <select> above the grid always renders
+  // an <option value="dataset">Dataset</option> (RESOURCE_TYPE_ORDER is
+  // exhaustive over ResourceType, cf. resourceTypes.ts), and that option
+  // precedes the item grid in DOM order — .first() resolves to it and fails
+  // toBeVisible() (native <option> elements report hidden outside an open
+  // dropdown), for a reason unrelated to the filter under test. .last()
+  // reliably lands on the one ItemCard badge left after filtering.
+  await expect(page.getByText("Dataset", { exact: true }).last()).toBeVisible();
+});

@@ -23,6 +23,17 @@ const ALL = [
     configId: null,
     isPublished: false,
   },
+  {
+    pk: "3",
+    resourceType: "dataset",
+    title: "Gamma",
+    abstract: "G",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: null,
+    isPublished: false,
+  },
 ];
 
 const DEFAULT_MAP_CONFIG = {
@@ -47,6 +58,34 @@ export async function mockCore(page: Page) {
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
   let published = false;
+
+  // Config history / restore (Task 18) — item "1" (Alpha) carries a
+  // two-version story: the config served by GET /configs/by-item/1 starts
+  // as "version 2" (current), and POST /configs/{id}/rollback with
+  // {version: 1} flips this flag so subsequent GETs return "version 1"
+  // instead — the same stateful-swap style already used for `published`/
+  // `sitePublished` above.
+  let rolledBackToVersion1 = false;
+  const APP_CONFIG_V2 = {
+    ...DEFAULT_APP_CONFIG,
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Titre version 2" } },
+      ],
+    },
+  } as const;
+  const APP_CONFIG_V1 = {
+    ...DEFAULT_APP_CONFIG,
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Titre version 1" } },
+      ],
+    },
+  } as const;
 
   // Site portal (SP-16a) — state for the created-then-published site.
   let siteSlug: string | null = null;
@@ -251,13 +290,22 @@ export async function mockCore(page: Page) {
         });
       } else {
         // App/dashboard items (9, 1, …) — return stored config if present, else empty app config.
+        // Item "1" carries the config-history/rollback story (Task 18):
+        // starts at APP_CONFIG_V2, switches to APP_CONFIG_V1 once
+        // rolledBackToVersion1 is set by the rollback route below.
         const stored = savedConfigs.get(itemId);
+        const config =
+          itemId === "1"
+            ? rolledBackToVersion1
+              ? APP_CONFIG_V1
+              : (stored ?? APP_CONFIG_V2)
+            : (stored ?? DEFAULT_APP_CONFIG);
         await route.fulfill({
           json: {
             id: `cfg-${itemId}`,
             itemId,
             kind: "app",
-            config: stored ?? DEFAULT_APP_CONFIG,
+            config,
           },
         });
       }
@@ -283,6 +331,26 @@ export async function mockCore(page: Page) {
     } else {
       await route.fallback();
     }
+  });
+
+  // Config history (Task 18) — listConfigRevisions/rollbackConfig resolve
+  // the config id via GET /configs/by-item/{pk} first (handled above), then
+  // hit these two routes keyed by that config id (e.g. "cfg-1"). Two
+  // revisions is enough to exercise the "current has no button, the other
+  // does" logic in ConfigHistoryPanel.
+  await page.route("**/configs/*/revisions", async (route) => {
+    await route.fulfill({
+      json: [
+        { version: 2, created_at: "2026-01-02T00:00:00Z" },
+        { version: 1, created_at: "2026-01-01T00:00:00Z" },
+      ],
+    });
+  });
+
+  await page.route("**/configs/*/rollback", async (route) => {
+    const body = await route.request().postDataJSON();
+    if (body?.version === 1) rolledBackToVersion1 = true;
+    await route.fulfill({ status: 204, body: "" });
   });
 
   // Martin vector-tile catalog — exposes the "Communes" layer source.
