@@ -1,0 +1,34 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (core)
+        entry: uv run --project core ruff check --fix
+        language: system
+        files: ^core/.*\.py$
+      - id: ruff-format
+        name: ruff format (core)
+        entry: uv run --project core ruff format
+        language: system
+        files: ^core/.*\.py$
+      - id: lint-imports
+        name: import-linter (core)
+        entry: bash -c 'cd core && uv run lint-imports'
+        language: system
+        files: ^core/app/.*\.py$
+        pass_filenames: false
+      - id: eslint
+        name: eslint (shell)
+        entry: bash -c 'cd shell && npx eslint --fix "${@#shell/}"' --
+        language: system
+        files: ^shell/src/.*\.(ts|tsx)$
+      - id: prettier
+        name: prettier (shell)
+        entry: bash -c 'cd shell && npx prettier --write "${@#shell/}"' --
+        language: system
+        files: ^shell/src/.*\.(ts|tsx)$
+      - id: commitlint
+        name: commitlint
+        entry: npx --prefix shell commitlint --edit
+        language: system
+        stages: [commit-msg]
