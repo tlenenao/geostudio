@@ -252,6 +252,15 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
+      # Lues dans CE process (app/main.py, app/export/routes.py,
+      # app/reports/routes.py, app/appexport/routes.py) — pas seulement dans
+      # le worker qui écrit les objets. Mêmes valeurs littérales que
+      # `export-worker`/`worker` ci-dessous : inoffensif jusqu'ici parce que
+      # le défaut applicatif (`os.environ.get(..., "geostudio-exports")`)
+      # coïncide avec la valeur du compose — précisément le genre d'accident
+      # que SP-21 existe pour éliminer (revue finale SP-21, item 5).
+      S3_EXPORTS_BUCKET: geostudio-exports
+      S3_APPEXPORTS_BUCKET: geostudio-appexports
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
     ports:
       - "8200:8200"
@@ -343,6 +352,15 @@ services:
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
       APPEXPORT_RUNTIME_DIR: /export-runtime
       S3_APPEXPORTS_BUCKET: geostudio-appexports
+      # Lu dans CE process, pas seulement dans `export-worker` : le balayage
+      # des rapports planifiés (app/reports/jobs.py, notification + lien
+      # présigné) et `writer.export` des pipelines (app/pipelines/jobs.py)
+      # tournent tous deux sur la file `etl`, que ce worker consomme. Même
+      # valeur littérale que `core`/`export-worker` — inoffensif jusqu'ici
+      # parce que le défaut applicatif coïncide, exactement l'accident que
+      # SP-21 existe pour éliminer (revue finale SP-21, item 5, dont ce
+      # service était le second angle mort).
+      S3_EXPORTS_BUCKET: geostudio-exports
     volumes:
       - etl-scratch:/scratch
       - appexport-runtime:/export-runtime:ro
@@ -550,9 +568,15 @@ services:
     depends_on:
       core:
         condition: service_healthy
-    # `wget` de busybox — l'image est nginx:1.27-alpine, sans curl.
+    # `wget` de busybox — l'image est nginx:1.27-alpine, sans curl. Même
+    # piège que `martin` ci-dessus (résolu une tâche plus tôt, cf. son
+    # commentaire) : `localhost` résout en `::1` sous busybox/musl sans
+    # repli IPv4, alors que nginx n'écoute que sur `0.0.0.0:8300` — sonde
+    # `unhealthy` en permanence. Vérifié à l'exécution (revue finale SP-21)
+    # contre l'image `geostudio-shell:latest` réelle : `wget … localhost`
+    # → "Connection refused" (exit 1), `wget … 127.0.0.1` → exit 0.
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8300/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8300/"]
       interval: 30s
       timeout: 5s
       retries: 3
