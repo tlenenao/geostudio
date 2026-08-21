@@ -42,6 +42,17 @@
               }
             ],
             "title": "Label"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
           }
         },
         "title": "AggregateMeasure",
@@ -96,9 +107,12 @@
             "anyOf": [
               {
                 "enum": [
+                  "hour",
                   "day",
                   "week",
-                  "month"
+                  "month",
+                  "quarter",
+                  "year"
                 ],
                 "type": "string"
               },
@@ -169,6 +183,17 @@
               }
             ],
             "title": "Measures"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
           },
           "split": {
             "anyOf": [
