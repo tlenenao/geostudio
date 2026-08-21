@@ -10,6 +10,7 @@ import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/button";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
+import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
@@ -246,6 +247,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
         )}
       </div>
       <AlertRuleEditor datasetItemId={pk} owner={itemQuery.data.owner} />
+      <ConfigHistoryPanel
+        pk={pk}
+        currentVersion={null}
+        onRestored={async () => setDraft(await client.getDatasetConfig(pk))}
+      />
       {draft.sourcePipelineId && (
         <Button
           type="button"

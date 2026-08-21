@@ -302,10 +302,28 @@ test("persisted mode: a rejected save shows the server error message", async () 
   const savePipelineConfig = vi
     .fn()
     .mockRejectedValue(new Error("invalid cron expression: 'nope'"));
-  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload), savePipelineConfig });
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    savePipelineConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
   await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent("invalid cron expression"),
   );
+});
+
+test("persisted mode: affiche le panneau d'historique", async () => {
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve({ nodes: [], edges: [] }),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Historique")).toBeInTheDocument();
+});
+
+test("unsaved mode: no history panel before the first save (no pipelineId yet)", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByText("Historique")).not.toBeInTheDocument();
 });
