@@ -26,6 +26,10 @@ class AggregateMeasure(BaseModel):
     field: str | None = None
     agg: str = "count"
     label: str | None = None
+    # Centile demandé, en POURCENTAGE (0 < p < 100), pas en fraction.
+    # Obligatoire pour agg="percentile", refusé pour tout autre agg
+    # (_validate_p ci-dessous). La division par 100 se fait dans _agg_expr.
+    p: float | None = None
 
 
 class AggregateRequestBody(BaseModel):
@@ -33,6 +37,7 @@ class AggregateRequestBody(BaseModel):
     split: str | None = None
     agg: str = "count"
     field: str | None = None
+    p: float | None = None
     measures: list[AggregateMeasure] | None = None
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
@@ -81,6 +86,16 @@ def _groupby_fields(request: AggregateRequestBody) -> list[str]:
     return request.groupBy if isinstance(request.groupBy, list) else [request.groupBy]
 
 
+def _validate_p(agg: str, p: float | None, label: str) -> None:
+    if agg == "percentile":
+        if p is None:
+            raise UnknownAggregateField(label, "agg 'percentile' requires p")
+        if not (0 < p < 100):
+            raise UnknownAggregateField(label, "p must be strictly between 0 and 100")
+    elif p is not None:
+        raise UnknownAggregateField(label, f"agg '{agg}' does not accept p")
+
+
 def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> None:
     valid = _valid_column_names(table_info)
 
@@ -101,8 +116,14 @@ def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> No
 
     check(request.split, "split")
     check(request.field, "field")
+    # request.agg/request.field/request.p restent utilisés même quand
+    # `measures` est renseigné : le chemin `split` de
+    # run_collection_aggregate les lit directement. Les deux niveaux se
+    # valident donc toujours, pas l'un ou l'autre.
+    _validate_p(request.agg, request.p, "p")
     for i, m in enumerate(request.measures or []):
         check(m.field, f"measures[{i}].field")
+        _validate_p(m.agg, m.p, f"measures[{i}].p")
     for raw_name in request.filters:
         field_name, _ = _split_filter_key(raw_name)
         check(field_name, f"filters.{raw_name}")
@@ -120,11 +141,16 @@ def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> No
             raise UnknownAggregateField("bins", "bins must be between 1 and 100")
 
 
-def _agg_expr(agg: str, field: str | None) -> str:
+def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
     if agg == "count":
         return "COUNT(*)"
     if field is None:
         raise UnknownAggregateField("field", f"agg '{agg}' requires a field")
+    if agg == "countDistinct":
+        # Pas de TRY_CAST ici, contrairement aux agrégats numériques :
+        # compter des valeurs textuelles distinctes est légitime, et un cast
+        # en DOUBLE les fusionnerait toutes sur NULL (donc 0 distinct).
+        return f"COALESCE(COUNT(DISTINCT {_qi(field)}), 0)"
     col = f"TRY_CAST({_qi(field)} AS DOUBLE)"
     if agg == "sum":
         return f"COALESCE(SUM({col}), 0)"
@@ -134,6 +160,21 @@ def _agg_expr(agg: str, field: str | None) -> str:
         return f"COALESCE(MIN({col}), 0)"
     if agg == "max":
         return f"COALESCE(MAX({col}), 0)"
+    # Indéfini n'est PAS zéro : pas de COALESCE sur les trois suivants
+    # (design §3.1). La médiane d'un ensemble vide et l'écart-type d'une
+    # ligne unique n'existent pas ; renvoyer 0 produirait un graphique faux
+    # plutôt qu'un trou.
+    if agg == "median":
+        return f"QUANTILE_CONT({col}, 0.5)"
+    if agg == "percentile":
+        # _validate_p a déjà garanti la présence et les bornes de p
+        # (appelé par _validate_fields, avant tout appel à _agg_expr).
+        assert p is not None
+        return f"QUANTILE_CONT({col}, {p / 100.0!r})"
+    if agg == "stddev":
+        # SAMP (n-1) et non POP : parité visée avec le statisticType
+        # "stddev" d'ArcGIS (cf. spec §3.1, parité affirmée non mesurée).
+        return f"STDDEV_SAMP({col})"
     raise UnknownAggregateField("agg", f"unknown agg '{agg}'")
 
 
@@ -144,7 +185,7 @@ def _measure_label(m: AggregateMeasure) -> str:
 def _measures_for(request: AggregateRequestBody) -> list[AggregateMeasure]:
     if request.measures:
         return request.measures
-    return [AggregateMeasure(field=request.field, agg=request.agg, label="value")]
+    return [AggregateMeasure(field=request.field, agg=request.agg, label="value", p=request.p)]
 
 
 def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[str, list[Any]]:
@@ -345,7 +386,7 @@ def run_collection_aggregate(
     if len(fields) > 1:
         measures = _measures_for(request)
         measure_cols = ", ".join(
-            f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures)
+            f"{_agg_expr(m.agg, m.field, m.p)} AS m{i}" for i, m in enumerate(measures)
         )
         group_cols = ", ".join(_qi(f) for f in fields)
         sql = (
@@ -367,7 +408,7 @@ def run_collection_aggregate(
         cat_expr = _qi(single_field) if single_field else "'Total'"
 
     if request.split:
-        agg_sql = _agg_expr(request.agg, request.field)
+        agg_sql = _agg_expr(request.agg, request.field, request.p)
         sql = (
             f"{dedup_cte} SELECT {cat_expr} AS __cat, {_qi(request.split)} AS __split, "
             f"{agg_sql} AS __val FROM live {where_sql} GROUP BY __cat, __split"
@@ -376,7 +417,9 @@ def run_collection_aggregate(
         return category_key, _pivot_split(sql_rows, category_key=str(category_key))
 
     measures = _measures_for(request)
-    measure_cols = ", ".join(f"{_agg_expr(m.agg, m.field)} AS m{i}" for i, m in enumerate(measures))
+    measure_cols = ", ".join(
+        f"{_agg_expr(m.agg, m.field, m.p)} AS m{i}" for i, m in enumerate(measures)
+    )
     sql = (
         f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} "
         f"FROM live {where_sql} GROUP BY __cat"

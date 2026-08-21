@@ -775,3 +775,213 @@ def test_bins_excludes_non_numeric_values_from_top_bucket(tmp_path, conn):
     assert total_count == 3, (
         f"Expected total count 3, got {total_count} (non-numeric 'abc' was not excluded)"
     )
+
+
+def test_count_distinct_counts_distinct_text_values(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025", 10, lsn=1),
+            _row(2, "Nord", "2025", 20, lsn=1),
+            _row(3, "Nord", "2026", 30, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="countDistinct", field="annee")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 2}]
+
+
+def test_median_returns_the_middle_value(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025", 10, lsn=1),
+            _row(2, "Nord", "2025", 20, lsn=1),
+            _row(3, "Nord", "2025", 60, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="median", field="pop")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 20}]
+
+
+def test_percentile_uses_p_as_a_percentage(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[_row(i, "Nord", "2025", i * 10, lsn=1) for i in range(1, 11)],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="percentile", field="pop", p=90)
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows[0]["region"] == "Nord"
+    assert rows[0]["value"] == pytest.approx(91.0, abs=1e-6)
+
+
+def test_stddev_is_the_sample_standard_deviation(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025", 2, lsn=1),
+            _row(2, "Nord", "2025", 4, lsn=1),
+            _row(3, "Nord", "2025", 4, lsn=1),
+            _row(4, "Nord", "2025", 6, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="stddev", field="pop")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    # STDDEV_SAMP (n-1) de [2,4,4,6] = 1.632…, là où STDDEV_POP donnerait 1.414.
+    assert rows[0]["value"] == pytest.approx(1.632993, abs=1e-5)
+
+
+def test_stddev_of_a_single_row_group_is_null_not_zero(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="stddev", field="pop")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": None}]
+
+
+def test_median_of_a_group_without_castable_values_is_null_not_zero(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "pas-un-nombre", None, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="median", field="annee")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": None}]
+
+
+def test_count_distinct_of_a_group_without_values_is_zero(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", None, 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="countDistinct", field="annee")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 0}]
+
+
+def test_percentile_without_p_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="percentile", field="pop")
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+
+    assert exc.value.field == "p"
+
+
+def test_percentile_out_of_range_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="percentile", field="pop", p=100)
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+
+    assert exc.value.field == "p"
+
+
+def test_p_on_a_non_percentile_agg_raises(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop", p=50)
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+
+    assert exc.value.field == "p"
+
+
+def test_measure_level_p_is_validated_independently(tmp_path, conn):
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(
+        groupBy="region",
+        measures=[AggregateMeasure(agg="percentile", field="pop", label="p90")],
+    )
+
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+
+    assert exc.value.field == "measures[0].p"
