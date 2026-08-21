@@ -75,6 +75,11 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # Sans ceci, un échec sur une seule des huit legs (par ex. disque ou
+      # timeout sur geostudio-qgis-worker, 11.1 Go, ou geostudio-export-worker,
+      # 3.14 Go) annule les sept autres avant publication — dont core/shell/
+      # postgis, qui n'ont eux-mêmes aucune raison d'échouer.
+      fail-fast: false
       matrix:
         include:
           - image: geostudio-core
