@@ -450,6 +450,46 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
     )
 
 
+CI = REPO / ".github/workflows/ci.yml"
+
+
+def _postgres_run_flags(workflow: pathlib.Path, job: str) -> set[str]:
+    """Flags `-c cle=valeur` passés à l'image Postgres par l'étape « Start
+    Postgres » d'un job donné. Lit le `run:` de l'étape plutôt que d'exécuter
+    quoi que ce soit — même parti que le reste du fichier."""
+    doc = yaml.safe_load(workflow.read_text())
+    steps = doc["jobs"][job]["steps"]
+    scripts = [st.get("run", "") for st in steps if st.get("name") == "Start Postgres"]
+    assert scripts, f"{workflow.name}: le job {job} n'a plus d'étape « Start Postgres »"
+    flags = set()
+    for script in scripts:
+        flags |= set(re.findall(r"-c\s+([A-Za-z0-9_]+=[^\s\\]+)", script))
+    return flags
+
+
+def test_release_gate_starts_postgres_like_ci():
+    """La porte de test de `release.yml` doit démarrer Postgres avec au moins
+    les réglages du job `core` de `ci.yml`. Sinon la CI est verte et la
+    release échoue — ou, pire, passe en n'exécutant pas les mêmes tests.
+
+    Écrite en réaction à un échec réel : le tag `v0.1.0` a échoué sur
+    `logical decoding requires wal_level >= logical`, deux tests
+    `@pytest.mark.postgis` du consommateur CDC (SP-11) que `ci.yml` exécute et
+    que cette porte n'exécutait pas, faute des flags. La dérive était
+    invisible parce que la dernière release taguée (`v0.1.0-rc1`, 2026-07-15)
+    précède ces tests : la porte ne les avait jamais rencontrés. C'est la
+    forme « chemin de release jamais exercé » de la classe de bug que ce
+    fichier existe pour arrêter, un cran au-dessus du compose."""
+    ci_flags = _postgres_run_flags(CI, "core")
+    release_flags = _postgres_run_flags(RELEASE, "test-gate")
+    missing = ci_flags - release_flags
+    assert not missing, (
+        f"release.yml (test-gate) démarre Postgres sans les réglages que "
+        f"ci.yml (core) lui donne : {sorted(missing)}. La porte de release "
+        "n'exécute donc pas les mêmes tests que la CI."
+    )
+
+
 # Buckets volontairement hors sauvegarde, avec la raison. `exports` et
 # `appexports` ne contiennent que des artefacts régénérables : un PDF de
 # rapport ou un bundle d'app se re-demande en un clic.
