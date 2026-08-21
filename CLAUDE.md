@@ -90,15 +90,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Commandes
 
 ```bash
-# pre-commit (une fois par poste de travail)
-pip install pre-commit  # ou: uvx pre-commit
-pre-commit install --hook-type pre-commit --hook-type commit-msg
-
-# shell
+# shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
 npm run test         # Vitest (61 fichiers, 398 tests)
 npm run e2e          # Playwright (18 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
+
+# pre-commit (une fois par poste de travail, après npm ci)
+# Note : commitlint dépend de shell/node_modules, donc cd shell && npm ci doit être exécuté d'abord
+pip install pre-commit  # ou: uvx pre-commit
+pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
