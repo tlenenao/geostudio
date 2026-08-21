@@ -90,6 +90,10 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ## Commandes
 
 ```bash
+# pre-commit (une fois par poste de travail)
+pip install pre-commit  # ou: uvx pre-commit
+pre-commit install --hook-type pre-commit --hook-type commit-msg
+
 # shell
 cd shell && npm ci
 npm run test         # Vitest (61 fichiers, 398 tests)
