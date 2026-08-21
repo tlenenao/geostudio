@@ -1066,6 +1066,163 @@ given » et bloque tout commit touchant `shell/src/**` ; `eslint` « passe » en
 lintant tout le projet au lieu des fichiers indexés. Il manque un `"$@"` aux
 deux (et un `--` côté entry).
 
+- **SP-22** — Filet qualité statique (vague 2 du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` ; vague 0 = SP-20
+  clôture, vague 1 = SP-21). 7 chantiers de garde-fous statiques/CI, exécutés
+  en subagent-driven-development (9 tâches d'implémentation + tâche 10 de
+  clôture), review par tâche systématique.
+  - **Ruff (Task 1)** — le `select` prescrit par le brief laissait 342
+    violations non auto-fixables sous `core/app` seul (dont 269 `B008` faux
+    positif FastAPI `Depends`, 45 `B904`, 7 `B905` à effet comportemental
+    réel) : **décision Tanguy — remédiation complète, pas de rétrécissement**.
+    `extend-immutable-calls` pour B008 (zéro changement de code), `B904`
+    chaîné site par site (`from err`/`from None` réfléchi — ex.
+    `app/secrets/routes.py` en `from None` pour ne pas fuiter du ciphertext
+    via `IntegrityError.params`), `B905 strict=True` vérifié sur les 9 sites,
+    périmètre élargi à tout `core/` (app+tests+alembic+scripts). 2 vrais bugs
+    trouvés au passage : une comparaison `assert_egress_allowed(...) is None`
+    qui n'était pas un `assert` (expression nue, jamais vérifiée) dans 2
+    fichiers de test, et un `pytest.raises(Exception)` trop large resserré
+    aux 2 vraies exceptions attendues. `ruff check`/`format --check` verts et
+    câblés en CI sur tout `core/`.
+  - **Contrat de couches complété (Task 2)** — `app.cdc`/`app.instance`/
+    `app.search`/`app.analytics` insérés au contrat import-linter (30 entrées
+    au total) aux positions exactes déjà en vigueur dans le code ;
+    `lint-imports` : `Contracts: 1 kept, 0 broken.`
+  - **ESLint + Prettier (Task 3)** — `tseslint.configs.recommendedTypeChecked`
+    prescrit par le brief amenait 845 violations (89% hors périmètre, 26
+    règles de sûreté de type sur 202 fichiers) : **décision Tanguy —
+    resserrer** (pas de remédiation complète, contrairement à Task 1) à
+    `tseslint.configs.recommended` + `no-floating-promises`/
+    `no-misused-promises` ajoutées explicitement, plus un `no-explicit-any:
+    "off"` scopé aux seuls fichiers `*.test.{ts,tsx}` (28 sites, 4 fichiers
+    de mocks MSW/DataTransfer). 2 vrais bugs trouvés en triant
+    `no-floating-promises` : `PipelineRunPanel.loadRuns()` et
+    `VisualQueryWizardPage.poll()` sans aucun `try/catch`, corrigés en miroir
+    du patron déjà établi par `ReportRunPanel.tsx` (SP-17b). Premier passage
+    Prettier réel sur tout `shell/` (jamais configuré avant cette tâche) →
+    308 fichiers reformatés. `dangerouslySetInnerHTML` interdit hors
+    `richSection.tsx` par une règle `no-restricted-syntax` dédiée (renvoi
+    vers `sanitizeMarkdown()`), avec un bloc d'exception de fichier pour
+    `richSection.tsx` lui-même. `npx eslint .`/`prettier --check .` verts,
+    `npm run test` 152/1235 inchangé, `npm run build` passe, câblé en CI.
+  - **mypy --strict (Task 4)** — 98 erreurs mesurées initialement sur les 4
+    modules nommés (`app.auth`/`app.secrets`/`app.analytics`/`app.copilot`),
+    dont 13 provenant de 8 fichiers hors périmètre importés transitivement
+    (`--strict` type-vérifie par défaut tout module atteint par import, pas
+    seulement les 4 ciblés) : `follow_imports = "silent"` ajouté à
+    `[tool.mypy]`, vérifié comme un mécanisme standard qui supprime le
+    rapport d'erreur sur les fichiers importés sans affaiblir la vérification
+    des 4 modules eux-mêmes ni la passe large informative. 85 erreurs réelles
+    corrigées (annotations, `TableInfo`/`duckdb.DuckDBPyConnection` au lieu
+    d'`Any`, 3 `assert` de narrowing) → 0 erreur. 1 vrai bug trouvé et
+    signalé explicitement : `app/auth/dependency.py` réutilisait le nom
+    `claims` pour deux types incompatibles selon la branche, renommé
+    `oidc_claims` (comportement inchangé, branches mutuellement exclusives).
+    core pytest inchangé. CI : passe stricte bloquante sur les 4 modules +
+    passe large `mypy app/` `|| true` non bloquante, après `ruff format
+    --check`.
+  - **Couverture à seuil non régressif (Task 5)** — `check_coverage.py`/
+    `check-coverage.mjs` (TDD RED→GREEN, 3/3), seuils versionnés dans
+    `core/.coverage-threshold` (**85**) et `shell/.coverage-threshold`
+    (**88**), câblés en CI juste après chaque suite de tests (une seule
+    exécution par job, pas de doublon). Mesure shell brute anormale (51,78%)
+    investiguée plutôt que devinée : artefacts de build locaux `dist/`/
+    `dist-export/` gitignorés comptés comme source non couverte —
+    `coverage.exclude` du brief **remplace** `coverageConfigDefaults.exclude`
+    par spread peu profond (vérifié sur la source `vitest@3.2.7`) au lieu de
+    le compléter, donc `dist/**` en sortait. Nettoyage local seul (aucune
+    config touchée), remesuré à 88,15% → seuil 88. core 85,09% → seuil 85.
+  - **pre-commit + commitlint (Task 6)** — reprise d'une implémentation
+    partielle laissée par une session précédente. **Trois entrées de hook
+    étaient cassées** : les `entry: bash -c 'cd shell && npx eslint --fix'`/
+    `prettier --write` ne recevaient jamais les fichiers stagés (pre-commit
+    les passe en arguments du `bash -c`, où ils deviennent `$0`/`$1` —
+    `prettier` échouait en « No parser and no file path given » et bloquait
+    tout commit touchant `shell/src/**`, `eslint` « passait » en lintant tout
+    le projet) ; et `lint-imports`, non documenté jusque-là, échouait aussi
+    depuis la racine (`uv run --project core` ne change pas de cwd). Forme
+    retenue : `bash -c 'cd shell && npx eslint --fix "${@#shell/}"' --`
+    (après qu'une première tentative gardant la racine comme cwd se soit
+    révélée elle-même cassée — les globs `files:` d'une flat config ESLint
+    et `.prettierignore` résolvent relativement au cwd). `commitlint.config.js`
+    pointe `./shell/node_modules/@commitlint/config-conventional` (le nom de
+    paquet nu ne résout pas depuis la racine), donc `## Commandes` a dû être
+    réordonné (`npm ci` avant `pre-commit install`, sinon tout commit d'un
+    clone frais entre les deux étapes échoue au hook `commit-msg`).
+    `uvx pre-commit run --all-files` vert (5/5).
+  - **Sécurité de chaîne d'outils (Tasks 7-9)** — CodeQL (`codeql.yml`,
+    report-only, `github/codeql-action/init@v4`+`analyze@v4`) + gitleaks
+    (`gitleaks.yml`, bloquant, `gitleaks/gitleaks-action@v3`,
+    `GITLEAKS_VERSION: "8.30.1"` épinglé) sur push/PR ; Trivy + SBOM
+    (`release.yml`, `aquasecurity/trivy-action@v0.36.0` +
+    `anchore/sbom-action@v0.24.0`, `upload-sarif@v4`) par image publiée au
+    tag `v*` ; Dependabot (`uv` sur `/core`, `npm` sur `/shell`,
+    `github-actions` sur `/`, hebdomadaire). `.gitleaks.toml` : `[extend]
+    useDefault = true` indispensable (sans lui une config personnalisée
+    remplace tout le jeu de règles) + 3 exclusions justifiées par écrit (clé
+    AES-GCM de test, placeholder Superset, `admin:admin` Grafana d'un
+    runbook, cette dernière resserrée à `targetRules = ["curl-auth-user"]`
+    dans son propre bloc pour ne pas exempter tout le fichier de toutes les
+    règles).
+  - **Écarts assumés avec la spec** : fichier/bloc d'exception
+    `dangerouslySetInnerHTML` (ci-dessus, Task 3) ; mypy `--strict` invoqué
+    par ligne de commande sur les 4 modules plutôt que par `[[tool.mypy.
+    overrides]]` (Task 4) ; Trivy/CodeQL en report-only —
+    `continue-on-error: true` explicitement posé sur Trivy/SBOM (décision
+    Tanguy, Task 8) après qu'il soit apparu que Trivy scanne l'image
+    **depuis ghcr** juste après l'avoir poussée (`push: true` sans
+    `load: true`), donc un re-pull complet (11,1 Go pour `qgis-worker`,
+    risque de saturation disque/timeout), et que `exit-code: "0"` seul ne
+    couvre pas un échec d'infra de l'étape elle-même ; SBOM publié comme
+    artefact de run par le comportement par défaut de `sbom-action`, sans
+    étape supplémentaire ; gitleaks **bloquant** (seule porte non
+    report-only des trois) et scannant les commits du push/PR — pas l'arbre
+    de travail —, `GITLEAKS_NO_GIT` n'existant pas côté action (déviation
+    assumée de la décision de planification n°6, sans conséquence pratique,
+    `origin/dev` n'étant qu'à 1 commit de `main`) ; ESLint resserré à
+    `recommended` + les deux règles de promesses plutôt que
+    `recommendedTypeChecked` (Task 3, ci-dessus) ; `groups` retiré de
+    l'entrée Dependabot `uv` (`dependency-type` non documenté pour cet
+    écosystème — une config invalide y est silencieusement ignorée par
+    GitHub plutôt que rejetée, piège vérifié indépendamment par
+    l'implémenteur et le reviewer).
+  - **Leçon récurrente de ce plan, la plus transférable** : le texte
+    littéral du plan/brief était faux à de nombreux endroits sur des
+    interfaces tierces, chaque fois trouvé en vérifiant contre la source
+    réelle — jamais contre la doc ou la mémoire : quatre knobs de
+    `gitleaks-action` (`GITLEAKS_NO_GIT` inexistant, `GITLEAKS_CONFIG` fixé
+    inconditionnellement aurait cassé tout push tant que `.gitleaks.toml`
+    n'existe pas, `GITHUB_TOKEN` obligatoire sur `pull_request`,
+    `gitleaks-action@v2` hors support) ; la version de CLI gitleaks
+    installée par défaut par l'action (8.24.3, antérieure au format
+    `[[allowlists]]` introduit en 8.25.0 qu'exige `.gitleaks.toml` — la
+    porte bloquante aurait échoué sur du contenu explicitement validé comme
+    fixture, l'allowlist de Task 7 n'aurait jamais servi en CI) ; trois
+    références d'action non épinglées ou périmées
+    (`aquasecurity/trivy-action@master`, `codeql-action/upload-sarif@v3`→v4,
+    `anchore/sbom-action@v0`) ; l'option `dependency-type` non supportée pour
+    `uv` (Task 9, ci-dessus) ; trois entrées de hook pre-commit qui ne
+    transmettaient pas les fichiers (Task 6, ci-dessus) ; et trois messages
+    de commit d'affilée, dictés mot pour mot par le brief lui-même (Tasks
+    8/9), rejetés par le commitlint que la Task 6 du même plan venait
+    d'installer (`subject-case`).
+  - **Reste non vérifiable avant un déclenchement réel** : Trivy/SBOM
+    seulement au prochain tag `v*` ; Dependabot seulement à son premier
+    passage planifié (hebdomadaire) ; CodeQL/gitleaks seulement au prochain
+    push/PR sur ce dépôt — aucun des trois n'a pu être observé vert en
+    conditions réelles pendant cette session, même précédent que les tests
+    `@pytest.mark.qgis` de SP-15d.
+  - **Clôture (Task 10, 2026-08-21)** — suite complète rejouée des deux
+    côtés : core `uv run pytest` → **1653 passed, 153 skipped, 0 failed**
+    (aucune baisse par rapport aux 1649/153/0 mesurés au début de Task 1, ni
+    aux 1652 passed mesurés par Task 5 après ses propres ajouts — le delta
+    restant vient de commits SP-21 concurrents, pas d'une régression SP-22),
+    `ruff check`/`format --check`/`mypy --strict` (4 modules)/`lint-imports`
+    verts ; shell `npm run lint`/`format:check`/`test` (**152 fichiers /
+    1235 tests, chiffre identique à la référence**)/`build` verts.
+    `uvx pre-commit run --all-files` : 5/5 hooks verts.
+
 ### À venir
 
 - **SP-14** — clos (jalon M11 atteint, cf. SP-14o dans `### Fait`).
@@ -1290,3 +1447,27 @@ deux (et un `--` côté entry).
   tous en `service_started`, jamais `service_healthy` ; le runbook de
   restauration nomme désormais les **trois** endroits à changer pour ajouter
   un bucket au périmètre (un seul est outillé), là où il en promettait un.
+- SP-22, suivis non bloquants : le re-pull ghcr d'une image de 11,1 Go
+  (`qgis-worker`) par l'étape Trivy à chaque publication de tag `v*`
+  (alternative `load: true` + scan local envisagée, non retenue — coût
+  propre non mesurable dans cette session). Asymétrie assumée entre
+  Dependabot `/core` (PR non groupées, `uv` ne supporte pas
+  `groups.*.dependency-type`) et `/shell` (dev/prod groupés, `npm` le
+  supporte) — **ne pas « rétablir la parité »** en réintroduisant
+  `dependency-type` sur l'entrée `uv` dans une session future, l'option y
+  est silencieusement ignorée par GitHub, pas rejetée. `package-ecosystem:
+  "docker"` absent de `dependabot.yml` alors qu'il couvrirait la dette
+  d'épinglage des 8 images de base relevée par SP-21 (décision du
+  propriétaire, non ajouté). Les 2 exclusions par regex de `.gitleaks.toml`
+  (clé AES-GCM de test, placeholder Superset) portent sur tout le dépôt et
+  non sur les seuls fichiers nommés dans leur commentaire — jugé acceptable
+  en Task 7, pas resserré. Les hooks eslint/prettier de
+  `.pre-commit-config.yaml` (Task 6) ne sont pas exercés sur un nom de
+  fichier contenant une espace — mécanique jugée saine (`"${@#shell/}"`
+  s'applique élément par élément) mais non testée sur ce cas. **Constat de
+  sécurité** trouvé en Task 7, hors périmètre de cette vague : une vraie
+  clé privée `age` de test subsiste dans l'historique public du dépôt
+  (commit `0b4733a`), redactée depuis par `fac2606` et absente de `HEAD` —
+  jetable d'après le rapport d'origine, mais à confirmer ou rotationner ;
+  l'audit de l'historique complet reste hors périmètre de cette vague
+  (décision de planification n°6).
