@@ -366,6 +366,40 @@ describe("metricExpr / decompileMetrics", () => {
     ]);
   });
 
+  test("round-trip exact des centiles 1, 50, 99 et 99.5", () => {
+    const metrics: MetricConfig[] = [
+      { alias: "p1", function: "percentile", sourceColumn: "pop", p: 1 },
+      { alias: "p50", function: "percentile", sourceColumn: "pop", p: 50 },
+      { alias: "p99", function: "percentile", sourceColumn: "pop", p: 99 },
+      { alias: "p995", function: "percentile", sourceColumn: "pop", p: 99.5 },
+    ];
+    const compiled = Object.fromEntries(metrics.map((m) => [m.alias, metricExpr(m)]));
+    expect(compiled).toEqual({
+      p1: 'quantile_cont("pop", 0.01)',
+      p50: 'quantile_cont("pop", 0.5)',
+      p99: 'quantile_cont("pop", 0.99)',
+      p995: 'quantile_cont("pop", 0.995)',
+    });
+    expect(decompileMetrics(compiled)).toEqual(metrics);
+  });
+
+  test("refuse une fraction que metricExpr ne peut jamais produire (p=90 écrit tel quel, pas 0.9)", () => {
+    // 0 < p < 100 dans l'état applicatif => metricExpr n'émet jamais autre
+    // chose qu'une fraction stricte entre 0 et 1. "90" correspondrait à un
+    // p de 9000, impossible par construction : la forme doit rester non
+    // reconnue plutôt que rouvrir l'assistant avec un p qui viole son
+    // propre invariant documenté (inferSchema.ts).
+    expect(decompileMetrics({ x: 'quantile_cont("pop", 90)' })).toBeNull();
+  });
+
+  test("refuse une fraction entière (p=100, exclu de l'invariant 0 < p < 100)", () => {
+    expect(decompileMetrics({ x: 'quantile_cont("pop", 1)' })).toBeNull();
+  });
+
+  test("refuse une fraction nulle (p=0, exclu de l'invariant 0 < p < 100)", () => {
+    expect(decompileMetrics({ x: 'quantile_cont("pop", 0.0)' })).toBeNull();
+  });
+
   test("refuse une forme SQL non produite par metricExpr", () => {
     expect(decompileMetrics({ x: 'variance("pop")' })).toBeNull();
   });
@@ -416,5 +450,27 @@ describe("metricExpr / decompileMetrics", () => {
     const expr = metricExpr(metric);
     expect(expr).toBe('quantile_cont("po""p", 0.9)');
     expect(decompileMetrics({ p90: expr })).toEqual([metric]);
+  });
+
+  test("échoue bruyamment plutôt que d'émettre du SQL faux quand p est null", () => {
+    const metric: MetricConfig = {
+      alias: "p90",
+      function: "percentile",
+      sourceColumn: "pop",
+      p: null,
+    };
+    // Sans garde-fou, JS coercerait null en 0 : quantile_cont("pop", 0), le
+    // minimum plutôt que le centile voulu, silencieusement faux.
+    expect(() => metricExpr(metric)).toThrow(/percentile/);
+  });
+
+  test("échoue bruyamment plutôt que d'émettre du SQL faux quand p est hors de 0 < p < 100", () => {
+    const metric: MetricConfig = {
+      alias: "p90",
+      function: "percentile",
+      sourceColumn: "pop",
+      p: 150,
+    };
+    expect(() => metricExpr(metric)).toThrow(/percentile/);
   });
 });
