@@ -198,6 +198,8 @@ export type GeoJSONFeatureInput = {
   geometry: unknown | null;
 };
 
+export type ConfigRevisionInfo = { version: number; createdAt: string };
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
@@ -253,6 +255,10 @@ export interface ItemClient {
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
   getMapConfig(pk: string): Promise<MapConfig>;
   saveMapConfig(pk: string, config: MapConfig): Promise<void>;
+  // Historique de versions (SP-23, chantier 4.18). Clés par `pk` d'item et
+  // non par `configId` : aucun éditeur du shell ne connaît son configId.
+  listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;
+  rollbackConfig(pk: string, version: number): Promise<void>;
   createDatasetItem(input: CreateDatasetInput): Promise<Item>;
   createBookmarkItem(input: CreateBookmarkInput): Promise<Item>;
   getBookmarkConfig(pk: string): Promise<BookmarkPayload>;
