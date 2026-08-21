@@ -150,7 +150,11 @@ jobs:
       # les mainteneurs se sont protégés depuis via les releases GitHub
       # immuables (vérifié : v0.36.0 est marquée `immutable`, son tag ne
       # peut donc plus être déplacé après coup).
+      # Ces deux étapes (Trivy et SBOM) sont informationnelles — une défaillance
+      # d'infrastructure (perte réseau en re-téléchargeant une image 11 Go,
+      # limite de taux GHCR) ne doit jamais rendre la publication red.
       - name: Trivy (report-only)
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
@@ -169,6 +173,7 @@ jobs:
       # comme artefact de run — nécessaire ici puisque `release.yml` ne crée
       # aucune Release GitHub à laquelle attacher un fichier.
       - name: SBOM
+        continue-on-error: true
         uses: anchore/sbom-action@v0.24.0
         with:
           image: ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
