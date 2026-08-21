@@ -45,12 +45,13 @@ def test_missing_slot_is_not_healthy():
     assert slot_is_active(_FakeConnection(None), SLOT_NAME) is False
 
 
-def test_slot_name_matches_the_consumer():
-    """Une divergence de nom rendrait la sonde toujours rouge — donc, avec un
-    depends_on, bloquerait la stack."""
-    from app.cdc.consumer import SLOT_NAME as consumer_slot
-
-    assert SLOT_NAME == consumer_slot
+# `test_slot_name_matches_the_consumer` (revue finale SP-21, item 7) a été
+# supprimé : `scripts/healthcheck_cdc.py` fait `from app.cdc.consumer import
+# SLOT_NAME` (ligne 17) — il n'existe qu'un seul site de définition, et ce
+# test relisait cette même valeur par la même chaîne d'import pour
+# l'affirmer égale à elle-même. Aucune divergence n'est possible tant que ce
+# site d'import reste le seul ; le garde-fou réel est cet import lui-même,
+# pas un test qui ne peut structurellement jamais échouer.
 
 
 def test_main_returns_non_zero_without_a_dsn(monkeypatch):
