@@ -1,0 +1,73 @@
+# Sans ceci, un simple `pre-commit install` (sans `--hook-type`) ne pose que
+# le hook `pre-commit` et laisse tomber `commitlint`, qui a besoin du hook
+# `commit-msg` pour s'exécuter — piège pour quiconque tape la commande la
+# plus courte trouvée dans une doc générique plutôt que celle documentée
+# dans CLAUDE.md (§ Commandes).
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: local
+    hooks:
+      # SP-22, résidu de revue finale : `uv run --project core ruff …` avec
+      # cwd = racine du dépôt (le cwd réel de pre-commit) et un chemin passé
+      # en argument relatif à la racine (`core/tests/....py`) ne respecte
+      # PAS `force-exclude`/`extend-exclude` de `core/pyproject.toml` — mesuré
+      # : ruff résout bien ce `pyproject.toml` (les règles `I`/`E`/`F` qu'il
+      # déclare s'appliquent), mais matche le motif d'exclusion contre un
+      # chemin relatif à la racine du *projet* ruff (`core/`), pas à la
+      # racine du dépôt d'où l'argument est fourni — `core/tests/x.py` ne
+      # matche jamais `tests/x.py`. Seul `cd core` puis un chemin déjà
+      # relatif à `core/` fait fonctionner l'exclusion (vérifié sur fixture
+      # hors dépôt). Idiome `"${@#core/}"` déjà éprouvé dans ce fichier pour
+      # les hooks shell (`I2`, historique) : `cd core` puis on retire le
+      # préfixe `core/` de chaque chemin reçu avant de le passer à ruff.
+      - id: ruff-check
+        name: ruff check (core)
+        entry: bash -c 'cd core && uv run ruff check --fix "${@#core/}"' --
+        language: system
+        files: ^core/.*\.py$
+      - id: ruff-format
+        name: ruff format (core)
+        entry: bash -c 'cd core && uv run ruff format "${@#core/}"' --
+        language: system
+        files: ^core/.*\.py$
+      - id: lint-imports
+        name: import-linter (core)
+        entry: bash -c 'cd core && uv run lint-imports'
+        language: system
+        files: ^core/app/.*\.py$
+        pass_filenames: false
+      # SP-22, revue finale (I2) : l'ancien `files: ^shell/src/.*\.(ts|tsx)$`
+      # ne couvrait qu'une fraction de ce que la CI vérifie réellement
+      # (job `shell` de ci.yml : `npm run lint` = `eslint .` et
+      # `npm run format:check` = `prettier --check .`, tous deux lancés
+      # depuis `shell/` sur tout l'arbre sauf les 4 dossiers ignorés par
+      # eslint.config.js/.prettierignore — dist, dist-export, coverage,
+      # src/api/generated). `shell/e2e/**`, `shell/scripts/*.mjs`,
+      # `playwright.config.ts`, `vite.config*.ts` et tout `.json`/`.css`/
+      # `.md`/`.mjs` sous `shell/` passaient donc ce hook sans jamais être
+      # vérifiés, alors qu'ils font échouer la CI. Plutôt que de dupliquer
+      # au motif près la liste d'ignore des deux outils (qui dériverait à
+      # la première mise à jour de l'un des deux fichiers de config), le
+      # hook déclenche sur tout changement sous `shell/` (`files:
+      # ^shell/.*$`) et lance `--fix`/`--write` sur tout l'arbre
+      # (`pass_filenames: false`, comme le hook `lint-imports` ci-dessus) —
+      # même périmètre que la CI, par construction, pour toujours, plutôt
+      # qu'un `${@#shell/}` qui doit rester synchronisé à la main.
+      - id: eslint
+        name: eslint (shell)
+        entry: bash -c 'cd shell && npx eslint --fix .'
+        language: system
+        files: ^shell/.*$
+        pass_filenames: false
+      - id: prettier
+        name: prettier (shell)
+        entry: bash -c 'cd shell && npx prettier --write .'
+        language: system
+        files: ^shell/.*$
+        pass_filenames: false
+      - id: commitlint
+        name: commitlint
+        entry: npx --prefix shell commitlint --edit
+        language: system
+        stages: [commit-msg]

@@ -84,6 +84,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     strategy:
       # Sans ceci, un échec sur une seule des huit legs (par ex. disque ou
       # timeout sur geostudio-qgis-worker, 11.1 Go, ou geostudio-export-worker,
@@ -140,3 +141,52 @@ jobs:
           tags: |
             ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
             ghcr.io/tlenenao/${{ matrix.image }}:latest
+
+      # Report-only : exit-code 0 quel que soit le résultat, ce scan ne
+      # bloque jamais la publication. Épinglé à la version exacte publiée
+      # par Aqua Security plutôt qu'à `@master` (référence flottante) —
+      # `aquasecurity/trivy-action` a été ciblée par une attaque de la
+      # chaîne d'approvisionnement (cf. notes de la release v0.35.0), dont
+      # les mainteneurs se sont protégés depuis via les releases GitHub
+      # immuables (vérifié : v0.36.0 est marquée `immutable`, son tag ne
+      # peut donc plus être déplacé après coup).
+      # Ces deux étapes (Trivy et SBOM) sont informationnelles — une défaillance
+      # d'infrastructure (perte réseau en re-téléchargeant une image 11 Go,
+      # limite de taux GHCR) ne doit jamais rendre la publication red.
+      - name: Trivy (report-only)
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      # SP-22, résidu de revue : un `continue-on-error: true` ici tolérait
+      # *tout* échec, y compris un vrai rejet SARIF (403, catégorie
+      # invalide) que l'on veut voir — ces étapes n'ont encore jamais tourné
+      # pour de vrai, leur première exécution réelle est donc aussi leur
+      # premier test. Remplacé par un garde précis plutôt qu'un filet
+      # large : l'étape est sautée (pas « passée en échouant ») quand Trivy
+      # n'a produit aucun fichier SARIF (panne d'infra à l'étape
+      # précédente, déjà absorbée par son propre `continue-on-error`), mais
+      # s'exécute et remonte un échec réel et visible si le SARIF existe et
+      # que l'upload lui-même échoue.
+      - name: Upload Trivy results
+        if: hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+
+      # `upload-artifact: true` (défaut de l'action) publie déjà le SBOM
+      # comme artefact de run — nécessaire ici puisque `release.yml` ne crée
+      # aucune Release GitHub à laquelle attacher un fichier.
+      - name: SBOM
+        continue-on-error: true
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
+          artifact-name: ${{ matrix.image }}-sbom.spdx.json
+          output-file: ${{ matrix.image }}-sbom.spdx.json

@@ -1,0 +1,41 @@
+title = "Configuration gitleaks — GeoStudio"
+
+# Version minimale de CLI requise pour ce fichier : le format `[[allowlists]]`
+# (pluriel, un bloc par exclusion) qu'il utilise n'existe qu'à partir de la
+# 8.25.0. Sans ce champ, gitleaks se contente d'un log de niveau debug
+# (« no minVersion specified in config... ») — jamais un avertissement
+# visible ni un échec — donc l'absence de ce champ ne protège de rien par
+# elle-même ; il documente la contrainte réelle au même endroit que la
+# config qui la porte, en complément du pin `zricethezav/gitleaks:v8.30.1`
+# dans .github/workflows/gitleaks.yml (seul mécanisme qui bloque vraiment
+# une version trop ancienne).
+minVersion = "8.25.0"
+
+# On repart du jeu de règles par défaut de gitleaks (celui embarqué dans le
+# binaire) et on y superpose seulement une liste d'exclusions ciblée — sans
+# `useDefault = true`, un fichier de config personnalisé remplace *toutes*
+# les règles de détection, pas seulement les allowlists.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Faux positifs triés le 2026-08-21 — tous des secrets de test/fixture ou des placeholders documentaires, jamais des identifiants réels."
+regexes = [
+  # Clé AES-256-GCM factice (bytes(range(32)) encodés en base64) utilisée
+  # comme CORE_SECRETS_MASTER_KEY de test dans core/tests/*.py, dans
+  # .github/workflows/ci.yml (job api-types-drift) et documentée dans
+  # plusieurs docs/superpowers/plans/*.md et .superpowers/sdd/*.md
+  # historiques — jamais une clé de production.
+  '''AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=''',
+  # Placeholder littéral pour un SUPERSET_SECRET, module sorti du périmètre
+  # au jalon M1 (GeoNode/Superset/Redis retirés) — un seul doc de plan
+  # historique le mentionne encore.
+  '''remplacez-par-une-cle-aleatoire-de-64-caracteres''',
+]
+
+[[allowlists]]
+description = "Identifiants par défaut de Grafana en local (admin:admin) dans des exemples curl du runbook d'observabilité SP-10b — identifiant par défaut documenté, pas un secret déployé. Bloc séparé et targetRules dédié : condition par défaut OR sur un [[allowlists]] s'applique à tout le bloc, donc mettre ce chemin dans le bloc ci-dessus exempterait N'IMPORTE QUELLE règle sur tout ce fichier, pas seulement les hits admin:admin réellement triés."
+targetRules = ["curl-auth-user"]
+paths = [
+  '''docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo\.md''',
+]
