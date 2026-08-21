@@ -55,10 +55,11 @@ jobs:
           done
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
-      - run: uv run pytest
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot
+      - run: uv run pytest --cov=app --cov-report=xml:coverage.xml
+      - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
       - name: Mypy (périmètre large, non bloquant)
         run: uv run mypy app/ || true
       - run: uv run lint-imports
@@ -109,7 +110,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
-      - run: npm run test
+      - run: npm run test -- --coverage
+      - run: node scripts/check-coverage.mjs coverage/coverage-summary.json .coverage-threshold
       - run: npm run build:export-runtime
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
