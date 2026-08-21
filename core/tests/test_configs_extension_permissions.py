@@ -167,7 +167,13 @@ def test_rejected_create_does_not_leave_an_orphan_item(client):
     assert listed["total"] == 0
 
 
-def test_rollback_restores_a_revision_even_if_it_would_now_violate_a_narrowed_scope(client):
+def test_rollback_is_rejected_if_it_would_now_violate_a_narrowed_scope(client):
+    # SP-8c (spec §Hors périmètre) avait volontairement laissé le rollback
+    # restaurer une révision sans revalidation, faute d'appelant réel. SP-23
+    # (chantier 4.18) inverse cette décision une fois le panneau
+    # « Historique » câblé sur de vrais éditeurs : rollback_config revalide
+    # désormais la config restaurée avec exactement la même séquence que
+    # update_config, dont _validate_extension_scope fait partie.
     from app.extensions import repository as ext_repo
 
     # v1 : "communes" est dans le scope déclaré de l'extension au moment de la création.
@@ -189,7 +195,8 @@ def test_rollback_restores_a_revision_even_if_it_would_now_violate_a_narrowed_sc
     reject = client.put(f"/configs/{created['id']}", json=_config_body("communes"))
     assert reject.status_code == 400
 
-    # Mais rollback restaure v1 tel quel, sans revalidation contre le scope
-    # courant — comportement volontaire (cf. spec, §Hors périmètre).
+    # rollback vers v1 revalide désormais contre le scope courant, et refuse
+    # pour la même raison (422, pas 400 : c'est le garde-fou de rollback qui
+    # convertit l'HTTPException levée par le validateur).
     rollback = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
-    assert rollback.status_code == 200
+    assert rollback.status_code == 422
