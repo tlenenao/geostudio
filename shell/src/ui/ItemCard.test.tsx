@@ -36,8 +36,16 @@ test("renders the actions slot when provided", () => {
 });
 
 test("shows a thumbnail image when thumbnailUrl is set", () => {
-  render(<ItemCard item={{ ...item, thumbnailUrl: "https://geonode.test/thumbs/42.png" }} onOpen={() => {}} />);
-  expect(screen.getByRole("img", { name: item.title })).toHaveAttribute("src", "https://geonode.test/thumbs/42.png");
+  render(
+    <ItemCard
+      item={{ ...item, thumbnailUrl: "https://geonode.test/thumbs/42.png" }}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByRole("img", { name: item.title })).toHaveAttribute(
+    "src",
+    "https://geonode.test/thumbs/42.png",
+  );
 });
 
 test("shows no image when thumbnailUrl is null", () => {

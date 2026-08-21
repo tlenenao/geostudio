@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.configs.schemas import BuilderConfig
+from app.configs.schemas import BuilderConfig, LayoutItem
 
 
 def _valid_payload(kind: str = "app") -> dict:
@@ -10,8 +10,7 @@ def _valid_payload(kind: str = "app") -> dict:
         "version": 1,
         "kind": kind,
         "dataSources": [
-            {"id": "ds1", "type": "feature", "service": "martin",
-             "layer": "communes", "query": {}}
+            {"id": "ds1", "type": "feature", "service": "martin", "layer": "communes", "query": {}}
         ],
         "layout": {
             "type": "grid",
@@ -21,9 +20,7 @@ def _valid_payload(kind: str = "app") -> dict:
                 {"widget": "table", "x": 8, "y": 0, "w": 4, "h": 6, "props": {}},
             ],
         },
-        "messages": [
-            {"from": "map", "event": "select", "to": "table", "action": "filter"}
-        ],
+        "messages": [{"from": "map", "event": "select", "to": "table", "action": "filter"}],
     }
 
 
@@ -67,9 +64,14 @@ def _valid_map_payload() -> dict:
             "basemap": {"style": "https://demotiles.maplibre.org/style.json"},
             "view": {"center": [2.35, 48.85], "zoom": 5},
             "layers": [
-                {"id": "l1", "title": "Communes", "visible": True,
-                 "kind": "vector", "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
-                 "sourceLayer": "communes"},
+                {
+                    "id": "l1",
+                    "title": "Communes",
+                    "visible": True,
+                    "kind": "vector",
+                    "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
+                    "sourceLayer": "communes",
+                },
             ],
         },
     }
@@ -94,9 +96,6 @@ def test_map_config_requires_map_field():
 def test_app_config_still_requires_layout():
     with pytest.raises(ValidationError):
         BuilderConfig.model_validate({"kind": "app"})
-
-
-from app.configs.schemas import LayoutItem
 
 
 def test_layout_item_accepts_optional_id():
@@ -215,7 +214,9 @@ def test_variable_type_bool_round_trips_bool_initial_value():
 
 def test_variable_type_record_round_trips_dict_initial_value():
     payload = _valid_payload("app")
-    payload["variables"] = [{"id": "v1", "name": "selected", "type": "record", "initialValue": {"nom": "A"}}]
+    payload["variables"] = [
+        {"id": "v1", "name": "selected", "type": "record", "initialValue": {"nom": "A"}}
+    ]
     config = BuilderConfig.model_validate(payload)
     assert config.variables[0].initialValue == {"nom": "A"}
     dumped = config.model_dump(by_alias=True)
@@ -224,7 +225,9 @@ def test_variable_type_record_round_trips_dict_initial_value():
 
 def test_variable_type_list_round_trips_list_initial_value():
     payload = _valid_payload("app")
-    payload["variables"] = [{"id": "v1", "name": "items", "type": "list", "initialValue": [1, 2, 3]}]
+    payload["variables"] = [
+        {"id": "v1", "name": "items", "type": "list", "initialValue": [1, 2, 3]}
+    ]
     config = BuilderConfig.model_validate(payload)
     assert config.variables[0].initialValue == [1, 2, 3]
 

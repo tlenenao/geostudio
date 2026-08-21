@@ -5,6 +5,7 @@ de sortie) : append-only change log, jamais un état fusionné. Une ligne
 IDENTITY par défaut n'expose que la PK sur delete, pas besoin de REPLICA
 IDENTITY FULL). Pas de reprojection : le SRID source (Collection.srid) est
 passé tel quel par l'appelant et posé comme CRS de sortie."""
+
 from dataclasses import dataclass
 
 import geopandas as gpd

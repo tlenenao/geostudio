@@ -7,24 +7,45 @@ import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { CollectionAdmin, ItemClient } from "../../api/types";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 const collection: CollectionAdmin = {
-  id: "parcs", title: "Parcs", description: "Parcs publics", tableName: "parcs",
-  isPublic: true, editable: false, geometryType: null, srid: null, pkColumn: "id",
-  canWrite: false, featureCount: 2, owner: null,
+  id: "parcs",
+  title: "Parcs",
+  description: "Parcs publics",
+  tableName: "parcs",
+  isPublic: true,
+  editable: false,
+  geometryType: null,
+  srid: null,
+  pkColumn: "id",
+  canWrite: false,
+  featureCount: 2,
+  owner: null,
 };
 
-function renderCard(props: Record<string, unknown>, clientOverrides: Partial<ItemClient> = {}, hasSource = true) {
+function renderCard(
+  props: Record<string, unknown>,
+  clientOverrides: Partial<ItemClient> = {},
+  hasSource = true,
+) {
   const client = {
     getCollection: vi.fn().mockResolvedValue(collection),
-    getCollectionSchema: vi.fn().mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
     featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
     ...clientOverrides,
   } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const DatasetCard = getWidget("datasetCard")!.Component;
-  const ctx = { mode: "runtime", data: hasSource ? { loading: false, error: false, records: [], layer: "parcs" } : undefined } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: hasSource ? { loading: false, error: false, records: [], layer: "parcs" } : undefined,
+  } as WidgetContext;
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
@@ -45,7 +66,10 @@ test("renders title, description, feature count, and a link to the dataset page"
   expect(await screen.findByText("Parcs")).toBeInTheDocument();
   expect(screen.getByText("Parcs publics")).toBeInTheDocument();
   expect(screen.getByText(/2 entités/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Voir le jeu de données" })).toHaveAttribute("href", "/public/datasets/parcs");
+  expect(screen.getByRole("link", { name: "Voir le jeu de données" })).toHaveAttribute(
+    "href",
+    "/public/datasets/parcs",
+  );
 });
 
 test("an author-set title overrides the collection's own title", async () => {
@@ -66,7 +90,10 @@ test("shows the download buttons by default", async () => {
 });
 
 test("shows a discreet not-found message for a non-public or unknown collection, without leaking detail", async () => {
-  renderCard({ dataSourceId: "ds1" }, { getCollection: vi.fn().mockRejectedValue(new Error("404")) });
+  renderCard(
+    { dataSourceId: "ds1" },
+    { getCollection: vi.fn().mockRejectedValue(new Error("404")) },
+  );
   expect(await screen.findByText(/introuvable/i)).toBeInTheDocument();
   expect(screen.queryByText(/parcs/i)).not.toBeInTheDocument();
 });

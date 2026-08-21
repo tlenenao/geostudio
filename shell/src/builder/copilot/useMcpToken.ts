@@ -62,6 +62,11 @@ export function useMcpToken(): () => Promise<string> {
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const oidc = useOidcAuth();
+  // Même garde que ci-dessus : ce useCallback n'est, comme useOidcAuth(),
+  // atteignable que sur la branche non-mock — couverture manquante avant
+  // l'activation réelle d'eslint sur ce fichier (SP-22 Task 3), même
+  // justification que le disable précédent.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   return useCallback(async () => {
     const cached = cachedRef.current;
     if (cached && Date.now() < cached.expiresAt) return cached.accessToken;

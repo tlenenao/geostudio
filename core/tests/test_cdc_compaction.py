@@ -5,8 +5,12 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 from app.cdc.compaction import (
-    CompactionReport, compact_partition, group_by_partition, merge_geoparquet,
-    run_compaction_cycle, select_files_to_merge,
+    CompactionReport,
+    compact_partition,
+    group_by_partition,
+    merge_geoparquet,
+    run_compaction_cycle,
+    select_files_to_merge,
 )
 
 
@@ -18,8 +22,10 @@ class _FakeS3Client:
 
     def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):  # noqa: N803
         matching = sorted(k for k in self.objects if k.startswith(Prefix))
-        return {"Contents": [{"Key": k, "Size": len(self.objects[k])} for k in matching],
-                "IsTruncated": False}
+        return {
+            "Contents": [{"Key": k, "Size": len(self.objects[k])} for k in matching],
+            "IsTruncated": False,
+        }
 
     def get_object(self, Bucket, Key):  # noqa: N803
         return {"Body": BytesIO(self.objects[Key])}
@@ -48,12 +54,13 @@ def _read_all_current(client, keys: list[str]) -> list[tuple]:
     réduction complète vit dans le module analytique (Task 6)."""
     frames = [gpd.read_parquet(BytesIO(client.objects[k])) for k in keys if k in client.objects]
     import pandas as pd
+
     all_rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if all_rows.empty:
         return []
     current = all_rows.sort_values("_lsn").groupby("id").tail(1)
     current = current[current["_op"] != "delete"]
-    return sorted(zip(current["id"], current["titre"]))
+    return sorted(zip(current["id"], current["titre"], strict=True))
 
 
 PARTITION = "cdc/tenant_id=t1/collection_id=c1/dt=2026-07-18/"
@@ -82,10 +89,12 @@ def test_select_files_to_merge_returns_empty_when_at_most_one_eligible():
 
 
 def test_merge_geoparquet_concatenates_and_preserves_crs():
-    blob1 = _geoparquet_bytes([{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-                                "geometry": Point(0, 0)}])
-    blob2 = _geoparquet_bytes([{"id": 2, "titre": "b", "_op": "insert", "_lsn": 2, "_ts": 2.0,
-                                "geometry": Point(1, 1)}])
+    blob1 = _geoparquet_bytes(
+        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}]
+    )
+    blob2 = _geoparquet_bytes(
+        [{"id": 2, "titre": "b", "_op": "insert", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}]
+    )
     merged = merge_geoparquet([blob1, blob2])
     gdf = gpd.read_parquet(BytesIO(merged))
     assert len(gdf) == 2
@@ -96,13 +105,19 @@ def test_merge_geoparquet_concatenates_and_preserves_crs():
 def test_compact_partition_merges_eligible_files_and_removes_originals():
     client = _FakeS3Client()
     client.objects[f"{PARTITION}part-a.parquet"] = _geoparquet_bytes(
-        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}])
+        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}]
+    )
     client.objects[f"{PARTITION}part-b.parquet"] = _geoparquet_bytes(
-        [{"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}])
+        [{"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}]
+    )
     files = [{"key": k, "size": len(v)} for k, v in client.objects.items()]
 
     merged_count = compact_partition(
-        client, bucket="b", partition_prefix=PARTITION, files=files, size_threshold_bytes=20000,
+        client,
+        bucket="b",
+        partition_prefix=PARTITION,
+        files=files,
+        size_threshold_bytes=20000,
     )
 
     assert merged_count == 2
@@ -118,7 +133,11 @@ def test_compact_partition_skips_when_nothing_eligible():
     client.objects[f"{PARTITION}part-big.parquet"] = big
     files = [{"key": f"{PARTITION}part-big.parquet", "size": 100}]
     merged_count = compact_partition(
-        client, bucket="b", partition_prefix=PARTITION, files=files, size_threshold_bytes=50,
+        client,
+        bucket="b",
+        partition_prefix=PARTITION,
+        files=files,
+        size_threshold_bytes=50,
     )
     assert merged_count == 0
     assert list(client.objects.keys()) == [f"{PARTITION}part-big.parquet"]  # non touché
@@ -131,29 +150,37 @@ def test_compact_partition_writes_merged_file_before_deleting_originals_on_crash
     par (pk, max(_lsn)) à la lecture, Task 6)."""
     client = _FakeS3Client()
     client.objects[f"{PARTITION}part-a.parquet"] = _geoparquet_bytes(
-        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}])
+        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}]
+    )
     client.objects[f"{PARTITION}part-b.parquet"] = _geoparquet_bytes(
-        [{"id": 2, "titre": "b", "_op": "insert", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}])
+        [{"id": 2, "titre": "b", "_op": "insert", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}]
+    )
     files = [{"key": k, "size": len(v)} for k, v in client.objects.items()]
     client.delete_should_fail = True
 
     try:
-        compact_partition(client, bucket="b", partition_prefix=PARTITION, files=files,
-                          size_threshold_bytes=20000)
+        compact_partition(
+            client, bucket="b", partition_prefix=PARTITION, files=files, size_threshold_bytes=20000
+        )
     except RuntimeError:
         pass
 
     keys = list(client.objects.keys())
     assert len(keys) == 3  # 2 originaux + 1 fusionné : rien supprimé, rien perdu
-    assert _read_all_current(client, keys) == [(1, "a"), (2, "b")]  # résultat inchangé malgré le doublon
+    assert _read_all_current(client, keys) == [
+        (1, "a"),
+        (2, "b"),
+    ]  # résultat inchangé malgré le doublon
 
 
 def test_run_compaction_cycle_reports_across_partitions():
     client = _FakeS3Client()
     client.objects[f"{PARTITION}part-a.parquet"] = _geoparquet_bytes(
-        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}])
+        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}]
+    )
     client.objects[f"{PARTITION}part-b.parquet"] = _geoparquet_bytes(
-        [{"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}])
+        [{"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}]
+    )
     other_prefix = "cdc/tenant_id=t2/collection_id=c9/dt=2026-07-18/"
     client.objects[f"{other_prefix}part-only.parquet"] = b"x" * 100  # seul, jamais éligible
 

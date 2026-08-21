@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.main import create_app
 from app import db
 from app.audit.models import AuditLog
-from app.configs.models import Config
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
-from app.configs import routes
 from app.auth.dependency import get_current_user
+from app.configs import routes
+from app.configs.models import Config
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items.models import Item
+from app.main import create_app
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -27,8 +28,13 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         # Repository functions only flush now; commit here to stand in for
         # "a prior successful request that provisioned this tenant/user".
@@ -54,9 +60,7 @@ def client():
 def _config_body(widget: str = "map") -> dict:
     return {
         "kind": "app",
-        "layout": {"type": "grid", "items": [
-            {"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}
-        ]},
+        "layout": {"type": "grid", "items": [{"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}]},
     }
 
 
@@ -118,9 +122,9 @@ def test_rollback_restores_revision(client):
 
 def test_rollback_missing_returns_404(client):
     created = _create(client)
-    assert client.post(
-        f"/configs/{created['id']}/rollback", json={"version": 99}
-    ).status_code == 404
+    assert (
+        client.post(f"/configs/{created['id']}/rollback", json={"version": 99}).status_code == 404
+    )
 
 
 def test_delete_config_removes_config_and_item(client):
@@ -187,9 +191,14 @@ def _map_config() -> dict:
             "basemap": {"style": "https://demotiles.maplibre.org/style.json"},
             "view": {"center": [2.35, 48.85], "zoom": 5},
             "layers": [
-                {"id": "l1", "title": "Communes", "visible": True,
-                 "kind": "vector", "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
-                 "sourceLayer": "communes"},
+                {
+                    "id": "l1",
+                    "title": "Communes",
+                    "visible": True,
+                    "kind": "vector",
+                    "tilesUrl": "https://martin/communes/{z}/{x}/{y}",
+                    "sourceLayer": "communes",
+                },
             ],
         },
     }
@@ -257,8 +266,13 @@ def test_put_config_by_item_updates_map(client):
                 "basemap": {"style": "https://demo/style.json"},
                 "view": {"center": [1.0, 47.0], "zoom": 8},
                 "layers": [
-                    {"id": "a", "title": "A", "visible": True, "kind": "feature",
-                     "url": "https://fs/a"}
+                    {
+                        "id": "a",
+                        "title": "A",
+                        "visible": True,
+                        "kind": "feature",
+                        "url": "https://fs/a",
+                    }
                 ],
             },
         },
@@ -277,8 +291,10 @@ def test_put_config_by_item_updates_map(client):
 def test_put_config_by_item_404_when_missing(client):
     resp = client.put(
         "/configs/by-item/does-not-exist",
-        json={"kind": "map", "map": {
-            "basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []}},
+        json={
+            "kind": "map",
+            "map": {"basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []},
+        },
     )
     assert resp.status_code == 404
 
@@ -294,8 +310,13 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
                     "basemap": {"style": "https://demo/style.json"},
                     "view": {"center": [2.35, 48.85], "zoom": 5, "pitch": 45, "bearing": 90},
                     "layers": [
-                        {"id": "bldg", "title": "Bâtiments", "visible": True,
-                         "kind": "tiles3d", "url": "https://example.test/tileset.json"},
+                        {
+                            "id": "bldg",
+                            "title": "Bâtiments",
+                            "visible": True,
+                            "kind": "tiles3d",
+                            "url": "https://example.test/tileset.json",
+                        },
                     ],
                     "terrain": {
                         "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
@@ -315,9 +336,18 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
     assert body["view"]["pitch"] == 45
     assert body["view"]["bearing"] == 90
     assert body["layers"][0] == {
-        "id": "bldg", "title": "Bâtiments", "visible": True, "kind": "tiles3d",
-        "tilesUrl": None, "sourceLayer": None, "url": "https://example.test/tileset.json",
-        "opacity": None, "deckType": None, "dataUrl": None, "paint": None, "props": None,
+        "id": "bldg",
+        "title": "Bâtiments",
+        "visible": True,
+        "kind": "tiles3d",
+        "tilesUrl": None,
+        "sourceLayer": None,
+        "url": "https://example.test/tileset.json",
+        "opacity": None,
+        "deckType": None,
+        "dataUrl": None,
+        "paint": None,
+        "props": None,
     }
     assert body["terrain"] == {
         "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
@@ -370,7 +400,7 @@ def test_create_config_is_atomic_when_a_later_step_fails(client, monkeypatch):
 
 
 def test_create_config_writes_audit_log(client):
-    created = _create(client)
+    _create(client)
     with client.session_factory() as session:
         rows = session.scalars(select(AuditLog)).all()
         actions = {r.action for r in rows}
@@ -425,9 +455,13 @@ def _other_tenant_user(client) -> object:
         session.add(tenant)
         session.flush()
         mallory = get_or_create_user(
-            session, tenant_id=tenant.id, oidc_sub="sub-mallory",
-            username="mallory", email="mallory@example.com",
-            first_name="Mallory", last_name="Doe",
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-mallory",
+            username="mallory",
+            email="mallory@example.com",
+            first_name="Mallory",
+            last_name="Doe",
         )
         session.commit()
         session.refresh(mallory)
@@ -437,9 +471,13 @@ def _other_tenant_user(client) -> object:
 def _same_tenant_stranger(client) -> object:
     with client.session_factory() as session:
         stranger = get_or_create_user(
-            session, tenant_id=client.tenant.id,
-            oidc_sub="sub-stranger", username="stranger",
-            email="stranger@example.com", first_name="Stranger", last_name="Doe",
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-stranger",
+            username="stranger",
+            email="stranger@example.com",
+            first_name="Stranger",
+            last_name="Doe",
         )
         session.commit()
         session.refresh(stranger)
@@ -520,16 +558,28 @@ def test_group_editor_can_update_config(client):
     created = _create(client)
     with client.session_factory() as session:
         editor = get_or_create_user(
-            session, tenant_id=client.tenant.id, oidc_sub="sub-editor",
-            username="editor", email=None, first_name="", last_name="",
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-editor",
+            username="editor",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Editors", created_by=client.user.id)
+        group = Group(
+            id="g1", tenant_id=client.tenant.id, name="Editors", created_by=client.user.id
+        )
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=editor.id, tenant_id=client.tenant.id))
-        session.add(ItemShare(
-            item_id=created["itemId"], group_id=group.id, tenant_id=client.tenant.id, role="editor",
-        ))
+        session.add(
+            ItemShare(
+                item_id=created["itemId"],
+                group_id=group.id,
+                tenant_id=client.tenant.id,
+                role="editor",
+            )
+        )
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: editor
@@ -546,16 +596,28 @@ def test_group_viewer_cannot_update_config_returns_403(client):
     created = _create(client)
     with client.session_factory() as session:
         viewer = get_or_create_user(
-            session, tenant_id=client.tenant.id, oidc_sub="sub-viewer",
-            username="viewer", email=None, first_name="", last_name="",
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-viewer",
+            username="viewer",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        group = Group(id="g-viewer", tenant_id=client.tenant.id, name="Viewers", created_by=client.user.id)
+        group = Group(
+            id="g-viewer", tenant_id=client.tenant.id, name="Viewers", created_by=client.user.id
+        )
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=viewer.id, tenant_id=client.tenant.id))
-        session.add(ItemShare(
-            item_id=created["itemId"], group_id=group.id, tenant_id=client.tenant.id, role="viewer",
-        ))
+        session.add(
+            ItemShare(
+                item_id=created["itemId"],
+                group_id=group.id,
+                tenant_id=client.tenant.id,
+                role="viewer",
+            )
+        )
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: viewer
@@ -630,9 +692,6 @@ def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_
         headers={"Authorization": "Bearer anything"},
     )
     assert response.status_code == 201, response.text
-
-
-from unittest.mock import Mock
 
 
 def test_get_config_by_item_with_mode_runtime_increments_counter(client, monkeypatch):

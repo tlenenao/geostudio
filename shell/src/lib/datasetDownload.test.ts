@@ -34,16 +34,23 @@ test.each([
 });
 
 test("geojsonDownloadUrl delegates to client.featuresUrl with a synthetic features source capped at the server's max page size", () => {
-  const client = { featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000") };
+  const client = {
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items?limit=1000"),
+  };
   const url = geojsonDownloadUrl(client, "parcs");
   expect(client.featuresUrl).toHaveBeenCalledWith({
-    id: expect.any(String), type: "features", service: "core", layer: "parcs", query: { limit: 1000 },
+    id: expect.any(String),
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: { limit: 1000 },
   });
   expect(url).toBe("https://core.test/collections/parcs/items?limit=1000");
 });
 
 test("fetchRecordsForCsv stops after a single page when the server returns fewer rows than requested", async () => {
-  const queryPage = vi.fn<(offset: number, limit: number) => Promise<DataRecord[]>>()
+  const queryPage = vi
+    .fn<(offset: number, limit: number) => Promise<DataRecord[]>>()
     .mockResolvedValueOnce([{ id: 1, properties: {}, geometry: null }]);
   const records = await fetchRecordsForCsv(queryPage, 10000);
   expect(records).toHaveLength(1);
@@ -52,9 +59,14 @@ test("fetchRecordsForCsv stops after a single page when the server returns fewer
 });
 
 test("fetchRecordsForCsv paginates across multiple full pages until totalCount is reached", async () => {
-  const page1: DataRecord[] = Array.from({ length: 1000 }, (_, i) => ({ id: i, properties: {}, geometry: null }));
+  const page1: DataRecord[] = Array.from({ length: 1000 }, (_, i) => ({
+    id: i,
+    properties: {},
+    geometry: null,
+  }));
   const page2: DataRecord[] = [{ id: 1000, properties: {}, geometry: null }];
-  const queryPage = vi.fn<(offset: number, limit: number) => Promise<DataRecord[]>>()
+  const queryPage = vi
+    .fn<(offset: number, limit: number) => Promise<DataRecord[]>>()
     .mockResolvedValueOnce(page1)
     .mockResolvedValueOnce(page2);
   const records = await fetchRecordsForCsv(queryPage, 1001);
@@ -64,8 +76,14 @@ test("fetchRecordsForCsv paginates across multiple full pages until totalCount i
 });
 
 test("fetchRecordsForCsv never fetches beyond the 10000-row CSV cap even when totalCount is larger", async () => {
-  const bigPage: DataRecord[] = Array.from({ length: 1000 }, (_, i) => ({ id: i, properties: {}, geometry: null }));
-  const queryPage = vi.fn<(offset: number, limit: number) => Promise<DataRecord[]>>().mockResolvedValue(bigPage);
+  const bigPage: DataRecord[] = Array.from({ length: 1000 }, (_, i) => ({
+    id: i,
+    properties: {},
+    geometry: null,
+  }));
+  const queryPage = vi
+    .fn<(offset: number, limit: number) => Promise<DataRecord[]>>()
+    .mockResolvedValue(bigPage);
   const records = await fetchRecordsForCsv(queryPage, 25000);
   expect(records).toHaveLength(10000);
   expect(queryPage).toHaveBeenCalledTimes(10);
@@ -73,7 +91,9 @@ test("fetchRecordsForCsv never fetches beyond the 10000-row CSV cap even when to
 });
 
 const schema: CollectionSchema = {
-  collection: "parcs", pk: "id", geometry: null,
+  collection: "parcs",
+  pk: "id",
+  geometry: null,
   fields: [{ name: "nom", type: "string", required: true }],
 };
 
@@ -84,9 +104,9 @@ test("recordsToCsv emits pk + schema fields + geometry columns, escaping commas/
   ];
   const csv = recordsToCsv(schema, records);
   expect(csv).toBe(
-    'id,nom,geometry\r\n' +
-    '1,"Parc, du ""Test""",\r\n' +
-    '2,Bois,"{""type"":""Point"",""coordinates"":[1,2]}"',
+    "id,nom,geometry\r\n" +
+      '1,"Parc, du ""Test""",\r\n' +
+      '2,Bois,"{""type"":""Point"",""coordinates"":[1,2]}"',
   );
 });
 
@@ -99,8 +119,16 @@ test("recordsToCsv renders an empty geometry cell when the record has no geometr
 // clicking a real <a> triggers jsdom's "Not implemented: navigation" — both
 // must be stubbed before exercising the DOM-download side effect.
 beforeEach(() => {
-  Object.defineProperty(URL, "createObjectURL", { value: vi.fn(() => "blob:mock"), writable: true, configurable: true });
-  Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), writable: true, configurable: true });
+  Object.defineProperty(URL, "createObjectURL", {
+    value: vi.fn(() => "blob:mock"),
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    writable: true,
+    configurable: true,
+  });
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -117,10 +145,16 @@ test("triggerCsvDownload creates an object URL, clicks a download anchor, then r
 test("downloadCsv fetches bounded records via the client, builds the CSV, and triggers the download", async () => {
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
   const client: Pick<ItemClient, "queryDataSource"> = {
-    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: { nom: "Parc du Test" }, geometry: null }]),
+    queryDataSource: vi
+      .fn()
+      .mockResolvedValue([{ id: 1, properties: { nom: "Parc du Test" }, geometry: null }]),
   };
   await downloadCsv({ client, collectionId: "parcs", schema, featureCount: 1 });
   expect(client.queryDataSource).toHaveBeenCalledWith({
-    id: expect.any(String), type: "features", service: "core", layer: "parcs", query: { limit: 1, offset: 0 },
+    id: expect.any(String),
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: { limit: 1, offset: 0 },
   });
 });

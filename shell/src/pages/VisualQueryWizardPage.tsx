@@ -16,7 +16,11 @@ import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { inferOutputColumns } from "../builder/visualQuery/inferSchema";
 import { FilterRow, isFilterRowValueValid } from "../builder/visualQuery/compileFilter";
 import { InferredSchema, JoinConfig, SummaryConfig } from "../builder/visualQuery/inferSchema";
-import { VisualQueryState, compileVisualQueryToPipeline, decompilePipelineToWizardState } from "../builder/visualQuery/compilePipeline";
+import {
+  VisualQueryState,
+  compileVisualQueryToPipeline,
+  decompilePipelineToWizardState,
+} from "../builder/visualQuery/compilePipeline";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -30,12 +34,20 @@ function outputSchemaMatches(inferred: InferredSchema, existing: CollectionSchem
   return (existing.geometry !== null) === (inferred.geometryType !== null);
 }
 
-export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk: string | null; initialTitle?: string }) {
+export function VisualQueryWizardPage({
+  pipelinePk,
+  initialTitle,
+}: {
+  pipelinePk: string | null;
+  initialTitle?: string;
+}) {
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
   const collectionsQuery = useCollectionsAdmin({ enabled: true });
-  const existingPipelineQuery = usePipelineConfig(pipelinePk ?? "", { enabled: pipelinePk !== null });
+  const existingPipelineQuery = usePipelineConfig(pipelinePk ?? "", {
+    enabled: pipelinePk !== null,
+  });
 
   const [title, setTitle] = useState(initialTitle ?? "");
   const [baseCollectionId, setBaseCollectionId] = useState("");
@@ -48,7 +60,10 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   const [createdPipelinePk, setCreatedPipelinePk] = useState<string | null>(null);
   const [createdDatasetPk, setCreatedDatasetPk] = useState<string | null>(null);
   const [unrecognizedShape, setUnrecognizedShape] = useState(false);
-  const [existingOutput, setExistingOutput] = useState<{ collectionId: string; datasetItemId: string } | null>(null);
+  const [existingOutput, setExistingOutput] = useState<{
+    collectionId: string;
+    datasetItemId: string;
+  } | null>(null);
   const [titleTouched, setTitleTouched] = useState(false);
 
   const baseSchemaQuery = useQuery({
@@ -80,13 +95,19 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   useEffect(() => {
     if (pipelinePk === null || !existingPipelineQuery.data) return;
     const decompiled = decompilePipelineToWizardState(existingPipelineQuery.data);
-    if (decompiled === null) { setUnrecognizedShape(true); return; }
+    if (decompiled === null) {
+      setUnrecognizedShape(true);
+      return;
+    }
     setBaseCollectionId(decompiled.baseCollectionId);
     setFilters(decompiled.filters);
     setJoin(decompiled.join);
     setSummary(decompiled.summary);
     setRefreshPolicy(existingPipelineQuery.data.refreshPolicy ?? null);
-    setExistingOutput({ collectionId: decompiled.outputCollectionId, datasetItemId: decompiled.datasetItemId });
+    setExistingOutput({
+      collectionId: decompiled.outputCollectionId,
+      datasetItemId: decompiled.datasetItemId,
+    });
   }, [pipelinePk, existingPipelineQuery.data]);
 
   // Pré-remplit le Titre depuis l'item dataset une seule fois (la queryKey
@@ -97,33 +118,52 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   // aller-retour), l'utilisateur peut avoir commencé à taper un titre — ne
   // pas l'écraser silencieusement.
   useEffect(() => {
-    if (existingDatasetItemQuery.data && !titleTouched) setTitle(existingDatasetItemQuery.data.title);
+    if (existingDatasetItemQuery.data && !titleTouched)
+      setTitle(existingDatasetItemQuery.data.title);
   }, [existingDatasetItemQuery.data, titleTouched]);
 
   useEffect(() => {
     if (!createdPipelinePk || !createdDatasetPk) return;
     let cancelled = false;
     async function poll() {
-      while (!cancelled) {
-        const runs = await client.getPipelineRuns(createdPipelinePk!);
-        if (cancelled) return;
-        const latest = runs[0];
-        if (latest && latest.status !== "queued" && latest.status !== "running") {
-          if (latest.status === "succeeded") { navigate(`/datasets/${createdDatasetPk}/edit`); return; }
-          // Run terminé en échec (ou tout autre statut terminal non
-          // "succeeded") : ne pas laisser l'écran "Exécution de la
-          // requête…" affiché indéfiniment — revenir au formulaire avec un
-          // message d'erreur explicite (Important 2).
-          setError(latest.error ?? "L'exécution du pipeline a échoué.");
-          setCreatedPipelinePk(null);
-          setCreatedDatasetPk(null);
-          return;
+      try {
+        while (!cancelled) {
+          const runs = await client.getPipelineRuns(createdPipelinePk!);
+          if (cancelled) return;
+          const latest = runs[0];
+          if (latest && latest.status !== "queued" && latest.status !== "running") {
+            if (latest.status === "succeeded") {
+              navigate(`/datasets/${createdDatasetPk}/edit`);
+              return;
+            }
+            // Run terminé en échec (ou tout autre statut terminal non
+            // "succeeded") : ne pas laisser l'écran "Exécution de la
+            // requête…" affiché indéfiniment — revenir au formulaire avec un
+            // message d'erreur explicite (Important 2).
+            setError(latest.error ?? "L'exécution du pipeline a échoué.");
+            setCreatedPipelinePk(null);
+            setCreatedDatasetPk(null);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch {
+        // Même défaut que le statut "failed" ci-dessus, mais côté panne
+        // réseau/HTTP du sondage lui-même (jamais catché avant l'activation
+        // réelle d'ESLint, SP-22 Task 3) : sans ce catch, une erreur
+        // laissait l'écran "Exécution de la requête…" affiché indéfiniment,
+        // exactement le bug que le commentaire ci-dessus dit avoir corrigé
+        // pour le cas "failed".
+        if (cancelled) return;
+        setError("L'exécution du pipeline a échoué.");
+        setCreatedPipelinePk(null);
+        setCreatedDatasetPk(null);
       }
     }
-    poll();
-    return () => { cancelled = true; };
+    void poll();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdPipelinePk, createdDatasetPk]);
 
@@ -131,7 +171,11 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     return (
       <p role="alert" className="text-sm text-red-600">
         Cette requête a été modifiée dans l'éditeur avancé et ne peut plus être ouverte dans
-        l'assistant. <a className="underline" href={`/pipelines/${pipelinePk}/edit`}>Ouvrir dans l'éditeur avancé</a>.
+        l'assistant.{" "}
+        <a className="underline" href={`/pipelines/${pipelinePk}/edit`}>
+          Ouvrir dans l'éditeur avancé
+        </a>
+        .
       </p>
     );
   }
@@ -148,15 +192,24 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
   // 1) : bloque la soumission tant que le schéma recompilé ne correspond
   // plus à la collection de sortie déjà provisionnée.
   const outputSchemaMismatch =
-    pipelinePk !== null && inferredOutput !== null && existingOutputSchemaQuery.data !== undefined
-    && !outputSchemaMatches(inferredOutput, existingOutputSchemaQuery.data);
+    pipelinePk !== null &&
+    inferredOutput !== null &&
+    existingOutputSchemaQuery.data !== undefined &&
+    !outputSchemaMatches(inferredOutput, existingOutputSchemaQuery.data);
 
   async function handleCreate() {
     if (!baseSchema) return;
     setError(null);
     setSubmitting(true);
     try {
-      const state: VisualQueryState = { title, baseCollectionId, filters, join, summary, refreshPolicy };
+      const state: VisualQueryState = {
+        title,
+        baseCollectionId,
+        filters,
+        join,
+        summary,
+        refreshPolicy,
+      };
       let outputCollectionId: string;
       let datasetPk: string;
       let pipelinePkToRun: string;
@@ -166,7 +219,11 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
         datasetPk = existingOutput.datasetItemId;
         pipelinePkToRun = pipelinePk;
         const pipeline = compileVisualQueryToPipeline(
-          state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetPk,
+          state,
+          baseSchema,
+          joinedSchemaQuery.data ?? null,
+          outputCollectionId,
+          datasetPk,
         );
         await client.savePipelineConfig(pipelinePk, pipeline);
         await client.updateItem(datasetPk, { title });
@@ -177,22 +234,34 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
         const { id: newCollectionId } = await client.createEmptyCollection({
           title: `${title} (données)`,
           columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
-          geometryType: inferred.geometryType, srid: inferred.srid,
+          geometryType: inferred.geometryType,
+          srid: inferred.srid,
         });
         outputCollectionId = newCollectionId;
         const datasetItem = await client.createDatasetItem({
-          title, owner: username ?? "", source: "collection", collectionId: outputCollectionId,
+          title,
+          owner: username ?? "",
+          source: "collection",
+          collectionId: outputCollectionId,
         });
         datasetPk = datasetItem.pk;
         const pipeline = compileVisualQueryToPipeline(
-          state, baseSchema, joinedSchemaQuery.data ?? null, outputCollectionId, datasetPk,
+          state,
+          baseSchema,
+          joinedSchemaQuery.data ?? null,
+          outputCollectionId,
+          datasetPk,
         );
         const pipelineItem = await client.createPipelineItem({
-          title: `Requête — ${title}`, owner: username ?? "", pipeline,
+          title: `Requête — ${title}`,
+          owner: username ?? "",
+          pipeline,
         });
         pipelinePkToRun = pipelineItem.pk;
         await client.saveDatasetConfig(datasetPk, {
-          source: "collection", collectionId: outputCollectionId, columns: {},
+          source: "collection",
+          collectionId: outputCollectionId,
+          columns: {},
           sourcePipelineId: pipelinePkToRun,
         });
       }
@@ -207,7 +276,8 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
     }
   }
 
-  const filtersValid = !baseSchema || filters.every((row) => isFilterRowValueValid(row, baseSchema));
+  const filtersValid =
+    !baseSchema || filters.every((row) => isFilterRowValueValid(row, baseSchema));
   const joinValid = !join || Boolean(join.collectionId && join.on);
   const summaryValid = !summary || summary.groupBy.length > 0 || summary.metrics.length > 0;
 
@@ -227,7 +297,14 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
       </h2>
       <label className="flex flex-col gap-1 text-sm">
         Titre
-        <Input aria-label="Titre" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
+        <Input
+          aria-label="Titre"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setTitleTouched(true);
+          }}
+        />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Collection de base
@@ -250,7 +327,11 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
           }}
         >
           <option value="">Choisir…</option>
-          {(collectionsQuery.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+          {(collectionsQuery.data ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
         </select>
       </label>
       {baseSchema && (
@@ -264,15 +345,23 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
             {join ? (
               <div className="flex flex-col gap-2">
                 <QueryJoinPicker
-                  baseSchema={baseSchema} joinedSchema={joinedSchemaQuery.data ?? null}
-                  collections={collectionsQuery.data ?? []} value={join} onChange={setJoin}
+                  baseSchema={baseSchema}
+                  joinedSchema={joinedSchemaQuery.data ?? null}
+                  collections={collectionsQuery.data ?? []}
+                  value={join}
+                  onChange={setJoin}
                 />
                 <Button type="button" size="sm" variant="outline" onClick={() => setJoin(null)}>
                   Supprimer la jointure
                 </Button>
               </div>
             ) : (
-              <Button type="button" size="sm" variant="outline" onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}
+              >
                 Ajouter une jointure
               </Button>
             )}
@@ -287,7 +376,12 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
                 </Button>
               </div>
             ) : (
-              <Button type="button" size="sm" variant="outline" onClick={() => setSummary({ groupBy: [], metrics: [] })}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setSummary({ groupBy: [], metrics: [] })}
+              >
                 Ajouter un résumé
               </Button>
             )}
@@ -300,19 +394,29 @@ export function VisualQueryWizardPage({ pipelinePk, initialTitle }: { pipelinePk
       )}
       {pipelinePk !== null && outputSchemaMismatch && (
         <p role="alert" className="text-sm text-red-600">
-          La structure de sortie a changé (colonnes ou géométrie) : cette
-          modification ne peut pas être enregistrée sur la requête existante.
-          Créez une nouvelle requête à la place.
+          La structure de sortie a changé (colonnes ou géométrie) : cette modification ne peut pas
+          être enregistrée sur la requête existante. Créez une nouvelle requête à la place.
         </p>
       )}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
       <Button
-        size="sm" className="w-fit"
+        size="sm"
+        className="w-fit"
         disabled={
-          submitting || !title.trim() || !baseCollectionId || !filtersValid || !joinValid || !summaryValid
-          || (pipelinePk !== null && !existingOutput) || outputSchemaMismatch
+          submitting ||
+          !title.trim() ||
+          !baseCollectionId ||
+          !filtersValid ||
+          !joinValid ||
+          !summaryValid ||
+          (pipelinePk !== null && !existingOutput) ||
+          outputSchemaMismatch
         }
-        onClick={handleCreate}
+        onClick={() => void handleCreate()}
       >
         {pipelinePk !== null ? "Mettre à jour" : "Créer"}
       </Button>

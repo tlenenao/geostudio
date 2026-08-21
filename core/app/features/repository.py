@@ -5,6 +5,7 @@ gèrent ni rôle ni tenant (sauf le stampage explicite du tenant à l'insert).
 fid et filtres arrivent en str (URL) et sont coercés selon le type
 introspecté. Les colonnes de type "unsupported" sont read-only (contrat de
 validation.py) : jamais écrites ici."""
+
 import json
 from dataclasses import dataclass
 
@@ -30,8 +31,9 @@ class FilterError(Exception):
 
 
 def _property_columns(info: TableInfo) -> list[ColumnInfo]:
-    return [c for c in info.columns
-            if c.name not in (info.pk_column, "tenant_id", info.geometry_column)]
+    return [
+        c for c in info.columns if c.name not in (info.pk_column, "tenant_id", info.geometry_column)
+    ]
 
 
 def _coerce(col: ColumnInfo, raw: str):
@@ -93,9 +95,18 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
         if info.geometry_column is None:
             raise FilterError("bbox", "collection has no geometry")
         g = quote_ident(session, info.geometry_column)
-        clauses.append(f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)")
-        params.update({"bx0": bbox[0], "by0": bbox[1], "bx1": bbox[2],
-                       "by1": bbox[3], "bsrid": info.srid or 4326})
+        clauses.append(
+            f"{g} && ST_Transform(ST_MakeEnvelope(:bx0, :by0, :bx1, :by1, 4326), :bsrid)"
+        )
+        params.update(
+            {
+                "bx0": bbox[0],
+                "by0": bbox[1],
+                "bx1": bbox[2],
+                "by1": bbox[3],
+                "bsrid": info.srid or 4326,
+            }
+        )
     if geom_intersects is not None:
         # SP-14n : intersection géométrique exacte (ST_Intersects), complément
         # précis du bbox && ci-dessus (chevauchement d'enveloppes uniquement).
@@ -123,23 +134,31 @@ def _row_to_feature(info: TableInfo, row) -> dict:
     geometry = None
     if info.geometry_column and m.get("__geo"):
         geometry = json.loads(m["__geo"])
-    return {"type": "Feature", "id": m[info.pk_column],
-            "geometry": geometry, "properties": props}
+    return {"type": "Feature", "id": m[info.pk_column], "geometry": geometry, "properties": props}
 
 
-def select_features(session: Session, info: TableInfo, *, limit: int, offset: int,
-                    bbox=None, geom_intersects=None, filters=None) -> FeaturePage:
+def select_features(
+    session: Session,
+    info: TableInfo,
+    *,
+    limit: int,
+    offset: int,
+    bbox=None,
+    geom_intersects=None,
+    filters=None,
+) -> FeaturePage:
     t = quote_ident(session, info.table_name)
     where, params = _where(session, info, bbox, geom_intersects, filters)
-    matched = session.execute(
-        text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
-    rows = session.execute(text(
-        f"SELECT {_select_list(session, info)} FROM public.{t}{where} "
-        f"ORDER BY {quote_ident(session, info.pk_column)} LIMIT :__l OFFSET :__o"
-    ), {**params, "__l": limit, "__o": offset}).all()
+    matched = session.execute(text(f"SELECT count(*) FROM public.{t}{where}"), params).scalar()
+    rows = session.execute(
+        text(
+            f"SELECT {_select_list(session, info)} FROM public.{t}{where} "
+            f"ORDER BY {quote_ident(session, info.pk_column)} LIMIT :__l OFFSET :__o"
+        ),
+        {**params, "__l": limit, "__o": offset},
+    ).all()
     features = [_row_to_feature(info, r) for r in rows]
-    return FeaturePage(features=features, number_matched=matched,
-                       number_returned=len(features))
+    return FeaturePage(features=features, number_matched=matched, number_returned=len(features))
 
 
 def _coerce_fid(info: TableInfo, fid: str):
@@ -157,10 +176,13 @@ def get_feature(session: Session, info: TableInfo, *, fid: str) -> dict | None:
     if value is None:
         return None
     t = quote_ident(session, info.table_name)
-    row = session.execute(text(
-        f"SELECT {_select_list(session, info)} FROM public.{t} "
-        f"WHERE {quote_ident(session, info.pk_column)} = :fid"
-    ), {"fid": value}).one_or_none()
+    row = session.execute(
+        text(
+            f"SELECT {_select_list(session, info)} FROM public.{t} "
+            f"WHERE {quote_ident(session, info.pk_column)} = :fid"
+        ),
+        {"fid": value},
+    ).one_or_none()
     return _row_to_feature(info, row) if row else None
 
 
@@ -168,8 +190,7 @@ def _geometry_sql(info: TableInfo) -> str:
     return "ST_SetSRID(ST_GeomFromGeoJSON(:__geom), :__srid)"
 
 
-def insert_feature(session: Session, info: TableInfo, *, properties: dict,
-                   geometry: dict | None):
+def insert_feature(session: Session, info: TableInfo, *, properties: dict, geometry: dict | None):
     t = quote_ident(session, info.table_name)
     cols, values, params = ["tenant_id"], ["current_setting('app.tenant_id')"], {}
     for i, col in enumerate(_property_columns(info)):
@@ -183,15 +204,19 @@ def insert_feature(session: Session, info: TableInfo, *, properties: dict,
         cols.append(quote_ident(session, info.geometry_column))
         values.append(_geometry_sql(info))
         params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
-    fid = session.execute(text(
-        f"INSERT INTO public.{t} ({', '.join(cols)}) VALUES ({', '.join(values)}) "
-        f"RETURNING {quote_ident(session, info.pk_column)}"
-    ), params).scalar()
+    fid = session.execute(
+        text(
+            f"INSERT INTO public.{t} ({', '.join(cols)}) VALUES ({', '.join(values)}) "
+            f"RETURNING {quote_ident(session, info.pk_column)}"
+        ),
+        params,
+    ).scalar()
     return fid
 
 
-def replace_feature(session: Session, info: TableInfo, *, fid: str,
-                    properties: dict, geometry: dict | None) -> bool:
+def replace_feature(
+    session: Session, info: TableInfo, *, fid: str, properties: dict, geometry: dict | None
+) -> bool:
     value = _coerce_fid(info, fid)
     if value is None:
         return False
@@ -208,10 +233,13 @@ def replace_feature(session: Session, info: TableInfo, *, fid: str,
             params.update(__geom=json.dumps(geometry), __srid=info.srid or 4326)
         else:
             sets.append(f"{quote_ident(session, info.geometry_column)} = NULL")
-    r = session.execute(text(
-        f"UPDATE public.{t} SET {', '.join(sets)} "
-        f"WHERE {quote_ident(session, info.pk_column)} = :__fid"
-    ), params)
+    r = session.execute(
+        text(
+            f"UPDATE public.{t} SET {', '.join(sets)} "
+            f"WHERE {quote_ident(session, info.pk_column)} = :__fid"
+        ),
+        params,
+    )
     return r.rowcount == 1
 
 
@@ -220,9 +248,10 @@ def delete_feature(session: Session, info: TableInfo, *, fid: str) -> bool:
     if value is None:
         return False
     t = quote_ident(session, info.table_name)
-    r = session.execute(text(
-        f"DELETE FROM public.{t} WHERE {quote_ident(session, info.pk_column)} = :__fid"
-    ), {"__fid": value})
+    r = session.execute(
+        text(f"DELETE FROM public.{t} WHERE {quote_ident(session, info.pk_column)} = :__fid"),
+        {"__fid": value},
+    )
     return r.rowcount == 1
 
 

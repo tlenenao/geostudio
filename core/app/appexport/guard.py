@@ -15,6 +15,7 @@ interrogé via /aggregate par le mini-serveur), MAIS allowlist de widgets
 stricte comme Statique (rien n'est bundlé ici non plus — décision prise en
 session 2026-08-15, cf. design SP-18c §3.3 : aucune tentative de bundling
 offline de widgets tiers)."""
+
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -28,12 +29,32 @@ from app.configs.schemas import BuilderConfig
 # en phase manuellement (pas de génération partagée TS/Python), même
 # discipline que l'allowlist QGIS (SP-15d) ou les champs AggregateRequestBody.
 # Pertinent pour mode="static" ET mode="standalone" — cf. docstring.
-_SUPPORTED_WIDGET_TYPES = frozenset({
-    "text", "image", "button", "table", "list", "map", "indicator", "chart",
-    "pivot", "nav", "form", "hero", "richSection", "gallery", "datasetCard",
-    "dateRangeFilter", "selectFilter", "sliderFilter", "tabs", "modal",
-    "drawer", "filter",
-})
+_SUPPORTED_WIDGET_TYPES = frozenset(
+    {
+        "text",
+        "image",
+        "button",
+        "table",
+        "list",
+        "map",
+        "indicator",
+        "chart",
+        "pivot",
+        "nav",
+        "form",
+        "hero",
+        "richSection",
+        "gallery",
+        "datasetCard",
+        "dateRangeFilter",
+        "selectFilter",
+        "sliderFilter",
+        "tabs",
+        "modal",
+        "drawer",
+        "filter",
+    }
+)
 
 _STRICT_WIDGET_MODES = frozenset({"static", "standalone"})
 
@@ -60,7 +81,11 @@ def _collect_widget_types(config: BuilderConfig) -> set[str]:
 
 
 def check_export_guard(
-    session: Session, *, tenant_id: str, config: BuilderConfig, mode: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    config: BuilderConfig,
+    mode: str,
 ) -> ExportGuardResult:
     reasons: list[str] = []
 
@@ -82,14 +107,17 @@ def check_export_guard(
         # sert depuis le mini-serveur ; aucun des deux n'a besoin de figer
         # un résultat au moment de l'export lui-même.
         collection_id = source.layer
-        col = collections_repo.get_collection(session, tenant_id=tenant_id, collection_id=collection_id)
+        col = collections_repo.get_collection(
+            session, tenant_id=tenant_id, collection_id=collection_id
+        )
         if col is None:
             reasons.append(f"source '{source.id}' : collection '{collection_id}' introuvable")
             continue
         facts = collections_repo.get_access_facts(col)
         if not facts.is_public:
             reasons.append(
-                f"source '{source.id}' : collection '{collection_id}' n'est pas partagée publiquement"
+                f"source '{source.id}' : collection '{collection_id}' n'est pas "
+                "partagée publiquement"
             )
 
     if mode in _STRICT_WIDGET_MODES:

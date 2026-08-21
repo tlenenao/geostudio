@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("mode démo lecture seule : bannière visible, Formulaire masqué, écriture forcée refusée (403)", async ({ page }) => {
+test("mode démo lecture seule : bannière visible, Formulaire masqué, écriture forcée refusée (403)", async ({
+  page,
+}) => {
   await mockCore(page);
   // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
   // récemment enregistrée qui matche (même patron que incident-form.spec.ts).
@@ -45,7 +47,11 @@ test("mode démo lecture seule : bannière visible, Formulaire masqué, écritur
     const res = await fetch("https://core.test/collections/incidents/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "Feature", properties: { titre: "Forcé", gravite: "haute" }, geometry: null }),
+      body: JSON.stringify({
+        type: "Feature",
+        properties: { titre: "Forcé", gravite: "haute" },
+        geometry: null,
+      }),
     });
     return res.status;
   });

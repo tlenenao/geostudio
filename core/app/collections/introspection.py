@@ -2,8 +2,10 @@
 """Types d'introspection + exceptions. L'implémentation Postgres réelle
 (pg_catalog) arrive dans introspection_pg (task 7) ; les routes reçoivent
 l'introspecteur par dépendance injectable."""
+
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Literal
+from typing import Literal
 
 from sqlalchemy.orm import Session
 

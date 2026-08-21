@@ -20,10 +20,25 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="", bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r", username="regular",
-                                     email=None, first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -80,12 +95,19 @@ def test_patch_user_cross_tenant_returns_404(env):
     # n'était couvert par aucun test avant cette revue authz SP-9.
     app, client, Session, admin, _regular = env
     with Session() as s:
-        other_tenant = Tenant(id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
+        other_tenant = Tenant(
+            id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other"
+        )
         s.add(other_tenant)
         s.flush()
         outsider = get_or_create_user(
-            s, tenant_id=other_tenant.id, oidc_sub="sub-outsider",
-            username="outsider", email=None, first_name="", last_name="",
+            s,
+            tenant_id=other_tenant.id,
+            oidc_sub="sub-outsider",
+            username="outsider",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
         s.refresh(outsider)
@@ -94,6 +116,7 @@ def test_patch_user_cross_tenant_returns_404(env):
     assert client.patch(f"/users/{outsider.id}", json={"isAdmin": True}).status_code == 404
     with Session() as s:
         from app.users.models import User
+
         refreshed = s.get(User, outsider.id)
         assert refreshed.is_admin is False
 
@@ -102,8 +125,10 @@ def test_promotion_is_audited(env):
     app, client, Session, admin, regular = env
     _as(app, admin)
     client.patch(f"/users/{regular.id}", json={"isAdmin": True})
-    from app.audit.models import AuditLog
     from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     assert "user.promote" in actions
@@ -141,8 +166,10 @@ def test_grant_analyst_is_audited(env):
     app, client, Session, admin, regular = env
     _as(app, admin)
     client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
-    from app.audit.models import AuditLog
     from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     assert "user.grant_analyst" in actions
@@ -153,8 +180,10 @@ def test_revoke_analyst_is_audited(env):
     _as(app, admin)
     client.patch(f"/users/{regular.id}", json={"isAnalyst": True})
     client.patch(f"/users/{regular.id}", json={"isAnalyst": False})
-    from app.audit.models import AuditLog
     from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+
     with Session() as s:
         actions = list(s.scalars(select(AuditLog.action)))
     assert "user.revoke_analyst" in actions

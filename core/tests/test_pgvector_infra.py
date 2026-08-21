@@ -2,6 +2,7 @@
 """Colonnes embedding (SP-7 Task 2) : la colonne existe, un vecteur écrit se
 relit identique, NULL par défaut (dégradation gracieuse tant que le job
 d'embedding n'est pas passé — voir Task 5/7)."""
+
 import pytest
 from sqlalchemy import select
 
@@ -22,18 +23,27 @@ def session(pg_engine):
         yield s
     with pg_engine.begin() as conn:
         from sqlalchemy import text
+
         conn.execute(text("TRUNCATE items, collections, users, tenants CASCADE"))
 
 
 def test_item_embedding_defaults_to_null(session):
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = Item(
-        id="i1", tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="X",
+        id="i1",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="X",
     )
     session.add(item)
     session.flush()
@@ -43,12 +53,20 @@ def test_item_embedding_defaults_to_null(session):
 def test_item_embedding_roundtrips(session):
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     item = Item(
-        id="i2", tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="X",
+        id="i2",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="X",
     )
     session.add(item)
     session.flush()
@@ -63,12 +81,21 @@ def test_item_embedding_roundtrips(session):
 def test_collection_embedding_roundtrips(session):
     tenant = get_or_create_default_tenant(session)
     user = get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     col = Collection(
-        id="c1", tenant_id=tenant.id, owner_id=user.id, table_name="c1",
-        title="Collection", pk_column="id",
+        id="c1",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        table_name="c1",
+        title="Collection",
+        pk_column="id",
     )
     session.add(col)
     session.flush()

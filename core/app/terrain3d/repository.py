@@ -8,11 +8,22 @@ from app.terrain3d.models import Terrain3DJob
 
 
 def create_job(
-    session: Session, *, tenant_id: str, created_by: str, source_key: str, filename: str, title: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    created_by: str,
+    source_key: str,
+    filename: str,
+    title: str,
 ) -> Terrain3DJob:
     job = Terrain3DJob(
-        id=uuid.uuid4().hex, tenant_id=tenant_id, created_by=created_by,
-        status="uploaded", source_key=source_key, filename=filename, title=title,
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        created_by=created_by,
+        status="uploaded",
+        source_key=source_key,
+        filename=filename,
+        title=title,
     )
     session.add(job)
     session.flush()

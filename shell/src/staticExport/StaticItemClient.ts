@@ -10,7 +10,13 @@
 // backend : chaque méthode rejette explicitement plutôt que d'être omise,
 // afin que TypeScript prouve qu'aucune n'a été oubliée (pas de
 // `as unknown as ItemClient`, contrairement au sketch illustratif du plan).
-import type { AppConfig, DataRecord, DataSource, GeoJSONFeatureInput, ItemClient } from "../api/types";
+import type {
+  AppConfig,
+  DataRecord,
+  DataSource,
+  GeoJSONFeatureInput,
+  ItemClient,
+} from "../api/types";
 
 const UNSUPPORTED = "Non disponible dans un export statique (aucun backend).";
 

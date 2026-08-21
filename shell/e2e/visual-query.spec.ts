@@ -12,9 +12,24 @@ async function mockVisualQueryFlow(page: Page) {
   await page.route("https://core.test/collections*", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({
-      json: { collections: [
-        { id: "incidents", title: "Incidents", description: "", tableName: "incidents", isPublic: true, editable: true, geometryType: null, srid: null, pkColumn: "id", canWrite: true, featureCount: 3, owner: "mockuser" },
-      ] },
+      json: {
+        collections: [
+          {
+            id: "incidents",
+            title: "Incidents",
+            description: "",
+            tableName: "incidents",
+            isPublic: true,
+            editable: true,
+            geometryType: null,
+            srid: null,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "mockuser",
+          },
+        ],
+      },
     });
   });
 
@@ -25,15 +40,27 @@ async function mockVisualQueryFlow(page: Page) {
 
   await page.route("https://core.test/collections/query_out/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "query_out", pk: "id", geometry: null, fields: [{ name: "titre", type: "string", required: false }] },
+      json: {
+        collection: "query_out",
+        pk: "id",
+        geometry: null,
+        fields: [{ name: "titre", type: "string", required: false }],
+      },
     });
   });
 
   // Stockage mutable du pipeline créé, pour la réouverture (GET /configs/by-item/pipeline-vq1).
   let storedPipeline: unknown = null;
   // Stockage mutable de la config dataset, pour refléter le sourcePipelineId posé par saveDatasetConfig.
-  let storedDatasetConfig: { source: string; collectionId: string; columns: Record<string, unknown>; sourcePipelineId?: string } = {
-    source: "collection", collectionId: "query_out", columns: {},
+  let storedDatasetConfig: {
+    source: string;
+    collectionId: string;
+    columns: Record<string, unknown>;
+    sourcePipelineId?: string;
+  } = {
+    source: "collection",
+    collectionId: "query_out",
+    columns: {},
   };
 
   await page.route("https://core.test/configs", async (route) => {
@@ -41,7 +68,10 @@ async function mockVisualQueryFlow(page: Page) {
     const body = route.request().postDataJSON();
     if (body?.config?.kind === "pipeline") {
       storedPipeline = body.config.pipeline;
-      await route.fulfill({ status: 201, json: { id: "cfg-pipeline-vq", kind: "pipeline", itemId: "pipeline-vq1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-pipeline-vq", kind: "pipeline", itemId: "pipeline-vq1" },
+      });
       return;
     }
     return route.fallback(); // laisse mockCore() gérer "dataset" (renvoie toujours itemId "dataset-1") et les autres kinds
@@ -52,9 +82,18 @@ async function mockVisualQueryFlow(page: Page) {
     if (method === "PUT") {
       const body = route.request().postDataJSON();
       storedDatasetConfig = body.dataset;
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", config: body } });
+      await route.fulfill({
+        json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", config: body },
+      });
     } else if (method === "GET") {
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", config: { kind: "dataset", dataset: storedDatasetConfig } } });
+      await route.fulfill({
+        json: {
+          id: "cfg-dataset",
+          itemId: "dataset-1",
+          kind: "dataset",
+          config: { kind: "dataset", dataset: storedDatasetConfig },
+        },
+      });
     } else {
       await route.fallback();
     }
@@ -62,12 +101,30 @@ async function mockVisualQueryFlow(page: Page) {
 
   await page.route("https://core.test/configs/by-item/pipeline-vq1", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({ json: { id: "cfg-pipeline-vq", itemId: "pipeline-vq1", kind: "pipeline", config: { kind: "pipeline", pipeline: storedPipeline } } });
+    await route.fulfill({
+      json: {
+        id: "cfg-pipeline-vq",
+        itemId: "pipeline-vq1",
+        kind: "pipeline",
+        config: { kind: "pipeline", pipeline: storedPipeline },
+      },
+    });
   });
 
   await page.route("https://core.test/items/dataset-1", async (route) => {
     await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "E2E requête visuelle", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
+      json: {
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "E2E requête visuelle",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-dataset",
+        isPublished: false,
+        keywords: [],
+      },
     });
   });
 
@@ -84,12 +141,23 @@ async function mockVisualQueryFlow(page: Page) {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({
-      json: [{ id: "run-1", status, startedAt: "2026-08-13T10:00:00Z", finishedAt: status === "succeeded" ? "2026-08-13T10:00:02Z" : null, error: null, nodeStats: {} }],
+      json: [
+        {
+          id: "run-1",
+          status,
+          startedAt: "2026-08-13T10:00:00Z",
+          finishedAt: status === "succeeded" ? "2026-08-13T10:00:02Z" : null,
+          error: null,
+          nodeStats: {},
+        },
+      ],
     });
   });
 }
 
-test("crée un dataset par requête visuelle avec filtre, puis le rouvre pour vérifier la requête", async ({ page }) => {
+test("crée un dataset par requête visuelle avec filtre, puis le rouvre pour vérifier la requête", async ({
+  page,
+}) => {
   await mockCore(page);
   await mockVisualQueryFlow(page);
   await page.goto("/");

@@ -17,6 +17,7 @@ a bien importé ces modules) échoue faute d'être connue du worker. Procrastina
 importe ces chemins lui-même, paresseusement, via `App.perform_import_paths()`
 au démarrage du worker (et de `configure_task`) — voir
 `tests/test_jobs.py::test_import_paths_registers_all_domain_tasks`."""
+
 import os
 
 import procrastinate
@@ -57,10 +58,18 @@ app = procrastinate.App(
     # SyncPsycopgConnector interne à la demande (get_sync_connector()).
     connector=procrastinate.PsycopgConnector(conninfo=_conninfo()),
     import_paths=[
-        "app.ingestion.tasks", "app.items.jobs", "app.collections.jobs",
-        "app.cdc.jobs", "app.harvest.jobs", "app.pipelines.jobs", "app.alerts.jobs",
-        "app.export.jobs", "app.appexport.jobs", "app.reports.jobs",
-        "app.tileset3d.jobs", "app.terrain3d.jobs",
+        "app.ingestion.tasks",
+        "app.items.jobs",
+        "app.collections.jobs",
+        "app.cdc.jobs",
+        "app.harvest.jobs",
+        "app.pipelines.jobs",
+        "app.alerts.jobs",
+        "app.export.jobs",
+        "app.appexport.jobs",
+        "app.reports.jobs",
+        "app.tileset3d.jobs",
+        "app.terrain3d.jobs",
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )

@@ -3,19 +3,23 @@
 app.search.providers.EmbeddingProvider (SP-7) : un provider HTTP compatible
 OpenAI pour la production, un provider déterministe sans réseau pour
 dev/test/mock (CORE_LLM_PROVIDER=fake, ou absent)."""
+
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
+
+# Plafond par appel, sous le budget global du tour (app.copilot.routes).
+LLM_CALL_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass
 class ToolCall:
     id: str
     name: str
-    arguments: dict
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -25,7 +29,13 @@ class LLMTurn:
 
 
 class LLMProvider(Protocol):
-    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn: ...
+    # Asynchrone par contrat : un `chat` bloquant gèlerait la boucle
+    # d'événements de tout le process (la stack tourne sans `--workers`) et
+    # ne serait pas annulable, donc l'échéance du tour ne ferait que cesser
+    # de l'attendre au lieu de l'interrompre.
+    async def chat(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> LLMTurn: ...
 
 
 class FakeLLMProvider:
@@ -38,19 +48,30 @@ class FakeLLMProvider:
         self._responses = responses or [LLMTurn(text="(réponse simulée)")]
         self._i = 0
 
-    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+    async def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
         turn = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         return turn
 
 
 class OpenAICompatibleLLMProvider:
-    def __init__(self, *, api_url: str, api_key: str, model: str):
+    def __init__(
+        self,
+        *,
+        api_url: str,
+        api_key: str,
+        model: str,
+        http_client: httpx.AsyncClient | None = None,
+    ):
         self._api_url = api_url
         self._api_key = api_key
         self._model = model
+        # Client injectable (même couture que McpLoopbackSession) : sinon un
+        # client éphémère par appel — la réutilisation de connexion pèse
+        # peu face à la latence d'un aller-retour LLM.
+        self._client = http_client
 
-    def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+    async def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
         # Les outils arrivent en forme MCP/shell ({name, description,
         # inputSchema}) ; l'API chat-completions attend {name, description,
         # parameters}. Sans cette conversion, un vrai fournisseur rejette la
@@ -66,12 +87,13 @@ class OpenAICompatibleLLMProvider:
             }
             for t in tools
         ]
-        response = httpx.post(
-            self._api_url,
-            headers={"Authorization": f"Bearer {self._api_key}"},
-            json={"model": self._model, "messages": messages, "tools": openai_tools},
-            timeout=30.0,
-        )
+        payload = {"model": self._model, "messages": messages, "tools": openai_tools}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if self._client is not None:
+            response = await self._client.post(self._api_url, headers=headers, json=payload)
+        else:
+            async with httpx.AsyncClient(timeout=LLM_CALL_TIMEOUT_SECONDS) as client:
+                response = await client.post(self._api_url, headers=headers, json=payload)
         response.raise_for_status()
         choice = response.json()["choices"][0]["message"]
         tool_calls = [

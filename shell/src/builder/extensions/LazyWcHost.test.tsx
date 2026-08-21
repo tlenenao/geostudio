@@ -10,14 +10,20 @@ afterEach(cleanup);
 beforeEach(() => _resetModuleCache());
 
 const readyManifest: ExtensionManifest = {
-  type: "test.lazy-ready", tag: "test-lazy-ready-widget", label: "Test prêt",
-  props: [], defaultSize: { w: 2, h: 2 },
+  type: "test.lazy-ready",
+  tag: "test-lazy-ready-widget",
+  label: "Test prêt",
+  props: [],
+  defaultSize: { w: 2, h: 2 },
   moduleUrl: "./__fixtures__/dummyLazyWidget.ts",
 };
 
 const errorManifest: ExtensionManifest = {
-  type: "test.lazy-error", tag: "test-lazy-error-widget", label: "Test en échec",
-  props: [], defaultSize: { w: 2, h: 2 },
+  type: "test.lazy-error",
+  tag: "test-lazy-error-widget",
+  label: "Test en échec",
+  props: [],
+  defaultSize: { w: 2, h: 2 },
   moduleUrl: "./__fixtures__/does-not-exist.ts",
 };
 

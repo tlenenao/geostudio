@@ -5,6 +5,7 @@ app.pipelines/app.tileset3d). Inclut le proxy de lecture authentifié
 (GET /terrain3d/{item_id}/tiles/{z}/{x}/{y}.png), qui vérifie can() puis
 relaie vers TiTiler (réseau interne, jamais une URL fournie par
 l'appelant)."""
+
 import logging
 import os
 import uuid
@@ -24,8 +25,11 @@ from app.items import repository as items_repo
 from app.sharing.authorization import can
 from app.terrain3d import repository as repo
 from app.terrain3d.schemas import (
-    Terrain3DJobStatus, Terrain3DPresignRequest, Terrain3DPresignResponse,
-    Terrain3DUploadCreate, Terrain3DUploadCreated,
+    Terrain3DJobStatus,
+    Terrain3DPresignRequest,
+    Terrain3DPresignResponse,
+    Terrain3DUploadCreate,
+    Terrain3DUploadCreated,
 )
 from app.users.models import User
 
@@ -43,6 +47,7 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
         from app.terrain3d.jobs import convert_terrain3d_task
 
         convert_terrain3d_task.defer(job_id=job_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -56,7 +61,9 @@ def presign_terrain3d_upload(
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     url = generate_presigned_put_url(
-        s3, bucket=bucket, key=key,
+        s3,
+        bucket=bucket,
+        key=key,
         content_type=body.contentType or "application/octet-stream",
     )
     return Terrain3DPresignResponse(uploadUrl=url, key=key)
@@ -75,12 +82,21 @@ def create_terrain3d_upload(
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     job = repo.create_job(
-        session, tenant_id=user.tenant_id, created_by=user.id,
-        source_key=body.key, filename=body.filename, title=body.title,
+        session,
+        tenant_id=user.tenant_id,
+        created_by=user.id,
+        source_key=body.key,
+        filename=body.filename,
+        title=body.title,
     )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="terrain3d.job_create", object_type="terrain3d_job", object_id=job.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="terrain3d.job_create",
+        object_type="terrain3d_job",
+        object_id=job.id,
         payload={"filename": body.filename, "title": body.title},
     )
     # Commit avant de déférer : même raison que app.ingestion.routes.create_upload_job.
@@ -107,7 +123,10 @@ def get_titiler_url() -> str:
 
 @router.get("/terrain3d/{item_id}/tiles/{z}/{x}/{y}.png")
 def read_terrain3d_tile(
-    item_id: str, z: int, x: int, y: int,
+    item_id: str,
+    z: int,
+    x: int,
+    y: int,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     bucket: str = Depends(get_terrain3d_bucket),
@@ -143,12 +162,15 @@ def read_terrain3d_tile(
         # — loggé pour permettre de distinguer les deux cas en observabilité,
         # sans changer le code HTTP renvoyé au client (cf. Manual acceptance
         # checks du plan, point 3).
-        logger.warning("terrain3d tile proxy: TiTiler a répondu 404 pour %s (item %s)", source_key, item_id)
+        logger.warning(
+            "terrain3d tile proxy: TiTiler a répondu 404 pour %s (item %s)", source_key, item_id
+        )
         raise HTTPException(status_code=404, detail="tile not found")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="terrain tile service error")
 
     return Response(
-        content=resp.content, media_type="image/png",
+        content=resp.content,
+        media_type="image/png",
         headers={"Cache-Control": "private, max-age=3600"},
     )

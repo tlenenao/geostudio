@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'une collection (SP-7) — même patron que
 app.items.jobs.embed_item_task."""
+
 import logging
 import os
 
@@ -32,7 +33,8 @@ def embed_collection_task(collection_id: str, tenant_id: str) -> None:
             if col is None:
                 logger.warning(
                     "embed_collection_task: collection %s introuvable (tenant %s)",
-                    collection_id, tenant_id,
+                    collection_id,
+                    tenant_id,
                 )
                 return
             provider = get_embedding_provider()

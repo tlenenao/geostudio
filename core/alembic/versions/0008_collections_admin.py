@@ -4,8 +4,10 @@ Revision ID: 0008
 Revises: 0007
 Create Date: 2026-07-09
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0008"
 down_revision = "0007"
@@ -38,10 +40,18 @@ def upgrade() -> None:
     )
     op.create_table(
         "collection_shares",
-        sa.Column("collection_id", sa.String(),
-                  sa.ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True),
-        sa.Column("group_id", sa.String(),
-                  sa.ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "collection_id",
+            sa.String(),
+            sa.ForeignKey("collections.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "group_id",
+            sa.String(),
+            sa.ForeignKey("groups.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("role", sa.String(), nullable=False),
     )

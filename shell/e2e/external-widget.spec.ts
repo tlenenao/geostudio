@@ -2,14 +2,20 @@ import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 const EXTERNAL_MANIFEST = {
-  id: "example.external-counter", tag: "external-example-widget", label: "Compteur externe (exemple)",
+  id: "example.external-counter",
+  tag: "external-example-widget",
+  label: "Compteur externe (exemple)",
   moduleUrl: "http://localhost:4174/widget.js",
   props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 0 }],
-  events: ["changed"], actions: ["reset"],
-  defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" },
+  events: ["changed"],
+  actions: ["reset"],
+  defaultSize: { w: 2, h: 2 },
+  permissions: { collections: "all" },
 };
 
-test("un widget hébergé sur une origine distincte (CORS) se charge, respecte le thème, et fonctionne comme n'importe quel widget d'extension", async ({ page }) => {
+test("un widget hébergé sur une origine distincte (CORS) se charge, respecte le thème, et fonctionne comme n'importe quel widget d'extension", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/extensions*", async (route) => {
     await route.fulfill({ json: { extensions: [EXTERNAL_MANIFEST] } });

@@ -10,7 +10,8 @@ import { Button } from "../ui/button";
 const PAGE_SIZE = 12;
 
 export function CatalogPage({
-  onOpenItem, fixedType,
+  onOpenItem,
+  fixedType,
 }: {
   onOpenItem: (pk: string, type: ResourceType) => void;
   fixedType?: ResourceType;
@@ -94,7 +95,7 @@ export function CatalogPage({
       {query.isError && (
         <div role="alert" className="text-sm text-red-600">
           Erreur de chargement.{" "}
-          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
+          <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
             Réessayer
           </Button>
         </div>

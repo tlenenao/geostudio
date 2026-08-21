@@ -26,7 +26,10 @@ function collectCoordinates(geometry: GeoJSON.Geometry): [number, number][] {
 }
 
 function computeBounds(features: GeoJSON.Feature[]): [[number, number], [number, number]] | null {
-  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  let minLng = Infinity,
+    minLat = Infinity,
+    maxLng = -Infinity,
+    maxLat = -Infinity;
   for (const f of features) {
     if (!f.geometry) continue;
     for (const [lng, lat] of collectCoordinates(f.geometry)) {
@@ -36,7 +39,12 @@ function computeBounds(features: GeoJSON.Feature[]): [[number, number], [number,
       maxLat = Math.max(maxLat, lat);
     }
   }
-  return minLng === Infinity ? null : [[minLng, minLat], [maxLng, maxLat]];
+  return minLng === Infinity
+    ? null
+    : [
+        [minLng, minLat],
+        [maxLng, maxLat],
+      ];
 }
 
 // Aperçu cartographique d'une étape de pipeline (SP-15g §5.3) — alternative à
@@ -54,22 +62,31 @@ export function PipelinePreviewMap({ rows }: { rows: Record<string, unknown>[] }
     const featureCollection: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
 
     const map = new maplibregl.Map({
-      container: containerRef.current, style: DEFAULT_BASEMAP.style, center: [0, 0], zoom: 1,
+      container: containerRef.current,
+      style: DEFAULT_BASEMAP.style,
+      center: [0, 0],
+      zoom: 1,
     });
     map.on("load", () => {
       map.addSource(SOURCE_ID, { type: "geojson", data: featureCollection });
       map.addLayer({
-        id: `${SOURCE_ID}-fill`, type: "fill", source: SOURCE_ID,
+        id: `${SOURCE_ID}-fill`,
+        type: "fill",
+        source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: { "fill-color": "#2563eb", "fill-opacity": 0.4 },
       });
       map.addLayer({
-        id: `${SOURCE_ID}-line`, type: "line", source: SOURCE_ID,
+        id: `${SOURCE_ID}-line`,
+        type: "line",
+        source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "LineString"],
         paint: { "line-color": "#2563eb", "line-width": 2 },
       });
       map.addLayer({
-        id: `${SOURCE_ID}-circle`, type: "circle", source: SOURCE_ID,
+        id: `${SOURCE_ID}-circle`,
+        type: "circle",
+        source: SOURCE_ID,
         filter: ["==", ["geometry-type"], "Point"],
         paint: { "circle-color": "#2563eb", "circle-radius": 5 },
       });

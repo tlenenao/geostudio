@@ -6,6 +6,7 @@ SOUS app.harvest dans le contrat de couches import-linter
 l'importer. Point d'application différent de l'original : dlt.sources.rest_api
 utilise `requests`, pas `httpx` — copier le transport httpx de
 app.harvest.egress ne garderait rien en pratique."""
+
 import ipaddress
 import logging
 import os

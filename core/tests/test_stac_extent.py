@@ -5,9 +5,14 @@ from sqlalchemy import text
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.stac.extent import estimated_bbox_4326
 
-NO_GEOM = TableInfo(table_name="t", pk_column="id", geometry_column=None,
-                    geometry_type=None, srid=None,
-                    columns=[ColumnInfo(name="id", type="integer", required=True)])
+NO_GEOM = TableInfo(
+    table_name="t",
+    pk_column="id",
+    geometry_column=None,
+    geometry_type=None,
+    srid=None,
+    columns=[ColumnInfo(name="id", type="integer", required=True)],
+)
 
 
 def test_no_geometry_column_returns_none_without_db():
@@ -17,16 +22,26 @@ def test_no_geometry_column_returns_none_without_db():
 
 @pytest.mark.postgis
 def test_estimated_bbox_reprojected(pg_session_factory):
-    info = TableInfo(table_name="stac_extent_t", pk_column="id",
-                     geometry_column="geom", geometry_type="Point", srid=4326,
-                     columns=[ColumnInfo(name="id", type="integer", required=True)])
+    info = TableInfo(
+        table_name="stac_extent_t",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
+        columns=[ColumnInfo(name="id", type="integer", required=True)],
+    )
     with pg_session_factory() as s:
         s.execute(text("DROP TABLE IF EXISTS stac_extent_t"))
-        s.execute(text("CREATE TABLE stac_extent_t (id serial PRIMARY KEY, "
-                       "geom geometry(Point, 4326))"))
-        s.execute(text("INSERT INTO stac_extent_t (geom) VALUES "
-                       "(ST_SetSRID(ST_MakePoint(1.0, 44.0), 4326)), "
-                       "(ST_SetSRID(ST_MakePoint(2.0, 45.0), 4326))"))
+        s.execute(
+            text("CREATE TABLE stac_extent_t (id serial PRIMARY KEY, geom geometry(Point, 4326))")
+        )
+        s.execute(
+            text(
+                "INSERT INTO stac_extent_t (geom) VALUES "
+                "(ST_SetSRID(ST_MakePoint(1.0, 44.0), 4326)), "
+                "(ST_SetSRID(ST_MakePoint(2.0, 45.0), 4326))"
+            )
+        )
         s.execute(text("ANALYZE stac_extent_t"))
         s.commit()
         bbox = estimated_bbox_4326(s, info)
@@ -48,16 +63,29 @@ def test_estimated_bbox_reprojected_from_lambert93(pg_session_factory):
     # estimated_bbox_4326 ne transformait pas, la bbox retournée resterait en
     # coordonnées métriques (~650000/~6860000), hors de tout intervalle
     # lon/lat valide — les assertions ci-dessous échoueraient toutes.
-    info = TableInfo(table_name="stac_extent_lambert_t", pk_column="id",
-                     geometry_column="geom", geometry_type="Point", srid=2154,
-                     columns=[ColumnInfo(name="id", type="integer", required=True)])
+    info = TableInfo(
+        table_name="stac_extent_lambert_t",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=2154,
+        columns=[ColumnInfo(name="id", type="integer", required=True)],
+    )
     with pg_session_factory() as s:
         s.execute(text("DROP TABLE IF EXISTS stac_extent_lambert_t"))
-        s.execute(text("CREATE TABLE stac_extent_lambert_t (id serial PRIMARY KEY, "
-                       "geom geometry(Point, 2154))"))
-        s.execute(text("INSERT INTO stac_extent_lambert_t (geom) VALUES "
-                       "(ST_SetSRID(ST_MakePoint(650000, 6860000), 2154)), "
-                       "(ST_SetSRID(ST_MakePoint(652000, 6862000), 2154))"))
+        s.execute(
+            text(
+                "CREATE TABLE stac_extent_lambert_t (id serial PRIMARY KEY, "
+                "geom geometry(Point, 2154))"
+            )
+        )
+        s.execute(
+            text(
+                "INSERT INTO stac_extent_lambert_t (geom) VALUES "
+                "(ST_SetSRID(ST_MakePoint(650000, 6860000), 2154)), "
+                "(ST_SetSRID(ST_MakePoint(652000, 6862000), 2154))"
+            )
+        )
         s.execute(text("ANALYZE stac_extent_lambert_t"))
         s.commit()
         bbox = estimated_bbox_4326(s, info)

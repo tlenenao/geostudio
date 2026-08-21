@@ -10,9 +10,12 @@ import { _resetModuleCache } from "./moduleCache";
 import type { ExtensionManifest } from "../../api/types";
 
 const manifest: ExtensionManifest = {
-  type: "acme.gauge", tag: "test-lazy-ready-widget", label: "Jauge (extension)",
+  type: "acme.gauge",
+  tag: "test-lazy-ready-widget",
+  label: "Jauge (extension)",
   props: [{ name: "initial", type: "number", label: "Valeur initiale", default: 7 }],
-  events: ["changed"], actions: ["reset"],
+  events: ["changed"],
+  actions: ["reset"],
   defaultSize: { w: 3, h: 2 },
   moduleUrl: "./__fixtures__/dummyLazyWidget.ts",
 };

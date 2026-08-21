@@ -7,7 +7,10 @@ import { _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { ActionsPanel } from "./ActionsPanel";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 const items: WidgetItem[] = [
   { id: "f1", widget: "filter", x: 0, y: 0, w: 3, h: 1, props: {} },
@@ -29,7 +32,9 @@ test("composes a message from emitter/event to target/action", async () => {
 
 test("removes a message", async () => {
   const onChange = vi.fn();
-  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" }];
+  const messages: ActionMessage[] = [
+    { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" },
+  ];
   render(<ActionsPanel items={items} messages={messages} onChange={onChange} />);
   await userEvent.click(screen.getByRole("button", { name: "Retirer l'action m1" }));
   expect(onChange).toHaveBeenCalledWith([]);
@@ -61,7 +66,9 @@ test("hides a message whose endpoints are not on the current page", () => {
 
 test("edits a message's condition", async () => {
   const onChange = vi.fn();
-  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" }];
+  const messages: ActionMessage[] = [
+    { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" },
+  ];
   render(<ActionsPanel items={items} messages={messages} onChange={onChange} />);
   await userEvent.type(screen.getByLabelText("Condition de l'action m1"), "vars.x ==");
   expect(onChange).toHaveBeenCalled();
@@ -71,13 +78,24 @@ test("edits a message's condition", async () => {
 });
 
 test("shows a validation error for an invalid message condition", () => {
-  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x ==" }];
+  const messages: ActionMessage[] = [
+    { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x ==" },
+  ];
   render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
   expect(screen.getByRole("alert")).toBeInTheDocument();
 });
 
 test("shows no validation error for a valid message condition", () => {
-  const messages: ActionMessage[] = [{ id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x == 'a'" }];
+  const messages: ActionMessage[] = [
+    {
+      id: "m1",
+      from: "f1",
+      event: "changed",
+      to: "l1",
+      action: "setFilter",
+      when: "vars.x == 'a'",
+    },
+  ];
   render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

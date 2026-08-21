@@ -15,6 +15,7 @@ le temps réel écoulé + le débit messages/s. Ne mesure PAS la correction du
 décodage (déjà couverte par Task 6/7) — seulement le débit et l'absence de
 perte.
 """
+
 import os
 import sys
 import time
@@ -25,7 +26,12 @@ from sqlalchemy import create_engine, text
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.cdc.consumer import SLOT_NAME, decode_wal2json_message, ensure_replication_slot, stream_changes  # noqa: E402
+from app.cdc.consumer import (  # noqa: E402
+    SLOT_NAME,
+    decode_wal2json_message,
+    ensure_replication_slot,
+    stream_changes,
+)
 
 TABLE = "t_cdc_throughput_measure"
 PUB = "throughput_measure_pub"
@@ -49,7 +55,9 @@ def main() -> None:
 
     # Nettoyage d'un slot laissé par un run précédent.
     try:
-        conn2 = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+        conn2 = psycopg2.connect(
+            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+        )
         cur2 = conn2.cursor()
         try:
             cur2.drop_replication_slot(SLOT_NAME)
@@ -75,15 +83,19 @@ def main() -> None:
     state = {"count": 0}
 
     def on_message(payload, lsn):
-        for decoded in decode_wal2json_message(payload, lsn=lsn, collection_meta={TABLE: ("id", None)}):
+        for decoded in decode_wal2json_message(
+            payload, lsn=lsn, collection_meta={TABLE: ("id", None)}
+        ):
             received.append(decoded)
             state["count"] += 1
 
     print(f"Consommation via stream_changes() jusqu'à voir les {n} messages...")
     consume_start = time.monotonic()
     stream_changes(
-        raw_dsn, on_message=on_message,
-        is_flush_due=lambda: False, do_flush=lambda: None,
+        raw_dsn,
+        on_message=on_message,
+        is_flush_due=lambda: False,
+        do_flush=lambda: None,
         should_stop=lambda: state["count"] >= n,
         poll_timeout_s=0.2,
     )
@@ -93,7 +105,9 @@ def main() -> None:
         conn.execute(text(f"DROP PUBLICATION IF EXISTS {PUB}"))
         conn.execute(text(f"DROP TABLE IF EXISTS {TABLE}"))
     try:
-        conn3 = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+        conn3 = psycopg2.connect(
+            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+        )
         cur3 = conn3.cursor()
         cur3.drop_replication_slot(SLOT_NAME)
         cur3.close()
@@ -103,7 +117,8 @@ def main() -> None:
 
     assert len(received) == n, f"perte de données : {len(received)}/{n} messages reçus"
     assert {r.row.columns.get("v") for r in received} == {f"row-{i}" for i in range(n)}, (
-        "perte/duplication de données : contenu des lignes reçues ne correspond pas exactement aux N écrites"
+        "perte/duplication de données : contenu des lignes reçues ne correspond pas "
+        "exactement aux N écrites"
     )
 
     throughput = n / consume_elapsed if consume_elapsed > 0 else float("inf")

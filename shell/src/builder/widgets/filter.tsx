@@ -14,13 +14,23 @@ export function registerFilterWidget(): void {
     events: ["changed"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
-        <label className="flex flex-col gap-1">Champ à filtrer
-          <input aria-label="Champ à filtrer" className="h-9 rounded-md border border-slate-300 px-2"
-            value={String(props.field ?? "")} onChange={(e) => onChange({ ...props, field: e.target.value })} />
+        <label className="flex flex-col gap-1">
+          Champ à filtrer
+          <input
+            aria-label="Champ à filtrer"
+            className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.field ?? "")}
+            onChange={(e) => onChange({ ...props, field: e.target.value })}
+          />
         </label>
-        <label className="flex flex-col gap-1">Libellé
-          <input aria-label="Libellé du filtre" className="h-9 rounded-md border border-slate-300 px-2"
-            value={String(props.label ?? "")} onChange={(e) => onChange({ ...props, label: e.target.value })} />
+        <label className="flex flex-col gap-1">
+          Libellé
+          <input
+            aria-label="Libellé du filtre"
+            className="h-9 rounded-md border border-slate-300 px-2"
+            value={String(props.label ?? "")}
+            onChange={(e) => onChange({ ...props, label: e.target.value })}
+          />
         </label>
       </div>
     ),

@@ -2,7 +2,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("create a dataset, edit a column label, then promote an app's inline source", async ({ page }) => {
+test("create a dataset, edit a column label, then promote an app's inline source", async ({
+  page,
+}) => {
   await mockCore(page);
 
   let datasetCreated = false;
@@ -14,7 +16,20 @@ test("create a dataset, edit a column label, then promote an app's inline source
     await route.fulfill({
       json: {
         collections: [
-          { id: "parcs", title: "Parcs", description: "", tableName: "parcs", isPublic: true, editable: true, geometryType: "Point", srid: 4326, pkColumn: "id", canWrite: true, featureCount: 3, owner: "alice" },
+          {
+            id: "parcs",
+            title: "Parcs",
+            description: "",
+            tableName: "parcs",
+            isPublic: true,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "alice",
+          },
         ],
       },
     });
@@ -22,7 +37,12 @@ test("create a dataset, edit a column label, then promote an app's inline source
 
   await page.route("**/collections/parcs/schema", async (route) => {
     await route.fulfill({
-      json: { collection: "parcs", pk: "id", geometry: null, fields: [{ name: "nom", type: "string", required: true }] },
+      json: {
+        collection: "parcs",
+        pk: "id",
+        geometry: null,
+        fields: [{ name: "nom", type: "string", required: true }],
+      },
     });
   });
 
@@ -30,20 +50,38 @@ test("create a dataset, edit a column label, then promote an app's inline source
     if (route.request().method() === "PUT") {
       const body = await route.request().postDataJSON();
       datasetColumns = body.dataset.columns;
-      await route.fulfill({ json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: body.dataset } });
+      await route.fulfill({
+        json: { id: "cfg-dataset", itemId: "dataset-1", kind: "dataset", dataset: body.dataset },
+      });
       return;
     }
     await route.fulfill({
       json: {
-        id: "cfg-dataset", itemId: "dataset-1", kind: "dataset",
-        config: { kind: "dataset", dataset: { source: "collection", collectionId: "parcs", columns: datasetColumns } },
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "parcs", columns: datasetColumns },
+        },
       },
     });
   });
 
   await page.route("https://core.test/items/dataset-1", async (route) => {
     await route.fulfill({
-      json: { pk: "dataset-1", resourceType: "dataset", title: "Parcs partagés", abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-dataset", isPublished: false, keywords: [] },
+      json: {
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Parcs partagés",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: "cfg-dataset",
+        isPublished: false,
+        keywords: [],
+      },
     });
   });
 
@@ -52,7 +90,10 @@ test("create a dataset, edit a column label, then promote an app's inline source
     const body = await route.request().postDataJSON();
     if (body?.config?.kind === "dataset") {
       datasetCreated = true;
-      await route.fulfill({ status: 201, json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-dataset", kind: "dataset", itemId: "dataset-1" },
+      });
       return;
     }
     return route.fallback();
@@ -88,7 +129,10 @@ test("create a dataset, edit a column label, then promote an app's inline source
     const body = await route.request().postDataJSON();
     if (body?.config?.kind === "dataset") {
       promotePostedCollectionId = body.config.dataset.collectionId;
-      await route.fulfill({ status: 201, json: { id: "cfg-dataset-2", kind: "dataset", itemId: "dataset-2" } });
+      await route.fulfill({
+        status: 201,
+        json: { id: "cfg-dataset-2", kind: "dataset", itemId: "dataset-2" },
+      });
       return;
     }
     return route.fallback();

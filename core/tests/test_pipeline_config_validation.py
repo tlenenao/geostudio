@@ -19,10 +19,18 @@ def _linear_pipeline(**overrides) -> dict:
             "kind": "pipeline",
             "pipeline": {
                 "nodes": [
-                    {"id": "r1", "kind": "reader", "op": "reader.collection",
-                     "params": {"collectionId": "villes"}},
-                    {"id": "w1", "kind": "writer", "op": "writer.collection",
-                     "params": {"collectionId": "villes_propres"}},
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_propres"},
+                    },
                 ],
                 "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
             },
@@ -47,15 +55,18 @@ def env(monkeypatch):
     # teardown, so this file can never leak state into another test file
     # regardless of execution order.
     monkeypatch.setitem(
-        pipeline_validation_module._node_validators, "reader.collection",
+        pipeline_validation_module._node_validators,
+        "reader.collection",
         lambda session, node, edges, user: None,
     )
     monkeypatch.setitem(
-        pipeline_validation_module._node_validators, "writer.collection",
+        pipeline_validation_module._node_validators,
+        "writer.collection",
         lambda session, node, edges, user: None,
     )
     monkeypatch.setitem(
-        pipeline_validation_module._node_validators, "reader.connector.postgres",
+        pipeline_validation_module._node_validators,
+        "reader.connector.postgres",
         lambda session, node, edges, user: None,
     )
 
@@ -65,8 +76,13 @@ def env(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
@@ -95,9 +111,13 @@ def test_disabled_capability_refuses_pipeline_creation(monkeypatch, env):
 
 def test_disabled_capability_does_not_affect_other_kinds(monkeypatch, env):
     monkeypatch.setenv("CORE_ETL_ENABLED", "false")
-    response = env.post("/configs", json={
-        "title": "App", "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
-    })
+    response = env.post(
+        "/configs",
+        json={
+            "title": "App",
+            "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
+        },
+    )
     assert response.status_code == 201
 
 
@@ -119,8 +139,12 @@ def test_cyclic_graph_rejected(env):
 def test_node_with_two_incoming_edges_rejected(env):
     body = _linear_pipeline()
     body["config"]["pipeline"]["nodes"].append(
-        {"id": "r2", "kind": "reader", "op": "reader.collection",
-         "params": {"collectionId": "quartiers"}}
+        {
+            "id": "r2",
+            "kind": "reader",
+            "op": "reader.collection",
+            "params": {"collectionId": "quartiers"},
+        }
     )
     body["config"]["pipeline"]["edges"].append({"id": "e2", "from": "r2", "to": "w1"})
     response = env.post("/configs", json=body)
@@ -131,8 +155,18 @@ def test_node_with_two_incoming_edges_rejected(env):
 def test_node_with_two_secondary_incoming_edges_rejected(env):
     body = _linear_pipeline()
     body["config"]["pipeline"]["nodes"] += [
-        {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers"}},
-        {"id": "r3", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers2"}},
+        {
+            "id": "r2",
+            "kind": "reader",
+            "op": "reader.collection",
+            "params": {"collectionId": "quartiers"},
+        },
+        {
+            "id": "r3",
+            "kind": "reader",
+            "op": "reader.collection",
+            "params": {"collectionId": "quartiers2"},
+        },
     ]
     body["config"]["pipeline"]["edges"] += [
         {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"},
@@ -150,7 +184,12 @@ def test_node_with_one_primary_and_one_secondary_incoming_edge_is_not_a_topology
     # binaire, Task 7), mais jamais sur _check_topology elle-même.
     body = _linear_pipeline()
     body["config"]["pipeline"]["nodes"].append(
-        {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "quartiers"}}
+        {
+            "id": "r2",
+            "kind": "reader",
+            "op": "reader.collection",
+            "params": {"collectionId": "quartiers"},
+        }
     )
     body["config"]["pipeline"]["edges"].append(
         {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"}
@@ -170,9 +209,13 @@ def test_reader_connector_node_saves_without_secret_or_query_check(env):
     # l'EXÉCUTION, cf. test_pipeline_runtime.py). Une sauvegarde réussie ici
     # n'est pas un bug.
     body = _linear_pipeline()
-    body["config"]["pipeline"]["nodes"].append({
-        "id": "r2", "kind": "reader", "op": "reader.connector.postgres",
-        "params": {"secretName": "does-not-exist", "query": "not even sql"},
-    })
+    body["config"]["pipeline"]["nodes"].append(
+        {
+            "id": "r2",
+            "kind": "reader",
+            "op": "reader.connector.postgres",
+            "params": {"secretName": "does-not-exist", "query": "not even sql"},
+        }
+    )
     response = env.post("/configs", json=body)
     assert response.status_code == 201

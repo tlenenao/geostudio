@@ -17,8 +17,24 @@ const TWO_COLUMN_LAYOUT: AppLayout = {
   type: "grid",
   breakpoints: {},
   items: [
-    { id: "tpl-two-col-a", widget: "text", x: 0, y: 0, w: 3, h: 3, props: { text: "Colonne gauche" } },
-    { id: "tpl-two-col-b", widget: "text", x: 3, y: 0, w: 3, h: 3, props: { text: "Colonne droite" } },
+    {
+      id: "tpl-two-col-a",
+      widget: "text",
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      props: { text: "Colonne gauche" },
+    },
+    {
+      id: "tpl-two-col-b",
+      widget: "text",
+      x: 3,
+      y: 0,
+      w: 3,
+      h: 3,
+      props: { text: "Colonne droite" },
+    },
   ],
 };
 
@@ -26,8 +42,24 @@ const BASIC_DASHBOARD_LAYOUT: AppLayout = {
   type: "grid",
   breakpoints: {},
   items: [
-    { id: "tpl-dash-title", widget: "text", x: 0, y: 0, w: 6, h: 2, props: { text: "Bienvenue sur votre tableau de bord" } },
-    { id: "tpl-dash-cta", widget: "button", x: 0, y: 2, w: 2, h: 1, props: { label: "En savoir plus", href: "" } },
+    {
+      id: "tpl-dash-title",
+      widget: "text",
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 2,
+      props: { text: "Bienvenue sur votre tableau de bord" },
+    },
+    {
+      id: "tpl-dash-cta",
+      widget: "button",
+      x: 0,
+      y: 2,
+      w: 2,
+      h: 1,
+      props: { label: "En savoir plus", href: "" },
+    },
   ],
 };
 
@@ -42,22 +74,48 @@ const INCIDENT_APP_LAYOUT: AppLayout = {
   breakpoints: {},
   items: [
     {
-      id: "tpl-incident-form", widget: "form", x: 0, y: 0, w: 4, h: 6,
-      props: { dataSourceId: INCIDENT_DATA_SOURCE_ID, fields: [], submitLabel: "Déclarer l'incident", geometryType: null },
+      id: "tpl-incident-form",
+      widget: "form",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 6,
+      props: {
+        dataSourceId: INCIDENT_DATA_SOURCE_ID,
+        fields: [],
+        submitLabel: "Déclarer l'incident",
+        geometryType: null,
+      },
     },
     {
-      id: "tpl-incident-map", widget: "map", x: 4, y: 0, w: 8, h: 4,
+      id: "tpl-incident-map",
+      widget: "map",
+      x: 4,
+      y: 0,
+      w: 8,
+      h: 4,
       props: { dataSourceId: INCIDENT_DATA_SOURCE_ID },
     },
     {
-      id: "tpl-incident-table", widget: "table", x: 4, y: 4, w: 8, h: 2,
+      id: "tpl-incident-table",
+      widget: "table",
+      x: 4,
+      y: 4,
+      w: 8,
+      h: 2,
       props: { dataSourceId: INCIDENT_DATA_SOURCE_ID, columns: [], pageSize: 10 },
     },
   ],
 };
 
 const INCIDENT_APP_MESSAGES: ActionMessage[] = [
-  { id: "tpl-incident-msg", from: "tpl-incident-table", event: "itemSelected", to: "tpl-incident-form", action: "loadRecord" },
+  {
+    id: "tpl-incident-msg",
+    from: "tpl-incident-table",
+    event: "itemSelected",
+    to: "tpl-incident-form",
+    action: "loadRecord",
+  },
 ];
 
 function storyChapter(idx: number, title: string, center: [number, number]): Page {
@@ -69,14 +127,27 @@ function storyChapter(idx: number, title: string, center: [number, number]): Pag
       type: "grid",
       breakpoints: {},
       items: [
-        { id: `tpl-story-text-${idx}`, widget: "text", x: 0, y: 0, w: 4, h: 6,
-          props: { text: `## ${title}\n\nRacontez ce chapitre ici.` } },
+        {
+          id: `tpl-story-text-${idx}`,
+          widget: "text",
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 6,
+          props: { text: `## ${title}\n\nRacontez ce chapitre ici.` },
+        },
         { id: mapId, widget: "map", x: 4, y: 0, w: 8, h: 6, props: {} },
       ],
     },
     onEnter: [
-      { id: `tpl-story-onenter-${idx}`, from: `tpl-story-page-${idx}`, event: "enter",
-        to: mapId, action: "flyTo", payload: { center } },
+      {
+        id: `tpl-story-onenter-${idx}`,
+        from: `tpl-story-page-${idx}`,
+        event: "enter",
+        to: mapId,
+        action: "flyTo",
+        payload: { center },
+      },
     ],
   };
 }
@@ -98,26 +169,55 @@ const PORTAL_LAYOUT: AppLayout = {
   breakpoints: {},
   items: [
     {
-      id: "tpl-portal-hero", widget: "hero", x: 0, y: 0, w: 12, h: 3,
+      id: "tpl-portal-hero",
+      widget: "hero",
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 3,
       props: {
-        title: "Portail de données", subtitle: "Explorez et téléchargez nos jeux de données ouverts.",
-        backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left",
+        title: "Portail de données",
+        subtitle: "Explorez et téléchargez nos jeux de données ouverts.",
+        backgroundImageUrl: "",
+        ctaLabel: "",
+        ctaHref: "",
+        align: "left",
       },
     },
     {
-      id: "tpl-portal-gallery", widget: "gallery", x: 0, y: 3, w: 12, h: 4,
+      id: "tpl-portal-gallery",
+      widget: "gallery",
+      x: 0,
+      y: 3,
+      w: 12,
+      h: 4,
       props: { type: "", tag: "", limit: 12, columns: 3 },
     },
     {
-      id: "tpl-portal-dataset-card", widget: "datasetCard", x: 0, y: 7, w: 4, h: 4,
+      id: "tpl-portal-dataset-card",
+      widget: "datasetCard",
+      x: 0,
+      y: 7,
+      w: 4,
+      h: 4,
       props: { dataSourceId: PORTAL_DATA_SOURCE_ID, showDownload: true, title: "" },
     },
     {
-      id: "tpl-portal-map", widget: "map", x: 4, y: 7, w: 4, h: 4,
+      id: "tpl-portal-map",
+      widget: "map",
+      x: 4,
+      y: 7,
+      w: 4,
+      h: 4,
       props: { dataSourceId: PORTAL_DATA_SOURCE_ID },
     },
     {
-      id: "tpl-portal-table", widget: "table", x: 8, y: 7, w: 4, h: 4,
+      id: "tpl-portal-table",
+      widget: "table",
+      x: 8,
+      y: 7,
+      w: 4,
+      h: 4,
       props: { dataSourceId: PORTAL_DATA_SOURCE_ID, columns: [], pageSize: 10 },
     },
   ],
@@ -125,18 +225,34 @@ const PORTAL_LAYOUT: AppLayout = {
 
 export const TEMPLATES: Template[] = [
   { id: "two-column", name: "Deux colonnes", kind: "app", layout: TWO_COLUMN_LAYOUT },
-  { id: "basic-dashboard", name: "Tableau de bord basique", kind: "dashboard", layout: BASIC_DASHBOARD_LAYOUT },
   {
-    id: "application-de-saisie", name: "Application de saisie", kind: "app",
-    layout: INCIDENT_APP_LAYOUT, dataSources: INCIDENT_APP_DATA_SOURCES, messages: INCIDENT_APP_MESSAGES,
+    id: "basic-dashboard",
+    name: "Tableau de bord basique",
+    kind: "dashboard",
+    layout: BASIC_DASHBOARD_LAYOUT,
   },
   {
-    id: "story-cartographique", name: "Story cartographique", kind: "app",
-    layout: STORY_PAGES[0].layout, pages: STORY_PAGES, navigationMode: "story",
+    id: "application-de-saisie",
+    name: "Application de saisie",
+    kind: "app",
+    layout: INCIDENT_APP_LAYOUT,
+    dataSources: INCIDENT_APP_DATA_SOURCES,
+    messages: INCIDENT_APP_MESSAGES,
   },
   {
-    id: "portail-de-donnees", name: "Portail de données", kind: "site",
-    layout: PORTAL_LAYOUT, dataSources: PORTAL_DATA_SOURCES,
+    id: "story-cartographique",
+    name: "Story cartographique",
+    kind: "app",
+    layout: STORY_PAGES[0].layout,
+    pages: STORY_PAGES,
+    navigationMode: "story",
+  },
+  {
+    id: "portail-de-donnees",
+    name: "Portail de données",
+    kind: "site",
+    layout: PORTAL_LAYOUT,
+    dataSources: PORTAL_DATA_SOURCES,
   },
 ];
 

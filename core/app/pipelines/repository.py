@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import croniter
 from sqlalchemy import select
@@ -11,7 +11,7 @@ from app.pipelines.models import PipelineRun
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 _RUNNING_RECLAIM_MINUTES = 60
@@ -19,7 +19,9 @@ _RUNNING_RECLAIM_MINUTES = 60
 
 def create_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun:
     run = PipelineRun(
-        id=uuid.uuid4().hex, tenant_id=tenant_id, pipeline_item_id=pipeline_item_id,
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        pipeline_item_id=pipeline_item_id,
         status="queued",
     )
     session.add(run)
@@ -35,21 +37,35 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | N
 
 
 def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> list[PipelineRun]:
-    rows = session.execute(
-        select(PipelineRun)
-        .where(PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id)
-        .order_by(PipelineRun.created_at.desc())
-    ).scalars().all()
+    rows = (
+        session.execute(
+            select(PipelineRun)
+            .where(
+                PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id
+            )
+            .order_by(PipelineRun.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
-def get_latest_run(session: Session, *, tenant_id: str, pipeline_item_id: str) -> PipelineRun | None:
-    return session.execute(
-        select(PipelineRun)
-        .where(PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id)
-        .order_by(PipelineRun.created_at.desc())
-        .limit(1)
-    ).scalars().first()
+def get_latest_run(
+    session: Session, *, tenant_id: str, pipeline_item_id: str
+) -> PipelineRun | None:
+    return (
+        session.execute(
+            select(PipelineRun)
+            .where(
+                PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id
+            )
+            .order_by(PipelineRun.created_at.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
 
 
 def mark_running(session: Session, *, run_id: str) -> None:
@@ -81,7 +97,9 @@ def mark_failed(session: Session, *, run_id: str, error: str) -> None:
     session.flush()
 
 
-def append_node_stat(session: Session, *, tenant_id: str, run_id: str, node_id: str, stat: dict) -> None:
+def append_node_stat(
+    session: Session, *, tenant_id: str, run_id: str, node_id: str, stat: dict
+) -> None:
     """Écrit un NodeStat dans PipelineRun.node_stats immédiatement (fusion,
     pas un remplacement) — c'est ce qui permet à la progression d'un run
     d'être visible en base avant sa fin (SP-15g §3.5). Scindé de
@@ -105,7 +123,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
     concurrence par âge identique à app.harvest.repository.list_due_sources
     (_RUNNING_RECLAIM_MINUTES) — un run resté "running"/"queued" plus vieux
     que ce délai est présumé planté et redevient éligible."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     due: list[tuple[str, str]] = []
     for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="pipeline"):
         payload = config.pipeline
@@ -120,7 +138,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
             continue
         created_at = latest.created_at
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
         if latest.status in ("queued", "running"):
             # Ancre de péremption : pour un run "running", l'horloge pertinente
             # est started_at (posé par mark_running), pas created_at (heure de
@@ -134,7 +152,7 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
             if latest.status == "running" and latest.started_at is not None:
                 reclaim_anchor = latest.started_at
                 if reclaim_anchor.tzinfo is None:
-                    reclaim_anchor = reclaim_anchor.replace(tzinfo=timezone.utc)
+                    reclaim_anchor = reclaim_anchor.replace(tzinfo=UTC)
             if (now - reclaim_anchor) < timedelta(minutes=_RUNNING_RECLAIM_MINUTES):
                 continue
             due.append((item_id, tenant_id))

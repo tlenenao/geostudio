@@ -29,7 +29,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 // Deep-merge plain objects (arrays and scalars from `override` win outright).
-function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(override)) {
     const cur = out[k];
@@ -112,7 +115,18 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   const fmt = valueFormatter(props);
 
   const base: Record<string, unknown> = {
-    tooltip: { trigger: type === "pie" || type === "doughnut" || type === "gauge" || type === "funnel" || type === "sankey" || type === "treemap" || type === "sunburst" ? "item" : "axis" },
+    tooltip: {
+      trigger:
+        type === "pie" ||
+        type === "doughnut" ||
+        type === "gauge" ||
+        type === "funnel" ||
+        type === "sankey" ||
+        type === "treemap" ||
+        type === "sunburst"
+          ? "item"
+          : "axis",
+    },
     legend: { show: props.legend ?? true },
   };
   if (props.title) base.title = { text: props.title };
@@ -127,11 +141,13 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
     return finalize(props, {
       ...base,
       dataset: { source: rows },
-      series: [{
-        type: "pie",
-        radius: type === "doughnut" ? ["40%", "70%"] : "70%",
-        encode: { itemName: catKey, value: valueKey },
-      }],
+      series: [
+        {
+          type: "pie",
+          radius: type === "doughnut" ? ["40%", "70%"] : "70%",
+          encode: { itemName: catKey, value: valueKey },
+        },
+      ],
     });
   }
 
@@ -139,7 +155,12 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
     const valueKey = props.valueField || seriesKeys[0] || "";
     return finalize(props, {
       ...base,
-      series: [{ type: "gauge", data: [{ value: num(rows[0]?.[valueKey]), name: props.title || valueKey }] }],
+      series: [
+        {
+          type: "gauge",
+          data: [{ value: num(rows[0]?.[valueKey]), name: props.title || valueKey }],
+        },
+      ],
     });
   }
 
@@ -148,10 +169,12 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
     return finalize(props, {
       ...base,
       radar: { indicator: rows.map((row) => ({ name: String(row[catKey] ?? ""), max: maxVal })) },
-      series: [{
-        type: "radar",
-        data: seriesKeys.map((k) => ({ name: k, value: rows.map((row) => num(row[k])) })),
-      }],
+      series: [
+        {
+          type: "radar",
+          data: seriesKeys.map((k) => ({ name: k, value: rows.map((row) => num(row[k])) })),
+        },
+      ],
     });
   }
 
@@ -163,7 +186,14 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
       ...base,
       xAxis: { type: "category", data: rows.map((row) => String(row[catKey] ?? "")) },
       yAxis: { type: "category", data: seriesKeys },
-      visualMap: { min: Math.min(0, ...values), max: Math.max(1, ...values), calculable: true, orient: "horizontal", left: "center", bottom: 0 },
+      visualMap: {
+        min: Math.min(0, ...values),
+        max: Math.max(1, ...values),
+        calculable: true,
+        orient: "horizontal",
+        left: "center",
+        bottom: 0,
+      },
       series: [{ type: "heatmap", data }],
     });
   }
@@ -181,15 +211,19 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
     const valueKey = props.valueField || seriesKeys[0] || "";
     return finalize(props, {
       ...base,
-      series: [{
-        type: "funnel",
-        data: rows.map((row) => ({ name: String(row[catKey] ?? ""), value: num(row[valueKey]) })),
-      }],
+      series: [
+        {
+          type: "funnel",
+          data: rows.map((row) => ({ name: String(row[catKey] ?? ""), value: num(row[valueKey]) })),
+        },
+      ],
     });
   }
 
   if (type === "histogram") {
-    const labels = rows.map((row) => `${round2(Number(row.bucketStart))}–${round2(Number(row.bucketEnd))}`);
+    const labels = rows.map(
+      (row) => `${round2(Number(row.bucketStart))}–${round2(Number(row.bucketEnd))}`,
+    );
     const counts = rows.map((row) => num(row.count));
     return finalize(props, {
       ...base,
@@ -202,16 +236,24 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   if (type === "sankey") {
     const sourceField = props.encodings?.source ?? "";
     const targetField = props.encodings?.target ?? "";
-    const valueKey = props.encodings?.value || seriesKeys.find((k) => k !== sourceField && k !== targetField) || "";
+    const valueKey =
+      props.encodings?.value ||
+      seriesKeys.find((k) => k !== sourceField && k !== targetField) ||
+      "";
     const sourceNames = new Set(rows.map((row) => String(row[sourceField] ?? "")));
     const allNames = new Set<string>();
     rows.forEach((row) => {
       allNames.add(String(row[sourceField] ?? ""));
       allNames.add(String(row[targetField] ?? ""));
     });
-    const nodes = [...allNames].map((name) => ({ name, _role: sourceNames.has(name) ? "source" : "target" }));
+    const nodes = [...allNames].map((name) => ({
+      name,
+      _role: sourceNames.has(name) ? "source" : "target",
+    }));
     const links = rows.map((row) => ({
-      source: String(row[sourceField] ?? ""), target: String(row[targetField] ?? ""), value: num(row[valueKey]),
+      source: String(row[sourceField] ?? ""),
+      target: String(row[targetField] ?? ""),
+      value: num(row[valueKey]),
     }));
     return finalize(props, { ...base, series: [{ type: "sankey", data: nodes, links }] });
   }
@@ -224,7 +266,8 @@ export function buildOption(props: ChartProps, records: DataRecord[]): EChartsOp
   }
 
   // bar | line | area | scatter — dataset + encode, one series per column.
-  const seriesType = type === "area" || type === "line" ? "line" : type === "scatter" ? "scatter" : "bar";
+  const seriesType =
+    type === "area" || type === "line" ? "line" : type === "scatter" ? "scatter" : "bar";
   return finalize(props, {
     ...base,
     dataset: { source: rows },
@@ -254,7 +297,9 @@ export type ClickParams = {
 // clicked node's role (tagged _role in buildOption, see the sankey branch)
 // disambiguates whether it maps to encodings.source or encodings.target.
 export function resolveClickFilter(
-  chartType: string, props: ChartProps, params: ClickParams,
+  chartType: string,
+  props: ChartProps,
+  params: ClickParams,
 ): { field: string; value: string } | null {
   if (chartType === "histogram") return null;
 
@@ -292,7 +337,10 @@ function offsetLabel(bucket: BucketGranularity, index: number): string {
 // reference period overlay regardless of their absolute dates. Independent
 // of buildOption — when compare mode is off, buildOption is untouched.
 export function buildCompareOption(
-  props: ChartProps, current: ComparePoint[], reference: ComparePoint[], bucket: BucketGranularity,
+  props: ChartProps,
+  current: ComparePoint[],
+  reference: ComparePoint[],
+  bucket: BucketGranularity,
 ): EChartsOption {
   const length = Math.max(current.length, reference.length);
   const categories = Array.from({ length }, (_, i) => offsetLabel(bucket, i));
@@ -307,7 +355,13 @@ export function buildCompareOption(
     yAxis,
     series: [
       { type: "line", name: "Période courante", data: current.map((p) => p.value) },
-      { type: "line", name: "Référence", data: reference.map((p) => p.value), lineStyle: { type: "dashed" }, itemStyle: { opacity: 0.6 } },
+      {
+        type: "line",
+        name: "Référence",
+        data: reference.map((p) => p.value),
+        lineStyle: { type: "dashed" },
+        itemStyle: { opacity: 0.6 },
+      },
     ],
   };
   if (props.title) built.title = { text: props.title };

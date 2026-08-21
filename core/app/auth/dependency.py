@@ -104,9 +104,7 @@ def analyst_subs() -> set[str]:
 @lru_cache(maxsize=1)
 def _jwks_client() -> jwt.PyJWKClient:
     issuer = os.environ["CORE_OIDC_ISSUER"]
-    jwks_url = os.environ.get(
-        "CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs"
-    )
+    jwks_url = os.environ.get("CORE_OIDC_JWKS_URL", f"{issuer}/protocol/openid-connect/certs")
     return jwt.PyJWKClient(jwks_url, lifespan=600)
 
 
@@ -147,7 +145,11 @@ def get_current_user(
 
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
-        claims = jwt.decode(
+        # Nommée séparément de `claims` (ExportTokenClaims, branche ci-dessus)
+        # : type distinct (dict brut du JWT OIDC), les deux branches sont
+        # mutuellement exclusives mais réutiliser le même nom forçait un seul
+        # type sur toute la fonction.
+        oidc_claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
@@ -164,13 +166,13 @@ def get_current_user(
     return get_or_create_user(
         session,
         tenant_id=tenant.id,
-        oidc_sub=claims["sub"],
-        username=claims.get("preferred_username", claims["sub"]),
-        email=claims.get("email"),
-        first_name=claims.get("given_name", ""),
-        last_name=claims.get("family_name", ""),
-        bootstrap_admin=claims["sub"] in admin_subs(),
-        bootstrap_analyst=claims["sub"] in analyst_subs(),
+        oidc_sub=oidc_claims["sub"],
+        username=oidc_claims.get("preferred_username", oidc_claims["sub"]),
+        email=oidc_claims.get("email"),
+        first_name=oidc_claims.get("given_name", ""),
+        last_name=oidc_claims.get("family_name", ""),
+        bootstrap_admin=oidc_claims["sub"] in admin_subs(),
+        bootstrap_analyst=oidc_claims["sub"] in analyst_subs(),
     )
 
 

@@ -20,10 +20,16 @@ export function csvTooLarge(featureCount: number | null): boolean {
 // collection with more features than that only returns the first page. Accepted
 // v1 limitation: full exports beyond 1000 features wait on SP-15's server-side
 // export. GeoJSON stays "always available" (unlike CSV, never disabled).
-export function geojsonDownloadUrl(client: Pick<ItemClient, "featuresUrl">, collectionId: string): string {
+export function geojsonDownloadUrl(
+  client: Pick<ItemClient, "featuresUrl">,
+  collectionId: string,
+): string {
   const source: DataSource = {
-    id: `dataset-geojson-${collectionId}`, type: "features", service: "core",
-    layer: collectionId, query: { limit: PAGE_SIZE },
+    id: `dataset-geojson-${collectionId}`,
+    type: "features",
+    service: "core",
+    layer: collectionId,
+    query: { limit: PAGE_SIZE },
   };
   return client.featuresUrl(source);
 }
@@ -84,8 +90,11 @@ export async function downloadCsv(opts: {
 }): Promise<void> {
   const queryPage = (offset: number, limit: number) =>
     opts.client.queryDataSource({
-      id: `dataset-csv-${opts.collectionId}`, type: "features", service: "core",
-      layer: opts.collectionId, query: { limit, offset },
+      id: `dataset-csv-${opts.collectionId}`,
+      type: "features",
+      service: "core",
+      layer: opts.collectionId,
+      query: { limit, offset },
     });
   const records = await fetchRecordsForCsv(queryPage, opts.featureCount);
   const csv = recordsToCsv(opts.schema, records);

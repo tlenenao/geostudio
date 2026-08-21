@@ -92,7 +92,9 @@ export function ImportFileButton() {
 
   async function startJob(key: string, chosenLayerName: string | undefined) {
     const { jobId } = await client.createIngestionJob({
-      key, filename: file!.name, collectionTitle: title.trim(),
+      key,
+      filename: file!.name,
+      collectionTitle: title.trim(),
       latField: needsManualLatLon ? latField : undefined,
       lonField: needsManualLatLon ? lonField : undefined,
       layerName: chosenLayerName,
@@ -109,7 +111,8 @@ export function ImportFileButton() {
     setError("");
     try {
       const { uploadUrl, key } = await client.presignUpload(
-        file.name, file.type || "application/octet-stream",
+        file.name,
+        file.type || "application/octet-stream",
       );
       await client.uploadToPresignedUrl(uploadUrl, file);
       if (isLayeredFormat(file.name)) {
@@ -152,7 +155,7 @@ export function ImportFileButton() {
       </Button>
       <Dialog open={open} onClose={close} title="Importer un fichier">
         {phase === "selecting-layer" ? (
-          <form onSubmit={confirmLayer} className="flex flex-col gap-3">
+          <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm">
               Couche à importer
               <select
@@ -179,14 +182,14 @@ export function ImportFileButton() {
             </div>
           </form>
         ) : (
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm">
               Fichier à importer
               <input
                 aria-label="Fichier à importer"
                 type="file"
                 accept=".geojson,.json,.csv,.gpkg,.zip"
-                onChange={onFileChange}
+                onChange={(e) => void onFileChange(e)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -208,7 +211,11 @@ export function ImportFileButton() {
                     onChange={(e) => setLatField(e.target.value)}
                   >
                     <option value="">—</option>
-                    {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
+                    {csvHeaders!.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
@@ -220,20 +227,30 @@ export function ImportFileButton() {
                     onChange={(e) => setLonField(e.target.value)}
                   >
                     <option value="">—</option>
-                    {csvHeaders!.map((h) => <option key={h} value={h}>{h}</option>)}
+                    {csvHeaders!.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </>
             )}
             {phase === "error" && (
-              <p role="alert" className="text-sm text-red-600">{error}</p>
+              <p role="alert" className="text-sm text-red-600">
+                {error}
+              </p>
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
                 Annuler
               </Button>
               <Button type="submit" size="sm" disabled={busy}>
-                {phase === "uploading" ? "Envoi…" : phase === "polling" ? "Import en cours…" : "Importer"}
+                {phase === "uploading"
+                  ? "Envoi…"
+                  : phase === "polling"
+                    ? "Import en cours…"
+                    : "Importer"}
               </Button>
             </div>
           </form>

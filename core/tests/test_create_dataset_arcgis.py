@@ -21,35 +21,68 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         alice = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email="alice@example.com", first_name="Alice", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email="alice@example.com",
+            first_name="Alice",
+            last_name="Doe",
         )
         bob = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-2",
-            username="bob", email="bob@example.com", first_name="Bob", last_name="Doe",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-2",
+            username="bob",
+            email="bob@example.com",
+            first_name="Bob",
+            last_name="Doe",
         )
         source = harvest_repo.create_source(
-            setup_session, tenant_id=tenant.id, owner_id=alice.id, type="arcgis",
-            url="https://gis.example.com/FeatureServer", mode="reference",
-            enabled=True, interval_minutes=None,
+            setup_session,
+            tenant_id=tenant.id,
+            owner_id=alice.id,
+            type="arcgis",
+            url="https://gis.example.com/FeatureServer",
+            mode="reference",
+            enabled=True,
+            interval_minutes=None,
         )
         visible_item = items_repo.create_item(
-            setup_session, tenant_id=tenant.id, owner_id=alice.id,
-            resource_type="external", title="Bâtiments",
+            setup_session,
+            tenant_id=tenant.id,
+            owner_id=alice.id,
+            resource_type="external",
+            title="Bâtiments",
         )
         harvest_repo.create_record(
-            setup_session, tenant_id=tenant.id, source_id=source.id, external_id="layer-0",
-            item_id=visible_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/0", layer_kind="feature",
+            setup_session,
+            tenant_id=tenant.id,
+            source_id=source.id,
+            external_id="layer-0",
+            item_id=visible_item.id,
+            collection_id=None,
+            content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/0",
+            layer_kind="feature",
         )
         hidden_item = items_repo.create_item(
-            setup_session, tenant_id=tenant.id, owner_id=bob.id,
-            resource_type="external", title="Couche privée de Bob",
+            setup_session,
+            tenant_id=tenant.id,
+            owner_id=bob.id,
+            resource_type="external",
+            title="Couche privée de Bob",
         )
         harvest_repo.create_record(
-            setup_session, tenant_id=tenant.id, source_id=source.id, external_id="layer-1",
-            item_id=hidden_item.id, collection_id=None, content_hash=None,
-            external_url="https://gis.example.com/FeatureServer/1", layer_kind="feature",
+            setup_session,
+            tenant_id=tenant.id,
+            source_id=source.id,
+            external_id="layer-1",
+            item_id=hidden_item.id,
+            collection_id=None,
+            content_hash=None,
+            external_url="https://gis.example.com/FeatureServer/1",
+            layer_kind="feature",
         )
         setup_session.commit()
 
@@ -73,7 +106,8 @@ def _dataset_body(arcgis_item_id: str, title: str = "Bâtiments (live)") -> dict
     return {
         "title": title,
         "config": {
-            "version": 1, "kind": "dataset",
+            "version": 1,
+            "kind": "dataset",
             "dataset": {"source": "arcgis", "arcgisItemId": arcgis_item_id, "columns": {}},
         },
     }

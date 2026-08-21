@@ -26,8 +26,13 @@ def _client_and_user(monkeypatch, tmp_path):
         # (app.sharing.authorization.can) to line up with items created
         # directly through the repository in tests below.
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="mock-sub", username="mockuser",
-            email=None, first_name="Mock", last_name="User",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         s.commit()
     client = TestClient(app)
@@ -62,7 +67,11 @@ def test_create_alert_rule_rejects_a_non_dataset_item(monkeypatch, tmp_path):
     client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
     with Session() as s:
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Not a dataset",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="pipeline",
+            title="Not a dataset",
         )
         s.commit()
         other_item_id = item.id
@@ -75,7 +84,11 @@ def test_create_alert_rule_succeeds_against_a_readable_dataset(monkeypatch, tmp_
     client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
     with Session() as s:
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="My dataset",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="My dataset",
         )
         s.commit()
         dataset_item_id = item.id

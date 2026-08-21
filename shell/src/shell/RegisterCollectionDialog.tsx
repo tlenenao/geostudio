@@ -56,13 +56,12 @@ export function RegisterCollectionDialog({
       )}
       {candidatesQuery.data && candidatesQuery.data.length === 0 && (
         <p className="text-sm text-slate-600">
-          Aucune table à enregistrer — toutes les tables éligibles du schéma
-          public sont déjà des collections, ou importez un fichier depuis le
-          catalogue.
+          Aucune table à enregistrer — toutes les tables éligibles du schéma public sont déjà des
+          collections, ou importez un fichier depuis le catalogue.
         </p>
       )}
       {candidatesQuery.data && candidatesQuery.data.length > 0 && (
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Table
             <select
@@ -85,7 +84,11 @@ export function RegisterCollectionDialog({
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Description
-            <Input aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input
+              aria-label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -105,7 +108,11 @@ export function RegisterCollectionDialog({
             <Button type="button" variant="outline" size="sm" onClick={close}>
               Annuler
             </Button>
-            <Button type="submit" size="sm" disabled={!tableName || createCollection.isPending || readOnly}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!tableName || createCollection.isPending || readOnly}
+            >
               Enregistrer
             </Button>
           </div>

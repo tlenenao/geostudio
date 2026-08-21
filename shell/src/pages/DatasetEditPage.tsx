@@ -44,7 +44,9 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     );
 
   function setColumn(name: string, patch: DatasetColumnMeta) {
-    setDraft((d) => (d ? { ...d, columns: { ...d.columns, [name]: { ...d.columns[name], ...patch } } } : d));
+    setDraft((d) =>
+      d ? { ...d, columns: { ...d.columns, [name]: { ...d.columns[name], ...patch } } } : d,
+    );
   }
 
   const targetOptions = (otherDatasetsQuery.data?.items ?? [])
@@ -53,7 +55,15 @@ export function DatasetEditPage({ pk }: { pk: string }) {
 
   function addCrossFilterLink() {
     setDraft((d) =>
-      d ? { ...d, crossFilterLinks: [...(d.crossFilterLinks ?? []), { targetDatasetId: "", mode: "attribute" as const, sourceField: "", targetField: "" }] } : d,
+      d
+        ? {
+            ...d,
+            crossFilterLinks: [
+              ...(d.crossFilterLinks ?? []),
+              { targetDatasetId: "", mode: "attribute" as const, sourceField: "", targetField: "" },
+            ],
+          }
+        : d,
     );
   }
   function updateCrossFilterLink(index: number, next: CrossFilterLink) {
@@ -78,7 +88,14 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const exportFormats = hasGeometry ? ["csv", "xlsx", "geojson", "gpkg"] : ["csv", "xlsx"];
 
   async function handleExport(format: string) {
-    const source = { id: "__dataset-export__", type: "features" as const, service: "core", layer: "", datasetId: pk, query: {} };
+    const source = {
+      id: "__dataset-export__",
+      type: "features" as const,
+      service: "core",
+      layer: "",
+      datasetId: pk,
+      query: {},
+    };
     setExportError(null);
     setExportingFormat(format);
     try {
@@ -100,7 +117,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     <div className="flex flex-col gap-4 p-4">
       <h2 className="text-xl font-semibold">Dataset partagé — {itemQuery.data.title}</h2>
       <MetadataForm
-        initial={{ title: itemQuery.data.title, abstract: itemQuery.data.abstract, keywords: itemQuery.data.keywords ?? [] }}
+        initial={{
+          title: itemQuery.data.title,
+          abstract: itemQuery.data.abstract,
+          keywords: itemQuery.data.keywords ?? [],
+        }}
         onSubmit={(v) => updateItem.mutate(v)}
         onCancel={() => {}}
         pending={updateItem.isPending}
@@ -128,16 +149,28 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <tr key={f.name} className="border-t border-slate-200">
                   <td className="p-1 font-mono text-xs">{f.name}</td>
                   <td className="p-1">
-                    <input aria-label={`Libellé de ${f.name}`} className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
-                      value={f.label ?? ""} onChange={(e) => setColumn(f.name, { label: e.target.value })} />
+                    <input
+                      aria-label={`Libellé de ${f.name}`}
+                      className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
+                      value={f.label ?? ""}
+                      onChange={(e) => setColumn(f.name, { label: e.target.value })}
+                    />
                   </td>
                   <td className="p-1">
-                    <input aria-label={`Description de ${f.name}`} className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
-                      value={f.description ?? ""} onChange={(e) => setColumn(f.name, { description: e.target.value })} />
+                    <input
+                      aria-label={`Description de ${f.name}`}
+                      className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
+                      value={f.description ?? ""}
+                      onChange={(e) => setColumn(f.name, { description: e.target.value })}
+                    />
                   </td>
                   <td className="p-1">
-                    <input aria-label={`Format de ${f.name}`} className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
-                      value={f.format ?? ""} onChange={(e) => setColumn(f.name, { format: e.target.value })} />
+                    <input
+                      aria-label={`Format de ${f.name}`}
+                      className="h-8 w-full rounded border border-slate-300 px-2 text-xs"
+                      value={f.format ?? ""}
+                      onChange={(e) => setColumn(f.name, { format: e.target.value })}
+                    />
                   </td>
                 </tr>
               ))}
@@ -153,7 +186,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
             onChange={(e) => setDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))}
           >
             <option value="">— aucune —</option>
-            {merged.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+            {merged.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.name}
+              </option>
+            ))}
           </select>
         </label>
         <label className="flex items-center gap-2 text-xs">
@@ -177,7 +214,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
               onRemove={() => removeCrossFilterLink(i)}
             />
           ))}
-          <button type="button" className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100" onClick={addCrossFilterLink}>
+          <button
+            type="button"
+            className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            onClick={addCrossFilterLink}
+          >
             Ajouter un lien
           </button>
         </div>
@@ -192,7 +233,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
               aria-label={`Exporter en ${format.toUpperCase()}`}
               disabled={exportingFormat === format}
               className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-50"
-              onClick={() => handleExport(format)}
+              onClick={() => void handleExport(format)}
             >
               {format.toUpperCase()}
             </button>
@@ -207,13 +248,21 @@ export function DatasetEditPage({ pk }: { pk: string }) {
       <AlertRuleEditor datasetItemId={pk} owner={itemQuery.data.owner} />
       {draft.sourcePipelineId && (
         <Button
-          type="button" size="sm" variant="outline" className="w-fit"
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-fit"
           onClick={() => navigate(`/datasets/visual-query/${draft.sourcePipelineId}/edit`)}
         >
           Modifier la requête
         </Button>
       )}
-      <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
+      <Button
+        size="sm"
+        className="w-fit"
+        disabled={save.isPending}
+        onClick={() => save.mutate(draft)}
+      >
         Enregistrer les colonnes
       </Button>
       {save.isError && (

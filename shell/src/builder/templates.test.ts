@@ -52,7 +52,10 @@ test("application-de-saisie template wires a Formulaire, une Carte et une Table 
   expect(tpl.messages).toHaveLength(1);
   const tableItem = tpl.layout.items.find((i) => i.widget === "table")!;
   expect(tpl.messages![0]).toMatchObject({
-    from: tableItem.id, event: "itemSelected", to: formItem.id, action: "loadRecord",
+    from: tableItem.id,
+    event: "itemSelected",
+    to: formItem.id,
+    action: "loadRecord",
   });
 });
 

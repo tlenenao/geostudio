@@ -9,8 +9,13 @@ import { PublicItemPage } from "./PublicItemPage";
 import type { AuthState } from "../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: false, username: null,
-  error: null, getAccessToken: () => undefined, signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: false,
+  username: null,
+  error: null,
+  getAccessToken: () => undefined,
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
@@ -28,10 +33,17 @@ function renderPage(client: Partial<ItemClient>, pk = "8") {
 }
 
 const config: AppConfig = {
-  kind: "app", theme: {}, dataSources: [], messages: [],
-  layout: { type: "grid", breakpoints: {}, items: [
-    { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 1, props: { text: "Detail de l'article" } },
-  ] },
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  layout: {
+    type: "grid",
+    breakpoints: {},
+    items: [
+      { id: "t1", widget: "text", x: 0, y: 0, w: 4, h: 1, props: { text: "Detail de l'article" } },
+    ],
+  },
 };
 
 test("200: renders the published item's runtime layout via AppRenderer", async () => {

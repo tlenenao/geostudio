@@ -5,6 +5,7 @@ d'accueil, §4.1 de la spec). Pagination JSON via `links[rel="next"]`.
 Métadonnées pures : jamais de copie, jamais d'ajout carte (items_url et
 raster_tiles_url toujours None). HTTP uniquement, zéro I/O DB, parsing
 tolérant et borné (même philosophie que StacConnector)."""
+
 import logging
 from collections.abc import Iterable
 from urllib.parse import urljoin
@@ -85,7 +86,9 @@ def _next_link(doc: dict, current_url: str) -> str | None:
     return None
 
 
-def _collect_collection(client, root_url: str, collection_id: str, records: list[HarvestedRecord]) -> None:
+def _collect_collection(
+    client, root_url: str, collection_id: str, records: list[HarvestedRecord]
+) -> None:
     initial_items_url = f"{root_url}/collections/{collection_id}/items?limit=100"
     page_url = initial_items_url
     pages = 0
@@ -94,12 +97,14 @@ def _collect_collection(client, root_url: str, collection_id: str, records: list
         if pages > _MAX_OGC_PAGES_PER_COLLECTION:
             logger.warning(
                 "ogc-records harvest: plafond de %d pages pour la collection %s, tronqué",
-                _MAX_OGC_PAGES_PER_COLLECTION, collection_id,
+                _MAX_OGC_PAGES_PER_COLLECTION,
+                collection_id,
             )
             return
         doc = _get_json(client, page_url)
         if not isinstance(doc, dict) or not isinstance(doc.get("features"), list):
-            return  # 1re page illisible: collection ignorée ; page suivante: partiel conservé (§4.1)
+            # 1re page illisible : collection ignorée ; page suivante : partiel conservé (§4.1)
+            return
         for feature in doc["features"]:
             if len(records) >= _MAX_OGC_RECORDS:
                 return
@@ -138,8 +143,14 @@ def _feature_to_record(feature: object, page_url: str, fallback_url: str) -> Har
                 break
 
         return HarvestedRecord(
-            external_id=str(external_id), title=title, abstract=abstract, keywords=keywords,
-            bbox=bbox, external_url=self_href or fallback_url, items_url=None, raster_tiles_url=None,
+            external_id=str(external_id),
+            title=title,
+            abstract=abstract,
+            keywords=keywords,
+            bbox=bbox,
+            external_url=self_href or fallback_url,
+            items_url=None,
+            raster_tiles_url=None,
         )
     except (AttributeError, TypeError, KeyError, ValueError) as exc:
         logger.warning("ogc-records harvest: feature malformée ignorée à %s : %s", page_url, exc)

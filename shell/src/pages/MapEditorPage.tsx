@@ -41,8 +41,12 @@ export function MapEditorPage({ pk }: { pk: string }) {
 
   const setLayers = (layers: MapLayer[]) => setDraft({ ...draft, layers });
   const setStyle = (style: string) => setDraft({ ...draft, basemap: { style } });
-  const setView = (view: { center: [number, number]; zoom: number; pitch: number; bearing: number }) =>
-    setDraft((d) => (d ? { ...d, view } : d));
+  const setView = (view: {
+    center: [number, number];
+    zoom: number;
+    pitch: number;
+    bearing: number;
+  }) => setDraft((d) => (d ? { ...d, view } : d));
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
     setDraft((d) => (d ? { ...d, printLayout } : d));
   }
@@ -52,7 +56,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const currentDraft = draft;
   function setCamera(next: { pitch: number; bearing: number }) {
     setDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
-    mapViewRef.current?.flyTo({ center: currentDraft.view.center, zoom: currentDraft.view.zoom, ...next });
+    mapViewRef.current?.flyTo({
+      center: currentDraft.view.center,
+      zoom: currentDraft.view.zoom,
+      ...next,
+    });
   }
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
@@ -64,7 +72,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <MapView config={draft} onReady={markExportReady} hideLegend getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
+        <MapView
+          config={draft}
+          onReady={markExportReady}
+          hideLegend
+          getAuthToken={client.getAuthToken}
+          getCoreUrl={client.getCoreUrl}
+        />
         {draft.printLayout?.title && (
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
@@ -72,7 +86,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
         )}
         {draft.printLayout?.showLegend && (
           <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
-            {draft.layers.filter((l) => l.visible).map((l) => <li key={l.id}>{l.title}</li>)}
+            {draft.layers
+              .filter((l) => l.visible)
+              .map((l) => (
+                <li key={l.id}>{l.title}</li>
+              ))}
           </ul>
         )}
         {draft.printLayout?.cartouche && (
@@ -90,10 +108,19 @@ export function MapEditorPage({ pk }: { pk: string }) {
         <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
         <LayersPanel layers={draft.layers} onChange={setLayers} />
         <TerrainPanel value={draft.terrain ?? null} onChange={setTerrain} />
-        <CameraControls pitch={draft.view.pitch ?? 0} bearing={draft.view.bearing ?? 0} onChange={setCamera} />
+        <CameraControls
+          pitch={draft.view.pitch ?? 0}
+          bearing={draft.view.bearing ?? 0}
+          onChange={setCamera}
+        />
         <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
         {exportEnabled && <ExportPanel itemId={pk} />}
-        <Button size="sm" className="w-fit" disabled={save.isPending} onClick={() => save.mutate(draft)}>
+        <Button
+          size="sm"
+          className="w-fit"
+          disabled={save.isPending}
+          onClick={() => save.mutate(draft)}
+        >
           Enregistrer
         </Button>
         {save.isError && (
@@ -103,7 +130,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
         )}
       </aside>
       <div className="relative flex-1">
-        <MapView ref={mapViewRef} config={draft} onViewChange={setView} getAuthToken={client.getAuthToken} getCoreUrl={client.getCoreUrl} />
+        <MapView
+          ref={mapViewRef}
+          config={draft}
+          onViewChange={setView}
+          getAuthToken={client.getAuthToken}
+          getCoreUrl={client.getCoreUrl}
+        />
       </div>
     </div>
   );

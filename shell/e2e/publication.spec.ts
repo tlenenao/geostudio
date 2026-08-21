@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("publishing an item, capturing a thumbnail, and the runtime route still work", async ({ page }) => {
+test("publishing an item, capturing a thumbnail, and the runtime route still work", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

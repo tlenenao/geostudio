@@ -20,8 +20,14 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         s.commit()
     app = create_app()
@@ -40,8 +46,13 @@ def test_instance_defaults_to_read_write(env):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
+        "readOnly": False,
+        "etlEnabled": False,
+        "exportEnabled": False,
+        "appExportEnabled": False,
+        "tileset3dEnabled": False,
+        "terrain3dEnabled": False,
+        "copilotEnabled": False,
     }
 
 
@@ -50,8 +61,13 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {
-        "readOnly": True, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
+        "readOnly": True,
+        "etlEnabled": False,
+        "exportEnabled": False,
+        "appExportEnabled": False,
+        "tileset3dEnabled": False,
+        "terrain3dEnabled": False,
+        "copilotEnabled": False,
     }
 
 
@@ -93,7 +109,9 @@ def test_read_only_mode_does_not_block_the_aggregate_endpoint(env, monkeypatch):
     Indicateur dans une démo publique."""
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     response = env.post("/collections/does-not-exist/aggregate", json={"groupBy": "x"})
-    assert response.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+    assert (
+        response.status_code == 404
+    )  # jamais 403 : passé le garde, arrêté par get_readable_collection
 
 
 def test_analytics_sql_is_exempt_from_read_only(env, monkeypatch):
@@ -116,7 +134,9 @@ def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
     Exporter de tout widget analytique."""
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     resp = env.post("/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
-    assert resp.status_code == 404  # jamais 403 : passé le garde, arrêté par get_readable_collection
+    assert (
+        resp.status_code == 404
+    )  # jamais 403 : passé le garde, arrêté par get_readable_collection
 
     resp = env.post("/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
     assert resp.status_code == 404

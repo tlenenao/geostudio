@@ -34,7 +34,9 @@ afterEach(cleanup);
 
 test("mounts the custom element inside its container", () => {
   const WcHost = makeWcHost(manifest);
-  const { container } = render(<WcHost props={{ initial: 5 }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  const { container } = render(
+    <WcHost props={{ initial: 5 }} ctx={{ mode: "runtime" } as WidgetContext} />,
+  );
   expect(container.querySelector("test-wc-host-widget")).not.toBeNull();
 });
 

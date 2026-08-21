@@ -29,7 +29,9 @@ def test_report_schedule_payload_requires_at_least_one_channel():
 
 def test_report_schedule_payload_rejects_invalid_cron():
     with pytest.raises(ValidationError):
-        ReportSchedulePayload.model_validate(_payload(refreshPolicy={"enabled": True, "cron": "not-a-cron"}))
+        ReportSchedulePayload.model_validate(
+            _payload(refreshPolicy={"enabled": True, "cron": "not-a-cron"})
+        )
 
 
 def test_builder_config_accepts_kind_report():

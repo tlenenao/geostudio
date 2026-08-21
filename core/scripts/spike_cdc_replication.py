@@ -24,6 +24,7 @@ Connexion DIRECTE à postgis (pas pgbouncer:6432) — le protocole de
 réplication logique n'est pas supporté en pool "transaction".
 Sort avec le code 0 (PASS) ou 1 (FAIL, échecs listés).
 """
+
 import json
 import os
 import select
@@ -44,17 +45,21 @@ def _setup_tables(dsn: str) -> None:
     with engine.begin() as c:
         c.execute(text(f"DROP PUBLICATION IF EXISTS {PUBLICATION_NAME}"))
         c.execute(text("DROP TABLE IF EXISTS spike_cdc_t1, spike_cdc_t2"))
-        c.execute(text(
-            "CREATE TABLE spike_cdc_t1 (id serial PRIMARY KEY, v text, "
-            "geom geometry(Point, 4326))"
-        ))
+        c.execute(
+            text(
+                "CREATE TABLE spike_cdc_t1 (id serial PRIMARY KEY, v text, "
+                "geom geometry(Point, 4326))"
+            )
+        )
         c.execute(text("CREATE TABLE spike_cdc_t2 (id serial PRIMARY KEY, v text)"))
         c.execute(text(f"CREATE PUBLICATION {PUBLICATION_NAME} FOR TABLE spike_cdc_t1"))
     engine.dispose()
 
 
 def _ensure_slot(raw_dsn: str) -> None:
-    conn = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+    conn = psycopg2.connect(
+        raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+    )
     cur = conn.cursor()
     try:
         cur.create_replication_slot(SLOT_NAME, output_plugin="wal2json")
@@ -93,7 +98,9 @@ def _drain_messages(raw_dsn: str, *, ack: bool, timeout_s: float = 5.0) -> list[
     conn = None
     cur = None
     for attempt in range(10):
-        conn = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+        conn = psycopg2.connect(
+            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+        )
         cur = conn.cursor()
         try:
             cur.start_replication(slot_name=SLOT_NAME, options={"pretty-print": "0"})
@@ -138,10 +145,12 @@ def main() -> int:
     # 2. insert/update/delete décodés, géométrie présente.
     engine = create_engine(dsn.replace("postgresql://", "postgresql+psycopg://"))
     with engine.begin() as c:
-        c.execute(text(
-            "INSERT INTO spike_cdc_t1 (v, geom) VALUES "
-            "('a', ST_SetSRID(ST_MakePoint(2.3, 48.8), 4326))"
-        ))
+        c.execute(
+            text(
+                "INSERT INTO spike_cdc_t1 (v, geom) VALUES "
+                "('a', ST_SetSRID(ST_MakePoint(2.3, 48.8), 4326))"
+            )
+        )
         c.execute(text("UPDATE spike_cdc_t1 SET v = 'b' WHERE v = 'a'"))
         c.execute(text("DELETE FROM spike_cdc_t1 WHERE v = 'b'"))
     msgs = _drain_messages(dsn, ack=False)
@@ -172,7 +181,9 @@ def main() -> int:
     first_drain = _drain_messages(dsn, ack=False, timeout_s=3.0)
     first_changes = [ch for m in first_drain for ch in m.get("change", [])]
     check("message crash-test bien reçu avant le crash simulé", len(first_changes) == 1)
-    second_drain = _drain_messages(dsn, ack=False, timeout_s=3.0)  # "redémarrage" : nouvelle connexion, même slot
+    second_drain = _drain_messages(
+        dsn, ack=False, timeout_s=3.0
+    )  # "redémarrage" : nouvelle connexion, même slot
     second_changes = [ch for m in second_drain for ch in m.get("change", [])]
     check(
         "message non-acké rejoué à l'identique après reconnexion",

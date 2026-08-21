@@ -20,7 +20,11 @@ def list_public_items(
     session: Session = Depends(get_session),
 ) -> ItemPage:
     return items_repo.list_published_items(
-        session, resource_type=type, tag=tag, page=page, page_size=pageSize,
+        session,
+        resource_type=type,
+        tag=tag,
+        page=page,
+        page_size=pageSize,
     )
 
 

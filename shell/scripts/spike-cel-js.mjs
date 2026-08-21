@@ -21,7 +21,8 @@ check("opérateur ternaire", evaluate("1 == 1 ? 'oui' : 'non'") === "oui");
 const ctx = { vars: { seuil: "haute" }, record: { gravite: "haute" }, user: { name: "tanguy" } };
 check(
   "vocabulaire vars.x / record.champ / user.name",
-  evaluate('vars.seuil == "haute" && record.gravite == vars.seuil && user.name != ""', ctx) === true,
+  evaluate('vars.seuil == "haute" && record.gravite == vars.seuil && user.name != ""', ctx) ===
+    true,
 );
 
 let evalThrew = false;

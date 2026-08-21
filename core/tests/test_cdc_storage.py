@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Wrapper S3 fin — testé avec un client boto3 factice (pas de MinIO réel
 nécessaire), même patron que test_ingestion_storage.py (SP-6a)."""
+
 from app.cdc.storage import (
-    delete_objects, ensure_cdc_bucket, list_objects, upload_bytes, upload_parquet_file,
+    delete_objects,
+    ensure_cdc_bucket,
+    list_objects,
+    upload_bytes,
+    upload_parquet_file,
 )
 
 
@@ -24,7 +29,7 @@ class _FakeS3Client:
         # Pagine par lots de 2 pour exercer la boucle ContinuationToken.
         page_size = 2
         start = int(ContinuationToken) if ContinuationToken else 0
-        page = matching[start:start + page_size]
+        page = matching[start : start + page_size]
         truncated = start + page_size < len(matching)
         return {
             "Contents": [{"Key": k, "Size": len(self.objects[k])} for k in page],
@@ -43,6 +48,7 @@ class _FakeS3Client:
 
     def get_object(self, Bucket, Key):  # noqa: N803
         from io import BytesIO
+
         return {"Body": BytesIO(self.objects[Key])}
 
 
@@ -58,7 +64,8 @@ def test_ensure_cdc_bucket_ignores_already_exists():
     class _AlreadyExistsClient(_FakeS3Client):
         def create_bucket(self, Bucket):  # noqa: N803
             raise ClientError(
-                {"Error": {"Code": "BucketAlreadyOwnedByYou"}}, "CreateBucket",
+                {"Error": {"Code": "BucketAlreadyOwnedByYou"}},
+                "CreateBucket",
             )
 
     ensure_cdc_bucket(_AlreadyExistsClient(), "geostudio-cdc")  # ne doit pas lever
@@ -66,7 +73,9 @@ def test_ensure_cdc_bucket_ignores_already_exists():
 
 def test_upload_parquet_file_targets_upload_file():
     client = _FakeS3Client()
-    upload_parquet_file(client, bucket="geostudio-cdc", key="cdc/part-1.parquet", local_path="/tmp/part-1.parquet")
+    upload_parquet_file(
+        client, bucket="geostudio-cdc", key="cdc/part-1.parquet", local_path="/tmp/part-1.parquet"
+    )
     assert client.uploaded == [("/tmp/part-1.parquet", "geostudio-cdc", "cdc/part-1.parquet")]
 
 
@@ -75,7 +84,8 @@ def test_list_objects_returns_key_and_size():
     client.objects = {"cdc/a.parquet": b"12345", "cdc/b.parquet": b"1234567890"}
     result = list_objects(client, bucket="b", prefix="cdc/")
     assert sorted(result, key=lambda o: o["key"]) == [
-        {"key": "cdc/a.parquet", "size": 5}, {"key": "cdc/b.parquet", "size": 10},
+        {"key": "cdc/a.parquet", "size": 5},
+        {"key": "cdc/b.parquet", "size": 10},
     ]
 
 

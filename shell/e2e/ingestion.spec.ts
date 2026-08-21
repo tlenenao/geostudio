@@ -30,8 +30,15 @@ async function mockIngestionFlow(page: Page) {
   await page.route("https://core.test/items/78", async (route) => {
     await route.fulfill({
       json: {
-        pk: "78", resourceType: "map", title: "Villes importées", abstract: "", owner: "mockuser",
-        thumbnailUrl: null, date: "2026-01-01", configId: null, isPublished: false,
+        pk: "78",
+        resourceType: "map",
+        title: "Villes importées",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: null,
+        isPublished: false,
       },
     });
   });
@@ -41,16 +48,25 @@ async function mockIngestionFlow(page: Page) {
     }
     await route.fulfill({
       json: {
-        id: "cfg-78", itemId: "78", kind: "map",
+        id: "cfg-78",
+        itemId: "78",
+        kind: "map",
         config: {
-          kind: "map", theme: {}, dataSources: [],
+          kind: "map",
+          theme: {},
+          dataSources: [],
           map: {
             basemap: { style: "https://demotiles.maplibre.org/style.json" },
             view: { center: [1.5, 45.5], zoom: 10 },
-            layers: [{
-              id: "l1", title: "Villes importées", visible: true, kind: "feature",
-              url: "https://core.test/collections/ingest_abc/items",
-            }],
+            layers: [
+              {
+                id: "l1",
+                title: "Villes importées",
+                visible: true,
+                kind: "feature",
+                url: "https://core.test/collections/ingest_abc/items",
+              },
+            ],
           },
         },
       },
@@ -58,7 +74,9 @@ async function mockIngestionFlow(page: Page) {
   });
 }
 
-test("importer un GeoJSON crée une carte accessible sans intervention manuelle", async ({ page }) => {
+test("importer un GeoJSON crée une carte accessible sans intervention manuelle", async ({
+  page,
+}) => {
   await mockCore(page);
   await mockIngestionFlow(page);
   await page.goto("/");

@@ -4,6 +4,7 @@ une charge complète en mémoire (design §3 : un DEM peut faire plusieurs
 centaines de Mo, contrairement aux petits objets que
 app.ingestion.storage.download_object charge entièrement). rio_cogeo a de
 toute façon besoin d'un chemin de fichier local (GDAL), pas d'un flux."""
+
 _CHUNK_BYTES = 8 * 1024 * 1024  # 8 MiB
 
 

@@ -11,9 +11,7 @@ export function ItemClientProvider({
   client: ItemClient;
   children: React.ReactNode;
 }) {
-  return (
-    <ItemClientContext.Provider value={client}>{children}</ItemClientContext.Provider>
-  );
+  return <ItemClientContext.Provider value={client}>{children}</ItemClientContext.Provider>;
 }
 
 export function useItemClient(): ItemClient {

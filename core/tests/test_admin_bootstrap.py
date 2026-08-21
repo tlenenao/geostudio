@@ -18,8 +18,14 @@ def session():
 def _user(session, sub="sub-1", bootstrap_admin=False):
     tenant = get_or_create_default_tenant(session)
     return get_or_create_user(
-        session, tenant_id=tenant.id, oidc_sub=sub, username=sub,
-        email=None, first_name="", last_name="", bootstrap_admin=bootstrap_admin,
+        session,
+        tenant_id=tenant.id,
+        oidc_sub=sub,
+        username=sub,
+        email=None,
+        first_name="",
+        last_name="",
+        bootstrap_admin=bootstrap_admin,
     )
 
 

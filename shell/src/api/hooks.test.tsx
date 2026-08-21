@@ -7,7 +7,28 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
 import type { ItemClient } from "./types";
-import { useAppConfig, useCandidateTables, useCollectionSharing, useCollectionsAdmin, useCreateBookmark, useCreateHarvestSource, useCreateItem, useCreateMap, useDeleteItem, useGroups, useHarvestSources, useInstanceInfo, useItems, useMapConfig, useMe, useRunHarvestSource, useSaveApp, useSaveMap, useSharing, useUpdateItem } from "./hooks";
+import {
+  useAppConfig,
+  useCandidateTables,
+  useCollectionSharing,
+  useCollectionsAdmin,
+  useCreateBookmark,
+  useCreateHarvestSource,
+  useCreateItem,
+  useCreateMap,
+  useDeleteItem,
+  useGroups,
+  useHarvestSources,
+  useInstanceInfo,
+  useItems,
+  useMapConfig,
+  useMe,
+  useRunHarvestSource,
+  useSaveApp,
+  useSaveMap,
+  useSharing,
+  useUpdateItem,
+} from "./hooks";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -29,8 +50,28 @@ test("useItems returns the mapped page", async () => {
     http.get("https://core.test/items", () =>
       HttpResponse.json({
         items: [
-          { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
-          { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+          {
+            pk: "1",
+            resourceType: "app",
+            title: "Alpha",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+          {
+            pk: "2",
+            resourceType: "dashboard",
+            title: "Beta",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
         ],
         total: 2,
         page: 1,
@@ -50,18 +91,14 @@ test("useMe returns the current user", async () => {
 });
 
 test("useInstanceInfo returns readOnly from the core", async () => {
-  server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
-  );
+  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })));
   const { result } = renderHook(() => useInstanceInfo(), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.readOnly).toBe(true);
 });
 
 test("useInstanceInfo degrades fail-open (data stays undefined, never a false positive) on network failure", async () => {
-  server.use(
-    http.get("https://core.test/instance", () => HttpResponse.error()),
-  );
+  server.use(http.get("https://core.test/instance", () => HttpResponse.error()));
   const { result } = renderHook(() => useInstanceInfo(), { wrapper });
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(result.current.data?.readOnly).not.toBe(true);
@@ -107,8 +144,28 @@ test("useDeleteItem optimistically removes the item from the list", async () => 
   );
   queryClient.setQueryData(["items", {}], {
     items: [
-      { pk: "1", resourceType: "app", title: "A", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null, isPublished: false },
-      { pk: "2", resourceType: "app", title: "B", abstract: "", owner: "x", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+      {
+        pk: "1",
+        resourceType: "app",
+        title: "A",
+        abstract: "",
+        owner: "x",
+        thumbnailUrl: null,
+        date: "",
+        configId: null,
+        isPublished: false,
+      },
+      {
+        pk: "2",
+        resourceType: "app",
+        title: "B",
+        abstract: "",
+        owner: "x",
+        thumbnailUrl: null,
+        date: "",
+        configId: null,
+        isPublished: false,
+      },
     ],
     total: 2,
     page: 1,
@@ -166,16 +223,28 @@ test("useCreateMap creates a map and invalidates items", async () => {
 
 test("useCreateBookmark creates a bookmark and invalidates items", async () => {
   const client = {
-    createBookmarkItem: vi.fn().mockResolvedValue({ pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue" }),
+    createBookmarkItem: vi
+      .fn()
+      .mockResolvedValue({ pk: "bookmark-1", resourceType: "bookmark", title: "Ma vue" }),
   } as unknown as ItemClient;
   const { result } = renderHook(() => useCreateBookmark(), { wrapper: makeWrapper(client) });
   await result.current.mutateAsync({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: null, extent: null, crossFilter: {},
+    title: "Ma vue",
+    owner: "alice",
+    appId: "app-1",
+    pageId: "page-1",
+    timeRange: null,
+    extent: null,
+    crossFilter: {},
   });
   expect(client.createBookmarkItem).toHaveBeenCalledWith({
-    title: "Ma vue", owner: "alice", appId: "app-1", pageId: "page-1",
-    timeRange: null, extent: null, crossFilter: {},
+    title: "Ma vue",
+    owner: "alice",
+    appId: "app-1",
+    pageId: "page-1",
+    timeRange: null,
+    extent: null,
+    crossFilter: {},
   });
 });
 
@@ -191,14 +260,23 @@ test("useMapConfig loads a map config", async () => {
 test("useSaveMap saves a map config", async () => {
   const client = { saveMapConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
   const { result } = renderHook(() => useSaveMap("77"), { wrapper: makeWrapper(client) });
-  const cfg = { basemap: { style: "s" }, view: { center: [0, 0] as [number, number], zoom: 1 }, layers: [] };
+  const cfg = {
+    basemap: { style: "s" },
+    view: { center: [0, 0] as [number, number], zoom: 1 },
+    layers: [],
+  };
   await result.current.mutateAsync(cfg);
   expect(client.saveMapConfig).toHaveBeenCalledWith("77", cfg);
 });
 
 test("useAppConfig loads an app config", async () => {
-  const cfg = { kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [] } };
+  const cfg = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
   const client = { getAppConfig: vi.fn().mockResolvedValue(cfg) } as unknown as ItemClient;
   const { result } = renderHook(() => useAppConfig("5"), { wrapper: makeWrapper(client) });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -206,10 +284,17 @@ test("useAppConfig loads an app config", async () => {
 });
 
 test("useAppConfig forwards mode to the client", async () => {
-  const cfg = { kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [] } };
+  const cfg = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
   const client = { getAppConfig: vi.fn().mockResolvedValue(cfg) } as unknown as ItemClient;
-  const { result } = renderHook(() => useAppConfig("5", { mode: "runtime" }), { wrapper: makeWrapper(client) });
+  const { result } = renderHook(() => useAppConfig("5", { mode: "runtime" }), {
+    wrapper: makeWrapper(client),
+  });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(client.getAppConfig).toHaveBeenCalledWith("5", "runtime");
 });
@@ -217,8 +302,13 @@ test("useAppConfig forwards mode to the client", async () => {
 test("useSaveApp saves an app config", async () => {
   const client = { saveAppConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
   const { result } = renderHook(() => useSaveApp("5"), { wrapper: makeWrapper(client) });
-  const cfg = { kind: "app" as const, theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid" as const, breakpoints: {}, items: [] } };
+  const cfg = {
+    kind: "app" as const,
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid" as const, breakpoints: {}, items: [] },
+  };
   await result.current.mutateAsync(cfg);
   expect(client.saveAppConfig).toHaveBeenCalledWith("5", cfg);
 });
@@ -229,9 +319,18 @@ test("useCollectionsAdmin returns the mapped collections", async () => {
       HttpResponse.json({
         collections: [
           {
-            id: "incidents", title: "Incidents", description: "", tableName: "incidents",
-            isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-            pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+            id: "incidents",
+            title: "Incidents",
+            description: "",
+            tableName: "incidents",
+            isPublic: false,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            canWrite: true,
+            featureCount: 3,
+            owner: "admin",
           },
         ],
       }),
@@ -246,7 +345,9 @@ test("useCandidateTables returns the candidates list", async () => {
   server.use(
     http.get("https://core.test/collections/candidates", () =>
       HttpResponse.json({
-        candidates: [{ tableName: "widgets", registrable: false, reason: "table has no primary key" }],
+        candidates: [
+          { tableName: "widgets", registrable: false, reason: "table has no primary key" },
+        ],
       }),
     ),
   );
@@ -274,9 +375,15 @@ test("useHarvestSources returns the mapped sources", async () => {
       HttpResponse.json({
         sources: [
           {
-            id: "src-1", type: "stac", url: "https://stac.example.com/collections",
-            mode: "reference", enabled: true, intervalMinutes: 60,
-            lastRunAt: null, lastStatus: null, lastError: null,
+            id: "src-1",
+            type: "stac",
+            url: "https://stac.example.com/collections",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: 60,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
           },
         ],
       }),
@@ -292,14 +399,29 @@ test("useCreateHarvestSource posts the input and invalidates the list", async ()
   server.use(
     http.post("https://core.test/harvest/sources", async ({ request }) => {
       posted = await request.json();
-      return HttpResponse.json({
-        id: "src-2", type: "stac", url: "https://a", mode: "reference",
-        enabled: true, intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
-      }, { status: 201 });
+      return HttpResponse.json(
+        {
+          id: "src-2",
+          type: "stac",
+          url: "https://a",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
     }),
   );
   const { result } = renderHook(() => useCreateHarvestSource(), { wrapper });
-  await result.current.mutateAsync({ type: "stac", url: "https://a", mode: "reference", enabled: true });
+  await result.current.mutateAsync({
+    type: "stac",
+    url: "https://a",
+    mode: "reference",
+    enabled: true,
+  });
   expect(posted).toEqual({ type: "stac", url: "https://a", mode: "reference", enabled: true });
 });
 

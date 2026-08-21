@@ -24,9 +24,7 @@ export function registerCounterExampleWidget(): void {
     ),
     Component: ({ props, ctx }) => {
       const [count, setCount] = useState(Number(props.initial ?? 0));
-      useBusAction(ctx.bus, ctx.widgetId, "reset", () =>
-        setCount(Number(props.initial ?? 0)),
-      );
+      useBusAction(ctx.bus, ctx.widgetId, "reset", () => setCount(Number(props.initial ?? 0)));
       function increment() {
         const next = count + 1;
         setCount(next);

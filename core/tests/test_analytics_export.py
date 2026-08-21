@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import io
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -19,7 +19,9 @@ from app.analytics.export import (
 
 
 def test_rows_to_format_csv_has_header_and_data_rows():
-    content = rows_to_format([{"region": "Nord", "pop": 10}, {"region": "Sud", "pop": 5}], format="csv")
+    content = rows_to_format(
+        [{"region": "Nord", "pop": 10}, {"region": "Sud", "pop": 5}], format="csv"
+    )
     text = content.decode("utf-8")
     assert text.splitlines()[0] == "region,pop"
     assert "Nord,10" in text
@@ -32,6 +34,7 @@ def test_rows_to_format_csv_empty_rows_is_empty_bytes():
 def test_rows_to_format_xlsx_round_trips_through_openpyxl():
     content = rows_to_format([{"region": "Nord", "pop": 10}], format="xlsx")
     import io
+
     wb = openpyxl.load_workbook(io.BytesIO(content))
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
@@ -44,14 +47,26 @@ def test_rows_to_format_rejects_geojson():
 
 
 def test_features_to_format_geojson_wraps_a_feature_collection():
-    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"nom": "X"},
+            "geometry": {"type": "Point", "coordinates": [1, 2]},
+        }
+    ]
     content = features_to_format(features, format="geojson")
     body = json.loads(content)
     assert body == {"type": "FeatureCollection", "features": features}
 
 
 def test_features_to_format_csv_flattens_properties_and_drops_geometry():
-    features = [{"type": "Feature", "properties": {"nom": "X", "pop": 3}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"nom": "X", "pop": 3},
+            "geometry": {"type": "Point", "coordinates": [1, 2]},
+        }
+    ]
     content = features_to_format(features, format="csv")
     text = content.decode("utf-8")
     assert text.splitlines()[0] == "nom,pop"
@@ -64,7 +79,13 @@ def test_features_to_format_gpkg_requires_a_connection():
 
 
 def test_features_to_format_gpkg_round_trips_a_point():
-    features = [{"type": "Feature", "properties": {"nom": "X"}, "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}}]
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"nom": "X"},
+            "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+        }
+    ]
     conn = open_spatial_connection()
     try:
         content = features_to_format(features, format="gpkg", conn=conn)
@@ -100,13 +121,20 @@ def test_features_to_format_geojson_encodes_datetime_decimal_and_uuid_properties
     # rows carry native datetime/Decimal/UUID objects (no jsonable_encoder step,
     # unlike GET /collections/{id}/items) — bare json.dumps() used to raise
     # TypeError on any of these.
-    when = datetime(2026, 3, 1, 12, 30, tzinfo=timezone.utc)
+    when = datetime(2026, 3, 1, 12, 30, tzinfo=UTC)
     row_id = UUID("12345678-1234-5678-1234-567812345678")
-    features = [{
-        "type": "Feature",
-        "geometry": None,
-        "properties": {"seen_at": when, "amount": Decimal("12.50"), "row_id": row_id, "d": date(2026, 3, 1)},
-    }]
+    features = [
+        {
+            "type": "Feature",
+            "geometry": None,
+            "properties": {
+                "seen_at": when,
+                "amount": Decimal("12.50"),
+                "row_id": row_id,
+                "d": date(2026, 3, 1),
+            },
+        }
+    ]
     content = features_to_format(features, format="geojson")
     body = json.loads(content)
     props = body["features"][0]["properties"]
@@ -119,12 +147,14 @@ def test_features_to_format_geojson_encodes_datetime_decimal_and_uuid_properties
 def test_features_to_format_gpkg_does_not_crash_on_datetime_and_decimal_properties():
     # Same bug as above but through the GPKG path, which round-trips features
     # through an intermediate .geojson scratch file (features_to_gpkg).
-    when = datetime(2026, 3, 1, 12, 30, tzinfo=timezone.utc)
-    features = [{
-        "type": "Feature",
-        "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
-        "properties": {"seen_at": when, "amount": Decimal("12.50")},
-    }]
+    when = datetime(2026, 3, 1, 12, 30, tzinfo=UTC)
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+            "properties": {"seen_at": when, "amount": Decimal("12.50")},
+        }
+    ]
     conn = open_spatial_connection()
     try:
         content = features_to_format(features, format="gpkg", conn=conn)
@@ -167,7 +197,8 @@ def test_rows_to_xlsx_coerces_uuid_and_bytes_values():
     # xlsx coercion helper was missing them.
     row_id = UUID("12345678-1234-5678-1234-567812345678")
     content = rows_to_format(
-        [{"id": row_id, "blob": b"\x00\x01", "chunk": memoryview(b"\x02\x03")}], format="xlsx",
+        [{"id": row_id, "blob": b"\x00\x01", "chunk": memoryview(b"\x02\x03")}],
+        format="xlsx",
     )
     wb = openpyxl.load_workbook(io.BytesIO(content))
     ws = wb.active

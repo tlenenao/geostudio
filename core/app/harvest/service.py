@@ -5,9 +5,10 @@ source, puis upsert idempotent des HarvestedRecord contre harvest_records
 l'absence de doublon même sur exécutions concurrentes). Ne lève jamais : toute
 erreur de fetch termine la source en last_status="error", jamais un job
 zombie (même philosophie que app.ingestion.tasks)."""
+
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -24,14 +25,18 @@ logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _content_hash(rec: HarvestedRecord) -> str:
-    raw = "|".join([
-        rec.title, rec.abstract, ",".join(sorted(rec.keywords)),
-        ",".join(f"{v:.6f}" for v in rec.bbox),
-    ])
+    raw = "|".join(
+        [
+            rec.title,
+            rec.abstract,
+            ",".join(sorted(rec.keywords)),
+            ",".join(f"{v:.6f}" for v in rec.bbox),
+        ]
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -44,7 +49,10 @@ def _layer_kind(rec: HarvestedRecord) -> str | None:
 
 
 def harvest_source(
-    session: Session, source: HarvestSource, *, http_get=guarded_get,
+    session: Session,
+    source: HarvestSource,
+    *,
+    http_get=guarded_get,
 ) -> None:
     # Capturés avant tout accès DB : une IntegrityError de flush expire
     # immédiatement TOUS les attributs des objets de la session (pas
@@ -81,7 +89,10 @@ def harvest_source(
             seen_external_ids.add(rec.external_id)
             digest = _content_hash(rec)
             existing = harvest_repo.get_record(
-                session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
+                session,
+                tenant_id=source.tenant_id,
+                source_id=source.id,
+                external_id=rec.external_id,
             )
             if source.mode == "copy":
                 _upsert_copy(session, source, rec, existing, digest, connector, http_get)
@@ -89,7 +100,10 @@ def harvest_source(
                 _upsert_reference(session, source, rec, existing, digest)
 
         harvest_repo.mark_missing_as_stale(
-            session, tenant_id=source.tenant_id, source_id=source.id, seen_external_ids=seen_external_ids,
+            session,
+            tenant_id=source.tenant_id,
+            source_id=source.id,
+            seen_external_ids=seen_external_ids,
         )
     except Exception as exc:
         logger.exception("harvest source %s: échec de traitement des enregistrements", source_id)
@@ -125,37 +139,70 @@ def harvest_source(
 def _upsert_reference(session, source, rec: HarvestedRecord, existing, digest: str) -> None:
     if existing is None:
         item = items_repo.create_item(
-            session, tenant_id=source.tenant_id, owner_id=source.owner_id,
-            resource_type="external", title=rec.title,
+            session,
+            tenant_id=source.tenant_id,
+            owner_id=source.owner_id,
+            resource_type="external",
+            title=rec.title,
         )
         items_repo.update_item(
-            session, tenant_id=source.tenant_id, item_id=item.id,
-            title=None, abstract=rec.abstract, keywords=rec.keywords, is_published=None,
+            session,
+            tenant_id=source.tenant_id,
+            item_id=item.id,
+            title=None,
+            abstract=rec.abstract,
+            keywords=rec.keywords,
+            is_published=None,
         )
         write_audit(
-            session, tenant_id=source.tenant_id, actor_id=source.owner_id, actor_kind="user",
-            action="harvest_record.create", object_type="item", object_id=item.id,
+            session,
+            tenant_id=source.tenant_id,
+            actor_id=source.owner_id,
+            actor_kind="user",
+            action="harvest_record.create",
+            object_type="item",
+            object_id=item.id,
             payload={"sourceId": source.id, "externalId": rec.external_id},
         )
         harvest_repo.create_record(
-            session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
-            item_id=item.id, collection_id=None, content_hash=digest,
-            external_url=rec.external_url, tiles_url=rec.raster_tiles_url, layer_kind=_layer_kind(rec),
+            session,
+            tenant_id=source.tenant_id,
+            source_id=source.id,
+            external_id=rec.external_id,
+            item_id=item.id,
+            collection_id=None,
+            content_hash=digest,
+            external_url=rec.external_url,
+            tiles_url=rec.raster_tiles_url,
+            layer_kind=_layer_kind(rec),
         )
         return
 
     if existing.content_hash != digest:
         items_repo.update_item(
-            session, tenant_id=source.tenant_id, item_id=existing.item_id,
-            title=rec.title, abstract=rec.abstract, keywords=rec.keywords, is_published=None,
+            session,
+            tenant_id=source.tenant_id,
+            item_id=existing.item_id,
+            title=rec.title,
+            abstract=rec.abstract,
+            keywords=rec.keywords,
+            is_published=None,
         )
     harvest_repo.update_record(
-        session, existing, content_hash=digest, harvested_at=_now(), is_stale=False,
-        external_url=rec.external_url, tiles_url=rec.raster_tiles_url, layer_kind=_layer_kind(rec),
+        session,
+        existing,
+        content_hash=digest,
+        harvested_at=_now(),
+        is_stale=False,
+        external_url=rec.external_url,
+        tiles_url=rec.raster_tiles_url,
+        layer_kind=_layer_kind(rec),
     )
 
 
-def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, connector, http_get) -> None:
+def _upsert_copy(
+    session, source, rec: HarvestedRecord, existing, digest: str, connector, http_get
+) -> None:
     if existing is not None:
         # v0 : un contenu déjà copié n'est jamais ré-importé — le pipeline
         # SP-6 (run_import) ne sait que CRÉER une nouvelle collection, jamais
@@ -163,13 +210,16 @@ def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, c
         # fraîcheur du mapping avance, pour respecter "jamais de doublon"
         # sans reconstruire une synchronisation de contenu hors périmètre
         # SP-12c (cf. plan §Global Constraints).
-        harvest_repo.update_record(session, existing, content_hash=digest, harvested_at=_now(), is_stale=False)
+        harvest_repo.update_record(
+            session, existing, content_hash=digest, harvested_at=_now(), is_stale=False
+        )
         return
 
     if rec.items_url is None:
         logger.warning(
             "harvest source %s: collection distante %s sans lien items, copie ignorée",
-            source.id, rec.external_id,
+            source.id,
+            rec.external_id,
         )
         return
 
@@ -177,21 +227,39 @@ def _upsert_copy(session, source, rec: HarvestedRecord, existing, digest: str, c
     if content is None:
         logger.warning(
             "harvest source %s: connecteur sans contenu copiable pour %s, ignoré",
-            source.id, rec.external_id,
+            source.id,
+            rec.external_id,
         )
         return
     result = run_import(
-        session, tenant_id=source.tenant_id, created_by=source.owner_id,
-        filename=rec.copy_filename or "harvest.geojson", content=content, collection_title=rec.title,
-        lat_field=None, lon_field=None,
+        session,
+        tenant_id=source.tenant_id,
+        created_by=source.owner_id,
+        filename=rec.copy_filename or "harvest.geojson",
+        content=content,
+        collection_title=rec.title,
+        lat_field=None,
+        lon_field=None,
     )
     write_audit(
-        session, tenant_id=source.tenant_id, actor_id=source.owner_id, actor_kind="user",
-        action="harvest_record.create", object_type="collection", object_id=result.collection_id,
+        session,
+        tenant_id=source.tenant_id,
+        actor_id=source.owner_id,
+        actor_kind="user",
+        action="harvest_record.create",
+        object_type="collection",
+        object_id=result.collection_id,
         payload={"sourceId": source.id, "externalId": rec.external_id},
     )
     harvest_repo.create_record(
-        session, tenant_id=source.tenant_id, source_id=source.id, external_id=rec.external_id,
-        item_id=result.item_id, collection_id=result.collection_id, content_hash=digest,
-        external_url=rec.external_url, tiles_url=None, layer_kind=_layer_kind(rec),
+        session,
+        tenant_id=source.tenant_id,
+        source_id=source.id,
+        external_id=rec.external_id,
+        item_id=result.item_id,
+        collection_id=result.collection_id,
+        content_hash=digest,
+        external_url=rec.external_url,
+        tiles_url=None,
+        layer_kind=_layer_kind(rec),
     )

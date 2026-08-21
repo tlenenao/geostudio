@@ -94,14 +94,15 @@ observable en production — un consommateur qui prend du retard le fait
 VISIBLEMENT (gauge qui grimpe), pas silencieusement, et ne perd aucune
 donnée dans l'intervalle (le slot de réplication retient tout jusqu'à
 l'ack, le buffer en mémoire n'est jamais vidé avant un flush réussi)."""
+
 import json
 import select
 import time
+from dataclasses import dataclass
 
 import psycopg2
 import psycopg2.errors
 import psycopg2.extras
-from dataclasses import dataclass
 
 from app.cdc.parquet_writer import ChangeRow
 
@@ -118,7 +119,9 @@ def ensure_replication_slot(raw_dsn: str) -> None:
     déviation 2) : peut se produire si un process précédent vient de libérer
     ce même slot (redémarrage rapproché du worker)."""
     for attempt in range(_RECONNECT_ATTEMPTS):
-        conn = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+        conn = psycopg2.connect(
+            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+        )
         cur = conn.cursor()
         try:
             cur.create_replication_slot(SLOT_NAME, output_plugin=OUTPUT_PLUGIN)
@@ -141,7 +144,10 @@ class DecodedChange:
 
 
 def decode_wal2json_message(
-    payload: str, *, lsn: int, collection_meta: dict,
+    payload: str,
+    *,
+    lsn: int,
+    collection_meta: dict,
 ) -> list:
     """collection_meta : {table_name: (pk_column, geometry_column)} — résolu
     par app.cdc.main depuis app.collections.models.Collection. Une table
@@ -160,20 +166,32 @@ def decode_wal2json_message(
         if kind == "delete":
             keynames = change.get("oldkeys", {}).get("keynames", [])
             keyvalues = change.get("oldkeys", {}).get("keyvalues", [])
-            oldkeys = dict(zip(keynames, keyvalues))
+            oldkeys = dict(zip(keynames, keyvalues, strict=True))
             pk_value = oldkeys.get(pk_column)
             row = ChangeRow(
-                op="delete", lsn=lsn, ts=0.0, pk_column=pk_column, pk_value=pk_value,
-                columns={pk_column: pk_value}, geometry_column=geometry_column,
+                op="delete",
+                lsn=lsn,
+                ts=0.0,
+                pk_column=pk_column,
+                pk_value=pk_value,
+                columns={pk_column: pk_value},
+                geometry_column=geometry_column,
                 geometry_wkb_hex=None,
             )
         else:
-            record = dict(zip(change.get("columnnames", []), change.get("columnvalues", [])))
+            record = dict(
+                zip(change.get("columnnames", []), change.get("columnvalues", []), strict=True)
+            )
             geom_hex = record.pop(geometry_column, None) if geometry_column else None
             row = ChangeRow(
-                op=kind, lsn=lsn, ts=0.0, pk_column=pk_column,
-                pk_value=record.get(pk_column), columns=record,
-                geometry_column=geometry_column, geometry_wkb_hex=geom_hex,
+                op=kind,
+                lsn=lsn,
+                ts=0.0,
+                pk_column=pk_column,
+                pk_value=record.get(pk_column),
+                columns=record,
+                geometry_column=geometry_column,
+                geometry_wkb_hex=geom_hex,
             )
         out.append(DecodedChange(table_name=table_name, row=row))
     return out
@@ -187,7 +205,9 @@ def _start_replication_with_retry(raw_dsn: str):
     conn = None
     cur = None
     for attempt in range(_RECONNECT_ATTEMPTS):
-        conn = psycopg2.connect(raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection)
+        conn = psycopg2.connect(
+            raw_dsn, connection_factory=psycopg2.extras.LogicalReplicationConnection
+        )
         cur = conn.cursor()
         try:
             cur.start_replication(
@@ -205,8 +225,13 @@ def _start_replication_with_retry(raw_dsn: str):
 
 
 def stream_changes(
-    raw_dsn: str, *, on_message, is_flush_due, do_flush,
-    should_stop=lambda: False, poll_timeout_s: float = 1.0,
+    raw_dsn: str,
+    *,
+    on_message,
+    is_flush_due,
+    do_flush,
+    should_stop=lambda: False,
+    poll_timeout_s: float = 1.0,
 ) -> None:
     """Boucle jusqu'à should_stop() (par défaut : jamais — le process
     cdc-worker tourne indéfiniment). `on_message(payload, lsn)` décode et

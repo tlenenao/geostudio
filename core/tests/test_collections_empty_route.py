@@ -20,8 +20,13 @@ def pg_app(pg_engine):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     app = create_app()
@@ -36,18 +41,24 @@ def pg_app(pg_engine):
     client = TestClient(app)
     yield client
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE items, configs, config_revisions, collections, "
-            "audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app):
-    resp = pg_app.post("/collections/empty", json={
-        "title": "Ma requête",
-        "columns": [{"name": "commune", "sqlType": "text"}],
-        "geometryType": None, "srid": None,
-    })
+    resp = pg_app.post(
+        "/collections/empty",
+        json={
+            "title": "Ma requête",
+            "columns": [{"name": "commune", "sqlType": "text"}],
+            "geometryType": None,
+            "srid": None,
+        },
+    )
     assert resp.status_code == 201
     body = resp.json()
     assert body["featureCount"] == 0
@@ -55,8 +66,11 @@ def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app
 
 
 def test_rejects_an_unknown_sql_type_with_422(pg_app):
-    resp = pg_app.post("/collections/empty", json={
-        "title": "Injection",
-        "columns": [{"name": "x", "sqlType": "text); DROP TABLE users; --"}],
-    })
+    resp = pg_app.post(
+        "/collections/empty",
+        json={
+            "title": "Injection",
+            "columns": [{"name": "x", "sqlType": "text); DROP TABLE users; --"}],
+        },
+    )
     assert resp.status_code == 422

@@ -4,6 +4,7 @@
 paquet système requis). Chaque parseur produit un flux (géométrie shapely,
 propriétés) ; toute ligne/feature/entité invalide lève IngestionParseError
 immédiatement (fail-fast) — pas d'import partiel silencieux."""
+
 import csv
 import io
 import json
@@ -77,7 +78,9 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
 
 
 def parse_csv_latlon(
-    content: bytes, lat_field: str | None, lon_field: str | None,
+    content: bytes,
+    lat_field: str | None,
+    lon_field: str | None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     try:
         text = content.decode("utf-8-sig")
@@ -114,9 +117,8 @@ def parse_csv_latlon(
             lon = float(row[lon_field])
         except (TypeError, ValueError):
             raise IngestionParseError(
-                f"ligne {i} : lat/lon invalide "
-                f"('{row.get(lat_field)}', '{row.get(lon_field)}')"
-            )
+                f"ligne {i} : lat/lon invalide ('{row.get(lat_field)}', '{row.get(lon_field)}')"
+            ) from None
         properties = {k: v for k, v in row.items() if k not in (lat_field, lon_field)}
         yield Point(lon, lat), properties
 
@@ -175,9 +177,7 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
             f"couche '{layer_name}' introuvable — couches disponibles : {', '.join(available)}"
         )
     try:
-        meta, _index, geometry, field_data = pyogrio.raw.read(
-            path, layer=layer_name, force_2d=True
-        )
+        meta, _index, geometry, field_data = pyogrio.raw.read(path, layer=layer_name, force_2d=True)
     except _OGR_ERRORS as exc:
         raise IngestionParseError(f"couche '{layer_name}' illisible : {exc}") from exc
 
@@ -195,21 +195,21 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
             geom = shapely_transform(transform, geom)
         if not geom.is_valid:
             raise IngestionParseError(f"entité {i} : géométrie invalide")
-        properties = {
-            field: _native_value(field_data[j][i]) for j, field in enumerate(fields)
-        }
+        properties = {field: _native_value(field_data[j][i]) for j, field in enumerate(fields)}
         yield geom, properties
 
 
 def parse_gpkg(
-    content: bytes, layer_name: str | None = None,
+    content: bytes,
+    layer_name: str | None = None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     with _temp_file(content, ".gpkg") as path:
         yield from _read_features(path, layer_name)
 
 
 def parse_shapefile_zip(
-    content: bytes, layer_name: str | None = None,
+    content: bytes,
+    layer_name: str | None = None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     with _temp_file(content, ".zip") as path:
         yield from _read_features(f"/vsizip/{path}", layer_name)
@@ -235,10 +235,13 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
                 info = pyogrio.read_info(path, layer=name)
             except _OGR_ERRORS as exc:
                 raise IngestionParseError(f"couche '{name}' illisible : {exc}") from exc
-            layers.append(LayerInfo(
-                name=str(name), feature_count=int(info["features"]),
-                geometry_type=str(info["geometry_type"] or "Unknown"),
-            ))
+            layers.append(
+                LayerInfo(
+                    name=str(name),
+                    feature_count=int(info["features"]),
+                    geometry_type=str(info["geometry_type"] or "Unknown"),
+                )
+            )
         if not layers:
             raise IngestionParseError("aucune couche trouvée dans le fichier")
         return layers

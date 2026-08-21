@@ -9,7 +9,9 @@ import { CollectionParamSelect } from "./CollectionParamSelect";
 // la colonne) au moment de la sauvegarde — cf. design SP-15b §4.4 et le
 // manifeste TransformSelectParams.columns côté cœur.
 function KeyValueField({
-  name, value, onChange,
+  name,
+  value,
+  onChange,
 }: {
   name: string;
   value: Record<string, string | null>;
@@ -56,7 +58,9 @@ function KeyValueField({
 }
 
 function StringListField({
-  name, value, onChange,
+  name,
+  value,
+  onChange,
 }: {
   name: string;
   value: string[];
@@ -70,7 +74,12 @@ function StringListField({
         className="h-8 rounded border border-slate-300 px-2"
         defaultValue={value.join(", ")}
         onChange={(e) =>
-          onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))
+          onChange(
+            e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          )
         }
       />
     </label>
@@ -78,7 +87,10 @@ function StringListField({
 }
 
 export function PipelineNodeInspector({
-  node, opEntry, errors, onChange,
+  node,
+  opEntry,
+  errors,
+  onChange,
 }: {
   node: PipelineNode;
   opEntry: PipelineOpEntry;
@@ -133,7 +145,11 @@ export function PipelineNodeInspector({
             value={String(params[name] ?? prop.default ?? "")}
             onChange={(e) => setField(name, e.target.value)}
           >
-            {prop.enum.map((v) => <option key={v} value={v}>{v}</option>)}
+            {prop.enum.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
         </label>
       );
@@ -180,7 +196,12 @@ export function PipelineNodeInspector({
           className="h-8 rounded border border-slate-300 px-2"
           value={String(params[name] ?? "")}
           onChange={(e) =>
-            setField(name, prop.type === "number" || prop.type === "integer" ? Number(e.target.value) : e.target.value)
+            setField(
+              name,
+              prop.type === "number" || prop.type === "integer"
+                ? Number(e.target.value)
+                : e.target.value,
+            )
           }
         />
       </label>
@@ -189,9 +210,13 @@ export function PipelineNodeInspector({
 
   return (
     <div className="flex flex-col gap-2 p-2">
-      {Object.entries(opEntry.paramsSchema.properties).map(([name, prop]) => renderField(name, prop))}
+      {Object.entries(opEntry.paramsSchema.properties).map(([name, prop]) =>
+        renderField(name, prop),
+      )}
       {errors.map((err) => (
-        <p key={err} role="alert" className="text-xs text-red-600">{err}</p>
+        <p key={err} role="alert" className="text-xs text-red-600">
+          {err}
+        </p>
       ))}
     </div>
   );

@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-from app.search.ranking import reciprocal_rank_fusion
+import pytest
+from sqlalchemy import select
+
+from app.db import Base, make_session_factory
+from app.items.models import Item
+from app.search.providers import FakeProvider
+from app.search.ranking import hybrid_search_ids, reciprocal_rank_fusion
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
 
 
 def test_rrf_favors_items_present_in_both_lists():
@@ -27,17 +35,6 @@ def test_rrf_k_constant_is_configurable():
     assert ranked_k1[0][1] == 1 / 2
 
 
-import pytest
-
-from app.db import Base, make_session_factory
-from app.items.models import Item
-from app.search.providers import FakeProvider
-from app.search.ranking import hybrid_search_ids
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
-from sqlalchemy import select
-
-
 @pytest.fixture()
 def pg_session(pg_engine):
     Base.metadata.create_all(pg_engine)
@@ -46,6 +43,7 @@ def pg_session(pg_engine):
         yield s
     with pg_engine.begin() as conn:
         from sqlalchemy import text
+
         conn.execute(text("TRUNCATE items, users, tenants CASCADE"))
 
 
@@ -53,21 +51,33 @@ def pg_session(pg_engine):
 def test_hybrid_search_ids_ranks_a_vector_match_ahead_of_a_weak_text_match(pg_session):
     tenant = get_or_create_default_tenant(pg_session)
     user = get_or_create_user(
-        pg_session, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        pg_session,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     close_vector = [1.0] * 1536
     query_vector = [0.99] * 1536  # très proche de close_vector (cosine)
     far_vector = [-1.0] * 1536
 
     semantically_close = Item(
-        id="i-close", tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="Sujet totalement différent",
+        id="i-close",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="Sujet totalement différent",
         embedding=close_vector,
     )
     weak_text_match = Item(
-        id="i-weak", tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="incidents", embedding=far_vector,
+        id="i-weak",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="incidents",
+        embedding=far_vector,
     )
     # Un troisième item, meilleur match trigram qu'"incidents" seul et pas
     # encore embeddé (dégradation gracieuse SP-7 Task 2/5 : embedding NULL
@@ -79,8 +89,12 @@ def test_hybrid_search_ids_ranks_a_vector_match_ahead_of_a_weak_text_match(pg_se
     # jamais rencontré avec de vrais embeddings/textes, mais artificiel ici
     # avec seulement deux lignes candidates.
     unrelated_but_unembedded = Item(
-        id="i-filler", tenant_id=tenant.id, owner_id=user.id,
-        resource_type="app", title="incidents voirie", embedding=None,
+        id="i-filler",
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="incidents voirie",
+        embedding=None,
     )
     pg_session.add_all([semantically_close, weak_text_match, unrelated_but_unembedded])
     pg_session.flush()
@@ -88,8 +102,12 @@ def test_hybrid_search_ids_ranks_a_vector_match_ahead_of_a_weak_text_match(pg_se
     base_stmt = select(Item).where(Item.tenant_id == tenant.id)
     provider = FakeProvider(vectors={"incidents voirie": query_vector})
     ids = hybrid_search_ids(
-        pg_session, base_stmt=base_stmt, id_column=Item.id,
-        text_columns=[Item.title, Item.abstract], embedding_column=Item.embedding,
-        query_text="incidents voirie", query_vector=provider.embed("incidents voirie"),
+        pg_session,
+        base_stmt=base_stmt,
+        id_column=Item.id,
+        text_columns=[Item.title, Item.abstract],
+        embedding_column=Item.embedding,
+        query_text="incidents voirie",
+        query_vector=provider.embed("incidents voirie"),
     )
     assert ids.index("i-close") < ids.index("i-weak")

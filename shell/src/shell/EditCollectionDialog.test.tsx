@@ -11,9 +11,18 @@ import type { CollectionAdmin } from "../api/types";
 import { EditCollectionDialog } from "./EditCollectionDialog";
 
 const COLLECTION: CollectionAdmin = {
-  id: "incidents", title: "Incidents", description: "Signalements", tableName: "incidents",
-  isPublic: false, editable: true, geometryType: "Point", srid: 4326,
-  pkColumn: "id", canWrite: true, featureCount: 3, owner: "admin",
+  id: "incidents",
+  title: "Incidents",
+  description: "Signalements",
+  tableName: "incidents",
+  isPublic: false,
+  editable: true,
+  geometryType: "Point",
+  srid: 4326,
+  pkColumn: "id",
+  canWrite: true,
+  featureCount: 3,
+  owner: "admin",
 };
 
 function Harness({ onClose = () => {} }: { onClose?: () => void }) {
@@ -46,13 +55,18 @@ test("pre-fills the form from the collection and PATCHes the edited fields on su
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(body).toEqual({
-    title: "Incidents (v2)", description: "Signalements", isPublic: true, editable: true,
+    title: "Incidents (v2)",
+    description: "Signalements",
+    isPublic: true,
+    editable: true,
   });
 });
 
 test("surfaces an alert when the PATCH fails", async () => {
   server.use(
-    http.patch("https://core.test/collections/incidents", () => HttpResponse.json({}, { status: 500 })),
+    http.patch("https://core.test/collections/incidents", () =>
+      HttpResponse.json({}, { status: 500 }),
+    ),
   );
   render(<Harness />);
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
@@ -62,9 +76,7 @@ test("surfaces an alert when the PATCH fails", async () => {
 });
 
 test("disables the submit button when the instance is in read-only demo mode", async () => {
-  server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
-  );
+  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })));
   render(<Harness />);
   await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
 });

@@ -3,13 +3,14 @@
 introspection Postgres (information_schema.tables), pas de fake — même
 patron que test_features_integration.py (Base.metadata.create_all sur
 pg_engine, teardown TRUNCATE + DROP des tables jetables)."""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app import db
 from app.auth.dependency import get_current_user, get_current_user_optional
-from app.db import Base, init_db, make_session_factory, request_scoped_session
+from app.db import Base, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
@@ -24,20 +25,39 @@ def pg_app(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS cand_points"))
         conn.execute(text("DROP TABLE IF EXISTS cand_no_pk"))
-        conn.execute(text(
-            "CREATE TABLE cand_points (id serial PRIMARY KEY, "
-            "titre text NOT NULL, geom geometry(Point, 4326))"))
+        conn.execute(
+            text(
+                "CREATE TABLE cand_points (id serial PRIMARY KEY, "
+                "titre text NOT NULL, geom geometry(Point, 4326))"
+            )
+        )
         conn.execute(text("CREATE TABLE cand_no_pk (a int, b int)"))
     Session = make_session_factory(pg_engine)
     with Session() as s:
         tenant_a = get_or_create_default_tenant(s)
-        admin_a = get_or_create_user(s, tenant_id=tenant_a.id, oidc_sub="a", username="admin-a",
-                                     email=None, first_name="", last_name="", bootstrap_admin=True)
+        admin_a = get_or_create_user(
+            s,
+            tenant_id=tenant_a.id,
+            oidc_sub="a",
+            username="admin-a",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
         tenant_b = Tenant(id="tenant-b-candidates", slug="tenant-b-candidates", name="Tenant B")
         s.add(tenant_b)
         s.flush()
-        admin_b = get_or_create_user(s, tenant_id=tenant_b.id, oidc_sub="b", username="admin-b",
-                                     email=None, first_name="", last_name="", bootstrap_admin=True)
+        admin_b = get_or_create_user(
+            s,
+            tenant_id=tenant_b.id,
+            oidc_sub="b",
+            username="admin-b",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
         s.commit()
     app = create_app()
 
@@ -51,8 +71,9 @@ def pg_app(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS cand_points"))
         conn.execute(text("DROP TABLE IF EXISTS cand_no_pk"))
-        conn.execute(text(
-            "TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE"))
+        conn.execute(
+            text("TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE")
+        )
 
 
 def _as(app, user):

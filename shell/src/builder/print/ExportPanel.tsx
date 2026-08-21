@@ -83,12 +83,16 @@ export function ExportPanel({ itemId }: { itemId: string }) {
       <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)} disabled={running}>
         Exporter
       </Button>
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Choisir le format d'export">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title="Choisir le format d'export"
+      >
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onExport("png")}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void onExport("png")}>
             PNG
           </Button>
-          <Button type="button" size="sm" onClick={() => onExport("pdf")}>
+          <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
             PDF
           </Button>
         </div>

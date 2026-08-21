@@ -7,7 +7,12 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.alerts import repository as alerts_repo
-from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody, UnknownAggregateField, run_collection_aggregate
+from app.analytics.aggregate import (
+    AggregateMeasure,
+    AggregateRequestBody,
+    UnknownAggregateField,
+    run_collection_aggregate,
+)
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs, is_etl_enabled, is_read_only_mode
 from app.collections import repository as collections_repo
@@ -17,12 +22,22 @@ from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
 from app.configs.bookmark_validation import validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload
-from app.configs.extension_permissions import ExtensionPermissionError, validate_extension_permissions
+from app.configs.extension_permissions import (
+    ExtensionPermissionError,
+    validate_extension_permissions,
+)
 from app.configs.pipeline_validation import validate_pipeline_payload
 from app.configs.repository import ConfigRead
 from app.configs.schemas import (
-    BookmarkCrossFilterEntry, BookmarkPayload, BookmarkTimeRange, BuilderConfig,
-    DatasetColumnMeta, DatasetPayload, PipelineEdge, PipelineNode, PipelinePayload,
+    BookmarkCrossFilterEntry,
+    BookmarkPayload,
+    BookmarkTimeRange,
+    BuilderConfig,
+    DatasetColumnMeta,
+    DatasetPayload,
+    PipelineEdge,
+    PipelineNode,
+    PipelinePayload,
 )
 from app.db import request_scoped_session
 from app.features import routes as features_routes
@@ -46,7 +61,11 @@ from app.users.models import User
 from app.users.repository import get_or_create_user
 
 READ_ONLY_TOOLS = {
-    "save_app_config", "create_item", "create_form_app", "set_sharing", "create_dataset",
+    "save_app_config",
+    "create_item",
+    "create_form_app",
+    "set_sharing",
+    "create_dataset",
     "create_bookmark",
 }
 
@@ -82,12 +101,17 @@ def _require_access(session, *, user: User, item_id: str, action: str) -> ItemAc
 def _require_collection_read(session, *, user: User, collection_id: str):
     """Mirrors app/collections/routes.py's get_readable_collection — ValueError
     instead of HTTPException, same rationale as _require_access above."""
-    col = collections_repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    col = collections_repo.get_collection(
+        session, tenant_id=user.tenant_id, collection_id=collection_id
+    )
     if col is None:
         raise ValueError("collection not found")
     readable = can(
-        session, user_id=user.id, action="read",
-        item=collections_repo.get_access_facts(col), kind="collection",
+        session,
+        user_id=user.id,
+        action="read",
+        item=collections_repo.get_access_facts(col),
+        kind="collection",
         actor_is_admin=user.is_admin,
     )
     if not readable:
@@ -163,16 +187,22 @@ def _resolve_arcgis_external_url(session, *, user: User, dataset_item_id: str) -
         raise ValueError("dataset not found")
     config = configs_repo.get_config_by_item(session, dataset_item_id)
     if (
-        config is None or config.kind != "dataset" or config.config.dataset is None
+        config is None
+        or config.kind != "dataset"
+        or config.config.dataset is None
         or config.config.dataset.source != "arcgis"
     ):
         raise ValueError("dataset not found")
     arcgis_item_id = config.config.dataset.arcgisItemId
     assert arcgis_item_id is not None
-    record = harvest_repo.get_feature_layer_record(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    record = harvest_repo.get_feature_layer_record(
+        session, tenant_id=user.tenant_id, item_id=arcgis_item_id
+    )
     if record is None or record.external_url is None:
         raise ValueError("arcgis layer not found")
-    layer_facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=arcgis_item_id)
+    layer_facts = items_repo.get_access_facts(
+        session, tenant_id=user.tenant_id, item_id=arcgis_item_id
+    )
     if layer_facts is None or not can(session, user_id=user.id, action="read", item=layer_facts):
         raise ValueError("arcgis layer not found")
     return record.external_url
@@ -213,8 +243,14 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             return items_repo.list_items(
-                session, tenant_id=user.tenant_id, current_user_id=user.id,
-                q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
+                session,
+                tenant_id=user.tenant_id,
+                current_user_id=user.id,
+                q=q,
+                resource_type=type,
+                scope=scope,
+                page=page,
+                page_size=pageSize,
             )
 
     @server.tool()
@@ -234,8 +270,14 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             return items_repo.list_items(
-                session, tenant_id=user.tenant_id, current_user_id=user.id,
-                q=q, resource_type=type, scope=scope, page=page, page_size=pageSize,
+                session,
+                tenant_id=user.tenant_id,
+                current_user_id=user.id,
+                q=q,
+                resource_type=type,
+                scope=scope,
+                page=page,
+                page_size=pageSize,
             )
 
     @server.tool()
@@ -257,22 +299,28 @@ def register_tools(server: FastMCP, session_factory) -> None:
             col = _require_collection_read(session, user=user, collection_id=collectionId)
             try:
                 info = introspect_table(session, col.table_name)
-            except TableNotFound:
-                raise ValueError("collection backing table not found")
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
-                raise ValueError(exc.reason)
+                raise ValueError(exc.reason) from exc
             parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
             try:
                 with rls_scope(session, col.tenant_id):
                     page = select_features(
-                        session, info, limit=min(limit, 1000), offset=offset,
-                        bbox=parsed_bbox, filters=filters or None,
+                        session,
+                        info,
+                        limit=min(limit, 1000),
+                        offset=offset,
+                        bbox=parsed_bbox,
+                        filters=filters or None,
                     )
             except FilterError as exc:
-                raise ValueError(f"unknown filter field: {exc.field}")
+                raise ValueError(f"unknown filter field: {exc.field}") from exc
             return {
-                "type": "FeatureCollection", "features": page.features,
-                "numberMatched": page.number_matched, "numberReturned": page.number_returned,
+                "type": "FeatureCollection",
+                "features": page.features,
+                "numberMatched": page.number_matched,
+                "numberReturned": page.number_returned,
             }
 
     @server.tool()
@@ -313,18 +361,29 @@ def register_tools(server: FastMCP, session_factory) -> None:
             if existing is None:
                 raise ValueError("config not found")
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
-            result = configs_repo.update_config(session, existing.id, config, tenant_id=user.tenant_id)
+            result = configs_repo.update_config(
+                session, existing.id, config, tenant_id=user.tenant_id
+            )
             if result is None:
                 raise ValueError("config not found")
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="config.update", object_type="config", object_id=existing.id, payload={},
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="config.update",
+                object_type="config",
+                object_id=existing.id,
+                payload={},
             )
             return result
 
     @server.tool()
     async def create_item(
-        ctx: Context, kind: Literal["app", "dashboard"], title: str, config: BuilderConfig,
+        ctx: Context,
+        kind: Literal["app", "dashboard"],
+        title: str,
+        config: BuilderConfig,
     ) -> ItemRead:
         """Create a new app or dashboard — mirrors POST /configs. The item's
         owner is always the authenticated caller; there is no owner
@@ -336,20 +395,33 @@ def register_tools(server: FastMCP, session_factory) -> None:
             user = _resolve_actor(session, access_token)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
-                session, tenant_id=user.tenant_id, owner_id=user.id,
-                resource_type=kind, title=title,
+                session,
+                tenant_id=user.tenant_id,
+                owner_id=user.id,
+                resource_type=kind,
+                title=title,
             )
             config_result = configs_repo.create_config(
                 session, config, item_id=item.id, tenant_id=user.tenant_id
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="item.create", object_type="item", object_id=item.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="item.create",
+                object_type="item",
+                object_id=item.id,
                 payload={"title": title},
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="config.create", object_type="config", object_id=config_result.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="config.create",
+                object_type="config",
+                object_id=config_result.id,
                 payload={"title": title, "kind": kind},
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
@@ -358,7 +430,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
 
     @server.tool()
     async def create_form_app(
-        ctx: Context, collectionId: str, title: str | None = None,
+        ctx: Context,
+        collectionId: str,
+        title: str | None = None,
     ) -> ItemRead:
         """Compose a Carte+Table(+Formulaire if the caller can write) app on
         an existing collection, from its introspected schema — same shape as
@@ -374,31 +448,46 @@ def register_tools(server: FastMCP, session_factory) -> None:
             col = _require_collection_read(session, user=user, collection_id=collectionId)
             try:
                 info = introspect_table(session, col.table_name)
-            except TableNotFound:
-                raise ValueError("collection backing table not found")
+            except TableNotFound as exc:
+                raise ValueError("collection backing table not found") from exc
             except UnsupportedTable as exc:
-                raise ValueError(exc.reason)
+                raise ValueError(exc.reason) from exc
             schema = table_info_to_schema(info)
             include_form = form_app.can_write_collection(session, user=user, col=col)
             config = form_app.build_config(
-                collection_id=collectionId, schema=schema, include_form=include_form,
+                collection_id=collectionId,
+                schema=schema,
+                include_form=include_form,
             )
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
-                session, tenant_id=user.tenant_id, owner_id=user.id,
-                resource_type="app", title=title or f"Application {col.title}",
+                session,
+                tenant_id=user.tenant_id,
+                owner_id=user.id,
+                resource_type="app",
+                title=title or f"Application {col.title}",
             )
             config_result = configs_repo.create_config(
                 session, config, item_id=item.id, tenant_id=user.tenant_id
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="item.create", object_type="item", object_id=item.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="item.create",
+                object_type="item",
+                object_id=item.id,
                 payload={"title": item.title, "collectionId": collectionId},
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="config.create", object_type="config", object_id=config_result.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="config.create",
+                object_type="config",
+                object_id=config_result.id,
                 payload={"collectionId": collectionId, "includeForm": include_form},
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
@@ -425,26 +514,43 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             payload = DatasetPayload(
-                source=source, collectionId=collectionId, arcgisItemId=arcgisItemId,
-                columns=columns or {}, timeField=timeField, reactsToExtent=reactsToExtent,
+                source=source,
+                collectionId=collectionId,
+                arcgisItemId=arcgisItemId,
+                columns=columns or {},
+                timeField=timeField,
+                reactsToExtent=reactsToExtent,
             )
             config = BuilderConfig(version=1, kind="dataset", dataset=payload)
             _validate_dataset(session, config, user=user)
             item = items_repo.create_item(
-                session, tenant_id=user.tenant_id, owner_id=user.id,
-                resource_type="dataset", title=title,
+                session,
+                tenant_id=user.tenant_id,
+                owner_id=user.id,
+                resource_type="dataset",
+                title=title,
             )
             config_result = configs_repo.create_config(
                 session, config, item_id=item.id, tenant_id=user.tenant_id
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="item.create", object_type="item", object_id=item.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="item.create",
+                object_type="item",
+                object_id=item.id,
                 payload={"title": title},
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="config.create", object_type="config", object_id=config_result.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="config.create",
+                object_type="config",
+                object_id=config_result.id,
                 payload={"title": title, "kind": "dataset"},
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
@@ -469,26 +575,42 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             payload = BookmarkPayload(
-                appId=appId, pageId=pageId, timeRange=timeRange,
-                extent=extent, crossFilter=crossFilter or {},
+                appId=appId,
+                pageId=pageId,
+                timeRange=timeRange,
+                extent=extent,
+                crossFilter=crossFilter or {},
             )
             config = BuilderConfig(version=1, kind="bookmark", bookmark=payload)
             _validate_bookmark(session, config, user=user)
             item = items_repo.create_item(
-                session, tenant_id=user.tenant_id, owner_id=user.id,
-                resource_type="bookmark", title=title,
+                session,
+                tenant_id=user.tenant_id,
+                owner_id=user.id,
+                resource_type="bookmark",
+                title=title,
             )
             config_result = configs_repo.create_config(
                 session, config, item.id, tenant_id=user.tenant_id
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="item.create", object_type="item", object_id=item.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="item.create",
+                object_type="item",
+                object_id=item.id,
                 payload={"title": title},
             )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="config.create", object_type="config", object_id=config_result.id,
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="config.create",
+                object_type="config",
+                object_id=config_result.id,
                 payload={"title": title, "kind": "bookmark"},
             )
             result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
@@ -496,7 +618,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
             return result
 
     @server.tool()
-    async def run_analytics_query(ctx: Context, datasetId: str, query: AggregateRequestBody) -> dict:
+    async def run_analytics_query(
+        ctx: Context, datasetId: str, query: AggregateRequestBody
+    ) -> dict:
         """Run a structured aggregate query against a dataset (source
         collection or arcgis) — mirrors POST /collections/{id}/aggregate and
         POST /datasets/{id}/arcgis/aggregate, same query contract
@@ -509,23 +633,28 @@ def register_tools(server: FastMCP, session_factory) -> None:
 
             if payload.source == "collection":
                 assert payload.collectionId is not None
-                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                col = _require_collection_read(
+                    session, user=user, collection_id=payload.collectionId
+                )
                 try:
                     info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
+                except TableNotFound as exc:
+                    raise ValueError("collection backing table not found") from exc
                 except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
+                    raise ValueError(exc.reason) from exc
                 conn = features_routes.get_duckdb_connection_factory()()
                 try:
                     try:
                         category_key, rows = run_collection_aggregate(
-                            conn, base_uri=features_routes.get_analytics_base_uri(),
-                            tenant_id=col.tenant_id, collection_id=col.id,
-                            table_info=info, request=query,
+                            conn,
+                            base_uri=features_routes.get_analytics_base_uri(),
+                            tenant_id=col.tenant_id,
+                            collection_id=col.id,
+                            table_info=info,
+                            request=query,
                         )
                     except UnknownAggregateField as exc:
-                        raise ValueError(f"{exc.field}: {exc.message}")
+                        raise ValueError(f"{exc.field}: {exc.message}") from exc
                 finally:
                     conn.close()
                 return {"categoryKey": category_key, "rows": rows}
@@ -533,26 +662,42 @@ def register_tools(server: FastMCP, session_factory) -> None:
             assert payload.arcgisItemId is not None
             if query.bucket is not None or query.split is not None or query.bins is not None:
                 raise ValueError("bucket/split/bins are not supported for arcgis-sourced datasets")
-            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
-            group_by = query.groupBy if isinstance(query.groupBy, list) else ([query.groupBy] if query.groupBy else [])
-            measures_in = query.measures or [AggregateMeasure(field=query.field, agg=query.agg, label="value")]
-            measures = [(m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)) for m in measures_in]
+            external_url = _resolve_arcgis_external_url(
+                session, user=user, dataset_item_id=datasetId
+            )
+            group_by = (
+                query.groupBy
+                if isinstance(query.groupBy, list)
+                else ([query.groupBy] if query.groupBy else [])
+            )
+            measures_in = query.measures or [
+                AggregateMeasure(field=query.field, agg=query.agg, label="value")
+            ]
+            measures = [
+                (m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg))
+                for m in measures_in
+            ]
             try:
                 params = live_query.translate_aggregate_query(
-                    group_by=group_by, measures=measures, filters=query.filters, bbox=query.bbox,
+                    group_by=group_by,
+                    measures=measures,
+                    filters=query.filters,
+                    bbox=query.bbox,
                 )
             except live_query.ArcgisQueryError as exc:
-                raise ValueError(f"{exc.field}: {exc.message}")
+                raise ValueError(f"{exc.field}: {exc.message}") from exc
             client = harvest_routes.get_arcgis_http_client()
             try:
                 raw = live_query.fetch_query(client, external_url, params)
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
+            except EgressBlockedError as exc:
+                raise ValueError("arcgis service unavailable") from exc
+            except httpx.HTTPError as exc:
+                raise ValueError("arcgis service unavailable") from exc
             finally:
                 client.close()
-            category_key, rows = live_query.aggregate_response(raw, group_by=group_by, measures=measures)
+            category_key, rows = live_query.aggregate_response(
+                raw, group_by=group_by, measures=measures
+            )
             return {"categoryKey": category_key, "rows": rows}
 
     @server.tool()
@@ -578,40 +723,49 @@ def register_tools(server: FastMCP, session_factory) -> None:
 
             if payload.source == "collection":
                 assert payload.collectionId is not None
-                col = _require_collection_read(session, user=user, collection_id=payload.collectionId)
+                col = _require_collection_read(
+                    session, user=user, collection_id=payload.collectionId
+                )
                 try:
                     info = introspect_table(session, col.table_name)
-                except TableNotFound:
-                    raise ValueError("collection backing table not found")
+                except TableNotFound as exc:
+                    raise ValueError("collection backing table not found") from exc
                 except UnsupportedTable as exc:
-                    raise ValueError(exc.reason)
+                    raise ValueError(exc.reason) from exc
                 schema = table_info_to_schema(info)
                 fields = [{"name": f["name"], "type": f["type"]} for f in schema["fields"]]
                 return {**base, "fields": fields}
 
-            external_url = _resolve_arcgis_external_url(session, user=user, dataset_item_id=datasetId)
+            external_url = _resolve_arcgis_external_url(
+                session, user=user, dataset_item_id=datasetId
+            )
             client = harvest_routes.get_arcgis_http_client()
             try:
                 response = client.get(f"{external_url}?f=json")
                 response.raise_for_status()
-            except EgressBlockedError:
-                raise ValueError("arcgis service unavailable")
-            except httpx.HTTPError:
-                raise ValueError("arcgis service unavailable")
+            except EgressBlockedError as exc:
+                raise ValueError("arcgis service unavailable") from exc
+            except httpx.HTTPError as exc:
+                raise ValueError("arcgis service unavailable") from exc
             finally:
                 client.close()
             data = response.json()
             raw_fields = data.get("fields") if isinstance(data, dict) else None
             fields = [
                 {"name": f.get("name"), "type": f.get("type")}
-                for f in (raw_fields or []) if isinstance(f, dict)
+                for f in (raw_fields or [])
+                if isinstance(f, dict)
             ]
             return {**base, "fields": fields}
 
     if is_etl_enabled():
+
         @server.tool()
         async def create_pipeline(
-            ctx: Context, title: str, nodes: list[PipelineNode], edges: list[PipelineEdge],
+            ctx: Context,
+            title: str,
+            nodes: list[PipelineNode],
+            edges: list[PipelineEdge],
         ) -> ItemRead:
             """Create a Pipeline (reader/transform/writer graph) — mirrors
             POST /configs with kind="pipeline". Only registered when
@@ -625,20 +779,33 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 config = BuilderConfig(version=1, kind="pipeline", pipeline=payload)
                 _validate_pipeline(session, config, user=user)
                 item = items_repo.create_item(
-                    session, tenant_id=user.tenant_id, owner_id=user.id,
-                    resource_type="pipeline", title=title,
+                    session,
+                    tenant_id=user.tenant_id,
+                    owner_id=user.id,
+                    resource_type="pipeline",
+                    title=title,
                 )
                 config_result = configs_repo.create_config(
                     session, config, item_id=item.id, tenant_id=user.tenant_id
                 )
                 write_audit(
-                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                    action="item.create", object_type="item", object_id=item.id,
+                    session,
+                    tenant_id=user.tenant_id,
+                    actor_id=user.id,
+                    actor_kind="agent",
+                    action="item.create",
+                    object_type="item",
+                    object_id=item.id,
                     payload={"title": title},
                 )
                 write_audit(
-                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                    action="config.create", object_type="config", object_id=config_result.id,
+                    session,
+                    tenant_id=user.tenant_id,
+                    actor_id=user.id,
+                    actor_kind="agent",
+                    action="config.create",
+                    object_type="config",
+                    object_id=config_result.id,
                     payload={"title": title, "kind": "pipeline"},
                 )
                 result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
@@ -655,15 +822,24 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 config = configs_repo.get_config_by_item(session, pipelineId)
                 if config is None or config.config.kind != "pipeline":
                     raise ValueError("pipeline not found")
-                facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                facts = items_repo.get_access_facts(
+                    session, tenant_id=user.tenant_id, item_id=pipelineId
+                )
                 if facts is None or not can(session, user_id=user.id, action="write", item=facts):
                     raise ValueError("pipeline not found")
                 run = pipelines_repo.create_run(
-                    session, tenant_id=user.tenant_id, pipeline_item_id=pipelineId,
+                    session,
+                    tenant_id=user.tenant_id,
+                    pipeline_item_id=pipelineId,
                 )
                 write_audit(
-                    session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                    action="pipeline.run", object_type="pipeline_run", object_id=run.id,
+                    session,
+                    tenant_id=user.tenant_id,
+                    actor_id=user.id,
+                    actor_kind="agent",
+                    action="pipeline.run",
+                    object_type="pipeline_run",
+                    object_id=run.id,
                     payload={"pipelineItemId": pipelineId},
                 )
                 session.commit()
@@ -681,7 +857,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 config = configs_repo.get_config_by_item(session, pipelineId)
                 if config is None or config.config.kind != "pipeline":
                     raise ValueError("pipeline not found")
-                facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=pipelineId)
+                facts = items_repo.get_access_facts(
+                    session, tenant_id=user.tenant_id, item_id=pipelineId
+                )
                 if facts is None or not can(session, user_id=user.id, action="read", item=facts):
                     raise ValueError("pipeline not found")
                 item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=pipelineId)
@@ -696,7 +874,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                         for n in payload.nodes
                     ],
                     "edges": [{"from": e.from_, "to": e.to} for e in payload.edges],
-                    "refreshPolicy": payload.refreshPolicy.model_dump() if payload.refreshPolicy else None,
+                    "refreshPolicy": payload.refreshPolicy.model_dump()
+                    if payload.refreshPolicy
+                    else None,
                 }
 
     @server.tool()
@@ -710,7 +890,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
             config = configs_repo.get_config_by_item(session, alertRuleId)
             if config is None or config.config.kind != "alert":
                 raise ValueError("alert rule not found")
-            facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=alertRuleId)
+            facts = items_repo.get_access_facts(
+                session, tenant_id=user.tenant_id, item_id=alertRuleId
+            )
             if facts is None or not can(session, user_id=user.id, action="read", item=facts):
                 raise ValueError("alert rule not found")
             item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=alertRuleId)
@@ -719,7 +901,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
             payload = config.config.alert
             assert payload is not None
             latest = alerts_repo.get_latest_evaluation(
-                session, tenant_id=user.tenant_id, alert_rule_item_id=alertRuleId,
+                session,
+                tenant_id=user.tenant_id,
+                alert_rule_item_id=alertRuleId,
             )
             return {
                 "title": item.title,
@@ -741,7 +925,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
             config = configs_repo.get_config_by_item(session, reportScheduleId)
             if config is None or config.config.kind != "report":
                 raise ValueError("report schedule not found")
-            facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=reportScheduleId)
+            facts = items_repo.get_access_facts(
+                session, tenant_id=user.tenant_id, item_id=reportScheduleId
+            )
             if facts is None or not can(session, user_id=user.id, action="read", item=facts):
                 raise ValueError("report schedule not found")
             item = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=reportScheduleId)
@@ -750,7 +936,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
             payload = config.config.report
             assert payload is not None
             latest = reports_repo.get_latest_run(
-                session, tenant_id=user.tenant_id, report_item_id=reportScheduleId,
+                session,
+                tenant_id=user.tenant_id,
+                report_item_id=reportScheduleId,
             )
             return {
                 "title": item.title,
@@ -783,16 +971,28 @@ def register_tools(server: FastMCP, session_factory) -> None:
             user = _resolve_actor(session, access_token)
             _require_access(session, user=user, item_id=itemId, action="share")
             ok = sharing_repo.replace_shares(
-                session, tenant_id=user.tenant_id, item_id=itemId,
+                session,
+                tenant_id=user.tenant_id,
+                item_id=itemId,
                 shares=[(g.groupId, g.role) for g in sharing.groups],
             )
             if not ok:
                 raise ValueError("group not found")
-            items_repo.set_is_public(session, tenant_id=user.tenant_id, item_id=itemId, is_public=sharing.public)
+            items_repo.set_is_public(
+                session, tenant_id=user.tenant_id, item_id=itemId, is_public=sharing.public
+            )
             write_audit(
-                session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="agent",
-                action="item.share", object_type="item", object_id=itemId,
-                payload={"public": sharing.public, "groups": [g.model_dump() for g in sharing.groups]},
+                session,
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_kind="agent",
+                action="item.share",
+                object_type="item",
+                object_id=itemId,
+                payload={
+                    "public": sharing.public,
+                    "groups": [g.model_dump() for g in sharing.groups],
+                },
             )
 
     @server.resource("schema://app-config")

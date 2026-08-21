@@ -2,6 +2,7 @@
 """Même raisonnement que test_tileset3d_config_validation.py (I1, revue
 finale de branche tileset3d hosting) : kind="terrain3d" n'a aucune voie de
 création/mise à jour légitime par les routes /configs publiques."""
+
 import pytest
 from fastapi import HTTPException
 
@@ -13,10 +14,12 @@ from app.users.repository import get_or_create_user
 
 
 def _terrain3d_config(source_key: str = "other-tenant/abc/dem-cog.tif") -> BuilderConfig:
-    return BuilderConfig.model_validate({
-        "kind": "terrain3d",
-        "terrain3d": {"sourceKey": source_key, "originalFilename": "dem.tif"},
-    })
+    return BuilderConfig.model_validate(
+        {
+            "kind": "terrain3d",
+            "terrain3d": {"sourceKey": source_key, "originalFilename": "dem.tif"},
+        }
+    )
 
 
 def _session_and_user():
@@ -26,8 +29,13 @@ def _session_and_user():
     s = Session()
     tenant = get_or_create_default_tenant(s)
     user = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     s.commit()
     return s, user
@@ -36,13 +44,15 @@ def _session_and_user():
 def test_ignores_non_terrain3d_kind():
     s, user = _session_and_user()
     with s:
-        config = BuilderConfig.model_validate({
-            "kind": "map",
-            "map": {
-                "basemap": {"style": "mapbox://styles/mapbox/streets-v12"},
-                "view": {"center": [0, 0], "zoom": 1},
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "mapbox://styles/mapbox/streets-v12"},
+                    "view": {"center": [0, 0], "zoom": 1},
+                },
+            }
+        )
         validate_terrain3d_payload(s, config, user=user)  # no raise
 
 
@@ -69,8 +79,13 @@ def _client(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="mock-sub", username="mockuser",
-            email=None, first_name="Mock", last_name="User",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         s.commit()
     client = TestClient(app)

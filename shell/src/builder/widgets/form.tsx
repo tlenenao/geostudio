@@ -81,7 +81,9 @@ function FieldOverrides({
           className="flex cursor-move flex-col gap-1 rounded border border-slate-200 p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-slate-400" aria-hidden="true">⠿</span>
+            <span className="text-[10px] text-slate-400" aria-hidden="true">
+              ⠿
+            </span>
             <input
               aria-label={`Label du champ ${f.name}`}
               className={overrideInputCls}
@@ -117,7 +119,9 @@ function FieldOverrides({
                 placeholder="min"
                 className={overrideInputCls}
                 value={f.min ?? ""}
-                onChange={(e) => patch(f.name, { min: e.target.value === "" ? undefined : Number(e.target.value) })}
+                onChange={(e) =>
+                  patch(f.name, { min: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
               />
               <input
                 aria-label={`Max ${f.name}`}
@@ -125,7 +129,9 @@ function FieldOverrides({
                 placeholder="max"
                 className={overrideInputCls}
                 value={f.max ?? ""}
-                onChange={(e) => patch(f.name, { max: e.target.value === "" ? undefined : Number(e.target.value) })}
+                onChange={(e) =>
+                  patch(f.name, { max: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
               />
             </div>
           )}
@@ -175,7 +181,9 @@ function FormPropsPanel({
         <p className="text-xs text-[var(--gs-color-muted)]">Chargement du schéma…</p>
       )}
       {collectionId !== "" && schemaQuery.isError && (
-        <p role="alert" className="text-xs text-red-600">Schéma introuvable pour « {collectionId} ».</p>
+        <p role="alert" className="text-xs text-red-600">
+          Schéma introuvable pour « {collectionId} ».
+        </p>
       )}
       {collectionId !== "" && schemaQuery.data && fields.length === 0 && (
         <button
@@ -215,7 +223,8 @@ function validateField(field: FormField, value: unknown): string | null {
     }
     if (field.pattern && !new RegExp(field.pattern).test(String(value))) return "Format invalide";
   }
-  if (field.type === "enum" && field.values && !field.values.includes(String(value))) return "Valeur invalide";
+  if (field.type === "enum" && field.values && !field.values.includes(String(value)))
+    return "Valeur invalide";
   return null;
 }
 
@@ -234,41 +243,78 @@ function FieldInput({
 }) {
   if (field.type === "boolean") {
     return (
-      <input type="checkbox" aria-label={field.label} checked={Boolean(value)}
-        onChange={(e) => onChange(e.target.checked)} onBlur={onBlur} />
+      <input
+        type="checkbox"
+        aria-label={field.label}
+        checked={Boolean(value)}
+        onChange={(e) => onChange(e.target.checked)}
+        onBlur={onBlur}
+      />
     );
   }
   if (field.type === "integer" || field.type === "number") {
     return (
-      <input type="number" aria-label={field.label} className={fieldInputCls}
+      <input
+        type="number"
+        aria-label={field.label}
+        className={fieldInputCls}
         value={value === undefined ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} onBlur={onBlur} />
+        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+        onBlur={onBlur}
+      />
     );
   }
   if (field.type === "date") {
     return (
-      <input type="date" aria-label={field.label} className={fieldInputCls}
-        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+      <input
+        type="date"
+        aria-label={field.label}
+        className={fieldInputCls}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      />
     );
   }
   if (field.type === "datetime") {
     return (
-      <input type="datetime-local" aria-label={field.label} className={fieldInputCls}
-        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+      <input
+        type="datetime-local"
+        aria-label={field.label}
+        className={fieldInputCls}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      />
     );
   }
   if (field.type === "enum") {
     return (
-      <select aria-label={field.label} className={fieldInputCls}
-        value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur}>
+      <select
+        aria-label={field.label}
+        className={fieldInputCls}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+      >
         <option value=""></option>
-        {(field.values ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+        {(field.values ?? []).map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ))}
       </select>
     );
   }
   return (
-    <input type="text" aria-label={field.label} className={fieldInputCls}
-      value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+    <input
+      type="text"
+      aria-label={field.label}
+      className={fieldInputCls}
+      value={String(value ?? "")}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+    />
   );
 }
 
@@ -278,7 +324,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const fields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported")
     .sort((a, b) => a.order - b.order);
-  const allFields = ((props.fields as FormField[] | undefined) ?? []).filter((f) => f.type !== "unsupported");
+  const allFields = ((props.fields as FormField[] | undefined) ?? []).filter(
+    (f) => f.type !== "unsupported",
+  );
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
@@ -307,8 +355,15 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const canWrite = (permissionQuery.isError ? false : (permissionQuery.data ?? true)) && !readOnly;
 
   const write = useMutation({
-    mutationFn: async (input: { properties: Record<string, unknown>; geometry: unknown | null }) => {
-      const feature = { type: "Feature" as const, properties: input.properties, geometry: input.geometry };
+    mutationFn: async (input: {
+      properties: Record<string, unknown>;
+      geometry: unknown | null;
+    }) => {
+      const feature = {
+        type: "Feature" as const,
+        properties: input.properties,
+        geometry: input.geometry,
+      };
       if (editingId !== null) {
         await client.updateFeature(collectionId, String(editingId), feature);
       } else {
@@ -326,12 +381,14 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     if (!window.confirm("Supprimer cet enregistrement ?")) return;
     try {
       await remove.mutateAsync();
-      queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties: {} });
       resetTo();
     } catch (err) {
       setGenericError(true);
-      ctx.bus?.emit(ctx.widgetId ?? "", "failed", { message: err instanceof Error ? err.message : "unknown" });
+      ctx.bus?.emit(ctx.widgetId ?? "", "failed", {
+        message: err instanceof Error ? err.message : "unknown",
+      });
     }
   }
 
@@ -379,7 +436,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const allTouched: Record<string, boolean> = {};
-    fields.forEach((f) => { allTouched[f.name] = true; });
+    fields.forEach((f) => {
+      allTouched[f.name] = true;
+    });
     setTouched(allTouched);
     const hasClientErrors = fields.some((f) => validateField(f, values[f.name]) !== null);
     if (hasClientErrors) return;
@@ -391,11 +450,13 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     });
     const geometry =
       geometryType === "Point"
-        ? (lon !== "" && lat !== "" ? { type: "Point", coordinates: [Number(lon), Number(lat)] } : null)
+        ? lon !== "" && lat !== ""
+          ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
+          : null
         : loadedGeometry;
     try {
       await write.mutateAsync({ properties, geometry });
-      queryClient.invalidateQueries({ queryKey: ["datasource"] });
+      void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
       if (editingId === null) {
         resetTo();
@@ -403,53 +464,79 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     } catch (err) {
       if (err instanceof FeatureValidationError) {
         const byField: Record<string, string> = {};
-        err.errors.forEach((fe) => { byField[fe.field] = fe.message; });
+        err.errors.forEach((fe) => {
+          byField[fe.field] = fe.message;
+        });
         setServerErrors(byField);
       } else {
         setGenericError(true);
       }
-      ctx.bus?.emit(ctx.widgetId ?? "", "failed", { message: err instanceof Error ? err.message : "unknown" });
+      ctx.bus?.emit(ctx.widgetId ?? "", "failed", {
+        message: err instanceof Error ? err.message : "unknown",
+      });
     }
   }
 
   return (
-    <form className="flex h-full flex-col gap-2 overflow-auto text-sm" onSubmit={handleSubmit}>
+    <form
+      className="flex h-full flex-col gap-2 overflow-auto text-sm"
+      onSubmit={(e) => void handleSubmit(e)}
+    >
       {fields.map((f) => (
         <label key={f.name} className="flex flex-col gap-1">
-          {f.label}{f.required ? " *" : ""}
+          {f.label}
+          {f.required ? " *" : ""}
           <FieldInput
             field={f}
             value={values[f.name]}
             onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
             onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
           />
-          {errorFor(f) && <span role="alert" className="text-xs text-red-600">{errorFor(f)}</span>}
+          {errorFor(f) && (
+            <span role="alert" className="text-xs text-red-600">
+              {errorFor(f)}
+            </span>
+          )}
         </label>
       ))}
       {geometryType === "Point" && (
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1">
             Longitude
-            <input type="number" step="any" aria-label="Longitude" className={fieldInputCls}
-              value={lon} onChange={(e) => setLon(e.target.value)} />
+            <input
+              type="number"
+              step="any"
+              aria-label="Longitude"
+              className={fieldInputCls}
+              value={lon}
+              onChange={(e) => setLon(e.target.value)}
+            />
           </label>
           <label className="flex flex-1 flex-col gap-1">
             Latitude
-            <input type="number" step="any" aria-label="Latitude" className={fieldInputCls}
-              value={lat} onChange={(e) => setLat(e.target.value)} />
+            <input
+              type="number"
+              step="any"
+              aria-label="Latitude"
+              className={fieldInputCls}
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+            />
           </label>
         </div>
       )}
       {editingId !== null && (
         <p className="text-xs text-[var(--gs-color-muted)]">
           Modification de l'enregistrement #{String(editingId)}
-          <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>Annuler</button>
+          <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>
+            Annuler
+          </button>
           {canWrite && (
             <button
               type="button"
               className="ml-2 text-xs text-red-600 underline"
               disabled={remove.isPending}
-              onClick={handleDelete}
+              onClick={() => void handleDelete()}
             >
               Supprimer
             </button>
@@ -466,12 +553,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             {String(props.submitLabel ?? "Enregistrer")}
           </button>
         )}
-        <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm" onClick={resetTo}>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          onClick={resetTo}
+        >
           Réinitialiser
         </button>
       </div>
       {genericError && (
-        <p role="alert" className="text-xs text-red-600">Échec de l'enregistrement.</p>
+        <p role="alert" className="text-xs text-red-600">
+          Échec de l'enregistrement.
+        </p>
       )}
     </form>
   );

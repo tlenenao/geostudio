@@ -16,9 +16,14 @@ from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
-INFO = TableInfo(table_name="incidents", pk_column="id", geometry_column="geom",
-                 geometry_type="Point", srid=4326,
-                 columns=[ColumnInfo(name="titre", type="string", required=True)])
+INFO = TableInfo(
+    table_name="incidents",
+    pk_column="id",
+    geometry_column="geom",
+    geometry_type="Point",
+    srid=4326,
+    columns=[ColumnInfo(name="titre", type="string", required=True)],
+)
 
 FEAT = {"type": "Feature", "id": 1, "geometry": None, "properties": {"titre": "a"}}
 
@@ -32,8 +37,12 @@ def fake_introspector(session, table_name):
 def make_fake_repo(matched=3):
     calls = {}
 
-    def select_features(session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None):
-        calls.update(limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters)
+    def select_features(
+        session, info, *, limit, offset, bbox=None, geom_intersects=None, filters=None
+    ):
+        calls.update(
+            limit=limit, offset=offset, bbox=bbox, geom_intersects=geom_intersects, filters=filters
+        )
         if filters and "inconnu" in filters:
             raise FilterError("inconnu", "unknown filter property 'inconnu'")
         return FeaturePage(features=[FEAT], number_matched=matched, number_returned=1)
@@ -41,8 +50,7 @@ def make_fake_repo(matched=3):
     def get_feature(session, info, *, fid):
         return FEAT if fid == "1" else None
 
-    return SimpleNamespace(select_features=select_features, get_feature=get_feature,
-                           calls=calls)
+    return SimpleNamespace(select_features=select_features, get_feature=get_feature, calls=calls)
 
 
 @pytest.fixture()
@@ -52,12 +60,25 @@ def env():
     Session = make_session_factory(engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-                                   email=None, first_name="", last_name="",
-                                   bootstrap_admin=True)
-        regular = get_or_create_user(s, tenant_id=tenant.id, oidc_sub="r",
-                                     username="regular", email=None,
-                                     first_name="", last_name="")
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -67,13 +88,13 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
-    app.dependency_overrides[collections_routes.get_ddl_applier] = (
-        lambda: lambda session, table: None)
+    app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
+        lambda session, table: None
+    )
     fake_repo = make_fake_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_repo
     # SQLite ne connaît ni SET LOCAL ROLE ni set_config : neutraliser le scope.
-    app.dependency_overrides[features_routes.get_rls_scope] = (
-        lambda: features_routes.null_rls_scope)
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     client = TestClient(app)
     return app, client, admin, regular, fake_repo
 
@@ -96,7 +117,7 @@ def test_items_returns_feature_collection_with_links(env):
     body = r.json()
     assert body["type"] == "FeatureCollection"
     assert body["numberMatched"] == 3 and body["numberReturned"] == 1
-    rels = {l["rel"]: l["href"] for l in body["links"]}
+    rels = {link["rel"]: link["href"] for link in body["links"]}
     assert "offset=2" in rels["next"] and "offset=0" in rels["prev"]
     assert repo.calls["limit"] == 1 and repo.calls["offset"] == 1
 

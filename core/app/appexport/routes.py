@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Routes REST de l'export d'app (SP-18a) — montées uniquement quand
 CORE_APPEXPORT_ENABLED est actif, même patron que app.export.routes."""
+
 import os
 from collections.abc import Callable
 
@@ -53,6 +54,7 @@ def get_appexports_bucket() -> str:
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     def deferrer(job_id: str, tenant_id: str) -> None:
         build_app_export_task.defer(job_id=job_id, tenant_id=tenant_id)
+
     return deferrer
 
 
@@ -64,12 +66,21 @@ def create_app_export_route(
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> CreateAppExportResponse:
     if body.mode not in _SUPPORTED_MODES:
-        raise HTTPException(status_code=422, detail=f"mode must be one of {sorted(_SUPPORTED_MODES)}")
+        raise HTTPException(
+            status_code=422, detail=f"mode must be one of {sorted(_SUPPORTED_MODES)}"
+        )
     _require_export_read_access(session, user=user, item_id=body.itemId)
-    job = appexport_repo.create_job(session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, mode=body.mode)
+    job = appexport_repo.create_job(
+        session, tenant_id=user.tenant_id, item_id=body.itemId, user_id=user.id, mode=body.mode
+    )
     write_audit(
-        session, tenant_id=user.tenant_id, actor_id=user.id, actor_kind="user",
-        action="appexport.create", object_type="app_export_job", object_id=job.id,
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="appexport.create",
+        object_type="app_export_job",
+        object_id=job.id,
         payload={"itemId": body.itemId, "mode": body.mode},
     )
     session.commit()  # commit avant de déférer : même raison que export_routes/run_pipeline_route

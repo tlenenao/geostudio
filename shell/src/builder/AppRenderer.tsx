@@ -9,7 +9,11 @@ import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
 import { VariablesProvider, useSetVariable, useVariables } from "./VariablesContext";
-import { AnalyticsContextProvider, useAnalyticsContext, type AnalyticsContextState } from "./AnalyticsContext";
+import {
+  AnalyticsContextProvider,
+  useAnalyticsContext,
+  type AnalyticsContextState,
+} from "./AnalyticsContext";
 import { AnalyticsContextIndicator } from "./AnalyticsContextIndicator";
 import { ExplorerProvider } from "./ExplorerContext";
 import { ExplorerDrawer } from "./ExplorerDrawer";
@@ -33,9 +37,10 @@ function coerceForVariable(payload: unknown, variable: Variable): unknown {
   if (type === "list") {
     return Array.isArray(payload) ? payload : undefined;
   }
-  const raw = payload && typeof payload === "object"
-    ? (payload as Record<string, unknown>)[variable.name]
-    : payload;
+  const raw =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)[variable.name]
+      : payload;
   if (type === "number") {
     const n = Number(raw);
     return Number.isNaN(n) ? undefined : n;
@@ -150,7 +155,11 @@ export function AppRenderer({
   }
 
   return (
-    <div ref={containerRef} className="flex h-full w-full flex-col bg-[var(--gs-color-background)] font-[var(--gs-font)]" style={themeToCssVars(config.theme)}>
+    <div
+      ref={containerRef}
+      className="flex h-full w-full flex-col bg-[var(--gs-color-background)] font-[var(--gs-font)]"
+      style={themeToCssVars(config.theme)}
+    >
       {storyMode && (
         <nav className="flex items-center gap-2 border-b border-[var(--gs-color-border)] p-2 text-sm">
           <button
@@ -161,7 +170,9 @@ export function AppRenderer({
           >
             Précédent
           </button>
-          <span className="text-[var(--gs-color-muted)]">Chapitre {chapterIndex + 1} / {pages.length}</span>
+          <span className="text-[var(--gs-color-muted)]">
+            Chapitre {chapterIndex + 1} / {pages.length}
+          </span>
           <button
             type="button"
             className="rounded-[var(--gs-radius)] border border-[var(--gs-color-border)] px-2 py-1 disabled:opacity-30"
@@ -195,7 +206,15 @@ export function AppRenderer({
                     selectedId={selectedId}
                     onSelect={(id) => onSelect?.(id)}
                     onMoveItem={handleMove}
-                    renderItem={(item) => <WidgetHost item={item} mode={mode} pages={pages} navigate={handleNavigate} breakpoint={bp} />}
+                    renderItem={(item) => (
+                      <WidgetHost
+                        item={item}
+                        mode={mode}
+                        pages={pages}
+                        navigate={handleNavigate}
+                        breakpoint={bp}
+                      />
+                    )}
                   />
                 </DataProvider>
               </AnalyticsContextProvider>

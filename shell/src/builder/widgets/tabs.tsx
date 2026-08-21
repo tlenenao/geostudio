@@ -72,8 +72,22 @@ export function registerTabsWidget(): void {
                   value={t.label}
                   onChange={(e) => renameTab(t.id, e.target.value)}
                 />
-                <button type="button" aria-label={`Monter l'onglet ${t.label}`} disabled={i === 0} onClick={() => moveTab(t.id, -1)}>↑</button>
-                <button type="button" aria-label={`Descendre l'onglet ${t.label}`} disabled={i === tabs.length - 1} onClick={() => moveTab(t.id, 1)}>↓</button>
+                <button
+                  type="button"
+                  aria-label={`Monter l'onglet ${t.label}`}
+                  disabled={i === 0}
+                  onClick={() => moveTab(t.id, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Descendre l'onglet ${t.label}`}
+                  disabled={i === tabs.length - 1}
+                  onClick={() => moveTab(t.id, 1)}
+                >
+                  ↓
+                </button>
                 <button
                   type="button"
                   aria-label={`Supprimer l'onglet ${t.label}`}
@@ -85,11 +99,21 @@ export function registerTabsWidget(): void {
                 </button>
               </div>
             ))}
-            <button type="button" aria-label="Ajouter un onglet" className={inputCls} onClick={addTab}>
+            <button
+              type="button"
+              aria-label="Ajouter un onglet"
+              className={inputCls}
+              onClick={addTab}
+            >
               Ajouter un onglet
             </button>
           </div>
-          <LayoutEditor items={active.items} onChange={setActiveItems} dataSources={dataSources} breakpoint="lg" />
+          <LayoutEditor
+            items={active.items}
+            onChange={setActiveItems}
+            dataSources={dataSources}
+            breakpoint="lg"
+          />
         </div>
       );
     },
@@ -99,7 +123,11 @@ export function registerTabsWidget(): void {
       const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
       if (!active) {
-        return <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">Aucun onglet</div>;
+        return (
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+            Aucun onglet
+          </div>
+        );
       }
 
       if (ctx.mode === "edit") {
@@ -107,7 +135,9 @@ export function registerTabsWidget(): void {
           <div className="flex h-full flex-col">
             <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
               {tabs.map((t) => (
-                <span key={t.id} className="px-2 py-1">{t.label}</span>
+                <span key={t.id} className="px-2 py-1">
+                  {t.label}
+                </span>
               ))}
             </div>
             <div className="flex-1 bg-slate-50" />
@@ -138,7 +168,13 @@ export function registerTabsWidget(): void {
               onSelect={() => {}}
               onMoveItem={() => {}}
               renderItem={(item) => (
-                <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} breakpoint={ctx.breakpoint} />
+                <WidgetHost
+                  item={item}
+                  mode={ctx.mode}
+                  pages={ctx.pages}
+                  navigate={ctx.navigate}
+                  breakpoint={ctx.breakpoint}
+                />
               )}
             />
           </div>

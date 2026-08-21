@@ -10,7 +10,9 @@ import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
 // PipelineBuilderPage possède l'état PipelinePayload au lieu que
 // PipelineScheduleEditor le possède.
 export function ReportScheduleEditor({
-  value, onChange, bookmarkLabel,
+  value,
+  onChange,
+  bookmarkLabel,
 }: {
   value: ReportSchedulePayload;
   onChange: (next: ReportSchedulePayload) => void;
@@ -60,7 +62,13 @@ export function ReportScheduleEditor({
             <input
               className="rounded border border-slate-300 px-2 py-1"
               value={channel.to}
-              onChange={(e) => setChannel({ kind: "email", to: e.target.value, smtpSecretName: channel.smtpSecretName })}
+              onChange={(e) =>
+                setChannel({
+                  kind: "email",
+                  to: e.target.value,
+                  smtpSecretName: channel.smtpSecretName,
+                })
+              }
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -68,7 +76,9 @@ export function ReportScheduleEditor({
             <input
               className="rounded border border-slate-300 px-2 py-1"
               value={channel.smtpSecretName}
-              onChange={(e) => setChannel({ kind: "email", to: channel.to, smtpSecretName: e.target.value })}
+              onChange={(e) =>
+                setChannel({ kind: "email", to: channel.to, smtpSecretName: e.target.value })
+              }
             />
           </label>
         </>
@@ -76,7 +86,9 @@ export function ReportScheduleEditor({
 
       <PipelineScheduleEditor
         value={value.refreshPolicy}
-        onChange={(policy) => onChange({ ...value, refreshPolicy: policy ?? { enabled: false, cron: "0 8 * * MON" } })}
+        onChange={(policy) =>
+          onChange({ ...value, refreshPolicy: policy ?? { enabled: false, cron: "0 8 * * MON" } })
+        }
       />
     </div>
   );

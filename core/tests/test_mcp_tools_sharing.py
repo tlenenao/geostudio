@@ -4,10 +4,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
+from app.main import create_app
 from app.sharing.models import Group, GroupMember, ItemShare
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -34,8 +34,13 @@ def app_client(monkeypatch, tmp_path):
         # CORE_AUTH_MODE=mock always resolves this exact identity (see
         # app/auth/dependency.py's mock branch and MockTokenVerifier).
         mock_user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="mock-sub",
-            username="mockuser", email=None, first_name="Mock", last_name="User",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         setup_session.commit()
 
@@ -85,9 +90,12 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     init_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
             "params": {
-                "protocolVersion": "2025-06-18", "capabilities": {},
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
                 "clientInfo": {"name": "test", "version": "0"},
             },
         },
@@ -107,15 +115,15 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     call_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
         headers=session_headers,
     )
     assert call_response.status_code == 200
-    body_line = next(
-        line for line in call_response.text.splitlines() if line.startswith("data: ")
-    )
+    body_line = next(line for line in call_response.text.splitlines() if line.startswith("data: "))
     payload = json.loads(body_line.removeprefix("data: "))
     return payload["result"]
 
@@ -123,8 +131,11 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
 def _seed_item(test_client, *, owner_id, title="Item") -> str:
     with test_client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=test_client.tenant.id, owner_id=owner_id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=test_client.tenant.id,
+            owner_id=owner_id,
+            resource_type="app",
+            title=title,
         )
         session.commit()
         return item.id
@@ -140,17 +151,27 @@ def test_get_sharing_defaults_to_private(app_client):
 
 
 def test_set_sharing_then_get_sharing_round_trips(app_client):
-    from app.sharing.models import Group
 
     item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
     with app_client.session_factory() as session:
-        session.add(Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=app_client.mock_user.id))
+        session.add(
+            Group(
+                id="g1",
+                tenant_id=app_client.tenant.id,
+                name="G",
+                created_by=app_client.mock_user.id,
+            )
+        )
         session.commit()
 
     with app_client:
         call_tool(
-            app_client, "set_sharing",
-            {"itemId": item_id, "sharing": {"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]}},
+            app_client,
+            "set_sharing",
+            {
+                "itemId": item_id,
+                "sharing": {"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]},
+            },
         )
         result = call_tool(app_client, "get_sharing", {"itemId": item_id})
 
@@ -164,8 +185,13 @@ def test_get_sharing_invisible_to_a_stranger_errors(app_client):
     # never exercised for either tool.
     with app_client.session_factory() as session:
         stranger = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="sub-stranger",
-            username="stranger", email=None, first_name="", last_name="",
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-stranger",
+            username="stranger",
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.commit()
         stranger_id = stranger.id
@@ -182,29 +208,45 @@ def test_set_sharing_by_group_viewer_errors(app_client):
     # (test_mcp_tools_configs.py): mock_user can read the item (viewer share)
     # but has no editor/share role — set_sharing (action="share") must
     # refuse, not silently succeed.
-    from app.sharing.models import Group, GroupMember, ItemShare
 
     with app_client.session_factory() as session:
         owner = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="sub-owner",
-            username="owner", email=None, first_name="", last_name="",
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-owner",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.flush()
         item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=owner.id,
-            resource_type="app", title="Shared",
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Shared",
         )
         group = Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=owner.id)
         session.add(group)
         session.flush()
-        session.add(GroupMember(group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id))
-        session.add(ItemShare(item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"))
+        session.add(
+            GroupMember(
+                group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id
+            )
+        )
+        session.add(
+            ItemShare(
+                item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"
+            )
+        )
         session.commit()
         item_id = item.id
 
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "set_sharing",
+            app_client,
+            "set_sharing",
             {"itemId": item_id, "sharing": {"public": True, "groups": []}},
         )
 
@@ -216,8 +258,12 @@ def test_set_sharing_with_unknown_group_errors(app_client):
 
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "set_sharing",
-            {"itemId": item_id, "sharing": {"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]}},
+            app_client,
+            "set_sharing",
+            {
+                "itemId": item_id,
+                "sharing": {"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]},
+            },
         )
 
     assert "group" in error_text.lower()
@@ -227,11 +273,17 @@ def test_set_sharing_writes_audit_log_with_agent_actor(app_client):
     item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
 
     with app_client:
-        call_tool(app_client, "set_sharing", {"itemId": item_id, "sharing": {"public": True, "groups": []}})
+        call_tool(
+            app_client,
+            "set_sharing",
+            {"itemId": item_id, "sharing": {"public": True, "groups": []}},
+        )
 
     with app_client.session_factory() as session:
         from sqlalchemy import select
+
         from app.audit.models import AuditLog
+
         rows = session.scalars(select(AuditLog).where(AuditLog.action == "item.share")).all()
         assert len(rows) == 1
         assert rows[0].actor_kind == "agent"

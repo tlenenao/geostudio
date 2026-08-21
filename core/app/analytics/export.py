@@ -3,17 +3,20 @@
 sans géométrie par construction) ou features GeoJSON (mode entités brutes)
 vers CSV/XLSX/GeoJSON/GPKG. Fonctions pures, réutilisables telles quelles
 par SP-16b (rapports planifiés) sans passer par un appel HTTP interne."""
+
 import json
 import re
 import tempfile
 import unicodedata
 from csv import DictWriter
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
+import duckdb
 from openpyxl import Workbook
 
 EXPORT_MEDIA_TYPES = {
@@ -24,7 +27,7 @@ EXPORT_MEDIA_TYPES = {
 }
 
 
-def _json_default(value):
+def _json_default(value: object) -> str | None:
     """Encodeur de repli pour json.dumps() sur des properties issues de psycopg
     brut (contrairement à GET /collections/{id}/items, protégé par
     jsonable_encoder de FastAPI) : date/datetime/time -> isoformat,
@@ -39,14 +42,14 @@ def _json_default(value):
     raise TypeError(f"unserializable value of type {type(value).__name__}")
 
 
-def _xlsx_cell_value(value):
+def _xlsx_cell_value(value: object) -> object:
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
     rejette les datetime tz-aware, les dict/list/tuple, et — comme colonnes
     Postgres uuid/bytea remontées brutes par psycopg — UUID et bytes/
     memoryview (mêmes choix de coercition que _json_default ci-dessus)."""
     if isinstance(value, datetime) and value.tzinfo is not None:
-        return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.astimezone(UTC).replace(tzinfo=None)
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, default=str)
     if isinstance(value, UUID):
@@ -59,11 +62,11 @@ def _xlsx_cell_value(value):
 def export_filename(title: str, *, format: str) -> str:
     normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower() or "export"
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return f"{slug}-{stamp}.{format}"
 
 
-def rows_to_csv(rows: list[dict]) -> bytes:
+def rows_to_csv(rows: list[dict[str, Any]]) -> bytes:
     if not rows:
         return b""
     buf = StringIO()
@@ -73,7 +76,7 @@ def rows_to_csv(rows: list[dict]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
-def rows_to_xlsx(rows: list[dict]) -> bytes:
+def rows_to_xlsx(rows: list[dict[str, Any]]) -> bytes:
     wb = Workbook()
     ws = wb.active
     if rows:
@@ -86,7 +89,7 @@ def rows_to_xlsx(rows: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def rows_to_format(rows: list[dict], *, format: str) -> bytes:
+def rows_to_format(rows: list[dict[str, Any]], *, format: str) -> bytes:
     if format == "csv":
         return rows_to_csv(rows)
     if format == "xlsx":
@@ -94,13 +97,14 @@ def rows_to_format(rows: list[dict], *, format: str) -> bytes:
     raise ValueError(f"unsupported row format '{format}'")
 
 
-def features_to_geojson(features: list[dict]) -> bytes:
+def features_to_geojson(features: list[dict[str, Any]]) -> bytes:
     return json.dumps(
-        {"type": "FeatureCollection", "features": features}, default=_json_default,
+        {"type": "FeatureCollection", "features": features},
+        default=_json_default,
     ).encode("utf-8")
 
 
-def features_to_gpkg(features: list[dict], conn) -> bytes:
+def features_to_gpkg(features: list[dict[str, Any]], conn: duckdb.DuckDBPyConnection) -> bytes:
     with tempfile.TemporaryDirectory() as scratch_dir:
         in_path = Path(scratch_dir) / "in.geojson"
         out_path = Path(scratch_dir) / "out.gpkg"
@@ -113,7 +117,9 @@ def features_to_gpkg(features: list[dict], conn) -> bytes:
         return out_path.read_bytes()
 
 
-def features_to_format(features: list[dict], *, format: str, conn=None) -> bytes:
+def features_to_format(
+    features: list[dict[str, Any]], *, format: str, conn: duckdb.DuckDBPyConnection | None = None
+) -> bytes:
     if format in ("csv", "xlsx"):
         return rows_to_format([f.get("properties") or {} for f in features], format=format)
     if format == "geojson":

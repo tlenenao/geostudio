@@ -4,12 +4,12 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -35,8 +35,13 @@ def app_client(monkeypatch, tmp_path):
         # CORE_AUTH_MODE=mock always resolves this exact identity (see
         # app/auth/dependency.py's mock branch and MockTokenVerifier).
         mock_user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="mock-sub",
-            username="mockuser", email=None, first_name="Mock", last_name="User",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         setup_session.commit()
 
@@ -82,9 +87,12 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     init_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
             "params": {
-                "protocolVersion": "2025-06-18", "capabilities": {},
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
                 "clientInfo": {"name": "test", "version": "0"},
             },
         },
@@ -104,15 +112,15 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     call_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
         headers=session_headers,
     )
     assert call_response.status_code == 200
-    body_line = next(
-        line for line in call_response.text.splitlines() if line.startswith("data: ")
-    )
+    body_line = next(line for line in call_response.text.splitlines() if line.startswith("data: "))
     payload = json.loads(body_line.removeprefix("data: "))
     return payload["result"]
 
@@ -120,8 +128,11 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
 def _seed_item(test_client, *, owner_id, title="Item") -> str:
     with test_client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=test_client.tenant.id, owner_id=owner_id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=test_client.tenant.id,
+            owner_id=owner_id,
+            resource_type="app",
+            title=title,
         )
         session.commit()
         return item.id
@@ -130,21 +141,25 @@ def _seed_item(test_client, *, owner_id, title="Item") -> str:
 def _config_body(widget="map") -> dict:
     return {
         "kind": "app",
-        "layout": {"type": "grid", "items": [
-            {"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}
-        ]},
+        "layout": {"type": "grid", "items": [{"widget": widget, "x": 0, "y": 0, "w": 4, "h": 4}]},
     }
 
 
 def _seed_config(test_client, *, owner_id, title="Item") -> tuple[str, str]:
     with test_client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=test_client.tenant.id, owner_id=owner_id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=test_client.tenant.id,
+            owner_id=owner_id,
+            resource_type="app",
+            title=title,
         )
         session.flush()
         config = configs_repo.create_config(
-            session, BuilderConfig(**_config_body()), item_id=item.id, tenant_id=test_client.tenant.id
+            session,
+            BuilderConfig(**_config_body()),
+            item_id=item.id,
+            tenant_id=test_client.tenant.id,
         )
         session.commit()
         return item.id, config.id
@@ -164,7 +179,8 @@ def test_save_app_config_updates_and_bumps_version(app_client):
 
     with app_client:
         result = call_tool(
-            app_client, "save_app_config",
+            app_client,
+            "save_app_config",
             {"itemId": item_id, "config": _config_body(widget="table")},
         )
 
@@ -177,29 +193,50 @@ def test_save_app_config_by_group_viewer_errors(app_client):
 
     with app_client.session_factory() as session:
         owner = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="sub-owner",
-            username="owner", email=None, first_name="", last_name="",
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-owner",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.flush()
         item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=owner.id,
-            resource_type="app", title="Shared",
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Shared",
         )
         session.flush()
         configs_repo.create_config(
-            session, BuilderConfig(**_config_body()), item_id=item.id, tenant_id=app_client.tenant.id
+            session,
+            BuilderConfig(**_config_body()),
+            item_id=item.id,
+            tenant_id=app_client.tenant.id,
         )
         group = Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=owner.id)
         session.add(group)
         session.flush()
-        session.add(GroupMember(group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id))
-        session.add(ItemShare(item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"))
+        session.add(
+            GroupMember(
+                group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id
+            )
+        )
+        session.add(
+            ItemShare(
+                item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"
+            )
+        )
         session.commit()
         item_id = item.id
 
     with app_client:
         error_text = call_tool_expecting_error(
-            app_client, "save_app_config", {"itemId": item_id, "config": _config_body(widget="table")},
+            app_client,
+            "save_app_config",
+            {"itemId": item_id, "config": _config_body(widget="table")},
         )
 
     assert "not allowed" in error_text.lower()
@@ -213,7 +250,9 @@ def test_save_app_config_writes_audit_log_with_agent_actor(app_client):
 
     with app_client.session_factory() as session:
         from sqlalchemy import select
+
         from app.audit.models import AuditLog
+
         rows = session.scalars(select(AuditLog).where(AuditLog.action == "config.update")).all()
         assert len(rows) == 1
         assert rows[0].actor_kind == "agent"

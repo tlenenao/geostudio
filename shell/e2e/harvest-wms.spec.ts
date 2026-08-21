@@ -3,15 +3,23 @@ import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 const CAPS = "https://ows.example.com/geoserver/wms?service=WMS&request=GetCapabilities";
-const TILES = "https://ows.example.com/geoserver/wms?service=WMS&version=1.3.0&request=GetMap&layers=topp:states&styles=&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256&format=image/png&transparent=true";
+const TILES =
+  "https://ows.example.com/geoserver/wms?service=WMS&version=1.3.0&request=GetMap&layers=topp:states&styles=&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256&format=image/png&transparent=true";
 
-test("un admin déclare une source WMS, la moissonne, et affiche la couche raster dans une carte", async ({ page }) => {
+test("un admin déclare une source WMS, la moissonne, et affiche la couche raster dans une carte", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.route("**/me", async (route) => {
     await route.fulfill({
       json: {
-        id: "u-mock", username: "mockuser", firstName: "Mock", lastName: "User",
-        email: null, tenantId: "t-mock", isAdmin: true,
+        id: "u-mock",
+        username: "mockuser",
+        firstName: "Mock",
+        lastName: "User",
+        email: null,
+        tenantId: "t-mock",
+        isAdmin: true,
       },
     });
   });
@@ -28,8 +36,15 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
       await route.fulfill({
         status: 201,
         json: {
-          id: "src-1", type: "wms", url: CAPS, mode: "reference", enabled: true,
-          intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
+          id: "src-1",
+          type: "wms",
+          url: CAPS,
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
         },
       });
       return;
@@ -37,12 +52,19 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
     await route.fulfill({
       json: {
         sources: created
-          ? [{
-              id: "src-1", type: "wms", url: CAPS, mode: "reference", enabled: true,
-              intervalMinutes: null,
-              lastRunAt: runCount > 0 ? "2026-07-23T10:00:00Z" : null,
-              lastStatus: runCount > 0 ? "ok" : null, lastError: null,
-            }]
+          ? [
+              {
+                id: "src-1",
+                type: "wms",
+                url: CAPS,
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: runCount > 0 ? "2026-07-23T10:00:00Z" : null,
+                lastStatus: runCount > 0 ? "ok" : null,
+                lastError: null,
+              },
+            ]
           : [],
       },
     });
@@ -51,12 +73,23 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set(`${CAPS}#topp:states`, {
-      pk: "ext-wms-1", resourceType: "external", title: "USA States (WMS distant)",
-      abstract: "", owner: "mockuser", thumbnailUrl: null, date: "2026-01-01",
-      configId: null, isPublished: false,
+      pk: "ext-wms-1",
+      resourceType: "external",
+      title: "USA States (WMS distant)",
+      abstract: "",
+      owner: "mockuser",
+      thumbnailUrl: null,
+      date: "2026-01-01",
+      configId: null,
+      isPublished: false,
     });
     rasterLayers.length = 0;
-    rasterLayers.push({ id: "ext-wms-1", title: "USA States (WMS distant)", kind: "raster", tilesUrl: TILES });
+    rasterLayers.push({
+      id: "ext-wms-1",
+      title: "USA States (WMS distant)",
+      kind: "raster",
+      tilesUrl: TILES,
+    });
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
@@ -90,9 +123,14 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   await dialog.getByLabel("URL").fill(CAPS);
   await dialog.getByLabel("Type").selectOption("wms");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await expect.poll(() => created).toEqual({
-    type: "wms", url: CAPS, mode: "reference", enabled: true,
-  });
+  await expect
+    .poll(() => created)
+    .toEqual({
+      type: "wms",
+      url: CAPS,
+      mode: "reference",
+      enabled: true,
+    });
   await page.getByRole("button", { name: "Moissonner maintenant" }).click();
   await expect.poll(() => runCount).toBe(1);
   await expect(page.getByText("ok")).toBeVisible();
@@ -115,5 +153,7 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   await page.getByRole("button", { name: /USA States \(WMS distant\)/ }).click();
 
   // 4) Assertion : une couche raster est ajoutée à la carte (LayersPanel).
-  await expect(page.getByRole("button", { name: "Retirer USA States (WMS distant)" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retirer USA States (WMS distant)" }),
+  ).toBeVisible();
 });

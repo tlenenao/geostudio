@@ -2,10 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
 from app.auth.dependency import get_current_user
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 from app.sharing.models import Group, GroupMember, ItemShare
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -19,8 +19,13 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         alice = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-alice",
-            username="alice", email=None, first_name="", last_name="",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-alice",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         setup_session.commit()
 
@@ -55,18 +60,32 @@ def test_item_shared_to_a_group_is_visible_to_members_and_invisible_to_others(cl
 
     with client.session_factory() as session:
         member = get_or_create_user(
-            session, tenant_id=client.tenant.id, oidc_sub="sub-member",
-            username="member", email=None, first_name="", last_name="",
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-member",
+            username="member",
+            email=None,
+            first_name="",
+            last_name="",
         )
         outsider = get_or_create_user(
-            session, tenant_id=client.tenant.id, oidc_sub="sub-outsider",
-            username="outsider", email=None, first_name="", last_name="",
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-outsider",
+            username="outsider",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        group = Group(id="g1", tenant_id=client.tenant.id, name="Trusted", created_by=client.user.id)
+        group = Group(
+            id="g1", tenant_id=client.tenant.id, name="Trusted", created_by=client.user.id
+        )
         session.add(group)
         session.flush()
         session.add(GroupMember(group_id=group.id, user_id=member.id, tenant_id=client.tenant.id))
-        session.add(ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer"))
+        session.add(
+            ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer")
+        )
         session.commit()
         session.refresh(member)
         session.refresh(outsider)

@@ -10,7 +10,10 @@ export class MockMap {
     zoom: number;
     pitch?: number;
     bearing?: number;
-    transformRequest?: (url: string, resourceType?: string) => { url: string; headers?: Record<string, string> };
+    transformRequest?: (
+      url: string,
+      resourceType?: string,
+    ) => { url: string; headers?: Record<string, string> };
   };
   handlers: Record<string, Array<() => void>> = {};
   layerHandlers: Record<string, Array<(e: unknown) => void>> = {};
@@ -21,7 +24,10 @@ export class MockMap {
   throwOnAddLayer = new Set<string>();
   flyToArgs: unknown[] = [];
   fitBoundsArgs: unknown[] = [];
-  bounds: [[number, number], [number, number]] = [[0, 0], [0, 0]];
+  bounds: [[number, number], [number, number]] = [
+    [0, 0],
+    [0, 0],
+  ];
   terrain: unknown = null;
 
   constructor(opts: MockMap["opts"]) {

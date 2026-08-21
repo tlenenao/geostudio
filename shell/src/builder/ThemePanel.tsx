@@ -5,7 +5,7 @@ import { DEFAULT_THEME_COLORS, DEFAULT_FONT, DEFAULT_RADIUS, DEFAULT_SPACE } fro
 const FONTS: [string, string][] = [
   ["system-ui, sans-serif", "Système"],
   ["Georgia, serif", "Serif"],
-  ["\"Courier New\", monospace", "Monospace"],
+  ['"Courier New", monospace', "Monospace"],
 ];
 const RADII: [string, string][] = [
   ["0px", "Carré"],
@@ -60,7 +60,11 @@ export function ThemePanel({
           value={theme.font ?? DEFAULT_FONT}
           onChange={(e) => onChange({ ...theme, font: e.target.value })}
         >
-          {FONTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {FONTS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
       </label>
       <label className="flex flex-col gap-1">
@@ -71,7 +75,11 @@ export function ThemePanel({
           value={theme.radius ?? DEFAULT_RADIUS}
           onChange={(e) => onChange({ ...theme, radius: e.target.value })}
         >
-          {RADII.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {RADII.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
       </label>
       <label className="flex flex-col gap-1">
@@ -82,7 +90,11 @@ export function ThemePanel({
           value={theme.space ?? DEFAULT_SPACE}
           onChange={(e) => onChange({ ...theme, space: e.target.value })}
         >
-          {SPACES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {SPACES.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
       </label>
     </div>

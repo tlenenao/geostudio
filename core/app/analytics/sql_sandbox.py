@@ -10,14 +10,17 @@ re-confirmé directement en Task 7 via `SELECT 1 UNION SELECT 2`.
 Correction empirique reportée du spike (Task 1) : `duckdb.Exception` n'existe
 pas en DuckDB 1.5.4 (AttributeError à l'exécution) — la base commune réelle
 de toutes les exceptions DuckDB est `duckdb.Error`, utilisée ci-dessous."""
+
 import json
 import threading
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 
 from app.analytics.aggregate import _dedup_cte, _has_any_file, _qi
+from app.collections.introspection import TableInfo
 
 ROW_CAP = 10_000
 STATEMENT_TIMEOUT_S = 10.0
@@ -34,18 +37,25 @@ class SqlSandboxError(Exception):
     """Erreur SQL analyste destinée à un 400."""
 
 
-def parse_ast(conn: duckdb.DuckDBPyConnection, sql: str) -> dict:
+def parse_ast(conn: duckdb.DuckDBPyConnection, sql: str) -> dict[str, Any]:
     try:
-        raw = conn.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()[0]
+        row = conn.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()
     except duckdb.Error as exc:
         raise SqlSandboxError(f"invalid SQL: {exc}") from exc
-    doc = json.loads(raw)
+    # json_serialize_sql toujours une seule ligne/colonne en sortie d'un SELECT
+    # scalaire réussi ; la branche `is None` ne peut pas se produire en
+    # pratique, mais fetchone() est typé Optional par duckdb — on le rend
+    # explicite plutôt que de forcer l'indexation.
+    if row is None:  # pragma: no cover
+        raise SqlSandboxError("invalid SQL: no result from json_serialize_sql")
+    raw = row[0]
+    doc: dict[str, Any] = json.loads(raw)
     if doc.get("error"):
         raise SqlSandboxError(doc.get("error_message") or "invalid SQL")
     return doc
 
 
-def validate_select_only(ast: dict) -> None:
+def validate_select_only(ast: dict[str, Any]) -> None:
     statements = ast.get("statements", [])
     if len(statements) != 1:
         raise SqlSandboxError("exactly one SELECT statement is required")
@@ -54,10 +64,10 @@ def validate_select_only(ast: dict) -> None:
         raise SqlSandboxError("only read-only SELECT queries are allowed")
 
 
-def collect_table_refs(ast: dict) -> set[str]:
+def collect_table_refs(ast: dict[str, Any]) -> set[str]:
     found: set[str] = set()
 
-    def walk(obj):
+    def walk(obj: object) -> None:
         if isinstance(obj, dict):
             if obj.get("type") == _BASE_TABLE_TYPE and isinstance(obj.get("table_name"), str):
                 found.add(obj["table_name"])
@@ -76,7 +86,14 @@ def _apply_limits(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(f"SET threads = {THREADS}")
 
 
-def _materialize(conn, *, name, table_info, base_uri, tenant_id) -> None:
+def _materialize(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    name: str,
+    table_info: TableInfo,
+    base_uri: str,
+    tenant_id: str,
+) -> None:
     if not _has_any_file(conn, base_uri, tenant_id, name):
         raise SqlSandboxError(f"collection '{name}' has no data yet")
     cte = _dedup_cte(table_info, base_uri, tenant_id, name)
@@ -88,7 +105,7 @@ def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute("SET lock_configuration = true")
 
 
-def _coerce(value):
+def _coerce(value: object) -> object:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value).hex()
     if isinstance(value, (datetime, date)):
@@ -98,7 +115,9 @@ def _coerce(value):
     return value
 
 
-def _execute_bounded(conn, sql):
+def _execute_bounded(
+    conn: duckdb.DuckDBPyConnection, sql: str
+) -> tuple[list[str], list[list[object]], bool]:
     timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
     timer.start()
     try:
@@ -116,7 +135,14 @@ def _execute_bounded(conn, sql):
     return columns, rows, truncated
 
 
-def run_analyst_sql(conn, *, sql, allowed, base_uri, tenant_id):
+def run_analyst_sql(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    sql: str,
+    allowed: dict[str, TableInfo],
+    base_uri: str,
+    tenant_id: str,
+) -> tuple[list[str], list[list[object]], bool]:
     """Exécute le SQL de l'analyste confiné aux vues autorisées. `allowed` :
     {collection_id: TableInfo}. Retourne (columns, rows, truncated). L'ordre est
     critique : matérialiser (accès externe encore ouvert) PUIS verrouiller PUIS
@@ -126,6 +152,8 @@ def run_analyst_sql(conn, *, sql, allowed, base_uri, tenant_id):
     refs = collect_table_refs(ast)
     _apply_limits(conn)
     for name in sorted(refs & set(allowed)):
-        _materialize(conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id)
+        _materialize(
+            conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id
+        )
     _lock_down(conn)
     return _execute_bounded(conn, sql)

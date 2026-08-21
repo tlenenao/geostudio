@@ -27,9 +27,7 @@ class _FakeS3Client:
 
     def get_object(self, Bucket, Key):  # noqa: N803
         if Key not in self.objects:
-            raise ClientError(
-                {"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject"
-            )
+            raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject")
 
         class _Body:
             def __init__(self, data: bytes):
@@ -49,8 +47,13 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     app = create_app()
@@ -64,8 +67,8 @@ def env():
     app.dependency_overrides[get_current_user] = lambda: alice
     app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: fake_s3
     deferred: list[tuple[str, str]] = []
-    app.dependency_overrides[ingestion_routes.get_task_deferrer] = (
-        lambda: (lambda job_id, tenant_id: deferred.append((job_id, tenant_id)))
+    app.dependency_overrides[ingestion_routes.get_task_deferrer] = lambda: (
+        lambda job_id, tenant_id: deferred.append((job_id, tenant_id))
     )
     client = TestClient(app)
     return client, Session, tenant, alice, deferred, fake_s3
@@ -73,7 +76,10 @@ def env():
 
 def test_presign_returns_upload_url_and_key(env):
     client, *_ = env
-    r = client.post("/uploads/presign", json={"filename": "villes.geojson", "contentType": "application/geo+json"})
+    r = client.post(
+        "/uploads/presign",
+        json={"filename": "villes.geojson", "contentType": "application/geo+json"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["key"].endswith("-villes.geojson")
@@ -82,10 +88,14 @@ def test_presign_returns_upload_url_and_key(env):
 
 def test_create_upload_job_defers_task_and_returns_job_id(env):
     client, Session, tenant, alice, deferred, _fake_s3 = env
-    r = client.post("/uploads", json={
-        "key": "default/abc-villes.geojson", "filename": "villes.geojson",
-        "collectionTitle": "Villes",
-    })
+    r = client.post(
+        "/uploads",
+        json={
+            "key": "default/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    )
     assert r.status_code == 201
     job_id = r.json()["jobId"]
     assert deferred == [(job_id, tenant.id)]
@@ -93,16 +103,23 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
     r2 = client.get(f"/uploads/{job_id}")
     assert r2.status_code == 200
     assert r2.json() == {
-        "status": "pending", "errorMessage": None, "collectionId": None, "itemId": None,
+        "status": "pending",
+        "errorMessage": None,
+        "collectionId": None,
+        "itemId": None,
     }
 
 
 def test_create_upload_job_rejects_key_with_foreign_tenant_prefix(env):
     client, *_ = env
-    r = client.post("/uploads", json={
-        "key": "other-tenant/abc-villes.geojson", "filename": "villes.geojson",
-        "collectionTitle": "Villes",
-    })
+    r = client.post(
+        "/uploads",
+        json={
+            "key": "other-tenant/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    )
     assert r.status_code == 400
 
 
@@ -122,18 +139,29 @@ def test_get_upload_job_cross_tenant_returns_404(env):
     from app.users.repository import get_or_create_user
 
     client, Session, tenant, alice, deferred, _fake_s3 = env
-    job_id = client.post("/uploads", json={
-        "key": f"{tenant.id}/abc-villes.geojson", "filename": "villes.geojson",
-        "collectionTitle": "Villes",
-    }).json()["jobId"]
+    job_id = client.post(
+        "/uploads",
+        json={
+            "key": f"{tenant.id}/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    ).json()["jobId"]
 
     with Session() as s:
-        other_tenant = Tenant(id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
+        other_tenant = Tenant(
+            id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other"
+        )
         s.add(other_tenant)
         s.flush()
         outsider = get_or_create_user(
-            s, tenant_id=other_tenant.id, oidc_sub="sub-outsider",
-            username="outsider", email=None, first_name="", last_name="",
+            s,
+            tenant_id=other_tenant.id,
+            oidc_sub="sub-outsider",
+            username="outsider",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
         s.refresh(outsider)
@@ -148,13 +176,21 @@ def test_get_upload_job_cross_tenant_returns_404(env):
 
 def test_create_upload_job_is_audited(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
-    client.post("/uploads", json={
-        "key": "default/abc.csv", "filename": "villes.csv", "collectionTitle": "Villes CSV",
-        "latField": "y", "lonField": "x",
-    })
+    client.post(
+        "/uploads",
+        json={
+            "key": "default/abc.csv",
+            "filename": "villes.csv",
+            "collectionTitle": "Villes CSV",
+            "latField": "y",
+            "lonField": "x",
+        },
+    )
     with Session() as s:
         from sqlalchemy import select
+
         from app.audit.models import AuditLog
+
         rows = s.scalars(select(AuditLog).where(AuditLog.action == "ingestion.job_create")).all()
         assert len(rows) == 1
         assert rows[0].payload["collectionTitle"] == "Villes CSV"
@@ -164,11 +200,17 @@ def _tiny_gpkg_bytes(tmp_path) -> bytes:
     import numpy as np
     import shapely
     from pyogrio.raw import write as pyogrio_write
+
     path = tmp_path / "villes.gpkg"
     geometry = shapely.to_wkb(np.array([shapely.geometry.Point(1.0, 2.0)], dtype=object))
     pyogrio_write(
-        str(path), geometry=geometry, field_data=[np.array(["A"], dtype=object)],
-        fields=["nom"], layer="villes", geometry_type="Point", crs="EPSG:4326",
+        str(path),
+        geometry=geometry,
+        field_data=[np.array(["A"], dtype=object)],
+        fields=["nom"],
+        layer="villes",
+        geometry_type="Point",
+        crs="EPSG:4326",
     )
     return path.read_bytes()
 
@@ -219,13 +261,19 @@ def test_inspect_upload_422_on_corrupt_file(env):
 
 def test_create_upload_job_accepts_layer_name(env):
     client, Session, tenant, *_ = env
-    r = client.post("/uploads", json={
-        "key": f"{tenant.id}/abc-villes.gpkg", "filename": "villes.gpkg",
-        "collectionTitle": "Villes", "layerName": "villes",
-    })
+    r = client.post(
+        "/uploads",
+        json={
+            "key": f"{tenant.id}/abc-villes.gpkg",
+            "filename": "villes.gpkg",
+            "collectionTitle": "Villes",
+            "layerName": "villes",
+        },
+    )
     assert r.status_code == 201
     job_id = r.json()["jobId"]
     with Session() as s:
         from app.ingestion import repository as ingestion_repo
+
         job = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
         assert job.layer_name == "villes"

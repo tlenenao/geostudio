@@ -21,7 +21,11 @@ function coerceProp(value: unknown, type: "string" | "number" | "boolean" | "dat
   return String(value ?? ""); // "string" | "dataSource"
 }
 
-export function applyClientOp(raw: RawClientOp, config: AppConfig, activePageId: string): AppConfig {
+export function applyClientOp(
+  raw: RawClientOp,
+  config: AppConfig,
+  activePageId: string,
+): AppConfig {
   const layout = getPageLayout(config, activePageId);
 
   switch (raw.op) {
@@ -31,8 +35,13 @@ export function applyClientOp(raw: RawClientOp, config: AppConfig, activePageId:
       if (!def) return config;
       const { x, y } = nextFreePosition(layout.items);
       const item: WidgetItem = {
-        id: crypto.randomUUID(), widget: type, x, y,
-        w: def.defaultSize.w, h: def.defaultSize.h, props: { ...def.defaultProps },
+        id: crypto.randomUUID(),
+        widget: type,
+        x,
+        y,
+        w: def.defaultSize.w,
+        h: def.defaultSize.h,
+        props: { ...def.defaultProps },
       };
       return setPageLayout(config, activePageId, { ...layout, items: [...layout.items, item] });
     }
@@ -51,17 +60,25 @@ export function applyClientOp(raw: RawClientOp, config: AppConfig, activePageId:
       }
       return setPageLayout(config, activePageId, {
         ...layout,
-        items: layout.items.map((i) => (i.id === widgetId ? { ...i, props: { ...i.props, ...safePatch } } : i)),
+        items: layout.items.map((i) =>
+          i.id === widgetId ? { ...i, props: { ...i.props, ...safePatch } } : i,
+        ),
       });
     }
     case "removeWidget": {
       const widgetId = String(raw.args.widgetId ?? "");
       return setPageLayout(config, activePageId, {
-        ...layout, items: layout.items.filter((i) => i.id !== widgetId),
+        ...layout,
+        items: layout.items.filter((i) => i.id !== widgetId),
       });
     }
     case "addDataSource": {
-      const { id, type, service, layer } = raw.args as { id: string; type: DataSource["type"]; service: string; layer: string };
+      const { id, type, service, layer } = raw.args as {
+        id: string;
+        type: DataSource["type"];
+        service: string;
+        layer: string;
+      };
       if (!id || config.dataSources.some((s) => s.id === id)) return config;
       const source: DataSource = { id, type, service, layer, query: {} };
       return { ...config, dataSources: [...config.dataSources, source] };

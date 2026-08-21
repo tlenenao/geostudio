@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -15,15 +15,19 @@ pytestmark = pytest.mark.postgis
 def seeded_table(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill (id serial PRIMARY KEY, v text, "
-            "geom geometry(Point, 4326))"
-        ))
-        conn.execute(text(
-            "INSERT INTO t_backfill (v, geom) VALUES "
-            "('a', ST_SetSRID(ST_MakePoint(1, 1), 4326)), "
-            "('b', ST_SetSRID(ST_MakePoint(2, 2), 4326))"
-        ))
+        conn.execute(
+            text(
+                "CREATE TABLE t_backfill (id serial PRIMARY KEY, v text, "
+                "geom geometry(Point, 4326))"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO t_backfill (v, geom) VALUES "
+                "('a', ST_SetSRID(ST_MakePoint(1, 1), 4326)), "
+                "('b', ST_SetSRID(ST_MakePoint(2, 2), 4326))"
+            )
+        )
     yield "t_backfill"
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill"))
@@ -40,8 +44,12 @@ def test_backfill_table_reads_all_rows_as_inserts(seeded_table, pg_session_facto
     with pg_session_factory() as session:
         boundary = current_wal_lsn(session)
         rows = backfill_table(
-            session, table_name=seeded_table, pk_column="id", geometry_column="geom",
-            boundary_lsn=boundary, flush_ts=42.0,
+            session,
+            table_name=seeded_table,
+            pk_column="id",
+            geometry_column="geom",
+            boundary_lsn=boundary,
+            flush_ts=42.0,
         )
     assert len(rows) == 2
     assert all(r.op == "insert" for r in rows)
@@ -53,20 +61,28 @@ def test_backfill_table_reads_all_rows_as_inserts(seeded_table, pg_session_facto
 def test_backfill_table_with_null_geometry_row(pg_session_factory, pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_nullgeom"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill_nullgeom (id serial PRIMARY KEY, v text, "
-            "geom geometry(Point, 4326))"
-        ))
-        conn.execute(text(
-            "INSERT INTO t_backfill_nullgeom (v, geom) VALUES "
-            "('has_geom', ST_SetSRID(ST_MakePoint(1, 1), 4326)), "
-            "('null_geom', NULL)"
-        ))
+        conn.execute(
+            text(
+                "CREATE TABLE t_backfill_nullgeom (id serial PRIMARY KEY, v text, "
+                "geom geometry(Point, 4326))"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO t_backfill_nullgeom (v, geom) VALUES "
+                "('has_geom', ST_SetSRID(ST_MakePoint(1, 1), 4326)), "
+                "('null_geom', NULL)"
+            )
+        )
     with pg_session_factory() as session:
         boundary = current_wal_lsn(session)
         rows = backfill_table(
-            session, table_name="t_backfill_nullgeom", pk_column="id", geometry_column="geom",
-            boundary_lsn=boundary, flush_ts=1.0,
+            session,
+            table_name="t_backfill_nullgeom",
+            pk_column="id",
+            geometry_column="geom",
+            boundary_lsn=boundary,
+            flush_ts=1.0,
         )
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_nullgeom"))
@@ -94,14 +110,18 @@ def test_backfill_table_normalizes_decimal_numeric_column_to_float(pg_session_fa
     n'était pas corrigé."""
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_numeric"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill_numeric (id serial PRIMARY KEY, score numeric(3,1))"
-        ))
+        conn.execute(
+            text("CREATE TABLE t_backfill_numeric (id serial PRIMARY KEY, score numeric(3,1))")
+        )
         conn.execute(text("INSERT INTO t_backfill_numeric (score) VALUES (1.5)"))
     with pg_session_factory() as session:
         rows = backfill_table(
-            session, table_name="t_backfill_numeric", pk_column="id", geometry_column=None,
-            boundary_lsn=1, flush_ts=0.0,
+            session,
+            table_name="t_backfill_numeric",
+            pk_column="id",
+            geometry_column=None,
+            boundary_lsn=1,
+            flush_ts=0.0,
         )
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_numeric"))
@@ -124,22 +144,28 @@ def test_backfill_table_normalizes_date_timestamp_columns_to_str(pg_session_fact
     wal2json réel — pas seulement "une chaîne quelconque"."""
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_dates"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill_dates (id serial PRIMARY KEY, d date, "
-            "ts timestamp, tstz timestamptz)"
-        ))
-        conn.execute(text(
-            "INSERT INTO t_backfill_dates (d, ts, tstz) VALUES "
-            "(:d, :ts, :tstz)"
-        ), {
-            "d": date(2026, 3, 5),
-            "ts": datetime(2026, 3, 5, 14, 30, 0),
-            "tstz": datetime(2026, 3, 5, 14, 30, 0, tzinfo=timezone.utc),
-        })
+        conn.execute(
+            text(
+                "CREATE TABLE t_backfill_dates (id serial PRIMARY KEY, d date, "
+                "ts timestamp, tstz timestamptz)"
+            )
+        )
+        conn.execute(
+            text("INSERT INTO t_backfill_dates (d, ts, tstz) VALUES (:d, :ts, :tstz)"),
+            {
+                "d": date(2026, 3, 5),
+                "ts": datetime(2026, 3, 5, 14, 30, 0),
+                "tstz": datetime(2026, 3, 5, 14, 30, 0, tzinfo=UTC),
+            },
+        )
     with pg_session_factory() as session:
         rows = backfill_table(
-            session, table_name="t_backfill_dates", pk_column="id", geometry_column=None,
-            boundary_lsn=1, flush_ts=0.0,
+            session,
+            table_name="t_backfill_dates",
+            pk_column="id",
+            geometry_column=None,
+            boundary_lsn=1,
+            flush_ts=0.0,
         )
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_dates"))
@@ -169,22 +195,31 @@ def test_backfill_table_trims_trailing_zero_microseconds(pg_session_factory, pg_
     vérifier que le trim ne retire pas de chiffres significatifs."""
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_frac"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill_frac (id serial PRIMARY KEY, "
-            "half timestamptz, hundredths timestamptz, full_precision timestamptz)"
-        ))
-        conn.execute(text(
-            "INSERT INTO t_backfill_frac (half, hundredths, full_precision) "
-            "VALUES (:half, :hundredths, :full_precision)"
-        ), {
-            "half": datetime(2026, 3, 5, 14, 30, 0, 500000, tzinfo=timezone.utc),
-            "hundredths": datetime(2026, 3, 5, 14, 30, 0, 120000, tzinfo=timezone.utc),
-            "full_precision": datetime(2026, 3, 5, 14, 30, 0, 123456, tzinfo=timezone.utc),
-        })
+        conn.execute(
+            text(
+                "CREATE TABLE t_backfill_frac (id serial PRIMARY KEY, "
+                "half timestamptz, hundredths timestamptz, full_precision timestamptz)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO t_backfill_frac (half, hundredths, full_precision) "
+                "VALUES (:half, :hundredths, :full_precision)"
+            ),
+            {
+                "half": datetime(2026, 3, 5, 14, 30, 0, 500000, tzinfo=UTC),
+                "hundredths": datetime(2026, 3, 5, 14, 30, 0, 120000, tzinfo=UTC),
+                "full_precision": datetime(2026, 3, 5, 14, 30, 0, 123456, tzinfo=UTC),
+            },
+        )
     with pg_session_factory() as session:
         rows = backfill_table(
-            session, table_name="t_backfill_frac", pk_column="id", geometry_column=None,
-            boundary_lsn=1, flush_ts=0.0,
+            session,
+            table_name="t_backfill_frac",
+            pk_column="id",
+            geometry_column=None,
+            boundary_lsn=1,
+            flush_ts=0.0,
         )
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_frac"))
@@ -202,14 +237,16 @@ def test_backfill_table_normalizes_uuid_column_to_str(pg_session_factory, pg_eng
     test_uuid = uuid.uuid4()
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_uuid"))
-        conn.execute(text(
-            "CREATE TABLE t_backfill_uuid (id serial PRIMARY KEY, u uuid)"
-        ))
+        conn.execute(text("CREATE TABLE t_backfill_uuid (id serial PRIMARY KEY, u uuid)"))
         conn.execute(text("INSERT INTO t_backfill_uuid (u) VALUES (:u)"), {"u": test_uuid})
     with pg_session_factory() as session:
         rows = backfill_table(
-            session, table_name="t_backfill_uuid", pk_column="id", geometry_column=None,
-            boundary_lsn=1, flush_ts=0.0,
+            session,
+            table_name="t_backfill_uuid",
+            pk_column="id",
+            geometry_column=None,
+            boundary_lsn=1,
+            flush_ts=0.0,
         )
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS t_backfill_uuid"))
@@ -228,8 +265,12 @@ def test_backfill_table_without_geometry_column(pg_session_factory, pg_engine):
         conn.execute(text("INSERT INTO t_backfill_nogeom (v) VALUES ('x')"))
     with pg_session_factory() as session:
         rows = backfill_table(
-            session, table_name="t_backfill_nogeom", pk_column="id", geometry_column=None,
-            boundary_lsn=1, flush_ts=0.0,
+            session,
+            table_name="t_backfill_nogeom",
+            pk_column="id",
+            geometry_column=None,
+            boundary_lsn=1,
+            flush_ts=0.0,
         )
     assert len(rows) == 1
     assert rows[0].geometry_wkb_hex is None

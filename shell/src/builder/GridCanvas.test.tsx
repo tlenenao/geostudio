@@ -48,7 +48,16 @@ test("the move handle nudges the item by one cell", async () => {
 
 test("positions items at the active breakpoint and exposes data hooks", () => {
   const bpItems: WidgetItem[] = [
-    { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: {}, layouts: { sm: { x: 5, y: 1, w: 6, h: 2 } } },
+    {
+      id: "a",
+      widget: "text",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 2,
+      props: {},
+      layouts: { sm: { x: 5, y: 1, w: 6, h: 2 } },
+    },
   ];
   const { container } = render(
     <GridCanvas

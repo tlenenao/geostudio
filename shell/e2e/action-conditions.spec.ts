@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("une condition sur une action ne déclenche celle-ci que si l'expression s'évalue à vrai, sans code", async ({ page }) => {
+test("une condition sur une action ne déclenche celle-ci que si l'expression s'évalue à vrai, sans code", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

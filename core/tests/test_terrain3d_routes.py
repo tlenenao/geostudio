@@ -36,8 +36,13 @@ def env(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     app = create_app()
@@ -51,8 +56,8 @@ def env(monkeypatch):
     fake_s3 = _FakeS3Client()
     app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: fake_s3
     deferred: list[tuple[str, str]] = []
-    app.dependency_overrides[terrain3d_routes.get_task_deferrer] = (
-        lambda: (lambda job_id, tenant_id: deferred.append((job_id, tenant_id)))
+    app.dependency_overrides[terrain3d_routes.get_task_deferrer] = lambda: (
+        lambda job_id, tenant_id: deferred.append((job_id, tenant_id))
     )
     client = TestClient(app)
     return client, Session, tenant, alice, deferred, fake_s3
@@ -75,7 +80,8 @@ def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, mon
     # (S3_TERRAIN3D_BUCKET), pas celui de l'ingestion générique.
     client, _, _tenant, _alice, _deferred, fake_s3 = env
     r = client.post(
-        "/terrain3d/uploads/presign", json={"filename": "dem.tif", "contentType": "image/tiff"},
+        "/terrain3d/uploads/presign",
+        json={"filename": "dem.tif", "contentType": "image/tiff"},
     )
     assert r.status_code == 200, r.text
     params = fake_s3.presign_params[-1]

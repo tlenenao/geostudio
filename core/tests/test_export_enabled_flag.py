@@ -30,8 +30,14 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
         )
         s.commit()
     app = create_app()
@@ -50,8 +56,13 @@ def test_instance_reports_export_disabled_by_default(env):
     response = env.get("/instance")
     assert response.status_code == 200
     assert response.json() == {
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
+        "readOnly": False,
+        "etlEnabled": False,
+        "exportEnabled": False,
+        "appExportEnabled": False,
+        "tileset3dEnabled": False,
+        "terrain3dEnabled": False,
+        "copilotEnabled": False,
     }
 
 

@@ -14,20 +14,23 @@ from app.collections.ddl import apply_collection_ddl
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.db import Base, make_engine, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- enregistre Item
+
 # sur Base.metadata (FK pipeline_runs.pipeline_item_id -> items.id) avant
 # Base.metadata.create_all() ; sans cet import, ce module exécuté seul (donc
 # sans qu'un autre fichier de test ait déjà importé app.items) échoue avec
 # NoReferencedTableError (cf. tests/test_pipeline_repository.py, même patron).
 from app.pipelines import runtime
-from app.pipelines.repository import get_run
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 pytestmark = []
 
 TABLE_INFO = TableInfo(
-    table_name="villes", pk_column="id", geometry_column="geometry",
-    geometry_type="Point", srid=4326,
+    table_name="villes",
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
     columns=[
         ColumnInfo(name="region", type="string", required=True),
         ColumnInfo(name="pop", type="integer", required=True),
@@ -36,15 +39,24 @@ TABLE_INFO = TableInfo(
 
 
 def _write_partition(base_dir, *, tenant_id="t1", collection_id="villes", rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-05"
+    partition_dir = (
+        base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-05"
+    )
     partition_dir.mkdir(parents=True, exist_ok=True)
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     gdf.to_parquet(partition_dir / "part-1.parquet")
 
 
 def _row(id_, region, pop, *, op="insert", lsn=1, x=0.0, y=0.0):
-    return {"id": id_, "region": region, "pop": pop, "_op": op, "_lsn": lsn,
-            "_ts": 1.0, "geometry": Point(x, y)}
+    return {
+        "id": id_,
+        "region": region,
+        "pop": pop,
+        "_op": op,
+        "_lsn": lsn,
+        "_ts": 1.0,
+        "geometry": Point(x, y),
+    }
 
 
 def _table_info_for(collection_id: str) -> TableInfo:
@@ -75,35 +87,65 @@ class _FakeS3:
 
 
 def test_preview_filter_and_derive(tmp_path, monkeypatch):
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", 10), _row(2, "Sud", 5), _row(3, "Nord", 20),
-    ])
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", 10),
+            _row(2, "Sud", 5),
+            _row(3, "Nord", 20),
+        ],
+    )
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     payload_nodes = [
-        {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
+        {
+            "id": "r1",
+            "kind": "reader",
+            "op": "reader.collection",
+            "params": {"collectionId": "villes"},
+        },
         {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "pop > 8"}},
-        {"id": "t2", "kind": "transform", "op": "transform.derive",
-         "params": {"column": "pop_double", "expr": "pop * 2"}},
-        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+        {
+            "id": "t2",
+            "kind": "transform",
+            "op": "transform.derive",
+            "params": {"column": "pop_double", "expr": "pop * 2"},
+        },
+        {
+            "id": "w1",
+            "kind": "writer",
+            "op": "writer.export",
+            "params": {"format": "csv", "key": "out.csv"},
+        },
     ]
     edges = [
-        {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
+        {"id": "e1", "from": "r1", "to": "t1"},
+        {"id": "e2", "from": "t1", "to": "t2"},
         {"id": "e3", "from": "t2", "to": "w1"},
     ]
     from app.configs.schemas import PipelinePayload
+
     payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t2",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), limit=50,
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t2",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        limit=50,
     )
     by_id = {r["id"]: r for r in rows}
     # pop_double = pop * 2 : id=1 a pop=10 (20), id=3 a pop=20 (40) — la
@@ -116,25 +158,46 @@ def test_preview_filter_and_derive(tmp_path, monkeypatch):
 
 def test_preview_rejects_writer_node_as_up_to(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
     with pytest.raises(runtime.PipelineRuntimeError, match="writer"):
         runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="w1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="w1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
 
@@ -144,30 +207,56 @@ def test_preview_pipeline_serializes_geometry(tmp_path, monkeypatch):
     # la géométrie en WKB (bytes) — jsonable_encoder (route FastAPI) plantait
     # en UnicodeDecodeError dessus. json.dumps(rows) ci-dessous prouve ce que
     # la vraie route HTTP ferait sans planter.
-    _write_partition(tmp_path, rows=[
-        _row(1, "Nord", 10, x=3.0, y=44.0), _row(2, "Sud", 5, x=4.0, y=43.0),
-    ])
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", 10, x=3.0, y=44.0),
+            _row(2, "Sud", 5, x=4.0, y=43.0),
+        ],
+    )
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="r1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), limit=50,
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="r1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        limit=50,
     )
     by_id = {r["id"]: r for r in rows}
     assert by_id[1]["geometry"] == {"type": "Point", "coordinates": [3.0, 44.0]}
@@ -181,28 +270,49 @@ def test_write_export_geojson_serializes_geometry(tmp_path, monkeypatch):
     # "geometry": None en dur dans chaque feature.
     _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.5, y=45.5)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export",
-             "params": {"format": "geojson", "key": "out.geojson"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "geojson", "key": "out.geojson"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
     fake_s3 = _FakeS3()
 
     stats = runtime.run_pipeline(
-        None, payload=payload, tenant_id="t1", user=None,
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), s3_client=fake_s3, exports_bucket="exports",
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
     )
 
     assert any(stat.op == "writer.export" and stat.rowCount == 1 for stat in stats)
@@ -222,28 +332,49 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     # en cellule CSV — doit désormais contenir une chaîne GeoJSON exploitable.
     _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.5, y=45.5)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export",
-             "params": {"format": "csv", "key": "out.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "out.csv"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
     fake_s3 = _FakeS3()
 
     runtime.run_pipeline(
-        None, payload=payload, tenant_id="t1", user=None,
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), s3_client=fake_s3, exports_bucket="exports",
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
     )
 
     body = fake_s3.calls[0]["Body"].decode("utf-8")
@@ -263,25 +394,35 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_propres', :t, :o, 'villes_propres', 'Villes propres', "
-            # false/true, pas 0/1 : Postgres ne convertit pas implicitement un
-            # littéral entier en boolean (contrairement à MySQL) — coquille du
-            # brief d'origine, corrigée ici sans toucher au schéma. created_at/
-            # updated_at : le default=_now du modèle est côté Python (ORM),
-            # jamais appliqué à un INSERT SQL brut — il faut les poser ici.
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_propres (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_propres', :t, :o, 'villes_propres', 'Villes propres', "
+                # false/true, pas 0/1 : Postgres ne convertit pas implicitement un
+                # littéral entier en boolean (contrairement à MySQL) — coquille du
+                # brief d'origine, corrigée ici sans toucher au schéma. created_at/
+                # updated_at : le default=_now du modèle est côté Python (ORM),
+                # jamais appliqué à un INSERT SQL brut — il faut les poser ici.
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_propres (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         # Sans ceci, INSERT échoue "permission denied" : gis_rls n'a aucun
         # droit sur une table créée à la main (le CREATE TABLE brut ci-dessus
         # ne fait pas ce qu'une vraie inscription de collection ferait) —
@@ -290,29 +431,56 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
         apply_collection_ddl(s, "villes_propres")
         s.commit()
 
-        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
-            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
-        ])
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[
+                _row(1, "Nord", 10, x=1.0, y=45.0),
+                _row(2, "Sud", 5, x=2.0, y=46.0),
+            ],
+        )
 
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         from app.configs.schemas import PipelinePayload
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_propres"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-        })
+
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_propres"},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            }
+        )
 
         stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -322,14 +490,19 @@ def test_run_pipeline_writes_into_target_collection(pg_engine, monkeypatch, tmp_
         assert any(stat.op == "writer.collection" and stat.rowCount == 2 for stat in stats)
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_propres; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_propres; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
-def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_engine, monkeypatch, tmp_path):
+def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(
+    pg_engine, monkeypatch, tmp_path
+):
     # Régression finding I2 (revue finale SP-14o) : sans mode="replace", un
     # re-run (manuel ou, à terme, planifié) accumule indéfiniment la sortie.
     # Ce test pré-remplit la collection cible d'une ligne parasite, exécute
@@ -341,52 +514,92 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_replace', :t, :o, 'villes_replace', 'Villes replace', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_replace (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_replace', :t, :o, 'villes_replace', 'Villes replace', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_replace (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_replace")
         # Ligne parasite pré-existante : doit disparaître dès le 1er run en
         # mode replace (pas seulement le 2e).
-        s.execute(text(
-            "INSERT INTO villes_replace (tenant_id, region, pop, geometry) "
-            "VALUES (:t, 'Parasite', 999, ST_SetSRID(ST_MakePoint(9.0, 9.0), 4326))"
-        ), {"t": tenant.id})
+        s.execute(
+            text(
+                "INSERT INTO villes_replace (tenant_id, region, pop, geometry) "
+                "VALUES (:t, 'Parasite', 999, ST_SetSRID(ST_MakePoint(9.0, 9.0), 4326))"
+            ),
+            {"t": tenant.id},
+        )
         s.commit()
 
-        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
-            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
-        ])
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[
+                _row(1, "Nord", 10, x=1.0, y=45.0),
+                _row(2, "Sud", 5, x=2.0, y=46.0),
+            ],
+        )
 
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         from app.configs.schemas import PipelinePayload
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_replace", "mode": "replace"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-        })
+
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_replace", "mode": "replace"},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            }
+        )
 
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -402,9 +615,11 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
         # 5) : la purge en mode replace doit laisser une trace audit_log,
         # avec le nombre exact de lignes supprimées (ici 1 : la seule ligne
         # parasite pré-existante avant ce 1er run).
-        purge_logs_after_first = s.execute(
-            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
-        ).scalars().all()
+        purge_logs_after_first = (
+            s.execute(select(AuditLog).where(AuditLog.action == "collection.replace_purge"))
+            .scalars()
+            .all()
+        )
         assert len(purge_logs_after_first) == 1
         [purge_log] = purge_logs_after_first
         assert purge_log.object_type == "collection"
@@ -414,8 +629,13 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
         # 2e run, même source : si mode="replace" purge bien avant d'insérer,
         # le compte reste à 2 (pas d'accumulation à 4).
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -429,21 +649,28 @@ def test_run_pipeline_writer_collection_mode_replace_purges_before_each_run(pg_e
 
         # 2e run : une nouvelle entrée audit_log, cette fois pour les 2
         # lignes ("Nord"/"Sud") insérées par le 1er run et purgées ici.
-        purge_logs_after_second = s.execute(
-            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
-        ).scalars().all()
+        purge_logs_after_second = (
+            s.execute(select(AuditLog).where(AuditLog.action == "collection.replace_purge"))
+            .scalars()
+            .all()
+        )
         assert len(purge_logs_after_second) == 2
         assert purge_logs_after_second[1].payload["deletedRows"] == 2
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_replace; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_replace; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
-def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(pg_engine, monkeypatch, tmp_path):
+def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(
+    pg_engine, monkeypatch, tmp_path
+):
     # Comportement historique inchangé : sans mode (ou mode="append"
     # explicite), deux runs consécutifs accumulent les lignes — c'est ce que
     # les pipelines SP-15 existants attendent toujours (pas de régression).
@@ -452,54 +679,96 @@ def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(pg_
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_append', :t, :o, 'villes_append', 'Villes append', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_append (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_append', :t, :o, 'villes_append', 'Villes append', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_append (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_append")
         s.commit()
 
-        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
-            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
-        ])
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[
+                _row(1, "Nord", 10, x=1.0, y=45.0),
+                _row(2, "Sud", 5, x=2.0, y=46.0),
+            ],
+        )
 
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         from app.configs.schemas import PipelinePayload
+
         # Pas de champ "mode" : vérifie le défaut "append", pas seulement un
         # mode="append" explicite.
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_append"}},
-            ],
-            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-        })
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_append"},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            }
+        )
 
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -511,16 +780,21 @@ def test_run_pipeline_writer_collection_mode_append_default_accumulates_rows(pg_
         # Important 5) : le mode append (par défaut) ne doit jamais écrire
         # d'entrée audit_log "collection.replace_purge" — aucune purge n'a
         # lieu, donc aucune trace n'en est créée.
-        purge_logs = s.execute(
-            select(AuditLog).where(AuditLog.action == "collection.replace_purge")
-        ).scalars().all()
+        purge_logs = (
+            s.execute(select(AuditLog).where(AuditLog.action == "collection.replace_purge"))
+            .scalars()
+            .all()
+        )
         assert purge_logs == []
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_append; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_append; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def _table_info_srid(collection_id: str, srid: int) -> TableInfo:
@@ -530,31 +804,64 @@ def _table_info_srid(collection_id: str, srid: int) -> TableInfo:
 def test_preview_buffer_then_reproject(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-            {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
-            {"id": "t2", "kind": "transform", "op": "transform.reproject", "params": {"targetCrs": "EPSG:3857"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "geojson", "key": "o.geojson"}},
-        ],
-        "edges": [
-            {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
-            {"id": "e3", "from": "t2", "to": "w1"},
-        ],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "ecoles"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.buffer",
+                    "params": {"distance": 500},
+                },
+                {
+                    "id": "t2",
+                    "kind": "transform",
+                    "op": "transform.reproject",
+                    "params": {"targetCrs": "EPSG:3857"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "geojson", "key": "o.geojson"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "t2"},
+                {"id": "e3", "from": "t2", "to": "w1"},
+            ],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t2",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), limit=50,
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t2",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        limit=50,
     )
     assert len(rows) == 1
     assert rows[0]["geometry"]["type"] == "Polygon"
@@ -563,63 +870,127 @@ def test_preview_buffer_then_reproject(tmp_path, monkeypatch):
 def test_preview_h3_aggregate_requires_4326_reproject_first(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 3857),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-            {"id": "t1", "kind": "transform", "op": "transform.h3Aggregate",
-             "params": {"resolution": 9, "metrics": {"n": "COUNT(*)"}}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "ecoles"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.h3Aggregate",
+                    "params": {"resolution": 9, "metrics": {"n": "COUNT(*)"}},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     with pytest.raises(runtime.PipelineRuntimeError, match="EPSG:4326"):
         runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
 
 
 def test_preview_count_within_across_two_readers(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
-    _write_partition(tmp_path, collection_id="incidents", rows=[
-        _row(1, "Nord", 1, x=3.0001, y=45.0), _row(2, "Sud", 1, x=10.0, y=10.0),
-    ])
+    _write_partition(
+        tmp_path,
+        collection_id="incidents",
+        rows=[
+            _row(1, "Nord", 1, x=3.0001, y=45.0),
+            _row(2, "Sud", 1, x=10.0, y=10.0),
+        ],
+    )
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-            {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
-            {"id": "t2", "kind": "transform", "op": "transform.countWithin",
-             "params": {"withCollectionId": "incidents", "countColumn": "n"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [
-            {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
-            {"id": "e3", "from": "t2", "to": "w1"},
-        ],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "ecoles"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.buffer",
+                    "params": {"distance": 500},
+                },
+                {
+                    "id": "t2",
+                    "kind": "transform",
+                    "op": "transform.countWithin",
+                    "params": {"withCollectionId": "incidents", "countColumn": "n"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "t2"},
+                {"id": "e3", "from": "t2", "to": "w1"},
+            ],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t2",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t2",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
         base_uri=str(tmp_path),
     )
     assert len(rows) == 1
@@ -631,28 +1002,56 @@ def test_preview_intersection_crs_mismatch_raises(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="communes", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
     srids = {"ecoles": 4326, "communes": 3857}
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, srids[collection_id]),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-            {"id": "t1", "kind": "transform", "op": "transform.intersection",
-             "params": {"withCollectionId": "communes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "ecoles"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.intersection",
+                    "params": {"withCollectionId": "communes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     with pytest.raises(runtime.PipelineRuntimeError, match="transform.reproject"):
         runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
 
@@ -660,50 +1059,88 @@ def test_preview_intersection_crs_mismatch_raises(tmp_path, monkeypatch):
 def test_h3_aggregate_metrics_expression_is_bounded(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="ecoles", rows=[_row(1, "Nord", 1, x=3.0, y=45.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-            {"id": "t1", "kind": "transform", "op": "transform.h3Aggregate",
-             # "(SELECT 1)" seul ne référence AUCUNE table (collect_table_refs
-             # le laisserait passer) — l'expression doit référencer une vraie
-             # table/vue pour exercer la garde ; "node_r1" est le nom de vue
-             # que _prepare a matérialisé pour le reader r1 à ce stade.
-             "params": {"resolution": 9, "metrics": {"n": "(SELECT count(*) FROM node_r1)"}}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "ecoles"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.h3Aggregate",
+                    # "(SELECT 1)" seul ne référence AUCUNE table (collect_table_refs
+                    # le laisserait passer) — l'expression doit référencer une vraie
+                    # table/vue pour exercer la garde ; "node_r1" est le nom de vue
+                    # que _prepare a matérialisé pour le reader r1 à ce stade.
+                    "params": {"resolution": 9, "metrics": {"n": "(SELECT count(*) FROM node_r1)"}},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     with pytest.raises(Exception, match="must not reference a table"):
         runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
 
 
-def _dataset_pipeline_payload(*, reader_collection: str, writer_collection: str, dataset_id=None, title=None):
+def _dataset_pipeline_payload(
+    *, reader_collection: str, writer_collection: str, dataset_id=None, title=None
+):
     from app.configs.schemas import PipelinePayload
+
     params = {"collectionId": writer_collection}
     if dataset_id is not None:
         params["datasetId"] = dataset_id
     if title is not None:
         params["title"] = title
-    return PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": reader_collection}},
-            {"id": "w1", "kind": "writer", "op": "writer.dataset", "params": params},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+    return PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": reader_collection},
+                },
+                {"id": "w1", "kind": "writer", "op": "writer.dataset", "params": params},
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
 
 
 @pytest.mark.postgis
@@ -716,42 +1153,66 @@ def test_writer_dataset_creates_new_dataset_item(pg_engine, monkeypatch, tmp_pat
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_out")
         s.commit()
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         payload = _dataset_pipeline_payload(
-            reader_collection="villes", writer_collection="villes_out", title="Mon dataset",
+            reader_collection="villes",
+            writer_collection="villes_out",
+            title="Mon dataset",
         )
         stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
 
         assert any(stat.op == "writer.dataset" and stat.rowCount == 1 for stat in stats)
-        item = s.execute(select(Item).where(Item.tenant_id == tenant.id, Item.resource_type == "dataset")).scalar_one()
+        item = s.execute(
+            select(Item).where(Item.tenant_id == tenant.id, Item.resource_type == "dataset")
+        ).scalar_one()
         assert item.title == "Mon dataset"
         config = configs_repo.get_config_by_item(s, item.id)
         assert config is not None
@@ -759,63 +1220,100 @@ def test_writer_dataset_creates_new_dataset_item(pg_engine, monkeypatch, tmp_pat
         assert config.config.dataset.collectionId == "villes_out"
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
-def test_writer_dataset_updates_existing_dataset_preserving_metadata(pg_engine, monkeypatch, tmp_path):
+def test_writer_dataset_updates_existing_dataset_preserving_metadata(
+    pg_engine, monkeypatch, tmp_path
+):
     from app.configs import repository as configs_repo
     from app.configs.schemas import BuilderConfig, DatasetPayload
-    from app.items import repository as items_repo
 
     Base.metadata.create_all(pg_engine)
     Session = make_session_factory(pg_engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_out")
 
         existing_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Ancien dataset",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="Ancien dataset",
         )
         existing_config = configs_repo.create_config(
-            s, BuilderConfig(kind="dataset", dataset=DatasetPayload(
-                source="collection", collectionId="villes_out_old", timeField="createdAt",
-            )),
-            item_id=existing_item.id, tenant_id=tenant.id,
+            s,
+            BuilderConfig(
+                kind="dataset",
+                dataset=DatasetPayload(
+                    source="collection",
+                    collectionId="villes_out_old",
+                    timeField="createdAt",
+                ),
+            ),
+            item_id=existing_item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         payload = _dataset_pipeline_payload(
-            reader_collection="villes", writer_collection="villes_out", dataset_id=existing_item.id,
+            reader_collection="villes",
+            writer_collection="villes_out",
+            dataset_id=existing_item.id,
         )
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -827,67 +1325,105 @@ def test_writer_dataset_updates_existing_dataset_preserving_metadata(pg_engine, 
         assert updated.config.dataset.timeField == "createdAt"  # preserved, not regenerated
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
 def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypatch, tmp_path):
     from app.configs import repository as configs_repo
     from app.configs.schemas import BuilderConfig, DatasetPayload
-    from app.items import repository as items_repo
 
     Base.metadata.create_all(pg_engine)
     Session = make_session_factory(pg_engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_out")
 
         pipeline_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Ma requête",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="pipeline",
+            title="Ma requête",
         )
         existing_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Ancien dataset",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="Ancien dataset",
         )
         existing_config = configs_repo.create_config(
-            s, BuilderConfig(kind="dataset", dataset=DatasetPayload(
-                source="collection", collectionId="villes_out_old",
-                sourcePipelineId=pipeline_item.id,
-            )),
-            item_id=existing_item.id, tenant_id=tenant.id,
+            s,
+            BuilderConfig(
+                kind="dataset",
+                dataset=DatasetPayload(
+                    source="collection",
+                    collectionId="villes_out_old",
+                    sourcePipelineId=pipeline_item.id,
+                ),
+            ),
+            item_id=existing_item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         payload = _dataset_pipeline_payload(
-            reader_collection="villes", writer_collection="villes_out", dataset_id=existing_item.id,
+            reader_collection="villes",
+            writer_collection="villes_out",
+            dataset_id=existing_item.id,
         )
         runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -896,74 +1432,115 @@ def test_writer_dataset_update_preserves_source_pipeline_id(pg_engine, monkeypat
         assert updated.config.dataset.sourcePipelineId == pipeline_item.id  # préservé, pas effacé
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
 def test_writer_dataset_refuses_update_without_write_access(pg_engine, monkeypatch, tmp_path):
     from app.configs import repository as configs_repo
     from app.configs.schemas import BuilderConfig, DatasetPayload
-    from app.items import repository as items_repo
 
     Base.metadata.create_all(pg_engine)
     Session = make_session_factory(pg_engine)
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         other = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": owner.id})
-        s.execute(text(
-            "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": owner.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         apply_collection_ddl(s, "villes_out")
 
         other_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=other.id, resource_type="dataset", title="Dataset de Bob",
+            s,
+            tenant_id=tenant.id,
+            owner_id=other.id,
+            resource_type="dataset",
+            title="Dataset de Bob",
         )
         configs_repo.create_config(
-            s, BuilderConfig(kind="dataset", dataset=DatasetPayload(source="collection", collectionId="villes_out")),
-            item_id=other_item.id, tenant_id=tenant.id,
+            s,
+            BuilderConfig(
+                kind="dataset",
+                dataset=DatasetPayload(source="collection", collectionId="villes_out"),
+            ),
+            item_id=other_item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
 
         _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         payload = _dataset_pipeline_payload(
-            reader_collection="villes", writer_collection="villes_out", dataset_id=other_item.id,
+            reader_collection="villes",
+            writer_collection="villes_out",
+            dataset_id=other_item.id,
         )
         with pytest.raises(runtime.PipelineRuntimeError, match="not writable"):
             runtime.run_pipeline(
-                s, payload=payload, tenant_id=tenant.id, user=owner,  # owner, not Bob
-                endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+                s,
+                payload=payload,
+                tenant_id=tenant.id,
+                user=owner,  # owner, not Bob
+                endpoint_url="http://localhost:9000",
+                access_key="x",
+                secret_key="y",
                 base_uri=str(tmp_path),
             )
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 @pytest.mark.postgis
@@ -978,41 +1555,63 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         # Table de sortie tabulaire (pas de géométrie : l'aggregate final
         # group by commune ne conserve aucune colonne géométrie, cf. plan
         # Task 8 note — transform.aggregate ne sélectionne que groupBy+metrics).
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('communes_incidents', :t, :o, 'communes_incidents', 'Communes incidents', "
-            "'', 'id', NULL, false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('communes_incidents', :t, :o, 'communes_incidents', 'Communes incidents', "
+                "'', 'id', NULL, false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
         # Colonne "region" (pas "commune") : c'est le nom réel de la colonne
         # groupBy en sortie de transform.aggregate ci-dessous (aucun
         # renommage n'a lieu dans compile_transform_sql pour transform.
         # aggregate — cf. plan Task 8 note). "commune" dans le vocabulaire du
         # cas d'usage #3 de l'étude == "region" dans les fixtures partagées
         # de ce fichier de test.
-        s.execute(text(
-            "CREATE TABLE communes_incidents (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, nearby_incidents BIGINT)"
-        ))
+        s.execute(
+            text(
+                "CREATE TABLE communes_incidents (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, nearby_incidents BIGINT)"
+            )
+        )
         apply_collection_ddl(s, "communes_incidents")
         s.commit()
 
         # Deux écoles dans des communes différentes ; 2 incidents proches de
         # l'école "Nord" (dans le buffer 500m), 0 proche de "Sud".
-        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="ecoles", rows=[
-            _row(1, "Nord", 1, x=3.0, y=45.0), _row(2, "Sud", 1, x=10.0, y=10.0),
-        ])
-        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="incidents", rows=[
-            _row(1, "x", 1, x=3.0005, y=45.0), _row(2, "x", 1, x=3.0006, y=45.0),
-            _row(3, "x", 1, x=20.0, y=20.0),
-        ])
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            collection_id="ecoles",
+            rows=[
+                _row(1, "Nord", 1, x=3.0, y=45.0),
+                _row(2, "Sud", 1, x=10.0, y=10.0),
+            ],
+        )
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            collection_id="incidents",
+            rows=[
+                _row(1, "x", 1, x=3.0005, y=45.0),
+                _row(2, "x", 1, x=3.0006, y=45.0),
+                _row(3, "x", 1, x=20.0, y=20.0),
+            ],
+        )
 
         # communes_incidents (le writer.dataset target) a un schéma physique
         # DIFFÉRENT des readers ecoles/incidents (region+nearby_incidents,
@@ -1024,8 +1623,11 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
         def _table_info(session, collection_id):
             if collection_id == "communes_incidents":
                 return dataclasses.replace(
-                    TABLE_INFO, table_name=collection_id, srid=4326,
-                    geometry_column=None, geometry_type=None,
+                    TABLE_INFO,
+                    table_name=collection_id,
+                    srid=4326,
+                    geometry_column=None,
+                    geometry_type=None,
                     columns=[
                         ColumnInfo(name="region", type="string", required=True),
                         ColumnInfo(name="nearby_incidents", type="integer", required=True),
@@ -1035,53 +1637,98 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
 
         monkeypatch.setattr(runtime, "_table_info_for_collection", _table_info)
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         from app.configs.schemas import PipelinePayload
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "ecoles"}},
-                {"id": "t1", "kind": "transform", "op": "transform.buffer", "params": {"distance": 500}},
-                {"id": "t2", "kind": "transform", "op": "transform.countWithin",
-                 "params": {"withCollectionId": "incidents", "countColumn": "cnt"}},
-                {"id": "t3", "kind": "transform", "op": "transform.aggregate",
-                 "params": {"groupBy": ["region"], "metrics": {"nearby_incidents": "SUM(cnt)"}}},
-                {"id": "w1", "kind": "writer", "op": "writer.dataset",
-                 "params": {"collectionId": "communes_incidents", "title": "Incidents près des écoles"}},
-            ],
-            "edges": [
-                {"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "t2"},
-                {"id": "e3", "from": "t2", "to": "t3"}, {"id": "e4", "from": "t3", "to": "w1"},
-            ],
-        })
+
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "ecoles"},
+                    },
+                    {
+                        "id": "t1",
+                        "kind": "transform",
+                        "op": "transform.buffer",
+                        "params": {"distance": 500},
+                    },
+                    {
+                        "id": "t2",
+                        "kind": "transform",
+                        "op": "transform.countWithin",
+                        "params": {"withCollectionId": "incidents", "countColumn": "cnt"},
+                    },
+                    {
+                        "id": "t3",
+                        "kind": "transform",
+                        "op": "transform.aggregate",
+                        "params": {
+                            "groupBy": ["region"],
+                            "metrics": {"nearby_incidents": "SUM(cnt)"},
+                        },
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.dataset",
+                        "params": {
+                            "collectionId": "communes_incidents",
+                            "title": "Incidents près des écoles",
+                        },
+                    },
+                ],
+                "edges": [
+                    {"id": "e1", "from": "r1", "to": "t1"},
+                    {"id": "e2", "from": "t1", "to": "t2"},
+                    {"id": "e3", "from": "t2", "to": "t3"},
+                    {"id": "e4", "from": "t3", "to": "w1"},
+                ],
+            }
+        )
 
         stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
 
-        rows = dict(s.execute(text(
-            "SELECT region, nearby_incidents FROM communes_incidents"
-        )).fetchall())
+        rows = dict(
+            s.execute(text("SELECT region, nearby_incidents FROM communes_incidents")).fetchall()
+        )
         assert rows == {"Nord": 2, "Sud": 0}
         assert any(stat.op == "writer.dataset" and stat.rowCount == 2 for stat in stats)
 
         # writer.dataset a bien catalogué le résultat.
-        item = s.execute(select(Item).where(
-            Item.tenant_id == tenant.id, Item.resource_type == "dataset",
-        )).scalar_one()
+        item = s.execute(
+            select(Item).where(
+                Item.tenant_id == tenant.id,
+                Item.resource_type == "dataset",
+            )
+        ).scalar_one()
         config = configs_repo.get_config_by_item(s, item.id)
         assert config.config.dataset.collectionId == "communes_incidents"
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE communes_incidents; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE communes_incidents; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, monkeypatch):
@@ -1090,25 +1737,53 @@ def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, 
     from app.configs.schemas import PipelinePayload
 
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
-    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid))
+    monkeypatch.setattr(
+        runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid)
+    )
     _write_partition(tmp_path, rows=[_row(1, "Nord", 1, x=2.35, y=48.85)])
 
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "t1", "kind": "transform", "op": "transform.qgis",
-             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.qgis",
+                    "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
     with pytest.raises(runtime.PipelineRuntimeError, match="QGIS_WORKER_URL"):
         runtime.preview_pipeline(
-            session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
 
@@ -1121,20 +1796,28 @@ def test_materialize_qgis_output_renames_non_geometry_named_column(tmp_path):
     _execute_qgis_transform must survive when the sidecar's qgis_process
     writes out.gpkg. _materialize_qgis_output must expose it as "geometry"
     regardless, same guarantee _materialize_reader already gives readers."""
-    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn = runtime.open_connection(
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
+    )
     conn.execute("CREATE TEMP TABLE src AS SELECT 1 AS id, ST_Point(3.0, 4.0) AS geometry")
     out_path = str(tmp_path / "out.gpkg")
     conn.execute(
-        f"COPY (SELECT * FROM src) TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
+        f"COPY (SELECT * FROM src) TO '{out_path}' "
+        "WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
     )
     # Sanity check on the fixture itself: confirms the premise of Finding 1 —
     # the round-tripped file really has no "geometry"-named column, only
     # "geom", before _materialize_qgis_output ever touches it.
-    raw_cols = {d[0] for d in conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description}
+    raw_cols = {
+        d[0] for d in conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
+    }
     assert "geom" in raw_cols and "geometry" not in raw_cols
 
     runtime._materialize_qgis_output(
-        conn, out_path=out_path, view_name="materialized", algorithm_id="native:centroids",
+        conn,
+        out_path=out_path,
+        view_name="materialized",
+        algorithm_id="native:centroids",
     )
     cols = {d[0] for d in conn.execute("SELECT * FROM materialized LIMIT 0").description}
     assert "geometry" in cols
@@ -1148,13 +1831,18 @@ def test_materialize_qgis_output_raises_clean_error_without_geometry_column(tmp_
     an algorithm whose OUTPUT isn't a vector layer) must surface as a clear
     PipelineRuntimeError, never a silent KeyError/empty result — Finding 1
     explicitly rules out weakening this constraint."""
-    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn = runtime.open_connection(
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
+    )
     out_path = tmp_path / "no_geom.csv"
     out_path.write_text("id,label\n1,a\n")
     out_path = str(out_path)
     with pytest.raises(runtime.PipelineRuntimeError, match="aucune colonne géométrie"):
         runtime._materialize_qgis_output(
-            conn, out_path=out_path, view_name="materialized", algorithm_id="native:centroids",
+            conn,
+            out_path=out_path,
+            view_name="materialized",
+            algorithm_id="native:centroids",
         )
 
 
@@ -1175,7 +1863,9 @@ class _FakeQgisWorkerResponse:
 
 
 def _make_qgis_input_connection():
-    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn = runtime.open_connection(
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
+    )
     conn.execute("CREATE TEMP TABLE input_view AS SELECT 1 AS id, ST_Point(1.0, 2.0) AS geometry")
     return conn
 
@@ -1190,18 +1880,25 @@ def test_execute_qgis_transform_cleans_scratch_dir_on_sidecar_error(tmp_path, mo
 
     monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
     monkeypatch.setattr(
-        runtime.httpx, "post",
+        runtime.httpx,
+        "post",
         lambda *a, **k: _FakeQgisWorkerResponse(502, json_body={"error": "qgis_process a échoué"}),
     )
     conn = _make_qgis_input_connection()
     node = PipelineNode(
-        id="t1", kind="transform", op="transform.qgis",
+        id="t1",
+        kind="transform",
+        op="transform.qgis",
         params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
     )
     with pytest.raises(runtime.PipelineRuntimeError, match="qgis_process a échoué"):
         runtime._execute_qgis_transform(
-            conn, node, input_view="input_view", input_srid=4326,
-            qgis_worker_url="http://fake-qgis-worker", qgis_worker_timeout_seconds=5,
+            conn,
+            node,
+            input_view="input_view",
+            input_srid=4326,
+            qgis_worker_url="http://fake-qgis-worker",
+            qgis_worker_timeout_seconds=5,
             scratch_run_id="run1",
         )
     assert not (tmp_path / "run1" / "t1").exists()
@@ -1216,18 +1913,27 @@ def test_execute_qgis_transform_raises_clean_error_on_non_json_error_body(tmp_pa
 
     monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
     monkeypatch.setattr(
-        runtime.httpx, "post",
-        lambda *a, **k: _FakeQgisWorkerResponse(502, json_body=None, text="<html>Bad Gateway</html>"),
+        runtime.httpx,
+        "post",
+        lambda *a, **k: _FakeQgisWorkerResponse(
+            502, json_body=None, text="<html>Bad Gateway</html>"
+        ),
     )
     conn = _make_qgis_input_connection()
     node = PipelineNode(
-        id="t1", kind="transform", op="transform.qgis",
+        id="t1",
+        kind="transform",
+        op="transform.qgis",
         params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
     )
     with pytest.raises(runtime.PipelineRuntimeError, match="Bad Gateway"):
         runtime._execute_qgis_transform(
-            conn, node, input_view="input_view", input_srid=4326,
-            qgis_worker_url="http://fake-qgis-worker", qgis_worker_timeout_seconds=5,
+            conn,
+            node,
+            input_view="input_view",
+            input_srid=4326,
+            qgis_worker_url="http://fake-qgis-worker",
+            qgis_worker_timeout_seconds=5,
             scratch_run_id="run2",
         )
 
@@ -1245,35 +1951,80 @@ def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_w
     from app.configs.schemas import PipelinePayload
 
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     polygons_info = dataclasses.replace(
-        TABLE_INFO, table_name="polygons", geometry_type="Polygon",
+        TABLE_INFO,
+        table_name="polygons",
+        geometry_type="Polygon",
         columns=[ColumnInfo(name="region", type="string", required=True)],
     )
     monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: polygons_info)
 
-    _write_partition(tmp_path, collection_id="polygons", rows=[
-        {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])},
-        {"id": 2, "region": "b", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)])},
-    ])
-
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons"}},
-            {"id": "t1", "kind": "transform", "op": "transform.qgis",
-             "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
+    _write_partition(
+        tmp_path,
+        collection_id="polygons",
+        rows=[
+            {
+                "id": 1,
+                "region": "a",
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)]),
+            },
+            {
+                "id": 2,
+                "region": "b",
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)]),
+            },
         ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+    )
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "polygons"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.qgis",
+                    "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        qgis_worker_url=qgis_worker_url,
     )
     assert len(rows) == 2
     centroids = sorted(
@@ -1284,7 +2035,9 @@ def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_w
 
 @pytest.mark.postgis
 @pytest.mark.qgis
-def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, tmp_path, qgis_worker_url):
+def test_transform_qgis_end_to_end_dissolve_then_write(
+    pg_engine, monkeypatch, tmp_path, qgis_worker_url
+):
     """reader.collection (2 adjacent polygons, same region) ->
     transform.qgis(native:dissolve) -> writer.collection: full run_pipeline,
     real Postgres write, real sidecar round-trip. Two squares sharing an
@@ -1300,37 +2053,53 @@ def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, t
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-            "description, pk_column, geometry_column, is_public, editable, "
-            "created_at, updated_at) "
-            "VALUES ('dissolved_out', :t, :o, 'dissolved_out', 'Dissolved', "
-            "'', 'id', 'geometry', false, true, now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            # geometry(MultiPolygon, 4326), PAS geometry(Polygon, 4326) : verified
-            # against a real qgis_process run during plan-writing that
-            # native:dissolve always outputs MultiPolygon (even for a single
-            # dissolved group of 1 feature) — ogrinfo on the real output showed
-            # "Geometry: Multi Polygon". Using Polygon here would make
-            # validate_feature reject every row ("expected Polygon").
-            "CREATE TABLE dissolved_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, geometry geometry(MultiPolygon, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('dissolved_out', :t, :o, 'dissolved_out', 'Dissolved', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                # geometry(MultiPolygon, 4326), PAS geometry(Polygon, 4326) : verified
+                # against a real qgis_process run during plan-writing that
+                # native:dissolve always outputs MultiPolygon (even for a single
+                # dissolved group of 1 feature) — ogrinfo on the real output showed
+                # "Geometry: Multi Polygon". Using Polygon here would make
+                # validate_feature reject every row ("expected Polygon").
+                "CREATE TABLE dissolved_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, geometry geometry(MultiPolygon, 4326))"
+            )
+        )
         apply_collection_ddl(s, "dissolved_out")
         s.commit()
 
         polygons_info = dataclasses.replace(
-            TABLE_INFO, table_name="polygons_in", geometry_type="Polygon", srid=4326,
+            TABLE_INFO,
+            table_name="polygons_in",
+            geometry_type="Polygon",
+            srid=4326,
             columns=[ColumnInfo(name="region", type="string", required=True)],
         )
         out_info = dataclasses.replace(
             # geometry_type="MultiPolygon" (not "Polygon") — see the CREATE
             # TABLE comment above: native:dissolve's real output type, verified.
-            TABLE_INFO, table_name="dissolved_out", geometry_type="MultiPolygon", srid=4326,
+            TABLE_INFO,
+            table_name="dissolved_out",
+            geometry_type="MultiPolygon",
+            srid=4326,
             columns=[ColumnInfo(name="region", type="string", required=True)],
         )
 
@@ -1339,31 +2108,76 @@ def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, t
 
         monkeypatch.setattr(runtime, "_table_info_for_collection", _table_info)
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
-        _write_partition(tmp_path, tenant_id=tenant.id, collection_id="polygons_in", rows=[
-            {"id": 1, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-             "geometry": Polygon([(0, 0), (0, 2), (1, 2), (1, 0)])},
-            {"id": 2, "region": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0,
-             "geometry": Polygon([(1, 0), (1, 2), (2, 2), (2, 0)])},
-        ])
-
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "polygons_in"}},
-                {"id": "t1", "kind": "transform", "op": "transform.qgis",
-                 "params": {"algorithmId": "native:dissolve",
-                            "params": {"FIELD": "region", "SEPARATE_DISJOINT": False}}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "dissolved_out"}},
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            collection_id="polygons_in",
+            rows=[
+                {
+                    "id": 1,
+                    "region": "a",
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geometry": Polygon([(0, 0), (0, 2), (1, 2), (1, 0)]),
+                },
+                {
+                    "id": 2,
+                    "region": "a",
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geometry": Polygon([(1, 0), (1, 2), (2, 2), (2, 0)]),
+                },
             ],
-            "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-        })
+        )
+
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "polygons_in"},
+                    },
+                    {
+                        "id": "t1",
+                        "kind": "transform",
+                        "op": "transform.qgis",
+                        "params": {
+                            "algorithmId": "native:dissolve",
+                            "params": {"FIELD": "region", "SEPARATE_DISJOINT": False},
+                        },
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "dissolved_out"},
+                    },
+                ],
+                "edges": [
+                    {"id": "e1", "from": "r1", "to": "t1"},
+                    {"id": "e2", "from": "t1", "to": "w1"},
+                ],
+            }
+        )
         stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-            base_uri=str(tmp_path), qgis_worker_url=qgis_worker_url,
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+            qgis_worker_url=qgis_worker_url,
         )
         s.commit()
 
@@ -1373,32 +2187,53 @@ def test_transform_qgis_end_to_end_dissolve_then_write(pg_engine, monkeypatch, t
         assert any(stat.op == "writer.collection" and stat.rowCount == 1 for stat in stats)
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE dissolved_out; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE dissolved_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_preview_reader_connector_rest_feeds_downstream_filter(tmp_path, monkeypatch, httpserver):
     from app.pipelines import egress as pipelines_egress
+
     monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
     httpserver.expect_request("/items").respond_with_json(
         [{"id": 1, "pop": 10}, {"id": 2, "pop": 5}, {"id": 3, "pop": 20}]
     )
     payload_nodes = [
-        {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
-         "params": {"baseUrl": httpserver.url_for("/"), "path": "items"}},
+        {
+            "id": "r1",
+            "kind": "reader",
+            "op": "reader.connector.rest",
+            "params": {"baseUrl": httpserver.url_for("/"), "path": "items"},
+        },
         {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "pop > 8"}},
-        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+        {
+            "id": "w1",
+            "kind": "writer",
+            "op": "writer.export",
+            "params": {"format": "csv", "key": "out.csv"},
+        },
     ]
     edges = [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}]
     from app.configs.schemas import PipelinePayload
+
     payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-        base_uri=str(tmp_path), limit=50,
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        limit=50,
     )
     by_id = {r["id"]: r for r in rows}
     assert set(by_id) == {1, 3}  # pop=5 filtered out
@@ -1411,16 +2246,27 @@ def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(t
     # _prepare() raises on the missing secret while materializing readers,
     # before any writer is touched.
     payload_nodes = [
-        {"id": "r1", "kind": "reader", "op": "reader.connector.postgres",
-         "params": {"secretName": "does-not-exist", "query": "SELECT 1"}},
-        {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+        {
+            "id": "r1",
+            "kind": "reader",
+            "op": "reader.connector.postgres",
+            "params": {"secretName": "does-not-exist", "query": "SELECT 1"},
+        },
+        {
+            "id": "w1",
+            "kind": "writer",
+            "op": "writer.export",
+            "params": {"format": "csv", "key": "out.csv"},
+        },
     ]
     edges = [{"id": "e1", "from": "r1", "to": "w1"}]
     from app.configs.schemas import PipelinePayload
+
     payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
 
-    from app.db import init_db, make_engine, make_session_factory
+    from app.db import init_db, make_session_factory
     from app.tenants.repository import get_or_create_default_tenant
+
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
@@ -1428,16 +2274,26 @@ def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(t
         tenant = get_or_create_default_tenant(session)
         with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
             runtime.preview_pipeline(
-                session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
-                endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-                base_uri=str(tmp_path), limit=50,
+                session=session,
+                payload=payload,
+                tenant_id=tenant.id,
+                user=None,
+                up_to="r1",
+                endpoint_url="http://localhost:9000",
+                access_key="x",
+                secret_key="y",
+                base_uri=str(tmp_path),
+                limit=50,
             )
 
 
-def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, monkeypatch, httpserver):
+def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(
+    tmp_path, monkeypatch, httpserver
+):
     from app.pipelines import egress as pipelines_egress
+
     monkeypatch.setattr(pipelines_egress, "assert_egress_allowed", lambda url: None)
-    from app.db import init_db, make_engine, make_session_factory
+    from app.db import init_db, make_session_factory
     from app.secrets import repository as secrets_repo
     from app.secrets.crypto import encrypt
     from app.tenants.repository import get_or_create_default_tenant
@@ -1447,42 +2303,76 @@ def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(tmp_path, m
     init_db(engine)
     Session = make_session_factory(engine)
     with Session() as session:
-        monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+        monkeypatch.setenv(
+            "CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+        )
         tenant = get_or_create_default_tenant(session)
         # `created_by` is a real FK to users.id (app/secrets/models.py) — a
         # literal "u1" string violates the constraint under SQLite
         # (PRAGMA foreign_keys=ON), same fix already applied in
         # test_pipeline_connector_runtime.py's `user` fixture.
         author = get_or_create_user(
-            session, tenant_id=tenant.id, oidc_sub="u1", username="u1",
-            email=None, first_name="", last_name="",
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="u1",
+            username="u1",
+            email=None,
+            first_name="",
+            last_name="",
         )
         ciphertext, nonce = encrypt({"kind": "bearer_token", "token": "s3cr3t-leak-check"})
         secrets_repo.create_secret(
-            session, tenant_id=tenant.id, created_by=author.id, name="my-bearer", kind="bearer_token",
-            ciphertext=ciphertext, nonce=nonce,
+            session,
+            tenant_id=tenant.id,
+            created_by=author.id,
+            name="my-bearer",
+            kind="bearer_token",
+            ciphertext=ciphertext,
+            nonce=nonce,
         )
         session.commit()
 
         httpserver.expect_request(
-            "/items", headers={"Authorization": "Bearer s3cr3t-leak-check"},
+            "/items",
+            headers={"Authorization": "Bearer s3cr3t-leak-check"},
         ).respond_with_json([{"id": 1, "name": "a"}])
         # w1 satisfies PipelinePayload's "at least one writer node" structural
         # validator; never reached — preview_pipeline(up_to="r1") stops the
         # chain at r1.
         payload_nodes = [
-            {"id": "r1", "kind": "reader", "op": "reader.connector.rest",
-             "params": {"baseUrl": httpserver.url_for("/"), "path": "items", "secretName": "my-bearer"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "out.csv"}},
+            {
+                "id": "r1",
+                "kind": "reader",
+                "op": "reader.connector.rest",
+                "params": {
+                    "baseUrl": httpserver.url_for("/"),
+                    "path": "items",
+                    "secretName": "my-bearer",
+                },
+            },
+            {
+                "id": "w1",
+                "kind": "writer",
+                "op": "writer.export",
+                "params": {"format": "csv", "key": "out.csv"},
+            },
         ]
         edges = [{"id": "e1", "from": "r1", "to": "w1"}]
         from app.configs.schemas import PipelinePayload
+
         payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
 
         rows = runtime.preview_pipeline(
-            session=session, payload=payload, tenant_id=tenant.id, user=None, up_to="r1",
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
-            base_uri=str(tmp_path), limit=50,
+            session=session,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=None,
+            up_to="r1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+            limit=50,
         )
         assert "s3cr3t-leak-check" not in str(rows)
 
@@ -1498,50 +2388,93 @@ def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatc
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         for name in ("villes_out_a", "villes_out_b"):
-            s.execute(text(
-                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-                "description, pk_column, geometry_column, is_public, editable, "
-                "created_at, updated_at) "
-                f"VALUES ('{name}', :t, :o, '{name}', '{name}', "
-                "'', 'id', 'geometry', false, true, now(), now())"
-            ), {"t": tenant.id, "o": user.id})
-            s.execute(text(
-                f"CREATE TABLE {name} (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-            ))
+            s.execute(
+                text(
+                    "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                    "description, pk_column, geometry_column, is_public, editable, "
+                    "created_at, updated_at) "
+                    f"VALUES ('{name}', :t, :o, '{name}', '{name}', "
+                    "'', 'id', 'geometry', false, true, now(), now())"
+                ),
+                {"t": tenant.id, "o": user.id},
+            )
+            s.execute(
+                text(
+                    f"CREATE TABLE {name} (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                    "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+                )
+            )
             apply_collection_ddl(s, name)
         s.commit()
 
-        _write_partition(tmp_path, tenant_id=tenant.id, rows=[
-            _row(1, "Nord", 10, x=1.0, y=45.0), _row(2, "Sud", 5, x=2.0, y=46.0),
-        ])
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            rows=[
+                _row(1, "Nord", 10, x=1.0, y=45.0),
+                _row(2, "Sud", 5, x=2.0, y=46.0),
+            ],
+        )
 
-        monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, collection_id: _table_info_for(collection_id))
         monkeypatch.setattr(
-            runtime, "_require_readable_collection_id",
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
             lambda session, *, tenant_id, user, collection_id: collection_id,
         )
 
         from app.configs.schemas import PipelinePayload
-        payload = PipelinePayload.model_validate({
-            "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_a"}},
-                {"id": "w2", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_out_b"}},
-            ],
-            "edges": [
-                {"id": "e1", "from": "r1", "to": "w1"},
-                {"id": "e2", "from": "r1", "to": "w2"},
-            ],
-        })
+
+        payload = PipelinePayload.model_validate(
+            {
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": "villes"},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_out_a"},
+                    },
+                    {
+                        "id": "w2",
+                        "kind": "writer",
+                        "op": "writer.collection",
+                        "params": {"collectionId": "villes_out_b"},
+                    },
+                ],
+                "edges": [
+                    {"id": "e1", "from": "r1", "to": "w1"},
+                    {"id": "e2", "from": "r1", "to": "w2"},
+                ],
+            }
+        )
 
         stats = runtime.run_pipeline(
-            s, payload=payload, tenant_id=tenant.id, user=user,
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+            s,
+            payload=payload,
+            tenant_id=tenant.id,
+            user=user,
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
             base_uri=str(tmp_path),
         )
         s.commit()
@@ -1550,51 +2483,84 @@ def test_run_pipeline_fan_out_one_reader_feeds_two_writers(pg_engine, monkeypatc
         count_b = s.execute(text("SELECT count(*) FROM villes_out_b")).scalar()
         assert count_a == 2
         assert count_b == 2
-        writer_stats = {stat.nodeId: stat.rowCount for stat in stats if stat.op == "writer.collection"}
+        writer_stats = {
+            stat.nodeId: stat.rowCount for stat in stats if stat.op == "writer.collection"
+        }
         assert writer_stats == {"w1": 2, "w2": 2}
 
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
-            "TRUNCATE items, configs, config_revisions, collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_out_a; DROP TABLE villes_out_b; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_preview_merge_via_secondary_edge(tmp_path, monkeypatch):
     _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
     _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
-            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
-            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [
-            {"id": "e1", "from": "r1", "to": "t1"},
-            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
-            {"id": "e3", "from": "t1", "to": "w1"},
-        ],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "a"},
+                },
+                {
+                    "id": "r2",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "b"},
+                },
+                {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+                {"id": "e3", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
         base_uri=str(tmp_path),
     )
     assert {r["id"] for r in rows} == {1, 2}
 
 
-def test_preview_merge_via_secondary_edge_where_secondary_is_a_transform_output(tmp_path, monkeypatch):
+def test_preview_merge_via_secondary_edge_where_secondary_is_a_transform_output(
+    tmp_path, monkeypatch
+):
     # Régression : tous les tests d'arête secondaire existants utilisent un
     # reader brut comme prédécesseur secondaire. Ici le prédécesseur
     # secondaire est lui-même la sortie d'un transform.filter, pour prouver
@@ -1603,33 +2569,64 @@ def test_preview_merge_via_secondary_edge_where_secondary_is_a_transform_output(
     _write_partition(tmp_path, collection_id="a", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
     _write_partition(tmp_path, collection_id="b", rows=[_row(2, "Sud", 5, x=2.0, y=46.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "a"}},
-            {"id": "t0", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
-            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "b"}},
-            {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [
-            {"id": "e1", "from": "r1", "to": "t0"},
-            {"id": "e2", "from": "t0", "to": "t1", "role": "secondary"},
-            {"id": "e3", "from": "r2", "to": "t1"},
-            {"id": "e4", "from": "t1", "to": "w1"},
-        ],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "a"},
+                },
+                {
+                    "id": "t0",
+                    "kind": "transform",
+                    "op": "transform.filter",
+                    "params": {"expr": "1=1"},
+                },
+                {
+                    "id": "r2",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "b"},
+                },
+                {"id": "t1", "kind": "transform", "op": "transform.merge", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t0"},
+                {"id": "e2", "from": "t0", "to": "t1", "role": "secondary"},
+                {"id": "e3", "from": "r2", "to": "t1"},
+                {"id": "e4", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
         base_uri=str(tmp_path),
     )
     assert {r["id"] for r in rows} == {1, 2}
@@ -1641,31 +2638,57 @@ def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, mo
     _write_partition(tmp_path, collection_id="base", rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
     _write_partition(tmp_path, collection_id="labels", rows=[_row(1, "x", 0, x=9.0, y=9.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_srid(collection_id, 4326),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "base"}},
-            {"id": "r2", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "labels"}},
-            {"id": "t1", "kind": "transform", "op": "transform.join", "params": {"on": "id"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [
-            {"id": "e1", "from": "r1", "to": "t1"},
-            {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
-            {"id": "e3", "from": "t1", "to": "w1"},
-        ],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "base"},
+                },
+                {
+                    "id": "r2",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "labels"},
+                },
+                {"id": "t1", "kind": "transform", "op": "transform.join", "params": {"on": "id"}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "r2", "to": "t1", "role": "secondary"},
+                {"id": "e3", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
 
     rows = runtime.preview_pipeline(
-        session=None, payload=payload, tenant_id="t1", user=None, up_to="t1",
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y",
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
         base_uri=str(tmp_path),
     )
     assert len(rows) == 1
@@ -1676,30 +2699,65 @@ def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, mo
 def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):
     _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
     monkeypatch.setattr(
-        runtime, "_table_info_for_collection",
+        runtime,
+        "_table_info_for_collection",
         lambda session, collection_id: _table_info_for(collection_id),
     )
     monkeypatch.setattr(
-        runtime, "_require_readable_collection_id",
+        runtime,
+        "_require_readable_collection_id",
         lambda session, *, tenant_id, user, collection_id: collection_id,
     )
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "t1", "kind": "transform", "op": "transform.filter", "params": {"expr": "1=1"}},
-            {"id": "w1", "kind": "writer", "op": "writer.export", "params": {"format": "csv", "key": "o.csv"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "t1"}, {"id": "e2", "from": "t1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.filter",
+                    "params": {"expr": "1=1"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
     seen: list[str] = []
 
-    conn = runtime.open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+    conn = runtime.open_connection(
+        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
+    )
     ordered, view_by_node, srid_by_node, join_srid_by_node = runtime._prepare(
-        conn, None, payload, tenant_id="t1", user=None, base_uri=str(tmp_path),
+        conn,
+        None,
+        payload,
+        tenant_id="t1",
+        user=None,
+        base_uri=str(tmp_path),
     )
     runtime._execute_transform_chain(
-        conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
+        conn,
+        ordered,
+        payload.edges,
+        view_by_node,
+        srid_by_node,
+        join_srid_by_node,
         on_node_complete=lambda stat: seen.append(stat.nodeId),
     )
     assert seen == ["r1", "t1"]  # writer node (w1) is handled by run_pipeline, not this function

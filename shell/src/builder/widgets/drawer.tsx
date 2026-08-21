@@ -47,7 +47,12 @@ export function registerDrawerWidget(): void {
               <option value="left">Gauche</option>
             </select>
           </label>
-          <LayoutEditor items={items} onChange={(next) => onChange({ title, items: next, side })} dataSources={dataSources} breakpoint="lg" />
+          <LayoutEditor
+            items={items}
+            onChange={(next) => onChange({ title, items: next, side })}
+            dataSources={dataSources}
+            breakpoint="lg"
+          />
         </div>
       );
     },
@@ -78,8 +83,16 @@ export function registerDrawerWidget(): void {
       const sideCls = side === "left" ? "left-0" : "right-0";
       return (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" aria-hidden="true" onClick={() => setOpen(false)} />
-          <div role="dialog" aria-label={title} className={`absolute top-0 ${sideCls} h-full w-96 overflow-auto bg-white p-4 shadow-lg`}>
+          <div
+            className="absolute inset-0 bg-black/40"
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-label={title}
+            className={`absolute top-0 ${sideCls} h-full w-96 overflow-auto bg-white p-4 shadow-lg`}
+          >
             <h2 className="mb-4 text-lg font-semibold">{title}</h2>
             <div className="h-[calc(100%-2rem)]">
               <GridCanvas
@@ -90,7 +103,13 @@ export function registerDrawerWidget(): void {
                 onSelect={() => {}}
                 onMoveItem={() => {}}
                 renderItem={(item) => (
-                  <WidgetHost item={item} mode={ctx.mode} pages={ctx.pages} navigate={ctx.navigate} breakpoint={ctx.breakpoint} />
+                  <WidgetHost
+                    item={item}
+                    mode={ctx.mode}
+                    pages={ctx.pages}
+                    navigate={ctx.navigate}
+                    breakpoint={ctx.breakpoint}
+                  />
                 )}
               />
             </div>

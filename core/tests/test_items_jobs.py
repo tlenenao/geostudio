@@ -2,6 +2,7 @@
 """Job d'embedding d'un item (SP-7 Task 5) — même pattern que
 test_ingestion_tasks.py : connecteur procrastinate remplacé par
 InMemoryConnector, écritures contre PostGIS réel."""
+
 import pytest
 from procrastinate import testing
 from sqlalchemy import text
@@ -24,8 +25,13 @@ def env(pg_engine, monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
@@ -40,8 +46,11 @@ def test_embed_item_task_sets_the_embedding_column(env, monkeypatch):
     app, Session, tenant, user = env
     with Session() as s:
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id,
-            resource_type="app", title="Incidents voirie",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="app",
+            title="Incidents voirie",
         )
         s.commit()
         item_id = item.id
@@ -54,6 +63,7 @@ def test_embed_item_task_sets_the_embedding_column(env, monkeypatch):
 
     with Session() as s:
         from app.items.models import Item
+
         reloaded = s.get(Item, item_id)
         assert reloaded.embedding == pytest.approx([0.5] * 1536)
 

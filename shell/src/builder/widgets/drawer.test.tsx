@@ -8,12 +8,20 @@ import { ActionBus } from "../ActionBus";
 import type { AuthState } from "../../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: true, username: "tanguy",
-  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: true,
+  username: "tanguy",
+  error: null,
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../../auth/useAuth", () => ({ useAuth: () => authState }));
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("declares open/close actions", () => {
   expect(getWidget("drawer")!.actions).toEqual(["open", "close"]);
@@ -25,7 +33,11 @@ test("closed by default, opens on the open action, closes on Escape and backdrop
   const Drawer = getWidget("drawer")!.Component;
   render(
     <Drawer
-      props={{ title: "Filtres", items: [{ id: "c", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Corps" } }], side: "right" }}
+      props={{
+        title: "Filtres",
+        items: [{ id: "c", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Corps" } }],
+        side: "right",
+      }}
       ctx={{ mode: "runtime", bus, widgetId: "drawer1" } as WidgetContext}
     />,
   );
@@ -39,7 +51,12 @@ test("closed by default, opens on the open action, closes on Escape and backdrop
 
 test("edit mode shows a static badge and never opens", () => {
   const Drawer = getWidget("drawer")!.Component;
-  render(<Drawer props={{ title: "Filtres", items: [], side: "right" }} ctx={{ mode: "edit" } as WidgetContext} />);
+  render(
+    <Drawer
+      props={{ title: "Filtres", items: [], side: "right" }}
+      ctx={{ mode: "edit" } as WidgetContext}
+    />,
+  );
   expect(screen.getByText("Tiroir : Filtres")).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
@@ -47,7 +64,13 @@ test("edit mode shows a static badge and never opens", () => {
 test("PropsPanel edits the title and the side", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("drawer")!.PropsPanel;
-  render(<Panel props={{ title: "Filtres", items: [], side: "right" }} dataSources={[]} onChange={onChange} />);
+  render(
+    <Panel
+      props={{ title: "Filtres", items: [], side: "right" }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
   await userEvent.selectOptions(screen.getByLabelText("Côté du tiroir"), "left");
   expect(onChange.mock.calls.at(-1)![0].side).toBe("left");
 });

@@ -2,11 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.configs import routes as configs_routes
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
 from app.auth.dependency import get_current_user
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
+from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -19,8 +18,13 @@ def client():
     with Session() as setup_session:
         tenant = get_or_create_default_tenant(setup_session)
         user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="sub-1",
-            username="alice", email=None, first_name="", last_name="",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="sub-1",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         setup_session.commit()
 

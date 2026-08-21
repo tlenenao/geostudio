@@ -5,6 +5,7 @@ C1 de la revue de projet 2026-08-20 : confused deputy).
 Vraie paire de clés RSA + vrais jetons signés : le décodage est le point
 même qu'on vérifie ici, un `jwt.decode` mocké ne prouverait rien.
 """
+
 import datetime
 
 import jwt
@@ -30,11 +31,12 @@ def keypair():
 
 
 def _token(pem, *, sub="alice-sub", aud=AUDIENCE, iss=ISSUER, expired=False):
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
     exp = now - datetime.timedelta(minutes=5) if expired else now + datetime.timedelta(minutes=5)
     return jwt.encode(
         {"sub": sub, "aud": aud, "iss": iss, "iat": now, "exp": exp},
-        pem, algorithm="RS256",
+        pem,
+        algorithm="RS256",
     )
 
 
@@ -56,6 +58,7 @@ def oidc_mode(monkeypatch, keypair):
             return _StubKey()
 
     import app.copilot.mcp_token as mcp_token_module
+
     monkeypatch.setattr(mcp_token_module, "_jwks_client", lambda: _StubJwks())
 
 

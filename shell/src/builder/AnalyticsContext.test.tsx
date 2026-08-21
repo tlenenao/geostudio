@@ -3,7 +3,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  AnalyticsContextProvider, useAnalyticsContext, useClearCrossFilter, useSetCrossFilter, useSetExtent, useSetTimeRange,
+  AnalyticsContextProvider,
+  useAnalyticsContext,
+  useClearCrossFilter,
+  useSetCrossFilter,
+  useSetExtent,
+  useSetTimeRange,
 } from "./AnalyticsContext";
 
 function Probe() {
@@ -17,24 +22,46 @@ function Probe() {
       <p>timeRange:{ctx.timeRange ? `${ctx.timeRange.from}..${ctx.timeRange.to}` : "none"}</p>
       <p>extent:{ctx.extent ? ctx.extent.join(",") : "none"}</p>
       <p>crossFilter:{JSON.stringify(ctx.crossFilter)}</p>
-      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>set-time</button>
+      <button onClick={() => setTimeRange({ from: "2026-01-01", to: "2026-02-01" })}>
+        set-time
+      </button>
       <button onClick={() => setExtent([1, 2, 3, 4])}>set-extent</button>
       <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1")}>set-cf</button>
-      <button onClick={() => setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")}>set-cf-range</button>
-      <button onClick={() => setCrossFilter("ds1", "region", "Nord", "src1", { type: "Point", coordinates: [1, 2] })}>set-cf-geom</button>
+      <button
+        onClick={() =>
+          setCrossFilter("ds1", "period", { from: "2026-01-01", to: "2026-02-01" }, "src1")
+        }
+      >
+        set-cf-range
+      </button>
+      <button
+        onClick={() =>
+          setCrossFilter("ds1", "region", "Nord", "src1", { type: "Point", coordinates: [1, 2] })
+        }
+      >
+        set-cf-geom
+      </button>
       <button onClick={() => clearCrossFilter("ds1")}>clear-cf</button>
     </div>
   );
 }
 
 test("setters are silent no-ops when interactions is not 'auto'", async () => {
-  render(<AnalyticsContextProvider interactions="manual"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="manual">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-time"));
   expect(screen.getByText("timeRange:none")).toBeInTheDocument();
 });
 
 test("setTimeRange updates state when interactions is 'auto'", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-time"));
   expect(screen.getByText("timeRange:2026-01-01..2026-02-01")).toBeInTheDocument();
 });
@@ -46,33 +73,61 @@ test("hooks work with no provider mounted at all (default no-op context)", async
 });
 
 test("setCrossFilter toggles: same (field, value) twice clears it, a different value replaces it", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-cf"));
-  expect(screen.getByText(/"ds1":\{"field":"region","value":"Nord","originSourceId":"src1"\}/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/"ds1":\{"field":"region","value":"Nord","originSourceId":"src1"\}/),
+  ).toBeInTheDocument();
   await userEvent.click(screen.getByText("set-cf"));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
 });
 
 test("setCrossFilter accepts a {from,to} range value", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-cf-range"));
-  expect(screen.getByText(/"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/)).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      /"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/,
+    ),
+  ).toBeInTheDocument();
 });
 
 test("setCrossFilter stores an optional geometry alongside the entry", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-cf-geom"));
-  expect(screen.getByText(/"geometry":\{"type":"Point","coordinates":\[1,2\]\}/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/"geometry":\{"type":"Point","coordinates":\[1,2\]\}/),
+  ).toBeInTheDocument();
 });
 
 test("setCrossFilter without a geometry omits the field entirely (unchanged shape)", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-cf"));
   expect(screen.queryByText(/"geometry"/)).not.toBeInTheDocument();
 });
 
 test("clearCrossFilter removes the entry for that dataset", async () => {
-  render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="auto">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("set-cf"));
   expect(screen.getByText(/"ds1":/)).toBeInTheDocument();
   await userEvent.click(screen.getByText("clear-cf"));
@@ -80,7 +135,11 @@ test("clearCrossFilter removes the entry for that dataset", async () => {
 });
 
 test("clearCrossFilter is a no-op when interactions is not 'auto'", async () => {
-  render(<AnalyticsContextProvider interactions="manual"><Probe /></AnalyticsContextProvider>);
+  render(
+    <AnalyticsContextProvider interactions="manual">
+      <Probe />
+    </AnalyticsContextProvider>,
+  );
   await userEvent.click(screen.getByText("clear-cf"));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
 });
@@ -98,12 +157,20 @@ describe("extent debounce", () => {
     // indefinitely under Vitest fake timers in this environment even with
     // `advanceTimers`/`delay: null` configured. fireEvent + act() around the timer
     // advances is the standard RTL-sanctioned way to combine a click with fake timers.
-    render(<AnalyticsContextProvider interactions="auto"><Probe /></AnalyticsContextProvider>);
+    render(
+      <AnalyticsContextProvider interactions="auto">
+        <Probe />
+      </AnalyticsContextProvider>,
+    );
     fireEvent.click(screen.getByText("set-extent"));
     expect(screen.getByText("extent:none")).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(499); });
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
     expect(screen.getByText("extent:none")).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(1); });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(screen.getByText("extent:1,2,3,4")).toBeInTheDocument();
   });
 });

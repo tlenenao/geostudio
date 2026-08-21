@@ -24,7 +24,13 @@ test("shows an access-denied message and never calls /extensions when the user i
   let extensionsCalled = false;
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+      }),
     ),
     http.get("https://core.test/extensions", () => {
       extensionsCalled = true;
@@ -42,16 +48,29 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
   let patchedBody: unknown;
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "admin",
+        firstName: "Admin",
+        lastName: "Root",
+        isAdmin: true,
+      }),
     ),
     http.get("https://core.test/extensions", ({ request }) => {
       expect(new URL(request.url).searchParams.get("all")).toBe("true");
       return HttpResponse.json({
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [],
+            events: [],
+            actions: [],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
+            enabled: false,
           },
         ],
       });
@@ -71,20 +90,35 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
 test("surfaces an alert when the PATCH to toggle an extension fails", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "admin",
+        firstName: "Admin",
+        lastName: "Root",
+        isAdmin: true,
+      }),
     ),
     http.get("https://core.test/extensions", () =>
       HttpResponse.json({
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [],
+            events: [],
+            actions: [],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
+            enabled: false,
           },
         ],
       }),
     ),
-    http.patch("https://core.test/extensions/acme.gauge", () => HttpResponse.json({}, { status: 500 })),
+    http.patch("https://core.test/extensions/acme.gauge", () =>
+      HttpResponse.json({}, { status: 500 }),
+    ),
   );
   render(<Harness />);
   const toggle = await screen.findByRole("checkbox", { name: "Actif : Jauge (extension)" });
@@ -97,15 +131,28 @@ test("surfaces an alert when the PATCH to toggle an extension fails", async () =
 test("disables the enabled toggle when the instance is in read-only demo mode", async () => {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "admin",
+        firstName: "Admin",
+        lastName: "Root",
+        isAdmin: true,
+      }),
     ),
     http.get("https://core.test/extensions", () =>
       HttpResponse.json({
         extensions: [
           {
-            id: "acme.gauge", tag: "gauge-extension-widget", label: "Jauge (extension)",
-            moduleUrl: "https://example.com/gauge.js", props: [], events: [], actions: [],
-            defaultSize: { w: 2, h: 2 }, permissions: { collections: "all" }, enabled: false,
+            id: "acme.gauge",
+            tag: "gauge-extension-widget",
+            label: "Jauge (extension)",
+            moduleUrl: "https://example.com/gauge.js",
+            props: [],
+            events: [],
+            actions: [],
+            defaultSize: { w: 2, h: 2 },
+            permissions: { collections: "all" },
+            enabled: false,
           },
         ],
       }),

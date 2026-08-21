@@ -9,8 +9,13 @@ import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
 
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: true, username: "tanguy",
-  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: true,
+  username: "tanguy",
+  error: null,
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 
@@ -19,7 +24,10 @@ vi.mock("html-to-image", () => ({
 }));
 
 const config: AppConfig = {
-  kind: "app", theme: {}, dataSources: [], messages: [],
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
   layout: { type: "grid", breakpoints: {}, items: [] },
 };
 
@@ -93,9 +101,15 @@ test("composes an action between two widgets and persists it", async () => {
 
   const emitterSelect = screen.getByLabelText("Widget émetteur");
   const targetSelect = screen.getByLabelText("Widget cible");
-  await userEvent.selectOptions(emitterSelect, within(emitterSelect).getByRole("option", { name: "Filtre" }));
+  await userEvent.selectOptions(
+    emitterSelect,
+    within(emitterSelect).getByRole("option", { name: "Filtre" }),
+  );
   await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
-  await userEvent.selectOptions(targetSelect, within(targetSelect).getByRole("option", { name: "Liste" }));
+  await userEvent.selectOptions(
+    targetSelect,
+    within(targetSelect).getByRole("option", { name: "Liste" }),
+  );
   await userEvent.selectOptions(screen.getByLabelText("Action"), "setFilter");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
 
@@ -108,10 +122,15 @@ test("composes an action between two widgets and persists it", async () => {
 
 test("edits a position at the sm breakpoint and persists layouts.sm", async () => {
   const withItem: AppConfig = {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
-    ] },
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
   };
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
@@ -158,9 +177,15 @@ test("adds a variable and wires a Filtre action to it, then persists both", asyn
 
   const emitterSelect = screen.getByLabelText("Widget émetteur");
   const targetSelect = screen.getByLabelText("Widget cible");
-  await userEvent.selectOptions(emitterSelect, within(emitterSelect).getByRole("option", { name: "Filtre" }));
+  await userEvent.selectOptions(
+    emitterSelect,
+    within(emitterSelect).getByRole("option", { name: "Filtre" }),
+  );
   await userEvent.selectOptions(screen.getByLabelText("Événement"), "changed");
-  await userEvent.selectOptions(targetSelect, within(targetSelect).getByRole("option", { name: "Variable : Variable 1" }));
+  await userEvent.selectOptions(
+    targetSelect,
+    within(targetSelect).getByRole("option", { name: "Variable : Variable 1" }),
+  );
   await userEvent.selectOptions(screen.getByLabelText("Action"), "set");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une action" }));
 
@@ -169,7 +194,11 @@ test("adds a variable and wires a Filtre action to it, then persists both", asyn
   const saved = saveAppConfig.mock.calls[0][1];
   expect(saved.variables).toHaveLength(1);
   expect(saved.messages).toHaveLength(1);
-  expect(saved.messages[0]).toMatchObject({ event: "changed", action: "set", to: `var:${saved.variables[0].id}` });
+  expect(saved.messages[0]).toMatchObject({
+    event: "changed",
+    action: "set",
+    to: `var:${saved.variables[0].id}`,
+  });
 });
 
 test("adds a second page and can switch back to editing the first", async () => {
@@ -242,7 +271,9 @@ test("disables Enregistrer and shows the error when a widget's visibleWhen is in
 
 test("promotes one data source to a shared dataset without touching its siblings", async () => {
   const withSources: AppConfig = {
-    kind: "app", theme: {}, messages: [],
+    kind: "app",
+    theme: {},
+    messages: [],
     dataSources: [
       { id: "s1", type: "features", service: "core", layer: "parcs", query: {} },
       { id: "s2", type: "features", service: "core", layer: "routes", query: {} },
@@ -251,8 +282,15 @@ test("promotes one data source to a shared dataset without touching its siblings
   };
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   const createDatasetItem = vi.fn().mockResolvedValue({
-    pk: "ds-1", resourceType: "dataset", title: "parcs", abstract: "",
-    owner: "tanguy", thumbnailUrl: null, date: "", configId: "1", isPublished: false,
+    pk: "ds-1",
+    resourceType: "dataset",
+    title: "parcs",
+    abstract: "",
+    owner: "tanguy",
+    thumbnailUrl: null,
+    date: "",
+    configId: "1",
+    isPublished: false,
   });
   renderPage({
     getAppConfig: vi.fn().mockResolvedValue(withSources),
@@ -262,12 +300,19 @@ test("promotes one data source to a shared dataset without touching its siblings
     queryDataSource: vi.fn().mockResolvedValue([]),
   });
 
-  const promoteButton = await screen.findByRole("button", { name: "Promouvoir en dataset partagé s1" });
+  const promoteButton = await screen.findByRole("button", {
+    name: "Promouvoir en dataset partagé s1",
+  });
   await userEvent.click(promoteButton);
 
-  await waitFor(() => expect(createDatasetItem).toHaveBeenCalledWith({
-    title: "parcs", owner: "tanguy", source: "collection", collectionId: "parcs",
-  }));
+  await waitFor(() =>
+    expect(createDatasetItem).toHaveBeenCalledWith({
+      title: "parcs",
+      owner: "tanguy",
+      source: "collection",
+      collectionId: "parcs",
+    }),
+  );
   await screen.findByText("Dataset partagé actif");
 
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
@@ -294,10 +339,15 @@ test("re-enables Enregistrer once the invalid visibleWhen is corrected", async (
 
 test("a GridCanvas move can be undone with Ctrl+Z", async () => {
   const withItem: AppConfig = {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
-    ] },
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
   };
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
@@ -316,10 +366,15 @@ test("a GridCanvas move can be undone with Ctrl+Z", async () => {
 
 test("Ctrl+Shift+Z redoes an undone GridCanvas move", async () => {
   const withItem: AppConfig = {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
-    ] },
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
   };
   const saveAppConfig = vi.fn().mockResolvedValue(undefined);
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem), saveAppConfig });
@@ -350,10 +405,15 @@ test("a burst of keystrokes in visibleWhen collapses into one undo step once blu
   // never creates a step), isolating the burst under test to exactly the
   // keystrokes typed below.
   const withItem: AppConfig = {
-    kind: "app", theme: {}, dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [
-      { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
-    ] },
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
   };
   renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
   await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));

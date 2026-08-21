@@ -2,11 +2,14 @@
 import type { PrintLayoutConfig } from "../../api/types";
 
 const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
-  pageSize: "a4", orientation: "portrait", showLegend: true,
+  pageSize: "a4",
+  orientation: "portrait",
+  showLegend: true,
 };
 
 export function PrintLayoutPanel({
-  value, onChange,
+  value,
+  onChange,
 }: {
   value: PrintLayoutConfig | null;
   onChange: (next: PrintLayoutConfig | null) => void;
@@ -36,7 +39,9 @@ export function PrintLayoutPanel({
         <select
           aria-label="Orientation"
           value={current.orientation}
-          onChange={(e) => patch({ orientation: e.target.value as PrintLayoutConfig["orientation"] })}
+          onChange={(e) =>
+            patch({ orientation: e.target.value as PrintLayoutConfig["orientation"] })
+          }
         >
           <option value="portrait">Portrait</option>
           <option value="landscape">Paysage</option>

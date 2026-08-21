@@ -7,12 +7,21 @@ Pas de fusion : compile_transform_sql produit UN fragment SQL par nœud
 transform, exécuté comme sa propre TEMP VIEW par le runtime (Task 8) — ce
 module ne touche jamais une connexion DuckDB, il ne fait que construire des
 chaînes de caractères, testable en pur."""
+
 from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
-    TransformAggregateParams, TransformBufferParams, TransformCountWithinParams,
-    TransformDeriveParams, TransformFilterParams, TransformH3AggregateParams,
-    TransformIntersectionParams, TransformJoinParams, TransformMergeParams, TransformQgisParams,
-    TransformReprojectParams, TransformSelectParams,
+    TransformAggregateParams,
+    TransformBufferParams,
+    TransformCountWithinParams,
+    TransformDeriveParams,
+    TransformFilterParams,
+    TransformH3AggregateParams,
+    TransformIntersectionParams,
+    TransformJoinParams,
+    TransformMergeParams,
+    TransformQgisParams,
+    TransformReprojectParams,
+    TransformSelectParams,
 )
 
 
@@ -67,7 +76,11 @@ def secondary_predecessor_id(node_id: str, edges: list[PipelineEdge]) -> str | N
 
 
 def compile_transform_sql(
-    op: str, params: dict, *, input_view: str, join_view: str | None = None,
+    op: str,
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
     input_srid: int | None = None,
 ) -> str:
     if op == "transform.filter":
@@ -77,8 +90,7 @@ def compile_transform_sql(
     if op == "transform.select":
         p = TransformSelectParams.model_validate(params)
         cols = ", ".join(
-            f"{_qi(src)} AS {_qi(dst)}" if dst else _qi(src)
-            for src, dst in p.columns.items()
+            f"{_qi(src)} AS {_qi(dst)}" if dst else _qi(src) for src, dst in p.columns.items()
         )
         return f"SELECT {cols} FROM {_qi(input_view)}"
 
@@ -98,10 +110,7 @@ def compile_transform_sql(
         p = TransformJoinParams.model_validate(params)
         assert join_view is not None, "transform.join requires join_view"
         join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-        return (
-            f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} "
-            f"USING ({_qi(p.on)})"
-        )
+        return f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} USING ({_qi(p.on)})"
 
     if op == "transform.buffer":
         p = TransformBufferParams.model_validate(params)
@@ -118,8 +127,8 @@ def compile_transform_sql(
         src = f"'EPSG:{input_srid}'"
         return (
             f"SELECT * EXCLUDE (geometry), "
-            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), {p.distance}), "
-            f"'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), "
+            f"{p.distance}), 'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
         )
 
     if op == "transform.reproject":
@@ -135,10 +144,15 @@ def compile_transform_sql(
         p = TransformIntersectionParams.model_validate(params)
         assert join_view is not None, "transform.intersection requires join_view"
         join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-        geom_expr = "t.geometry" if p.outputGeometry == "left" else "ST_Intersection(t.geometry, o.geometry)"
+        geom_expr = (
+            "t.geometry"
+            if p.outputGeometry == "left"
+            else "ST_Intersection(t.geometry, o.geometry)"
+        )
         return (
             f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
-            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o ON ST_Intersects(t.geometry, o.geometry)"
+            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+            f"ON ST_Intersects(t.geometry, o.geometry)"
         )
 
     if op == "transform.countWithin":
@@ -157,7 +171,8 @@ def compile_transform_sql(
     if op == "transform.h3Aggregate":
         p = TransformH3AggregateParams.model_validate(params)
         h3_expr = (
-            f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), ST_X(ST_Centroid(geometry)), {p.resolution})"
+            f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), "
+            f"ST_X(ST_Centroid(geometry)), {p.resolution})"
         )
         select_parts = [
             f"{h3_expr} AS h3Cell",
@@ -171,16 +186,17 @@ def compile_transform_sql(
     if op == "transform.merge":
         TransformMergeParams.model_validate(params)  # forme seulement, aucun autre champ à lire
         assert join_view is not None, "transform.merge requires join_view"
-        return (
-            f"SELECT * FROM {_qi(input_view)} "
-            f"UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
-        )
+        return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
 
     raise ValueError(f"'{op}' is not a transform op")
 
 
 def transform_output_srid(
-    op: str, params: dict, *, input_srid: int, join_srid: int | None = None,
+    op: str,
+    params: dict,
+    *,
+    input_srid: int,
+    join_srid: int | None = None,
 ) -> int:
     """SRID de sortie d'un nœud transform, calculé sans connexion DuckDB
     (pur, comme compile_transform_sql). Lève ValueError si les deux entrées

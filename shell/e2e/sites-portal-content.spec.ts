@@ -2,13 +2,18 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("créer un site, y ajouter Hero+RichSection+Gallery, publier, consulter en anonyme", async ({ page }) => {
+test("créer un site, y ajouter Hero+RichSection+Gallery, publier, consulter en anonyme", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 
   // 1. Créer un Site depuis le catalogue.
   await page.getByRole("button", { name: "Nouveau" }).click();
-  await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("site");
+  await page
+    .getByRole("dialog", { name: "Nouvel élément" })
+    .getByLabel("Type")
+    .selectOption("site");
   await page.getByLabel("Titre").fill("Mon Portail");
   await page.getByRole("button", { name: "Créer" }).click();
   await expect(page).toHaveURL(/\/apps\/site-1\/edit$/);

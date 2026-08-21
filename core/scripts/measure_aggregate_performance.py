@@ -12,6 +12,7 @@ Usage (contre la stack docker-compose réelle) :
         S3_ACCESS_KEY=$MINIO_USER S3_SECRET_KEY=$MINIO_PASSWORD \
         uv run python -m scripts.measure_aggregate_performance
 """
+
 import os
 import sys
 import time
@@ -39,10 +40,15 @@ INCREMENTAL_BATCHES = 200  # ...puis 200 petits flushes réalistes (500 lignes c
 INCREMENTAL_ROWS_PER_BATCH = (TOTAL_ROWS - BACKFILL_ROWS) // INCREMENTAL_BATCHES
 
 TABLE_INFO = TableInfo(
-    table_name=COLLECTION_ID, pk_column="id", geometry_column="geometry",
-    geometry_type="Point", srid=4326,
-    columns=[ColumnInfo(name="region", type="string", required=True),
-             ColumnInfo(name="pop", type="integer", required=True)],
+    table_name=COLLECTION_ID,
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+    ],
 )
 
 REGIONS = ["Nord", "Sud", "Est", "Ouest"]
@@ -50,7 +56,8 @@ REGIONS = ["Nord", "Sud", "Est", "Ouest"]
 
 def _client():
     return boto3.client(
-        "s3", endpoint_url=os.environ["S3_ENDPOINT_URL"],
+        "s3",
+        endpoint_url=os.environ["S3_ENDPOINT_URL"],
         aws_access_key_id=os.environ["S3_ACCESS_KEY"],
         aws_secret_access_key=os.environ["S3_SECRET_KEY"],
     )
@@ -70,7 +77,10 @@ def _write_batch(client, *, n_rows: int, id_start: int, lsn: int) -> None:
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     buf = BytesIO()
     gdf.to_parquet(buf)
-    key = f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/dt=2026-07-18/part-{uuid.uuid4().hex}.parquet"
+    key = (
+        f"cdc/tenant_id={TENANT_ID}/collection_id={COLLECTION_ID}/dt=2026-07-18/"
+        f"part-{uuid.uuid4().hex}.parquet"
+    )
     client.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue())
 
 
@@ -87,8 +97,12 @@ def _measure_aggregate() -> float:
 
     start = time.monotonic()
     _category_key, rows = run_collection_aggregate(
-        conn, base_uri=f"s3://{BUCKET}/cdc", tenant_id=TENANT_ID, collection_id=COLLECTION_ID,
-        table_info=TABLE_INFO, request=AggregateRequestBody(groupBy="region", agg="sum", field="pop"),
+        conn,
+        base_uri=f"s3://{BUCKET}/cdc",
+        tenant_id=TENANT_ID,
+        collection_id=COLLECTION_ID,
+        table_info=TABLE_INFO,
+        request=AggregateRequestBody(groupBy="region", agg="sum", field="pop"),
     )
     elapsed = time.monotonic() - start
     conn.close()
@@ -106,24 +120,36 @@ def main() -> int:
     print(f"Écriture du backfill ({BACKFILL_ROWS} lignes, 1 fichier)...")
     _write_batch(client, n_rows=BACKFILL_ROWS, id_start=0, lsn=1)
 
-    print(f"Écriture de {INCREMENTAL_BATCHES} flushes incrémentaux "
-          f"({INCREMENTAL_ROWS_PER_BATCH} lignes chacun)...")
+    print(
+        f"Écriture de {INCREMENTAL_BATCHES} flushes incrémentaux "
+        f"({INCREMENTAL_ROWS_PER_BATCH} lignes chacun)..."
+    )
     for i in range(INCREMENTAL_BATCHES):
-        _write_batch(client, n_rows=INCREMENTAL_ROWS_PER_BATCH,
-                    id_start=BACKFILL_ROWS + i * INCREMENTAL_ROWS_PER_BATCH, lsn=i + 2)
+        _write_batch(
+            client,
+            n_rows=INCREMENTAL_ROWS_PER_BATCH,
+            id_start=BACKFILL_ROWS + i * INCREMENTAL_ROWS_PER_BATCH,
+            lsn=i + 2,
+        )
 
     elapsed_before = _measure_aggregate()
-    print(f"Agrégation AVANT compaction : {elapsed_before:.3f}s "
-          f"({'PASS' if elapsed_before < 2.0 else 'FAIL'}, critère <2s)")
+    print(
+        f"Agrégation AVANT compaction : {elapsed_before:.3f}s "
+        f"({'PASS' if elapsed_before < 2.0 else 'FAIL'}, critère <2s)"
+    )
 
     print("Cycle de compaction...")
     report = run_compaction_cycle(client, bucket=BUCKET)
-    print(f"  {report.partitions_scanned} partitions scannées, "
-          f"{report.partitions_compacted} compactées, {report.files_removed} fichiers retirés")
+    print(
+        f"  {report.partitions_scanned} partitions scannées, "
+        f"{report.partitions_compacted} compactées, {report.files_removed} fichiers retirés"
+    )
 
     elapsed_after = _measure_aggregate()
-    print(f"Agrégation APRÈS compaction : {elapsed_after:.3f}s "
-          f"({'PASS' if elapsed_after < 2.0 else 'FAIL'}, critère <2s)")
+    print(
+        f"Agrégation APRÈS compaction : {elapsed_after:.3f}s "
+        f"({'PASS' if elapsed_after < 2.0 else 'FAIL'}, critère <2s)"
+    )
 
     return 0 if (elapsed_before < 2.0 and elapsed_after < 2.0) else 1
 

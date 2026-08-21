@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Job d'embedding d'une collection (SP-7 Task 7) — même pattern que
 test_items_jobs.py."""
+
 import pytest
 from procrastinate import testing
 from sqlalchemy import text
@@ -23,8 +24,13 @@ def env(pg_engine, monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
@@ -39,9 +45,17 @@ def test_embed_collection_task_sets_the_embedding_column(env, monkeypatch):
     app, Session, tenant, user = env
     with Session() as s:
         col = collections_repo.create_collection(
-            s, tenant_id=tenant.id, owner_id=user.id, table_name="incidents",
-            title="Incidents", description="Voirie", is_public=False,
-            pk_column="id", geometry_column=None, geometry_type=None, srid=None,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            table_name="incidents",
+            title="Incidents",
+            description="Voirie",
+            is_public=False,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
         )
         s.commit()
         col_id = col.id
@@ -54,6 +68,7 @@ def test_embed_collection_task_sets_the_embedding_column(env, monkeypatch):
 
     with Session() as s:
         from app.collections.models import Collection
+
         reloaded = s.get(Collection, col_id)
         assert reloaded.embedding == pytest.approx([0.5] * 1536)
 

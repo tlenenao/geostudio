@@ -20,8 +20,13 @@ def _client_and_user(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="mock-sub", username="mockuser",
-            email=None, first_name="Mock", last_name="User",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         s.commit()
     client = TestClient(app)
@@ -32,9 +37,17 @@ def _client_and_user(monkeypatch, tmp_path):
 def _seed_collection(Session, tenant, user) -> str:
     with Session() as s:
         col = collections_repo.create_collection(
-            s, tenant_id=tenant.id, owner_id=user.id, table_name="communes",
-            title="Communes", description="", is_public=True, pk_column="id",
-            geometry_column=None, geometry_type=None, srid=None,
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            table_name="communes",
+            title="Communes",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column=None,
+            geometry_type=None,
+            srid=None,
         )
         s.commit()
         return col.id
@@ -67,7 +80,11 @@ def test_create_dataset_rejects_a_non_pipeline_source_pipeline_id(monkeypatch, t
     collection_id = _seed_collection(Session, tenant, user)
     with Session() as s:
         other_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Not a pipeline",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="Not a pipeline",
         )
         s.commit()
         other_item_id = other_item.id
@@ -81,7 +98,11 @@ def test_create_dataset_succeeds_with_a_readable_source_pipeline(monkeypatch, tm
     collection_id = _seed_collection(Session, tenant, user)
     with Session() as s:
         pipeline_item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="Ma requête",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="pipeline",
+            title="Ma requête",
         )
         s.commit()
         pipeline_item_id = pipeline_item.id

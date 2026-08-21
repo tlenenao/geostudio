@@ -2,8 +2,7 @@
 export type GeometryKind = "point" | "line" | "polygon";
 
 export type ColorDomain =
-  | { kind: "categorical"; values: string[] }
-  | { kind: "numeric"; min: number; max: number };
+  { kind: "categorical"; values: string[] } | { kind: "numeric"; min: number; max: number };
 
 export type SizeDomain = { min: number; max: number };
 
@@ -12,16 +11,35 @@ export type MapEncodings = {
   size?: { field: string };
 };
 
-export type MapPaintResult = { renderAs: "fill" | "circle" | "line"; paint: Record<string, unknown> };
+export type MapPaintResult = {
+  renderAs: "fill" | "circle" | "line";
+  paint: Record<string, unknown>;
+};
 
 export type LegendSpec = {
   color?:
     | { kind: "categorical"; field: string; entries: { value: string; color: string }[] }
-    | { kind: "numeric"; field: string; min: number; max: number; colorLow: string; colorHigh: string };
+    | {
+        kind: "numeric";
+        field: string;
+        min: number;
+        max: number;
+        colorLow: string;
+        colorHigh: string;
+      };
   size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
 };
 
-const CATEGORICAL_PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+const CATEGORICAL_PALETTE = [
+  "#2563eb",
+  "#dc2626",
+  "#16a34a",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+];
 const NUMERIC_COLOR_LOW = "#dbeafe";
 const NUMERIC_COLOR_HIGH = "#1e3a8a";
 const SIZE_RADIUS_MIN = 4;
@@ -69,16 +87,31 @@ export function buildMapPaint(
     } else if (colorDomain.min === colorDomain.max) {
       paint[prop] = NUMERIC_COLOR_LOW;
     } else {
-      paint[prop] = ["interpolate", ["linear"], ["get", encodings.color.field],
-        colorDomain.min, NUMERIC_COLOR_LOW, colorDomain.max, NUMERIC_COLOR_HIGH];
+      paint[prop] = [
+        "interpolate",
+        ["linear"],
+        ["get", encodings.color.field],
+        colorDomain.min,
+        NUMERIC_COLOR_LOW,
+        colorDomain.max,
+        NUMERIC_COLOR_HIGH,
+      ];
     }
   }
 
   if (encodings?.size && sizeDomain && renderAs === "circle") {
-    paint["circle-radius"] = sizeDomain.min === sizeDomain.max
-      ? SIZE_RADIUS_MIN
-      : ["interpolate", ["linear"], ["get", encodings.size.field],
-        sizeDomain.min, SIZE_RADIUS_MIN, sizeDomain.max, SIZE_RADIUS_MAX];
+    paint["circle-radius"] =
+      sizeDomain.min === sizeDomain.max
+        ? SIZE_RADIUS_MIN
+        : [
+            "interpolate",
+            ["linear"],
+            ["get", encodings.size.field],
+            sizeDomain.min,
+            SIZE_RADIUS_MIN,
+            sizeDomain.max,
+            SIZE_RADIUS_MAX,
+          ];
   }
 
   return { renderAs, paint };
@@ -93,23 +126,31 @@ export function buildLegend(
   const legend: LegendSpec = {};
 
   if (encodings?.color && colorDomain) {
-    legend.color = colorDomain.kind === "categorical"
-      ? {
-          kind: "categorical", field: encodings.color.field,
-          entries: colorDomain.values.map((value, i) => ({ value, color: paletteColor(i) })),
-        }
-      : {
-          kind: "numeric", field: encodings.color.field,
-          min: colorDomain.min, max: colorDomain.max,
-          colorLow: NUMERIC_COLOR_LOW, colorHigh: NUMERIC_COLOR_HIGH,
-        };
+    legend.color =
+      colorDomain.kind === "categorical"
+        ? {
+            kind: "categorical",
+            field: encodings.color.field,
+            entries: colorDomain.values.map((value, i) => ({ value, color: paletteColor(i) })),
+          }
+        : {
+            kind: "numeric",
+            field: encodings.color.field,
+            min: colorDomain.min,
+            max: colorDomain.max,
+            colorLow: NUMERIC_COLOR_LOW,
+            colorHigh: NUMERIC_COLOR_HIGH,
+          };
   }
 
   // Size legend only makes sense where size is actually rendered (points).
   if (encodings?.size && sizeDomain && geometryKind === "point") {
     legend.size = {
-      field: encodings.size.field, min: sizeDomain.min, max: sizeDomain.max,
-      radiusMin: SIZE_RADIUS_MIN, radiusMax: SIZE_RADIUS_MAX,
+      field: encodings.size.field,
+      min: sizeDomain.min,
+      max: sizeDomain.max,
+      radiusMin: SIZE_RADIUS_MIN,
+      radiusMax: SIZE_RADIUS_MAX,
     };
   }
 

@@ -9,8 +9,14 @@ from pyogrio.raw import write as pyogrio_write
 from shapely.geometry import Point
 
 from app.ingestion.parsers import (
-    IngestionParseError, LayerInfo, detect_lat_lon_fields, list_layers,
-    parse_csv_latlon, parse_geojson, parse_gpkg, parse_shapefile_zip,
+    IngestionParseError,
+    LayerInfo,
+    detect_lat_lon_fields,
+    list_layers,
+    parse_csv_latlon,
+    parse_geojson,
+    parse_gpkg,
+    parse_shapefile_zip,
 )
 
 
@@ -120,7 +126,7 @@ def test_parse_geojson_rejects_non_iterable_features():
 
 
 def test_parse_csv_latlon_wraps_oversized_field_error():
-    content = ("nom,lat,lon\n\"" + "x" * 200000 + "\n1,2\n").encode("utf-8")
+    content = ('nom,lat,lon\n"' + "x" * 200000 + "\n1,2\n").encode("utf-8")
     with pytest.raises(IngestionParseError, match="champ CSV trop volumineux ou mal formé"):
         list(parse_csv_latlon(content, None, None))
 
@@ -142,8 +148,13 @@ def _gpkg_bytes(tmp_path, *, layer="entites", crs="EPSG:4326", points=None, fiel
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # pyogrio avertit si crs=None (cas volontaire d'un test)
         pyogrio_write(
-            str(path), geometry=geometry, field_data=list(fields.values()),
-            fields=list(fields.keys()), layer=layer, geometry_type="Point", crs=crs,
+            str(path),
+            geometry=geometry,
+            field_data=list(fields.values()),
+            fields=list(fields.keys()),
+            layer=layer,
+            geometry_type="Point",
+            crs=crs,
         )
     return path.read_bytes()
 
@@ -152,8 +163,12 @@ def _shapefile_zip_bytes(tmp_path) -> bytes:
     shp_path = tmp_path / "villes.shp"
     geometry = shapely.to_wkb(np.array([Point(1.0, 45.0), Point(2.0, 46.0)], dtype=object))
     pyogrio_write(
-        str(shp_path), geometry=geometry, field_data=[np.array(["A", "B"], dtype=object)],
-        fields=["nom"], geometry_type="Point", crs="EPSG:4326",
+        str(shp_path),
+        geometry=geometry,
+        field_data=[np.array(["A", "B"], dtype=object)],
+        fields=["nom"],
+        geometry_type="Point",
+        crs="EPSG:4326",
     )
     zip_path = tmp_path / "villes.zip"
     with zipfile.ZipFile(zip_path, "w") as z:
@@ -173,13 +188,27 @@ def test_list_layers_single_layer_gpkg(tmp_path):
 def test_list_layers_multi_layer_gpkg(tmp_path):
     path = tmp_path / "multi.gpkg"
     geom = shapely.to_wkb(np.array([Point(1.0, 1.0)], dtype=object))
-    pyogrio_write(str(path), geometry=geom, field_data=[np.array(["A"], dtype=object)],
-                  fields=["nom"], layer="a", geometry_type="Point", crs="EPSG:4326")
-    pyogrio_write(str(path), geometry=geom, field_data=[np.array(["B"], dtype=object)],
-                  fields=["nom"], layer="b", geometry_type="Point", crs="EPSG:4326")
+    pyogrio_write(
+        str(path),
+        geometry=geom,
+        field_data=[np.array(["A"], dtype=object)],
+        fields=["nom"],
+        layer="a",
+        geometry_type="Point",
+        crs="EPSG:4326",
+    )
+    pyogrio_write(
+        str(path),
+        geometry=geom,
+        field_data=[np.array(["B"], dtype=object)],
+        fields=["nom"],
+        layer="b",
+        geometry_type="Point",
+        crs="EPSG:4326",
+    )
     layers = list_layers(path.read_bytes(), "multi.gpkg")
-    assert {l.name for l in layers} == {"a", "b"}
-    assert all(l.feature_count == 1 for l in layers)
+    assert {layer.name for layer in layers} == {"a", "b"}
+    assert all(layer.feature_count == 1 for layer in layers)
 
 
 def test_list_layers_shapefile_zip_names_layer_from_shp(tmp_path):
@@ -217,10 +246,24 @@ def test_parse_gpkg_auto_selects_layer_when_only_one(tmp_path):
 def test_parse_gpkg_requires_explicit_layer_when_multiple(tmp_path):
     path = tmp_path / "multi.gpkg"
     geom = shapely.to_wkb(np.array([Point(1.0, 1.0)], dtype=object))
-    pyogrio_write(str(path), geometry=geom, field_data=[np.array(["A"], dtype=object)],
-                  fields=["nom"], layer="a", geometry_type="Point", crs="EPSG:4326")
-    pyogrio_write(str(path), geometry=geom, field_data=[np.array(["B"], dtype=object)],
-                  fields=["nom"], layer="b", geometry_type="Point", crs="EPSG:4326")
+    pyogrio_write(
+        str(path),
+        geometry=geom,
+        field_data=[np.array(["A"], dtype=object)],
+        fields=["nom"],
+        layer="a",
+        geometry_type="Point",
+        crs="EPSG:4326",
+    )
+    pyogrio_write(
+        str(path),
+        geometry=geom,
+        field_data=[np.array(["B"], dtype=object)],
+        fields=["nom"],
+        layer="b",
+        geometry_type="Point",
+        crs="EPSG:4326",
+    )
     with pytest.raises(IngestionParseError, match="plusieurs couches"):
         list(parse_gpkg(path.read_bytes(), layer_name=None))
 
@@ -232,11 +275,14 @@ def test_parse_gpkg_rejects_unknown_layer_name(tmp_path):
 
 
 def test_parse_gpkg_normalizes_numpy_scalars_and_nan(tmp_path):
-    content = _gpkg_bytes(tmp_path, fields={
-        "nom": np.array(["A", "B"], dtype=object),
-        "population": np.array([10, 20], dtype="int64"),
-        "score": np.array([1.5, np.nan], dtype="float64"),
-    })
+    content = _gpkg_bytes(
+        tmp_path,
+        fields={
+            "nom": np.array(["A", "B"], dtype=object),
+            "population": np.array([10, 20], dtype="int64"),
+            "score": np.array([1.5, np.nan], dtype="float64"),
+        },
+    )
     rows = list(parse_gpkg(content, "entites"))
     _, props0 = rows[0]
     assert props0 == {"nom": "A", "population": 10, "score": 1.5}
@@ -247,10 +293,13 @@ def test_parse_gpkg_normalizes_numpy_scalars_and_nan(tmp_path):
 
 def test_parse_gpkg_reprojects_non_wgs84_crs(tmp_path):
     import pyproj
+
     transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
     x, y = transformer.transform(2.35, 48.85)
     content = _gpkg_bytes(
-        tmp_path, crs="EPSG:2154", points=[(x, y)],
+        tmp_path,
+        crs="EPSG:2154",
+        points=[(x, y)],
         fields={"nom": np.array(["Paris"], dtype=object)},
     )
     rows = list(parse_gpkg(content, "entites"))
@@ -260,8 +309,12 @@ def test_parse_gpkg_reprojects_non_wgs84_crs(tmp_path):
 
 
 def test_parse_gpkg_skips_transform_when_already_wgs84(tmp_path):
-    content = _gpkg_bytes(tmp_path, crs="EPSG:4326", points=[(2.35, 48.85)],
-                           fields={"nom": np.array(["Paris"], dtype=object)})
+    content = _gpkg_bytes(
+        tmp_path,
+        crs="EPSG:4326",
+        points=[(2.35, 48.85)],
+        fields={"nom": np.array(["Paris"], dtype=object)},
+    )
     rows = list(parse_gpkg(content, "entites"))
     geom, _props = rows[0]
     assert (geom.x, geom.y) == (2.35, 48.85)

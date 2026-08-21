@@ -27,7 +27,11 @@ export function parseCron(cron: string): ScheduleForm {
   if (interval) return { mode: "interval", minutes: interval[1] };
   const weekly = cron.match(WEEKLY_RE);
   if (weekly) {
-    return { mode: "weekly", day: weekly[3], time: `${pad(Number(weekly[2]))}:${pad(Number(weekly[1]))}` };
+    return {
+      mode: "weekly",
+      day: weekly[3],
+      time: `${pad(Number(weekly[2]))}:${pad(Number(weekly[1]))}`,
+    };
   }
   const daily = cron.match(DAILY_RE);
   if (daily) return { mode: "daily", time: `${pad(Number(daily[2]))}:${pad(Number(daily[1]))}` };
@@ -59,7 +63,8 @@ export function compileCron(form: ScheduleForm): string {
 }
 
 export function PipelineScheduleEditor({
-  value, onChange,
+  value,
+  onChange,
 }: {
   value: PipelineRefreshPolicy | null;
   onChange: (next: PipelineRefreshPolicy | null) => void;
@@ -103,7 +108,8 @@ export function PipelineScheduleEditor({
                 const mode = e.target.value as ScheduleForm["mode"];
                 if (mode === "interval") handleSetForm({ mode: "interval", minutes: "15" });
                 else if (mode === "daily") handleSetForm({ mode: "daily", time: "02:00" });
-                else if (mode === "weekly") handleSetForm({ mode: "weekly", day: "1", time: "02:00" });
+                else if (mode === "weekly")
+                  handleSetForm({ mode: "weekly", day: "1", time: "02:00" });
                 else handleSetForm({ mode: "advanced", raw: cron });
               }}
             >
@@ -146,10 +152,14 @@ export function PipelineScheduleEditor({
                   aria-label="Jour de la semaine"
                   className="h-8 rounded border border-slate-300 px-2"
                   value={form.day}
-                  onChange={(e) => handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })}
+                  onChange={(e) =>
+                    handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
+                  }
                 >
                   {DAY_LABELS.map((label, i) => (
-                    <option key={label} value={i}>{label}</option>
+                    <option key={label} value={i}>
+                      {label}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -160,7 +170,9 @@ export function PipelineScheduleEditor({
                   type="time"
                   className="h-8 rounded border border-slate-300 px-2"
                   value={form.time}
-                  onChange={(e) => handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })}
+                  onChange={(e) =>
+                    handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
+                  }
                 />
               </label>
             </>
@@ -175,7 +187,9 @@ export function PipelineScheduleEditor({
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
-                <p role="alert" className="text-red-600">Format cron invalide (5 champs attendus).</p>
+                <p role="alert" className="text-red-600">
+                  Format cron invalide (5 champs attendus).
+                </p>
               )}
             </label>
           )}

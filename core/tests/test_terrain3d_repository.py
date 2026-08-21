@@ -15,8 +15,13 @@ def env():
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     return Session, tenant, alice
@@ -26,8 +31,12 @@ def test_create_job_defaults_to_uploaded(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id,
-            source_key=f"{tenant.id}/x/dem.tif", filename="dem.tif", title="Relief du massif",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key=f"{tenant.id}/x/dem.tif",
+            filename="dem.tif",
+            title="Relief du massif",
         )
         s.commit()
         assert job.status == "uploaded"
@@ -40,8 +49,12 @@ def test_get_job_scopes_by_tenant(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id,
-            source_key="k", filename="dem.tif", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            filename="dem.tif",
+            title="T",
         )
         s.commit()
         job_id = job.id
@@ -54,8 +67,12 @@ def test_mark_converting_then_done_transitions_status_and_sets_item_id(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id,
-            source_key="k", filename="dem.tif", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            filename="dem.tif",
+            title="T",
         )
         s.commit()
         job_id = job.id
@@ -76,8 +93,12 @@ def test_mark_error_sets_status_and_message(env):
     Session, tenant, alice = env
     with Session() as s:
         job = repo.create_job(
-            s, tenant_id=tenant.id, created_by=alice.id,
-            source_key="k", filename="dem.tif", title="T",
+            s,
+            tenant_id=tenant.id,
+            created_by=alice.id,
+            source_key="k",
+            filename="dem.tif",
+            title="T",
         )
         s.commit()
         job_id = job.id

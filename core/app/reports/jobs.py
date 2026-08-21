@@ -10,6 +10,7 @@ app.alerts.jobs._owner_user) : un rapport dont le propriétaire a perdu
 l'accès en lecture à son bookmark/app échoue proprement (audité, pas de
 rendu) plutôt que de faire planter le sweep ou de rendre silencieusement
 avec des droits élevés."""
+
 import logging
 import os
 
@@ -58,8 +59,13 @@ def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
 
 def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
     write_audit(
-        session, tenant_id=tenant_id, actor_id=None, actor_kind="agent",
-        action="report.run", object_type="item", object_id=item_id,
+        session,
+        tenant_id=tenant_id,
+        actor_id=None,
+        actor_kind="agent",
+        action="report.run",
+        object_type="item",
+        object_id=item_id,
         payload={"success": False, "error": error},
     )
 
@@ -81,7 +87,10 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     en file, il n'y a rien à notifier — l'audit report.run porte l'échec."""
     session.rollback()
     run = reports_repo.create_run(
-        session, tenant_id=tenant_id, report_item_id=item_id, export_job_id=None,
+        session,
+        tenant_id=tenant_id,
+        report_item_id=item_id,
+        export_job_id=None,
     )
     reports_repo.mark_notified(session, run_id=run.id)
     _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
@@ -111,9 +120,13 @@ def _trigger_due_reports(session_factory) -> None:
                 owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
 
                 bookmark_facts = items_repo.get_access_facts(
-                    session, tenant_id=tenant_id, item_id=payload.bookmarkItemId,
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=payload.bookmarkItemId,
                 )
-                if bookmark_facts is None or not can(session, user_id=owner.id, action="read", item=bookmark_facts):
+                if bookmark_facts is None or not can(
+                    session, user_id=owner.id, action="read", item=bookmark_facts
+                ):
                     raise ReportTriggerError("bookmark not readable by report owner")
 
                 bookmark_config = configs_repo.get_config_by_item(session, payload.bookmarkItemId)
@@ -122,21 +135,38 @@ def _trigger_due_reports(session_factory) -> None:
                 bookmark = bookmark_config.config.bookmark
                 assert bookmark is not None
 
-                app_facts = items_repo.get_access_facts(session, tenant_id=tenant_id, item_id=bookmark.appId)
-                if app_facts is None or not can(session, user_id=owner.id, action="read", item=app_facts):
+                app_facts = items_repo.get_access_facts(
+                    session, tenant_id=tenant_id, item_id=bookmark.appId
+                )
+                if app_facts is None or not can(
+                    session, user_id=owner.id, action="read", item=app_facts
+                ):
                     raise ReportTriggerError("target app not readable by report owner")
 
                 ctx = encode_analytics_context(bookmark)
                 job = export_repo.create_job(
-                    session, tenant_id=tenant_id, item_id=bookmark.appId, user_id=owner.id, format="pdf",
-                    page_id=bookmark.pageId, ctx=ctx,
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=bookmark.appId,
+                    user_id=owner.id,
+                    format="pdf",
+                    page_id=bookmark.pageId,
+                    ctx=ctx,
                 )
                 run = reports_repo.create_run(
-                    session, tenant_id=tenant_id, report_item_id=item_id, export_job_id=job.id,
+                    session,
+                    tenant_id=tenant_id,
+                    report_item_id=item_id,
+                    export_job_id=job.id,
                 )
                 write_audit(
-                    session, tenant_id=tenant_id, actor_id=owner.id, actor_kind="agent",
-                    action="report.run", object_type="report_run", object_id=run.id,
+                    session,
+                    tenant_id=tenant_id,
+                    actor_id=owner.id,
+                    actor_kind="agent",
+                    action="report.run",
+                    object_type="report_run",
+                    object_id=run.id,
                     payload={"reportItemId": item_id, "exportJobId": job.id, "success": True},
                 )
                 session.commit()
@@ -152,16 +182,22 @@ def _trigger_due_reports(session_factory) -> None:
                     # notifie l'échec, comme pour n'importe quel rendu raté.
                     logger.exception("rapport %s : mise en file du rendu impossible", item_id)
                     export_repo.mark_error(
-                        session, job_id=job.id, error=f"mise en file impossible : {exc}",
+                        session,
+                        job_id=job.id,
+                        error=f"mise en file impossible : {exc}",
                     )
                     _audit_trigger_failure(
-                        session, tenant_id=tenant_id, item_id=item_id,
+                        session,
+                        tenant_id=tenant_id,
+                        item_id=item_id,
                         error=f"mise en file impossible : {exc}",
                     )
                     session.commit()
             except ReportTriggerError as exc:
                 logger.warning("report %s trigger failed: %s", item_id, exc)
-                _record_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=str(exc))
+                _record_trigger_failure(
+                    session, tenant_id=tenant_id, item_id=item_id, error=str(exc)
+                )
             except Exception as exc:
                 # Jumeau du filet large d'app.alerts.jobs : tout ce qui est
                 # dans le `try` et n'est PAS une ReportTriggerError
@@ -173,7 +209,10 @@ def _trigger_due_reports(session_factory) -> None:
                 # export_repo.reclaim_stuck_jobs final.
                 logger.exception("rapport %s : erreur inattendue au déclenchement", item_id)
                 _record_trigger_failure(
-                    session, tenant_id=tenant_id, item_id=item_id, error=f"erreur interne : {exc}",
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
+                    error=f"erreur interne : {exc}",
                 )
         export_repo.reclaim_stuck_jobs(session)
         session.commit()
@@ -193,7 +232,9 @@ def _presigned_url_for_job(job) -> str | None:
         return None
     bucket = os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports")
     return generate_presigned_get_url(
-        s3_client_from_env(), bucket=bucket, key=job.result_key,
+        s3_client_from_env(),
+        bucket=bucket,
+        key=job.result_key,
         expires_in=_NOTIFICATION_URL_TTL_SECONDS,
     )
 
@@ -237,7 +278,9 @@ def _notify_pending_reports(session_factory) -> None:
                 payload = report_config.config.report
                 assert payload is not None
 
-                item = items_repo.get_item(session, tenant_id=run.tenant_id, item_id=run.report_item_id)
+                item = items_repo.get_item(
+                    session, tenant_id=run.tenant_id, item_id=run.report_item_id
+                )
                 title = item.title if item is not None else run.report_item_id
                 result_url = _presigned_url_for_job(job)
                 message = (
@@ -253,33 +296,62 @@ def _notify_pending_reports(session_factory) -> None:
                         if isinstance(channel, AlertChannelWebhook):
                             send_webhook(
                                 channel,
-                                payload={"reportItemId": run.report_item_id, "status": job.status,
-                                          "resultUrl": result_url, "error": job.error},
+                                payload={
+                                    "reportItemId": run.report_item_id,
+                                    "status": job.status,
+                                    "resultUrl": result_url,
+                                    "error": job.error,
+                                },
                             )
                         elif isinstance(channel, AlertChannelEmail):
                             send_email(
-                                session, tenant_id=run.tenant_id, channel=channel,
-                                subject=f"[GeoStudio] Rapport : {title}", body=message,
+                                session,
+                                tenant_id=run.tenant_id,
+                                channel=channel,
+                                subject=f"[GeoStudio] Rapport : {title}",
+                                body=message,
                             )
                         success = True
                     except NotifyError as exc:
                         error_detail = str(exc)
                         logger.warning("report notification failed for run %s: %s", run.id, exc)
                     write_audit(
-                        session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
-                        action="report.notify", object_type="item", object_id=run.report_item_id,
-                        payload={"channel": channel.kind, "success": success, "error": error_detail},
+                        session,
+                        tenant_id=run.tenant_id,
+                        actor_id=None,
+                        actor_kind="agent",
+                        action="report.notify",
+                        object_type="item",
+                        object_id=run.report_item_id,
+                        payload={
+                            "channel": channel.kind,
+                            "success": success,
+                            "error": error_detail,
+                        },
                     )
             except Exception as exc:
                 logger.exception("notification du run de rapport %s : erreur inattendue", run.id)
                 try:
                     write_audit(
-                        session, tenant_id=run.tenant_id, actor_id=None, actor_kind="agent",
-                        action="report.notify", object_type="item", object_id=run.report_item_id,
-                        payload={"channel": None, "success": False, "error": f"erreur interne : {exc}"},
+                        session,
+                        tenant_id=run.tenant_id,
+                        actor_id=None,
+                        actor_kind="agent",
+                        action="report.notify",
+                        object_type="item",
+                        object_id=run.report_item_id,
+                        payload={
+                            "channel": None,
+                            "success": False,
+                            "error": f"erreur interne : {exc}",
+                        },
                     )
-                except Exception:  # session déjà cassée : l'audit ne doit pas empêcher mark_notified
-                    logger.exception("audit d'échec de notification impossible pour le run %s", run.id)
+                except (
+                    Exception
+                ):  # session déjà cassée : l'audit ne doit pas empêcher mark_notified
+                    logger.exception(
+                        "audit d'échec de notification impossible pour le run %s", run.id
+                    )
             finally:
                 # Posé après la tentative, quel que soit le résultat par canal
                 # ET quelle que soit l'erreur inattendue ci-dessus — une

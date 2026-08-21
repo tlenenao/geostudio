@@ -3,14 +3,22 @@ import type { CollectionSchema } from "../../api/types";
 import { JoinConfig } from "./inferSchema";
 
 export function QueryJoinPicker({
-  baseSchema, joinedSchema, collections, value, onChange,
+  baseSchema,
+  joinedSchema,
+  collections,
+  value,
+  onChange,
 }: {
-  baseSchema: CollectionSchema; joinedSchema: CollectionSchema | null;
+  baseSchema: CollectionSchema;
+  joinedSchema: CollectionSchema | null;
   collections: { id: string; title: string }[];
-  value: JoinConfig; onChange: (next: JoinConfig) => void;
+  value: JoinConfig;
+  onChange: (next: JoinConfig) => void;
 }) {
   const baseNames = new Set(baseSchema.fields.map((f) => f.name));
-  const commonColumns = joinedSchema ? joinedSchema.fields.filter((f) => baseNames.has(f.name)) : [];
+  const commonColumns = joinedSchema
+    ? joinedSchema.fields.filter((f) => baseNames.has(f.name))
+    : [];
 
   return (
     <div className="flex flex-col gap-2">
@@ -23,7 +31,11 @@ export function QueryJoinPicker({
           onChange={(e) => onChange({ ...value, collectionId: e.target.value, on: "" })}
         >
           <option value="">Choisir…</option>
-          {collections.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+          {collections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
         </select>
       </label>
       {joinedSchema && commonColumns.length === 0 && (
@@ -41,7 +53,11 @@ export function QueryJoinPicker({
             onChange={(e) => onChange({ ...value, on: e.target.value })}
           >
             <option value="">Choisir…</option>
-            {commonColumns.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+            {commonColumns.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.name}
+              </option>
+            ))}
           </select>
         </label>
       )}

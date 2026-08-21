@@ -39,21 +39,38 @@ def env(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         owner = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="", bootstrap_admin=False,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
         )
         stranger = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="b", username="bob",
-            email=None, first_name="", last_name="", bootstrap_admin=False,
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=False,
         )
-        item = create_item(s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="App")
+        item = create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="App"
+        )
         configs_repo.create_config(
             s,
             BuilderConfig(
-                kind="app", dataSources=[], pages=[],
+                kind="app",
+                dataSources=[],
+                pages=[],
                 layout={"type": "grid", "breakpoints": {}, "items": []},
             ),
-            item.id, tenant_id=tenant.id,
+            item.id,
+            tenant_id=tenant.id,
         )
         s.commit()
 

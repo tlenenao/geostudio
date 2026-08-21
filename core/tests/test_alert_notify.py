@@ -110,17 +110,31 @@ def smtp_secret_session(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         payload = SmtpCredentialsPayload(
-            host="smtp.example.test", port=587, username="alerts@example.test",
-            password="s3cret", useTls=True, fromAddress="alerts@example.test",
+            host="smtp.example.test",
+            port=587,
+            username="alerts@example.test",
+            password="s3cret",
+            useTls=True,
+            fromAddress="alerts@example.test",
         )
         ciphertext, nonce = secrets_crypto.encrypt(SECRET_PAYLOAD_ADAPTER.dump_python(payload))
         secrets_repo.create_secret(
-            s, tenant_id=tenant.id, created_by=user.id, name="smtp-main", kind="smtp",
-            ciphertext=ciphertext, nonce=nonce,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            name="smtp-main",
+            kind="smtp",
+            ciphertext=ciphertext,
+            nonce=nonce,
         )
         s.commit()
         tenant_id = tenant.id

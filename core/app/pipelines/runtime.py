@@ -23,6 +23,7 @@ Convention de colonne géométrie : chaque vue de reader matérialisée
 renomme sa colonne géométrie source en "geometry" (quel que soit son nom
 réel dans la collection), pour que le reste de la chaîne (writer.collection
 compris) n'ait jamais à connaître le nom d'origine — cf. Task 8 note."""
+
 import csv
 import io
 import json
@@ -50,11 +51,21 @@ from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
-    ReaderCollectionParams, ReaderConnectorPostgresParams, ReaderConnectorRestParams,
-    TransformAggregateParams, TransformCountWithinParams, TransformDeriveParams,
-    TransformFilterParams, TransformH3AggregateParams, TransformIntersectionParams,
-    TransformJoinParams, TransformMergeParams, TransformQgisParams, WriterCollectionParams,
-    WriterDatasetParams, WriterExportParams,
+    ReaderCollectionParams,
+    ReaderConnectorPostgresParams,
+    ReaderConnectorRestParams,
+    TransformAggregateParams,
+    TransformCountWithinParams,
+    TransformDeriveParams,
+    TransformFilterParams,
+    TransformH3AggregateParams,
+    TransformIntersectionParams,
+    TransformJoinParams,
+    TransformMergeParams,
+    TransformQgisParams,
+    WriterCollectionParams,
+    WriterDatasetParams,
+    WriterExportParams,
 )
 from app.sharing.authorization import can
 from app.users.models import User
@@ -90,29 +101,49 @@ class NodeStat:
 
 
 def _require_readable_collection_id(
-    session: Session, *, tenant_id: str, user: User, collection_id: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    user: User,
+    collection_id: str,
 ) -> str:
     collection = collections_repo.get_collection(
-        session, tenant_id=tenant_id, collection_id=collection_id,
+        session,
+        tenant_id=tenant_id,
+        collection_id=collection_id,
     )
     if collection is None:
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
-    if not can(session, user_id=user.id, action="read",
-               item=collections_repo.get_access_facts(collection), kind="collection",
-               actor_is_admin=user.is_admin):
+    if not can(
+        session,
+        user_id=user.id,
+        action="read",
+        item=collections_repo.get_access_facts(collection),
+        kind="collection",
+        actor_is_admin=user.is_admin,
+    ):
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
     return collection.table_name
 
 
-def _require_writable_collection(session: Session, *, tenant_id: str, user: User, collection_id: str):
+def _require_writable_collection(
+    session: Session, *, tenant_id: str, user: User, collection_id: str
+):
     collection = collections_repo.get_collection(
-        session, tenant_id=tenant_id, collection_id=collection_id,
+        session,
+        tenant_id=tenant_id,
+        collection_id=collection_id,
     )
     if collection is None:
         raise PipelineRuntimeError(f"collection '{collection_id}' not found")
-    if not can(session, user_id=user.id, action="write",
-               item=collections_repo.get_access_facts(collection), kind="collection",
-               actor_is_admin=user.is_admin):
+    if not can(
+        session,
+        user_id=user.id,
+        action="write",
+        item=collections_repo.get_access_facts(collection),
+        kind="collection",
+        actor_is_admin=user.is_admin,
+    ):
         raise PipelineRuntimeError(f"collection '{collection_id}' is not writable")
     if not collection.editable:
         raise PipelineRuntimeError(f"collection '{collection_id}' is not writable")
@@ -128,7 +159,15 @@ def _table_info_for_collection(session: Session, collection_id: str) -> TableInf
         raise PipelineRuntimeError(exc.reason) from exc
 
 
-def _materialize_reader(conn, *, view_name: str, base_uri: str, tenant_id: str, collection_id: str, table_info: TableInfo) -> None:
+def _materialize_reader(
+    conn,
+    *,
+    view_name: str,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+    table_info: TableInfo,
+) -> None:
     # Comme app.analytics.sql_sandbox._materialize : DuckDB ne peut pas
     # déduire un schéma d'un glob qui ne correspond à aucun fichier, donc pas
     # de "vue vide typée" possible ici — échec propre et explicite plutôt
@@ -181,7 +220,13 @@ def _validate_node_exprs(conn: duckdb.DuckDBPyConnection, node: PipelineNode) ->
 
 
 def _prepare(
-    conn, session: Session, payload: PipelinePayload, *, tenant_id: str, user: User, base_uri: str,
+    conn,
+    session: Session,
+    payload: PipelinePayload,
+    *,
+    tenant_id: str,
+    user: User,
+    base_uri: str,
 ) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
     chaque transform.join/intersection/countWithin), puis verrouille.
@@ -199,20 +244,31 @@ def _prepare(
         if node.op == "reader.collection":
             p = ReaderCollectionParams.model_validate(node.params)
             table_name = _require_readable_collection_id(
-                session, tenant_id=tenant_id, user=user, collection_id=p.collectionId,
+                session,
+                tenant_id=tenant_id,
+                user=user,
+                collection_id=p.collectionId,
             )
             table_info = _table_info_for_collection(session, table_name)
             _materialize_reader(
-                conn, view_name=view_name, base_uri=base_uri, tenant_id=tenant_id,
-                collection_id=p.collectionId, table_info=table_info,
+                conn,
+                view_name=view_name,
+                base_uri=base_uri,
+                tenant_id=tenant_id,
+                collection_id=p.collectionId,
+                table_info=table_info,
             )
             srid_by_node[node.id] = table_info.srid or 4326
         elif node.op == "reader.connector.rest":
             p = ReaderConnectorRestParams.model_validate(node.params)
             try:
                 connector_runtime.materialize_rest_connector(
-                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
-                    params=p, view_name=view_name,
+                    conn,
+                    session=session,
+                    tenant_id=tenant_id,
+                    node_id=node.id,
+                    params=p,
+                    view_name=view_name,
                 )
             except connector_runtime.ConnectorRuntimeError as exc:
                 raise PipelineRuntimeError(str(exc)) from exc
@@ -221,8 +277,12 @@ def _prepare(
             p = ReaderConnectorPostgresParams.model_validate(node.params)
             try:
                 connector_runtime.materialize_postgres_connector(
-                    conn, session=session, tenant_id=tenant_id, node_id=node.id,
-                    params=p, view_name=view_name,
+                    conn,
+                    session=session,
+                    tenant_id=tenant_id,
+                    node_id=node.id,
+                    params=p,
+                    view_name=view_name,
                 )
             except connector_runtime.ConnectorRuntimeError as exc:
                 raise PipelineRuntimeError(str(exc)) from exc
@@ -247,13 +307,20 @@ def _prepare(
                 f"'{node.op}': requires either 'withCollectionId' or a secondary input edge"
             )
         table_name = _require_readable_collection_id(
-            session, tenant_id=tenant_id, user=user, collection_id=p.withCollectionId,
+            session,
+            tenant_id=tenant_id,
+            user=user,
+            collection_id=p.withCollectionId,
         )
         table_info = _table_info_for_collection(session, table_name)
         join_view = f"node_{node.id}__join"
         _materialize_reader(
-            conn, view_name=join_view, base_uri=base_uri, tenant_id=tenant_id,
-            collection_id=p.withCollectionId, table_info=table_info,
+            conn,
+            view_name=join_view,
+            base_uri=base_uri,
+            tenant_id=tenant_id,
+            collection_id=p.withCollectionId,
+            table_info=table_info,
         )
         join_srid_by_node[node.id] = table_info.srid or 4326
 
@@ -285,7 +352,8 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
     if not geom_cols:
         raise PipelineRuntimeError(
-            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte aucune colonne géométrie"
+            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte "
+            "aucune colonne géométrie"
         )
     # Une seule colonne géométrie attendue (même contrat qu'une collection) :
     # en cas de pluralité inattendue, la première suffit à ne jamais perdre
@@ -293,12 +361,20 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     geom_col = geom_cols[0]
     other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
     select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
-    conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')")
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')"
+    )
 
 
 def _execute_qgis_transform(
-    conn, node: PipelineNode, *, input_view: str, input_srid: int,
-    qgis_worker_url: str, qgis_worker_timeout_seconds: int, scratch_run_id: str,
+    conn,
+    node: PipelineNode,
+    *,
+    input_view: str,
+    input_srid: int,
+    qgis_worker_url: str,
+    qgis_worker_timeout_seconds: int,
+    scratch_run_id: str,
 ) -> None:
     if not qgis_worker_url:
         raise PipelineRuntimeError(
@@ -332,7 +408,8 @@ def _execute_qgis_transform(
             ) from exc
         except httpx.HTTPError as exc:
             raise PipelineRuntimeError(
-                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar qgis-worker : {exc}"
+                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar "
+                f"qgis-worker : {exc}"
             ) from exc
         if response.status_code != 200:
             # Défense en profondeur : le sidecar (server.py _respond) émet
@@ -346,7 +423,10 @@ def _execute_qgis_transform(
             raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
         view_name = f"node_{node.id}"
         _materialize_qgis_output(
-            conn, out_path=out_path, view_name=view_name, algorithm_id=p.algorithmId,
+            conn,
+            out_path=out_path,
+            view_name=view_name,
+            algorithm_id=p.algorithmId,
         )
     finally:
         # Best-effort : ne bloque jamais le run (ni ne masque une erreur déjà
@@ -358,9 +438,15 @@ def _execute_qgis_transform(
 
 
 def _execute_transform_chain(
-    conn, ordered: list[PipelineNode], edges, view_by_node: dict[str, str],
-    srid_by_node: dict[str, int], join_srid_by_node: dict[str, int],
-    *, stop_at: str | None = None, qgis_worker_url: str = "",
+    conn,
+    ordered: list[PipelineNode],
+    edges,
+    view_by_node: dict[str, str],
+    srid_by_node: dict[str, int],
+    join_srid_by_node: dict[str, int],
+    *,
+    stop_at: str | None = None,
+    qgis_worker_url: str = "",
     qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list["NodeStat"]:
@@ -394,21 +480,31 @@ def _execute_transform_chain(
         _validate_node_exprs(conn, node)
         try:
             output_srid = compiler.transform_output_srid(
-                node.op, node.params, input_srid=input_srid, join_srid=join_srid,
+                node.op,
+                node.params,
+                input_srid=input_srid,
+                join_srid=join_srid,
             )
         except ValueError as exc:
             raise PipelineRuntimeError(str(exc)) from exc
         view_name = f"node_{node.id}"
         if node.op == "transform.qgis":
             _execute_qgis_transform(
-                conn, node, input_view=input_view, input_srid=input_srid,
+                conn,
+                node,
+                input_view=input_view,
+                input_srid=input_srid,
                 qgis_worker_url=qgis_worker_url,
                 qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
                 scratch_run_id=scratch_run_id,
             )
         else:
             sql = compiler.compile_transform_sql(
-                node.op, node.params, input_view=input_view, join_view=join_view, input_srid=input_srid,
+                node.op,
+                node.params,
+                input_view=input_view,
+                join_view=join_view,
+                input_srid=input_srid,
             )
             conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name
@@ -427,9 +523,19 @@ def _view_row_count(conn, view_name: str) -> int:
 
 
 def preview_pipeline(
-    *, session: Session | None, payload: PipelinePayload, tenant_id: str, user: User | None,
-    up_to: str, endpoint_url: str, access_key: str, secret_key: str, base_uri: str, limit: int = 50,
-    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
+    *,
+    session: Session | None,
+    payload: PipelinePayload,
+    tenant_id: str,
+    user: User | None,
+    up_to: str,
+    endpoint_url: str,
+    access_key: str,
+    secret_key: str,
+    base_uri: str,
+    limit: int = 50,
+    qgis_worker_url: str = "",
+    qgis_worker_timeout_seconds: int = 600,
 ) -> list[dict]:
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
@@ -440,11 +546,22 @@ def preview_pipeline(
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
-            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+            conn,
+            session,
+            payload,
+            tenant_id=tenant_id,
+            user=user,
+            base_uri=base_uri,
         )
         _execute_transform_chain(
-            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
-            stop_at=up_to, qgis_worker_url=qgis_worker_url,
+            conn,
+            ordered,
+            payload.edges,
+            view_by_node,
+            srid_by_node,
+            join_srid_by_node,
+            stop_at=up_to,
+            qgis_worker_url=qgis_worker_url,
             qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
         )
         view_name = view_by_node[up_to]
@@ -453,14 +570,18 @@ def preview_pipeline(
         # décoder — on convertit en GeoJSON ici, au point de sortie de la
         # preview, plutôt que de porter du GeoJSON à travers toute la chaîne
         # de transforms intermédiaire (Phase 1 n'a aucune op spatiale).
-        input_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description}
+        input_cols = {
+            d[0] for d in conn.execute(f"SELECT * FROM {_qi(view_name)} LIMIT 0").description
+        }
         has_geometry = "geometry" in input_cols
         select_list = (
             "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
         )
-        rows = conn.execute(f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}").fetchall()
+        rows = conn.execute(
+            f"SELECT {select_list} FROM {_qi(view_name)} LIMIT {int(limit)}"
+        ).fetchall()
         cols = [d[0] for d in conn.description]
-        result = [dict(zip(cols, r)) for r in rows]
+        result = [dict(zip(cols, r, strict=True)) for r in rows]
         if has_geometry:
             # La colonne contient une chaîne GeoJSON (ST_AsGeoJSON) : on la
             # décode en objet pour que la réponse HTTP porte une géométrie
@@ -473,21 +594,27 @@ def preview_pipeline(
         conn.close()
 
 
-def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User) -> NodeStat:
+def _write_collection(
+    session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User
+) -> NodeStat:
     p = WriterCollectionParams.model_validate(node.params)
-    collection = _require_writable_collection(session, tenant_id=tenant_id, user=user, collection_id=p.collectionId)
+    collection = _require_writable_collection(
+        session, tenant_id=tenant_id, user=user, collection_id=p.collectionId
+    )
     info = _table_info_for_collection(session, collection.table_name)
     # view_by_node[node.id] is set by the caller (run_pipeline) to the
     # predecessor's view name before calling this function.
     input_view = view_by_node[node.id]
 
-    input_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description}
+    input_cols = {
+        d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description
+    }
     has_geometry = "geometry" in input_cols
     # Convertit la géométrie en GeoJSON DANS la requête DuckDB (ST_AsGeoJSON),
     # jamais en repassant un objet géométrie déjà récupéré comme paramètre
     # lié d'une requête ultérieure — un aller-retour fragile, non nécessaire.
     select_list = (
-        f"* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
+        "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
     )
     rows = conn.execute(f"SELECT {select_list} FROM {_qi(input_view)}").fetchall()
     cols = [d[0] for d in conn.description]
@@ -507,8 +634,12 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
         if p.mode == "replace":
             deleted = delete_all_features(session, info)
         for raw in rows:
-            row = dict(zip(cols, raw))
-            geometry = json.loads(row.pop("geometry")) if has_geometry and row.get("geometry") is not None else None
+            row = dict(zip(cols, raw, strict=True))
+            geometry = (
+                json.loads(row.pop("geometry"))
+                if has_geometry and row.get("geometry") is not None
+                else None
+            )
             for key in reserved_on_write:
                 row.pop(key, None)
             properties = row
@@ -526,15 +657,26 @@ def _write_collection(session: Session, conn, *, node: PipelineNode, view_by_nod
     # hors de tout rls_scope.
     if deleted is not None:
         write_audit(
-            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
-            action="collection.replace_purge", object_type="collection", object_id=collection.id,
+            session,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="collection.replace_purge",
+            object_type="collection",
+            object_id=collection.id,
             payload={"pipelineNodeId": node.id, "deletedRows": deleted},
         )
     return NodeStat(node.id, node.op, count)
 
 
 def _write_dataset(
-    session: Session, conn, *, node: PipelineNode, view_by_node: dict, tenant_id: str, user: User,
+    session: Session,
+    conn,
+    *,
+    node: PipelineNode,
+    view_by_node: dict,
+    tenant_id: str,
+    user: User,
 ) -> NodeStat:
     p = WriterDatasetParams.model_validate(node.params)
     # Réutilise _write_collection TEL QUEL (même chemin d'écriture OGC
@@ -544,11 +686,18 @@ def _write_dataset(
     # ainsi que _write_collection retrouve la bonne entrée de view_by_node
     # (posée par l'appelant, run_pipeline, avant le dispatch).
     collection_node = PipelineNode(
-        id=node.id, kind="writer", op="writer.collection",
+        id=node.id,
+        kind="writer",
+        op="writer.collection",
         params={"collectionId": p.collectionId, "mode": p.mode},
     )
     write_stat = _write_collection(
-        session, conn, node=collection_node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+        session,
+        conn,
+        node=collection_node,
+        view_by_node=view_by_node,
+        tenant_id=tenant_id,
+        user=user,
     )
 
     if p.datasetId is not None:
@@ -565,9 +714,12 @@ def _write_dataset(
         # reactsToExtent, crossFilterLinks) est copié tel quel, jamais
         # régénéré par le run (design §4).
         updated_dataset = DatasetPayload(
-            source="collection", collectionId=p.collectionId,
-            columns=current.columns, timeField=current.timeField,
-            reactsToExtent=current.reactsToExtent, crossFilterLinks=current.crossFilterLinks,
+            source="collection",
+            collectionId=p.collectionId,
+            columns=current.columns,
+            timeField=current.timeField,
+            reactsToExtent=current.reactsToExtent,
+            crossFilterLinks=current.crossFilterLinks,
             sourcePipelineId=current.sourcePipelineId,
         )
         # model_copy (pas de re-validation) est sûr ici : seul le champ
@@ -577,40 +729,66 @@ def _write_dataset(
         updated_config = existing.config.model_copy(update={"dataset": updated_dataset})
         configs_repo.update_config(session, existing.id, updated_config, tenant_id=tenant_id)
         write_audit(
-            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
-            action="config.update", object_type="config", object_id=existing.id,
+            session,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="config.update",
+            object_type="config",
+            object_id=existing.id,
             payload={"pipelineNodeId": node.id},
         )
     else:
         assert p.title is not None  # enforced by WriterDatasetParams' model_validator
         item = items_repo.create_item(
-            session, tenant_id=tenant_id, owner_id=user.id, resource_type="dataset", title=p.title,
+            session,
+            tenant_id=tenant_id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title=p.title,
         )
         new_config = BuilderConfig(
-            kind="dataset", dataset=DatasetPayload(source="collection", collectionId=p.collectionId),
+            kind="dataset",
+            dataset=DatasetPayload(source="collection", collectionId=p.collectionId),
         )
-        config_result = configs_repo.create_config(session, new_config, item_id=item.id, tenant_id=tenant_id)
+        config_result = configs_repo.create_config(
+            session, new_config, item_id=item.id, tenant_id=tenant_id
+        )
         write_audit(
-            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
-            action="item.create", object_type="item", object_id=item.id,
+            session,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="item.create",
+            object_type="item",
+            object_id=item.id,
             payload={"title": p.title},
         )
         write_audit(
-            session, tenant_id=tenant_id, actor_id=user.id, actor_kind="user",
-            action="config.create", object_type="config", object_id=config_result.id,
+            session,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action="config.create",
+            object_type="config",
+            object_id=config_result.id,
             payload={"title": p.title, "kind": "dataset"},
         )
     return NodeStat(node.id, node.op, write_stat.rowCount)
 
 
-def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict) -> NodeStat:
+def _write_export(
+    conn, s3_client, exports_bucket: str, *, node: PipelineNode, view_by_node: dict
+) -> NodeStat:
     p = WriterExportParams.model_validate(node.params)
     input_view = view_by_node[node.id]
     # Même conversion que _write_collection/preview_pipeline : la géométrie
     # brute (WKB bytes) casse json.dumps (geojson) et n'a aucun sens en
     # cellule CSV — on la convertit en chaîne GeoJSON ici, au point de
     # sortie de l'export.
-    input_cols = {d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description}
+    input_cols = {
+        d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description
+    }
     has_geometry = "geometry" in input_cols
     select_list = (
         "* EXCLUDE (geometry), ST_AsGeoJSON(geometry) AS geometry" if has_geometry else "*"
@@ -628,7 +806,7 @@ def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, v
     else:
         features = []
         for row in rows:
-            properties = dict(zip(columns, row))
+            properties = dict(zip(columns, row, strict=True))
             # La géométrie ne doit apparaître qu'au niveau "geometry" du
             # Feature, jamais dupliquée dans "properties" (même contrat que
             # _write_collection).
@@ -643,20 +821,40 @@ def _write_export(conn, s3_client, exports_bucket: str, *, node: PipelineNode, v
 
 
 def run_pipeline(
-    session: Session, *, payload: PipelinePayload, tenant_id: str, user: User,
-    endpoint_url: str, access_key: str, secret_key: str, base_uri: str,
-    s3_client=None, exports_bucket: str | None = None,
-    qgis_worker_url: str = "", qgis_worker_timeout_seconds: int = 600,
+    session: Session,
+    *,
+    payload: PipelinePayload,
+    tenant_id: str,
+    user: User,
+    endpoint_url: str,
+    access_key: str,
+    secret_key: str,
+    base_uri: str,
+    s3_client=None,
+    exports_bucket: str | None = None,
+    qgis_worker_url: str = "",
+    qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list[NodeStat]:
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
-            conn, session, payload, tenant_id=tenant_id, user=user, base_uri=base_uri,
+            conn,
+            session,
+            payload,
+            tenant_id=tenant_id,
+            user=user,
+            base_uri=base_uri,
         )
         stats = _execute_transform_chain(
-            conn, ordered, payload.edges, view_by_node, srid_by_node, join_srid_by_node,
-            qgis_worker_url=qgis_worker_url, qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
+            conn,
+            ordered,
+            payload.edges,
+            view_by_node,
+            srid_by_node,
+            join_srid_by_node,
+            qgis_worker_url=qgis_worker_url,
+            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
             on_node_complete=on_node_complete,
         )
         for node in ordered:
@@ -667,14 +865,26 @@ def run_pipeline(
             view_by_node[node.id] = view_by_node[pred_id]
             if node.op == "writer.collection":
                 stat = _write_collection(
-                    session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+                    session,
+                    conn,
+                    node=node,
+                    view_by_node=view_by_node,
+                    tenant_id=tenant_id,
+                    user=user,
                 )
             elif node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
-                stat = _write_export(conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node)
+                stat = _write_export(
+                    conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
+                )
             elif node.op == "writer.dataset":
                 stat = _write_dataset(
-                    session, conn, node=node, view_by_node=view_by_node, tenant_id=tenant_id, user=user,
+                    session,
+                    conn,
+                    node=node,
+                    view_by_node=view_by_node,
+                    tenant_id=tenant_id,
+                    user=user,
                 )
             stats.append(stat)
             if on_node_complete is not None:

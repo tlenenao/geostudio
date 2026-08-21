@@ -22,7 +22,8 @@ test("decodes garbage as the empty context, never throws", () => {
 
 test("encoded output is URL-safe (no +, /, or = padding)", () => {
   const state: AnalyticsContextState = {
-    timeRange: null, extent: null,
+    timeRange: null,
+    extent: null,
     crossFilter: { "ds-1": { field: "f", value: ["a", "b", "c"], originSourceId: "s" } },
   };
   const encoded = encodeAnalyticsContext(state);

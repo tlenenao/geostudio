@@ -2,6 +2,7 @@
 """Upload S3/MinIO pour les fichiers GeoParquet CDC (SP-11a). Réutilise
 make_s3_client (app.ingestion.storage, SP-6a) — même client boto3, bucket
 dédié (S3_CDC_BUCKET) plutôt que le bucket d'uploads."""
+
 from botocore.exceptions import ClientError
 
 from app.ingestion.storage import make_s3_client  # noqa: F401  (ré-export pour app.cdc.main)

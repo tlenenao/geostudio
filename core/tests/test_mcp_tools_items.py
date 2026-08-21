@@ -4,10 +4,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app import db
-from app.db import make_engine, make_session_factory, init_db, request_scoped_session
+from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
+from app.main import create_app
 from app.sharing.models import Group, GroupMember, ItemShare
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -34,8 +34,13 @@ def app_client(monkeypatch, tmp_path):
         # CORE_AUTH_MODE=mock always resolves this exact identity (see
         # app/auth/dependency.py's mock branch and MockTokenVerifier).
         mock_user = get_or_create_user(
-            setup_session, tenant_id=tenant.id, oidc_sub="mock-sub",
-            username="mockuser", email=None, first_name="Mock", last_name="User",
+            setup_session,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         setup_session.commit()
 
@@ -81,9 +86,12 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     init_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
             "params": {
-                "protocolVersion": "2025-06-18", "capabilities": {},
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
                 "clientInfo": {"name": "test", "version": "0"},
             },
         },
@@ -103,15 +111,15 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     call_response = test_client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
         headers=session_headers,
     )
     assert call_response.status_code == 200
-    body_line = next(
-        line for line in call_response.text.splitlines() if line.startswith("data: ")
-    )
+    body_line = next(line for line in call_response.text.splitlines() if line.startswith("data: "))
     payload = json.loads(body_line.removeprefix("data: "))
     return payload["result"]
 
@@ -119,8 +127,11 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
 def _seed_item(test_client, *, owner_id, title="Item") -> str:
     with test_client.session_factory() as session:
         item = items_repo.create_item(
-            session, tenant_id=test_client.tenant.id, owner_id=owner_id,
-            resource_type="app", title=title,
+            session,
+            tenant_id=test_client.tenant.id,
+            owner_id=owner_id,
+            resource_type="app",
+            title=title,
         )
         session.commit()
         return item.id
@@ -149,8 +160,13 @@ def test_get_item_returns_owned_item(app_client):
 def test_get_item_invisible_to_a_stranger_errors(app_client):
     with app_client.session_factory() as session:
         stranger = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="sub-stranger",
-            username="stranger", email=None, first_name="", last_name="",
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-stranger",
+            username="stranger",
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.commit()
         stranger_id = stranger.id
@@ -165,19 +181,35 @@ def test_get_item_invisible_to_a_stranger_errors(app_client):
 def test_get_item_visible_via_group_share_succeeds(app_client):
     with app_client.session_factory() as session:
         owner = get_or_create_user(
-            session, tenant_id=app_client.tenant.id, oidc_sub="sub-owner",
-            username="owner", email=None, first_name="", last_name="",
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-owner",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
         )
         session.flush()
         item = items_repo.create_item(
-            session, tenant_id=app_client.tenant.id, owner_id=owner.id,
-            resource_type="app", title="Shared",
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=owner.id,
+            resource_type="app",
+            title="Shared",
         )
         group = Group(id="g1", tenant_id=app_client.tenant.id, name="G", created_by=owner.id)
         session.add(group)
         session.flush()
-        session.add(GroupMember(group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id))
-        session.add(ItemShare(item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"))
+        session.add(
+            GroupMember(
+                group_id=group.id, user_id=app_client.mock_user.id, tenant_id=app_client.tenant.id
+            )
+        )
+        session.add(
+            ItemShare(
+                item_id=item.id, group_id=group.id, tenant_id=app_client.tenant.id, role="viewer"
+            )
+        )
         session.commit()
         item_id = item.id
 

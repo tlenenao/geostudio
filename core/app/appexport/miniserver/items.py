@@ -7,6 +7,7 @@ inutilisable dans le mini-serveur (pas de driver Postgres dans cette
 image). Même glob hive-partitionné que app.analytics.aggregate (tenant_id=/
 collection_id=/dt=*/*.parquet) — Task 4's write_snapshot écrit exactement
 cette disposition."""
+
 import json
 from dataclasses import dataclass
 
@@ -16,6 +17,7 @@ from app.collections.introspection import TableInfo
 class MissingGeometryColumn(Exception):
     """Raised when a spatial filter (bbox, geom_intersects) is requested
     on a collection with no geometry column."""
+
     pass
 
 
@@ -45,7 +47,9 @@ def _has_any_file(conn, base_uri: str, tenant_id: str, collection_id: str) -> bo
 
 
 def _property_columns(info: TableInfo) -> list:
-    return [c for c in info.columns if c.name not in (info.pk_column, "tenant_id", info.geometry_column)]
+    return [
+        c for c in info.columns if c.name not in (info.pk_column, "tenant_id", info.geometry_column)
+    ]
 
 
 def _select_list(info: TableInfo) -> str:
@@ -67,7 +71,7 @@ def _row_to_feature(info: TableInfo, row: dict) -> dict:
 def _fetch_rows(conn, sql: str, params: list) -> list[dict]:
     result = conn.execute(sql, params).fetchall()
     cols = [d[0] for d in conn.description]
-    return [dict(zip(cols, r)) for r in result]
+    return [dict(zip(cols, r, strict=True)) for r in result]
 
 
 def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, list]:
@@ -77,7 +81,9 @@ def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, lis
         raise MissingGeometryColumn("collection has no geometry column")
     if bbox is not None:
         minx, miny, maxx, maxy = bbox
-        clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))")
+        clauses.append(
+            f"ST_Intersects({_qi(table_info.geometry_column)}, ST_MakeEnvelope(?, ?, ?, ?))"
+        )
         params.extend([minx, miny, maxx, maxy])
     if geom_intersects is not None:
         clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_GeomFromGeoJSON(?))")
@@ -96,17 +102,28 @@ def _coerce_fid(table_info: TableInfo, fid: str):
 
 
 def select_features(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info: TableInfo,
-    limit: int, offset: int, bbox=None, geom_intersects=None,
+    conn,
+    *,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+    table_info: TableInfo,
+    limit: int,
+    offset: int,
+    bbox=None,
+    geom_intersects=None,
 ) -> FeaturePage:
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
         return FeaturePage(features=[], number_matched=0, number_returned=0)
     glob = _glob(base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(table_info, bbox, geom_intersects)
-    count_sql = f"SELECT COUNT(*) FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) {where_sql}"
+    count_sql = (
+        f"SELECT COUNT(*) FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) {where_sql}"
+    )
     matched = conn.execute(count_sql, where_params).fetchone()[0]
     sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
+        f"SELECT {_select_list(table_info)} "
+        f"FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
         f"{where_sql} ORDER BY {_qi(table_info.pk_column)} LIMIT ? OFFSET ?"
     )
     rows = _fetch_rows(conn, sql, [*where_params, limit, offset])
@@ -115,14 +132,21 @@ def select_features(
 
 
 def get_feature(
-    conn, *, base_uri: str, tenant_id: str, collection_id: str, table_info: TableInfo, fid: str,
+    conn,
+    *,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+    table_info: TableInfo,
+    fid: str,
 ) -> dict | None:
     value = _coerce_fid(table_info, fid)
     if value is None or not _has_any_file(conn, base_uri, tenant_id, collection_id):
         return None
     glob = _glob(base_uri, tenant_id, collection_id)
     sql = (
-        f"SELECT {_select_list(table_info)} FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
+        f"SELECT {_select_list(table_info)} "
+        f"FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true) "
         f"WHERE {_qi(table_info.pk_column)} = ?"
     )
     rows = _fetch_rows(conn, sql, [value])

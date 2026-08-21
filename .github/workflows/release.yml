@@ -75,6 +75,11 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # Sans ceci, un échec sur une seule des huit legs (par ex. disque ou
+      # timeout sur geostudio-qgis-worker, 11.1 Go, ou geostudio-export-worker,
+      # 3.14 Go) annule les sept autres avant publication — dont core/shell/
+      # postgis, qui n'ont eux-mêmes aucune raison d'échouer.
+      fail-fast: false
       matrix:
         include:
           - image: geostudio-core
@@ -89,6 +94,23 @@ jobs:
           - image: geostudio-appexport-standalone
             context: .
             dockerfile: deploy/appexport-standalone/Dockerfile
+          # SP-21 : ces quatre images existaient uniquement en `build:` dans
+          # le compose — donc introuvables au déploiement. `context` et
+          # `dockerfile` doivent correspondre **exactement** aux valeurs du
+          # compose : c'est ce couple que vérifie
+          # tests/test_deployability.py::test_every_build_service_has_a_released_image.
+          - image: geostudio-export-worker
+            context: ./core
+            dockerfile: ../deploy/export-worker/Dockerfile
+          - image: geostudio-qgis-worker
+            context: ./deploy/qgis-worker
+            dockerfile: Dockerfile
+          - image: geostudio-appexport-runtime-builder
+            context: .
+            dockerfile: deploy/appexport-runtime-builder/Dockerfile
+          - image: geostudio-backup
+            context: ./deploy/backup
+            dockerfile: Dockerfile
     steps:
       - uses: actions/checkout@v4
 

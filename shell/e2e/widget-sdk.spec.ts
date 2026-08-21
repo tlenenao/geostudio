@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("an sdk-only example widget appears in the palette and wires through ActionsPanel", async ({ page }) => {
+test("an sdk-only example widget appears in the palette and wires through ActionsPanel", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

@@ -49,7 +49,9 @@ test("surfaces a fetch error", async () => {
 });
 
 test("shows a Tableau/Carte toggle when rows carry a geometry column, and defaults to Tableau", async () => {
-  renderPanel(vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]));
+  renderPanel(
+    vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]),
+  );
   await waitFor(() => expect(screen.getByRole("button", { name: "Carte" })).toBeInTheDocument());
   expect(screen.getByRole("table")).toBeInTheDocument();
 });
@@ -61,7 +63,9 @@ test("hides the toggle and always shows the table when no row has a geometry col
 });
 
 test("clicking Carte swaps the table for the map view", async () => {
-  renderPanel(vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]));
+  renderPanel(
+    vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]),
+  );
   await waitFor(() => expect(screen.getByRole("button", { name: "Carte" })).toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: "Carte" }));
   expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();

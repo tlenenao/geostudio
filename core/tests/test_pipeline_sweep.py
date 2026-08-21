@@ -6,6 +6,7 @@ planifiés. Pure SQLite (pas de postgis) — ce test vérifie la décision
 run_pipeline_task.defer est monkeypatché : le sweep n'a besoin de PROUVER
 que run_pipeline_task a été sollicité avec les bons arguments, jamais de le
 laisser tourner pour de vrai ici."""
+
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
@@ -27,8 +28,18 @@ def _pipeline_body(refresh_policy=None):
         "kind": "pipeline",
         "pipeline": {
             "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection", "params": {"collectionId": "villes_propres"}},
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.collection",
+                    "params": {"collectionId": "villes_propres"},
+                },
             ],
             "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
         },
@@ -40,11 +51,13 @@ def _pipeline_body(refresh_policy=None):
 
 def _seed_due_pipeline(session, *, tenant_id, owner_id, item_id="pipe-1"):
     item = items_repo.create_item(
-        session, tenant_id=tenant_id, owner_id=owner_id, resource_type="pipeline", title="P",
+        session,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        resource_type="pipeline",
+        title="P",
     )
-    config = BuilderConfig.model_validate(
-        _pipeline_body({"enabled": True, "cron": "*/5 * * * *"})
-    )
+    config = BuilderConfig.model_validate(_pipeline_body({"enabled": True, "cron": "*/5 * * * *"}))
     configs_repo.create_config(session, config, item_id=item.id, tenant_id=tenant_id)
     return item.id
 
@@ -54,8 +67,13 @@ def test_sweep_defers_run_pipeline_task_for_a_due_pipeline(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         item_id = _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -82,11 +100,20 @@ def test_sweep_defers_nothing_when_no_pipeline_is_due(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=user.id, resource_type="pipeline", title="P",
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="pipeline",
+            title="P",
         )
         config = BuilderConfig.model_validate(_pipeline_body())  # pas de refreshPolicy
         configs_repo.create_config(s, config, item_id=item.id, tenant_id=tenant.id)
@@ -108,8 +135,13 @@ def test_sweep_short_circuits_in_read_only_mode(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -144,8 +176,13 @@ def test_sweep_commits_run_before_deferring(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()
@@ -175,8 +212,13 @@ def test_sweep_short_circuits_when_etl_disabled(monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         _seed_due_pipeline(s, tenant_id=tenant.id, owner_id=user.id)
         s.commit()

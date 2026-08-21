@@ -35,7 +35,9 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     return (
       <div role="alert" className="p-8 text-sm text-red-600">
         Échec de la connexion : {error}{" "}
-        <button className="underline" onClick={signIn}>Réessayer</button>
+        <button className="underline" onClick={signIn}>
+          Réessayer
+        </button>
       </div>
     );
   }

@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCreateItem, useCreateMap, useCreateDataset, useCollectionsAdmin, useFeatureLayers, useInstanceInfo } from "../api/hooks";
+import {
+  useCreateItem,
+  useCreateMap,
+  useCreateDataset,
+  useCollectionsAdmin,
+  useFeatureLayers,
+  useInstanceInfo,
+} from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -28,8 +35,12 @@ export function NewItemButton() {
   const createDataset = useCreateDataset();
   const instanceQuery = useInstanceInfo();
   const etlEnabled = instanceQuery.data?.etlEnabled === true;
-  const collectionsQuery = useCollectionsAdmin({ enabled: open && kind === "dataset" && datasetSource === "collection" });
-  const featureLayersQuery = useFeatureLayers({ enabled: open && kind === "dataset" && datasetSource === "arcgis" });
+  const collectionsQuery = useCollectionsAdmin({
+    enabled: open && kind === "dataset" && datasetSource === "collection",
+  });
+  const featureLayersQuery = useFeatureLayers({
+    enabled: open && kind === "dataset" && datasetSource === "arcgis",
+  });
 
   // Slug auto-suivi du titre tant que l'utilisateur ne l'a pas édité lui-même.
   useEffect(() => {
@@ -87,7 +98,11 @@ export function NewItemButton() {
               });
       close();
       navigate(
-        kind === "map" ? `/maps/${item.pk}` : kind === "dataset" ? `/datasets/${item.pk}/edit` : `/apps/${item.pk}/edit`,
+        kind === "map"
+          ? `/maps/${item.pk}`
+          : kind === "dataset"
+            ? `/datasets/${item.pk}/edit`
+            : `/apps/${item.pk}/edit`,
       );
     } catch {
       // error surfaced via isError
@@ -100,14 +115,17 @@ export function NewItemButton() {
         Nouveau
       </Button>
       <Dialog open={open} onClose={close} title="Nouvel élément">
-        <form onSubmit={submit} className="flex flex-col gap-3">
+        <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Type
             <select
               aria-label="Type"
               className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={kind}
-              onChange={(e) => { setKind(e.target.value as Kind); setTemplateId(""); }}
+              onChange={(e) => {
+                setKind(e.target.value as Kind);
+                setTemplateId("");
+              }}
             >
               <option value="app">App</option>
               <option value="dashboard">Dashboard</option>
@@ -129,7 +147,9 @@ export function NewItemButton() {
               >
                 <option value="">Vide</option>
                 {TEMPLATES.filter((t) => t.kind === kind).map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
                 ))}
               </select>
             </label>
@@ -159,7 +179,9 @@ export function NewItemButton() {
               >
                 <option value="">Choisir…</option>
                 {(collectionsQuery.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.title}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
                 ))}
               </select>
             </label>
@@ -175,24 +197,22 @@ export function NewItemButton() {
               >
                 <option value="">Choisir…</option>
                 {(featureLayersQuery.data ?? []).map((l) => (
-                  <option key={l.id} value={l.id}>{l.title}</option>
+                  <option key={l.id} value={l.id}>
+                    {l.title}
+                  </option>
                 ))}
               </select>
               {featureLayersQuery.data?.length === 0 && (
                 <span className="text-xs text-slate-500">
-                  Aucune couche moissonnée. Configurez une source de moissonnage ArcGIS
-                  (mode référence) dans l'administration.
+                  Aucune couche moissonnée. Configurez une source de moissonnage ArcGIS (mode
+                  référence) dans l'administration.
                 </span>
               )}
             </label>
           )}
           <label className="flex flex-col gap-1 text-sm">
             Titre
-            <Input
-              aria-label="Titre"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {kind === "site" && (
             <label className="flex flex-col gap-1 text-sm">
@@ -200,10 +220,15 @@ export function NewItemButton() {
               <Input
                 aria-label="Slug"
                 value={slug}
-                onChange={(e) => { setSlug(e.target.value); setSlugTouched(true); }}
+                onChange={(e) => {
+                  setSlug(e.target.value);
+                  setSlugTouched(true);
+                }}
               />
               {slug && !isValidSlug(slug) && (
-                <span className="text-xs text-red-600">Slug invalide (minuscules, chiffres, tirets).</span>
+                <span className="text-xs text-red-600">
+                  Slug invalide (minuscules, chiffres, tirets).
+                </span>
               )}
             </label>
           )}
@@ -220,7 +245,9 @@ export function NewItemButton() {
               type="submit"
               size="sm"
               disabled={
-                create.isPending || createMap.isPending || createDataset.isPending ||
+                create.isPending ||
+                createMap.isPending ||
+                createDataset.isPending ||
                 (kind === "site" && !isValidSlug(slug)) ||
                 (kind === "dataset" && datasetSource === "collection" && !collectionId) ||
                 (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId)

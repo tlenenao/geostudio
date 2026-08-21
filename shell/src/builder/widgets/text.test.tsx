@@ -8,8 +8,16 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
-const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({ loading: false, error: false, records: [], ...over });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
+const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
+  loading: false,
+  error: false,
+  records: [],
+  ...over,
+});
 
 test("text renders verbatim when unbound", () => {
   const Text = getWidget("text")!.Component;
@@ -19,16 +27,20 @@ test("text renders verbatim when unbound", () => {
 
 test("text interpolates tokens from the bound source's first record", () => {
   const Text = getWidget("text")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [
-    { id: 1, properties: { nom: "Nantes", pop: 320000 } },
-  ] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "Nantes", pop: 320000 } }] }),
+  } as WidgetContext;
   render(<Text props={{ dataSourceId: "d", text: "{{nom}} : {{pop}} hab." }} ctx={ctx} />);
   expect(screen.getByText("Nantes : 320000 hab.")).toBeInTheDocument();
 });
 
 test("text leaves unknown tokens empty and offers a source binding", () => {
   const Text = getWidget("text")!.Component;
-  const ctx = { mode: "runtime", data: state({ records: [{ id: 1, properties: { nom: "X" } }] }) } as WidgetContext;
+  const ctx = {
+    mode: "runtime",
+    data: state({ records: [{ id: 1, properties: { nom: "X" } }] }),
+  } as WidgetContext;
   render(<Text props={{ dataSourceId: "d", text: "a{{absent}}b" }} ctx={ctx} />);
   expect(screen.getByText("ab")).toBeInTheDocument();
 
@@ -53,7 +65,10 @@ test("text uses the text color theme token", () => {
 test("text resolves {{var:nom}} directly from ctx.variables, independent of a bound source", () => {
   const Text = getWidget("text")!.Component;
   render(
-    <Text props={{ text: "Valeur : {{var:message}}" }} ctx={{ mode: "runtime", variables: { message: "salut" } } as WidgetContext} />,
+    <Text
+      props={{ text: "Valeur : {{var:message}}" }}
+      ctx={{ mode: "runtime", variables: { message: "salut" } } as WidgetContext}
+    />,
   );
   expect(screen.getByText("Valeur : salut")).toBeInTheDocument();
 });
@@ -61,7 +76,10 @@ test("text resolves {{var:nom}} directly from ctx.variables, independent of a bo
 test("text stringifies a number variable inserted via {{var:nom}}", () => {
   const Text = getWidget("text")!.Component;
   render(
-    <Text props={{ text: "Total : {{var:count}}" }} ctx={{ mode: "runtime", variables: { count: 42 } } as WidgetContext} />,
+    <Text
+      props={{ text: "Total : {{var:count}}" }}
+      ctx={{ mode: "runtime", variables: { count: 42 } } as WidgetContext}
+    />,
   );
   expect(screen.getByText("Total : 42")).toBeInTheDocument();
 });
@@ -69,7 +87,10 @@ test("text stringifies a number variable inserted via {{var:nom}}", () => {
 test("text stringifies a bool variable inserted via {{var:nom}}", () => {
   const Text = getWidget("text")!.Component;
   render(
-    <Text props={{ text: "Actif : {{var:gate}}" }} ctx={{ mode: "runtime", variables: { gate: true } } as WidgetContext} />,
+    <Text
+      props={{ text: "Actif : {{var:gate}}" }}
+      ctx={{ mode: "runtime", variables: { gate: true } } as WidgetContext}
+    />,
   );
   expect(screen.getByText("Actif : true")).toBeInTheDocument();
 });
@@ -77,8 +98,10 @@ test("text stringifies a bool variable inserted via {{var:nom}}", () => {
 test("text JSON-stringifies a record variable inserted via {{var:nom}}", () => {
   const Text = getWidget("text")!.Component;
   render(
-    <Text props={{ text: "Sélection : {{var:selected}}" }}
-      ctx={{ mode: "runtime", variables: { selected: { nom: "A" } } } as WidgetContext} />,
+    <Text
+      props={{ text: "Sélection : {{var:selected}}" }}
+      ctx={{ mode: "runtime", variables: { selected: { nom: "A" } } } as WidgetContext}
+    />,
   );
   expect(screen.getByText('Sélection : {"nom":"A"}')).toBeInTheDocument();
 });

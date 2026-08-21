@@ -13,6 +13,7 @@ aucun moteur CEL ne tourne côté serveur) : elles ne sont validées
 syntaxiquement qu'à l'exécution (app.pipelines.expr_validation), jamais ici
 — ce module ne valide que la FORME des params, pas la sémantique des
 expressions."""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -51,7 +52,7 @@ class WriterCollectionParams(BaseModel):
     mode: Literal["append", "replace"] = Field(
         default="append",
         description=(
-            "\"replace\" supprime TOUTES les données existantes de la "
+            '"replace" supprime TOUTES les données existantes de la '
             "collection cible avant d'écrire — irréversible, à réserver à "
             "une collection dédiée à ce pipeline."
         ),
@@ -90,6 +91,7 @@ class TransformMergeParams(BaseModel):
     `withCollectionId` (collection brute), soit d'une arête `role="secondary"`
     (sortie déjà calculée d'une autre branche du pipeline) — jamais les deux à
     la fois, jamais ni l'un ni l'autre (app.pipelines.config_validation)."""
+
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
 
 
@@ -100,12 +102,12 @@ class TransformH3AggregateParams(BaseModel):
 
 class WriterDatasetParams(BaseModel):
     collectionId: str = Field(..., json_schema_extra={"format": "collection-id"})
-    datasetId: str | None = None    # pk d'un item BuilderConfig(kind="dataset") existant
-    title: str | None = None        # requis si datasetId est None
+    datasetId: str | None = None  # pk d'un item BuilderConfig(kind="dataset") existant
+    title: str | None = None  # requis si datasetId est None
     mode: Literal["append", "replace"] = Field(
         default="append",
         description=(
-            "\"replace\" supprime TOUTES les données existantes de la "
+            '"replace" supprime TOUTES les données existantes de la '
             "collection cible avant d'écrire — irréversible, à réserver à "
             "une collection dédiée à ce pipeline."
         ),
@@ -130,6 +132,7 @@ class TransformQgisParams(BaseModel):
     automatique d'unité : un DISTANCE/TOLERANCE d'un algorithme QGIS est
     dans les unités du CRS natif de la couche d'entrée, jamais auto-converti
     en mètres (vérifié empiriquement en design, §2)."""
+
     algorithmId: str
     params: dict[str, Any] = Field(default_factory=dict)
     outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
@@ -141,14 +144,13 @@ class TransformQgisParams(BaseModel):
         schema = QGIS_ALGORITHMS.get(self.algorithmId)
         if schema is None:
             raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
-        required = {
-            name for name, p in schema["parameters"].items() if not p["optional"]
-        } - {"INPUT", "OUTPUT"}
+        required = {name for name, p in schema["parameters"].items() if not p["optional"]} - {
+            "INPUT",
+            "OUTPUT",
+        }
         missing = required - self.params.keys()
         if missing:
-            raise ValueError(
-                f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}"
-            )
+            raise ValueError(f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}")
         return self
 
 
@@ -159,6 +161,7 @@ class ReaderConnectorRestParams(BaseModel):
     authentifié. `recordsPath` est un chemin pointé vers le tableau
     d'enregistrements dans le corps de réponse (ex. "data.items") ; None =
     le corps de réponse EST le tableau."""
+
     baseUrl: str = Field(..., pattern=r"^https?://")
     path: str = ""
     method: Literal["GET", "POST"] = "GET"
@@ -176,6 +179,7 @@ class ReaderConnectorPostgresParams(BaseModel):
     (SP-15e) — pas de notion de DSN non authentifié, contrairement à REST.
     `query` n'est validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
     jamais ici (forme seulement) ni à la sauvegarde (design §6)."""
+
     secretName: str
     query: str
 
@@ -227,7 +231,10 @@ OP_PARAMS["transform.merge"] = TransformMergeParams
 # `_`-préfixé) : importé directement par app.pipelines.config_validation,
 # même package app.pipelines, aucune frontière de couches à traverser.
 BINARY_OPS = {
-    "transform.join", "transform.intersection", "transform.countWithin", "transform.merge",
+    "transform.join",
+    "transform.intersection",
+    "transform.countWithin",
+    "transform.merge",
 }
 
 

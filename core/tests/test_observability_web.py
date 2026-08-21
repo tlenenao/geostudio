@@ -14,6 +14,7 @@ tests/test_jobs.py::test_import_paths_registers_all_domain_tasks and
 tests/test_observability_httpx_botocore.py) gives both instrumentors a
 virgin process, so each succeeds on its first (and only) .instrument()
 call."""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -62,7 +63,10 @@ print("OK")
 """
     result = subprocess.run(
         [sys.executable, "-c", script],
-        cwd=core_dir, capture_output=True, text=True, timeout=30,
+        cwd=core_dir,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode == 0, f"sous-process a échoué : {result.stderr}"
     assert result.stdout.strip().splitlines()[-1] == "OK"

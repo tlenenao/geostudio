@@ -6,6 +6,7 @@ kind="tileset3d" avec un sourceKey arbitraire et devenir propriétaire d'un
 item pointant vers les octets d'un tileset appartenant à quelqu'un d'autre —
 le proxy GET /tileset3d/{item_id}/{path} vérifie can() sur l'item appelant,
 jamais sur la provenance du sourceKey."""
+
 import pytest
 from fastapi import HTTPException
 
@@ -17,13 +18,17 @@ from app.users.repository import get_or_create_user
 
 
 def _tileset3d_config(source_key: str = "other-tenant/abc/city.zip") -> BuilderConfig:
-    return BuilderConfig.model_validate({
-        "kind": "tileset3d",
-        "tileset3d": {
-            "sourceKey": source_key, "tilesetJsonPath": "tileset.json",
-            "totalBytes": 1234, "entryCount": 2,
-        },
-    })
+    return BuilderConfig.model_validate(
+        {
+            "kind": "tileset3d",
+            "tileset3d": {
+                "sourceKey": source_key,
+                "tilesetJsonPath": "tileset.json",
+                "totalBytes": 1234,
+                "entryCount": 2,
+            },
+        }
+    )
 
 
 def _session_and_user():
@@ -33,8 +38,13 @@ def _session_and_user():
     s = Session()
     tenant = get_or_create_default_tenant(s)
     user = get_or_create_user(
-        s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-        email=None, first_name="", last_name="",
+        s,
+        tenant_id=tenant.id,
+        oidc_sub="a",
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
     )
     s.commit()
     return s, user
@@ -43,13 +53,15 @@ def _session_and_user():
 def test_ignores_non_tileset3d_kind():
     s, user = _session_and_user()
     with s:
-        config = BuilderConfig.model_validate({
-            "kind": "map",
-            "map": {
-                "basemap": {"style": "mapbox://styles/mapbox/streets-v12"},
-                "view": {"center": [0, 0], "zoom": 1},
-            },
-        })
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "map",
+                "map": {
+                    "basemap": {"style": "mapbox://styles/mapbox/streets-v12"},
+                    "view": {"center": [0, 0], "zoom": 1},
+                },
+            }
+        )
         validate_tileset3d_payload(s, config, user=user)  # no raise
 
 
@@ -76,8 +88,13 @@ def _client(monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="mock-sub", username="mockuser",
-            email=None, first_name="Mock", last_name="User",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
         )
         s.commit()
     client = TestClient(app)

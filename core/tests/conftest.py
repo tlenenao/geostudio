@@ -2,6 +2,7 @@
 """Fixtures partagées. Les fixtures SQLite restent locales à chaque fichier
 (pattern existant) ; ce conftest ne porte que l'infra PostGIS optionnelle
 et la clé de test fixe du coffre de secrets (SP-15e, ci-dessous)."""
+
 import os
 from pathlib import Path
 
@@ -16,9 +17,7 @@ from app.db import make_session_factory
 # échouerait à la collecte. setdefault() : un test qui monkeypatch.setenv()
 # explicitement (ex. test_secrets_crypto.py) reste maître de sa propre
 # valeur.
-os.environ.setdefault(
-    "CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-)
+os.environ.setdefault("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 
 @pytest.fixture(scope="session")
@@ -32,10 +31,12 @@ def pg_engine():
     # construisent leur schéma via Base.metadata.create_all(), jamais
     # `alembic upgrade head` — la migration seule ne suffit donc pas ici.
     with engine.begin() as conn:
-        conn.execute(text(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gis_rls') "
-            "THEN CREATE ROLE gis_rls NOLOGIN; END IF; END $$;"
-        ))
+        conn.execute(
+            text(
+                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gis_rls') "
+                "THEN CREATE ROLE gis_rls NOLOGIN; END IF; END $$;"
+            )
+        )
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     yield engine

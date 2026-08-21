@@ -2,7 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { toBlob } from "html-to-image";
-import { useAppConfig, useCreateDataset, useInstanceInfo, useSaveApp, useUploadThumbnail } from "../api/hooks";
+import {
+  useAppConfig,
+  useCreateDataset,
+  useInstanceInfo,
+  useSaveApp,
+  useUploadThumbnail,
+} from "../api/hooks";
 import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
@@ -73,9 +79,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = document.activeElement;
-      const isTextField = target instanceof HTMLInputElement
-        || target instanceof HTMLTextAreaElement
-        || (target instanceof HTMLElement && target.isContentEditable);
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       e.preventDefault();
@@ -94,9 +101,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   // silently no-ops for an unknown pageId (see builder/pages.ts), so every
   // edit made while activePageId is stale was previously a silent no-op —
   // SP-19 final-branch-review fix pass, finding C2.
-  const activePage = (activePageId && pages.some((p) => p.id === activePageId))
-    ? activePageId
-    : (pages[0]?.id ?? null);
+  const activePage =
+    activePageId && pages.some((p) => p.id === activePageId)
+      ? activePageId
+      : (pages[0]?.id ?? null);
   const activeLayout = useMemo(
     () => (draft && activePage ? getPageLayout(draft, activePage) : null),
     [draft, activePage],
@@ -122,7 +130,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   if (query.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">Chargement…</p>;
   if (query.isError || !draft || !activeLayout || !activePage)
-    return <p role="alert" className="text-sm text-red-600">Application introuvable.</p>;
+    return (
+      <p role="alert" className="text-sm text-red-600">
+        Application introuvable.
+      </p>
+    );
 
   function addWidget(type: string) {
     const def = getWidget(type);
@@ -186,7 +198,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       const layout = getPageLayout(d, activePage);
       return setPageLayout(d, activePage, {
         ...layout,
-        items: layout.items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)),
+        items: layout.items.map((i) =>
+          i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i,
+        ),
       });
     });
   }
@@ -201,7 +215,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setPromotingId(id);
     try {
       const item = await createDataset.mutateAsync({
-        title: source.layer, owner: username ?? "", source: "collection", collectionId: source.layer,
+        title: source.layer,
+        owner: username ?? "",
+        source: "collection",
+        collectionId: source.layer,
       });
       setSources(draft.dataSources.map((s) => (s.id === id ? { ...s, datasetId: item.pk } : s)));
     } catch {
@@ -214,8 +231,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const setMessages = (messages: typeof draft.messages) =>
     setDraft((d) => (d ? { ...d, messages } : d));
 
-  const setTheme = (theme: typeof draft.theme) =>
-    setDraft((d) => (d ? { ...d, theme } : d));
+  const setTheme = (theme: typeof draft.theme) => setDraft((d) => (d ? { ...d, theme } : d));
 
   const setPages = (nextPages: typeof pages) =>
     setDraft((d) => (d ? { ...d, pages: nextPages, layout: nextPages[0]?.layout ?? d.layout } : d));
@@ -227,7 +243,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     setDraft((d) => (d ? { ...d, interactions } : d));
 
   const setActivePageOnEnter = (updated: (typeof pages)[number]) =>
-    setDraft((d) => (d ? { ...d, pages: getPages(d).map((p) => (p.id === updated.id ? updated : p)) } : d));
+    setDraft((d) =>
+      d ? { ...d, pages: getPages(d).map((p) => (p.id === updated.id ? updated : p)) } : d,
+    );
 
   const setVariables = (variables: typeof draft.variables) =>
     setDraft((d) => (d ? { ...d, variables } : d));
@@ -242,11 +260,27 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-2 border-b p-2">
-          <Button size="sm" variant={mode === "edit" ? "default" : "outline"} onClick={() => setMode("edit")}>Édition</Button>
-          <Button size="sm" variant={mode === "preview" ? "default" : "outline"} onClick={() => setMode("preview")}>Aperçu</Button>
+          <Button
+            size="sm"
+            variant={mode === "edit" ? "default" : "outline"}
+            onClick={() => setMode("edit")}
+          >
+            Édition
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "preview" ? "default" : "outline"}
+            onClick={() => setMode("preview")}
+          >
+            Aperçu
+          </Button>
           <div className="ml-2 flex items-center gap-1">
-            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>Annuler</Button>
-            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>Rétablir</Button>
+            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+              Annuler
+            </Button>
+            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+              Rétablir
+            </Button>
           </div>
           <div className="ml-2 flex items-center gap-1">
             {BREAKPOINTS.map((bp) => (
@@ -262,19 +296,40 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             ))}
           </div>
           <div className="flex-1" />
-          <Button size="sm" variant="outline" disabled={thumbnail.isPending} onClick={captureThumbnail}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={thumbnail.isPending}
+            onClick={() => void captureThumbnail()}
+          >
             Capturer une miniature
           </Button>
-          <Button size="sm" disabled={save.isPending || expressionErrors.length > 0} onClick={() => save.mutate(draft)}>
+          <Button
+            size="sm"
+            disabled={save.isPending || expressionErrors.length > 0}
+            onClick={() => save.mutate(draft)}
+          >
             Enregistrer
           </Button>
           {expressionErrors.length > 0 && (
-            <span role="alert" aria-label="Erreur de condition d'affichage" className="text-sm text-red-600">
+            <span
+              role="alert"
+              aria-label="Erreur de condition d'affichage"
+              className="text-sm text-red-600"
+            >
               {expressionErrors[0]}
             </span>
           )}
-          {save.isError && <span role="alert" className="text-sm text-red-600">Échec de l'enregistrement.</span>}
-          {thumbnail.isError && <span role="alert" className="text-sm text-red-600">Échec de la capture.</span>}
+          {save.isError && (
+            <span role="alert" className="text-sm text-red-600">
+              Échec de l'enregistrement.
+            </span>
+          )}
+          {thumbnail.isError && (
+            <span role="alert" className="text-sm text-red-600">
+              Échec de la capture.
+            </span>
+          )}
         </div>
         <div className="flex flex-1 overflow-hidden">
           {mode === "edit" && (
@@ -282,12 +337,31 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
               <WidgetPalette onAdd={addWidget} />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
-              <PageManager pages={pages} activePageId={activePage} onChange={setPages} onSelectPage={setActivePageId} />
+              <PageManager
+                pages={pages}
+                activePageId={activePage}
+                onChange={setPages}
+                onSelectPage={setActivePageId}
+              />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
-              <DataSourcePanel sources={draft.dataSources} onChange={setSources} onPromote={promoteSource} promotingId={promotingId} />
-              {createDataset.isError && <p role="alert" className="text-xs text-red-600">Échec de la promotion.</p>}
+              <DataSourcePanel
+                sources={draft.dataSources}
+                onChange={setSources}
+                onPromote={(id) => void promoteSource(id)}
+                promotingId={promotingId}
+              />
+              {createDataset.isError && (
+                <p role="alert" className="text-xs text-red-600">
+                  Échec de la promotion.
+                </p>
+              )}
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
-              <ActionsPanel items={activeLayout.items} variables={draft.variables ?? []} messages={draft.messages} onChange={setMessages} />
+              <ActionsPanel
+                items={activeLayout.items}
+                variables={draft.variables ?? []}
+                messages={draft.messages}
+                onChange={setMessages}
+              />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
               <NavigationPanel
                 navigationMode={draft.navigationMode ?? "tabs"}
@@ -320,7 +394,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               {copilotEnabled && (
                 <>
                   <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Copilote</p>
-                  <CopilotPanel itemId={pk} config={draft} activePageId={activePage} setDraft={setDraft} />
+                  <CopilotPanel
+                    itemId={pk}
+                    config={draft}
+                    activePageId={activePage}
+                    setDraft={setDraft}
+                  />
                 </>
               )}
             </aside>

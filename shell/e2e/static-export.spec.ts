@@ -16,14 +16,34 @@ import { fileURLToPath } from "node:url";
 const DIST_EXPORT = fileURLToPath(new URL("../dist-export", import.meta.url));
 
 const FROZEN_CONFIG = {
-  kind: "app", theme: {}, navigationMode: "tabs", variables: [], messages: [],
+  kind: "app",
+  theme: {},
+  navigationMode: "tabs",
+  variables: [],
+  messages: [],
   dataSources: [
-    { id: "s1", type: "static", service: "core", layer: "", query: { records: [{ id: 1, properties: { name: "Alpha" } }] } },
+    {
+      id: "s1",
+      type: "static",
+      service: "core",
+      layer: "",
+      query: { records: [{ id: 1, properties: { name: "Alpha" } }] },
+    },
   ],
-  pages: [{
-    id: "p1", name: "P1", onEnter: [],
-    layout: { type: "grid", breakpoints: {}, items: [{ id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } }] },
-  }],
+  pages: [
+    {
+      id: "p1",
+      name: "P1",
+      onEnter: [],
+      layout: {
+        type: "grid",
+        breakpoints: {},
+        items: [
+          { id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } },
+        ],
+      },
+    },
+  ],
 };
 
 // `prefix` lets a test serve the bundle under a non-root sub-path (e.g.
@@ -48,7 +68,11 @@ async function startStaticServer(prefix = ""): Promise<{ server: Server; url: st
     const filePath = withoutPrefix === "/" || !withoutPrefix ? "/index.export.html" : withoutPrefix;
     try {
       const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
-      const contentType = filePath.endsWith(".js") ? "application/javascript" : filePath.endsWith(".css") ? "text/css" : "text/html";
+      const contentType = filePath.endsWith(".js")
+        ? "application/javascript"
+        : filePath.endsWith(".css")
+          ? "text/css"
+          : "text/html";
       res.setHeader("Content-Type", contentType);
       res.end(body);
     } catch {
@@ -71,7 +95,10 @@ async function startStaticServer(prefix = ""): Promise<{ server: Server; url: st
 // du cœur pour une dépendance optionnelle non installée.
 async function skipIfNoBuild() {
   await access(path.join(DIST_EXPORT, "index.export.html")).catch(() => {
-    test.skip(true, "dist-export/index.export.html absent — lancer `npm run build:export-runtime` avant ce test");
+    test.skip(
+      true,
+      "dist-export/index.export.html absent — lancer `npm run build:export-runtime` avant ce test",
+    );
   });
 }
 
@@ -112,20 +139,56 @@ test("static export bundle renders when served under a non-root sub-path", async
 // handleNavigate path as any other in-app navigation, so it's a minimal
 // way to exercise the bug without authoring a nav widget.
 const MULTI_PAGE_CONFIG = {
-  kind: "app", theme: {}, navigationMode: "story", variables: [], messages: [],
+  kind: "app",
+  theme: {},
+  navigationMode: "story",
+  variables: [],
+  messages: [],
   dataSources: [
-    { id: "s1", type: "static", service: "core", layer: "", query: { records: [{ id: 1, properties: { name: "Alpha" } }] } },
-    { id: "s2", type: "static", service: "core", layer: "", query: { records: [{ id: 2, properties: { name: "Beta" } }] } },
-  ],
-  layout: { type: "grid", breakpoints: {}, items: [{ id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } }] },
-  pages: [
     {
-      id: "p1", name: "P1", onEnter: [],
-      layout: { type: "grid", breakpoints: {}, items: [{ id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } }] },
+      id: "s1",
+      type: "static",
+      service: "core",
+      layer: "",
+      query: { records: [{ id: 1, properties: { name: "Alpha" } }] },
     },
     {
-      id: "p2", name: "P2", onEnter: [],
-      layout: { type: "grid", breakpoints: {}, items: [{ id: "w2", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s2" } }] },
+      id: "s2",
+      type: "static",
+      service: "core",
+      layer: "",
+      query: { records: [{ id: 2, properties: { name: "Beta" } }] },
+    },
+  ],
+  layout: {
+    type: "grid",
+    breakpoints: {},
+    items: [{ id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } }],
+  },
+  pages: [
+    {
+      id: "p1",
+      name: "P1",
+      onEnter: [],
+      layout: {
+        type: "grid",
+        breakpoints: {},
+        items: [
+          { id: "w1", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s1" } },
+        ],
+      },
+    },
+    {
+      id: "p2",
+      name: "P2",
+      onEnter: [],
+      layout: {
+        type: "grid",
+        breakpoints: {},
+        items: [
+          { id: "w2", widget: "table", x: 0, y: 0, w: 6, h: 4, props: { dataSourceId: "s2" } },
+        ],
+      },
     },
   ],
 };
@@ -142,7 +205,11 @@ test("static export bundle can navigate between pages", async ({ page }) => {
     const filePath = req.url === "/" || !req.url ? "/index.export.html" : req.url;
     try {
       const body = await readFile(path.join(DIST_EXPORT, filePath.replace(/^\//, "")));
-      const contentType = filePath.endsWith(".js") ? "application/javascript" : filePath.endsWith(".css") ? "text/css" : "text/html";
+      const contentType = filePath.endsWith(".js")
+        ? "application/javascript"
+        : filePath.endsWith(".css")
+          ? "text/css"
+          : "text/html";
       res.setHeader("Content-Type", contentType);
       res.end(body);
     } catch {

@@ -144,8 +144,12 @@ def test_write_and_upload_removes_temp_file_when_upload_fails(tmp_path):
     ):
         with pytest.raises(ConnectionError):
             _write_and_upload(
-                [], srid=4326, local_path=local_path,
-                s3_client=None, bucket="b", key="k",
+                [],
+                srid=4326,
+                local_path=local_path,
+                s3_client=None,
+                bucket="b",
+                key="k",
             )
 
     assert os.path.exists(local_path) is False
@@ -165,8 +169,12 @@ def test_write_and_upload_removes_temp_file_when_write_fails(tmp_path):
     with patch("app.cdc.main.write_geoparquet", side_effect=fake_write_that_fails):
         with pytest.raises(ValueError):
             _write_and_upload(
-                [], srid=4326, local_path=local_path,
-                s3_client=None, bucket="b", key="k",
+                [],
+                srid=4326,
+                local_path=local_path,
+                s3_client=None,
+                bucket="b",
+                key="k",
             )
 
     assert os.path.exists(local_path) is False
@@ -186,8 +194,12 @@ def test_write_and_upload_removes_temp_file_on_success(tmp_path):
         patch("app.cdc.main.storage.upload_parquet_file") as fake_upload,
     ):
         _write_and_upload(
-            [], srid=4326, local_path=local_path,
-            s3_client=None, bucket="b", key="k",
+            [],
+            srid=4326,
+            local_path=local_path,
+            s3_client=None,
+            bucket="b",
+            key="k",
         )
         fake_upload.assert_called_once()
 

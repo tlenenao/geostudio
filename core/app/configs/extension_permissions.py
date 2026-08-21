@@ -12,7 +12,8 @@ class ExtensionPermissionError(Exception):
         self.prop = prop
         self.collection = collection
         super().__init__(
-            f"widget '{widget}' prop '{prop}': collection '{collection}' is outside its declared permissions"
+            f"widget '{widget}' prop '{prop}': collection '{collection}' is outside "
+            "its declared permissions"
         )
 
 
@@ -25,7 +26,9 @@ def _all_layout_items(config: BuilderConfig) -> list[LayoutItem]:
     return items
 
 
-def validate_extension_permissions(session: Session, config: BuilderConfig, *, tenant_id: str) -> None:
+def validate_extension_permissions(
+    session: Session, config: BuilderConfig, *, tenant_id: str
+) -> None:
     items = _all_layout_items(config)
     widget_types = {item.widget for item in items}
     if not widget_types:
@@ -33,7 +36,9 @@ def validate_extension_permissions(session: Session, config: BuilderConfig, *, t
     extensions = {
         ext.id: ext
         for ext in session.scalars(
-            select(Extension).where(Extension.tenant_id == tenant_id, Extension.id.in_(widget_types))
+            select(Extension).where(
+                Extension.tenant_id == tenant_id, Extension.id.in_(widget_types)
+            )
         )
     }
     if not extensions:

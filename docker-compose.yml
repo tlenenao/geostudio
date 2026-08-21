@@ -55,11 +55,32 @@ services:
       postgis:
         condition: service_healthy
     networks: [gis-net]
+    # Sonde vérifiée à l'exécution (SP-21) : psql existe dans cette image
+    # (`edoburu/pgbouncer:1.22.1-p0`). `-d pgbouncer` (console d'admin de
+    # pgbouncer) échoue par conception ici — `admin_users` par défaut de
+    # l'image est `postgres`, absent de `userlist.txt` (seul `gis` y est) ;
+    # confirmé : "FATAL: not allowed". La base réelle `gis`, elle, se proxy
+    # normalement — `select 1` y passe et prouve le chemin bout-en-bout
+    # (pgbouncer → postgis). Mot de passe repris de la variable déjà
+    # déclarée ci-dessus via `$$` (échappement de substitution compose déjà
+    # utilisé dans docker-compose.prod.yml), pas une nouvelle variable.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=$$DB_PASSWORD psql -h 127.0.0.1 -p 6432 -U gis -d gis -c 'select 1'",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─── Stockage objet ────────────────────────────────────
 
   minio:
-    image: minio/minio
+    # Pin explicite (SP-21) : cette ligne était sans tag, donc `latest` —
+    # le stockage objet de toutes les données du produit changeait de
+    # version à chaque pull.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
@@ -89,6 +110,18 @@ services:
     depends_on:
       pgbouncer:
         condition: service_started
+    # Sonde vérifiée à l'exécution (SP-21) : image `martin:v0.18.0` sans
+    # curl (base Debian minimale + busybox) mais avec `wget` (busybox) et
+    # `/health` répond "OK" (confirmé en conteneur réel, martin branché sur
+    # un vrai Postgres/PostGIS derrière pgbouncer). `localhost` échoue
+    # ("Connection refused") : `/etc/hosts` résout `localhost` en `::1`
+    # avant `127.0.0.1`, et martin n'écoute qu'en IPv4 — `127.0.0.1`
+    # explicite contourne le problème.
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   titiler:
     image: ghcr.io/developmentseed/titiler:0.18.4
@@ -108,9 +141,25 @@ services:
       AWS_S3_ENDPOINT: minio:9000
       AWS_HTTPS: "NO"
       AWS_VIRTUAL_HOSTING: "FALSE"
+      # L'image (base tiangolo/uvicorn-gunicorn) écoute par défaut sur le
+      # port 80 tant qu'aucun `PORT` n'est fourni (`gunicorn_conf.py` :
+      # `port = os.getenv("PORT", "80")`, confirmé en conteneur réel). Trois
+      # éléments supposent pourtant que titiler écoute sur 8000 : le mapping
+      # `ports:` ci-dessous, `TITILER_URL: http://titiler:8000` lu par `core`
+      # (`core/app/terrain3d/routes.py`) pour le proxy COG terrain3d, et la
+      # sonde ci-dessous — d'où ce `PORT` explicite.
+      PORT: "8000"
     ports:
       - "8000:8000"
     networks: [gis-net]
+    # Sonde vérifiée à l'exécution (SP-21) : image `titiler:0.18.4` a curl,
+    # et `/healthz` répond `{"ping":"pong!"}` sur le port 8000 une fois
+    # `PORT` câblé ci-dessus (confirmé en conteneur réel).
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─── Applications ──────────────────────────────────────
 
@@ -141,6 +190,44 @@ services:
       CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
+      # Rôle analyste (SP-11c) : sans cette ligne, `CORE_ANALYST_SUBS` dans
+      # le .env de l'opérateur n'atteignait jamais le process.
+      CORE_ANALYST_SUBS: ${CORE_ANALYST_SUBS:-}
+      # Capacité ETL (SP-15a). Était documentée dans .env.example et nommée
+      # dans un commentaire de ce fichier, mais transmise à aucun service :
+      # toute la surface pipelines (REST + MCP + sidecar QGIS + cron) était
+      # inatteignable en stack packagée, sans le moindre signal. Doit valoir
+      # la même chose ici et sur `worker` (qui consomme la file `etl`) —
+      # même exigence que CORE_EXPORT_ENABLED entre core et export-worker.
+      CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Fournisseur d'embeddings de la recherche sémantique (SP-7). Non
+      # câblé jusqu'ici : le cœur retombait silencieusement sur son défaut.
+      # Défauts `fake`/`text-embedding-3-small` ici, pas une substitution à
+      # défaut vide : ce sont les vrais défauts applicatifs de
+      # get_embedding_provider() (core/app/search/providers.py) — un
+      # défaut de compose vide sur ces deux-là ferait planter la recherche
+      # sémantique là où elle marchait avant le câblage (ValueError sur
+      # provider inconnu), l'image inverse du bug que cette même tâche
+      # corrige par ailleurs. API_URL/API_KEY n'ont pas de défaut
+      # applicatif (lus via `os.environ[...]`, seulement quand
+      # provider="openai") : une substitution à défaut vide reste correcte
+      # pour ces deux-là, même patron que CORE_LLM_API_*.
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-fake}
+      CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
+      CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
+      # chacune dupliquée délibérément — cf. leurs docstrings respectives).
+      # Trouvées non câblées à AUCUN service par l'élargissement de la règle
+      # ci-dessous (angle mort de l'ancienne regex ENV_READ_RE, qui ne voyait
+      # pas la lecture indirecte via `_ALLOWLIST_ENV = "CORE_..."`) — deux des
+      # trois étaient déjà documentées dans .env.example, donc *crues*
+      # câblées, sur une garde SSRF. Défaut vide = comportement inchangé
+      # (seules les plages réseau internes/privées sont bloquées, cf.
+      # `_allowlist()` de chaque module).
+      CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
@@ -165,12 +252,31 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
+      # Lues dans CE process (app/main.py, app/export/routes.py,
+      # app/reports/routes.py, app/appexport/routes.py) — pas seulement dans
+      # le worker qui écrit les objets. Mêmes valeurs littérales que
+      # `export-worker`/`worker` ci-dessous : inoffensif jusqu'ici parce que
+      # le défaut applicatif (`os.environ.get(..., "geostudio-exports")`)
+      # coïncide avec la valeur du compose — précisément le genre d'accident
+      # que SP-21 existe pour éliminer (revue finale SP-21, item 5).
+      S3_EXPORTS_BUCKET: geostudio-exports
+      S3_APPEXPORTS_BUCKET: geostudio-appexports
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
     ports:
       - "8200:8200"
     networks: [gis-net]
     depends_on: [pgbouncer, minio, titiler]
     restart: unless-stopped
+    # `start_period` généreux : ce service applique les migrations Alembic
+    # avant de servir (cf. `command:`), et rien n'attendait la fin de cette
+    # étape avant de router vers lui (I5 du plan d'action 2026-08-20).
+    # `python`, pas `curl` : l'image est python:3.12-slim, sans curl.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     labels:
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
@@ -213,6 +319,25 @@ services:
       # service plus haut), pas ici.
       CORE_TILESET3D_MAX_ENTRIES: ${CORE_TILESET3D_MAX_ENTRIES:-20000}
       CORE_TILESET3D_MAX_TOTAL_BYTES: ${CORE_TILESET3D_MAX_TOTAL_BYTES:-21474836480}
+      # Miroir des lignes du service `core` : le worker exécute les jobs
+      # d'indexation sémantique (file `search`) et les runs de pipeline
+      # (file `etl`). Une valeur divergente entre les deux services produit
+      # une capacité à moitié allumée — précédent SP-17a.
+      CORE_ETL_ENABLED: ${CORE_ETL_ENABLED:-false}
+      # Miroir des défauts du service `core` ci-dessus (mêmes commentaires) :
+      # `fake`/`text-embedding-3-small`, pas une substitution à défaut vide,
+      # pour ne pas diverger d'un défaut applicatif qui marchait avant le
+      # câblage.
+      CORE_EMBEDDING_PROVIDER: ${CORE_EMBEDDING_PROVIDER:-fake}
+      CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
+      CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
+      CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Miroir des lignes du service `core` ci-dessus (mêmes commentaires) :
+      # les runs de pipeline (connector_runtime.py) et les notifications
+      # d'alerte (notify.py) tournent dans ce process.
+      CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
+      CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Plafonds terrain3d (convert_terrain3d_task, app/terrain3d/jobs.py) —
@@ -227,6 +352,15 @@ services:
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
       APPEXPORT_RUNTIME_DIR: /export-runtime
       S3_APPEXPORTS_BUCKET: geostudio-appexports
+      # Lu dans CE process, pas seulement dans `export-worker` : le balayage
+      # des rapports planifiés (app/reports/jobs.py, notification + lien
+      # présigné) et `writer.export` des pipelines (app/pipelines/jobs.py)
+      # tournent tous deux sur la file `etl`, que ce worker consomme. Même
+      # valeur littérale que `core`/`export-worker` — inoffensif jusqu'ici
+      # parce que le défaut applicatif coïncide, exactement l'accident que
+      # SP-21 existe pour éliminer (revue finale SP-21, item 5, dont ce
+      # service était le second angle mort).
+      S3_EXPORTS_BUCKET: geostudio-exports
     volumes:
       - etl-scratch:/scratch
       - appexport-runtime:/export-runtime:ro
@@ -237,6 +371,16 @@ services:
       minio:
         condition: service_started
     restart: unless-stopped
+    # `procrastinate healthchecks` vérifie la connexion et le schéma de la
+    # file. Limite connue et assumée : un worker occupé par une tâche qui ne
+    # rend jamais la main reste « healthy » — cette sonde détecte un worker
+    # mort ou déconnecté de la base, pas un worker coincé.
+    healthcheck:
+      test: ["CMD", "python", "-m", "procrastinate", "--app", "app.jobs.app", "healthchecks"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Bâtit une fois le runtime d'export statique générique et le dépose dans
   # le volume `appexport-runtime`, consommé par `worker` (SP-18a). Tourne
@@ -300,7 +444,13 @@ services:
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
     networks: [gis-net]
-    depends_on: [pgbouncer, minio]
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      core:
+        condition: service_healthy
     restart: unless-stopped
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
@@ -326,6 +476,15 @@ services:
       minio:
         condition: service_healthy
     restart: unless-stopped
+    # Sonde côté serveur (scripts/healthcheck_cdc.py) : le slot de
+    # réplication n'est `active` que tant qu'un consommateur le tient. Seule
+    # des quatre à détecter le « vivant mais ne consomme plus ».
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.healthcheck_cdc"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 
@@ -361,7 +520,7 @@ services:
   # ─── Auth ──────────────────────────────────────────────
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:24.0.5
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
@@ -401,6 +560,26 @@ services:
       - "8300:8300"
     networks: [gis-net]
     restart: unless-stopped
+    # Attend que `core` ait fini ses migrations et réponde : le shell sans
+    # cœur n'affiche qu'une page d'erreur. Dépendance dure volontairement
+    # limitée à `shell` et `export-worker` — SP-18a a dû *retirer* celle de
+    # `worker` parce qu'elle bloquait le démarrage pour une capacité
+    # désactivée par défaut.
+    depends_on:
+      core:
+        condition: service_healthy
+    # `wget` de busybox — l'image est nginx:1.27-alpine, sans curl. Même
+    # piège que `martin` ci-dessus (résolu une tâche plus tôt, cf. son
+    # commentaire) : `localhost` résout en `::1` sous busybox/musl sans
+    # repli IPv4, alors que nginx n'écoute que sur `0.0.0.0:8300` — sonde
+    # `unhealthy` en permanence. Vérifié à l'exécution (revue finale SP-21)
+    # contre l'image `geostudio-shell:latest` réelle : `wget … localhost`
+    # → "Connection refused" (exit 1), `wget … 127.0.0.1` → exit 0.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8300/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     labels:
       - traefik.enable=true
       - traefik.http.routers.shell.rule=Host(`${DOMAIN}`)
@@ -413,7 +592,7 @@ services:
   # ─── Ingress ───────────────────────────────────────────
 
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.0.4
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false

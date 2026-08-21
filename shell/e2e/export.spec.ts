@@ -16,7 +16,9 @@ async function createMap(page: import("@playwright/test").Page, title: string) {
   await expect(page).toHaveURL(/\/maps\/77$/);
 }
 
-test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et expose un lien de téléchargement", async ({ page }) => {
+test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et expose un lien de téléchargement", async ({
+  page,
+}) => {
   await mockCore(page);
 
   // Surcharge la route /instance de mockCore (qui répond exportEnabled
@@ -33,7 +35,11 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   await page.route("**/export", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     createdExportBody = route.request().postDataJSON();
-    await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ jobId: "job-e2e-1" }) });
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ jobId: "job-e2e-1" }),
+    });
   });
 
   await page.route("**/export/jobs/job-e2e-1", async (route) => {
@@ -82,7 +88,9 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   expect(pollCount).toBeGreaterThanOrEqual(2);
 });
 
-test("le rendu ?exportRender=1 a une hauteur non nulle (régression C1 — chaîne de hauteur cassée)", async ({ page }) => {
+test("le rendu ?exportRender=1 a une hauteur non nulle (régression C1 — chaîne de hauteur cassée)", async ({
+  page,
+}) => {
   // Régression pour la revue finale SP-17a (C1) : le rendu export sans chrome
   // (AppLayout court-circuité) doit tout de même établir une hauteur de
   // viewport explicite, sinon le conteneur MapLibre (h-full w-full) résout

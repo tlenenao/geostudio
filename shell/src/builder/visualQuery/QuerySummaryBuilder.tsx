@@ -4,7 +4,11 @@ import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
 import { Button } from "../../ui/button";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
-  count: "Compter", sum: "Somme", avg: "Moyenne", min: "Minimum", max: "Maximum",
+  count: "Compter",
+  sum: "Somme",
+  avg: "Moyenne",
+  min: "Minimum",
+  max: "Maximum",
 };
 
 // sum/avg/min/max n'ont de sens que sur une colonne numérique — defaulter sur
@@ -18,8 +22,14 @@ function firstNumericField(schema: CollectionSchema): string | null {
 }
 
 export function QuerySummaryBuilder({
-  schema, value, onChange,
-}: { schema: CollectionSchema; value: SummaryConfig; onChange: (next: SummaryConfig) => void }) {
+  schema,
+  value,
+  onChange,
+}: {
+  schema: CollectionSchema;
+  value: SummaryConfig;
+  onChange: (next: SummaryConfig) => void;
+}) {
   function toggleGroupBy(name: string, checked: boolean) {
     onChange({
       ...value,
@@ -39,7 +49,10 @@ export function QuerySummaryBuilder({
   function addMetric() {
     onChange({
       ...value,
-      metrics: [...value.metrics, { alias: `metrique_${value.metrics.length + 1}`, function: "count", sourceColumn: null }],
+      metrics: [
+        ...value.metrics,
+        { alias: `metrique_${value.metrics.length + 1}`, function: "count", sourceColumn: null },
+      ],
     });
   }
 
@@ -66,7 +79,11 @@ export function QuerySummaryBuilder({
             value={metric.function}
             onChange={(e) => updateMetric(i, { function: e.target.value as MetricFunction })}
           >
-            {Object.entries(FUNCTION_LABELS).map(([fn, label]) => <option key={fn} value={fn}>{label}</option>)}
+            {Object.entries(FUNCTION_LABELS).map(([fn, label]) => (
+              <option key={fn} value={fn}>
+                {label}
+              </option>
+            ))}
           </select>
           {metric.function !== "count" && (
             <select
@@ -75,7 +92,11 @@ export function QuerySummaryBuilder({
               value={metric.sourceColumn ?? ""}
               onChange={(e) => updateMetric(i, { sourceColumn: e.target.value })}
             >
-              {schema.fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+              {schema.fields.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.name}
+                </option>
+              ))}
             </select>
           )}
         </div>

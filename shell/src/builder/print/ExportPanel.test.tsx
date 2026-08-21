@@ -48,9 +48,12 @@ describe("ExportPanel", () => {
 
   it("surfaces a job error via role=alert instead of silently stopping", async () => {
     const createExport = vi.fn().mockResolvedValue({ jobId: "job-1" });
-    const getExportJob = vi
-      .fn()
-      .mockResolvedValue({ id: "job-1", status: "error", resultUrl: null, error: "render timeout" });
+    const getExportJob = vi.fn().mockResolvedValue({
+      id: "job-1",
+      status: "error",
+      resultUrl: null,
+      error: "render timeout",
+    });
     renderPanel({ createExport, getExportJob });
 
     await userEvent.click(screen.getByRole("button", { name: "Exporter" }));

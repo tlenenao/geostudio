@@ -23,7 +23,13 @@ function Harness() {
 function mockAdmin() {
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "admin", firstName: "Admin", lastName: "Root", isAdmin: true }),
+      HttpResponse.json({
+        id: "u1",
+        username: "admin",
+        firstName: "Admin",
+        lastName: "Root",
+        isAdmin: true,
+      }),
     ),
   );
 }
@@ -32,7 +38,13 @@ test("shows an access-denied message and never calls /harvest/sources when not a
   let called = false;
   server.use(
     http.get("https://core.test/me", () =>
-      HttpResponse.json({ id: "u1", username: "alice", firstName: "Alice", lastName: "Martin", isAdmin: false }),
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        isAdmin: false,
+      }),
     ),
     http.get("https://core.test/harvest/sources", () => {
       called = true;
@@ -53,18 +65,35 @@ test("admin creates a STAC source and triggers a manual run", async () => {
   server.use(
     http.get("https://core.test/harvest/sources", () =>
       HttpResponse.json({
-        sources: created ? [{
-          id: "src-1", type: "stac", url: "https://stac.example.com/collections",
-          mode: "reference", enabled: true, intervalMinutes: null,
-          lastRunAt: null, lastStatus: ran ? "ok" : null, lastError: null,
-        }] : [],
+        sources: created
+          ? [
+              {
+                id: "src-1",
+                type: "stac",
+                url: "https://stac.example.com/collections",
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: null,
+                lastStatus: ran ? "ok" : null,
+                lastError: null,
+              },
+            ]
+          : [],
       }),
     ),
     http.post("https://core.test/harvest/sources", async ({ request }) => {
       created = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({
-        id: "src-1", ...created, lastRunAt: null, lastStatus: null, lastError: null,
-      }, { status: 201 });
+      return HttpResponse.json(
+        {
+          id: "src-1",
+          ...created,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
     }),
     http.post("https://core.test/harvest/sources/src-1/run", () => {
       ran = true;
@@ -74,7 +103,10 @@ test("admin creates a STAC source and triggers a manual run", async () => {
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
   const dialog = screen.getByRole("dialog", { name: "Ajouter une source" });
-  await userEvent.type(dialog.querySelector("input[aria-label='URL']")!, "https://stac.example.com/collections");
+  await userEvent.type(
+    dialog.querySelector("input[aria-label='URL']")!,
+    "https://stac.example.com/collections",
+  );
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(created).not.toBeNull());
   expect(await screen.findByText("https://stac.example.com/collections")).toBeInTheDocument();
@@ -89,10 +121,21 @@ test("delete removes the source from the list", async () => {
   server.use(
     http.get("https://core.test/harvest/sources", () =>
       HttpResponse.json({
-        sources: deleted ? [] : [{
-          id: "src-1", type: "stac", url: "https://a", mode: "reference",
-          enabled: true, intervalMinutes: null, lastRunAt: null, lastStatus: null, lastError: null,
-        }],
+        sources: deleted
+          ? []
+          : [
+              {
+                id: "src-1",
+                type: "stac",
+                url: "https://a",
+                mode: "reference",
+                enabled: true,
+                intervalMinutes: null,
+                lastRunAt: null,
+                lastStatus: null,
+                lastError: null,
+              },
+            ],
       }),
     ),
     http.delete("https://core.test/harvest/sources/src-1", () => {
@@ -118,10 +161,19 @@ test("masque les boutons d'écriture en mode démo (read-only)", async () => {
     http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
     http.get("https://core.test/harvest/sources", () =>
       HttpResponse.json({
-        sources: [{
-          id: "s1", type: "stac", url: "https://stac/x", mode: "reference",
-          enabled: true, intervalMinutes: null, lastRunAt: null, lastStatus: "ok", lastError: null,
-        }],
+        sources: [
+          {
+            id: "s1",
+            type: "stac",
+            url: "https://stac/x",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: "ok",
+            lastError: null,
+          },
+        ],
       }),
     ),
   );

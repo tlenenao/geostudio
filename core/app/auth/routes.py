@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
@@ -47,7 +50,7 @@ def _require_admin(user: User) -> None:
         raise HTTPException(status_code=403, detail="admin role required")
 
 
-def _user_json(user: User) -> dict:
+def _user_json(user: User) -> dict[str, Any]:
     return {
         "id": user.id,
         "username": user.username,
@@ -61,8 +64,8 @@ def get_users(
     page: int = 1,
     pageSize: int = 50,
     user: User = Depends(get_current_user),
-    session=Depends(get_session),
-):
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
     _require_admin(user)
     users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize)
     return {"users": [_user_json(u) for u in users], "total": total}
@@ -73,8 +76,8 @@ def patch_user(
     user_id: str,
     body: UserAdminPatch,
     user: User = Depends(get_current_user),
-    session=Depends(get_session),
-):
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
     _require_admin(user)
     # Requête directe sur le modèle User autorisée ici : `auth` est au-dessus
     # de `users` dans le layering.
@@ -90,9 +93,7 @@ def patch_user(
             and count_admins(session, tenant_id=user.tenant_id) == 1
         ):
             raise HTTPException(status_code=409, detail="cannot demote the last admin")
-        set_admin(
-            session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin
-        )
+        set_admin(session, tenant_id=user.tenant_id, user_id=user_id, is_admin=body.isAdmin)
         write_audit(
             session,
             tenant_id=user.tenant_id,
@@ -104,9 +105,7 @@ def patch_user(
             payload={"isAdmin": body.isAdmin},
         )
     if body.isAnalyst is not None:
-        set_analyst(
-            session, tenant_id=user.tenant_id, user_id=user_id, is_analyst=body.isAnalyst
-        )
+        set_analyst(session, tenant_id=user.tenant_id, user_id=user_id, is_analyst=body.isAnalyst)
         write_audit(
             session,
             tenant_id=user.tenant_id,
@@ -120,4 +119,6 @@ def patch_user(
     target = session.scalar(
         select(User).where(User.tenant_id == user.tenant_id, User.id == user_id)
     )
+    if target is None:  # pragma: no cover - existence already proven above
+        raise HTTPException(status_code=404, detail="user not found")
     return _user_json(target)

@@ -5,7 +5,8 @@ import { useInstanceInfo, useItemClient } from "../api/hooks";
 import { Terrain3DUploadButton } from "./Terrain3DUploadButton";
 
 export function TerrainPanel({
-  value, onChange,
+  value,
+  onChange,
 }: {
   value: MapTerrainConfig | null;
   onChange: (next: MapTerrainConfig | null) => void;
@@ -30,7 +31,7 @@ export function TerrainPanel({
   }
 
   useEffect(() => {
-    if (enabled && terrain3dEnabled) refreshHostedSources();
+    if (enabled && terrain3dEnabled) void refreshHostedSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, terrain3dEnabled]);
 
@@ -57,7 +58,10 @@ export function TerrainPanel({
     if (!itemId) return;
     const coreUrl = client.getCoreUrl?.();
     if (!coreUrl) return;
-    patch({ tilesUrl: `${coreUrl}/terrain3d/${itemId}/tiles/{z}/{x}/{y}.png`, encoding: "terrarium" });
+    patch({
+      tilesUrl: `${coreUrl}/terrain3d/${itemId}/tiles/{z}/{x}/{y}.png`,
+      encoding: "terrarium",
+    });
   }
 
   return (
@@ -78,14 +82,25 @@ export function TerrainPanel({
             <>
               <label className="flex flex-col gap-1 text-sm">
                 DEM hébergé
-                <select aria-label="DEM hébergé" defaultValue="" onChange={(e) => selectHosted(e.target.value)}>
+                <select
+                  aria-label="DEM hébergé"
+                  defaultValue=""
+                  onChange={(e) => selectHosted(e.target.value)}
+                >
                   <option value="">— choisir un DEM hébergé —</option>
                   {hostedSources.map((s) => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
                   ))}
                 </select>
               </label>
-              <Terrain3DUploadButton onUploaded={(itemId) => { refreshHostedSources(); selectHosted(itemId); }} />
+              <Terrain3DUploadButton
+                onUploaded={(itemId) => {
+                  void refreshHostedSources();
+                  selectHosted(itemId);
+                }}
+              />
             </>
           )}
           <label className="flex flex-col gap-1 text-sm">

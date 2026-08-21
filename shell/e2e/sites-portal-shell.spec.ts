@@ -8,7 +8,10 @@ test("créer un site, le publier, le consulter en anonyme", async ({ page }) => 
 
   // 1. Créer un Site depuis le catalogue.
   await page.getByRole("button", { name: "Nouveau" }).click();
-  await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("site");
+  await page
+    .getByRole("dialog", { name: "Nouvel élément" })
+    .getByLabel("Type")
+    .selectOption("site");
   await page.getByLabel("Titre").fill("Mon Portail");
   await expect(page.getByLabel("Slug")).toHaveValue("mon-portail");
   await page.getByRole("button", { name: "Créer" }).click();

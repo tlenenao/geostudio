@@ -34,6 +34,7 @@ def enqueue_embedding(collection_id: str, tenant_id: str) -> None:
     # qui vit dans la route (il n'existe pas d'`update_collection` en
     # repository pour la porter, contrairement à items).
     from app.collections.jobs import embed_collection_task
+
     try:
         embed_collection_task.defer(collection_id=collection_id, tenant_id=tenant_id)
     except procrastinate.exceptions.ProcrastinateException:
@@ -46,25 +47,47 @@ def enqueue_embedding(collection_id: str, tenant_id: str) -> None:
 
 def get_access_facts(col: Collection) -> AccessFacts:
     return AccessFacts(
-        id=col.id, tenant_id=col.tenant_id, owner_id=col.owner_id,
-        is_public=col.is_public, is_published=False,
+        id=col.id,
+        tenant_id=col.tenant_id,
+        owner_id=col.owner_id,
+        is_public=col.is_public,
+        is_published=False,
     )
 
 
 def get_collection(session: Session, *, tenant_id: str, collection_id: str) -> Collection | None:
-    return session.scalar(select(Collection).where(
-        Collection.tenant_id == tenant_id, Collection.id == collection_id))
+    return session.scalar(
+        select(Collection).where(Collection.tenant_id == tenant_id, Collection.id == collection_id)
+    )
 
 
-def create_collection(session: Session, *, tenant_id: str, owner_id: str, table_name: str,
-                      title: str, description: str, is_public: bool,
-                      pk_column: str, geometry_column: str | None,
-                      geometry_type: str | None, srid: int | None,
-                      feature_count: int | None = None) -> Collection:
+def create_collection(
+    session: Session,
+    *,
+    tenant_id: str,
+    owner_id: str,
+    table_name: str,
+    title: str,
+    description: str,
+    is_public: bool,
+    pk_column: str,
+    geometry_column: str | None,
+    geometry_type: str | None,
+    srid: int | None,
+    feature_count: int | None = None,
+) -> Collection:
     col = Collection(
-        id=table_name, tenant_id=tenant_id, owner_id=owner_id, table_name=table_name,
-        title=title, description=description, is_public=is_public, pk_column=pk_column,
-        geometry_column=geometry_column, geometry_type=geometry_type, srid=srid,
+        id=table_name,
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        table_name=table_name,
+        title=title,
+        description=description,
+        is_public=is_public,
+        pk_column=pk_column,
+        geometry_column=geometry_column,
+        geometry_type=geometry_type,
+        srid=srid,
         feature_count=feature_count,
     )
     session.add(col)
@@ -74,7 +97,11 @@ def create_collection(session: Session, *, tenant_id: str, owner_id: str, table_
 
 
 def list_visible_collections(
-    session: Session, *, tenant_id: str, user_id: str | None, is_admin: bool,
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: str | None,
+    is_admin: bool,
     q: str | None = None,
 ) -> list[Collection]:
     stmt = select(Collection).where(Collection.tenant_id == tenant_id)
@@ -85,8 +112,7 @@ def list_visible_collections(
             shared_ids = (
                 select(CollectionShare.collection_id)
                 .join(GroupMember, GroupMember.group_id == CollectionShare.group_id)
-                .where(GroupMember.user_id == user_id,
-                       CollectionShare.tenant_id == tenant_id)
+                .where(GroupMember.user_id == user_id, CollectionShare.tenant_id == tenant_id)
             )
             stmt = stmt.where(
                 Collection.is_public.is_(True)
@@ -99,14 +125,16 @@ def list_visible_collections(
     if q and session.get_bind().dialect.name == "postgresql":
         provider = get_embedding_provider()
         candidate_ids = hybrid_search_ids(
-            session, base_stmt=stmt, id_column=Collection.id,
+            session,
+            base_stmt=stmt,
+            id_column=Collection.id,
             text_columns=[Collection.title, Collection.description],
             embedding_column=Collection.embedding,
-            query_text=q, query_vector=provider.embed(q), limit=_RRF_CANDIDATE_LIMIT,
+            query_text=q,
+            query_vector=provider.embed(q),
+            limit=_RRF_CANDIDATE_LIMIT,
         )
-        rows = session.execute(
-            select(Collection).where(Collection.id.in_(candidate_ids))
-        ).all()
+        rows = session.execute(select(Collection).where(Collection.id.in_(candidate_ids))).all()
         by_id = {c.id: c for (c,) in rows}
         return [by_id[i] for i in candidate_ids if i in by_id]
 
@@ -125,14 +153,21 @@ def delete_collection(session: Session, col: Collection) -> None:
 def get_collection_sharing(
     session: Session, *, tenant_id: str, collection_id: str
 ) -> list[CollectionShare]:
-    return list(session.scalars(select(CollectionShare).where(
-        CollectionShare.tenant_id == tenant_id,
-        CollectionShare.collection_id == collection_id,
-    )).all())
+    return list(
+        session.scalars(
+            select(CollectionShare).where(
+                CollectionShare.tenant_id == tenant_id,
+                CollectionShare.collection_id == collection_id,
+            )
+        ).all()
+    )
 
 
 def set_collection_sharing(
-    session: Session, *, tenant_id: str, collection_id: str,
+    session: Session,
+    *,
+    tenant_id: str,
+    collection_id: str,
     groups: list[tuple[str, str]],  # [(group_id, role)]
 ) -> bool:
     """Replace all group shares for one collection. Returns False (no changes
@@ -149,12 +184,17 @@ def set_collection_sharing(
         if matching != len(set(group_ids)):
             return False
 
-    session.execute(delete(CollectionShare).where(
-        CollectionShare.tenant_id == tenant_id,
-        CollectionShare.collection_id == collection_id,
-    ))
+    session.execute(
+        delete(CollectionShare).where(
+            CollectionShare.tenant_id == tenant_id,
+            CollectionShare.collection_id == collection_id,
+        )
+    )
     for group_id, role in groups:
-        session.add(CollectionShare(collection_id=collection_id, group_id=group_id,
-                                    tenant_id=tenant_id, role=role))
+        session.add(
+            CollectionShare(
+                collection_id=collection_id, group_id=group_id, tenant_id=tenant_id, role=role
+            )
+        )
     session.flush()
     return True

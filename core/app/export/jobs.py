@@ -4,6 +4,7 @@ via Chromium headless. Tourne dans le conteneur export-worker dédié (queue
 `export`, jamais le worker partagé — image trop lourde pour lui, cf. design
 §Infrastructure). Toute erreur marque le job "error", jamais un job bloqué
 en "running" (même critère qu'app.pipelines.jobs.run_pipeline_task)."""
+
 import logging
 import os
 from urllib.parse import quote
@@ -14,7 +15,7 @@ from app.configs import repository as configs_repo
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.export import repository as export_repo
 from app.export.rendering import RenderPage, render_export
-from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_get_url, make_s3_client
+from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.jobs import app
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,9 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         ensure_uploads_bucket(s3_client, bucket)
         s3_client.put_object(
             Bucket=bucket,
-            Key=result_key, Body=content, ContentType=_CONTENT_TYPE[export_format],
+            Key=result_key,
+            Body=content,
+            ContentType=_CONTENT_TYPE[export_format],
         )
         with request_scoped_session(session_factory) as session:
             export_repo.mark_done(session, job_id=job_id, result_key=result_key)

@@ -3,6 +3,7 @@
 réseau réelle (ça, c'est le spike Task 1 + le script empirique Task 10) —
 via un connecteur DuckDB réel en mémoire, en interceptant .execute() pour
 capturer les statements exécutés sans réseau."""
+
 from app.analytics.duckdb_conn import open_connection
 
 

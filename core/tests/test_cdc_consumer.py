@@ -3,31 +3,57 @@ import json
 
 from app.cdc.consumer import decode_wal2json_message
 
-_INSERT_PAYLOAD = json.dumps({
-    "change": [{
-        "kind": "insert", "table": "t_rls",
-        "columnnames": ["id", "titre", "geom"],
-        "columnvalues": [1, "a", "0101000020E6100000..."],
-    }]
-})
+_INSERT_PAYLOAD = json.dumps(
+    {
+        "change": [
+            {
+                "kind": "insert",
+                "table": "t_rls",
+                "columnnames": ["id", "titre", "geom"],
+                "columnvalues": [1, "a", "0101000020E6100000..."],
+            }
+        ]
+    }
+)
 
-_DELETE_PAYLOAD = json.dumps({
-    "change": [{
-        "kind": "delete", "table": "t_rls",
-        "oldkeys": {"keynames": ["id"], "keyvalues": [1]},
-    }]
-})
+_DELETE_PAYLOAD = json.dumps(
+    {
+        "change": [
+            {
+                "kind": "delete",
+                "table": "t_rls",
+                "oldkeys": {"keynames": ["id"], "keyvalues": [1]},
+            }
+        ]
+    }
+)
 
-_MULTI_CHANGE_PAYLOAD = json.dumps({
-    "change": [
-        {"kind": "insert", "table": "t_rls", "columnnames": ["id", "titre"], "columnvalues": [2, "b"]},
-        {"kind": "update", "table": "t_rls", "columnnames": ["id", "titre"], "columnvalues": [2, "c"]},
-    ]
-})
+_MULTI_CHANGE_PAYLOAD = json.dumps(
+    {
+        "change": [
+            {
+                "kind": "insert",
+                "table": "t_rls",
+                "columnnames": ["id", "titre"],
+                "columnvalues": [2, "b"],
+            },
+            {
+                "kind": "update",
+                "table": "t_rls",
+                "columnnames": ["id", "titre"],
+                "columnvalues": [2, "c"],
+            },
+        ]
+    }
+)
 
-_UNKNOWN_TABLE_PAYLOAD = json.dumps({
-    "change": [{"kind": "insert", "table": "not_tracked", "columnnames": ["id"], "columnvalues": [1]}]
-})
+_UNKNOWN_TABLE_PAYLOAD = json.dumps(
+    {
+        "change": [
+            {"kind": "insert", "table": "not_tracked", "columnnames": ["id"], "columnvalues": [1]}
+        ]
+    }
+)
 
 _META = {"t_rls": ("id", "geom")}
 

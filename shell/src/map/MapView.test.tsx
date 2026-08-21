@@ -65,8 +65,14 @@ test("adds a vector source and fill layer for a vector layer", () => {
   const cfg: MapConfig = {
     ...config,
     layers: [
-      { id: "communes", title: "Communes", visible: true, kind: "vector",
-        tilesUrl: "https://martin/communes/{z}/{x}/{y}", sourceLayer: "communes" },
+      {
+        id: "communes",
+        title: "Communes",
+        visible: true,
+        kind: "vector",
+        tilesUrl: "https://martin/communes/{z}/{x}/{y}",
+        sourceLayer: "communes",
+      },
     ],
   };
   render(<MapView config={cfg} />);
@@ -87,7 +93,14 @@ test("skips non-visible and deck layers", () => {
     layers: [
       { id: "hidden", title: "H", visible: false, kind: "raster", tilesUrl: "u" },
       { id: "deck1", title: "D", visible: true, kind: "deck", deckType: "heatmap", dataUrl: "d" },
-      { id: "ras", title: "R", visible: true, kind: "raster", tilesUrl: "https://titiler/{z}/{x}/{y}.png", opacity: 0.5 },
+      {
+        id: "ras",
+        title: "R",
+        visible: true,
+        kind: "raster",
+        tilesUrl: "https://titiler/{z}/{x}/{y}.png",
+        opacity: 0.5,
+      },
     ],
   };
   render(<MapView config={cfg} />);
@@ -135,20 +148,43 @@ test("re-applies layers even while the style has tiles in flight", () => {
   expect(map.getLayer("b")).toBeDefined();
 });
 
-test("renders a circle layer for a feature layer with renderAs \"circle\"", () => {
+test('renders a circle layer for a feature layer with renderAs "circle"', () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "pts", title: "Points", visible: true, kind: "feature", url: "https://fs/pts", renderAs: "circle", paint: { "circle-color": "#111" } }],
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://fs/pts",
+        renderAs: "circle",
+        paint: { "circle-color": "#111" },
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   const map = mapInstances[0];
-  expect(map.getLayer("pts")).toMatchObject({ type: "circle", source: "pts", paint: { "circle-color": "#111" } });
+  expect(map.getLayer("pts")).toMatchObject({
+    type: "circle",
+    source: "pts",
+    paint: { "circle-color": "#111" },
+  });
 });
 
-test("renders a line layer for a feature layer with renderAs \"line\"", () => {
+test('renders a line layer for a feature layer with renderAs "line"', () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "lns", title: "Lignes", visible: true, kind: "feature", url: "https://fs/lns", renderAs: "line" }],
+    layers: [
+      {
+        id: "lns",
+        title: "Lignes",
+        visible: true,
+        kind: "feature",
+        url: "https://fs/lns",
+        renderAs: "line",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   const map = mapInstances[0];
@@ -158,7 +194,9 @@ test("renders a line layer for a feature layer with renderAs \"line\"", () => {
 test("defaults a feature layer to fill when renderAs is not set", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "poly", title: "Polygones", visible: true, kind: "feature", url: "https://fs/poly" }],
+    layers: [
+      { id: "poly", title: "Polygones", visible: true, kind: "feature", url: "https://fs/poly" },
+    ],
   };
   render(<MapView config={cfg} />);
   expect(mapInstances[0].getLayer("poly")).toMatchObject({ type: "fill", source: "poly" });
@@ -168,20 +206,38 @@ test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
   mapInstances[0].fire("moveend");
-  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [0, 0, 0, 0], pitch: 0, bearing: 0 });
+  expect(onViewChange).toHaveBeenCalledWith({
+    center: [2.35, 48.85],
+    zoom: 5,
+    bbox: [0, 0, 0, 0],
+    pitch: 0,
+    bearing: 0,
+  });
 });
 
 test("onViewChange includes the current bbox from the map bounds", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
-  mapInstances[0].bounds = [[1, 2], [3, 4]];
+  mapInstances[0].bounds = [
+    [1, 2],
+    [3, 4],
+  ];
   mapInstances[0].fire("moveend");
-  expect(onViewChange).toHaveBeenCalledWith({ center: [2.35, 48.85], zoom: 5, bbox: [1, 2, 3, 4], pitch: 0, bearing: 0 });
+  expect(onViewChange).toHaveBeenCalledWith({
+    center: [2.35, 48.85],
+    zoom: 5,
+    bbox: [1, 2, 3, 4],
+    pitch: 0,
+    bearing: 0,
+  });
 });
 
 test("onViewChange reports the map's current pitch and bearing", () => {
   const onViewChange = vi.fn();
-  const cfg: MapConfig = { ...config, view: { center: [2.35, 48.85], zoom: 5, pitch: 40, bearing: 200 } };
+  const cfg: MapConfig = {
+    ...config,
+    view: { center: [2.35, 48.85], zoom: 5, pitch: 40, bearing: 200 },
+  };
   render(<MapView config={cfg} onViewChange={onViewChange} />);
   mapInstances[0].fire("moveend");
   expect(onViewChange).toHaveBeenCalledWith(expect.objectContaining({ pitch: 40, bearing: 200 }));
@@ -190,7 +246,16 @@ test("onViewChange reports the map's current pitch and bearing", () => {
 test("renders a legend of visible layers", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "a", title: "Communes", visible: true, kind: "vector", tilesUrl: "u", sourceLayer: "c" }],
+    layers: [
+      {
+        id: "a",
+        title: "Communes",
+        visible: true,
+        kind: "vector",
+        tilesUrl: "u",
+        sourceLayer: "c",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   // MapLegend renders the title
@@ -200,7 +265,16 @@ test("renders a legend of visible layers", () => {
 test("hideLegend suppresses the built-in MapLegend", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "a", title: "Communes", visible: true, kind: "vector", tilesUrl: "u", sourceLayer: "c" }],
+    layers: [
+      {
+        id: "a",
+        title: "Communes",
+        visible: true,
+        kind: "vector",
+        tilesUrl: "u",
+        sourceLayer: "c",
+      },
+    ],
   };
   render(<MapView config={cfg} hideLegend />);
   expect(document.body.textContent).not.toContain("Communes");
@@ -239,9 +313,30 @@ test("maps hexbin to HexagonLayer and column to ColumnLayer, excluding hidden de
   const cfg: MapConfig = {
     ...config,
     layers: [
-      { id: "hex", title: "Hex", visible: true, kind: "deck", deckType: "hexbin", dataUrl: "https://fs/a" },
-      { id: "col", title: "Col", visible: true, kind: "deck", deckType: "column", dataUrl: "https://fs/b" },
-      { id: "off", title: "Off", visible: false, kind: "deck", deckType: "heatmap", dataUrl: "https://fs/c" },
+      {
+        id: "hex",
+        title: "Hex",
+        visible: true,
+        kind: "deck",
+        deckType: "hexbin",
+        dataUrl: "https://fs/a",
+      },
+      {
+        id: "col",
+        title: "Col",
+        visible: true,
+        kind: "deck",
+        deckType: "column",
+        dataUrl: "https://fs/b",
+      },
+      {
+        id: "off",
+        title: "Off",
+        visible: false,
+        kind: "deck",
+        deckType: "heatmap",
+        dataUrl: "https://fs/c",
+      },
     ],
   };
   render(<MapView config={cfg} />);
@@ -266,7 +361,16 @@ test("isolates a failing layer and still renders the others", () => {
 test("re-applies deck layers when config.layers changes", () => {
   const first: MapConfig = {
     ...config,
-    layers: [{ id: "d1", title: "D1", visible: true, kind: "deck", deckType: "heatmap", dataUrl: "https://fs/1" }],
+    layers: [
+      {
+        id: "d1",
+        title: "D1",
+        visible: true,
+        kind: "deck",
+        deckType: "heatmap",
+        dataUrl: "https://fs/1",
+      },
+    ],
   };
   const { rerender } = render(<MapView config={first} />);
   const overlay = overlayInstances[0];
@@ -274,7 +378,16 @@ test("re-applies deck layers when config.layers changes", () => {
 
   const second: MapConfig = {
     ...config,
-    layers: [{ id: "d2", title: "D2", visible: true, kind: "deck", deckType: "column", dataUrl: "https://fs/2" }],
+    layers: [
+      {
+        id: "d2",
+        title: "D2",
+        visible: true,
+        kind: "deck",
+        deckType: "column",
+        dataUrl: "https://fs/2",
+      },
+    ],
   };
   rerender(<MapView config={second} />);
   expect(overlay.props.layers.map((l) => l.props.id)).toEqual(["d2"]);
@@ -310,7 +423,9 @@ test("emits a feature click via onFeatureClick", () => {
   };
   render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
   mapInstances[0].fireOnLayer("click", "a", {
-    features: [{ id: 7, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } }],
+    features: [
+      { id: 7, properties: { nom: "Parc A" }, geometry: { type: "Point", coordinates: [1, 2] } },
+    ],
   });
   expect(onFeatureClick).toHaveBeenCalledWith({
     id: 7,
@@ -337,7 +452,9 @@ test("ignores a clicked feature with no id", () => {
     layers: [{ id: "a", title: "A", visible: true, kind: "feature", url: "https://fs/a" }],
   };
   render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
-  mapInstances[0].fireOnLayer("click", "a", { features: [{ properties: { nom: "Parc A" }, geometry: null }] });
+  mapInstances[0].fireOnLayer("click", "a", {
+    features: [{ properties: { nom: "Parc A" }, geometry: null }],
+  });
   expect(onFeatureClick).not.toHaveBeenCalled();
 });
 
@@ -384,7 +501,10 @@ test("detaches the old layer's click handler when config.layers replaces it", ()
 });
 
 test("initializes the map with pitch and bearing from the view", () => {
-  const cfg: MapConfig = { ...config, view: { center: [2.35, 48.85], zoom: 5, pitch: 30, bearing: 120 } };
+  const cfg: MapConfig = {
+    ...config,
+    view: { center: [2.35, 48.85], zoom: 5, pitch: 30, bearing: 120 },
+  };
   render(<MapView config={cfg} />);
   expect(mapInstances[0].opts.pitch).toBe(30);
   expect(mapInstances[0].opts.bearing).toBe(120);
@@ -399,7 +519,15 @@ test("defaults pitch and bearing to 0 when absent from the view", () => {
 test("mounts a Tile3DLayer for a visible tiles3d layer", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   const layers = overlayInstances[0].props.layers;
@@ -411,7 +539,15 @@ test("mounts a Tile3DLayer for a visible tiles3d layer", () => {
 test("excludes a hidden tiles3d layer from the overlay", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: false, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: false,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   expect(overlayInstances[0].props.layers).toHaveLength(0);
@@ -420,7 +556,15 @@ test("excludes a hidden tiles3d layer from the overlay", () => {
 test("skips tiles3d layers in the MapLibre-native layer path", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   expect(mapInstances[0].getLayer("bldg")).toBeUndefined();
@@ -429,7 +573,15 @@ test("skips tiles3d layers in the MapLibre-native layer path", () => {
 test("shows a tiles3d layer's title in the legend", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   expect(document.body.textContent).toContain("Bâtiments");
@@ -438,24 +590,38 @@ test("shows a tiles3d layer's title in the legend", () => {
 test("enables terrain on load when config.terrain is present", () => {
   const cfg: MapConfig = {
     ...config,
-    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+    terrain: {
+      tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+      exaggeration: 1.5,
+    },
   };
   render(<MapView config={cfg} />);
   const map = mapInstances[0];
   expect(map.getSource("__terrain__")).toMatchObject({
-    spec: { type: "raster-dem", tiles: ["https://example.test/dem/{z}/{x}/{y}.png"], encoding: "terrarium" },
+    spec: {
+      type: "raster-dem",
+      tiles: ["https://example.test/dem/{z}/{x}/{y}.png"],
+      encoding: "terrarium",
+    },
   });
   expect(map.terrain).toEqual({ source: "__terrain__", exaggeration: 1.5 });
 });
 
 test("defaults terrain exaggeration to 1 when not specified", () => {
-  const cfg: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" } };
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
+  };
   render(<MapView config={cfg} />);
   expect(mapInstances[0].terrain).toEqual({ source: "__terrain__", exaggeration: 1 });
 });
 
 test("removes terrain when config.terrain is cleared", () => {
-  const withTerrain: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" } };
+  const withTerrain: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium" },
+  };
   const { rerender } = render(<MapView config={withTerrain} />);
   expect(mapInstances[0].terrain).not.toBeNull();
   rerender(<MapView config={{ ...config, terrain: null }} />);
@@ -465,7 +631,10 @@ test("removes terrain when config.terrain is cleared", () => {
 
 test("does not build a terrain source while the DEM URL is still blank", () => {
   // TerrainPanel emits { tilesUrl: "" } the instant the box is ticked.
-  const cfg: MapConfig = { ...config, terrain: { tilesUrl: "   ", encoding: "terrarium", exaggeration: 1 } };
+  const cfg: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "   ", encoding: "terrarium", exaggeration: 1 },
+  };
   render(<MapView config={cfg} />);
   expect(mapInstances[0].getSource("__terrain__")).toBeUndefined();
   expect(mapInstances[0].terrain).toBeNull();
@@ -475,7 +644,10 @@ test("picks up a terrain tilesUrl typed after the terrain was enabled, without a
   // Regression: the reactive [config.terrain] effect used to be gated on
   // map.isStyleLoaded(), which the blank-URL source's failing tile requests
   // kept false — so the real URL never reached MapLibre.
-  const blank: MapConfig = { ...config, terrain: { tilesUrl: "", encoding: "terrarium", exaggeration: 1 } };
+  const blank: MapConfig = {
+    ...config,
+    terrain: { tilesUrl: "", encoding: "terrarium", exaggeration: 1 },
+  };
   const { rerender } = render(<MapView config={blank} />);
   const map = mapInstances[0];
   expect(map.getSource("__terrain__")).toBeUndefined();
@@ -483,7 +655,14 @@ test("picks up a terrain tilesUrl typed after the terrain was enabled, without a
   // author's edit.
   map.styleSettled = false;
 
-  const typed: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1 } };
+  const typed: MapConfig = {
+    ...config,
+    terrain: {
+      tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+      exaggeration: 1,
+    },
+  };
   rerender(<MapView config={typed} />);
   expect(mapInstances).toHaveLength(1); // same map instance: no remount
   expect(map.getSource("__terrain__")).toMatchObject({
@@ -491,7 +670,14 @@ test("picks up a terrain tilesUrl typed after the terrain was enabled, without a
   });
   expect(map.terrain).toEqual({ source: "__terrain__", exaggeration: 1 });
 
-  const changed: MapConfig = { ...config, terrain: { tilesUrl: "https://example.test/other/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 2 } };
+  const changed: MapConfig = {
+    ...config,
+    terrain: {
+      tilesUrl: "https://example.test/other/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+      exaggeration: 2,
+    },
+  };
   rerender(<MapView config={changed} />);
   expect(map.getSource("__terrain__")).toMatchObject({
     spec: { tiles: ["https://example.test/other/{z}/{x}/{y}.png"] },
@@ -502,8 +688,20 @@ test("picks up a terrain tilesUrl typed after the terrain was enabled, without a
 test("applies terrain and a tiles3d layer together without interfering", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
-    terrain: { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 1.5 },
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
+    terrain: {
+      tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+      exaggeration: 1.5,
+    },
   };
   render(<MapView config={cfg} />);
   const map = mapInstances[0];
@@ -531,7 +729,15 @@ test("holds onReady until a tiles3d layer's tileset has loaded", () => {
   const onReady = vi.fn();
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} onReady={onReady} />);
   mapInstances[0].fire("idle");
@@ -544,7 +750,15 @@ test("does not call onReady on tileset load alone, before the map is idle", () =
   const onReady = vi.fn();
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} onReady={onReady} />);
   fireTilesetLoad();
@@ -560,7 +774,13 @@ test("waits for every visible tiles3d tileset before onReady", () => {
     layers: [
       { id: "a", title: "A", visible: true, kind: "tiles3d", url: "https://example.test/a.json" },
       { id: "b", title: "B", visible: true, kind: "tiles3d", url: "https://example.test/b.json" },
-      { id: "off", title: "Off", visible: false, kind: "tiles3d", url: "https://example.test/off.json" },
+      {
+        id: "off",
+        title: "Off",
+        visible: false,
+        kind: "tiles3d",
+        url: "https://example.test/off.json",
+      },
     ],
   };
   render(<MapView config={cfg} onReady={onReady} />);
@@ -574,19 +794,49 @@ test("waits for every visible tiles3d tileset before onReady", () => {
 test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://core.test/tileset3d/item-1/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://core.test/tileset3d/item-1/tileset.json",
+      },
+    ],
   };
-  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
+  render(
+    <MapView
+      config={cfg}
+      getAuthToken={() => "secret-token"}
+      getCoreUrl={() => "https://core.test"}
+    />,
+  );
   const layers = overlayInstances[0].props.layers;
-  expect(layers[0].props.loadOptions).toEqual({ fetch: { headers: { Authorization: "Bearer secret-token" } } });
+  expect(layers[0].props.loadOptions).toEqual({
+    fetch: { headers: { Authorization: "Bearer secret-token" } },
+  });
 });
 
 test("does not attach a bearer token to an external tiles3d layer even when getAuthToken is provided", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://example.test/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://example.test/tileset.json",
+      },
+    ],
   };
-  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
+  render(
+    <MapView
+      config={cfg}
+      getAuthToken={() => "secret-token"}
+      getCoreUrl={() => "https://core.test"}
+    />,
+  );
   const layers = overlayInstances[0].props.layers;
   expect(layers[0].props.loadOptions).toBeUndefined();
 });
@@ -594,9 +844,23 @@ test("does not attach a bearer token to an external tiles3d layer even when getA
 test("does not attach a bearer token when the URL merely contains /tileset3d/ on a different origin", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://attacker.test/x/tileset3d/y/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://attacker.test/x/tileset3d/y/tileset.json",
+      },
+    ],
   };
-  render(<MapView config={cfg} getAuthToken={() => "secret-token"} getCoreUrl={() => "https://core.test"} />);
+  render(
+    <MapView
+      config={cfg}
+      getAuthToken={() => "secret-token"}
+      getCoreUrl={() => "https://core.test"}
+    />,
+  );
   const layers = overlayInstances[0].props.layers;
   expect(layers[0].props.loadOptions).toBeUndefined();
 });
@@ -604,7 +868,15 @@ test("does not attach a bearer token when the URL merely contains /tileset3d/ on
 test("does not attach a header for a hosted tileset when getAuthToken is absent", () => {
   const cfg: MapConfig = {
     ...config,
-    layers: [{ id: "bldg", title: "Bâtiments", visible: true, kind: "tiles3d", url: "https://core.test/tileset3d/item-1/tileset.json" }],
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://core.test/tileset3d/item-1/tileset.json",
+      },
+    ],
   };
   render(<MapView config={cfg} />);
   const layers = overlayInstances[0].props.layers;
@@ -616,7 +888,10 @@ test("transformRequest attaches a bearer token to a hosted (/terrain3d/) terrain
   const getCoreUrl = () => "https://core.test";
   const cfg: MapConfig = {
     ...config,
-    terrain: { tilesUrl: "https://core.test/terrain3d/item-1/tiles/{z}/{x}/{y}.png", encoding: "terrarium" },
+    terrain: {
+      tilesUrl: "https://core.test/terrain3d/item-1/tiles/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+    },
   };
   render(<MapView config={cfg} getAuthToken={getAuthToken} getCoreUrl={getCoreUrl} />);
   const transformRequest = mapInstances[0].opts.transformRequest!;
@@ -645,7 +920,10 @@ test("transformRequest does not leak the token when the URL merely contains /ter
   const getCoreUrl = () => "https://core.test";
   const cfg: MapConfig = {
     ...config,
-    terrain: { tilesUrl: "https://attacker.test/x/terrain3d/y/tiles/{z}/{x}/{y}.png", encoding: "terrarium" },
+    terrain: {
+      tilesUrl: "https://attacker.test/x/terrain3d/y/tiles/{z}/{x}/{y}.png",
+      encoding: "terrarium",
+    },
   };
   render(<MapView config={cfg} getAuthToken={getAuthToken} getCoreUrl={getCoreUrl} />);
   const transformRequest = mapInstances[0].opts.transformRequest!;

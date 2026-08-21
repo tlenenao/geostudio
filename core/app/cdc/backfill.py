@@ -48,6 +48,7 @@ nulles (ex. `+00`, `+05:30` mais jamais `+00:00`) — confirmé pour plusieurs
 offsets (`+00`, `+05`, `+05:30`, `-05:30`) via `SET timezone` + lecture
 `::text` côté serveur. `_pg_timestamp_str` reproduit ce format Postgres
 plutôt que `.isoformat()` brut pour les valeurs `datetime.datetime`."""
+
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -124,8 +125,13 @@ def current_wal_lsn(session: Session) -> int:
 
 
 def backfill_table(
-    session: Session, *, table_name: str, pk_column: str, geometry_column: str | None,
-    boundary_lsn: int, flush_ts: float,
+    session: Session,
+    *,
+    table_name: str,
+    pk_column: str,
+    geometry_column: str | None,
+    boundary_lsn: int,
+    flush_ts: float,
 ) -> list:
     """Lit l'état courant de la table et produit des ChangeRow op="insert"
     tagués `boundary_lsn`. La colonne géométrie est lue en texte (format de
@@ -133,15 +139,22 @@ def backfill_table(
     représentation que celle produite par wal2json — aucune conversion
     supplémentaire nécessaire côté parquet_writer."""
     t = quote_ident(session, table_name)
-    rows = session.execute(text(f'SELECT * FROM public.{t}')).mappings().all()
+    rows = session.execute(text(f"SELECT * FROM public.{t}")).mappings().all()
     out = []
     for r in rows:
         record = _normalize_record(dict(r))
         geom_wkb_hex = record.pop(geometry_column, None) if geometry_column else None
         pk_value = record.get(pk_column)
-        out.append(ChangeRow(
-            op="insert", lsn=boundary_lsn, ts=flush_ts, pk_column=pk_column,
-            pk_value=pk_value, columns=record, geometry_column=geometry_column,
-            geometry_wkb_hex=geom_wkb_hex,
-        ))
+        out.append(
+            ChangeRow(
+                op="insert",
+                lsn=boundary_lsn,
+                ts=flush_ts,
+                pk_column=pk_column,
+                pk_value=pk_value,
+                columns=record,
+                geometry_column=geometry_column,
+                geometry_wkb_hex=geom_wkb_hex,
+            )
+        )
     return out

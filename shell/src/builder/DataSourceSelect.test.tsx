@@ -43,17 +43,36 @@ test("picking a shared dataset not yet inline calls onAdd then onChange with the
   server.use(
     http.get("https://core.test/items*", ({ request }) => {
       const url = new URL(request.url);
-      if (url.searchParams.get("type") !== "dataset") return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+      if (url.searchParams.get("type") !== "dataset")
+        return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
       return HttpResponse.json({
-        items: [{ pk: "ds-1", resourceType: "dataset", title: "Parcs partagés", abstract: "", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-ds1", isPublished: true }],
-        total: 1, page: 1, pageSize: 12,
+        items: [
+          {
+            pk: "ds-1",
+            resourceType: "dataset",
+            title: "Parcs partagés",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: "cfg-ds1",
+            isPublished: true,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
       });
     }),
   );
   const onChange = vi.fn();
   let added: DataSource | undefined;
   render(
-    <DataSourcesEditProvider onAdd={(s) => { added = s; }}>
+    <DataSourcesEditProvider
+      onAdd={(s) => {
+        added = s;
+      }}
+    >
       <DataSourceSelect value="" dataSources={[]} onChange={onChange} />
     </DataSourcesEditProvider>,
     { wrapper },
@@ -71,8 +90,22 @@ test("a shared dataset already referenced inline is not listed twice", async () 
   server.use(
     http.get("https://core.test/items*", () =>
       HttpResponse.json({
-        items: [{ pk: "ds-1", resourceType: "dataset", title: "Parcs partagés", abstract: "", owner: "alice", thumbnailUrl: null, date: "2026-01-01", configId: "cfg-ds1", isPublished: true }],
-        total: 1, page: 1, pageSize: 12,
+        items: [
+          {
+            pk: "ds-1",
+            resourceType: "dataset",
+            title: "Parcs partagés",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "2026-01-01",
+            configId: "cfg-ds1",
+            isPublished: true,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
       }),
     ),
   );
@@ -80,7 +113,9 @@ test("a shared dataset already referenced inline is not listed twice", async () 
     <DataSourcesEditProvider onAdd={() => {}}>
       <DataSourceSelect
         value="s1"
-        dataSources={[{ id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-1", query: {} }]}
+        dataSources={[
+          { id: "s1", type: "features", service: "core", layer: "", datasetId: "ds-1", query: {} },
+        ]}
         onChange={() => {}}
       />
     </DataSourcesEditProvider>,

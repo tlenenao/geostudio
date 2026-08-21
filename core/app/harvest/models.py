@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,7 +8,7 @@ from app.db import Base
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class HarvestSource(Base):
@@ -33,7 +33,9 @@ class HarvestRecord(Base):
     __tablename__ = "harvest_records"
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "source_id", "external_id",
+            "tenant_id",
+            "source_id",
+            "external_id",
             name="uq_harvest_records_tenant_source_external",
         ),
     )

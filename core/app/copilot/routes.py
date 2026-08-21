@@ -2,9 +2,8 @@
 import asyncio
 import json
 import secrets
-from typing import Literal
+from typing import Any, Literal
 
-import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -48,12 +47,12 @@ class CopilotTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     history: list[CopilotMessage] = Field(default_factory=list, max_length=MAX_HISTORY_MESSAGES)
     mcpToken: str = Field(min_length=1, max_length=MAX_MCP_TOKEN_CHARS)
-    currentConfig: dict
-    clientTools: list[dict] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
+    currentConfig: dict[str, Any]
+    clientTools: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
 
     @field_validator("currentConfig")
     @classmethod
-    def _bound_serialised_config(cls, value: dict) -> dict:
+    def _bound_serialised_config(cls, value: dict[str, Any]) -> dict[str, Any]:
         # La config partant en entier dans le message système, la borner par
         # sa taille sérialisée est la seule mesure qui compte (un dict peu
         # profond peut porter des mégaoctets de chaînes).
@@ -66,7 +65,7 @@ class CopilotTurnRequest(BaseModel):
 
 class ClientOp(BaseModel):
     op: str
-    args: dict
+    args: dict[str, Any]
 
 
 class CopilotTurnResponse(BaseModel):
@@ -74,7 +73,7 @@ class CopilotTurnResponse(BaseModel):
     clientOps: list[ClientOp]
 
 
-def _system_message(item_id: str, current_config: dict) -> dict:
+def _system_message(item_id: str, current_config: dict[str, Any]) -> dict[str, str]:
     # Délimiteur à nonce (I7 de la revue de projet 2026-08-20) : la config
     # était interpolée nue dans la consigne, or elle porte des chaînes
     # rédigées par des utilisateurs (titres de widgets, texte riche,
@@ -105,7 +104,9 @@ def _system_message(item_id: str, current_config: dict) -> dict:
     }
 
 
-async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSession) -> CopilotTurnResponse:
+async def _run_turn(
+    *, request: CopilotTurnRequest, mcp_session: McpLoopbackSession
+) -> CopilotTurnResponse:
     try:
         server_tools_raw = await mcp_session.list_tools()
     except McpLoopbackError as exc:
@@ -113,7 +114,7 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
     server_tools = [t for t in server_tools_raw if t["name"] in ALLOWED_MCP_TOOL_NAMES]
     all_tools = server_tools + request.clientTools
 
-    messages: list[dict] = [_system_message(request.itemId, request.currentConfig)]
+    messages: list[dict[str, Any]] = [_system_message(request.itemId, request.currentConfig)]
     for m in request.history:
         messages.append({"role": m.role, "content": m.content})
     messages.append({"role": "user", "content": request.message})
@@ -121,26 +122,34 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
     provider = get_llm_provider()
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        # provider.chat est synchrone (httpx.post bloquant) : appelé
-        # directement ici, il gèlerait la boucle d'événements — donc tout le
-        # process, tous tenants confondus — pour la latence du LLM, et
-        # neutraliserait le asyncio.wait_for qui garde ce tour (wait_for ne
-        # peut pas interrompre un appel synchrone qui tient déjà le thread).
-        turn: LLMTurn = await anyio.to_thread.run_sync(provider.chat, messages, all_tools)
+        # `LLMProvider.chat` est asynchrone par contrat : un appel
+        # bloquant gèlerait la boucle d'événements de tout le process (la
+        # stack tourne sans `--workers`), et l'exécuter dans un thread de
+        # travail rendrait bien le 504 à l'heure mais **abandonnerait**
+        # l'appel — le thread tiendrait un jeton du pool jusqu'à son propre
+        # timeout, épuisable en répétant des tours lents.
+        turn: LLMTurn = await provider.chat(messages, all_tools)
         if not turn.tool_calls:
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
         client_ops: list[ClientOp] = []
-        messages.append({
-            "role": "assistant", "content": turn.text,
-            "tool_calls": [
-                # arguments doit être une **chaîne** JSON : le schéma de
-                # message OpenAI rejette un objet à la réinjection du tour
-                # suivant.
-                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                for tc in turn.tool_calls
-            ],
-        })
+        messages.append(
+            {
+                "role": "assistant",
+                "content": turn.text,
+                "tool_calls": [
+                    # arguments doit être une **chaîne** JSON : le schéma de
+                    # message OpenAI rejette un objet à la réinjection du tour
+                    # suivant.
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                    }
+                    for tc in turn.tool_calls
+                ],
+            }
+        )
 
         for tc in turn.tool_calls:
             if tc.name not in ALLOWED_MCP_TOOL_NAMES:
@@ -154,10 +163,13 @@ async def _run_turn(*, request: CopilotTurnRequest, mcp_session: McpLoopbackSess
                 result = await mcp_session.call_tool(tc.name, tc.arguments)
             except McpLoopbackError as exc:
                 raise HTTPException(status_code=502, detail=f"MCP loopback failed: {exc}") from exc
-            messages.append({
-                "role": "tool", "tool_call_id": tc.id,
-                "content": result.text or ("(erreur outil)" if result.is_error else ""),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result.text or ("(erreur outil)" if result.is_error else ""),
+                }
+            )
 
         if client_ops:
             return CopilotTurnResponse(reply=turn.text, clientOps=client_ops)
@@ -192,7 +204,9 @@ async def copilot_turn(
             _run_turn(request=body, mcp_session=mcp_session),
             timeout=TURN_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Le copilote a mis trop de temps à répondre.") from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=504, detail="Le copilote a mis trop de temps à répondre."
+        ) from exc
     finally:
         await mcp_session.aclose()

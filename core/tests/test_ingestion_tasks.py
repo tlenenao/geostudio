@@ -2,6 +2,7 @@
 """Bout en bout : run_ingestion_task, connecteur procrastinate remplacé par
 InMemoryConnector (pattern documenté procrastinate.testing) pour ne dépendre
 d'aucun vrai worker en CI ; PostGIS réel pour les écritures du pipeline."""
+
 import pytest
 from procrastinate import testing
 from sqlalchemy import text
@@ -37,8 +38,13 @@ def env(pg_engine, monkeypatch):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         s.commit()
     monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
@@ -46,10 +52,12 @@ def env(pg_engine, monkeypatch):
     with ingestion_tasks.app.replace_connector(in_memory) as app:
         yield app, Session, tenant, user
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE ingestion_jobs, items, configs, config_revisions, "
-            "collections, audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE ingestion_jobs, items, configs, config_revisions, "
+                "collections, audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_valid_geojson_marks_job_done_with_collection_and_item(env, monkeypatch):
@@ -63,9 +71,14 @@ def test_valid_geojson_marks_job_done_with_collection_and_item(env, monkeypatch)
     )
     with Session() as s:
         job = ingestion_repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k1",
-            filename="villes.geojson", collection_title="Villes import",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k1",
+            filename="villes.geojson",
+            collection_title="Villes import",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id
@@ -87,9 +100,14 @@ def test_corrupted_file_marks_job_error_not_zombie(env, monkeypatch):
     )
     with Session() as s:
         job = ingestion_repo.create_job(
-            s, tenant_id=tenant.id, created_by=user.id, source_key="k2",
-            filename="broken.geojson", collection_title="Casse",
-            lat_field=None, lon_field=None,
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k2",
+            filename="broken.geojson",
+            collection_title="Casse",
+            lat_field=None,
+            lon_field=None,
         )
         s.commit()
         job_id = job.id

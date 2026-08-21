@@ -25,7 +25,9 @@ function Harness({ children }: { children: ReactNode }) {
 
 function setInstance(terrain3dEnabled: boolean) {
   server.use(
-    http.get(`${CORE_URL}/instance`, () => HttpResponse.json({ readOnly: false, terrain3dEnabled })),
+    http.get(`${CORE_URL}/instance`, () =>
+      HttpResponse.json({ readOnly: false, terrain3dEnabled }),
+    ),
   );
 }
 
@@ -52,7 +54,11 @@ function renderPanel(
 // e.g. MapEditorPage, would loop the value back in) — this stateful wrapper
 // does the same, while still forwarding every change to the `onChange` spy
 // so assertions on call args are unaffected.
-function ControlledTerrainPanel({ onChange }: { onChange: (next: MapTerrainConfig | null) => void }) {
+function ControlledTerrainPanel({
+  onChange,
+}: {
+  onChange: (next: MapTerrainConfig | null) => void;
+}) {
   const [value, setValue] = useState<MapTerrainConfig | null>(null);
   return (
     <TerrainPanel
@@ -65,7 +71,10 @@ function ControlledTerrainPanel({ onChange }: { onChange: (next: MapTerrainConfi
   );
 }
 
-function renderControlled(onChange: (next: MapTerrainConfig | null) => void, terrain3dEnabled = true) {
+function renderControlled(
+  onChange: (next: MapTerrainConfig | null) => void,
+  terrain3dEnabled = true,
+) {
   setInstance(terrain3dEnabled);
   return render(
     <Harness>
@@ -88,10 +97,16 @@ test("checking the box emits a default terrain config", async () => {
 });
 
 test("shows URL and exaggeration fields when a terrain config is provided", () => {
-  const value: MapTerrainConfig = { tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png", encoding: "terrarium", exaggeration: 2 };
+  const value: MapTerrainConfig = {
+    tilesUrl: "https://example.test/dem/{z}/{x}/{y}.png",
+    encoding: "terrarium",
+    exaggeration: 2,
+  };
   renderPanel(value, vi.fn());
   expect(screen.getByLabelText("Activer le terrain 3D")).toBeChecked();
-  expect(screen.getByLabelText("URL de tuiles terrain")).toHaveValue("https://example.test/dem/{z}/{x}/{y}.png");
+  expect(screen.getByLabelText("URL de tuiles terrain")).toHaveValue(
+    "https://example.test/dem/{z}/{x}/{y}.png",
+  );
   expect(screen.getByLabelText("Exaggeration du terrain")).toHaveValue(2);
 });
 
@@ -108,7 +123,11 @@ test("editing the exaggeration field patches exaggeration", () => {
   const value: MapTerrainConfig = { tilesUrl: "u", encoding: "terrarium", exaggeration: 1 };
   renderPanel(value, onChange);
   fireEvent.change(screen.getByLabelText("Exaggeration du terrain"), { target: { value: "2.5" } });
-  expect(onChange).toHaveBeenCalledWith({ tilesUrl: "u", encoding: "terrarium", exaggeration: 2.5 });
+  expect(onChange).toHaveBeenCalledWith({
+    tilesUrl: "u",
+    encoding: "terrarium",
+    exaggeration: 2.5,
+  });
 });
 
 test("clearing the exaggeration field keeps the previous value instead of zeroing it", () => {
@@ -138,7 +157,12 @@ test("unchecking the box emits null", async () => {
 test("selecting a hosted DEM sets tilesUrl to the terrain3d proxy URL", async () => {
   server.use(
     http.get(`${CORE_URL}/items`, () =>
-      HttpResponse.json({ items: [{ pk: "t-1", title: "Relief du massif" }], total: 1, page: 1, pageSize: 200 }),
+      HttpResponse.json({
+        items: [{ pk: "t-1", title: "Relief du massif" }],
+        total: 1,
+        page: 1,
+        pageSize: 200,
+      }),
     ),
   );
   const onChange = vi.fn();
@@ -159,7 +183,11 @@ test("selecting a hosted DEM sets tilesUrl to the terrain3d proxy URL", async ()
 });
 
 test("external URL field remains usable and independent of the hosted picker", async () => {
-  server.use(http.get(`${CORE_URL}/items`, () => HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 200 })));
+  server.use(
+    http.get(`${CORE_URL}/items`, () =>
+      HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 200 }),
+    ),
+  );
   const onChange = vi.fn();
   renderControlled(onChange, true);
 

@@ -6,7 +6,10 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("button emits clicked to the wired action", async () => {
   const bus = new ActionBus();
@@ -14,7 +17,12 @@ test("button emits clicked to the wired action", async () => {
   bus.register("sink", "run", handler);
   bus.configure([{ id: "m", from: "btn1", event: "clicked", to: "sink", action: "run" }]);
   const Button = getWidget("button")!.Component;
-  render(<Button props={{ label: "Go" }} ctx={{ mode: "runtime", bus, widgetId: "btn1" } as WidgetContext} />);
+  render(
+    <Button
+      props={{ label: "Go" }}
+      ctx={{ mode: "runtime", bus, widgetId: "btn1" } as WidgetContext}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Go" }));
   expect(handler).toHaveBeenCalled();
 });

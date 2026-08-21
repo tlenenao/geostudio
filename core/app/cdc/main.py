@@ -4,6 +4,7 @@ compose, jamais démarré via create_app()/app.main : observability.setup()
 est donc appelé ici au niveau module, même patron et même raison que
 app/jobs.py (SP-10a) — quel que soit le process qui importe ce module EST le
 point d'entrée du worker."""
+
 import os
 import threading
 import time
@@ -15,11 +16,15 @@ from app import observability
 
 observability.setup()
 
-from app.cdc import backfill, consumer, storage  # noqa: E402  (après setup(), même patron que app.jobs)
-from app.cdc.buffer import CdcBufferManager
-from app.cdc.parquet_writer import write_geoparquet
-from app.collections.models import Collection
-from app.db import make_engine, make_session_factory
+from app.cdc import (  # noqa: E402  (après setup(), même patron que app.jobs)
+    backfill,
+    consumer,
+    storage,
+)
+from app.cdc.buffer import CdcBufferManager  # noqa: E402
+from app.cdc.parquet_writer import write_geoparquet  # noqa: E402
+from app.collections.models import Collection  # noqa: E402
+from app.db import make_engine, make_session_factory  # noqa: E402
 
 
 class _WorkerState:
@@ -56,7 +61,10 @@ class _WorkerState:
 
 
 def build_s3_key(*, tenant_id: str, collection_id: str, dt: str) -> str:
-    return f"cdc/tenant_id={tenant_id}/collection_id={collection_id}/dt={dt}/part-{uuid.uuid4().hex}.parquet"
+    return (
+        f"cdc/tenant_id={tenant_id}/collection_id={collection_id}/dt={dt}/"
+        f"part-{uuid.uuid4().hex}.parquet"
+    )
 
 
 def _load_collection_meta(session) -> dict:
@@ -67,7 +75,9 @@ def _load_collection_meta(session) -> dict:
     }
 
 
-def _write_and_upload(rows, *, srid: int, local_path: str, s3_client, bucket: str, key: str) -> None:
+def _write_and_upload(
+    rows, *, srid: int, local_path: str, s3_client, bucket: str, key: str
+) -> None:
     """Écrit le GeoParquet local puis l'uploade, en garantissant que le
     fichier temporaire est toujours supprimé (succès ou échec) — extrait de
     _flush_table pour rester testable indépendamment de run() (qui exige
@@ -107,8 +117,12 @@ def run() -> None:
         boundary_lsn = backfill.current_wal_lsn(session)
         for table_name, (_cid, _tid, geometry_column, _srid, pk_column) in collection_meta.items():
             rows = backfill.backfill_table(
-                session, table_name=table_name, pk_column=pk_column,
-                geometry_column=geometry_column, boundary_lsn=boundary_lsn, flush_ts=time.time(),
+                session,
+                table_name=table_name,
+                pk_column=pk_column,
+                geometry_column=geometry_column,
+                boundary_lsn=boundary_lsn,
+                flush_ts=time.time(),
             )
             for row in rows:
                 buffer.add(table_name, row)
@@ -122,8 +136,12 @@ def run() -> None:
         key = build_s3_key(tenant_id=tenant_id, collection_id=collection_id, dt=dt)
         local_path = f"/tmp/cdc-{uuid.uuid4().hex}.parquet"
         _write_and_upload(
-            rows, srid=srid or 4326, local_path=local_path,
-            s3_client=s3_client, bucket=s3_bucket, key=key,
+            rows,
+            srid=srid or 4326,
+            local_path=local_path,
+            s3_client=s3_client,
+            bucket=s3_bucket,
+            key=key,
         )
         state.record_flush(collection_id, time.time())
 
@@ -134,8 +152,12 @@ def run() -> None:
 
     def _on_message(payload: str, lsn: int) -> None:
         state.last_seen_lsn = lsn
-        meta_by_table = {t: (pk, geom) for t, (_cid, _tid, geom, _srid, pk) in collection_meta.items()}
-        for decoded in consumer.decode_wal2json_message(payload, lsn=lsn, collection_meta=meta_by_table):
+        meta_by_table = {
+            t: (pk, geom) for t, (_cid, _tid, geom, _srid, pk) in collection_meta.items()
+        }
+        for decoded in consumer.decode_wal2json_message(
+            payload, lsn=lsn, collection_meta=meta_by_table
+        ):
             buffer.add(decoded.table_name, decoded.row)
 
         # Table publiée mais inconnue de collection_meta : collection créée
@@ -143,26 +165,41 @@ def run() -> None:
         # changement vu (Task 8 §Décision de conception), avant de traiter
         # le message lui-même sur la prochaine itération.
         import json
+
         unknown_tables = {
-            change["table"] for change in json.loads(payload).get("change", [])
+            change["table"]
+            for change in json.loads(payload).get("change", [])
             if change["table"] not in collection_meta
         }
         for table_name in unknown_tables:
             with session_factory() as session:
-                fresh = session.scalar(select(Collection).where(Collection.table_name == table_name))
+                fresh = session.scalar(
+                    select(Collection).where(Collection.table_name == table_name)
+                )
             if fresh is None:
                 continue
-            collection_meta[table_name] = (fresh.id, fresh.tenant_id, fresh.geometry_column, fresh.srid, fresh.pk_column)
+            collection_meta[table_name] = (
+                fresh.id,
+                fresh.tenant_id,
+                fresh.geometry_column,
+                fresh.srid,
+                fresh.pk_column,
+            )
             with session_factory() as session:
                 backfill_rows = backfill.backfill_table(
-                    session, table_name=table_name, pk_column=fresh.pk_column,
-                    geometry_column=fresh.geometry_column, boundary_lsn=lsn - 1, flush_ts=time.time(),
+                    session,
+                    table_name=table_name,
+                    pk_column=fresh.pk_column,
+                    geometry_column=fresh.geometry_column,
+                    boundary_lsn=lsn - 1,
+                    flush_ts=time.time(),
                 )
             for row in backfill_rows:
                 buffer.add(table_name, row)
 
     consumer.stream_changes(
-        raw_dsn, on_message=_on_message,
+        raw_dsn,
+        on_message=_on_message,
         is_flush_due=lambda: bool(buffer.tables_due_for_flush()),
         do_flush=_do_flush,
     )

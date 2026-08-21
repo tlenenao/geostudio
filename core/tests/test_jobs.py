@@ -2,6 +2,7 @@
 """Une seule instance procrastinate.App pour tout le process (Task 1, SP-7) —
 sinon une tâche déférée par un module et exécutée par le worker d'un autre
 App échoue (nom de tâche absent de son registre)."""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -59,9 +60,7 @@ def test_import_paths_registers_all_domain_tasks():
         text=True,
         timeout=30,
     )
-    assert result.returncode == 0, (
-        f"sous-process d'import a échoué : {result.stderr}"
-    )
+    assert result.returncode == 0, f"sous-process d'import a échoué : {result.stderr}"
     task_names = set(result.stdout.strip().splitlines())
     assert "app.ingestion.tasks.run_ingestion_task" in task_names
     assert "app.items.jobs.embed_item_task" in task_names

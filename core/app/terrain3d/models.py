@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,7 +8,7 @@ from app.db import Base
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Terrain3DJob(Base):
@@ -19,8 +19,12 @@ class Terrain3DJob(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="uploaded")
     # "uploaded" | "converting" | "done" | "error"
-    source_key: Mapped[str] = mapped_column(String, nullable=False)  # raw upload, purged after conversion
-    converted_key: Mapped[str | None] = mapped_column(String, nullable=True)  # set once the COG is uploaded
+    source_key: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # raw upload, purged after conversion
+    converted_key: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # set once the COG is uploaded
     filename: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)

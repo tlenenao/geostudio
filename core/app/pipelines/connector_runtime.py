@@ -5,6 +5,7 @@ dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
 la table racine "records" en TEMP TABLE, puis nettoie (finally). Aucun état
 dlt ne survit à un appel (destination ET pipelines_dir scratch, supprimés
 ensemble)."""
+
 import os
 
 # Doit précéder `import dlt` : la télémétrie anonyme de dlt est activée par
@@ -55,7 +56,9 @@ class ConnectorRuntimeError(Exception):
     (runtime.py importe ce module)."""
 
 
-def _resolve_secret(session: Session, tenant_id: str, secret_name: str | None) -> SecretPayload | None:
+def _resolve_secret(
+    session: Session, tenant_id: str, secret_name: str | None
+) -> SecretPayload | None:
     if secret_name is None:
         return None
     payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=secret_name)
@@ -79,7 +82,9 @@ def _build_auth(payload: SecretPayload | None):
     if payload.kind == "basic_auth":
         return HttpBasicAuth(payload.username, payload.password)
     return OAuth2ClientCredentials(
-        access_token_url=payload.tokenUrl, client_id=payload.clientId, client_secret=payload.clientSecret,
+        access_token_url=payload.tokenUrl,
+        client_id=payload.clientId,
+        client_secret=payload.clientSecret,
         # `session=` est indispensable ici : sans lui, dlt retombe sur son
         # propre `requests.session` par défaut (non gardé) pour l'échange de
         # jeton dans `obtain_token()` — seul des 4 kinds de secret REST à
@@ -105,17 +110,22 @@ def _build_paginator(paginator: str, config: dict):
         # `stop_after_empty_page` (défaut True) : une page vide arrête la
         # pagination — c'est le contrat qu'on veut ici.
         return PageNumberPaginator(
-            base_page=config.get("basePage", 1), page_param=config.get("pageParam", "page"),
-            maximum_page=config.get("maximumPage"), total_path=None,
+            base_page=config.get("basePage", 1),
+            page_param=config.get("pageParam", "page"),
+            maximum_page=config.get("maximumPage"),
+            total_path=None,
         )
     if paginator == "offset":
         return OffsetPaginator(
-            limit=config["limit"], offset_param=config.get("offsetParam", "offset"),
-            limit_param=config.get("limitParam", "limit"), total_path=config.get("totalPath"),
+            limit=config["limit"],
+            offset_param=config.get("offsetParam", "offset"),
+            limit_param=config.get("limitParam", "limit"),
+            total_path=config.get("totalPath"),
         )
     if paginator == "cursor":
         return JSONResponseCursorPaginator(
-            cursor_path=config.get("cursorPath", "cursors.next"), cursor_param=config.get("cursorParam", "cursor"),
+            cursor_path=config.get("cursorPath", "cursors.next"),
+            cursor_param=config.get("cursorParam", "cursor"),
         )
     raise ConnectorRuntimeError(f"unknown paginator '{paginator}'")
 
@@ -154,7 +164,8 @@ def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None
             conn.execute(f"ATTACH '{db_path}' AS dlt_extract (READ_ONLY)")
             try:
                 cols = [
-                    d[0] for d in conn.execute(
+                    d[0]
+                    for d in conn.execute(
                         "SELECT * FROM dlt_extract.pipeline_dataset.records LIMIT 0"
                     ).description
                     if d[0] not in {"_dlt_id", "_dlt_load_id"}
@@ -200,28 +211,40 @@ def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None
 
 
 def materialize_rest_connector(
-    conn, *, session: Session, tenant_id: str, node_id: str,
-    params: ReaderConnectorRestParams, view_name: str,
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: ReaderConnectorRestParams,
+    view_name: str,
 ) -> None:
     payload = _resolve_secret(session, tenant_id, params.secretName)
     auth = _build_auth(payload)
     client = RESTClient(
-        base_url=params.baseUrl, headers=params.headers or None, auth=auth,
+        base_url=params.baseUrl,
+        headers=params.headers or None,
+        auth=auth,
         paginator=_build_paginator(params.paginator, params.paginatorConfig),
-        data_selector=params.recordsPath, session=build_guarded_session(),
+        data_selector=params.recordsPath,
+        session=build_guarded_session(),
     )
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
-        for page in client.paginate(params.path, method=params.method, params=params.query or None):
-            yield page
+        yield from client.paginate(params.path, method=params.method, params=params.query or None)
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
 
 def materialize_postgres_connector(
-    conn, *, session: Session, tenant_id: str, node_id: str,
-    params: ReaderConnectorPostgresParams, view_name: str,
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: ReaderConnectorPostgresParams,
+    view_name: str,
 ) -> None:
     # Défense en profondeur heuristique, pas une garantie (design §5.2) :
     # `params.query` cible Postgres mais est parsée avec le dialecte SQL de

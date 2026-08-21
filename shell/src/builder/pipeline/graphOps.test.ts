@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import type { PipelineEdge, PipelineNode } from "../../api/types";
-import { genEdgeId, genNodeId, hasIncomingEdge, insertNodeOnEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
+import {
+  genEdgeId,
+  genNodeId,
+  hasIncomingEdge,
+  insertNodeOnEdge,
+  topologicalOrder,
+  wouldCreateCycle,
+} from "./graphOps";
 
 test("genNodeId and genEdgeId produce distinct, non-empty ids", () => {
   const a = genNodeId();
@@ -53,7 +60,14 @@ test("insertNodeOnEdge splits the edge into two, wiring the new node between", (
     { id: "w1", kind: "writer", op: "writer.collection", x: 200, y: 0, params: {} },
   ];
   const edges: PipelineEdge[] = [{ id: "e1", from: "r1", to: "w1" }];
-  const newNode: PipelineNode = { id: "t1", kind: "transform", op: "transform.filter", x: 100, y: 0, params: {} };
+  const newNode: PipelineNode = {
+    id: "t1",
+    kind: "transform",
+    op: "transform.filter",
+    x: 100,
+    y: 0,
+    params: {},
+  };
 
   const result = insertNodeOnEdge(nodes, edges, "e1", newNode);
 
@@ -67,7 +81,14 @@ test("insertNodeOnEdge splits the edge into two, wiring the new node between", (
 test("insertNodeOnEdge is a no-op when the edge id does not exist", () => {
   const nodes: PipelineNode[] = [];
   const edges: PipelineEdge[] = [];
-  const newNode: PipelineNode = { id: "t1", kind: "transform", op: "transform.filter", x: 0, y: 0, params: {} };
+  const newNode: PipelineNode = {
+    id: "t1",
+    kind: "transform",
+    op: "transform.filter",
+    x: 0,
+    y: 0,
+    params: {},
+  };
   const result = insertNodeOnEdge(nodes, edges, "missing", newNode);
   expect(result).toEqual({ nodes, edges });
 });
@@ -93,7 +114,14 @@ test("insertNodeOnEdge preserves the original edge's role on the downstream half
     { id: "t1", kind: "transform", op: "transform.join", x: 200, y: 0, params: {} },
   ];
   const edges: PipelineEdge[] = [{ id: "e1", from: "r1", to: "t1", role: "secondary" }];
-  const newNode: PipelineNode = { id: "f1", kind: "transform", op: "transform.filter", x: 100, y: 0, params: {} };
+  const newNode: PipelineNode = {
+    id: "f1",
+    kind: "transform",
+    op: "transform.filter",
+    x: 100,
+    y: 0,
+    params: {},
+  };
 
   const result = insertNodeOnEdge(nodes, edges, "e1", newNode);
 

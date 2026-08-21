@@ -18,4 +18,12 @@ RUN qgis_process plugins enable grassprovider
 COPY server.py /app/server.py
 COPY allowlist.txt /app/allowlist.txt
 
+# Cette image est désormais PUBLIÉE sur ghcr.io (SP-21) — c'est un acte de
+# distribution de QGIS et GRASS, tous deux sous GPL. La notice voyage donc
+# avec l'image, pas seulement dans le dépôt.
+COPY LICENSE-QGIS.md /LICENSE-QGIS.md
+LABEL org.opencontainers.image.licenses="GPL-2.0-or-later AND Apache-2.0"
+LABEL org.opencontainers.image.source="https://github.com/tlenenao/geostudio"
+LABEL org.opencontainers.image.description="Sidecar QGIS Processing pour GeoStudio — contient QGIS et GRASS (GPL). Voir /LICENSE-QGIS.md."
+
 CMD ["python3", "/app/server.py"]

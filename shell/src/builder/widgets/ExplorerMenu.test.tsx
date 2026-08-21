@@ -56,7 +56,13 @@ test("the menu closes again after selecting the item", async () => {
 
 test("aggregate sources only offer CSV/XLSX", async () => {
   const client = { exportDataSource: vi.fn() } as unknown as ItemClient;
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
@@ -72,7 +78,13 @@ test("aggregate sources only offer CSV/XLSX", async () => {
 
 test("items sources with geometry offer all four formats", async () => {
   const client = { exportDataSource: vi.fn() } as unknown as ItemClient;
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
@@ -81,18 +93,34 @@ test("items sources with geometry offer all four formats", async () => {
     </ItemClientProvider>,
   );
   await userEvent.click(screen.getByLabelText("Explorer"));
-  for (const label of ["Exporter en CSV", "Exporter en XLSX", "Exporter en GEOJSON", "Exporter en GPKG"]) {
+  for (const label of [
+    "Exporter en CSV",
+    "Exporter en XLSX",
+    "Exporter en GEOJSON",
+    "Exporter en GPKG",
+  ]) {
     expect(screen.getByLabelText(label)).toBeInTheDocument();
   }
 });
 
 test("items sources without geometry only offer CSV/XLSX", async () => {
   const client = { exportDataSource: vi.fn() } as unknown as ItemClient;
-  const source: DataSource = { id: "s1", type: "features", service: "core", layer: "parcs", query: {} };
+  const source: DataSource = {
+    id: "s1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
-        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry={false} />
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
       </ExplorerProvider>
     </ItemClientProvider>,
   );
@@ -105,7 +133,13 @@ test("clicking an export format calls exportDataSource and triggers a download",
   const blob = new Blob(["a,b\n1,2\n"], { type: "text/csv" });
   const exportDataSource = vi.fn().mockResolvedValue({ blob, filename: "parcs.csv" });
   const client = { exportDataSource } as unknown as ItemClient;
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region" } };
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "parcs",
+    query: { groupBy: "region" },
+  };
   const createObjectURL = vi.fn().mockReturnValue("blob:fake");
   const revokeObjectURL = vi.fn();
   vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
@@ -113,7 +147,12 @@ test("clicking an export format calls exportDataSource and triggers a download",
   render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
-        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry={false} />
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
       </ExplorerProvider>
     </ItemClientProvider>,
   );
@@ -124,21 +163,36 @@ test("clicking an export format calls exportDataSource and triggers a download",
 });
 
 test("a failed export surfaces an inline error message instead of failing silently", async () => {
-  const exportDataSource = vi.fn().mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
+  const exportDataSource = vi
+    .fn()
+    .mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
   const client = { exportDataSource } as unknown as ItemClient;
-  const source: DataSource = { id: "s1", type: "statistics", service: "core", layer: "parcs", query: { groupBy: "region" } };
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "parcs",
+    query: { groupBy: "region" },
+  };
 
   render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
-        <ExplorerMenu datasetId="ds1" dataSourceId="s1" resolvedSource={source} hasGeometry={false} />
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
       </ExplorerProvider>
     </ItemClientProvider>,
   );
   await userEvent.click(screen.getByLabelText("Explorer"));
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("Trop d'entités : affinez vos filtres.");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Trop d'entités : affinez vos filtres.",
+  );
 });
 
 test("no export entries when resolvedSource is absent (backward compatible with existing callers)", async () => {

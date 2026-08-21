@@ -5,7 +5,11 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink } from "../api/types";
 
 export function CrossFilterLinkEditor({
-  link, sourceFields, targetOptions, onChange, onRemove,
+  link,
+  sourceFields,
+  targetOptions,
+  onChange,
+  onRemove,
 }: {
   link: CrossFilterLink;
   sourceFields: string[];
@@ -14,9 +18,13 @@ export function CrossFilterLinkEditor({
   onRemove: () => void;
 }) {
   const client = useItemClient();
-  const targetConfigQuery = useDatasetConfig(link.targetDatasetId, { enabled: Boolean(link.targetDatasetId) });
+  const targetConfigQuery = useDatasetConfig(link.targetDatasetId, {
+    enabled: Boolean(link.targetDatasetId),
+  });
   const targetCollectionId =
-    targetConfigQuery.data && targetConfigQuery.data.source === "collection" ? targetConfigQuery.data.collectionId : undefined;
+    targetConfigQuery.data && targetConfigQuery.data.source === "collection"
+      ? targetConfigQuery.data.collectionId
+      : undefined;
   const targetSchemaQuery = useQuery({
     queryKey: ["collection-schema", targetCollectionId],
     queryFn: () => client.getCollectionSchema(targetCollectionId!),
@@ -28,7 +36,12 @@ export function CrossFilterLinkEditor({
   function changeMode(mode: "attribute" | "spatial") {
     onChange(
       mode === "attribute"
-        ? { targetDatasetId: link.targetDatasetId, mode: "attribute", sourceField: "", targetField: "" }
+        ? {
+            targetDatasetId: link.targetDatasetId,
+            mode: "attribute",
+            sourceField: "",
+            targetField: "",
+          }
         : { targetDatasetId: link.targetDatasetId, mode: "spatial", precision: "bbox" },
     );
   }
@@ -44,7 +57,11 @@ export function CrossFilterLinkEditor({
           onChange={(e) => onChange({ ...link, targetDatasetId: e.target.value })}
         >
           <option value="">— choisir —</option>
-          {targetOptions.map((d) => <option key={d.pk} value={d.pk}>{d.title}</option>)}
+          {targetOptions.map((d) => (
+            <option key={d.pk} value={d.pk}>
+              {d.title}
+            </option>
+          ))}
         </select>
       </label>
       <label className="flex flex-col gap-1">
@@ -70,7 +87,11 @@ export function CrossFilterLinkEditor({
               onChange={(e) => onChange({ ...link, sourceField: e.target.value })}
             >
               <option value="">— choisir —</option>
-              {sourceFields.map((f) => <option key={f} value={f}>{f}</option>)}
+              {sourceFields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
             </select>
           </label>
           <label className="flex flex-col gap-1">
@@ -82,7 +103,11 @@ export function CrossFilterLinkEditor({
               onChange={(e) => onChange({ ...link, targetField: e.target.value })}
             >
               <option value="">— choisir —</option>
-              {targetFields.map((f) => <option key={f} value={f}>{f}</option>)}
+              {targetFields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
             </select>
           </label>
         </>

@@ -8,6 +8,7 @@ exists, params match its manifest, collectionId exists/readable/writable)
 are registered by app.pipelines.config_validation, imported for its side
 effect by app.main — the only layer allowed to know about both. Mirrors
 app.configs.dataset_validation exactly."""
+
 from collections.abc import Callable
 
 from fastapi import HTTPException
@@ -36,7 +37,7 @@ def _check_topology(edges: list[PipelineEdge]) -> None:
             raise HTTPException(
                 status_code=422,
                 detail=f"node '{node_id}' has more than one incoming edge "
-                       "(linear+join topology only, SP-15a MVP)",
+                "(linear+join topology only, SP-15a MVP)",
             )
     for node_id, count in secondary_count.items():
         if count > 1:

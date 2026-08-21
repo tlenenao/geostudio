@@ -17,7 +17,9 @@ pytestmark = pytest.mark.postgis
 
 
 def _write_partition(base_dir, *, tenant_id, collection_id="villes", rows):
-    partition_dir = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-05"
+    partition_dir = (
+        base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-08-05"
+    )
     partition_dir.mkdir(parents=True, exist_ok=True)
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     gdf.to_parquet(partition_dir / "part-1.parquet")
@@ -30,25 +32,38 @@ def env(pg_engine, monkeypatch, tmp_path):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         user = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         item_id = "item-1"
-        s.execute(text(
-            "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, abstract, is_published, "
-            "is_public, keywords, created_at, updated_at) "
-            "VALUES (:id, :t, :o, 'pipeline', 'P', '', false, false, '[]', now(), now())"
-        ), {"id": item_id, "t": tenant.id, "o": user.id})
-        s.execute(text(
-            "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, description, "
-            "pk_column, geometry_column, is_public, editable, created_at, updated_at) "
-            "VALUES ('villes_propres', :t, :o, 'villes_propres', 'V', '', 'id', 'geometry', false, true, "
-            "now(), now())"
-        ), {"t": tenant.id, "o": user.id})
-        s.execute(text(
-            "CREATE TABLE villes_propres (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-            "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
-        ))
+        s.execute(
+            text(
+                "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, abstract, "
+                "is_published, is_public, keywords, created_at, updated_at) "
+                "VALUES (:id, :t, :o, 'pipeline', 'P', '', false, false, '[]', now(), now())"
+            ),
+            {"id": item_id, "t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, description, "
+                "pk_column, geometry_column, is_public, editable, created_at, updated_at) "
+                "VALUES ('villes_propres', :t, :o, 'villes_propres', 'V', '', 'id', 'geometry', "
+                "false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_propres (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
         # Sans ceci, l'INSERT du run échoue "permission denied" : gis_rls
         # n'a aucun droit sur une table créée à la main (le CREATE TABLE brut
         # ci-dessus ne fait pas ce qu'une vraie inscription de collection
@@ -59,10 +74,21 @@ def env(pg_engine, monkeypatch, tmp_path):
         apply_collection_ddl(s, "villes_propres")
         s.commit()
 
-    _write_partition(tmp_path, tenant_id=tenant.id, rows=[
-        {"id": 1, "region": "Nord", "pop": 10, "_op": "insert", "_lsn": 1, "_ts": 1.0,
-         "geometry": Point(1.0, 45.0)},
-    ])
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant.id,
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(1.0, 45.0),
+            },
+        ],
+    )
     monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
     monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
     monkeypatch.setenv("S3_ACCESS_KEY", "x")
@@ -70,31 +96,58 @@ def env(pg_engine, monkeypatch, tmp_path):
     monkeypatch.setenv("S3_CDC_BUCKET_BASE_URI", str(tmp_path))
 
     from app.configs.schemas import PipelinePayload
-    payload = PipelinePayload.model_validate({
-        "nodes": [
-            {"id": "r1", "kind": "reader", "op": "reader.collection", "params": {"collectionId": "villes"}},
-            {"id": "w1", "kind": "writer", "op": "writer.collection",
-             "params": {"collectionId": "villes_propres"}},
-        ],
-        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
-    })
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.collection",
+                    "params": {"collectionId": "villes_propres"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
     # Patch the runtime's collection lookups the same way Task 8's own tests do
     # (run_pipeline_task calls app.pipelines.runtime.run_pipeline, so the seams
     # to patch live on that module, not on pipeline_jobs itself).
-    from app.pipelines import runtime as pipeline_runtime
     from app.collections.introspection import ColumnInfo, TableInfo
+    from app.pipelines import runtime as pipeline_runtime
+
     table_info = TableInfo(
-        table_name="villes", pk_column="id", geometry_column="geometry",
-        geometry_type="Point", srid=4326,
-        columns=[ColumnInfo(name="region", type="string", required=True),
-                 ColumnInfo(name="pop", type="integer", required=True)],
+        table_name="villes",
+        pk_column="id",
+        geometry_column="geometry",
+        geometry_type="Point",
+        srid=4326,
+        columns=[
+            ColumnInfo(name="region", type="string", required=True),
+            ColumnInfo(name="pop", type="integer", required=True),
+        ],
     )
-    monkeypatch.setattr(pipeline_runtime, "_table_info_for_collection",
-                        lambda session, collection_id: table_info if collection_id == "villes" else
-                        pipeline_runtime.introspect_table(session, collection_id))
     monkeypatch.setattr(
-        pipeline_runtime, "_require_readable_collection_id",
-        lambda session, *, tenant_id, user, collection_id: "villes" if collection_id == "villes" else collection_id,
+        pipeline_runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: (
+            table_info
+            if collection_id == "villes"
+            else pipeline_runtime.introspect_table(session, collection_id)
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: (
+            "villes" if collection_id == "villes" else collection_id
+        ),
     )
     monkeypatch.setattr(pipeline_jobs, "_get_pipeline_payload", lambda session, item_id: payload)
 
@@ -102,11 +155,13 @@ def env(pg_engine, monkeypatch, tmp_path):
     with pipeline_jobs.app.replace_connector(in_memory) as app:
         yield app, Session, tenant, user, item_id
     with pg_engine.begin() as conn:
-        conn.execute(text(
-            "DROP TABLE villes_propres; "
-            "TRUNCATE pipeline_runs, items, configs, config_revisions, collections, "
-            "audit_log, users, tenants CASCADE"
-        ))
+        conn.execute(
+            text(
+                "DROP TABLE villes_propres; "
+                "TRUNCATE pipeline_runs, items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
 
 
 def test_run_pipeline_task_marks_run_succeeded(env):
@@ -174,7 +229,9 @@ def test_run_pipeline_task_writes_node_stats_incrementally_before_failure(env, m
     with Session() as s:
         fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
         assert fetched.status == "failed"
-        assert fetched.node_stats == {"r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 5}}
+        assert fetched.node_stats == {
+            "r1": {"nodeId": "r1", "op": "reader.collection", "rowCount": 5}
+        }
 
 
 def test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie(env, monkeypatch):

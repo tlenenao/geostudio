@@ -1,27 +1,105 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ActionMessage, AdminExtension, AlertEvaluation, AlertRulePayload, AlertRuleSummary, AppConfig, AppExportJobStatus, AppExportMode, BookmarkPayload, CandidateTable, CollectionAdmin, CollectionCreateInput, CollectionPatchInput, CollectionSchema, CopilotTurnResult, CreateEmptyCollectionInput, CreateKind, CreateBookmarkInput, CreateDatasetInput, CrossFilterLink, DataRecord, DataSource, DatasetColumnMeta, DatasetConfig, ExportFormat, ExportJob, ExtensionManifest, FeatureLayerSource, FieldError, GeoJSONFeatureInput, Group, HarvestSource, HarvestSourceCreateInput, HarvestSourcePatchInput, InstanceInfo, Item, ItemClient, ItemPage, LayerSource, ListItemsParams, MapConfig, MapLayer, Me, Page, PipelineOpsCatalog, PipelinePayload, PipelineRun, PrintLayoutConfig, ReportRunStatus, ReportSchedulePayload, ResourceType, Sharing, Theme, UpdatePatch, Variable } from "./types";
+import type {
+  ActionMessage,
+  AdminExtension,
+  AlertEvaluation,
+  AlertRulePayload,
+  AlertRuleSummary,
+  AppConfig,
+  AppExportJobStatus,
+  AppExportMode,
+  BookmarkPayload,
+  CandidateTable,
+  CollectionAdmin,
+  CollectionCreateInput,
+  CollectionPatchInput,
+  CollectionSchema,
+  CopilotTurnResult,
+  CreateEmptyCollectionInput,
+  CreateKind,
+  CreateBookmarkInput,
+  CreateDatasetInput,
+  CrossFilterLink,
+  DataRecord,
+  DataSource,
+  DatasetColumnMeta,
+  DatasetConfig,
+  ExportFormat,
+  ExportJob,
+  ExtensionManifest,
+  FeatureLayerSource,
+  FieldError,
+  GeoJSONFeatureInput,
+  Group,
+  HarvestSource,
+  HarvestSourceCreateInput,
+  HarvestSourcePatchInput,
+  InstanceInfo,
+  Item,
+  ItemClient,
+  ItemPage,
+  LayerSource,
+  ListItemsParams,
+  MapConfig,
+  MapLayer,
+  Me,
+  Page,
+  PipelineOpsCatalog,
+  PipelinePayload,
+  PipelineRun,
+  PrintLayoutConfig,
+  ReportRunStatus,
+  ReportSchedulePayload,
+  ResourceType,
+  Sharing,
+  Theme,
+  UpdatePatch,
+  Variable,
+} from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 
 type RawMapLayer = {
-  id: string; title: string; visible: boolean; kind: string;
-  tilesUrl?: string | null; sourceLayer?: string | null; url?: string | null;
-  opacity?: number | null; deckType?: string | null; dataUrl?: string | null;
-  paint?: Record<string, unknown> | null; props?: Record<string, unknown> | null;
+  id: string;
+  title: string;
+  visible: boolean;
+  kind: string;
+  tilesUrl?: string | null;
+  sourceLayer?: string | null;
+  url?: string | null;
+  opacity?: number | null;
+  deckType?: string | null;
+  dataUrl?: string | null;
+  paint?: Record<string, unknown> | null;
+  props?: Record<string, unknown> | null;
 };
 
 function toFrontLayer(l: RawMapLayer): MapLayer {
   const base = { id: l.id, title: l.title, visible: l.visible };
   switch (l.kind) {
     case "vector":
-      return { ...base, kind: "vector", tilesUrl: l.tilesUrl ?? "", sourceLayer: l.sourceLayer ?? "",
-        ...(l.paint ? { paint: l.paint } : {}) };
+      return {
+        ...base,
+        kind: "vector",
+        tilesUrl: l.tilesUrl ?? "",
+        sourceLayer: l.sourceLayer ?? "",
+        ...(l.paint ? { paint: l.paint } : {}),
+      };
     case "raster":
-      return { ...base, kind: "raster", tilesUrl: l.tilesUrl ?? "",
-        ...(l.opacity != null ? { opacity: l.opacity } : {}) };
+      return {
+        ...base,
+        kind: "raster",
+        tilesUrl: l.tilesUrl ?? "",
+        ...(l.opacity != null ? { opacity: l.opacity } : {}),
+      };
     case "deck":
-      return { ...base, kind: "deck", deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
-        dataUrl: l.dataUrl ?? "", ...(l.props ? { props: l.props } : {}) };
+      return {
+        ...base,
+        kind: "deck",
+        deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
+        dataUrl: l.dataUrl ?? "",
+        ...(l.props ? { props: l.props } : {}),
+      };
     case "tiles3d":
       return { ...base, kind: "tiles3d", url: l.url ?? "" };
     case "feature":
@@ -39,7 +117,16 @@ type StatMeasure = { field?: string; agg: string; label?: string };
 // supprimée par cette migration (groupBy/split/agg/field/measures), plus
 // toute autre clé de query non reconnue traitée comme un filtre attributaire
 // (même convention que buildFeaturesUrl pour une source "features").
-const STAT_KEYS = new Set(["groupBy", "split", "agg", "field", "measures", "bbox", "bucket", "bins"]);
+const STAT_KEYS = new Set([
+  "groupBy",
+  "split",
+  "agg",
+  "field",
+  "measures",
+  "bbox",
+  "bucket",
+  "bins",
+]);
 
 function parseBboxQueryValue(value: unknown): [number, number, number, number] | undefined {
   if (typeof value !== "string" || !value) return undefined;
@@ -59,7 +146,9 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   if (query.bins) body.bins = Number(query.bins);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
-      field: m.field || undefined, agg: m.agg, label: m.label || undefined,
+      field: m.field || undefined,
+      agg: m.agg,
+      label: m.label || undefined,
     }));
   }
   const bbox = parseBboxQueryValue(query.bbox);
@@ -117,12 +206,17 @@ async function requestFeatureWrite<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 400) {
-    const data = (await res.json().catch(() => null)) as { detail?: { errors?: FieldError[] } } | null;
+    const data = (await res.json().catch(() => null)) as {
+      detail?: { errors?: FieldError[] };
+    } | null;
     throw new FeatureValidationError(data?.detail?.errors ?? []);
   }
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
-    const message = typeof data?.detail === "string" ? data.detail : `Request failed: ${res.status} ${method} ${url}`;
+    const message =
+      typeof data?.detail === "string"
+        ? data.detail
+        : `Request failed: ${res.status} ${method} ${url}`;
     throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
@@ -130,14 +224,20 @@ async function requestFeatureWrite<T>(
 }
 
 async function requestBlob(
-  coreUrl: string, getToken: () => string | undefined, method: string, path: string, body?: unknown,
+  coreUrl: string,
+  getToken: () => string | undefined,
+  method: string,
+  path: string,
+  body?: unknown,
 ): Promise<{ blob: Blob; filename: string }> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`${coreUrl}${path}`, {
-    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
   const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -160,7 +260,9 @@ async function requestAnalyticsSql(
     body: JSON.stringify({ sql }),
   });
   if (res.status === 400) {
-    const data = (await res.json().catch(() => null)) as { detail?: { errors?: FieldError[] } } | null;
+    const data = (await res.json().catch(() => null)) as {
+      detail?: { errors?: FieldError[] };
+    } | null;
     throw new SqlQueryError(data?.detail?.errors?.[0]?.message ?? "Requête SQL invalide.");
   }
   if (!res.ok) {
@@ -187,7 +289,11 @@ function buildFeaturesUrl(coreUrl: string, source: DataSource): string {
   return qs ? `${base}?${qs}` : base;
 }
 
-function buildArcgisItemsUrl(coreUrl: string, datasetItemId: string, query: Record<string, unknown>): string {
+function buildArcgisItemsUrl(
+  coreUrl: string,
+  datasetItemId: string,
+  query: Record<string, unknown>,
+): string {
   const base = `${coreUrl}/datasets/${datasetItemId}/arcgis/items`;
   const qs = _queryParams(query);
   return qs ? `${base}?${qs}` : base;
@@ -236,9 +342,11 @@ export function createItemClient(opts: {
       config?: {
         dataset?: {
           source: "collection" | "arcgis";
-          collectionId?: string | null; arcgisItemId?: string | null;
+          collectionId?: string | null;
+          arcgisItemId?: string | null;
           columns?: Record<string, DatasetColumnMeta>;
-          timeField?: string | null; reactsToExtent?: boolean;
+          timeField?: string | null;
+          reactsToExtent?: boolean;
           crossFilterLinks?: CrossFilterLink[];
           sourcePipelineId?: string | null;
         } | null;
@@ -250,7 +358,8 @@ export function createItemClient(opts: {
       source: dataset.source,
       collectionId: dataset.collectionId ?? null,
       arcgisItemId: dataset.arcgisItemId ?? null,
-      columns: dataset.columns ?? {}, timeField: dataset.timeField ?? null,
+      columns: dataset.columns ?? {},
+      timeField: dataset.timeField ?? null,
       reactsToExtent: dataset.reactsToExtent ?? false,
       crossFilterLinks: dataset.crossFilterLinks ?? [],
       sourcePipelineId: dataset.sourcePipelineId ?? null,
@@ -264,9 +373,17 @@ export function createItemClient(opts: {
     const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
-      features?: { id?: string | number; properties?: Record<string, unknown>; geometry?: unknown }[];
+      features?: {
+        id?: string | number;
+        properties?: Record<string, unknown>;
+        geometry?: unknown;
+      }[];
     };
-    return (data.features ?? []).map((f, i) => ({ id: f.id ?? i, properties: f.properties ?? {}, geometry: f.geometry }));
+    return (data.features ?? []).map((f, i) => ({
+      id: f.id ?? i,
+      properties: f.properties ?? {},
+      geometry: f.geometry,
+    }));
   }
 
   async function fetchMartinSources(q?: string): Promise<LayerSource[]> {
@@ -320,7 +437,10 @@ export function createItemClient(opts: {
       layers?: { id: string; title: string; kind: "raster"; tilesUrl: string }[];
     };
     return (data.layers ?? []).map((l) => ({
-      id: l.id, title: l.title, service: "external" as const, kind: "raster" as const,
+      id: l.id,
+      title: l.title,
+      service: "external" as const,
+      kind: "raster" as const,
       tilesUrl: l.tilesUrl,
     }));
   }
@@ -335,7 +455,10 @@ export function createItemClient(opts: {
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
     const data = (await res.json()) as { items?: { pk: string; title: string }[] };
     return (data.items ?? []).map((item) => ({
-      id: item.pk, title: item.title, service: "tileset3d" as const, kind: "tiles3d" as const,
+      id: item.pk,
+      title: item.title,
+      service: "tileset3d" as const,
+      kind: "tiles3d" as const,
       url: `${coreUrl}/tileset3d/${item.pk}/tileset.json`,
     }));
   }
@@ -371,7 +494,9 @@ export function createItemClient(opts: {
       return request<Item>("GET", `/public/sites/${encodeURIComponent(slug)}`);
     },
 
-    async listPublicItems(params: { type?: ResourceType; tag?: string; page?: number; pageSize?: number } = {}): Promise<ItemPage> {
+    async listPublicItems(
+      params: { type?: ResourceType; tag?: string; page?: number; pageSize?: number } = {},
+    ): Promise<ItemPage> {
       const q = new URLSearchParams();
       if (params.type) q.set("type", params.type);
       if (params.tag) q.set("tag", params.tag);
@@ -401,7 +526,13 @@ export function createItemClient(opts: {
       return request<InstanceInfo>("GET", "/instance");
     },
 
-    async createConfigItem(input: { kind: CreateKind; title: string; owner: string; templateId?: string; slug?: string }): Promise<Item> {
+    async createConfigItem(input: {
+      kind: CreateKind;
+      title: string;
+      owner: string;
+      templateId?: string;
+      slug?: string;
+    }): Promise<Item> {
       const template = input.templateId ? getTemplate(input.templateId) : undefined;
       const firstPageLayout = template?.pages?.[0]?.layout;
       const config = {
@@ -418,7 +549,9 @@ export function createItemClient(opts: {
       const payload: Record<string, unknown> = { title: input.title, config };
       if (input.slug) payload.slug = input.slug;
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, payload,
+        "POST",
+        `/configs`,
+        payload,
       );
       if (!data.itemId) {
         throw new Error("createConfigItem: core returned no itemId");
@@ -514,15 +647,27 @@ export function createItemClient(opts: {
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{
-          id: string; tag: string; label: string; moduleUrl: string;
-          props: ExtensionManifest["props"]; events?: string[]; actions?: string[];
-          defaultSize: { w: number; h: number }; permissions?: { collections: string[] | "all" };
+          id: string;
+          tag: string;
+          label: string;
+          moduleUrl: string;
+          props: ExtensionManifest["props"];
+          events?: string[];
+          actions?: string[];
+          defaultSize: { w: number; h: number };
+          permissions?: { collections: string[] | "all" };
         }>;
       };
       return (data.extensions ?? []).map((e) => ({
-        type: e.id, tag: e.tag, label: e.label, moduleUrl: e.moduleUrl,
-        props: e.props, events: e.events, actions: e.actions,
-        defaultSize: e.defaultSize, permissions: e.permissions,
+        type: e.id,
+        tag: e.tag,
+        label: e.label,
+        moduleUrl: e.moduleUrl,
+        props: e.props,
+        events: e.events,
+        actions: e.actions,
+        defaultSize: e.defaultSize,
+        permissions: e.permissions,
       }));
     },
 
@@ -534,16 +679,29 @@ export function createItemClient(opts: {
       if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
       const data = (await res.json()) as {
         extensions?: Array<{
-          id: string; tag: string; label: string; moduleUrl: string;
-          props: ExtensionManifest["props"]; events?: string[]; actions?: string[];
-          defaultSize: { w: number; h: number }; permissions?: { collections: string[] | "all" };
+          id: string;
+          tag: string;
+          label: string;
+          moduleUrl: string;
+          props: ExtensionManifest["props"];
+          events?: string[];
+          actions?: string[];
+          defaultSize: { w: number; h: number };
+          permissions?: { collections: string[] | "all" };
           enabled: boolean;
         }>;
       };
       return (data.extensions ?? []).map((e) => ({
-        type: e.id, tag: e.tag, label: e.label, moduleUrl: e.moduleUrl,
-        props: e.props, events: e.events, actions: e.actions,
-        defaultSize: e.defaultSize, permissions: e.permissions, enabled: e.enabled,
+        type: e.id,
+        tag: e.tag,
+        label: e.label,
+        moduleUrl: e.moduleUrl,
+        props: e.props,
+        events: e.events,
+        actions: e.actions,
+        defaultSize: e.defaultSize,
+        permissions: e.permissions,
+        enabled: e.enabled,
       }));
     },
 
@@ -557,7 +715,10 @@ export function createItemClient(opts: {
     },
 
     async listCandidateTables(): Promise<CandidateTable[]> {
-      const data = await request<{ candidates: CandidateTable[] }>("GET", `/collections/candidates`);
+      const data = await request<{ candidates: CandidateTable[] }>(
+        "GET",
+        `/collections/candidates`,
+      );
       return data.candidates ?? [];
     },
 
@@ -567,8 +728,10 @@ export function createItemClient(opts: {
 
     async createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }> {
       const data = await request<{ id: string }>("POST", "/collections/empty", {
-        title: input.title, columns: input.columns,
-        geometryType: input.geometryType, srid: input.srid,
+        title: input.title,
+        columns: input.columns,
+        geometryType: input.geometryType,
+        srid: input.srid,
       });
       return { id: data.id };
     },
@@ -618,12 +781,20 @@ export function createItemClient(opts: {
       };
       const config = { version: 1, kind: "map", map };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createMapItem: core returned no itemId");
       return {
-        pk: String(data.itemId), resourceType: "map", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "map",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
@@ -635,9 +806,18 @@ export function createItemClient(opts: {
         config?: {
           map?: {
             basemap: { style: string };
-            view: { center: [number, number]; zoom: number; pitch?: number | null; bearing?: number | null };
+            view: {
+              center: [number, number];
+              zoom: number;
+              pitch?: number | null;
+              bearing?: number | null;
+            };
             layers: RawMapLayer[];
-            terrain?: { tilesUrl: string; encoding: "terrarium"; exaggeration?: number | null } | null;
+            terrain?: {
+              tilesUrl: string;
+              encoding: "terrarium";
+              exaggeration?: number | null;
+            } | null;
           } | null;
           printLayout?: PrintLayoutConfig | null;
         };
@@ -658,7 +838,9 @@ export function createItemClient(opts: {
           ? {
               tilesUrl: map.terrain.tilesUrl,
               encoding: map.terrain.encoding,
-              ...(map.terrain.exaggeration != null ? { exaggeration: map.terrain.exaggeration } : {}),
+              ...(map.terrain.exaggeration != null
+                ? { exaggeration: map.terrain.exaggeration }
+                : {}),
             }
           : null,
       };
@@ -666,7 +848,12 @@ export function createItemClient(opts: {
 
     async saveMapConfig(pk: string, config: MapConfig): Promise<void> {
       const { printLayout, ...map } = config;
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "map", map, printLayout: printLayout ?? null });
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: "map",
+        map,
+        printLayout: printLayout ?? null,
+      });
     },
 
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
@@ -676,71 +863,113 @@ export function createItemClient(opts: {
           : { source: "collection", collectionId: input.collectionId, columns: {} };
       const config = { version: 1, kind: "dataset", dataset };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createDatasetItem: core returned no itemId");
       datasetCache.set(String(data.itemId), {
         source: dataset.source,
         collectionId: dataset.source === "collection" ? dataset.collectionId : null,
         arcgisItemId: dataset.source === "arcgis" ? dataset.arcgisItemId : null,
-        columns: {}, timeField: null, reactsToExtent: false, crossFilterLinks: [],
+        columns: {},
+        timeField: null,
+        reactsToExtent: false,
+        crossFilterLinks: [],
         sourcePipelineId: null,
       });
       return {
-        pk: String(data.itemId), resourceType: "dataset", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "dataset",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
 
     async createBookmarkItem(input: CreateBookmarkInput): Promise<Item> {
       const bookmark: BookmarkPayload = {
-        appId: input.appId, pageId: input.pageId,
-        timeRange: input.timeRange, extent: input.extent, crossFilter: input.crossFilter,
+        appId: input.appId,
+        pageId: input.pageId,
+        timeRange: input.timeRange,
+        extent: input.extent,
+        crossFilter: input.crossFilter,
       };
       const config = { version: 1, kind: "bookmark", bookmark };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createBookmarkItem: core returned no itemId");
       return {
-        pk: String(data.itemId), resourceType: "bookmark", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "bookmark",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
 
     async getBookmarkConfig(pk: string): Promise<BookmarkPayload> {
       const data = await request<{ config?: { bookmark?: BookmarkPayload } }>(
-        "GET", `/configs/by-item/${pk}`,
+        "GET",
+        `/configs/by-item/${pk}`,
       );
-      if (!data.config?.bookmark) throw new Error("getBookmarkConfig: config has no bookmark payload");
+      if (!data.config?.bookmark)
+        throw new Error("getBookmarkConfig: config has no bookmark payload");
       return data.config.bookmark;
     },
 
-    async createPipelineItem(input: { title: string; owner: string; pipeline: PipelinePayload }): Promise<Item> {
+    async createPipelineItem(input: {
+      title: string;
+      owner: string;
+      pipeline: PipelinePayload;
+    }): Promise<Item> {
       const config = { version: 1, kind: "pipeline", pipeline: input.pipeline };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createPipelineItem: core returned no itemId");
       return {
-        pk: String(data.itemId), resourceType: "pipeline", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "pipeline",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
 
     async getPipelineConfig(pk: string): Promise<PipelinePayload> {
       const data = await request<{ config?: { pipeline?: PipelinePayload } }>(
-        "GET", `/configs/by-item/${pk}`,
+        "GET",
+        `/configs/by-item/${pk}`,
       );
-      if (!data.config?.pipeline) throw new Error("getPipelineConfig: config has no pipeline payload");
+      if (!data.config?.pipeline)
+        throw new Error("getPipelineConfig: config has no pipeline payload");
       return data.config.pipeline;
     },
 
     async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "pipeline", pipeline: payload });
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: "pipeline",
+        pipeline: payload,
+      });
     },
 
     async getPipelineOps(): Promise<PipelineOpsCatalog> {
@@ -757,33 +986,51 @@ export function createItemClient(opts: {
 
     async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {
       return request<Record<string, unknown>[]>(
-        "POST", `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+        "POST",
+        `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
       );
     },
 
-    async createAlertRuleItem(input: { title: string; owner: string; alert: AlertRulePayload }): Promise<Item> {
+    async createAlertRuleItem(input: {
+      title: string;
+      owner: string;
+      alert: AlertRulePayload;
+    }): Promise<Item> {
       const config = { version: 1, kind: "alert", alert: input.alert };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createAlertRuleItem: core returned no itemId");
       return {
-        pk: String(data.itemId), resourceType: "alert", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "alert",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
 
     async getAlertRuleConfig(pk: string): Promise<AlertRulePayload> {
       const data = await request<{ config?: { alert?: AlertRulePayload } }>(
-        "GET", `/configs/by-item/${pk}`,
+        "GET",
+        `/configs/by-item/${pk}`,
       );
       if (!data.config?.alert) throw new Error("getAlertRuleConfig: config has no alert payload");
       return data.config.alert;
     },
 
     async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "alert", alert: payload });
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: "alert",
+        alert: payload,
+      });
     },
 
     async listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]> {
@@ -794,29 +1041,47 @@ export function createItemClient(opts: {
       return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
     },
 
-    async createReportScheduleItem(input: { title: string; owner: string; report: ReportSchedulePayload }): Promise<Item> {
+    async createReportScheduleItem(input: {
+      title: string;
+      owner: string;
+      report: ReportSchedulePayload;
+    }): Promise<Item> {
       const config = { version: 1, kind: "report", report: input.report };
       const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST", `/configs`, { title: input.title, config },
+        "POST",
+        `/configs`,
+        { title: input.title, config },
       );
       if (!data.itemId) throw new Error("createReportScheduleItem: core returned no itemId");
       return {
-        pk: String(data.itemId), resourceType: "report", title: input.title, abstract: "",
-        owner: input.owner, thumbnailUrl: null, date: "", configId: String(data.id),
+        pk: String(data.itemId),
+        resourceType: "report",
+        title: input.title,
+        abstract: "",
+        owner: input.owner,
+        thumbnailUrl: null,
+        date: "",
+        configId: String(data.id),
         isPublished: false,
       };
     },
 
     async getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload> {
       const data = await request<{ config?: { report?: ReportSchedulePayload } }>(
-        "GET", `/configs/by-item/${pk}`,
+        "GET",
+        `/configs/by-item/${pk}`,
       );
-      if (!data.config?.report) throw new Error("getReportScheduleConfig: config has no report payload");
+      if (!data.config?.report)
+        throw new Error("getReportScheduleConfig: config has no report payload");
       return data.config.report;
     },
 
     async saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "report", report: payload });
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: "report",
+        report: payload,
+      });
     },
 
     async getReportRuns(pk: string): Promise<ReportRunStatus[]> {
@@ -827,27 +1092,38 @@ export function createItemClient(opts: {
       const resolved = await resolveDataset(pk);
       if (resolved.source === "arcgis" && resolved.arcgisItemId) {
         return {
-          source: "arcgis", arcgisItemId: resolved.arcgisItemId, columns: resolved.columns,
-          timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+          source: "arcgis",
+          arcgisItemId: resolved.arcgisItemId,
+          columns: resolved.columns,
+          timeField: resolved.timeField,
+          reactsToExtent: resolved.reactsToExtent,
           crossFilterLinks: resolved.crossFilterLinks,
           sourcePipelineId: resolved.sourcePipelineId ?? null,
         };
       }
       return {
-        source: "collection", collectionId: resolved.collectionId ?? "", columns: resolved.columns,
-        timeField: resolved.timeField, reactsToExtent: resolved.reactsToExtent,
+        source: "collection",
+        collectionId: resolved.collectionId ?? "",
+        columns: resolved.columns,
+        timeField: resolved.timeField,
+        reactsToExtent: resolved.reactsToExtent,
         crossFilterLinks: resolved.crossFilterLinks,
         sourcePipelineId: resolved.sourcePipelineId ?? null,
       };
     },
 
     async saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, { version: 1, kind: "dataset", dataset: config });
+      await request<void>("PUT", `/configs/by-item/${pk}`, {
+        version: 1,
+        kind: "dataset",
+        dataset: config,
+      });
       datasetCache.set(pk, {
         source: config.source,
         collectionId: config.source === "collection" ? config.collectionId : null,
         arcgisItemId: config.source === "arcgis" ? config.arcgisItemId : null,
-        columns: config.columns, timeField: config.timeField ?? null,
+        columns: config.columns,
+        timeField: config.timeField ?? null,
         reactsToExtent: config.reactsToExtent ?? false,
         crossFilterLinks: config.crossFilterLinks ?? [],
         sourcePipelineId: config.sourcePipelineId ?? null,
@@ -958,7 +1234,10 @@ export function createItemClient(opts: {
         if (cached?.source === "arcgis") {
           return buildArcgisItemsUrl(coreUrl, source.datasetId, source.query);
         }
-        return buildFeaturesUrl(coreUrl, { ...source, layer: cached?.collectionId ?? source.layer });
+        return buildFeaturesUrl(coreUrl, {
+          ...source,
+          layer: cached?.collectionId ?? source.layer,
+        });
       }
       return buildFeaturesUrl(coreUrl, source);
     },
@@ -968,10 +1247,14 @@ export function createItemClient(opts: {
       if (cachedDataset?.source === "arcgis" && source.datasetId) {
         if (source.type === "statistics") {
           const body = buildAggregateBody(source.query);
-          const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
-            "POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body,
-          );
-          return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
+          const data = await request<{
+            categoryKey: string | string[];
+            rows: Record<string, unknown>[];
+          }>("POST", `/datasets/${source.datasetId}/arcgis/aggregate`, body);
+          return data.rows.map((row) => ({
+            id: statRowId(row, data.categoryKey),
+            properties: row,
+          }));
         }
         return _fetchGeoJsonFeatures(buildArcgisItemsUrl(coreUrl, source.datasetId, source.query));
       }
@@ -983,15 +1266,19 @@ export function createItemClient(opts: {
       }
       if (resolved.type === "statistics") {
         const body = buildAggregateBody(resolved.query);
-        const data = await request<{ categoryKey: string | string[]; rows: Record<string, unknown>[] }>(
-          "POST", `/collections/${resolved.layer}/aggregate`, body,
-        );
+        const data = await request<{
+          categoryKey: string | string[];
+          rows: Record<string, unknown>[];
+        }>("POST", `/collections/${resolved.layer}/aggregate`, body);
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
     },
 
-    async exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }> {
+    async exportDataSource(
+      source: DataSource,
+      format: string,
+    ): Promise<{ blob: Blob; filename: string }> {
       const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
       const isArcgis = cachedDataset?.source === "arcgis" && Boolean(source.datasetId);
       if (source.type === "statistics") {
@@ -1001,7 +1288,9 @@ export function createItemClient(opts: {
           : `/collections/${cachedDataset?.collectionId ?? source.layer}/export?format=${format}`;
         return requestBlob(coreUrl, getToken, "POST", path, body);
       }
-      const resolved = source.datasetId ? { ...source, layer: cachedDataset?.collectionId ?? source.layer } : source;
+      const resolved = source.datasetId
+        ? { ...source, layer: cachedDataset?.collectionId ?? source.layer }
+        : source;
       const qs = _queryParams(resolved.query);
       const suffix = qs ? `&${qs}` : "";
       const path = isArcgis
@@ -1023,28 +1312,44 @@ export function createItemClient(opts: {
       return data.canWrite ?? false;
     },
 
-    async createFeature(collectionId: string, feature: GeoJSONFeatureInput): Promise<{ id: string | number }> {
+    async createFeature(
+      collectionId: string,
+      feature: GeoJSONFeatureInput,
+    ): Promise<{ id: string | number }> {
       return requestFeatureWrite<{ id: string | number }>(
-        `${coreUrl}/collections/${collectionId}/items`, "POST", getToken(), feature,
+        `${coreUrl}/collections/${collectionId}/items`,
+        "POST",
+        getToken(),
+        feature,
       );
     },
 
-    async updateFeature(collectionId: string, fid: string, feature: GeoJSONFeatureInput): Promise<void> {
+    async updateFeature(
+      collectionId: string,
+      fid: string,
+      feature: GeoJSONFeatureInput,
+    ): Promise<void> {
       await requestFeatureWrite<void>(
-        `${coreUrl}/collections/${collectionId}/items/${fid}`, "PUT", getToken(), feature,
+        `${coreUrl}/collections/${collectionId}/items/${fid}`,
+        "PUT",
+        getToken(),
+        feature,
       );
     },
 
     async deleteFeature(collectionId: string, fid: string): Promise<void> {
       await requestFeatureWrite<void>(
-        `${coreUrl}/collections/${collectionId}/items/${fid}`, "DELETE", getToken(),
+        `${coreUrl}/collections/${collectionId}/items/${fid}`,
+        "DELETE",
+        getToken(),
       );
     },
 
     async presignUpload(filename: string, contentType: string) {
-      return request<{ uploadUrl: string; key: string }>(
-        "POST", "/uploads/presign", { filename, contentType },
-      );
+      return request<{ uploadUrl: string; key: string }>("POST", "/uploads/presign", {
+        filename,
+        contentType,
+      });
     },
 
     async uploadToPresignedUrl(url: string, file: File) {
@@ -1081,7 +1386,8 @@ export function createItemClient(opts: {
 
     async presignTileset3DUploadPart(jobId: string, partNumber: number) {
       return request<{ uploadUrl: string }>(
-        "POST", `/tileset3d/uploads/${jobId}/parts/${partNumber}/presign`,
+        "POST",
+        `/tileset3d/uploads/${jobId}/parts/${partNumber}/presign`,
       );
     },
 
@@ -1102,9 +1408,10 @@ export function createItemClient(opts: {
     },
 
     async presignTerrain3DUpload(filename: string, contentType: string) {
-      return request<{ uploadUrl: string; key: string }>(
-        "POST", "/terrain3d/uploads/presign", { filename, contentType },
-      );
+      return request<{ uploadUrl: string; key: string }>("POST", "/terrain3d/uploads/presign", {
+        filename,
+        contentType,
+      });
     },
 
     async createTerrain3DUpload(input: { key: string; filename: string; title: string }) {

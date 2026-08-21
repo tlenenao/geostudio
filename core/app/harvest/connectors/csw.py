@@ -4,6 +4,7 @@ priorité avec repli Dublin Core si le serveur ne supporte pas l'outputSchema
 ISO (un seul essai, décidé une fois pour tout le fetch). Métadonnées pures :
 jamais de copie, jamais d'ajout carte (items_url et raster_tiles_url toujours
 None). HTTP uniquement, zéro I/O DB, parsing tolérant et borné (ows.py)."""
+
 import logging
 from collections.abc import Iterable
 from urllib.parse import quote
@@ -71,7 +72,9 @@ class CswConnector:
                 break  # nextRecord=0 (fin) ou n'avance pas (garde-fou de boucle)
             if pages >= _MAX_CSW_PAGES:
                 logger.warning(
-                    "csw harvest: plafond de %d pages pour %s, tronqué", _MAX_CSW_PAGES, base_url,
+                    "csw harvest: plafond de %d pages pour %s, tronqué",
+                    _MAX_CSW_PAGES,
+                    base_url,
                 )
                 break
             start_position = next_record
@@ -132,7 +135,12 @@ def _page_url(base_url: str, *, start_position: int, iso: bool) -> str:
 
 
 def _record_by_id_url(base_url: str, identifier: str, *, iso: bool) -> str:
-    params = ["service=CSW", "version=2.0.2", "request=GetRecordById", f"id={quote(identifier, safe='')}"]
+    params = [
+        "service=CSW",
+        "version=2.0.2",
+        "request=GetRecordById",
+        f"id={quote(identifier, safe='')}",
+    ]
     if iso:
         params.append(f"outputSchema={quote(_ISO_OUTPUT_SCHEMA, safe='')}")
     params.append("elementSetName=full")
@@ -177,13 +185,19 @@ def _extract_iso(elem, base_url: str) -> HarvestedRecord | None:
     title = _first_descendant_text(elem, "title") or identifier
     abstract = _first_descendant_text(elem, "abstract") or ""
     keywords = [
-        text for kw in ows.descendants(elem, "keyword")
+        text
+        for kw in ows.descendants(elem, "keyword")
         if (text := ows.child_text(kw, "CharacterString")) is not None
     ]
     return HarvestedRecord(
-        external_id=identifier, title=title, abstract=abstract, keywords=keywords,
-        bbox=_iso_bbox(elem), external_url=_record_by_id_url(base_url, identifier, iso=True),
-        items_url=None, raster_tiles_url=None,
+        external_id=identifier,
+        title=title,
+        abstract=abstract,
+        keywords=keywords,
+        bbox=_iso_bbox(elem),
+        external_url=_record_by_id_url(base_url, identifier, iso=True),
+        items_url=None,
+        raster_tiles_url=None,
     )
 
 
@@ -211,7 +225,12 @@ def _extract_dc(elem, base_url: str) -> HarvestedRecord | None:
     abstract = ows.child_text(elem, "abstract") or ows.child_text(elem, "description") or ""
     keywords = [c.text.strip() for c in ows.children(elem, "subject") if c.text and c.text.strip()]
     return HarvestedRecord(
-        external_id=identifier, title=title, abstract=abstract, keywords=keywords,
-        bbox=_dc_bbox(elem), external_url=_record_by_id_url(base_url, identifier, iso=False),
-        items_url=None, raster_tiles_url=None,
+        external_id=identifier,
+        title=title,
+        abstract=abstract,
+        keywords=keywords,
+        bbox=_dc_bbox(elem),
+        external_url=_record_by_id_url(base_url, identifier, iso=False),
+        items_url=None,
+        raster_tiles_url=None,
     )

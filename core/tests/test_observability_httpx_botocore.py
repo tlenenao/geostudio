@@ -16,7 +16,10 @@ def test_setup_instruments_httpx_and_botocore_globally():
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
-        cwd=core_dir, capture_output=True, text=True, timeout=30,
+        cwd=core_dir,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode == 0, f"sous-process a échoué : {result.stderr}"
     assert result.stdout.strip().splitlines() == ["True", "True"]

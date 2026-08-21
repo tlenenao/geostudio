@@ -46,7 +46,9 @@ export function LayoutEditor({
   }
 
   function updateSelectedVisibleWhen(expr: string) {
-    onChange(items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)));
+    onChange(
+      items.map((i) => (i.id === selectedId ? { ...i, visibleWhen: expr || undefined } : i)),
+    );
   }
 
   function handleMove(id: string, dx: number, dy: number) {

@@ -66,9 +66,7 @@ test("saves the sharing payload for a checked group", async () => {
 
 test("keeps the dialog open and shows an alert when saving fails", async () => {
   server.use(
-    http.put("https://core.test/items/:pk/sharing", () =>
-      new HttpResponse(null, { status: 500 }),
-    ),
+    http.put("https://core.test/items/:pk/sharing", () => new HttpResponse(null, { status: 500 })),
   );
   const onClose = vi.fn();
   render(

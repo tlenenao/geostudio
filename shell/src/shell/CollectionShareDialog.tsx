@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useCollectionSharing, useGroups, useInstanceInfo, useSetCollectionSharing } from "../api/hooks";
+import {
+  useCollectionSharing,
+  useGroups,
+  useInstanceInfo,
+  useSetCollectionSharing,
+} from "../api/hooks";
 import type { ShareRole } from "../api/types";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -92,9 +97,7 @@ export function CollectionShareDialog({
                   className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
-                  onChange={(e) =>
-                    setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))
-                  }
+                  onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}
                 >
                   <option value="viewer">Lecteur</option>
                   <option value="editor">Éditeur</option>
@@ -113,7 +116,12 @@ export function CollectionShareDialog({
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Annuler
             </Button>
-            <Button type="button" size="sm" disabled={setSharing.isPending || readOnly} onClick={submit}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={setSharing.isPending || readOnly}
+              onClick={() => void submit()}
+            >
               Enregistrer
             </Button>
           </div>

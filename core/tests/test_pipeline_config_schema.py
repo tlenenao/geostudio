@@ -11,10 +11,18 @@ def _pipeline_body() -> dict:
         "kind": "pipeline",
         "pipeline": {
             "nodes": [
-                {"id": "r1", "kind": "reader", "op": "reader.collection",
-                 "params": {"collectionId": "villes"}},
-                {"id": "w1", "kind": "writer", "op": "writer.collection",
-                 "params": {"collectionId": "villes_propres"}},
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.collection",
+                    "params": {"collectionId": "villes_propres"},
+                },
             ],
             "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
         },

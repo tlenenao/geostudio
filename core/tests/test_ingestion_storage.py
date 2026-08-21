@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Wrapper S3 fin — testé avec un client boto3 factice (pas de MinIO réel
 nécessaire), même patron que fake_introspector dans test_collections_routes.py."""
+
 from app.ingestion.storage import (
-    download_object, ensure_uploads_bucket, generate_presigned_get_url,
+    download_object,
+    ensure_uploads_bucket,
+    generate_presigned_get_url,
     generate_presigned_put_url,
 )
 
@@ -49,7 +52,9 @@ def test_ensure_uploads_bucket_creates_and_sets_cors():
 def test_generate_presigned_put_url_targets_put_object():
     client = _FakeS3Client()
     url = generate_presigned_put_url(
-        client, bucket="geostudio-uploads", key="t/abc-file.geojson",
+        client,
+        bucket="geostudio-uploads",
+        key="t/abc-file.geojson",
         content_type="application/geo+json",
     )
     assert url == "https://minio.test/geostudio-uploads/t/abc-file.geojson?presigned=1"
@@ -70,7 +75,10 @@ def test_download_object_reads_body():
 def test_generate_presigned_get_url_calls_boto_with_get_object():
     client = _FakeS3Client()
     url = generate_presigned_get_url(
-        client, bucket="geostudio-exports", key="renders/job-1.pdf", expires_in=1800,
+        client,
+        bucket="geostudio-exports",
+        key="renders/job-1.pdf",
+        expires_in=1800,
     )
     operation, params, expires = client.presign_calls[0]
     assert operation == "get_object"

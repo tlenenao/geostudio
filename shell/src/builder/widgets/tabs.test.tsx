@@ -16,8 +16,13 @@ import type { WidgetItem } from "../../api/types";
 // tests. Mocked the same way WidgetHost.test.tsx / LayoutEditor.test.tsx do
 // it, so the tabs widget can be rendered standalone.
 const authState: AuthState = {
-  isLoading: false, isAuthenticated: true, username: "tanguy",
-  error: null, getAccessToken: () => "t", signIn: vi.fn(), signOut: vi.fn(),
+  isLoading: false,
+  isAuthenticated: true,
+  username: "tanguy",
+  error: null,
+  getAccessToken: () => "t",
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 };
 vi.mock("../../auth/useAuth", () => ({ useAuth: () => authState }));
 
@@ -34,15 +39,39 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-beforeEach(() => { _resetRegistry(); registerBuiltinWidgets(); });
+beforeEach(() => {
+  _resetRegistry();
+  registerBuiltinWidgets();
+});
 
 test("runtime: shows the first tab's content by default and switches on click", async () => {
-  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
-  const tabB: WidgetItem = { id: "b", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu B" } };
+  const tabA: WidgetItem = {
+    id: "a",
+    widget: "text",
+    x: 0,
+    y: 0,
+    w: 4,
+    h: 2,
+    props: { text: "Contenu A" },
+  };
+  const tabB: WidgetItem = {
+    id: "b",
+    widget: "text",
+    x: 0,
+    y: 0,
+    w: 4,
+    h: 2,
+    props: { text: "Contenu B" },
+  };
   const Tabs = getWidget("tabs")!.Component;
   render(
     <Tabs
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }, { id: "t2", label: "Onglet 2", items: [tabB] }] }}
+      props={{
+        tabs: [
+          { id: "t1", label: "Onglet 1", items: [tabA] },
+          { id: "t2", label: "Onglet 2", items: [tabB] },
+        ],
+      }}
       ctx={{ mode: "runtime" } as WidgetContext}
     />,
     { wrapper },
@@ -55,9 +84,22 @@ test("runtime: shows the first tab's content by default and switches on click", 
 });
 
 test("edit mode renders statically without an interactive tab bar switch", () => {
-  const tabA: WidgetItem = { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Contenu A" } };
+  const tabA: WidgetItem = {
+    id: "a",
+    widget: "text",
+    x: 0,
+    y: 0,
+    w: 4,
+    h: 2,
+    props: { text: "Contenu A" },
+  };
   const Tabs = getWidget("tabs")!.Component;
-  render(<Tabs props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }] }} ctx={{ mode: "edit" } as WidgetContext} />);
+  render(
+    <Tabs
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }] }}
+      ctx={{ mode: "edit" } as WidgetContext}
+    />,
+  );
   expect(screen.getByText("Onglet 1")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Onglet 1" })).not.toBeInTheDocument();
 });
@@ -65,7 +107,13 @@ test("edit mode renders statically without an interactive tab bar switch", () =>
 test("PropsPanel adds a tab, selects it, and edits its label", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("tabs")!.PropsPanel;
-  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
+  render(
+    <Panel
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Ajouter un onglet" }));
   const tabs = onChange.mock.calls.at(-1)![0].tabs;
   expect(tabs).toHaveLength(2);
@@ -75,7 +123,13 @@ test("PropsPanel adds a tab, selects it, and edits its label", async () => {
 test("PropsPanel refuses to remove the last remaining tab", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("tabs")!.PropsPanel;
-  render(<Panel props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }} dataSources={[]} onChange={onChange} />);
+  render(
+    <Panel
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" }));
   expect(onChange).not.toHaveBeenCalled();
 });
@@ -85,7 +139,12 @@ test("PropsPanel reorders tabs with the up/down buttons", async () => {
   const Panel = getWidget("tabs")!.PropsPanel;
   render(
     <Panel
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
+      props={{
+        tabs: [
+          { id: "t1", label: "Onglet 1", items: [] },
+          { id: "t2", label: "Onglet 2", items: [] },
+        ],
+      }}
       dataSources={[]}
       onChange={onChange}
     />,
@@ -100,7 +159,12 @@ test("PropsPanel edits only the active tab's items, switchable via the tab selec
   const Panel = getWidget("tabs")!.PropsPanel;
   const { rerender } = render(
     <Panel
-      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }, { id: "t2", label: "Onglet 2", items: [] }] }}
+      props={{
+        tabs: [
+          { id: "t1", label: "Onglet 1", items: [] },
+          { id: "t2", label: "Onglet 2", items: [] },
+        ],
+      }}
       dataSources={[]}
       onChange={onChange}
     />,

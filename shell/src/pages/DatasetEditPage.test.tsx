@@ -44,14 +44,20 @@ function VisualQueryEditProbe() {
 
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const merged: Partial<ItemClient> = { listAlertRulesForDataset: vi.fn().mockResolvedValue([]), ...client };
+  const merged: Partial<ItemClient> = {
+    listAlertRulesForDataset: vi.fn().mockResolvedValue([]),
+    ...client,
+  };
   return render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={merged as ItemClient}>
         <MemoryRouter initialEntries={["/"]}>
           <Routes>
             <Route path="/" element={<DatasetEditPage pk="ds-1" />} />
-            <Route path="/datasets/visual-query/:pipelinePk/edit" element={<VisualQueryEditProbe />} />
+            <Route
+              path="/datasets/visual-query/:pipelinePk/edit"
+              element={<VisualQueryEditProbe />}
+            />
           </Routes>
         </MemoryRouter>
       </ItemClientProvider>
@@ -121,8 +127,22 @@ test("adding a cross-filter link and saving includes it in the saved payload", a
     saveDatasetConfig,
     updateItem: vi.fn().mockResolvedValue(item),
     listItems: vi.fn().mockResolvedValue({
-      items: [{ pk: "ds-2", resourceType: "dataset", title: "Incidents", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
-      total: 1, page: 1, pageSize: 100,
+      items: [
+        {
+          pk: "ds-2",
+          resourceType: "dataset",
+          title: "Incidents",
+          abstract: "",
+          owner: "alice",
+          thumbnailUrl: null,
+          date: "",
+          configId: null,
+          isPublished: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
     }),
   });
 
@@ -144,14 +164,35 @@ test("removing a cross-filter link drops it from the draft before saving", async
     getItem: vi.fn().mockResolvedValue(item),
     getDatasetConfig: vi.fn().mockResolvedValue({
       ...datasetConfig,
-      crossFilterLinks: [{ targetDatasetId: "ds-2", mode: "attribute" as const, sourceField: "nom", targetField: "nom" }],
+      crossFilterLinks: [
+        {
+          targetDatasetId: "ds-2",
+          mode: "attribute" as const,
+          sourceField: "nom",
+          targetField: "nom",
+        },
+      ],
     }),
     getCollectionSchema: vi.fn().mockResolvedValue(schema),
     saveDatasetConfig,
     updateItem: vi.fn().mockResolvedValue(item),
     listItems: vi.fn().mockResolvedValue({
-      items: [{ pk: "ds-2", resourceType: "dataset", title: "Incidents", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false }],
-      total: 1, page: 1, pageSize: 100,
+      items: [
+        {
+          pk: "ds-2",
+          resourceType: "dataset",
+          title: "Incidents",
+          abstract: "",
+          owner: "alice",
+          thumbnailUrl: null,
+          date: "",
+          configId: null,
+          isPublished: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
     }),
   });
 
@@ -173,7 +214,10 @@ test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and 
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
     getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
-    getCollectionSchema: vi.fn().mockResolvedValue({ ...schema, geometry: { column: "geometry", type: "Point", srid: 4326 } }),
+    getCollectionSchema: vi.fn().mockResolvedValue({
+      ...schema,
+      geometry: { column: "geometry", type: "Point", srid: 4326 },
+    }),
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),
     exportDataSource,
@@ -182,18 +226,24 @@ test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and 
   await screen.findByText(/Dataset partagé/);
   await userEvent.click(screen.getByLabelText("Exporter en CSV"));
   expect(exportDataSource).toHaveBeenCalledWith(
-    expect.objectContaining({ type: "features", datasetId: "ds-1", query: {} }), "csv",
+    expect.objectContaining({ type: "features", datasetId: "ds-1", query: {} }),
+    "csv",
   );
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
 test("a failed export surfaces an inline error message instead of failing silently", async () => {
-  const exportDataSource = vi.fn().mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
+  const exportDataSource = vi
+    .fn()
+    .mockRejectedValue(new Error("Request failed: 413 GET /collections/parcs/export/items"));
 
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
     getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
-    getCollectionSchema: vi.fn().mockResolvedValue({ ...schema, geometry: { column: "geometry", type: "Point", srid: 4326 } }),
+    getCollectionSchema: vi.fn().mockResolvedValue({
+      ...schema,
+      geometry: { column: "geometry", type: "Point", srid: 4326 },
+    }),
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),
     exportDataSource,
@@ -221,7 +271,9 @@ test("only offers CSV/XLSX when the collection has no geometry", async () => {
 test("shows a « Modifier la requête » button when sourcePipelineId is set, linking to the wizard's edit route", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
-    getDatasetConfig: vi.fn().mockResolvedValue({ ...datasetConfig, sourcePipelineId: "pipeline-1" }),
+    getDatasetConfig: vi
+      .fn()
+      .mockResolvedValue({ ...datasetConfig, sourcePipelineId: "pipeline-1" }),
     getCollectionSchema: vi.fn().mockResolvedValue(schema),
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),

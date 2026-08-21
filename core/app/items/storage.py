@@ -26,8 +26,10 @@ class S3ThumbnailStore:
         self._bucket = bucket
         self._client_error = ClientError
         self._client = boto3.client(
-            "s3", endpoint_url=endpoint_url,
-            aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
         )
         self._ensure_bucket()
 
@@ -35,11 +37,16 @@ class S3ThumbnailStore:
         try:
             self._client.create_bucket(Bucket=self._bucket)
         except self._client_error as exc:
-            if exc.response["Error"]["Code"] not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+            if exc.response["Error"]["Code"] not in (
+                "BucketAlreadyOwnedByYou",
+                "BucketAlreadyExists",
+            ):
                 raise
 
     def upload(self, key: str, content: bytes, content_type: str) -> None:
-        self._client.put_object(Bucket=self._bucket, Key=key, Body=content, ContentType=content_type)
+        self._client.put_object(
+            Bucket=self._bucket, Key=key, Body=content, ContentType=content_type
+        )
 
     def read(self, key: str) -> tuple[bytes, str]:
         obj = self._client.get_object(Bucket=self._bucket, Key=key)

@@ -2,7 +2,9 @@
 import { test, expect } from "@playwright/test";
 import { mockCore } from "./mocks";
 
-test("un auteur crée une story cartographique depuis le gabarit et la parcourt par chapitres", async ({ page }) => {
+test("un auteur crée une story cartographique depuis le gabarit et la parcourt par chapitres", async ({
+  page,
+}) => {
   await mockCore(page);
   await page.goto("/");
 

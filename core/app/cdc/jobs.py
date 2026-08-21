@@ -6,6 +6,7 @@ créneau pour exécuter un job procrastinate. La compaction n'a besoin
 d'aucun accès Postgres (le layout S3 encode déjà tenant_id/collection_id
 dans chaque clé), seulement d'un client S3 — même client que app.cdc.main,
 credentials identiques."""
+
 import logging
 import os
 
@@ -28,5 +29,7 @@ def run_compaction_cycle_task(timestamp: int) -> None:
     report = compaction.run_compaction_cycle(client, bucket=bucket)
     logger.info(
         "compaction cycle: %s partitions scanned, %s compacted, %s files removed",
-        report.partitions_scanned, report.partitions_compacted, report.files_removed,
+        report.partitions_scanned,
+        report.partitions_compacted,
+        report.files_removed,
     )

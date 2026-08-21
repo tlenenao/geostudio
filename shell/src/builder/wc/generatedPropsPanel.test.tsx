@@ -106,12 +106,19 @@ test("a dataSource prop renders a DataSourceSelect filtered by permissions.colle
   expect(optionLabels).toEqual(["Aucune", "incidents"]);
 });
 
-test("permissions.collections: \"all\" proposes every data source", () => {
-  const manifest: WcWidgetManifest = { ...manifestWithDataSource, permissions: { collections: "all" } };
+test('permissions.collections: "all" proposes every data source', () => {
+  const manifest: WcWidgetManifest = {
+    ...manifestWithDataSource,
+    permissions: { collections: "all" },
+  };
   const Panel = makeGeneratedPropsPanel(manifest);
   render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />, { wrapper });
   const select = screen.getByLabelText("Source de données") as HTMLSelectElement;
-  expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Aucune", "incidents", "villes"]);
+  expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+    "Aucune",
+    "incidents",
+    "villes",
+  ]);
 });
 
 test("no permissions declared proposes every data source (backward compatible)", () => {
@@ -119,7 +126,11 @@ test("no permissions declared proposes every data source (backward compatible)",
   const Panel = makeGeneratedPropsPanel(manifest);
   render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />, { wrapper });
   const select = screen.getByLabelText("Source de données") as HTMLSelectElement;
-  expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Aucune", "incidents", "villes"]);
+  expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+    "Aucune",
+    "incidents",
+    "villes",
+  ]);
 });
 
 test("selecting a data source calls onChange with its id", async () => {

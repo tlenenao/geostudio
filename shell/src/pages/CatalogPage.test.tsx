@@ -34,8 +34,28 @@ function mockCatalogItems() {
       const url = new URL(request.url);
       const q = url.searchParams.get("q");
       const all = [
-        { pk: "1", resourceType: "app", title: "Alpha", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
-        { pk: "2", resourceType: "dashboard", title: "Beta", abstract: "", owner: "alice", thumbnailUrl: null, date: "", configId: null, isPublished: false },
+        {
+          pk: "1",
+          resourceType: "app",
+          title: "Alpha",
+          abstract: "",
+          owner: "alice",
+          thumbnailUrl: null,
+          date: "",
+          configId: null,
+          isPublished: false,
+        },
+        {
+          pk: "2",
+          resourceType: "dashboard",
+          title: "Beta",
+          abstract: "",
+          owner: "alice",
+          thumbnailUrl: null,
+          date: "",
+          configId: null,
+          isPublished: false,
+        },
       ];
       const items = q ? all.filter((i) => i.title.toLowerCase().includes(q.toLowerCase())) : all;
       return HttpResponse.json({ items, total: items.length, page: 1, pageSize: 12 });
@@ -70,9 +90,7 @@ test("filters the catalog by scope", async () => {
   );
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
   await userEvent.selectOptions(screen.getByLabelText("Portée"), "mine");
-  await waitFor(() =>
-    expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"),
-  );
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"));
 });
 
 test("fixedType locks the type filter and hides the selector", async () => {

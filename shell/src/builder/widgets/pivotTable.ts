@@ -27,7 +27,11 @@ function cellKey(row: string, col: string, measure: string): string {
 // colsField]` + `measures` statistics DataSource (core, SP-14f, unchanged)
 // into a 2D crosstab, entirely client-side — see SP-14g design §2-3 for why
 // no core change is needed.
-export function buildPivotGrid(records: DataRecord[], rowsField: string, colsField: string): PivotGrid | null {
+export function buildPivotGrid(
+  records: DataRecord[],
+  rowsField: string,
+  colsField: string,
+): PivotGrid | null {
   if (!rowsField || !colsField || records.length === 0) return null;
   const first = records[0].properties;
   if (!(rowsField in first) || !(colsField in first)) return null;

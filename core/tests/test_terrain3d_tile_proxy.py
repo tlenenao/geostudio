@@ -24,15 +24,26 @@ def env(monkeypatch, httpserver: HTTPServer):
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
         alice = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="alice",
-            email=None, first_name="", last_name="",
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
         )
         item = items_repo.create_item(
-            s, tenant_id=tenant.id, owner_id=alice.id, resource_type="terrain3d", title="Relief",
+            s,
+            tenant_id=tenant.id,
+            owner_id=alice.id,
+            resource_type="terrain3d",
+            title="Relief",
         )
         config = BuilderConfig(
             kind="terrain3d",
-            terrain3d=Terrain3DPayload(sourceKey=f"{tenant.id}/x/dem-cog.tif", originalFilename="dem.tif"),
+            terrain3d=Terrain3DPayload(
+                sourceKey=f"{tenant.id}/x/dem-cog.tif", originalFilename="dem.tif"
+            ),
         )
         configs_repo.create_config(s, config, item_id=item.id, tenant_id=tenant.id)
         s.commit()
@@ -77,7 +88,8 @@ def test_read_tile_passes_through_titiler_404_for_a_tile_out_of_bounds(env):
     # viewport : un DEM régional en produit un flux continu, qui doit rester
     # un 404 et jamais devenir un 502 (erreur serveur).
     httpserver.expect_request("/cog/tiles/99/99/99.png").respond_with_json(
-        {"detail": "Tile(x=99, y=99, z=99) is outside bounds"}, status=404,
+        {"detail": "Tile(x=99, y=99, z=99) is outside bounds"},
+        status=404,
     )
 
     r = client.get(f"/terrain3d/{item_id}/tiles/99/99/99.png")
@@ -101,8 +113,8 @@ def test_read_tile_502_when_titiler_unreachable(env, monkeypatch):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         dead_port = s.getsockname()[1]
-    client.app.dependency_overrides[terrain3d_routes.get_titiler_url] = (
-        lambda: f"http://127.0.0.1:{dead_port}"
+    client.app.dependency_overrides[terrain3d_routes.get_titiler_url] = lambda: (
+        f"http://127.0.0.1:{dead_port}"
     )
 
     r = client.get(f"/terrain3d/{item_id}/tiles/5/10/12.png")

@@ -10,6 +10,7 @@ app.pipelines.expr_validation.validate_bounded_expr but placed where both
 the save-time validator (app.configs) and the run-time evaluator
 (app.alerts, Task 9) can import it downward without crossing the contract.
 """
+
 import threading
 
 import duckdb
@@ -18,10 +19,10 @@ from app.analytics.sql_sandbox import (
     MEMORY_LIMIT,
     STATEMENT_TIMEOUT_S,
     THREADS,
+    SqlSandboxError,
     collect_table_refs,
     parse_ast,
     validate_select_only,
-    SqlSandboxError,
 )
 
 

@@ -48,7 +48,12 @@ function isHostedTerrainUrl(url: string, coreUrl: string | undefined): boolean {
 }
 
 export type MapViewHandle = {
-  flyTo: (opts: { center: [number, number]; zoom?: number; pitch?: number; bearing?: number }) => void;
+  flyTo: (opts: {
+    center: [number, number];
+    zoom?: number;
+    pitch?: number;
+    bearing?: number;
+  }) => void;
   highlight: (geometry: unknown | null) => void;
 };
 
@@ -94,19 +99,38 @@ function applyLayers(
         map.addSource(layer.id, { type: "geojson", data: layer.url });
         switch (layer.renderAs ?? "fill") {
           case "circle":
-            map.addLayer({ id: layer.id, type: "circle", source: layer.id, paint: layer.paint ?? {} });
+            map.addLayer({
+              id: layer.id,
+              type: "circle",
+              source: layer.id,
+              paint: layer.paint ?? {},
+            });
             break;
           case "line":
-            map.addLayer({ id: layer.id, type: "line", source: layer.id, paint: layer.paint ?? {} });
+            map.addLayer({
+              id: layer.id,
+              type: "line",
+              source: layer.id,
+              paint: layer.paint ?? {},
+            });
             break;
           default:
-            map.addLayer({ id: layer.id, type: "fill", source: layer.id, paint: layer.paint ?? {} });
+            map.addLayer({
+              id: layer.id,
+              type: "fill",
+              source: layer.id,
+              paint: layer.paint ?? {},
+            });
             break;
         }
         const handler = (e: maplibregl.MapLayerMouseEvent) => {
           const f = e.features?.[0];
           if (!f || f.id == null) return;
-          onFeatureClick({ id: f.id as string | number, properties: f.properties ?? {}, geometry: f.geometry });
+          onFeatureClick({
+            id: f.id as string | number,
+            properties: f.properties ?? {},
+            geometry: f.geometry,
+          });
         };
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
@@ -208,7 +232,13 @@ export const MapView = forwardRef<
   MapViewHandle,
   {
     config: MapConfig;
-    onViewChange?: (v: { center: [number, number]; zoom: number; bbox: [number, number, number, number]; pitch: number; bearing: number }) => void;
+    onViewChange?: (v: {
+      center: [number, number];
+      zoom: number;
+      bbox: [number, number, number, number];
+      pitch: number;
+      bearing: number;
+    }) => void;
     onFeatureClick?: (record: DataRecord) => void;
     // Fired once the map has settled after its first load (MapLibre "idle":
     // no pending tiles/style/sprite loads) *and* every visible tiles3d layer's
@@ -234,12 +264,17 @@ export const MapView = forwardRef<
     // isHostedTilesetUrl. Absent by default, same as getAuthToken.
     getCoreUrl?: () => string;
   }
->(function MapView({ config, onViewChange, onFeatureClick, onReady, hideLegend, getAuthToken, getCoreUrl }, ref) {
+>(function MapView(
+  { config, onViewChange, onFeatureClick, onReady, hideLegend, getAuthToken, getCoreUrl },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const appliedRef = useRef<Set<string>>(new Set());
-  const clickHandlersRef = useRef<Map<string, (e: maplibregl.MapLayerMouseEvent) => void>>(new Map());
+  const clickHandlersRef = useRef<Map<string, (e: maplibregl.MapLayerMouseEvent) => void>>(
+    new Map(),
+  );
   // The style's *initial* load — the only real precondition of addSource /
   // addLayer / setTerrain. `map.isStyleLoaded()` was used here before and is a
   // different question ("is nothing loading right now?"): a single in-flight
@@ -327,12 +362,33 @@ export const MapView = forwardRef<
     map.addControl(overlay);
     map.on("load", () => {
       styleLoadedRef.current = true;
-      map.addSource(HIGHLIGHT_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      map.addLayer({ id: HIGHLIGHT_ID, type: "line", source: HIGHLIGHT_ID, paint: { "line-color": "#ef4444", "line-width": 3 } });
-      applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-      applyDeckLayers(overlay, layersRef.current, handleTilesetLoad, getAuthTokenRef.current, getCoreUrlRef.current);
+      map.addSource(HIGHLIGHT_ID, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: HIGHLIGHT_ID,
+        type: "line",
+        source: HIGHLIGHT_ID,
+        paint: { "line-color": "#ef4444", "line-width": 3 },
+      });
+      applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) =>
+        onFeatureClickRef.current?.(r),
+      );
+      applyDeckLayers(
+        overlay,
+        layersRef.current,
+        handleTilesetLoad,
+        getAuthTokenRef.current,
+        getCoreUrlRef.current,
+      );
       applyTerrain(map, terrainRef.current);
-      map.once("idle", () => {
+      // `once()` est typé `this | Promise<any>` côté maplibre-gl (le
+      // second membre de l'union ne s'applique que si aucun listener n'est
+      // fourni — ici il y en a un, le retour réel est toujours `this`,
+      // jamais une Promise) : `void` neutralise le faux positif de type
+      // sans changer de comportement.
+      void map.once("idle", () => {
         idleRef.current = true;
         maybeFireReady();
       });
@@ -342,7 +398,13 @@ export const MapView = forwardRef<
       if (!cb) return;
       const c = map.getCenter();
       const bounds = map.getBounds().toArray().flat() as [number, number, number, number];
-      cb({ center: [c.lng, c.lat], zoom: map.getZoom(), bbox: bounds, pitch: map.getPitch(), bearing: map.getBearing() });
+      cb({
+        center: [c.lng, c.lat],
+        zoom: map.getZoom(),
+        bbox: bounds,
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      });
     });
     return () => {
       map.removeControl(overlay);
@@ -352,6 +414,13 @@ export const MapView = forwardRef<
       styleLoadedRef.current = false;
       idleRef.current = false;
       readyFiredRef.current = false;
+      // La règle suggère de copier la ref dans une variable locale au
+      // montage pour éviter qu'elle "ait changé" au nettoyage — mais c'est
+      // précisément le comportement voulu ici : cet effet ne monte/démonte
+      // qu'une fois (cf. dépendances [] ci-dessous), et on veut vider
+      // l'ensemble accumulé sur toute la durée de vie du composant, pas un
+      // instantané pris au montage.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       loadedTilesetsRef.current.clear();
     };
     // Initialize once; style/view changes are out of scope for this phase.
@@ -362,8 +431,16 @@ export const MapView = forwardRef<
     const map = mapRef.current;
     const overlay = overlayRef.current;
     if (!map || !styleLoadedRef.current || !overlay) return;
-    applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) => onFeatureClickRef.current?.(r));
-    applyDeckLayers(overlay, config.layers, handleTilesetLoad, getAuthTokenRef.current, getCoreUrlRef.current);
+    applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) =>
+      onFeatureClickRef.current?.(r),
+    );
+    applyDeckLayers(
+      overlay,
+      config.layers,
+      handleTilesetLoad,
+      getAuthTokenRef.current,
+      getCoreUrlRef.current,
+    );
   }, [config.layers, handleTilesetLoad]);
 
   useEffect(() => {
@@ -372,19 +449,24 @@ export const MapView = forwardRef<
     applyTerrain(map, config.terrain);
   }, [config.terrain]);
 
-  useImperativeHandle(ref, () => ({
-    flyTo: (opts) => {
-      mapRef.current?.flyTo(opts);
-    },
-    highlight: (geometry) => {
-      const src = mapRef.current?.getSource(HIGHLIGHT_ID) as { setData?: (d: unknown) => void } | undefined;
-      src?.setData?.(
-        geometry
-          ? { type: "Feature", geometry, properties: {} }
-          : { type: "FeatureCollection", features: [] },
-      );
-    },
-  }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyTo: (opts) => {
+        mapRef.current?.flyTo(opts);
+      },
+      highlight: (geometry) => {
+        const src = mapRef.current?.getSource(HIGHLIGHT_ID) as
+          { setData?: (d: unknown) => void } | undefined;
+        src?.setData?.(
+          geometry
+            ? { type: "Feature", geometry, properties: {} }
+            : { type: "FeatureCollection", features: [] },
+        );
+      },
+    }),
+    [],
+  );
 
   return (
     <div className="relative h-full w-full">

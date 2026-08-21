@@ -34,18 +34,25 @@ export function buildClientToolSchemas(): ClientToolSchema[] {
       description: "Ajoute un widget sur la page en cours d'édition, avec ses props par défaut.",
       inputSchema: {
         type: "object",
-        properties: { type: { type: "string", enum: widgetTypes, description: "Type de widget à ajouter" } },
+        properties: {
+          type: { type: "string", enum: widgetTypes, description: "Type de widget à ajouter" },
+        },
         required: ["type"],
       },
     },
     {
       name: "updateWidgetProps",
-      description: "Modifie les props d'un widget déjà présent sur le canevas, identifié par son id.",
+      description:
+        "Modifie les props d'un widget déjà présent sur le canevas, identifié par son id.",
       inputSchema: {
         type: "object",
         properties: {
           widgetId: { type: "string", description: "Identifiant du widget (item.id)" },
-          props: { type: "object", description: "Propriétés à fusionner sur le widget", properties: updateProperties },
+          props: {
+            type: "object",
+            description: "Propriétés à fusionner sur le widget",
+            properties: updateProperties,
+          },
         },
         required: ["widgetId", "props"],
       },
@@ -55,7 +62,9 @@ export function buildClientToolSchemas(): ClientToolSchema[] {
       description: "Retire un widget de la page en cours d'édition.",
       inputSchema: {
         type: "object",
-        properties: { widgetId: { type: "string", description: "Identifiant du widget (item.id)" } },
+        properties: {
+          widgetId: { type: "string", description: "Identifiant du widget (item.id)" },
+        },
         required: ["widgetId"],
       },
     },

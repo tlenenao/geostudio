@@ -15,7 +15,8 @@ def test_build_tracer_provider_without_endpoint_has_no_span_processor():
 
 def test_build_tracer_provider_with_endpoint_attaches_a_span_processor():
     provider = observability._build_tracer_provider(
-        Resource.create({"service.name": "x"}), "http://localhost:4318",
+        Resource.create({"service.name": "x"}),
+        "http://localhost:4318",
     )
     assert len(provider._active_span_processor._span_processors) == 1
 
@@ -65,8 +66,13 @@ def test_json_formatter_includes_trace_and_span_id_when_a_span_is_active():
 
 def test_json_formatter_has_null_ids_without_an_active_span():
     record = logging.LogRecord(
-        name="x", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="no span", args=(), exc_info=None,
+        name="x",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="no span",
+        args=(),
+        exc_info=None,
     )
     payload = json.loads(observability.JSONFormatter().format(record))
     assert payload["trace_id"] is None
