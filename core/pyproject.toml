@@ -198,6 +198,21 @@ layers = [
     "app.analytics",
 ]
 ignore_imports = [
+    # `app.analytics` est placé au plus bas du contrat (ajouté par SP-22) : il
+    # est consommé par sept modules (configs, features, alerts, appexport,
+    # harvest, pipelines, mcp) et ne doit lui-même rien tirer d'au-dessus.
+    # Il lit malgré tout le type des colonnes d'une collection avant de
+    # construire une requête DuckDB, et il n'existe aucune place linéaire qui
+    # le permette : le graphe réel porte un cycle au niveau paquet
+    # (`app.analytics` → `app.collections` → `app.configs` → `app.analytics`),
+    # antérieur à l'entrée d'`app.analytics` dans le contrat. Ces deux entrées
+    # nomment donc l'arête exacte, au module près, plutôt que d'exempter
+    # `app.analytics -> app.collections` en entier : `introspection` est un
+    # lecteur de catalogue système en lecture seule, tout autre import
+    # d'`app.collections` depuis `app.analytics` reste interdit et fera
+    # échouer le contrat.
+    "app.analytics.aggregate -> app.collections.introspection",
+    "app.analytics.sql_sandbox -> app.collections.introspection",
     "app.db -> app.configs.models",
     "app.db -> app.collections.models",
     "app.db -> app.items.models",
