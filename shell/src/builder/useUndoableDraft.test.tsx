@@ -170,7 +170,7 @@ test("undo/redo remain correct under <StrictMode> double-invocation of state upd
 });
 
 test("resetDraft remplace le brouillon et vide la pile", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
 
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
@@ -189,7 +189,7 @@ test("resetDraft remplace le brouillon et vide la pile", () => {
 });
 
 test("resetDraft annule un burst d'édition encore en attente", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
 
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B"))); // burst armé, pas encore flushé
