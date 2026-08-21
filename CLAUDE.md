@@ -93,12 +93,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
 npm run test         # Vitest (152 fichiers, 1235 tests — mesuré 2026-08-21)
-npm run e2e          # Playwright (18 specs, VITE_AUTH_MODE=mock)
+npm run e2e          # Playwright (54 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # pre-commit (une fois par poste de travail, après npm ci)
 # Note : commitlint dépend de shell/node_modules, donc cd shell && npm ci doit être exécuté d'abord
-# `pip install pre-commit` échoue ici (PEP 668 externally-managed-environment).
+# `pip install pre-commit` échoue ici (`pip`/`pip3` absents du PATH, pas seulement
+# PEP 668 externally-managed-environment).
 # `uvx pre-commit` "marche" mais pose des hooks git qui pointent vers un
 # binaire dans le cache uv (chemin volatile) : un `uv cache prune` casse
 # alors tout commit jusqu'à réinstallation. `uv tool install` dépose un
@@ -1547,12 +1548,7 @@ deux (et un `--` côté entry).
   (`pass_filenames: false`, cf. revue finale I2 ci-dessus) plutôt que sur
   les seuls fichiers stagés — le point Minor Task 6 sur les noms de
   fichier contenant une espace ne s'applique donc plus (plus de
-  découpage d'arguments). Nouveaux points Minor notés en revue finale :
-  eslint/prettier émettent un avertissement bénin (« File ignored ») sur
-  `shell/src/api/generated/core-schema.d.ts` à chaque régénération de
-  types (fichier déjà dans les listes d'ignore, l'avertissement est sur le
-  fait qu'il soit quand même passé en argument par le hook `lint-imports`-
-  like d'un `git add -A`, pas un vrai défaut de couverture) ; ni
+  découpage d'arguments). Nouveaux points Minor notés en revue finale : ni
   `codeql.yml` ni `gitleaks.yml` n'ont de bloc `concurrency:` et tous deux
   tournent deux fois sur les mêmes commits (`push` + `pull_request`) —
   même lacune que `ci.yml`, une convention à trancher plutôt qu'une
