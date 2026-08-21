@@ -327,9 +327,17 @@ export function resolveClickFilter(
 
 export type ComparePoint = { bucket: string; value: number };
 
+const BUCKET_UNIT_LABELS: Record<BucketGranularity, string> = {
+  hour: "Heure",
+  day: "Jour",
+  week: "Semaine",
+  month: "Mois",
+  quarter: "Trimestre",
+  year: "Année",
+};
+
 function offsetLabel(bucket: BucketGranularity, index: number): string {
-  const unit = bucket === "day" ? "Jour" : bucket === "week" ? "Semaine" : "Mois";
-  return `${unit} ${index + 1}`;
+  return `${BUCKET_UNIT_LABELS[bucket]} ${index + 1}`;
 }
 
 // Compare-periods mode (SP-14e §5): two line series on a relative offset

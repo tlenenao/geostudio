@@ -1,8 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../api/types";
+import type { BucketGranularity } from "../lib/comparisonWindow";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 
 type Measure = { field?: string; agg: string; label?: string; p?: number };
+
+const BUCKET_OPTIONS: { value: BucketGranularity; label: string }[] = [
+  { value: "hour", label: "Heure" },
+  { value: "day", label: "Jour" },
+  { value: "week", label: "Semaine" },
+  { value: "month", label: "Mois" },
+  { value: "quarter", label: "Trimestre" },
+  { value: "year", label: "Année" },
+];
+
+// Le cœur refuse un bucket sans groupBy à un seul champ
+// (_validate_fields: "bucket requires a single-field groupBy"). L'UI
+// reflète cet invariant au lieu de laisser construire une requête que le
+// serveur rejettera.
+function bucketAllowed(groupBy: unknown): boolean {
+  if (Array.isArray(groupBy)) return groupBy.length === 1;
+  return typeof groupBy === "string" && groupBy.trim() !== "";
+}
 
 // A single field ("region") is passed through unchanged; a comma-separated
 // value ("origin,destination") becomes a string[] — the multi-field tidy
@@ -121,6 +140,20 @@ export function DataSourcePanel({
                   value={String(s.query.split ?? "")}
                   onChange={(e) => patchQuery(s.id, { split: e.target.value })}
                 />
+                <select
+                  aria-label={`Grain temporel (source ${s.id})`}
+                  className={selectCls}
+                  disabled={!bucketAllowed(s.query.groupBy)}
+                  value={String(s.query.bucket ?? "")}
+                  onChange={(e) => patchQuery(s.id, { bucket: e.target.value || undefined })}
+                >
+                  <option value="">Aucun grain temporel</option>
+                  {BUCKET_OPTIONS.map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
                 <div className="flex gap-1">
                   <select
                     aria-label={`Agrégation (source ${s.id})`}
