@@ -72,4 +72,31 @@ describe("inferOutputColumns", () => {
     const result = inferOutputColumns(withUnsupported, null, null, null);
     expect(result.columns.map((c) => c.name)).not.toContain("brut");
   });
+
+  test("infère le type de sortie des quatre nouvelles fonctions", () => {
+    const schema: CollectionSchema = {
+      fields: [
+        { name: "region", type: "string", required: true },
+        { name: "pop", type: "integer", required: true },
+      ],
+    } as CollectionSchema;
+
+    const result = inferOutputColumns(schema, null, null, {
+      groupBy: ["region"],
+      metrics: [
+        { alias: "nb_distinct", function: "countDistinct", sourceColumn: "region", p: null },
+        { alias: "med", function: "median", sourceColumn: "pop", p: null },
+        { alias: "p90", function: "percentile", sourceColumn: "pop", p: 90 },
+        { alias: "ecart", function: "stddev", sourceColumn: "pop", p: null },
+      ],
+    });
+
+    expect(result.columns).toEqual([
+      { name: "region", sqlType: "text" },
+      { name: "nb_distinct", sqlType: "integer" },
+      { name: "med", sqlType: "double precision" },
+      { name: "p90", sqlType: "double precision" },
+      { name: "ecart", sqlType: "double precision" },
+    ]);
+  });
 });
