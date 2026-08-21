@@ -110,7 +110,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
 
 // Statistics config keys carried in DataSource.query; excluded from the fetch
 // URL (they configure aggregation, not the feature request).
-type StatMeasure = { field?: string; agg: string; label?: string };
+type StatMeasure = { field?: string; agg: string; label?: string; p?: number };
 
 // Construit le corps JSON de POST /collections/{id}/aggregate depuis
 // DataSource.query (SP-11b) — même vocabulaire que l'agrégation client
@@ -126,6 +126,7 @@ const STAT_KEYS = new Set([
   "bbox",
   "bucket",
   "bins",
+  "p",
 ]);
 
 function parseBboxQueryValue(value: unknown): [number, number, number, number] | undefined {
@@ -144,11 +145,13 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   if (query.field) body.field = String(query.field);
   if (query.bucket) body.bucket = String(query.bucket);
   if (query.bins) body.bins = Number(query.bins);
+  if (query.p !== undefined && query.p !== null) body.p = Number(query.p);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
       field: m.field || undefined,
       agg: m.agg,
       label: m.label || undefined,
+      p: m.p !== undefined ? m.p : undefined,
     }));
   }
   const bbox = parseBboxQueryValue(query.bbox);
