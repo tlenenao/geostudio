@@ -93,6 +93,7 @@ dev = [
     # changement d'arbre (même dette que le `anyio` de SP-20).
     "ruff>=0.16.3",
     "mypy>=2.3.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
