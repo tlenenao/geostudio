@@ -15,10 +15,20 @@ jobs:
         run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
 
       - name: Start Postgres
+        # Les deux derniers flags doivent rester alignés sur le job `core` de
+        # ci.yml : sans `wal_level=logical`, les tests `@pytest.mark.postgis`
+        # du consommateur CDC (SP-11) échouent en
+        # « logical decoding requires wal_level >= logical ». Cette porte de
+        # release avait dérivé de la CI sans que personne ne le voie — la
+        # dernière release taguée (`v0.1.0-rc1`, 2026-07-15) est antérieure à
+        # ces tests, donc cette porte ne les avait jamais exécutés.
+        # `test_release_gate_starts_postgres_like_ci` garde l'alignement.
         run: |
           docker run -d --name ci-postgres \
             -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis \
-            -p 5432:5432 geostudio-postgis-ci:latest
+            -p 5432:5432 geostudio-postgis-ci:latest \
+            -c wal_level=logical \
+            -c output_plugin_libraries=wal2json,pgoutput,test_decoding
           for i in $(seq 1 30); do
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
