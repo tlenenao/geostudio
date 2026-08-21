@@ -14,6 +14,7 @@ import type {
   CollectionCreateInput,
   CollectionPatchInput,
   CollectionSchema,
+  ConfigRevisionInfo,
   CopilotTurnResult,
   CreateEmptyCollectionInput,
   CreateKind,
@@ -857,6 +858,19 @@ export function createItemClient(opts: {
         map,
         printLayout: printLayout ?? null,
       });
+    },
+
+    async listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]> {
+      const { id } = await request<{ id: string }>("GET", `/configs/by-item/${pk}`);
+      const rows = await request<{ version: number; created_at: string }[]>(
+        "GET",
+        `/configs/${id}/revisions`,
+      );
+      return rows.map((r) => ({ version: r.version, createdAt: r.created_at }));
+    },
+    async rollbackConfig(pk: string, version: number): Promise<void> {
+      const { id } = await request<{ id: string }>("GET", `/configs/by-item/${pk}`);
+      await request<unknown>("POST", `/configs/${id}/rollback`, { version });
     },
 
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {

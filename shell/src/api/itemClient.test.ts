@@ -2987,6 +2987,55 @@ test("listLayerSources includes hosted tileset3d items", async () => {
   });
 });
 
+test("listConfigRevisions résout la config par item puis lit ses révisions", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/app-1", () =>
+      HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
+    ),
+    http.get("https://core.test/configs/cfg-1/revisions", () =>
+      HttpResponse.json([
+        { version: 1, created_at: "2026-08-01T10:00:00" },
+        { version: 2, created_at: "2026-08-02T11:00:00" },
+      ]),
+    ),
+  );
+  const client = makeClient();
+  expect(await client.listConfigRevisions("app-1")).toEqual([
+    { version: 1, createdAt: "2026-08-01T10:00:00" },
+    { version: 2, createdAt: "2026-08-02T11:00:00" },
+  ]);
+});
+
+test("rollbackConfig poste la version demandée sur la config résolue", async () => {
+  let posted: { version: number } | null = null;
+  server.use(
+    http.get("https://core.test/configs/by-item/app-1", () =>
+      HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
+    ),
+    http.post("https://core.test/configs/cfg-1/rollback", async ({ request }) => {
+      posted = (await request.json()) as { version: number };
+      return HttpResponse.json({});
+    }),
+  );
+  const client = makeClient();
+  await client.rollbackConfig("app-1", 3);
+  expect(posted).toEqual({ version: 3 });
+});
+
+test("rollbackConfig propage l'erreur quand le serveur refuse la version", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/app-1", () =>
+      HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
+    ),
+    http.post(
+      "https://core.test/configs/cfg-1/rollback",
+      () => new HttpResponse(null, { status: 422 }),
+    ),
+  );
+  const client = makeClient();
+  await expect(client.rollbackConfig("app-1", 1)).rejects.toThrow();
+});
+
 test("getAuthToken exposes the client's current token", () => {
   const client = makeClient("secret-token");
   expect(client.getAuthToken?.()).toBe("secret-token");

@@ -59,4 +59,10 @@ describe("StaticItemClient", () => {
     }).not.toThrow();
     expect(result).toBe("about:blank");
   });
+
+  it("les révisions ne sont pas disponibles hors ligne", async () => {
+    const client = createStaticItemClient(config());
+    await expect(client.listConfigRevisions("app-1")).rejects.toThrow(/export statique/);
+    await expect(client.rollbackConfig("app-1", 1)).rejects.toThrow(/export statique/);
+  });
 });
