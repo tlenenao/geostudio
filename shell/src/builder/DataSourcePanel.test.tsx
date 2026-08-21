@@ -224,3 +224,27 @@ test("repasser d'un agrégat percentile à un autre efface le centile p", async 
     { ...source, query: { groupBy: "region", agg: "avg", p: undefined } },
   ]);
 });
+
+test("propose les six grains temporels, plus l'absence de grain", async () => {
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={onChange} />);
+
+  const select = screen.getByLabelText("Grain temporel (source s1)");
+  const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+  expect(values).toEqual(["", "hour", "day", "week", "month", "quarter", "year"]);
+
+  await userEvent.selectOptions(select, "year");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...STATS_SOURCE, query: { groupBy: "region", agg: "count", bucket: "year" } },
+  ]);
+});
+
+test("le grain temporel est désactivé sans groupBy à un seul champ", () => {
+  const multi: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: ["region", "annee"], agg: "count" },
+  };
+  render(<DataSourcePanel sources={[multi]} onChange={() => {}} />);
+
+  expect(screen.getByLabelText("Grain temporel (source s1)")).toBeDisabled();
+});

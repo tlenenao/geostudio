@@ -4,7 +4,12 @@ import type { DataSource, DatasetConfig } from "../api/types";
 import { derivePatch } from "./analyticsPatch";
 
 export type ReferenceMode = "previous" | "sameLastYear";
-export type BucketGranularity = "day" | "week" | "month";
+// Les six grains acceptés par AggregateRequestBody.bucket côté cœur
+// (core/app/analytics/aggregate.py). bucketFor() ci-dessous n'en produit
+// toujours que trois : c'est une heuristique de fenêtre de comparaison, pas
+// un choix d'auteur, et l'élargir changerait le rendu de widgets déjà
+// livrés (spec SP-23 §3.2, décision 8).
+export type BucketGranularity = "hour" | "day" | "week" | "month" | "quarter" | "year";
 
 const MS_PER_DAY = 86_400_000;
 

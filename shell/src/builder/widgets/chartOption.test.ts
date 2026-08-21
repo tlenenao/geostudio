@@ -152,6 +152,20 @@ test("buildCompareOption labels the offset axis by week/month depending on bucke
   expect((monthOpt as { xAxis?: { data?: string[] } }).xAxis?.data).toEqual(["Mois 1"]);
 });
 
+test("étiquette les périodes de comparaison pour les six grains", () => {
+  const props = { chartType: "line" } as Parameters<typeof buildCompareOption>[0];
+  const points = [{ bucket: "a", value: 1 }];
+  const labelFor = (bucket: Parameters<typeof buildCompareOption>[3]) =>
+    (buildCompareOption(props, points, points, bucket).xAxis as { data: string[] }).data[0];
+
+  expect(labelFor("hour")).toBe("Heure 1");
+  expect(labelFor("day")).toBe("Jour 1");
+  expect(labelFor("week")).toBe("Semaine 1");
+  expect(labelFor("month")).toBe("Mois 1");
+  expect(labelFor("quarter")).toBe("Trimestre 1");
+  expect(labelFor("year")).toBe("Année 1");
+});
+
 test("buildCompareOption applies the yAxisUnit/yAxisFormat formatter like buildOption", () => {
   const opt = buildCompareOption(
     { chartType: "line", yAxisUnit: "kg" },
