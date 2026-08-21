@@ -1475,6 +1475,46 @@ test("queryDataSource sends a bins query key as body.bins, not as a filter", asy
   expect(posted!.filters).toBeUndefined();
 });
 
+test("queryDataSource sends a percentile query's p as body.p, not as a filter", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "region", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
+    query: { groupBy: "region", agg: "percentile", field: "pop", p: 90 },
+  });
+  expect(posted!.p).toBe(90);
+  expect(posted!.filters).toBeUndefined();
+});
+
+test("queryDataSource carries a per-measure p into body.measures[i].p", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "region", rows: [] });
+    }),
+  );
+  await makeClient().queryDataSource({
+    id: "s",
+    type: "statistics",
+    service: "core",
+    layer: "villes",
+    query: {
+      groupBy: "region",
+      measures: [{ field: "pop", agg: "percentile", p: 90 }],
+    },
+  });
+  expect(posted!.measures).toEqual([{ field: "pop", agg: "percentile", label: undefined, p: 90 }]);
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s",
