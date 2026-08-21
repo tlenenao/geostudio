@@ -138,7 +138,11 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   // 2) L'item raster externe apparaît au catalogue
   await page.goto("/");
   await expect(page.getByText("USA States (WMS distant)")).toBeVisible();
-  await expect(page.getByText("Externe")).toBeVisible();
+  // .last(), not the default first match: the catalog's "Type" <select>
+  // (SP-23, chantier 4.15) always renders an <option value="external">Externe</option>
+  // ahead of the item grid in DOM order — .last() lands on the item's own
+  // badge instead.
+  await expect(page.getByText("Externe").last()).toBeVisible();
 
   // 3) Créer une carte, chercher la couche, l'ajouter
   await page.getByRole("button", { name: "Nouveau" }).click();
