@@ -28,7 +28,7 @@ describe("QuerySummaryBuilder", () => {
     await userEvent.click(screen.getByRole("button", { name: "Ajouter une métrique" }));
     expect(onChange).toHaveBeenCalledWith({
       groupBy: [],
-      metrics: [{ alias: "metrique_1", function: "count", sourceColumn: null }],
+      metrics: [{ alias: "metrique_1", function: "count", sourceColumn: null, p: null }],
     });
   });
 
@@ -39,7 +39,7 @@ describe("QuerySummaryBuilder", () => {
         schema={SCHEMA}
         value={{
           groupBy: [],
-          metrics: [{ alias: "metrique_1", function: "count", sourceColumn: null }],
+          metrics: [{ alias: "metrique_1", function: "count", sourceColumn: null, p: null }],
         }}
         onChange={onChange}
       />,
@@ -47,7 +47,7 @@ describe("QuerySummaryBuilder", () => {
     await userEvent.selectOptions(screen.getByLabelText("Fonction de la métrique 1"), "sum");
     expect(onChange).toHaveBeenCalledWith({
       groupBy: [],
-      metrics: [{ alias: "metrique_1", function: "sum", sourceColumn: "gravite" }],
+      metrics: [{ alias: "metrique_1", function: "sum", sourceColumn: "gravite", p: null }],
     });
   });
 
@@ -62,5 +62,39 @@ describe("QuerySummaryBuilder", () => {
     );
     await userEvent.click(screen.getByLabelText("Regrouper par commune"));
     expect(onChange).toHaveBeenCalledWith({ groupBy: ["commune"], metrics: [] });
+  });
+
+  test("propose les neuf fonctions et un champ centile pour percentile", async () => {
+    const onChange = vi.fn();
+    render(
+      <QuerySummaryBuilder
+        schema={SCHEMA}
+        value={{
+          groupBy: [],
+          metrics: [{ alias: "m1", function: "count", sourceColumn: null, p: null }],
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const select = screen.getByLabelText("Fonction de la métrique 1");
+    expect(Array.from(select.querySelectorAll("option")).map((o) => o.value)).toEqual([
+      "count",
+      "countDistinct",
+      "sum",
+      "avg",
+      "median",
+      "percentile",
+      "stddev",
+      "min",
+      "max",
+    ]);
+    expect(screen.queryByLabelText("Centile de la métrique 1")).toBeNull();
+
+    await userEvent.selectOptions(select, "percentile");
+    expect(onChange).toHaveBeenCalledWith({
+      groupBy: [],
+      metrics: [{ alias: "m1", function: "percentile", sourceColumn: expect.any(String), p: 50 }],
+    });
   });
 });
