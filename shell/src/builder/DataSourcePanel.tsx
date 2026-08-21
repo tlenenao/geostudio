@@ -131,7 +131,16 @@ export function DataSourcePanel({
                   placeholder="grouper par (axe X, virgule = plusieurs niveaux)"
                   className={inputCls}
                   value={groupByDisplayValue(s.query.groupBy)}
-                  onChange={(e) => patchQuery(s.id, { groupBy: parseGroupBy(e.target.value) })}
+                  onChange={(e) => {
+                    const groupBy = parseGroupBy(e.target.value);
+                    // Un bucket devenu invalide (groupBy élargi à plusieurs champs) doit
+                    // être effacé ici même : c'est le seul select qui pourrait sinon le
+                    // faire, et il est justement désactivé quand bucketAllowed est faux.
+                    patchQuery(s.id, {
+                      groupBy,
+                      bucket: bucketAllowed(groupBy) ? s.query.bucket : undefined,
+                    });
+                  }}
                 />
                 <input
                   aria-label={`Séparer par (source ${s.id})`}

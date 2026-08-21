@@ -248,3 +248,22 @@ test("le grain temporel est désactivé sans groupBy à un seul champ", () => {
 
   expect(screen.getByLabelText("Grain temporel (source s1)")).toBeDisabled();
 });
+
+test("élargir le groupBy à plusieurs champs efface un bucket devenu invalide", () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "count", bucket: "month" },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  // fireEvent.change plutôt que userEvent.type : onChange est un espion sans
+  // rerender ici, donc React restaure la valeur DOM contrôlée après chaque
+  // frappe (même piège que les autres champs "Grouper par" de ce fichier).
+  fireEvent.change(screen.getByLabelText("Grouper par (source s1)"), {
+    target: { value: "region,city" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith([
+    { ...source, query: { groupBy: ["region", "city"], agg: "count", bucket: undefined } },
+  ]);
+});
