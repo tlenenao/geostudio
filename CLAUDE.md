@@ -92,18 +92,23 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest (61 fichiers, 398 tests)
+npm run test         # Vitest (152 fichiers, 1235 tests — mesuré 2026-08-21)
 npm run e2e          # Playwright (18 specs, VITE_AUTH_MODE=mock)
 npm run build        # tsc --noEmit + vite build
 
 # pre-commit (une fois par poste de travail, après npm ci)
 # Note : commitlint dépend de shell/node_modules, donc cd shell && npm ci doit être exécuté d'abord
-pip install pre-commit  # ou: uvx pre-commit
+# `pip install pre-commit` échoue ici (PEP 668 externally-managed-environment).
+# `uvx pre-commit` "marche" mais pose des hooks git qui pointent vers un
+# binaire dans le cache uv (chemin volatile) : un `uv cache prune` casse
+# alors tout commit jusqu'à réinstallation. `uv tool install` dépose un
+# binaire persistant sur le PATH (~/.local/bin), hooks git stables.
+uv tool install pre-commit
 pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
-uv run pytest        # 1649 passed + 153 skipped (mesuré 2026-08-21 ; les
+uv run pytest        # 1653 passed + 153 skipped (mesuré 2026-08-21 ; les
                      # skips sont les marqueurs postgis/qgis/playwright, qui
                      # nécessitent docker ou un navigateur)
 
@@ -1221,7 +1226,63 @@ deux (et un `--` côté entry).
     `ruff check`/`format --check`/`mypy --strict` (4 modules)/`lint-imports`
     verts ; shell `npm run lint`/`format:check`/`test` (**152 fichiers /
     1235 tests, chiffre identique à la référence**)/`build` verts.
-    `uvx pre-commit run --all-files` : 5/5 hooks verts.
+    `uvx pre-commit run --all-files` : 5/5 hooks verts — **la config en
+    porte 6** (`ruff-check`, `ruff-format`, `lint-imports`, `eslint`,
+    `prettier`, `commitlint`) ; `--all-files` n'exerce que les 5 hooks de
+    l'étage `pre-commit`, jamais `commitlint` (posé sur l'étage
+    `commit-msg`, qui n'existe que lors d'un vrai commit) — ne pas lire
+    cette commande comme couvrant le filet en entier.
+  - **Revue finale de branche (2026-08-21)** — 1 Critical + 5 Important
+    trouvés, 0 non résolu au merge. **C1** — `release.yml` posait
+    `continue-on-error: true` sur les étapes Trivy et SBOM mais pas sur
+    l'étape intermédiaire `Upload Trivy results`
+    (`codeql-action/upload-sarif@v4`) : quand Trivy échoue (re-pull ghcr,
+    cf. `### Suivis non bloquants ouverts`), le SARIF n'existe pas et cette
+    étape échouait dur, contredisant le commentaire du fichier lui-même —
+    même `continue-on-error: true` posé sur les trois étapes désormais.
+    **I1** — la seule porte bloquante du filet sous-scannait en silence :
+    `gitleaks/gitleaks-action@v3` dérive sa plage de scan de l'API GitHub
+    (commits d'une PR sans pagination, 30/page ; tableau `commits` d'un
+    push, plafonné à 20 par GitHub) plutôt que d'un vrai scan de fichiers —
+    mesuré sur ce dépôt : PR #75 (59 commits), #74 (30), #69 (33), donc
+    environ la moitié des commits de la dernière PR de release jamais
+    scannée, job vert quand même. Remplacé par un appel direct au CLI
+    gitleaks en conteneur (`docker run zricethezav/gitleaks:v8.30.1 dir .
+    --redact --exit-code 1`) — scan de l'arbre de travail du checkout, ce
+    que la décision de planification n°6 demandait dès l'origine ;
+    `fetch-depth: 0` retiré (plus nécessaire, aucun `git log` impliqué).
+    Vérifié dans les deux sens contre un clone propre de ce dépôt : exit 0
+    sur le contenu réel (`.gitleaks.toml` toujours efficace), exit 1 sur un
+    faux AWS access key injecté puis retiré. **I2** — les hooks
+    eslint/prettier de `.pre-commit-config.yaml` (`files: ^shell/src/.*\.
+    (ts|tsx)$`) ne couvraient qu'une fraction de ce que la CI vérifie
+    (`eslint .`/`prettier --check .` depuis `shell/`, donc aussi `e2e/**`,
+    `scripts/*.mjs`, `playwright.config.ts`, tout `.json`/`.css`/`.md` du
+    dossier) — un fichier `shell/e2e/*.spec.ts` modifié passait le hook et
+    cassait la CI. Passés en `pass_filenames: false` + `files: ^shell/.*$`,
+    lançant `--fix .`/`--write .` sur tout `shell/` à chaque déclenchement
+    (même périmètre que la CI par construction, plutôt qu'une regex à
+    tenir manuellement synchronisée) — prouvé en stageant un fichier
+    `e2e/` factice, jamais touché par l'ancien pattern, désormais reformaté
+    par le hook. **I3** — `dependabot.yml` n'avait pas de `target-branch`,
+    donc aurait ouvert ses PR hebdomadaires directement sur `main` alors
+    que `dev` est la branche de travail (CLAUDE.md) — `target-branch:
+    "dev"` ajouté aux trois entrées. **I4/I5** — cf. corrections de
+    `## Commandes` ci-dessus (chiffres de test réels + `uv tool install
+    pre-commit`). **M1** — `default_install_hook_types: [pre-commit,
+    commit-msg]` ajouté (un `pre-commit install` nu ne posait avant que le
+    hook `pre-commit`, laissant tomber `commitlint`). **M2** —
+    `force-exclude = true` ajouté à `[tool.ruff]` : sans lui,
+    `extend-exclude` ne protégeait `tests/test_deployability.py` que de la
+    découverte par répertoire, pas d'un chemin passé explicitement — or
+    c'est exactement ce que font les hooks pre-commit ; vérifié avant/après
+    (`ruff check core/tests/test_deployability.py` l'analysait, puis ne
+    trouve plus de fichier Python à ce chemin). **M4** — `minVersion =
+    "8.25.0"` ajouté à `.gitleaks.toml`, co-localisant la contrainte de
+    version réelle (format `[[allowlists]]`) avec le fichier qui la porte ;
+    vérifié qu'il ne s'agit que d'un log de niveau debug, jamais un
+    avertissement bloquant. **M3/M5** — cf. corrections ci-dessus et dans
+    `### Suivis non bloquants ouverts`.
 
 ### À venir
 
@@ -1448,26 +1509,59 @@ deux (et un `--` côté entry).
   restauration nomme désormais les **trois** endroits à changer pour ajouter
   un bucket au périmètre (un seul est outillé), là où il en promettait un.
 - SP-22, suivis non bloquants : le re-pull ghcr d'une image de 11,1 Go
-  (`qgis-worker`) par l'étape Trivy à chaque publication de tag `v*`
-  (alternative `load: true` + scan local envisagée, non retenue — coût
-  propre non mesurable dans cette session). Asymétrie assumée entre
-  Dependabot `/core` (PR non groupées, `uv` ne supporte pas
-  `groups.*.dependency-type`) et `/shell` (dev/prod groupés, `npm` le
-  supporte) — **ne pas « rétablir la parité »** en réintroduisant
-  `dependency-type` sur l'entrée `uv` dans une session future, l'option y
-  est silencieusement ignorée par GitHub, pas rejetée. `package-ecosystem:
-  "docker"` absent de `dependabot.yml` alors qu'il couvrirait la dette
-  d'épinglage des 8 images de base relevée par SP-21 (décision du
-  propriétaire, non ajouté). Les 2 exclusions par regex de `.gitleaks.toml`
-  (clé AES-GCM de test, placeholder Superset) portent sur tout le dépôt et
-  non sur les seuls fichiers nommés dans leur commentaire — jugé acceptable
-  en Task 7, pas resserré. Les hooks eslint/prettier de
-  `.pre-commit-config.yaml` (Task 6) ne sont pas exercés sur un nom de
-  fichier contenant une espace — mécanique jugée saine (`"${@#shell/}"`
-  s'applique élément par élément) mais non testée sur ce cas. **Constat de
-  sécurité** trouvé en Task 7, hors périmètre de cette vague : une vraie
-  clé privée `age` de test subsiste dans l'historique public du dépôt
-  (commit `0b4733a`), redactée depuis par `fac2606` et absente de `HEAD` —
-  jetable d'après le rapport d'origine, mais à confirmer ou rotationner ;
-  l'audit de l'historique complet reste hors périmètre de cette vague
-  (décision de planification n°6).
+  (`qgis-worker`) à chaque publication de tag `v*` — **deux fois, pas une**
+  (corrigé ici : l'étape Trivy et l'étape `sbom-action` prennent chacune
+  `image: ghcr.io/...` et re-pullent donc chacune l'image complète depuis
+  ghcr, jamais seulement Trivy) — alternative `load: true` + scan local
+  envisagée, non retenue (coût propre non mesurable dans cette session).
+  Deux mécaniques supplémentaires trouvées en revue finale, documentées
+  plutôt que corrigées : (a) ajouter `schedule:`/`workflow_dispatch:` à
+  `gitleaks.yml` réouvrirait la tentation d'un scan d'historique complet
+  (sous-commande `git` plutôt que `dir`), qui buterait sur la vraie clé
+  privée `age` de test au commit `0b4733a` — cf. commentaire dédié dans le
+  fichier ; (b) `sbom-action` garde `upload-release-assets` à son défaut
+  `true` alors que le commentaire du fichier dit lui-même qu'il n'existe
+  aucune GitHub Release à laquelle attacher quoi que ce soit — inoffensif
+  sous `continue-on-error: true` (l'étape échoue silencieusement à
+  l'upload, le SBOM part quand même en artefact de run par son autre
+  comportement par défaut) mais contradictoire, à nettoyer si `sbom-action`
+  est un jour reconfiguré. Asymétrie assumée entre Dependabot `/core` (PR
+  non groupées, `uv` ne supporte pas `groups.*.dependency-type`) et
+  `/shell` (dev/prod groupés, `npm` le supporte) — **ne pas « rétablir la
+  parité »** en réintroduisant `dependency-type` sur l'entrée `uv` dans une
+  session future, l'option y est silencieusement ignorée par GitHub, pas
+  rejetée. `package-ecosystem: "docker"` absent de `dependabot.yml` alors
+  qu'il couvrirait la dette d'épinglage des 8 images de base relevée par
+  SP-21 (décision du propriétaire, non ajouté) — et Dependabot ne couvre de
+  toute façon que des mises à jour de version : `secret_scanning`,
+  `secret_scanning_push_protection` et `dependabot_security_updates` sont
+  **désactivés** sur ce dépôt public (vérifié via `gh api repos/.../
+  security_and_analysis` — les trois `status: "disabled"`), donc aucune
+  alerte de sécurité GitHub native n'est active en plus de gitleaks/
+  CodeQL/Trivy ; ne pas lire `dependabot.yml` comme couvrant ce terrain.
+  Les 2 exclusions par regex de `.gitleaks.toml` (clé AES-GCM de test,
+  placeholder Superset) portent sur tout le dépôt et non sur les seuls
+  fichiers nommés dans leur commentaire — jugé acceptable en Task 7, pas
+  resserré. Les hooks eslint/prettier de `.pre-commit-config.yaml`
+  tournent désormais sur tout `shell/` à chaque déclenchement
+  (`pass_filenames: false`, cf. revue finale I2 ci-dessus) plutôt que sur
+  les seuls fichiers stagés — le point Minor Task 6 sur les noms de
+  fichier contenant une espace ne s'applique donc plus (plus de
+  découpage d'arguments). Nouveaux points Minor notés en revue finale :
+  eslint/prettier émettent un avertissement bénin (« File ignored ») sur
+  `shell/src/api/generated/core-schema.d.ts` à chaque régénération de
+  types (fichier déjà dans les listes d'ignore, l'avertissement est sur le
+  fait qu'il soit quand même passé en argument par le hook `lint-imports`-
+  like d'un `git add -A`, pas un vrai défaut de couverture) ; ni
+  `codeql.yml` ni `gitleaks.yml` n'ont de bloc `concurrency:` et tous deux
+  tournent deux fois sur les mêmes commits (`push` + `pull_request`) —
+  même lacune que `ci.yml`, une convention à trancher plutôt qu'une
+  régression ; épinglage hétérogène entre workflows (exact pour
+  `trivy-action`/`sbom-action`/l'image Docker gitleaks, majeur flottant
+  pour `actions/checkout@v4`/`codeql-action@v4`). **Constat de sécurité**
+  trouvé en Task 7, hors périmètre de cette vague : une vraie clé privée
+  `age` de test subsiste dans l'historique public du dépôt (commit
+  `0b4733a`), redactée depuis par `fac2606` et absente de `HEAD` — jetable
+  d'après le rapport d'origine, mais à confirmer ou rotationner ; l'audit
+  de l'historique complet reste hors périmètre de cette vague (décision de
+  planification n°6).
