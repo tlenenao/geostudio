@@ -36,6 +36,14 @@ vi.mock("../pages/AppBuilderPage", () => ({
   AppBuilderPage: ({ pk }: { pk: string }) => <div>app-builder-{pk}</div>,
 }));
 
+vi.mock("../pages/DatasetEditPage", () => ({
+  DatasetEditPage: ({ pk }: { pk: string }) => <div>dataset-edit-{pk}</div>,
+}));
+
+vi.mock("../pages/ItemDetailPage", () => ({
+  ItemDetailPage: ({ pk }: { pk: string }) => <div>item-detail-{pk}</div>,
+}));
+
 vi.mock("../pages/AppRuntimePage", () => ({
   AppRuntimePage: ({ pk, pageId }: { pk: string; pageId?: string }) => (
     <div>
@@ -224,6 +232,116 @@ test("without exportRender, the same map route still renders AppLayout's header/
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /déconnexion/i })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Catalogue" })).toBeInTheDocument();
+});
+
+test("opening an alert navigates to its dataset's edit page, not a generic app editor", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "al-1",
+            resourceType: "alert",
+            title: "Alerte seuil",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+    http.get("https://core.test/configs/by-item/al-1", () =>
+      HttpResponse.json({
+        id: "cfg-al-1",
+        itemId: "al-1",
+        kind: "alert",
+        config: {
+          version: 1,
+          kind: "alert",
+          alert: {
+            datasetItemId: "ds-7",
+            query: {},
+            condition: { expr: "value > 10" },
+            refreshPolicy: { enabled: true, cron: "*/5 * * * *" },
+            channels: [],
+            messageTemplate: "",
+          },
+        },
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("dataset-edit-ds-7")).toBeInTheDocument();
+});
+
+test("opening an external item navigates to its item detail page", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "ex-1",
+            resourceType: "external",
+            title: "Couche moissonnée",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("item-detail-ex-1")).toBeInTheDocument();
+});
+
+test("a failed alert config fetch surfaces an error instead of silently doing nothing", async () => {
+  server.use(
+    http.get("https://core.test/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "al-1",
+            resourceType: "alert",
+            title: "Alerte seuil",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+    http.get(
+      "https://core.test/configs/by-item/al-1",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/échec de l.ouverture/i);
+  // No navigation happened: we're still on the catalog, not the dataset edit page.
+  expect(screen.getByText("Alerte seuil")).toBeInTheDocument();
+  expect(screen.queryByText(/^dataset-edit-/)).not.toBeInTheDocument();
 });
 
 test("a failed bookmark config fetch surfaces an error instead of silently doing nothing", async () => {

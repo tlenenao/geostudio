@@ -72,6 +72,28 @@ function useOpenItem() {
       navigate(`/items/${pk}`);
       return;
     }
+    if (type === "alert") {
+      // Une règle d'alerte n'a pas d'écran propre : elle s'édite dans la
+      // section « Alertes » de la page de son dataset. Même patron async
+      // que `bookmark` ci-dessus, y compris le catch — l'appelant est un
+      // `(pk, type) => void` fire-and-forget, une promesse rejetée y serait
+      // une unhandled rejection sans retour utilisateur.
+      try {
+        const rule = await client.getAlertRuleConfig(pk);
+        setOpenError(false);
+        navigate(`/datasets/${encodeURIComponent(rule.datasetItemId)}/edit`);
+      } catch {
+        setOpenError(true);
+      }
+      return;
+    }
+    if (type === "external") {
+      // Item moissonné : aucune config éditable, le repli générique
+      // /apps/{pk}/edit ouvrirait le builder sur une config vide. Même
+      // raison que tileset3d/terrain3d ci-dessus.
+      navigate(`/items/${pk}`);
+      return;
+    }
     navigate(
       type === "map"
         ? `/maps/${pk}`
