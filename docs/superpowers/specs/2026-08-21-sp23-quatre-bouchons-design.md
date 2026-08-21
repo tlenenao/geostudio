@@ -296,10 +296,14 @@ La route serveur étant générique (`/configs/{id}`), le coût marginal par
 
 #### Interaction avec l'undo/redo SP-19
 
-« Restaurer » avec un brouillon modifié ouvre une **confirmation** disant que
-les modifications non enregistrées seront perdues. Après confirmation :
-`POST rollback`, le brouillon est remplacé par la réponse, **et la pile undo
-SP-19 est réinitialisée**.
+« Restaurer » ouvre **toujours** une confirmation disant que les
+modifications non enregistrées seront perdues — sans chercher à savoir si le
+brouillon est effectivement modifié. Aucun des cinq éditeurs ne porte de
+drapeau « sale » aujourd'hui ; en fabriquer un dans les cinq pour n'afficher
+la confirmation que parfois coûterait plus cher et serait plus facile à
+casser qu'une confirmation systématique, laquelle n'est jamais fausse devant
+une écriture serveur. Après confirmation : `POST rollback`, le brouillon est
+rechargé, **et la pile undo SP-19 est réinitialisée**.
 
 La réinitialisation n'est pas un détail : la pile ne peut pas défaire une
 écriture serveur, et la laisser pleine ferait croire à l'auteur qu'un
