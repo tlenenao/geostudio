@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchema } from "../../api/types";
+import { DEFAULT_PERCENTILE } from "../aggregates";
 import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
 import { Button } from "../../ui/button";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
   count: "Compter",
+  countDistinct: "Compter les valeurs distinctes",
   sum: "Somme",
   avg: "Moyenne",
+  median: "Médiane",
+  percentile: "Centile",
+  stddev: "Écart-type",
   min: "Minimum",
   max: "Maximum",
 };
@@ -42,6 +47,11 @@ export function QuerySummaryBuilder({
       const next = { ...m, ...patch };
       if (next.function === "count") next.sourceColumn = null;
       else if (next.sourceColumn === null) next.sourceColumn = firstNumericField(schema);
+      if (next.function === "percentile") {
+        if (next.p === null) next.p = DEFAULT_PERCENTILE;
+      } else {
+        next.p = null;
+      }
       return next;
     });
     onChange({ ...value, metrics });
@@ -51,7 +61,12 @@ export function QuerySummaryBuilder({
       ...value,
       metrics: [
         ...value.metrics,
-        { alias: `metrique_${value.metrics.length + 1}`, function: "count", sourceColumn: null },
+        {
+          alias: `metrique_${value.metrics.length + 1}`,
+          function: "count",
+          sourceColumn: null,
+          p: null,
+        },
       ],
     });
   }
@@ -98,6 +113,17 @@ export function QuerySummaryBuilder({
                 </option>
               ))}
             </select>
+          )}
+          {metric.function === "percentile" && (
+            <input
+              aria-label={`Centile de la métrique ${i + 1}`}
+              type="number"
+              min={1}
+              max={99}
+              className="h-8 w-20 rounded border border-slate-300 px-2 text-xs"
+              value={metric.p ?? DEFAULT_PERCENTILE}
+              onChange={(e) => updateMetric(i, { p: Number(e.target.value) })}
+            />
           )}
         </div>
       ))}
