@@ -20,6 +20,17 @@ jobs:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
         env:
+          # Épingle la CLI gitleaks réellement installée par l'action : son
+          # code d'exécution défaut à 8.24.3 si cette variable est absente
+          # (`let gitleaksVersion = process.env.GITLEAKS_VERSION ||
+          # "8.24.3"`), une version antérieure au format `[[allowlists]]`
+          # (pluriel) introduit en 8.25.0 qu'utilise notre `.gitleaks.toml` —
+          # sans ce pin, la porte bloquante ignorerait notre allowlist et
+          # ferait échouer le job sur du contenu déjà trié comme faux
+          # positif. Vérifié : 8.24.3 + notre config = leaks trouvées
+          # (allowlist ignorée) ; 8.30.1 = aucune fuite (voir rapport de
+          # tâche).
+          GITLEAKS_VERSION: "8.30.1"
           # Requis inconditionnellement par l'action sur événement
           # `pull_request` (sans quoi le job échoue avant même de scanner,
           # comments ou pas) ; recommandé aussi sur `push` pour éviter la
