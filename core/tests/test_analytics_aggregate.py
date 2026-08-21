@@ -985,3 +985,81 @@ def test_measure_level_p_is_validated_independently(tmp_path, conn):
         )
 
     assert exc.value.field == "measures[0].p"
+
+
+def test_bucket_groups_rows_by_year(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025-03-05", 10, lsn=1),
+            _row(2, "Nord", "2025-11-20", 3, lsn=1),
+            _row(3, "Nord", "2026-01-06", 4, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="annee", bucket="year", agg="count")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2025-01-01 00:00:00", "value": 2},
+        {"annee": "2026-01-01 00:00:00", "value": 1},
+    ]
+
+
+def test_bucket_groups_rows_by_quarter(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2026-01-05", 10, lsn=1),
+            _row(2, "Nord", "2026-02-20", 3, lsn=1),
+            _row(3, "Nord", "2026-05-06", 4, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="annee", bucket="quarter", agg="count")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-01 00:00:00", "value": 2},
+        {"annee": "2026-04-01 00:00:00", "value": 1},
+    ]
+
+
+def test_bucket_groups_rows_by_hour(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2026-01-05 08:10:00", 10, lsn=1),
+            _row(2, "Nord", "2026-01-05 08:55:00", 3, lsn=1),
+            _row(3, "Nord", "2026-01-05 09:01:00", 4, lsn=1),
+        ],
+    )
+    request = AggregateRequestBody(groupBy="annee", bucket="hour", agg="count")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert sorted(rows, key=lambda r: r["annee"]) == [
+        {"annee": "2026-01-05 08:00:00", "value": 2},
+        {"annee": "2026-01-05 09:00:00", "value": 1},
+    ]
