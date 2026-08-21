@@ -190,3 +190,12 @@ test("exportRender=1 renders a nude chrome (no builder aside/save button) and ma
   mapInstances[0].fire("idle");
   expect(document.body.getAttribute("data-export-ready")).toBe("true");
 });
+
+test("affiche le panneau d'historique", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Historique")).toBeInTheDocument();
+});

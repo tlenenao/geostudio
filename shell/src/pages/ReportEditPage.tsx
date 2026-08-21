@@ -8,8 +8,10 @@ import {
   useSaveReportSchedule,
 } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
+import { useItemClient } from "../api/ItemClientProvider";
 import type { ReportSchedulePayload } from "../api/types";
 import { Button } from "../ui/button";
+import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { ReportScheduleEditor } from "../builder/report/ReportScheduleEditor";
 import { ReportRunPanel } from "../builder/report/ReportRunPanel";
 
@@ -34,6 +36,7 @@ export function ReportEditPage({
 }) {
   const navigate = useNavigate();
   const { username } = useAuth();
+  const client = useItemClient();
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
   const createReport = useCreateReportSchedule();
   const saveReport = useSaveReportSchedule(pk ?? "");
@@ -89,6 +92,13 @@ export function ReportEditPage({
         </p>
       )}
       {pk !== null && <ReportRunPanel reportId={pk} />}
+      {pk !== null && (
+        <ConfigHistoryPanel
+          pk={pk}
+          currentVersion={null}
+          onRestored={async () => setDraft(await client.getReportScheduleConfig(pk))}
+        />
+      )}
     </div>
   );
 }

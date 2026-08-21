@@ -247,6 +247,7 @@ test("a failed export surfaces an inline error message instead of failing silent
     saveDatasetConfig: vi.fn(),
     updateItem: vi.fn().mockResolvedValue(item),
     exportDataSource,
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
   });
 
   await screen.findByText(/Dataset partagé/);
@@ -295,4 +296,14 @@ test("hides the button when sourcePipelineId is absent (dataset created by hand)
   });
   await screen.findByText(/Dataset partagé/);
   expect(screen.queryByRole("button", { name: "Modifier la requête" })).not.toBeInTheDocument();
+});
+
+test("affiche le panneau d'historique", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Historique")).toBeInTheDocument();
 });
