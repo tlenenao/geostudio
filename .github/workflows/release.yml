@@ -163,20 +163,18 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"
 
-      # `continue-on-error: true` posé sur Trivy mais oublié ici : quand
-      # Trivy échoue (re-pull ghcr, cf. commentaire ci-dessus), le fichier
-      # `trivy-<image>.sarif` n'existe pas et cette étape échoue *dur* —
-      # contredisant directement le commentaire trois lignes plus haut
-      # (une panne d'infra ne doit jamais rendre la publication red). Même
-      # remède que ses deux voisines plutôt qu'un `if: hashFiles(...) != ''`
-      # : un SARIF absent est déjà, par construction, un échec
-      # d'infrastructure de l'étape précédente (jamais un résultat de scan
-      # légitime à zéro finding — Trivy écrit toujours un fichier, même
-      # vide, quand il va au bout), donc le traiter comme non bloquant au
-      # même titre que Trivy/SBOM est cohérent plutôt que de coder une
-      # deuxième façon de dire la même chose.
+      # SP-22, résidu de revue : un `continue-on-error: true` ici tolérait
+      # *tout* échec, y compris un vrai rejet SARIF (403, catégorie
+      # invalide) que l'on veut voir — ces étapes n'ont encore jamais tourné
+      # pour de vrai, leur première exécution réelle est donc aussi leur
+      # premier test. Remplacé par un garde précis plutôt qu'un filet
+      # large : l'étape est sautée (pas « passée en échouant ») quand Trivy
+      # n'a produit aucun fichier SARIF (panne d'infra à l'étape
+      # précédente, déjà absorbée par son propre `continue-on-error`), mais
+      # s'exécute et remonte un échec réel et visible si le SARIF existe et
+      # que l'upload lui-même échoue.
       - name: Upload Trivy results
-        continue-on-error: true
+        if: hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ matrix.image }}.sarif

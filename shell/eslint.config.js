@@ -19,7 +19,16 @@ import globals from "globals";
 // Détail complet : .superpowers/sdd/task-3-report.md, section « Continuation
 // — narrowed config (Option A) ».
 export default tseslint.config(
-  { ignores: ["dist", "dist-export", "coverage", "src/api/generated"] },
+  {
+    ignores: [
+      "dist",
+      "dist-export",
+      "coverage",
+      "src/api/generated",
+      "test-results",
+      "playwright-report",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
