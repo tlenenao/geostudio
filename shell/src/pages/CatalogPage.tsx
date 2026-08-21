@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useItems, useMe } from "../api/hooks";
 import type { ItemScope, ResourceType } from "../api/types";
+import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
 import { ItemCard } from "../ui/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/input";
@@ -66,9 +67,11 @@ export function CatalogPage({
               }}
             >
               <option value="">Tous</option>
-              <option value="app">App</option>
-              <option value="dashboard">Dashboard</option>
-              <option value="map">Map</option>
+              {RESOURCE_TYPE_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {RESOURCE_TYPE_LABELS[t]}
+                </option>
+              ))}
             </select>
           </label>
         )}

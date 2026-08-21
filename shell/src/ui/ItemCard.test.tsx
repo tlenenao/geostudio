@@ -58,7 +58,7 @@ test("renders a French 'Externe' badge for resourceType external", () => {
   expect(screen.getByText("Externe")).toBeInTheDocument();
 });
 
-test("renders the raw resourceType for other types", () => {
+test("renders the French label for other types", () => {
   render(<ItemCard item={{ ...item, resourceType: "map" }} onOpen={() => {}} />);
-  expect(screen.getByText("map")).toBeInTheDocument();
+  expect(screen.getByText("Carte")).toBeInTheDocument();
 });
