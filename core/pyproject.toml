@@ -130,6 +130,19 @@ line-length = 100
 # compliant même à HEAD ; à retirer de cette liste une fois SP-21 mergé et
 # le fichier passé sous ruff format comme le reste de core/.
 extend-exclude = ["tests/test_deployability.py"]
+# SP-22, revue finale (M2) : sans ce réglage, `extend-exclude` ne s'applique
+# qu'à la découverte de fichiers par répertoire (`ruff check .`) — un
+# chemin passé *explicitement* en argument reste analysé même s'il matche
+# l'exclusion. Or c'est exactement ce que font les hooks pre-commit
+# (`ruff-check`/`ruff-format`, cf. .pre-commit-config.yaml), qui reçoivent
+# les fichiers stagés en arguments : sans `force-exclude`, committer un
+# changement à tests/test_deployability.py le fait lint/formatter par ces
+# hooks alors que le plan et la CI l'exemptent délibérément (SP-21, travail
+# concurrent). Vérifié : `uv run ruff check core/tests/test_deployability.py`
+# l'analyse bel et bien avant ce réglage. `uv run ruff check .`/
+# `format --check .` (invocations réelles de la CI, sans chemin explicite)
+# ne changent pas de comportement — l'exclusion s'y appliquait déjà.
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
