@@ -69,6 +69,6 @@ def mcp_token_subject(token: str) -> str:
         raise McpTokenError(str(exc)) from exc
 
     sub = claims.get("sub")
-    if not sub:
+    if not isinstance(sub, str) or not sub:
         raise McpTokenError("jeton MCP sans sub")
     return sub

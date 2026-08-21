@@ -2,7 +2,7 @@
 import asyncio
 import json
 import secrets
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -47,12 +47,12 @@ class CopilotTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     history: list[CopilotMessage] = Field(default_factory=list, max_length=MAX_HISTORY_MESSAGES)
     mcpToken: str = Field(min_length=1, max_length=MAX_MCP_TOKEN_CHARS)
-    currentConfig: dict
-    clientTools: list[dict] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
+    currentConfig: dict[str, Any]
+    clientTools: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_CLIENT_TOOLS)
 
     @field_validator("currentConfig")
     @classmethod
-    def _bound_serialised_config(cls, value: dict) -> dict:
+    def _bound_serialised_config(cls, value: dict[str, Any]) -> dict[str, Any]:
         # La config partant en entier dans le message système, la borner par
         # sa taille sérialisée est la seule mesure qui compte (un dict peu
         # profond peut porter des mégaoctets de chaînes).
@@ -65,7 +65,7 @@ class CopilotTurnRequest(BaseModel):
 
 class ClientOp(BaseModel):
     op: str
-    args: dict
+    args: dict[str, Any]
 
 
 class CopilotTurnResponse(BaseModel):
@@ -73,7 +73,7 @@ class CopilotTurnResponse(BaseModel):
     clientOps: list[ClientOp]
 
 
-def _system_message(item_id: str, current_config: dict) -> dict:
+def _system_message(item_id: str, current_config: dict[str, Any]) -> dict[str, str]:
     # Délimiteur à nonce (I7 de la revue de projet 2026-08-20) : la config
     # était interpolée nue dans la consigne, or elle porte des chaînes
     # rédigées par des utilisateurs (titres de widgets, texte riche,
@@ -114,7 +114,7 @@ async def _run_turn(
     server_tools = [t for t in server_tools_raw if t["name"] in ALLOWED_MCP_TOOL_NAMES]
     all_tools = server_tools + request.clientTools
 
-    messages: list[dict] = [_system_message(request.itemId, request.currentConfig)]
+    messages: list[dict[str, Any]] = [_system_message(request.itemId, request.currentConfig)]
     for m in request.history:
         messages.append({"role": m.role, "content": m.content})
     messages.append({"role": "user", "content": request.message})

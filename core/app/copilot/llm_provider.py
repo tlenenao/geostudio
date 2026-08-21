@@ -7,7 +7,7 @@ dev/test/mock (CORE_LLM_PROVIDER=fake, ou absent)."""
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -19,7 +19,7 @@ LLM_CALL_TIMEOUT_SECONDS = 30.0
 class ToolCall:
     id: str
     name: str
-    arguments: dict
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -33,7 +33,9 @@ class LLMProvider(Protocol):
     # d'événements de tout le process (la stack tourne sans `--workers`) et
     # ne serait pas annulable, donc l'échéance du tour ne ferait que cesser
     # de l'attendre au lieu de l'interrompre.
-    async def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn: ...
+    async def chat(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> LLMTurn: ...
 
 
 class FakeLLMProvider:
@@ -46,7 +48,7 @@ class FakeLLMProvider:
         self._responses = responses or [LLMTurn(text="(réponse simulée)")]
         self._i = 0
 
-    async def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+    async def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
         turn = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         return turn
@@ -69,7 +71,7 @@ class OpenAICompatibleLLMProvider:
         # peu face à la latence d'un aller-retour LLM.
         self._client = http_client
 
-    async def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
+    async def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
         # Les outils arrivent en forme MCP/shell ({name, description,
         # inputSchema}) ; l'API chat-completions attend {name, description,
         # parameters}. Sans cette conversion, un vrai fournisseur rejette la

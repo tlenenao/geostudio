@@ -77,7 +77,14 @@ SecretPayload = Annotated[
     Field(discriminator="kind"),
 ]
 
-SECRET_PAYLOAD_ADAPTER: TypeAdapter = TypeAdapter(SecretPayload)
+SECRET_PAYLOAD_ADAPTER: TypeAdapter[
+    ApiKeyPayload
+    | BearerTokenPayload
+    | BasicAuthPayload
+    | OAuth2ClientCredentialsPayload
+    | PostgresDsnPayload
+    | SmtpCredentialsPayload
+] = TypeAdapter(SecretPayload)
 
 
 class SecretCreate(BaseModel):
