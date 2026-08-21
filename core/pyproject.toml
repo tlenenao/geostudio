@@ -94,6 +94,13 @@ dev = [
     "ruff>=0.16.3",
     "mypy>=2.3.1",
     "pytest-cov>=7.1.0",
+    # `pip` n'est pas utilisé directement : il entre par `pip-api`, dépendance
+    # de `pip-audit`. Contrainte explicite parce que c'est le seul moyen de
+    # faire remonter la version d'une dépendance transitive d'outil — la
+    # 26.1.2 que le résolveur choisissait porte PYSEC-2026-3721, et
+    # `pip-audit --strict` (qui s'audite donc lui-même) refusait de passer.
+    # Jamais embarqué dans une image : outil de dev/CI uniquement.
+    "pip>=26.2",
 ]
 
 [tool.pytest.ini_options]
