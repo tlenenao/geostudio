@@ -42,7 +42,7 @@ class AggregateRequestBody(BaseModel):
     filters: dict[str, str] = {}
     bbox: tuple[float, float, float, float] | None = None
     geomIntersects: dict[str, Any] | None = None
-    bucket: Literal["day", "week", "month"] | None = None
+    bucket: Literal["hour", "day", "week", "month", "quarter", "year"] | None = None
     bins: int | None = None
 
 
