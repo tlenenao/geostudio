@@ -21,9 +21,15 @@ Procédure de reprise sur perte totale (machine détruite/volée/disque mort).
   sont acceptables : ils ne doivent PAS matcher ceux d'avant la perte, la
   restauration réinjecte les données, pas les identifiants d'infra).
 - Le client MinIO officiel (`mc`) et `age` sur la machine qui pilote la
-  restauration — ou, plus simplement, utiliser le conteneur `backup` déjà
-  construit (image `deploy/backup/`) pour exécuter `mc`/`pg_restore`/`age`,
-  comme fait ci-dessous : il embarque les trois. **Ne jamais** réintroduire
+  restauration — ou, plus simplement, utiliser le conteneur `backup` pour
+  exécuter `mc`/`pg_restore`/`age`, comme fait ci-dessous : il embarque les
+  trois. Depuis SP-21 cette image est **publiée**
+  (`ghcr.io/tlenenao/geostudio-backup:${GEOSTUDIO_VERSION}`) et l'overlay de
+  production la substitue au `build:` du compose de base : sur une machine de
+  restauration, `docker compose … run backup` la *télécharge*, il n'y a plus
+  rien à construire. (Corollaire à connaître si le registre est inaccessible :
+  la construction locale n'est plus un repli disponible depuis l'overlay
+  prod, qui efface le `build:` — il faut alors le compose de base seul.) **Ne jamais** réintroduire
   `apk add mc` dans son Dockerfile — c'est Midnight Commander sous Alpine,
   pas le client MinIO (cf. Task 1).
 
@@ -119,9 +125,17 @@ d'environnement que `deploy/backup/backup.sh` (`S3_THUMBNAILS_BUCKET`,
 `S3_TERRAIN3D_BUCKET`) plutôt que des noms de buckets recopiés en dur — ces
 cinq variables sont déjà injectées dans le service `backup` par
 `docker-compose.prod.yml`, dans lequel cette commande tourne
-(`docker compose run --rm ... backup`). Si un futur bucket est ajouté au
-périmètre de sauvegarde, une seule liste (`backup.sh`) doit changer ; cette
-commande suit automatiquement.
+(`docker compose run --rm ... backup`).
+
+Ajouter un bucket au périmètre de sauvegarde demande **trois** changements,
+pas un (la version précédente de cette note promettait « une seule liste » —
+c'est faux, et c'est le genre de promesse qui laisse une restauration
+incomplète) : la liste de `deploy/backup/backup.sh`, l'`environment:` du
+service `backup` dans `docker-compose.yml`, et la ligne `mc mb` ci-dessus,
+qui nomme ses cinq variables une par une. Seul le second est outillé
+(`test_backup_covers_every_bucket_the_core_uses`, qui compare les buckets lus
+par `core/app/` à ceux que `backup.sh` sauvegarde) ; les deux autres restent
+à la charge du rédacteur.
 
 **Bug trouvé en exécutant réellement cette étape (Task 2, Step 2)** : si
 l'archive ne contient aucun bucket (cas d'un environnement où aucun fichier
