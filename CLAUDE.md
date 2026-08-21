@@ -1284,6 +1284,144 @@ deux (et un `--` côté entry).
     vérifié qu'il ne s'agit que d'un log de niveau debug, jamais un
     avertissement bloquant. **M3/M5** — cf. corrections ci-dessus et dans
     `### Suivis non bloquants ouverts`.
+- **SP-23** — « Les quatre bouchons à coût faible » (étape 4 du séquencement
+  du plan d'action `docs/vision/2026-08-20-revue-projet-et-plan-daction.md`
+  §6, chantiers 4.18/4.6/4.15/4.16 de la vague 4) : dans les quatre cas le
+  cœur savait déjà faire la chose, seule la surface exposée au shell
+  manquait ou était incomplète.
+  - **4.15, agrégats manquants** : quatre agrégats de plus sur
+    `AggregateRequestBody`/`AggregateMeasure`
+    (`countDistinct`/`median`/`percentile`/`stddev`) et un paramètre `p`
+    (centile en **pourcentage**, `0 < p < 100`, jamais en fraction —
+    converti en fraction seulement dans `_agg_expr`/`metricExpr`) plutôt
+    que trois agrégats fixes `p50`/`p90`/`p95` (décision de spec).
+    Contrat de valeur vide tranché explicitement : `countDistinct` → `0`,
+    `median`/`percentile`/`stddev` → `null`, jamais `0` (une médiane
+    d'ensemble vide ou un écart-type d'une ligne unique n'existent pas —
+    l'indicateur (`indicator.tsx`) affiche désormais `—`, `chartOption.ts`'s
+    `num()` continue de convertir `null` en `0` pour les onze types de
+    graphique ECharts, limite acceptée en suivi non bloquant). `stddev`
+    ajouté au chemin ArcGIS (`_STAT_TYPES`, `live_query.py`, natif via
+    `statisticType`), les trois autres refusés proprement
+    (`ArcgisQueryError`) plutôt que mal-évalués en silence — précédent
+    SP-16b. **Élargissement de périmètre assumé en session** (spec §2/§4) :
+    4.15 couvre les **deux** surfaces d'agrégat, pas seulement le chemin
+    analytique — l'assistant de requête visuelle SP-14o compile ses
+    métriques vers du SQL brut par un chemin entièrement distinct
+    (`compilePipeline.ts`'s `metricExpr`/`decompileMetrics`, réciproques au
+    caractère près sur les neuf fonctions) ; ce seul élargissement fait
+    sortir 4.15 du calibre « S » d'origine.
+  - **4.16, grains temporels manquants** : `AggregateRequestBody.bucket`
+    passe de trois à six valeurs (`hour`/`day`/`week`/`month`/`quarter`/
+    `year` — `DATE_TRUNC` les acceptait déjà toutes), sélecteur de grain
+    ajouté à `DataSourcePanel` (désactivé sans `groupBy` à un seul champ,
+    reflet direct de la garde serveur), `chartOption.ts`'s `offsetLabel`
+    étiquette les six unités de la fenêtre de comparaison.
+    `comparisonWindow.ts`'s `bucketFor()` **non touché** (décision de
+    spec explicite) : c'est une heuristique de fenêtre de comparaison, pas
+    un choix d'auteur, et l'élargir changerait le rendu de widgets déjà
+    livrés.
+  - **4.6, le catalogue voit les 12 types** : `resourceTypes.ts` (nouveau,
+    `Record<ResourceType, string>` exhaustif, source unique pour
+    `CatalogPage` et `ItemCard`) remplace le `<select>` Type à 3 options ;
+    les types `alert` et `external` — jusqu'ici sans destination au clic —
+    routés vers leur vraie destination réelle (`openItemAsync`, déjà câblé
+    pour 5 types spéciaux, complété pour ces deux-là).
+  - **4.18, historique de versions atteignable** : `GET
+    /configs/{id}/revisions` et `POST /configs/{id}/rollback` existaient
+    depuis SP-0, audités, mais `ItemClient` n'avait aucune des deux
+    méthodes et aucune page du shell ne les appelait. `ConfigHistoryPanel`
+    (nouveau, générique) monté sur les **cinq** éditeurs adossés à une
+    config (app/dashboard/site, carte, dataset, pipeline, rapport) —
+    décision de spec explicite, pas seulement le builder d'app : la route
+    est générique, un composant unique évite quatre panneaux divergents
+    plus tard. Confirmation bloquante avant restauration (pas de
+    prévisualisation, pas de `Ctrl+Z` sur une restauration — deux notions
+    d'annulation qui divergeraient, écarté en session) ;
+    `useUndoableDraft` gagne `resetDraft` (remplace le brouillon **et**
+    vide toute la pile undo — le stack ne peut pas défaire une écriture
+    serveur, contrairement à `setDraft` qu'utilisent les quatre autres
+    éditeurs sur un `useState` simple). **Élargissement de périmètre
+    assumé en session** (spec §2/§4) : 4.18 corrige au passage un trou de
+    validation que le chantier rend atteignable pour la première fois —
+    `rollback_config` ne repassait par aucun validateur de payload
+    (restaurer une vieille version de pipeline ou d'alerte pouvait
+    ressusciter une référence vers une collection supprimée depuis, ou
+    réactiver une capacité éteinte). Corrigé par
+    `repo.get_revision_config` (lecture seule) + la même séquence de huit
+    `_validate_*`/`_require_*` qu'`update_config`, appelée **avant**
+    l'écriture (422 si invalide, aucune version écrite). Sans
+    `actor_id` sur `config_revisions` (relève du chantier 4.20, hors
+    périmètre assumé). Aucune migration sur les quatre chantiers.
+  - Exécution en subagent-driven-development, 19 tâches, revue par tâche
+    systématique — 0 Critical/Important non résolu au merge sur
+    l'ensemble. Trois trouvailles notables, aucune anticipée par le texte
+    littéral du plan :
+    1. **Tâche 13** — le brief demandait de revalider `rollback_config`
+       avec la même séquence qu'`update_config`, ce qui inversait de fait
+       une décision SP-8c délibérée (« rollback restaure une révision
+       même si elle violerait désormais un scope d'extension resserré,
+       comportement volontaire faute d'appelant réel ») — un test
+       existant de `test_configs_extension_permissions.py` en encodait
+       encore l'ancien contrat (200, pas de revalidation). Corrigé (renommé,
+       422 attendu) après vérification indépendante contre la spec SP-23
+       (qui nomme explicitement « portée d'extension » parmi les
+       validateurs) et contre le code réel d'`update_config` — pas une
+       régression, un renversement de décision assumé par la spec du jour
+       même.
+    2. **Tâche 15** — le brief exigeait explicitement que les nouveaux
+       tests de `resetDraft` tournent sous `<StrictMode>` (précédent
+       SP-19/C1 : tout le bookkeeping de refs doit se faire dans le corps
+       de la fonction, jamais dans un updater passé à `setDraftState`,
+       sous peine de double-exécution). Trouvé en revue de tâche
+       (Important) : les deux nouveaux tests utilisaient un `renderHook`
+       nu, et l'auto-revue de l'implémenteur affirmait à tort le
+       contraire. Fixé en un commit séparé, re-revue clean — l'
+       implémentation elle-même (jamais de fonction passée à
+       `setDraftState`) était correcte depuis le début, seule la preuve
+       par test manquait.
+    3. **Tâche 18** — en faisant tourner la suite e2e complète pour la
+       **première fois depuis les tâches 11/12** (les tâches précédentes
+       ne lançaient que leurs specs ciblées), une régression préexistante
+       est apparue : le `<select>` Type du catalogue rend en permanence
+       un `<option value="external">Externe</option>`, cassant
+       `getByText("Externe")` sans désambiguïsation dans **six** specs de
+       moissonnage déjà existantes (harvest-arcgis/ckan/csw/ogc-records/
+       stac/wms — violation du mode strict Playwright, 2 éléments
+       correspondants). Corrigé par `.last()` (l'`<option>` précède
+       toujours le badge de carte dans l'ordre du DOM), vérifié
+       indépendamment correct sur les six specs par le reviewer. Commit
+       séparé du livrable de la tâche (`fix(shell)` distinct de
+       `test(shell)`), pour garder l'historique lisible.
+       **Incident de session, distinct de la trouvaille elle-même** : le
+       premier subagent implémenteur dispatché sur cette tâche a fini
+       dans un état confus — son travail (`catalog.spec.ts`/`mocks.ts`/
+       nouveau `config-history.spec.ts`) s'est retrouvé `git stash`é au
+       lieu d'être committé, et son rapport final portait le contenu
+       d'une tâche sans rapport avec celle-ci (SP-17b) — contamination
+       vraisemblable d'un fichier de rapport scratch
+       (`.superpowers/sdd/task-18-report.md`) réutilisé sans être vidé
+       entre deux sessions de travail distinctes. Le contrôleur a
+       récupéré le stash, vérifié son contenu ligne à ligne contre le
+       brief (conforme) avant de le committer, plutôt que de redispatcher
+       un agent sur un état déjà suspect.
+  - **Preuves de sortie finales** (tâche 19) : core `uv run pytest` →
+    **1673 passed, 153 skipped, 0 failed** ; `ruff check`/`ruff format
+    --check`/`mypy --strict` (4 modules)/`lint-imports` verts ; couverture
+    core **85,17 %** (seuil 85). Shell `npm run lint`/`format:check` verts,
+    `npm run test` → **155 fichiers / 1300 tests** ; `npm run build` vert ;
+    `npm run e2e` → **105 passed, 4 skipped, 0 failed** ; couverture shell
+    **88,96 %** (seuil 88, mesurée après nettoyage de `dist/`/`dist-export/`
+    — même piège documenté par SP-22 tâche 5, artefacts de build locaux
+    gitignorés comptés comme source non couverte par la config `vitest`
+    de ce dépôt). `uvx pre-commit run --all-files` : 5/5 hooks verts.
+    OpenAPI/types TS confirmés synchronisés — la commande littérale du
+    brief (`uv run python scripts/export_openapi.py`) échoue seule
+    (`ModuleNotFoundError: app`, le script n'insère pas le cwd sur
+    `sys.path` en exécution directe, et `app` n'est pas installé en mode
+    editable) et nécessite l'incantation réelle de `ci.yml`
+    (`PYTHONPATH=.` + `CORE_SECRETS_MASTER_KEY` de test) — écart entre le
+    texte du brief et le job CI réel, non documenté avant cette tâche.
 
 ### À venir
 
@@ -1561,3 +1699,16 @@ deux (et un `--` côté entry).
   d'après le rapport d'origine, mais à confirmer ou rotationner ; l'audit
   de l'historique complet reste hors périmètre de cette vague (décision de
   planification n°6).
+- SP-23, suivis non bloquants : `chartOption.ts`'s `num()` convertit
+  toujours `null` en `0` pour les séries ECharts — un agrégat indéfini
+  (écart-type d'un groupe d'une seule ligne) s'affiche « 0 » dans un
+  graphique, alors que l'indicateur (`indicator.tsx`) affiche « — ».
+  Limite acceptée en SP-23 : changer `num()` toucherait les onze types de
+  graphique, dont boxplot/radar/sankey qui n'acceptent pas `null`. La
+  parité `STDDEV_SAMP`/`statisticType: "stddev"` d'ArcGIS est affirmée
+  d'après la documentation du service, jamais mesurée contre un service
+  réel. `GET /configs/{id}/revisions` n'est pas paginée : une config
+  éditée des centaines de fois renverrait toutes ses révisions d'un seul
+  coup. L'auteur d'une révision reste absent (`config_revisions` n'a pas
+  d'`actor_id`) — relève du chantier 4.20 (journal d'audit consultable),
+  hors périmètre assumé de SP-23.
