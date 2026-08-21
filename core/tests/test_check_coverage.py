@@ -2,9 +2,6 @@ import subprocess
 import sys
 import textwrap
 
-import pytest
-
-
 COVERAGE_XML = textwrap.dedent(
     """\
     <?xml version="1.0" ?>
