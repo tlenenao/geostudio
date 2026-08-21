@@ -14,7 +14,11 @@ import httpx
 
 _CACHE_TTL_SECONDS = 20.0
 _RANGE_OPS = {"__gte": ">=", "__lte": "<="}
-_STAT_TYPES = {"count", "sum", "avg", "min", "max"}
+# "stddev" est un statisticType natif du Feature Service ArcGIS. Les autres
+# agrégats de SP-23 (countDistinct, median, percentile) n'ont pas
+# d'équivalent : ils restent refusés ici plutôt que mal-traduits — précédent
+# SP-16b, échouer explicitement plutôt que mal-évaluer en silence.
+_STAT_TYPES = {"count", "sum", "avg", "min", "max", "stddev"}
 _FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _cache: dict[str, tuple[float, dict]] = {}
