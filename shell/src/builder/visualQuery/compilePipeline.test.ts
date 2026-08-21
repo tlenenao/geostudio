@@ -3,9 +3,12 @@ import { describe, expect, test } from "vitest";
 import type { CollectionSchema } from "../../api/types";
 import {
   compileVisualQueryToPipeline,
+  decompileMetrics,
   decompilePipelineToWizardState,
+  metricExpr,
   VisualQueryState,
 } from "./compilePipeline";
+import type { MetricConfig } from "./inferSchema";
 
 const BASE: CollectionSchema = {
   collection: "incidents",
@@ -127,7 +130,7 @@ describe("compileVisualQueryToPipeline", () => {
     const state = baseState({
       summary: {
         groupBy: ["commune"],
-        metrics: [{ alias: "nb", function: "count", sourceColumn: null }],
+        metrics: [{ alias: "nb", function: "count", sourceColumn: null, p: null }],
       },
     });
     const pipeline = compileVisualQueryToPipeline(state, BASE, null, "query_out", "dataset-1");
@@ -174,8 +177,8 @@ describe("compileVisualQueryToPipeline", () => {
       summary: {
         groupBy: ["commune"],
         metrics: [
-          { alias: "nb", function: "count", sourceColumn: null },
-          { alias: "total", function: "sum", sourceColumn: "gravite" },
+          { alias: "nb", function: "count", sourceColumn: null, p: null },
+          { alias: "total", function: "sum", sourceColumn: "gravite", p: null },
         ],
       },
     });
@@ -256,8 +259,8 @@ describe("decompilePipelineToWizardState", () => {
       summary: {
         groupBy: ["commune"],
         metrics: [
-          { alias: "nb", function: "count", sourceColumn: null },
-          { alias: "total", function: "sum", sourceColumn: "gravite" },
+          { alias: "nb", function: "count", sourceColumn: null, p: null },
+          { alias: "total", function: "sum", sourceColumn: "gravite", p: null },
         ],
       },
     });
@@ -270,8 +273,8 @@ describe("decompilePipelineToWizardState", () => {
       summary: {
         groupBy: ["commune"],
         metrics: [
-          { alias: "nb", function: "count", sourceColumn: null },
-          { alias: "total", function: "sum", sourceColumn: "gravite" },
+          { alias: "nb", function: "count", sourceColumn: null, p: null },
+          { alias: "total", function: "sum", sourceColumn: "gravite", p: null },
         ],
       },
       outputCollectionId: "query_out",
@@ -323,5 +326,95 @@ describe("decompilePipelineToWizardState", () => {
 
     // Le customSelect n'est pas immédiatement avant le writer
     expect(decompilePipelineToWizardState(pipeline)).toBeNull();
+  });
+});
+
+describe("metricExpr / decompileMetrics", () => {
+  test("compile puis décompile les neuf fonctions sans perte", () => {
+    const metrics: MetricConfig[] = [
+      { alias: "nb", function: "count", sourceColumn: null, p: null },
+      { alias: "nbd", function: "countDistinct", sourceColumn: "region", p: null },
+      { alias: "tot", function: "sum", sourceColumn: "pop", p: null },
+      { alias: "moy", function: "avg", sourceColumn: "pop", p: null },
+      { alias: "med", function: "median", sourceColumn: "pop", p: null },
+      { alias: "p90", function: "percentile", sourceColumn: "pop", p: 90 },
+      { alias: "sd", function: "stddev", sourceColumn: "pop", p: null },
+      { alias: "mn", function: "min", sourceColumn: "pop", p: null },
+      { alias: "mx", function: "max", sourceColumn: "pop", p: null },
+    ];
+
+    const compiled = Object.fromEntries(metrics.map((m) => [m.alias, metricExpr(m)]));
+
+    expect(compiled).toEqual({
+      nb: "count(*)",
+      nbd: 'count(distinct "region")',
+      tot: 'sum("pop")',
+      moy: 'avg("pop")',
+      med: 'median("pop")',
+      p90: 'quantile_cont("pop", 0.9)',
+      sd: 'stddev_samp("pop")',
+      mn: 'min("pop")',
+      mx: 'max("pop")',
+    });
+
+    expect(decompileMetrics(compiled)).toEqual(metrics);
+  });
+
+  test("décompile un centile non entier", () => {
+    expect(decompileMetrics({ p995: 'quantile_cont("pop", 0.995)' })).toEqual([
+      { alias: "p995", function: "percentile", sourceColumn: "pop", p: 99.5 },
+    ]);
+  });
+
+  test("refuse une forme SQL non produite par metricExpr", () => {
+    expect(decompileMetrics({ x: 'variance("pop")' })).toBeNull();
+  });
+
+  test("refuse une forme partiellement reconnue (suffixe non attendu)", () => {
+    expect(decompileMetrics({ x: 'sum("pop") + 1' })).toBeNull();
+  });
+
+  test("refuse une forme partiellement reconnue (préfixe non attendu)", () => {
+    expect(decompileMetrics({ x: '1 + sum("pop")' })).toBeNull();
+  });
+
+  test("refuse une casse différente (SQL produit toujours en minuscules)", () => {
+    expect(decompileMetrics({ x: 'SUM("pop")' })).toBeNull();
+  });
+
+  test("round-trip un nom de colonne contenant un guillemet échappé", () => {
+    const metric: MetricConfig = {
+      alias: "tot",
+      function: "sum",
+      sourceColumn: 'po"p',
+      p: null,
+    };
+    const expr = metricExpr(metric);
+    expect(expr).toBe('sum("po""p")');
+    expect(decompileMetrics({ tot: expr })).toEqual([metric]);
+  });
+
+  test("round-trip un nom de colonne avec guillemet échappé pour count(distinct ...)", () => {
+    const metric: MetricConfig = {
+      alias: "nbd",
+      function: "countDistinct",
+      sourceColumn: 'reg"ion',
+      p: null,
+    };
+    const expr = metricExpr(metric);
+    expect(expr).toBe('count(distinct "reg""ion")');
+    expect(decompileMetrics({ nbd: expr })).toEqual([metric]);
+  });
+
+  test("round-trip un nom de colonne avec guillemet échappé pour quantile_cont", () => {
+    const metric: MetricConfig = {
+      alias: "p90",
+      function: "percentile",
+      sourceColumn: 'po"p',
+      p: 90,
+    };
+    const expr = metricExpr(metric);
+    expect(expr).toBe('quantile_cont("po""p", 0.9)');
+    expect(decompileMetrics({ p90: expr })).toEqual([metric]);
   });
 });

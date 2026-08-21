@@ -51,8 +51,8 @@ describe("inferOutputColumns", () => {
     const summary = {
       groupBy: ["commune"],
       metrics: [
-        { alias: "nb", function: "count" as const, sourceColumn: null },
-        { alias: "total_gravite", function: "sum" as const, sourceColumn: "gravite" },
+        { alias: "nb", function: "count" as const, sourceColumn: null, p: null },
+        { alias: "total_gravite", function: "sum" as const, sourceColumn: "gravite", p: null },
       ],
     };
     const result = inferOutputColumns(BASE, null, null, summary);
