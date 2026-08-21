@@ -1,5 +1,16 @@
 title = "Configuration gitleaks — GeoStudio"
 
+# Version minimale de CLI requise pour ce fichier : le format `[[allowlists]]`
+# (pluriel, un bloc par exclusion) qu'il utilise n'existe qu'à partir de la
+# 8.25.0. Sans ce champ, gitleaks se contente d'un log de niveau debug
+# (« no minVersion specified in config... ») — jamais un avertissement
+# visible ni un échec — donc l'absence de ce champ ne protège de rien par
+# elle-même ; il documente la contrainte réelle au même endroit que la
+# config qui la porte, en complément du pin `zricethezav/gitleaks:v8.30.1`
+# dans .github/workflows/gitleaks.yml (seul mécanisme qui bloque vraiment
+# une version trop ancienne).
+minVersion = "8.25.0"
+
 # On repart du jeu de règles par défaut de gitleaks (celui embarqué dans le
 # binaire) et on y superpose seulement une liste d'exclusions ciblée — sans
 # `useDefault = true`, un fichier de config personnalisé remplace *toutes*
