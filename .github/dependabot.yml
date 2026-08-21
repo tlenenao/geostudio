@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Cœur Python (PEP 621, core/pyproject.toml + core/uv.lock).
+  # "uv" est un package-ecosystem supporté nativement par Dependabot (il respecte
+  # le lockfile uv.lock, contrairement à "pip") — mais l'option `groups.*.dependency-type`
+  # n'est PAS supportée pour cet écosystème (doc GitHub : seulement bundler, composer,
+  # mix, maven, npm, pip). Une config invalide y est silencieusement ignorée par
+  # GitHub, donc pas de groupement dev/prod ici pour rester réellement actif.
+  - package-ecosystem: "uv"
+    directory: "/core"
+    schedule:
+      interval: "weekly"
+
+  # Front-end shell (package.json + package-lock.json).
+  # "npm" supporte dependency-type dans groups : groupement dev/prod conservé.
+  - package-ecosystem: "npm"
+    directory: "/shell"
+    schedule:
+      interval: "weekly"
+    groups:
+      shell-dev-dependencies:
+        dependency-type: "development"
+      shell-production-dependencies:
+        dependency-type: "production"
+
+  # Workflows GitHub Actions (.github/workflows/) — un seul emplacement dans ce dépôt,
+  # pas d'actions composites réutilisables ailleurs.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
