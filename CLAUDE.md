@@ -905,7 +905,11 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     `docker manifest inspect` : `minio/minio` (sans tag) →
     `RELEASE.2025-09-07T16-13-09Z` ; `quay.io/keycloak/keycloak:24.0` →
     `24.0.5` ; `traefik:v3.0` → `v3.0.4` ; `tailscale/tailscale:latest` →
-    `v1.102.3`. `grep -c ":latest"` sur le compose résolu → 0.
+    `v1.102.3`. `grep -c ":latest"` sur le compose **de base** résolu → 0 —
+    portée précisée en revue finale : l'overlay de production en résout six
+    de plus tant que `GEOSTUDIO_VERSION` vaut `latest`, ce qui est un choix
+    d'opérateur (documenté comme tel dans `.env.example`, exempté par
+    `test_images_are_pinned`) et non un pin manquant de notre côté.
   - **Healthchecks posés sur les 7 services qui en manquaient** : `core`,
     `worker`, `cdc-worker`, `shell` (sonde CDC `scripts/healthcheck_cdc.py`
     sur `pg_replication_slots.active`, la seule des quatre capable de
@@ -955,6 +959,41 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
     `geostudio-postgis` reste sans notice/labels embarqués, **bloqué** :
     son `Dockerfile` porte des lignes non commitées d'un autre travail en
     cours dans ce même arbre, et le stager emporterait ce travail.
+  - **Revue finale de branche** (20 commits SP-21 isolés) : 1 Critical +
+    4 Important + 5 Minor, tous invisibles tâche par tâche. Ce qu'elle
+    confirme par ailleurs : les 9 références GHCR trouvent toutes une entrée
+    de matrice (aucune faute de frappe), le graphe de `depends_on` est
+    acyclique, et les 7 règles sont toutes non vacuous sur le dépôt
+    d'aujourd'hui. Les 4 Important et 4 des 5 Minor sont corrigés
+    (`4a6bf6b`..`25e8309`) : sonde `shell` qui ne pouvait jamais passer
+    (`localhost` → `::1` sous busybox, nginx n'écoute qu'en IPv4 — mesuré
+    sur l'image réelle, piège identique à celui corrigé pour `martin` une
+    tâche plus tôt) ; onze noms de `.env.example` présentés comme réglables
+    et substitués nulle part (bloc S3 passé en lignes commentées,
+    `MARTIN_SECRET` exempté avec sa raison) **plus une 8ᵉ règle** qui
+    outille cette direction, `documenté ⇒ câblé ou déclaré inerte` — la
+    direction de `CORE_ETL_ENABLED` elle-même, que les 7 premières ne
+    couvraient pas ; `GEOSTUDIO_VERSION=latest` et la portée de la mesure
+    « 0 :latest » (ci-dessus) ; matrice de `release.yml` sans
+    `fail-fast: false`, où un échec sur `qgis-worker` (11,1 Go) annulait la
+    publication des sept autres. Un défaut de plus, de la classe même que
+    SP-21, trouvé en vérifiant le correctif : `S3_EXPORTS_BUCKET` est lue
+    aussi par `worker` (`app/reports/jobs.py`, `app/pipelines/jobs.py`, file
+    `etl`) et n'y était pas câblée — la règle 3 ne pouvait pas le voir, elle
+    fait l'union de tous les services et ignore quel process lit quoi
+    (limite désormais écrite dans sa docstring, avec celle du périmètre
+    `core/app/` seul : la moitié shell d'une capacité n'est pas couverte).
+    **Reste ouvert, seul point bloquant le merge : C1.** Effacer les
+    `build:` de l'overlay prod (tâche 2, `!reset`) a supprimé le seul repli
+    qui faisait fonctionner la prod sans release publiée. Mesuré : aucun tag
+    git n'existe (`git ls-remote --tags origin` → 0, donc `release.yml` n'a
+    jamais tourné) et 5 des 8 images sont absentes de ghcr.io, dont
+    `geostudio-backup`, que `scripts/install.sh` tire sans profil →
+    l'installation échoue au `pull`. **Décision Tanguy : publier la première
+    release d'abord** (PR `dev`→`main`, tag `v0.1.0` cohérent avec
+    `core/pyproject.toml` et `shell/package.json`, puis basculer la
+    visibilité des paquets GHCR, privée au premier push) — non exécuté à ce
+    jour.
 
 ### À venir
 
@@ -1168,17 +1207,15 @@ livré a sa spec dans `docs/superpowers/specs/` et son plan dans
   une constante littérale), une f-string, une indirection par `getattr`.
   `_module_string_constants` ignore les affectations chaînées
   (`A = B = "X"`) et les `AnnAssign` (`A: str = "X"`).
-  **Minors résiduels à garder en tête** : le docstring de tête de
-  `test_deployability.py` ne nomme encore que les quatre incidents
-  d'origine (SP-17a, SP-17b, tileset3d, `CORE_ETL_ENABLED`), pas les 3
-  allowlists SSRF que la même règle a trouvées plus tard — raison d'être
-  périmée dans le fichier dont c'est justement l'objet ; `.env.example`
-  documente `S3_TILESET3D_BUCKET`/`S3_TERRAIN3D_BUCKET` comme des lignes
-  réglables alors qu'elles sont figées en dur dans `docker-compose.yml` —
-  un réglage d'apparence atteignable, sans effet réel, même classe que
-  SP-21 lui-même, côté « documenté mais non substitué », qui n'est couvert
-  par aucune des 7 règles (la règle 5 ne vérifie que la direction inverse) ;
-  la sonde `pgbouncer` traverse le pool jusqu'à Postgres (`select 1`), donc
+  **Minors résiduels à garder en tête** (les trois autres sont fermés par
+  la passe de correctif de la revue finale : raison d'être du fichier de
+  garde-fou complétée, `.env.example` « documenté mais non substitué »
+  désormais outillé par la 8ᵉ règle, test tautologique
+  `test_slot_name_matches_the_consumer` supprimé — il relisait `SLOT_NAME`
+  par la même chaîne d'import pour l'affirmer égal à lui-même) : la sonde
+  `pgbouncer` traverse le pool jusqu'à Postgres (`select 1`), donc
   `pgbouncer` passe `unhealthy` si `postgis` est dégradé — sans cascade
   réelle aujourd'hui, vérifié : les cinq consommateurs de `pgbouncer` sont
-  tous en `service_started`, jamais `service_healthy`.
+  tous en `service_started`, jamais `service_healthy` ; le runbook de
+  restauration nomme désormais les **trois** endroits à changer pour ajouter
+  un bucket au périmètre (un seul est outillé), là où il en promettait un.
