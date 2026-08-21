@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Item, ResourceType } from "../api/types";
+import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import { Button } from "./button";
 import { Card } from "./card";
-
-const RESOURCE_TYPE_LABELS: Partial<Record<ResourceType, string>> = {
-  external: "Externe",
-};
 
 export function ItemCard({
   item,
@@ -20,7 +17,7 @@ export function ItemCard({
     <Card className="flex flex-col gap-2 p-4">
       <div className="flex items-start justify-between">
         <span className="w-fit rounded bg-slate-100 px-2 py-0.5 text-xs uppercase text-slate-600">
-          {RESOURCE_TYPE_LABELS[item.resourceType] ?? item.resourceType}
+          {RESOURCE_TYPE_LABELS[item.resourceType]}
         </span>
         {actions}
       </div>

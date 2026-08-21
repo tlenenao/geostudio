@@ -93,6 +93,15 @@ test("filters the catalog by scope", async () => {
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"));
 });
 
+test("le filtre Type propose les douze types plus « Tous »", () => {
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+
+  const select = screen.getByLabelText("Type");
+  expect(select.querySelectorAll("option")).toHaveLength(13);
+  expect(Array.from(select.querySelectorAll("option")).map((o) => o.value)).toContain("dataset");
+  expect(Array.from(select.querySelectorAll("option")).map((o) => o.value)).toContain("tileset3d");
+});
+
 test("fixedType locks the type filter and hides the selector", async () => {
   let lastUrl = "";
   server.use(
