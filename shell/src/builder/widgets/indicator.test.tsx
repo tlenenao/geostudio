@@ -189,6 +189,52 @@ test("shows a delta badge computed from the server value/reference when referenc
   expect(await screen.findByText(/\+20 % vs période précédente/)).toBeInTheDocument();
 });
 
+test("affiche un tiret plutôt que zéro quand l'agrégat de comparaison est indéfini", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  // Un agrégat serveur indéfini (médiane d'un ensemble vide, écart-type d'une
+  // ligne unique — Task 1) renvoie `properties: { value: null }`, pas 0.
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { value: null } }]);
+  renderIndicator(
+    { dataSourceId: "src-1", label: "Total", agg: "stddev", referencePeriod: "previous" },
+    { data: state({ datasetId: "ds-1", records: [] }) },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-31" },
+  );
+  expect(await screen.findByText("—")).toBeInTheDocument();
+  expect(screen.queryByText("0")).toBeNull();
+});
+
+test("affiche 0 quand l'agrégat de comparaison est réellement zéro (pas indéfini)", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { value: 0 } }]);
+  renderIndicator(
+    {
+      dataSourceId: "src-1",
+      label: "Total",
+      agg: "sum",
+      field: "amount",
+      referencePeriod: "previous",
+    },
+    { data: state({ datasetId: "ds-1", records: [] }) },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-31" },
+  );
+  expect(await screen.findByText("0")).toBeInTheDocument();
+  expect(screen.queryByText("—")).toBeNull();
+});
+
 test("two indicator widgets on the same dataset and metric do not collide on cache when a cross-filter singles one of them out", async () => {
   const getDatasetConfig = vi.fn().mockResolvedValue({
     source: "collection",

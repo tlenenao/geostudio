@@ -21,11 +21,21 @@ const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart }
 type KpiComparison = {
   active: boolean;
   loading: boolean;
+  hasResolvedValue: boolean;
   value: number | null;
   delta: number | null;
   deltaPct: number | null;
   sparklinePoints: { bucket: string; value: number }[];
 };
+
+// Un agrégat serveur indéfini (médiane d'un ensemble vide, écart-type d'une
+// ligne unique) vaut `null` côté serveur depuis SP-23 Task 1, jamais 0 —
+// `null`/`undefined` restent `null` ici plutôt que d'être coalescés à 0.
+function parseAggregateValue(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : n;
+}
 
 // Shared mechanic (Task 3, spec §3): fetches the dataset config (needed to
 // know `timeField`), then — only once referencePeriod/sparkline is actually
@@ -114,11 +124,13 @@ function useKpiComparison(
     enabled: Boolean(active && sparklineEnabled),
   });
 
-  const value =
-    referencePeriod && valueQuery.data ? Number(valueQuery.data[0]?.properties.value ?? 0) : null;
+  const hasResolvedValue = Boolean(referencePeriod && valueQuery.data);
+  const value = hasResolvedValue
+    ? parseAggregateValue(valueQuery.data?.[0]?.properties.value)
+    : null;
   const reference =
     referencePeriod && referenceQuery.data
-      ? Number(referenceQuery.data[0]?.properties.value ?? 0)
+      ? parseAggregateValue(referenceQuery.data[0]?.properties.value)
       : null;
   const delta = value !== null && reference !== null ? value - reference : null;
   const deltaPct =
@@ -136,7 +148,11 @@ function useKpiComparison(
     ((Boolean(referencePeriod) && (valueQuery.isLoading || referenceQuery.isLoading)) ||
       (sparklineEnabled && sparklineQuery.isLoading));
 
-  return { active, loading, value, delta, deltaPct, sparklinePoints };
+  return { active, loading, hasResolvedValue, value, delta, deltaPct, sparklinePoints };
+}
+
+function displayValue(value: number | null | undefined): string {
+  return value === null || value === undefined || Number.isNaN(value) ? "—" : String(value);
 }
 
 function deltaLabel(delta: number, deltaPct: number | null, mode: ReferenceMode): string {
@@ -295,7 +311,7 @@ export function registerIndicatorWidget(): void {
           ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
           : data.records.length;
       const value =
-        comparison.active && referencePeriod && comparison.value !== null
+        comparison.active && referencePeriod && comparison.hasResolvedValue
           ? comparison.value
           : flatValue;
 
@@ -322,7 +338,9 @@ export function registerIndicatorWidget(): void {
             hasGeometry={data.hasGeometry}
           />
           <div className="flex items-center gap-1">
-            <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
+            <span className="text-2xl font-semibold text-[var(--gs-color-text)]">
+              {displayValue(value)}
+            </span>
             {level && (
               <span
                 aria-label={
