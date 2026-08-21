@@ -8,14 +8,27 @@ default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: local
     hooks:
+      # SP-22, résidu de revue finale : `uv run --project core ruff …` avec
+      # cwd = racine du dépôt (le cwd réel de pre-commit) et un chemin passé
+      # en argument relatif à la racine (`core/tests/....py`) ne respecte
+      # PAS `force-exclude`/`extend-exclude` de `core/pyproject.toml` — mesuré
+      # : ruff résout bien ce `pyproject.toml` (les règles `I`/`E`/`F` qu'il
+      # déclare s'appliquent), mais matche le motif d'exclusion contre un
+      # chemin relatif à la racine du *projet* ruff (`core/`), pas à la
+      # racine du dépôt d'où l'argument est fourni — `core/tests/x.py` ne
+      # matche jamais `tests/x.py`. Seul `cd core` puis un chemin déjà
+      # relatif à `core/` fait fonctionner l'exclusion (vérifié sur fixture
+      # hors dépôt). Idiome `"${@#core/}"` déjà éprouvé dans ce fichier pour
+      # les hooks shell (`I2`, historique) : `cd core` puis on retire le
+      # préfixe `core/` de chaque chemin reçu avant de le passer à ruff.
       - id: ruff-check
         name: ruff check (core)
-        entry: uv run --project core ruff check --fix
+        entry: bash -c 'cd core && uv run ruff check --fix "${@#core/}"' --
         language: system
         files: ^core/.*\.py$
       - id: ruff-format
         name: ruff format (core)
-        entry: uv run --project core ruff format
+        entry: bash -c 'cd core && uv run ruff format "${@#core/}"' --
         language: system
         files: ^core/.*\.py$
       - id: lint-imports
