@@ -13,6 +13,42 @@ non câblées dans la stack packagée (SP-17a, SP-17b, tileset3d, et
 `CORE_ETL_ENABLED` trouvée en écrivant ces tests). Chaque règle ci-dessous
 correspond à une de ces découvertes, et échoue sur le dépôt tel qu'il était
 avant SP-21.
+
+Écrire ces règles en a trouvé quatre instances de plus de la même classe, à
+garder dans la raison d'être — ce fichier ne documente pas un incident clos
+mais un mode d'échec qui se reproduit :
+
+- trois allowlists d'egress SSRF (`CORE_PIPELINES_/HARVEST_/
+  ALERTS_EGRESS_ALLOWLIST`) câblées sur zéro service, deux des trois pourtant
+  documentées dans `.env.example` — même piège de lecture que
+  `CORE_ETL_ENABLED` (trouvées en passant la règle 3 d'un grep à un résolveur
+  AST, tâche 3) ;
+- `titiler` qui écoute sur le port 80 alors que `core` proxifie chaque tuile
+  de terrain 3D vers `titiler:8000` — le terrain 3D hébergé ne pouvait pas
+  fonctionner du tout en stack packagée (trouvée en posant sa sonde,
+  tâche 7) ;
+- `S3_EXPORTS_BUCKET`/`S3_APPEXPORTS_BUCKET` lues par `core` et par `worker`
+  (file `etl`) mais câblées seulement sur `worker`/`export-worker`/
+  `appexport-runtime-builder` — sans effet visible, le défaut applicatif
+  coïncidant avec la valeur du compose (revue finale SP-21) ;
+- sept noms de `.env.example` (identifiants et buckets S3) présentés comme
+  réglables alors qu'aucun n'est substitué nulle part, plus `MARTIN_SECRET`,
+  généré par `scripts/bootstrap-env.sh` et lu par personne (revue finale
+  SP-21, d'où la règle `test_every_documented_env_var_is_wired_or_declared_inert`).
+
+Deux limites de périmètre à connaître avant de lire un test vert comme une
+preuve plus large qu'elle n'est :
+
+- les règles qui lisent du code source ne lisent que `core/app/`. La moitié
+  shell d'une capacité n'est pas couverte : SP-17a, par exemple, a aussi
+  besoin de `VITE_CORE_URL`/`SHELL_BASE_URL` côté `shell`, et c'est
+  précisément par là que sa revue finale a trouvé deux variables inertes.
+  Couvrir `shell/` demanderait de résoudre les lectures
+  `import.meta.env.VITE_*` — non fait ;
+- ces règles lisent des fichiers YAML. Elles ne démarrent rien, ne prouvent
+  pas qu'un tag existe réellement au registre (seul `docker manifest
+  inspect`, à la main, le fait) et ne prouvent pas qu'un
+  `docker compose pull && up` de l'overlay complet aboutisse.
 """
 
 import ast
@@ -308,7 +344,20 @@ def test_every_core_env_var_is_wired_to_a_service():
     """Une variable lue par le cœur mais absente de l'environnement de tout
     service est un réglage inatteignable : l'opérateur la met dans son .env,
     rien ne change, aucun signal. C'est le mode d'échec de SP-17a, SP-17b,
-    tileset3d — et de CORE_ETL_ENABLED, trouvée par cette règle."""
+    tileset3d — et de CORE_ETL_ENABLED, trouvée par cette règle.
+
+    Limite assumée (revue finale SP-21, item 5) : `_wired_env_vars()` fait
+    l'union de l'`environment:` de TOUS les services — la règle sait que la
+    variable est câblée *quelque part*, jamais sur quel process précis. Elle
+    a donc laissé passer `S3_EXPORTS_BUCKET`/`S3_APPEXPORTS_BUCKET`, lues par
+    `core` (app/main.py, app/export/routes.py, app/reports/routes.py,
+    app/appexport/routes.py) mais câblées jusqu'ici seulement sur
+    `worker`/`export-worker`/`appexport-runtime-builder` — sans effet visible
+    puisque le défaut applicatif coïncidait avec la valeur du compose, mais
+    un accident du même genre que cette règle existe pour éliminer. Un
+    lecteur futur ne doit pas sur-interpréter un test vert ici comme « câblé
+    sur le bon process » : il faudrait une carte site-de-lecture→service
+    pour ça, qui n'existe pas."""
     unwired = core_env_vars() - _wired_env_vars() - ENV_WIRING_EXEMPTIONS
     assert not unwired, (
         f"variables lues par core/app/ et câblées sur aucun service : "
@@ -317,19 +366,87 @@ def test_every_core_env_var_is_wired_to_a_service():
     )
 
 
+def compose_substitutions() -> set[str]:
+    """Tout nom apparaissant dans une substitution `${VAR}` du compose de
+    base ou de l'overlay de production."""
+    substitutions = set()
+    for path in (BASE, PROD):
+        substitutions |= set(re.findall(r"\$\{([A-Z0-9_]+)", path.read_text()))
+    return substitutions
+
+
+def documented_env_vars(include_commented: bool = True) -> set[str]:
+    """Noms de variable présents dans .env.example. Par défaut (
+    `include_commented=True`), voit aussi les lignes commentées
+    (`#S3_CDC_BUCKET=…`) — la convention établie tâche 4 pour « découvrable,
+    pas réglable ». `include_commented=False` ne renvoie que les lignes
+    ACTIVES (`VAR=valeur`, sans `#` en tête) : celles qu'un opérateur lira
+    comme un réglage possible."""
+    pattern = r"^#?\s*([A-Z0-9_]+)=" if include_commented else r"^([A-Z0-9_]+)="
+    return set(re.findall(pattern, ENV_EXAMPLE.read_text(), re.MULTILINE))
+
+
 def test_every_compose_substitution_is_documented():
     """Toute valeur que l'opérateur doit fournir (`${VAR}`) doit être
     découvrable dans .env.example. La règle ne porte QUE sur les
     substitutions : les valeurs dérivées calculées dans le compose
     (DATABASE_URL, OTEL_*) n'ont rien à y faire — les y mettre inviterait à
     les régler à la main."""
-    substitutions = set()
-    for path in (BASE, PROD):
-        substitutions |= set(re.findall(r"\$\{([A-Z0-9_]+)", path.read_text()))
-    documented = set(re.findall(r"^#?\s*([A-Z0-9_]+)=", ENV_EXAMPLE.read_text(), re.MULTILINE))
-    undocumented = substitutions - documented
+    undocumented = compose_substitutions() - documented_env_vars()
     assert not undocumented, (
         f"substitutions de compose absentes de .env.example : {sorted(undocumented)}."
+    )
+
+
+# Noms activement documentés dans .env.example (donc, aux yeux d'un
+# opérateur, réglables) mais légitimement substitués nulle part dans aucun
+# des deux compose. Liste fermée, comme ENV_WIRING_EXEMPTIONS/
+# BACKUP_EXCLUDED_BUCKETS ci-dessus : une nouvelle entrée est une décision
+# écrite, jamais un oubli qui se glisse en silence.
+DOCUMENTED_BUT_UNWIRED_EXEMPTIONS = {
+    # Dérive pré-existante documentée depuis SP-1d3/SP-9 : générée par
+    # scripts/bootstrap-env.sh (qui a besoin d'une ligne active pour son
+    # `sed`), mais consommée par aucun service — martin ne lit jamais
+    # MARTIN_SECRET. Hors périmètre à ces deux occasions passées ; toujours
+    # vrai (revue finale SP-21, item 2).
+    "MARTIN_SECRET",
+}
+
+
+def test_every_documented_env_var_is_wired_or_declared_inert():
+    """Sens inverse de la règle précédente (revue finale SP-21, item 3) :
+    `test_every_compose_substitution_is_documented` ne vérifie que
+    ${VAR} ⇒ documenté. Rien ne vérifiait documenté ⇒
+    substitué-ou-explicitement-inerte — la direction qui compte pour
+    l'illusion « documenté donc câblé » (le nom existe dans .env.example,
+    donc l'opérateur croit pouvoir le régler).
+
+    Deux des six instances de la classe de bug que ce fichier existe pour
+    arrêter ont exactement cette forme (un nom actif de .env.example
+    substitué nulle part) plutôt que la forme « câblé sur le mauvais
+    service » des autres : `CORE_ETL_ENABLED` (la découverte fondatrice qui
+    a fait naître ce fichier de tests) et les identifiants/buckets S3 +
+    `MARTIN_SECRET` corrigés par l'item 2 de cette même revue finale (7 noms
+    passés en ligne commentée, 1 exempté ci-dessus). Sans cette règle,
+    chacune de ces découvertes restait un jugement humain non outillé,
+    aussi reproductible à l'identique par le prochain bucket ou identifiant
+    documenté par erreur comme réglable.
+
+    Une ligne commentée (`#S3_CDC_BUCKET=…`) n'est PAS une ligne active :
+    `documented_env_vars(include_commented=False)` ne la voit pas, donc le
+    correctif de l'item 2 (commenter ces lignes) satisfait cette règle au
+    lieu d'avoir besoin d'une exemption — c'est précisément la distinction
+    que `DOCUMENTED_BUT_UNWIRED_EXEMPTIONS` n'a pas besoin de porter pour
+    elles."""
+    active = documented_env_vars(include_commented=False)
+    unwired = active - compose_substitutions() - DOCUMENTED_BUT_UNWIRED_EXEMPTIONS
+    assert not unwired, (
+        f"noms actifs (non commentés) de .env.example jamais substitués "
+        f"dans un compose : {sorted(unwired)}. Soit ce nom doit être câblé "
+        "(`${...}` dans docker-compose.yml/.prod.yml), soit il est "
+        "légitimement inerte et doit passer en ligne commentée "
+        "(`#VAR=valeur`, convention tâche 4) ou rejoindre "
+        "DOCUMENTED_BUT_UNWIRED_EXEMPTIONS avec sa raison écrite."
     )
 
 
