@@ -27,6 +27,18 @@ MVT_EXTENT = 4096
 MVT_BUFFER = 64
 MAX_TILE_ZOOM = 24
 MVT_MEDIA_TYPE = "application/vnd.mapbox-vector-tile"
+# Bornes de coût d'UNE tuile. La route est atteignable anonymement sur une
+# collection publique et n'écrit aucun audit (décision de spec §3.1) : sans
+# ces deux bornes, un seul GET .../tiles/0/0/0.mvt sur une collection dense
+# scanne et agrège toute la table en une tuile en mémoire, sans trace. Même
+# classe de garde que le sandbox SQL analyste (app/analytics/sql_sandbox.py :
+# ROW_CAP + STATEMENT_TIMEOUT_S), transposée à Postgres.
+#
+# 5000 plutôt que les 100 de GET /items (routes.py) : une tuile porte
+# légitimement des milliers d'entités là qu'une page de liste en montre
+# quelques dizaines ; au-delà, le rendu client décroche de toute façon.
+MAX_TILE_FEATURES = 5000
+TILE_STATEMENT_TIMEOUT_MS = 10_000
 
 router = APIRouter()
 
@@ -77,8 +89,24 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
         # Le filtre porte sur la géométrie brute pour rester indexable par le
         # GiST posé par apply_collection_ddl : ST_Transform à gauche du && le
         # rendrait inutilisable.
-        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid)"
+        f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid) "
+        # Plafond DANS la sous-requête : c'est le nombre de lignes lues et
+        # transformées qu'il faut borner, pas la sortie de l'agrégat (une
+        # tuile est toujours une seule ligne).
+        "LIMIT :max_features"
         ") AS tile WHERE tile.geom IS NOT NULL"
+    )
+
+
+def apply_tile_statement_timeout(session: Session) -> None:
+    """Borne la durée d'UNE requête de tuile, dans la transaction courante.
+
+    `set_config(..., true)` paramétré plutôt qu'un `SET LOCAL` interpolé —
+    même patron que `rls_scope` (app/features/rls.py). Transaction-local :
+    rien ne fuit sur la connexion suivante à travers PgBouncer."""
+    session.execute(
+        text("SELECT set_config('statement_timeout', :ms, true)"),
+        {"ms": str(TILE_STATEMENT_TIMEOUT_MS)},
     )
 
 
@@ -112,6 +140,7 @@ def get_collection_tile(
     # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
     # jamais d'un WHERE applicatif.
     with rls(session, col.tenant_id):
+        apply_tile_statement_timeout(session)
         tile = session.execute(
             text(sql),
             {
@@ -123,6 +152,7 @@ def get_collection_tile(
                 "buffer": MVT_BUFFER,
                 "srid": info.srid or 4326,
                 "fid": mvt_feature_id_column(info),
+                "max_features": MAX_TILE_FEATURES,
             },
         ).scalar()
     if not tile:

@@ -155,6 +155,51 @@ def test_rows_of_another_tenant_never_reach_the_tile(pg_app):
     assert b"Chez le voisin" not in content
 
 
+def test_a_dense_tile_is_truncated_to_the_feature_cap(pg_app, monkeypatch):
+    """I3 de la revue finale SP-24 : le plafond est un vrai LIMIT exécuté par
+    Postgres, pas seulement une chaîne présente dans le SQL. Plafond abaissé
+    à 2 pour ne pas avoir à insérer 5000 lignes."""
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 2)
+    for titre in ("Alpha", "Bravo", "Charlie"):
+        _insert(client, titre)
+    r = client.get(TILE_PATH)
+    assert r.status_code == 200
+    # Lesquelles sortent n'est pas déterministe (aucun ORDER BY, et il n'en
+    # faut pas : trier coûterait exactement ce que le plafond évite) — leur
+    # NOMBRE l'est.
+    assert sum(1 for t in (b"Alpha", b"Bravo", b"Charlie") if t in r.content) == 2
+
+
+def test_a_tile_request_sets_a_transaction_local_statement_timeout(pg_app):
+    """La borne de durée est réellement en vigueur côté serveur pendant la
+    requête, et ne survit pas à la transaction (sinon elle fuirait sur la
+    connexion suivante à travers PgBouncer)."""
+    from sqlalchemy import text as sa_text
+
+    from app.features import tiles as tiles_module
+
+    client, _, Session = pg_app
+    _insert(client, "Bornée")
+    seen: list[str] = []
+    original = tiles_module.apply_tile_statement_timeout
+
+    def spy(session):
+        original(session)
+        seen.append(session.execute(sa_text("SHOW statement_timeout")).scalar())
+
+    tiles_module.apply_tile_statement_timeout = spy
+    try:
+        assert client.get(TILE_PATH).status_code == 200
+    finally:
+        tiles_module.apply_tile_statement_timeout = original
+    assert seen == ["10s"]
+    with Session() as s:
+        assert s.execute(sa_text("SHOW statement_timeout")).scalar() != "10s"
+
+
 def test_serving_a_tile_writes_no_audit_row(pg_app):
     """Décision de spec §3.1 : une vue de carte produit des centaines de
     tuiles, les auditer noierait la table."""
