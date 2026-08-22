@@ -15,7 +15,6 @@ if (typeof (globalThis.Blob?.prototype as { text?: unknown } | undefined)?.text 
 function makeClient(token: string | undefined = "test-token") {
   return createItemClient({
     coreUrl: "https://core.test",
-    martinUrl: "https://martin.test",
     getToken: () => token,
   });
 }

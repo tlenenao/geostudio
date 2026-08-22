@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 export type AppConfig = {
   coreUrl: string;
-  martinUrl: string;
   oidcAuthority: string;
   oidcClientId: string;
   oidcRedirectUri: string;
@@ -52,7 +51,6 @@ export function loadConfig(
 
   return {
     coreUrl: merged.VITE_CORE_URL!,
-    martinUrl: merged.VITE_MARTIN_URL ?? "",
     oidcAuthority: merged.VITE_OIDC_AUTHORITY ?? "",
     oidcClientId: merged.VITE_OIDC_CLIENT_ID ?? "",
     oidcRedirectUri: merged.VITE_OIDC_REDIRECT_URI ?? "",

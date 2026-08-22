@@ -33,14 +33,11 @@ services:
   martin:
     restart: unless-stopped
     ports: !reset []
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.martin.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/tiles`)
-      - traefik.http.routers.martin.entrypoints=web
-      - traefik.http.routers.martin.priority=15
-      - traefik.http.routers.martin.middlewares=strip-tiles@docker
-      - traefik.http.services.martin.loadbalancer.server.port=3000
-      - traefik.http.middlewares.strip-tiles.stripprefix.prefixes=/tiles
+    # Plus de route publique depuis SP-24 : Martin se connecte en propriétaire
+    # des tables (donc hors RLS) et n'a aucune notion de collection ni de
+    # can(). Les tuiles vectorielles d'une collection passent désormais par
+    # GET /collections/{id}/tiles/{z}/{x}/{y}.mvt, servi par le cœur. Le
+    # service reste joignable sur le réseau interne.
 
   titiler:
     restart: unless-stopped
@@ -144,7 +141,6 @@ services:
     ports: !reset []
     environment:
       VITE_CORE_URL: https://${GEOSTUDIO_PUBLIC_HOST}/api
-      VITE_MARTIN_URL: https://${GEOSTUDIO_PUBLIC_HOST}/tiles
       VITE_OIDC_AUTHORITY: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       VITE_OIDC_CLIENT_ID: geostudio-shell
       VITE_OIDC_REDIRECT_URI: https://${GEOSTUDIO_PUBLIC_HOST}/
