@@ -1607,6 +1607,57 @@ deux (et un `--` côté entry).
     skipped, 0 failed**. `uvx pre-commit run --all-files` : 5/5 hooks
     verts. OpenAPI/types TS confirmés synchronisés (`git status
     --porcelain` vide sur les deux).
+  - **Revue finale de branche (2026-08-23)** : 0 Critical, 5 Important, tous
+    invisibles à une revue par tâche, tous corrigés — **C1** `isHostedCoreUrl`
+    ne comparait pas le chemin de base de `VITE_CORE_URL` : l'overlay prod
+    (`docker-compose.prod.yml`) le pose à `https://hôte/api`, donc une vraie
+    URL de tuile y est `/api/collections/…`, jamais `/collections/…` — le
+    jeton de session ne s'attachait **jamais** en production, invisible en
+    test où toutes les URL de cœur étaient sans chemin. Comparaison étendue
+    au chemin de base. **I1** géométrie inconnue/mixte (`geometryKind`
+    absent — colonne PostGIS non typée, cas courant d'une ingestion mêlant
+    Point/MultiPoint ou LineString/MultiLineString) posait un unique layer
+    "fill" : une couche de points ou de lignes ne rendait **rien**,
+    silencieusement, sans erreur. Pose désormais trois sous-couches typées
+    (`{id}__point/line/polygon`), chacune filtrée par
+    `["geometry-type"]`, paint scindé par préfixe (`circle-`/`line-`/
+    `fill-`), popup toujours résolu par l'id de la COUCHE de la config (pas
+    de la sous-couche), rollback des sous-couches restantes si l'une échoue
+    à l'ajout. **I3** aucun plafond de coût sur la route tuiles, atteignable
+    anonymement sur une collection publique et sans aucune trace d'audit
+    (décision de spec §3.1) : un seul GET sur une collection dense scannait
+    et agrégeait toute la table en mémoire. `LIMIT :max_features` (5000,
+    posé DANS la sous-requête MVT — c'est le nombre de lignes lues qu'il
+    faut borner, pas la sortie de l'agrégat, toujours une seule ligne) +
+    `statement_timeout` transaction-local (10s, `set_config(..., true)`,
+    même patron que `rls_scope`), même classe de garde que le sandbox SQL
+    analyste transposée à Postgres. **I4** la prop `exprContext` de
+    `MapView` (Task 8/9) n'avait aucun site de montage réel capable de la
+    remplir (ni variables ni contexte d'app dans `MapEditorPage`, ni
+    ExprContext de l'ActionBus exposé par `mapWidget`/`ExplorerDrawer`) —
+    une capacité annoncée et vide à l'exécution. Retirée ; `resolvePopupContent`
+    ne prend plus de contexte externe, construit `{vars: {}, user: {name:
+    ""}}` en interne — le seul vocabulaire d'un gabarit de popup est
+    `record.*`. **I5** chaque frappe dans `PopupEditor` produisait un
+    nouveau tableau `config.layers` qui détruisait/recréait TOUTES les
+    sources/couches MapLibre (scintillement, re-requêtes de tuiles, refetch
+    GeoJSON complet pour une couche `feature`) pour un simple edit de
+    popup, qui n'affecte que le rendu React d'un clic déjà survenu. `layersKey`
+    mémoïsé (projection excluant `popup`) découple désormais l'effet
+    d'application des couches des edits popup-only. Session interrompue en
+    cours de correction (fix déjà écrit mais laissant le build shell cassé —
+    signature de `resolvePopupContent` non alignée avec son site d'appel) ;
+    reprise par une session suivante, qui a complété le fix et ajouté la
+    couverture de test manquante pour les 5 comportements ci-dessus, avec
+    vérification RED→GREEN réelle (`git stash` du fichier de production pour
+    confirmer l'échec contre le code d'avant fix, pas seulement des tests
+    écrits après coup contre du code déjà correct). Preuves de sortie
+    post-correction : core `uv run pytest` (PostGIS réel) → **1868 passed, 5
+    skipped**, couverture **92,77 %** (seuil 85) ; shell `npx vitest run` →
+    **159 fichiers / 1387 tests** (+10 vs Task 17), couverture **89,56 %**
+    (seuil 88) ; `npm run build`/`tsc --noEmit`/lint verts ; OpenAPI/types TS
+    inchangés (fix interne, aucune surface API modifiée) ; `uvx pre-commit
+    run --all-files` 5/5 verts. **SP-24 clos pour de bon.**
 
 ### À venir
 
