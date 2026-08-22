@@ -593,11 +593,18 @@ export const MapView = forwardRef<
     };
   }, [popup]);
 
-  // Ferme le popup quand la couche qui l'a ouvert disparaît de la config
-  // (suppression de la couche, ou de tout MapLayer partageant cet id) — un
-  // popup ne doit jamais survivre à sa propre source de données.
+  // Ferme le popup quand la couche qui l'a ouvert disparaît de la config, ou
+  // quand elle garde son id mais perd sa configuration `popup` — l'absence de
+  // `popup` sur la couche EST l'état désactivé (types.ts), et
+  // `resolvePopupContent` se réévalue à chaque rendu : le laisser ouvert
+  // ferait retomber sur sa branche "pas de config → tout afficher", exposant
+  // des champs que l'auteur avait explicitement exclus. Un popup ne doit
+  // jamais survivre à la disparition de sa propre configuration.
   useEffect(() => {
-    if (popup && !config.layers.some((l) => l.id === popup.layerId)) setPopup(null);
+    if (!popup) return;
+    const layer = config.layers.find((l) => l.id === popup.layerId);
+    const stillConfigured = !!layer && "popup" in layer && !!layer.popup;
+    if (!stillConfigured) setPopup(null);
   }, [config.layers, popup]);
 
   useImperativeHandle(

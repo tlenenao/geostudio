@@ -1094,6 +1094,26 @@ test("the popup closes when the layer that opened it disappears from the config"
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("the popup closes when its layer keeps its id but loses its popup config", () => {
+  // Le popup ne doit pas seulement figer son affichage : `resolvePopupContent`
+  // se réévalue à chaque rendu, donc un `popup` retiré de la config sans
+  // fermer le popup ferait retomber sur la branche "pas de config → tout
+  // afficher", exposant un champ que l'auteur avait explicitement exclu.
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { fields: [{ name: "nom" }] } })} />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { nom: "Tulle", secret: "ne-pas-afficher" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByText("secret")).not.toBeInTheDocument();
+  rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
 test("a template popup renders its sanitized html", () => {
   render(
     <MapView
