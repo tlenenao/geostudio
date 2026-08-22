@@ -168,6 +168,18 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
     row = rows[0]
     if label not in row:
         raise AlertEvaluationError(f"expected measure '{label}' not present in aggregate result")
+    if row[label] is None:
+        # Depuis SP-23, median/percentile/stddev n'ont pas de COALESCE (design
+        # §3.1) : « indéfini n'est pas zéro ». float(None) lèverait un
+        # TypeError, avalé par le filet large de evaluate_alert_task en un
+        # « erreur interne : float() argument must be… » que l'utilisateur ne
+        # peut pas interpréter. Message explicite, conformément à la règle
+        # SP-16b « échouer proprement plutôt que mal-évaluer en silence ».
+        raise AlertEvaluationError(
+            f"l'agrégat « {label} » n'a pas de valeur définie sur cette fenêtre "
+            "(médiane, centile ou écart-type sur un ensemble vide, non numérique "
+            "ou d'une seule ligne)"
+        )
     return float(row[label])
 
 

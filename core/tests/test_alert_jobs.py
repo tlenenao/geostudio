@@ -533,3 +533,55 @@ def test_evaluate_alert_task_writes_audit_log_on_unexpected_error(env, monkeypat
         ).all()
         assert len(rows) == 1
         assert "boom" in rows[0].payload["error"]
+
+
+def test_evaluate_alert_task_reports_an_undefined_aggregate_instead_of_an_internal_error(
+    env, monkeypatch
+):
+    """Depuis SP-23, median/percentile/stddev peuvent légitimement rendre NULL
+    (pas de COALESCE, design §3.1). `float(None)` produisait un TypeError avalé
+    par le filet large de la tâche, donc un message « erreur interne : float()
+    argument must be… » illisible (revue finale SP-23, I4b)."""
+    app, Session, tenant, alert_item_id = env
+    with Session() as s:
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        existing = configs_repo.get_config_by_item(s, alert_item_id)
+        dataset_item_id = existing.config.alert.datasetItemId
+        alert_item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="alert",
+            title="Médiane indéfinie",
+        )
+        # `category` est une colonne texte : TRY_CAST(... AS DOUBLE) la met
+        # toute à NULL, donc QUANTILE_CONT rend NULL — l'agrégat n'a pas de
+        # valeur définie sur cette fenêtre.
+        alert_config = BuilderConfig.model_validate(
+            _alert_body(dataset_item_id, query={"agg": "median", "field": "category"})
+        )
+        configs_repo.create_config(s, alert_config, item_id=alert_item.id, tenant_id=tenant.id)
+        evaluation = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=alert_item.id
+        )
+        s.commit()
+        undefined_alert_item_id, evaluation_id = alert_item.id, evaluation.id
+
+    alert_jobs.evaluate_alert_task.defer(evaluation_id=evaluation_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        latest = alerts_repo.get_latest_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=undefined_alert_item_id
+        )
+        assert latest.state == "error"
+        assert "pas de valeur définie" in latest.error
+        assert "erreur interne" not in latest.error

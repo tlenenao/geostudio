@@ -3,7 +3,11 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.analytics.aggregate import AggregateRequestBody
+from app.analytics.aggregate import (
+    AggregateRequestBody,
+    UnknownAggregateField,
+    _validate_p,
+)
 from app.configs.alert_condition import validate_condition_expr
 
 
@@ -333,6 +337,19 @@ class AlertRulePayload(BaseModel):
             raise ValueError(
                 "alert query must have at most one measure (v1 supports a single scalar per rule)"
             )
+        # `p` (le centile) fait partie de la validité d'une requête d'agrégat,
+        # mais _validate_p n'est appelé qu'à l'exécution (par
+        # _validate_fields, qui a besoin du schéma de la collection). Le
+        # rejouer ici — sur la requête simple ET sur l'unique mesure — est ce
+        # qui empêche une règle `percentile` sans `p` de s'enregistrer puis
+        # d'échouer en 400 à chaque tick de son cron, pour toujours (même
+        # raison d'être que _require_valid_message_template ci-dessus).
+        try:
+            _validate_p(self.query.agg, self.query.p, "p")
+            for i, m in enumerate(self.query.measures or []):
+                _validate_p(m.agg, m.p, f"measures[{i}].p")
+        except UnknownAggregateField as exc:
+            raise ValueError(f"invalid alert query: {exc.field}: {exc.message}") from exc
         return self
 
 
