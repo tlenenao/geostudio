@@ -48,6 +48,7 @@ import type {
   PipelineOpsCatalog,
   PipelinePayload,
   PipelineRun,
+  PopupConfig,
   PrintLayoutConfig,
   ReportRunStatus,
   ReportSchedulePayload,
@@ -73,6 +74,10 @@ type RawMapLayer = {
   dataUrl?: string | null;
   paint?: Record<string, unknown> | null;
   props?: Record<string, unknown> | null;
+  popup?: PopupConfig | null;
+  collectionId?: string | null;
+  geometryKind?: "point" | "line" | "polygon" | null;
+  pkColumn?: string | null;
 };
 
 function toFrontLayer(l: RawMapLayer): MapLayer {
@@ -85,6 +90,10 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         tilesUrl: l.tilesUrl ?? "",
         sourceLayer: l.sourceLayer ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.collectionId ? { collectionId: l.collectionId } : {}),
+        ...(l.geometryKind ? { geometryKind: l.geometryKind } : {}),
+        ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
       };
     case "raster":
       return {
@@ -105,7 +114,13 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
       return { ...base, kind: "tiles3d", url: l.url ?? "" };
     case "feature":
     default:
-      return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
+      return {
+        ...base,
+        kind: "feature",
+        url: l.url ?? "",
+        ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
+      };
   }
 }
 
@@ -305,10 +320,9 @@ function buildArcgisItemsUrl(
 
 export function createItemClient(opts: {
   coreUrl: string;
-  martinUrl?: string;
   getToken: () => string | undefined;
 }): ItemClient {
-  const { coreUrl, martinUrl, getToken } = opts;
+  const { coreUrl, getToken } = opts;
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = getToken();
@@ -390,25 +404,17 @@ export function createItemClient(opts: {
     }));
   }
 
-  async function fetchMartinSources(q?: string): Promise<LayerSource[]> {
-    if (!martinUrl) return [];
-    const res = await fetch(`${martinUrl}/catalog`);
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /catalog`);
-    const data = (await res.json()) as {
-      tiles?: Record<string, { description?: string }>;
-    };
-    const sources = Object.entries(data.tiles ?? {}).map(([id, meta]) => ({
-      id,
-      title: meta.description ?? id,
-      service: "martin" as const,
-      kind: "vector" as const,
-      tilesUrl: `${martinUrl}/${id}/{z}/{x}/{y}`,
-      sourceLayer: id,
-    }));
-    if (!q) return sources;
-    const needle = q.toLowerCase();
-    return sources.filter((s) => s.title.toLowerCase().includes(needle));
-  }
+  // Une collection sort désormais en couche TUILÉE servie par le cœur (SP-24) :
+  // elle passe à l'échelle, elle est autorisée par can(), et elle porte son
+  // collectionId — ce dont le popup et la symbologie SP-25 ont besoin.
+  const GEOMETRY_KINDS: Record<string, "point" | "line" | "polygon"> = {
+    Point: "point",
+    MultiPoint: "point",
+    LineString: "line",
+    MultiLineString: "line",
+    Polygon: "polygon",
+    MultiPolygon: "polygon",
+  };
 
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const token = getToken();
@@ -418,14 +424,24 @@ export function createItemClient(opts: {
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
     const data = (await res.json()) as {
-      collections?: { id: string; title?: string; featureCount?: number | null }[];
+      collections?: {
+        id: string;
+        title?: string;
+        featureCount?: number | null;
+        geometryType?: string | null;
+        pkColumn?: string | null;
+      }[];
     };
     return (data.collections ?? []).map((c) => ({
       id: c.id,
       title: c.title ?? c.id,
       service: "core" as const,
-      kind: "feature" as const,
-      url: `${coreUrl}/collections/${c.id}/items`,
+      kind: "vector" as const,
+      tilesUrl: `${coreUrl}/collections/${c.id}/tiles/{z}/{x}/{y}.mvt`,
+      sourceLayer: c.id,
+      collectionId: c.id,
+      geometryKind: c.geometryType ? GEOMETRY_KINDS[c.geometryType] : undefined,
+      pkColumn: c.pkColumn ?? undefined,
       featureCount: c.featureCount,
     }));
   }
@@ -618,7 +634,6 @@ export function createItemClient(opts: {
 
     async listLayerSources(params?: { q?: string }): Promise<LayerSource[]> {
       const results = await Promise.allSettled([
-        fetchMartinSources(params?.q),
         fetchCoreCollections(params?.q),
         fetchExternalRasterSources(params?.q),
         fetchHostedTileset3dSources(params?.q),

@@ -12,7 +12,6 @@ export default defineConfig({
       env: {
         VITE_AUTH_MODE: "mock",
         VITE_CORE_URL: "https://core.test",
-        VITE_MARTIN_URL: "https://martin.test",
       },
     },
     {

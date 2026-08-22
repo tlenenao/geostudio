@@ -17,6 +17,12 @@ def quote_ident(session: Session, identifier: str) -> str:
 _qi = quote_ident
 
 
+def spatial_index_name(table_name: str) -> str:
+    """Nom de l'index GiST d'une collection. Partagé avec la migration 0028 —
+    une seule définition, jamais deux conventions de nommage."""
+    return f"ix_{table_name}_geom_gist"
+
+
 def apply_collection_ddl(session: Session, table_name: str) -> None:
     t = _qi(session, table_name)
     stmts = [
@@ -37,6 +43,24 @@ def apply_collection_ddl(session: Session, table_name: str) -> None:
     ]
     for stmt in stmts:
         session.execute(text(stmt))
+    # Index spatial : sans lui, tout filtre bbox (OGC Features, geom_intersects
+    # du cross-filter SP-14n, tuiles MVT SP-24) est un scan complet de table.
+    # Le nom de la colonne de géométrie vient de geometry_columns, jamais de
+    # l'appelant.
+    geom_col = session.execute(
+        text(
+            "SELECT f_geometry_column FROM geometry_columns "
+            "WHERE f_table_schema = 'public' AND f_table_name = :t"
+        ),
+        {"t": table_name},
+    ).scalar()
+    if geom_col:
+        session.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {_qi(session, spatial_index_name(table_name))} "
+                f"ON public.{t} USING GIST ({_qi(session, geom_col)})"
+            )
+        )
     # Les INSERT sous gis_rls doivent pouvoir tirer la séquence de la PK (serial).
     seq = session.execute(
         text(

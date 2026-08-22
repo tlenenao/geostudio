@@ -24,7 +24,6 @@ function AppShell() {
     () =>
       createItemClient({
         coreUrl: config.coreUrl,
-        martinUrl: config.martinUrl,
         getToken: buildExportAwareToken(getAccessToken),
       }),
     [getAccessToken],

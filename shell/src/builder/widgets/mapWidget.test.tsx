@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { WidgetContext } from "../registry";
-import type { DataSourceState, ItemClient } from "../../api/types";
+import type { DataSourceState, ItemClient, MapConfig } from "../../api/types";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
@@ -15,6 +15,7 @@ import { ExplorerProvider } from "../ExplorerContext";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
+let lastConfig: MapConfig | null = null;
 
 vi.mock("../../map/MapView", () => ({
   MapView: forwardRef(
@@ -24,7 +25,7 @@ vi.mock("../../map/MapView", () => ({
         onViewChange,
         onFeatureClick,
       }: {
-        config: { layers: { url?: string; renderAs?: string; paint?: Record<string, unknown> }[] };
+        config: MapConfig;
         onViewChange?: (v: {
           center: [number, number];
           zoom: number;
@@ -38,15 +39,21 @@ vi.mock("../../map/MapView", () => ({
       },
       ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
     ) => {
+      lastConfig = config;
       useImperativeHandle(ref, () => ({ flyTo: flyToSpy, highlight: highlightSpy }));
       const layer = config.layers[0];
+
+      const url = layer && "url" in layer ? ((layer as any).url ?? "") : "";
+
+      const renderAs = layer && "renderAs" in layer ? ((layer as any).renderAs ?? "") : "";
+
+      const paint = layer && "paint" in layer ? JSON.stringify((layer as any).paint ?? {}) : "{}";
       return (
         <div
           data-testid="mapview"
           onClick={() => onViewChange?.({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] })}
         >
-          layers:{config.layers.length} url:{layer?.url ?? ""} renderAs:{layer?.renderAs ?? ""}{" "}
-          paint:{JSON.stringify(layer?.paint ?? {})}
+          layers:{config.layers.length} url:{url} renderAs:{renderAs} paint:{paint}
           <button
             type="button"
             data-testid="feature"
@@ -71,6 +78,7 @@ beforeEach(() => {
   registerBuiltinWidgets();
   flyToSpy.mockClear();
   highlightSpy.mockClear();
+  lastConfig = null;
 });
 const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
   loading: false,
@@ -96,6 +104,54 @@ function withClient(
       <ItemClientProvider client={client}>{children}</ItemClientProvider>
     </QueryClientProvider>
   );
+}
+
+function renderPropsPanel({
+  props,
+  onChange,
+  dataSources = [],
+}: {
+  props: Record<string, unknown>;
+  onChange: ReturnType<typeof vi.fn>;
+
+  dataSources?: any[];
+}) {
+  const Panel = getWidget("map")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={props} dataSources={dataSources} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function renderWidget({
+  props,
+  ctx = {},
+}: {
+  props: Record<string, unknown>;
+  ctx?: Partial<WidgetContext>;
+}) {
+  const Map = getWidget("map")!.Component;
+  const defaultData = {
+    loading: false,
+    error: false,
+    records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } }],
+    url: "https://core/collections/test/items",
+  };
+  const defaultCtx: WidgetContext = {
+    mode: "runtime",
+    data: { ...defaultData, ...ctx?.data },
+    ...ctx,
+  } as WidgetContext;
+  render(withClient(<Map props={props} ctx={defaultCtx} />));
+}
+
+function lastMapConfig(): MapConfig {
+  if (!lastConfig) throw new Error("No MapConfig captured yet");
+  return lastConfig;
 }
 
 test("registers with a 6x6 default size", () => {
@@ -406,4 +462,39 @@ test("shows a categorical symbology legend once the color domain resolves", asyn
   );
   expect(await screen.findByText("Nord")).toBeInTheDocument();
   expect(screen.getByText("Sud")).toBeInTheDocument();
+});
+
+test("the props panel exposes the shared popup editor", async () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "ds1" }, onChange });
+  await userEvent.click(screen.getByRole("checkbox", { name: "Afficher les attributs au clic" }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ popup: {} }));
+});
+
+test("the popup editor accepts a hand-typed field name", async () => {
+  // PropsPanel ne reçoit que { props, onChange, dataSources }
+  // (builder/registry.ts:33-37) : ni schéma ni enregistrements. La saisie
+  // libre est donc le seul chemin ici — le même que les champs « Champ
+  // couleur » et « Champ taille » voisins.
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "ds1", popup: {} }, onChange });
+  await userEvent.type(screen.getByLabelText("Nom du champ à ajouter"), "nom");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter le champ" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ popup: { fields: [{ name: "nom" }] } }),
+  );
+});
+
+test("the configured popup reaches the layer the widget builds", async () => {
+  renderWidget({ props: { dataSourceId: "ds1", popup: { titleField: "nom" } } });
+
+  await screen.findByTestId("mapview");
+  expect((lastMapConfig().layers[0] as any).popup).toEqual({ titleField: "nom" });
+});
+
+test("no popup configured means no popup on the layer", async () => {
+  renderWidget({ props: { dataSourceId: "ds1" } });
+
+  await screen.findByTestId("mapview");
+  expect((lastMapConfig().layers[0] as any).popup).toBeUndefined();
 });

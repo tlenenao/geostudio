@@ -45,6 +45,35 @@ const DEFAULT_MAP_CONFIG = {
   },
 } as const;
 
+// Task 16 (SP-24 — la preuve de sortie) : une carte publiée portant une seule
+// couche tuilée avec popup, servie sous l'item "map-1". Vue à zoom 0 pour
+// coller à la fixture MVT (tuile 0/0/0, cf. core/scripts/dump_mvt_fixture.py).
+const TILED_MAP_CONFIG = {
+  kind: "map",
+  map: {
+    basemap: { style: "https://demotiles.maplibre.org/style.json" },
+    view: { center: [0, 0], zoom: 0 },
+    layers: [
+      {
+        id: "communes",
+        title: "Communes",
+        visible: true,
+        kind: "vector",
+        // https, pas http : isHostedCollectionUrl (MapView.tsx) compare des
+        // origines complètes (protocole inclus) avant d'attacher le jeton de
+        // session — même origine que VITE_CORE_URL ("https://core.test",
+        // playwright.config.ts) requise pour que la tuile soit authentifiée.
+        tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+        sourceLayer: "communes",
+        collectionId: "communes",
+        geometryKind: "polygon",
+        pkColumn: "id",
+        popup: { titleField: "nom", fields: [{ name: "population", label: "Habitants" }] },
+      },
+    ],
+  },
+} as const;
+
 const DEFAULT_APP_CONFIG = {
   kind: "app",
   theme: {},
@@ -288,6 +317,17 @@ export async function mockCore(page: Page) {
             config: stored ?? DEFAULT_MAP_CONFIG,
           },
         });
+      } else if (itemId === "map-1") {
+        // Published map with a tiled layer + popup (Task 16, SP-24 output
+        // proof) — see map-popup.spec.ts.
+        await route.fulfill({
+          json: {
+            id: "cfg-map-1",
+            itemId: "map-1",
+            kind: "map",
+            config: TILED_MAP_CONFIG,
+          },
+        });
       } else {
         // App/dashboard items (9, 1, …) — return stored config if present, else empty app config.
         // Item "1" carries the config-history/rollback story (Task 18):
@@ -361,8 +401,22 @@ export async function mockCore(page: Page) {
   });
 
   // Cœur OGC API collections — filtered by `q` when present (LayerPicker
-  // search, Task 11/12); default `q=null` → `[]`, matching the pre-Task-12
-  // behavior for every spec that never searches the LayerPicker.
+  // search, Task 11/12), all visible collections otherwise (real backend
+  // behavior: core/app/collections/routes.py's list_collections passes
+  // q=None straight through to list_visible_collections, which returns
+  // everything unfiltered — it does not gate on q being present).
+  //
+  // Task 16 (SP-24) found and fixed a stale divergence here: this route used
+  // to return `[]` by default ("matching the pre-Task-12 behavior for every
+  // spec that never searches the LayerPicker" — back when a since-removed
+  // martin-catalog route was the *actual* unconditional source of the
+  // "Communes" layer-picker entry). Task 15 ("propose une seule entrée
+  // tuilée par collection", commit 57fc36c) dropped that redundant
+  // martin-catalog call from listLayerSources (itemClient.ts) — collections
+  // now flow through this route alone — but never updated this mock's
+  // default to match, silently breaking map-editor.spec.ts's un-searched
+  // "click Communes" step. Surfaced by running the full E2E suite here for
+  // the first time since that commit, exactly the SP-23 task 18 precedent.
   const ALL_COLLECTIONS = [
     { id: "communes", title: "Communes", featureCount: 12 },
     { id: "incidents", title: "Incidents voirie", featureCount: 3 },
@@ -385,7 +439,7 @@ export async function mockCore(page: Page) {
     const q = url.searchParams.get("q");
     const collections = q
       ? ALL_COLLECTIONS.filter((c) => c.title.toLowerCase().includes(q.toLowerCase()))
-      : [];
+      : ALL_COLLECTIONS;
     await route.fulfill({ json: { collections } });
   });
 

@@ -73,6 +73,20 @@ class BaseMap(BaseModel):
     style: str
 
 
+class PopupField(BaseModel):
+    name: str
+    label: str | None = None
+
+
+class PopupConfig(BaseModel):
+    """Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur
+    titleField/fields — un seul mode s'applique à la fois."""
+
+    titleField: str | None = None
+    fields: list[PopupField] | None = None
+    template: str | None = None
+
+
 class MapLayer(BaseModel):
     id: str
     title: str
@@ -86,6 +100,13 @@ class MapLayer(BaseModel):
     dataUrl: str | None = None
     paint: dict | None = None
     props: dict | None = None
+    popup: PopupConfig | None = None
+    # Lien vers la collection servie en tuiles par le cœur : c'est lui qui
+    # donne au shell le schéma des champs (popup) et, plus tard, le domaine
+    # des valeurs (symbologie SP-25).
+    collectionId: str | None = None
+    geometryKind: Literal["point", "line", "polygon"] | None = None
+    pkColumn: str | None = None
 
 
 class MapTerrain(BaseModel):

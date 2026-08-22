@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig, MapLayer } from "../api/types";
@@ -72,6 +73,7 @@ test("adds a vector source and fill layer for a vector layer", () => {
         kind: "vector",
         tilesUrl: "https://martin/communes/{z}/{x}/{y}",
         sourceLayer: "communes",
+        geometryKind: "polygon",
       },
     ],
   };
@@ -929,4 +931,381 @@ test("transformRequest does not leak the token when the URL merely contains /ter
   const transformRequest = mapInstances[0].opts.transformRequest!;
   const result = transformRequest("https://attacker.test/x/terrain3d/y/tiles/5/10/12.png", "Tile");
   expect(result).toEqual({ url: "https://attacker.test/x/terrain3d/y/tiles/5/10/12.png" });
+});
+
+const tiled = (extra: Partial<Extract<MapLayer, { kind: "vector" }>> = {}) => ({
+  ...config,
+  layers: [
+    {
+      id: "communes",
+      title: "Communes",
+      visible: true,
+      kind: "vector" as const,
+      tilesUrl: "http://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+      sourceLayer: "communes",
+      collectionId: "communes",
+      ...extra,
+    },
+  ],
+});
+
+test("a tiled point collection is rendered as circles, not as a fill", () => {
+  render(<MapView config={tiled({ geometryKind: "point" })} />);
+  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "circle" });
+});
+
+test("a tiled line collection is rendered as lines", () => {
+  render(<MapView config={tiled({ geometryKind: "line" })} />);
+  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "line" });
+});
+
+// I1 de la revue finale SP-24 : `geometryKind` absent (géométrie inconnue ou
+// mixte côté PostGIS, ex. Point + MultiPoint dans la même colonne) posait un
+// unique layer "fill" — une couche de points ou de lignes ne rendait alors
+// RIEN, silencieusement. La couche pose désormais trois sous-couches
+// typées, chacune filtrée par type de géométrie réel de l'entité.
+test("a tiled layer without geometryKind renders three typed sub-layers, not a single fill", () => {
+  render(<MapView config={tiled()} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getLayer("communes__point")).toMatchObject({
+    type: "circle",
+    source: "communes",
+    "source-layer": "communes",
+    filter: ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false],
+  });
+  expect(map.getLayer("communes__line")).toMatchObject({
+    type: "line",
+    filter: ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false],
+  });
+  expect(map.getLayer("communes__polygon")).toMatchObject({
+    type: "fill",
+    filter: ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false],
+  });
+});
+
+test("a mixed-geometry layer's paint is split by prefix across its sub-layers", () => {
+  render(
+    <MapView
+      config={tiled({
+        paint: { "circle-color": "red", "line-color": "blue", "fill-color": "green", stray: "x" },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__point")).toMatchObject({ paint: { "circle-color": "red" } });
+  expect(map.getLayer("communes__line")).toMatchObject({ paint: { "line-color": "blue" } });
+  expect(map.getLayer("communes__polygon")).toMatchObject({ paint: { "fill-color": "green" } });
+});
+
+test("clicking any mixed-geometry sub-layer reports the same feature, keyed by the layer's own id", () => {
+  const onFeatureClick = vi.fn();
+  render(<MapView config={tiled()} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "communes__point", {
+    features: [{ id: 7, properties: { nom: "Tulle" }, geometry: { type: "Point" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 7, properties: { nom: "Tulle" } }),
+  );
+});
+
+test("clicking a mixed-geometry sub-layer opens the popup declared on the layer, not on the sub-layer", () => {
+  render(<MapView config={tiled({ popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes__polygon", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByText("Tulle")).toBeInTheDocument();
+});
+
+test("removing a mixed-geometry layer detaches all three sub-layer click handlers", () => {
+  const { rerender } = render(<MapView config={tiled()} />);
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.layerHandlers["click:communes__point"] ?? []).toHaveLength(0);
+  expect(map.layerHandlers["click:communes__line"] ?? []).toHaveLength(0);
+  expect(map.layerHandlers["click:communes__polygon"] ?? []).toHaveLength(0);
+  expect(map.getLayer("communes__point")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("a failing mixed-geometry sub-layer rolls back its siblings instead of orphaning the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__line");
+  rerender(<MapView config={{ ...config, layers: [good, ...tiled().layers] }} />);
+  expect(map.getLayer("communes__point")).toBeUndefined();
+  expect(map.getLayer("communes__polygon")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
+});
+
+test("clicking a tiled feature reports it, like a geojson one", () => {
+  const onFeatureClick = vi.fn();
+  render(<MapView config={tiled({ geometryKind: "polygon" })} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "communes", {
+    features: [{ id: 7, properties: { nom: "Tulle" }, geometry: { type: "Point" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 7, properties: { nom: "Tulle" } }),
+  );
+});
+
+test("a tiled feature with a text primary key falls back to the pk property", () => {
+  // ST_AsMVT ne pose un feature id que sur une PK entière (core/app/features/
+  // tiles.py) : sans repli, une collection à PK texte serait inerte.
+  const onFeatureClick = vi.fn();
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code" })}
+      onFeatureClick={onFeatureClick}
+    />,
+  );
+  mapInstances[0].fireOnLayer("click", "communes", {
+    features: [{ id: null, properties: { code: "19272", nom: "Tulle" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(expect.objectContaining({ id: "19272" }));
+});
+
+test("the click handler of a removed tiled layer is detached", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  rerender(<MapView config={config} />);
+  expect(mapInstances[0].layerHandlers["click:communes"] ?? []).toHaveLength(0);
+});
+
+test("core collection tile requests carry the session bearer token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("http://core.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "http://core.test/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
+test("an external url that merely looks like ours gets no token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("https://attacker.test/collections/x/tiles/1/2/3.mvt")).toEqual({
+    url: "https://attacker.test/collections/x/tiles/1/2/3.mvt",
+  });
+});
+
+// C1 de la revue finale SP-24 : docker-compose.prod.yml pose
+// VITE_CORE_URL="https://hôte/api" — une vraie URL de tuile en production est
+// donc "/api/collections/…", jamais "/collections/…" tout court. Sans le
+// chemin de base dans la comparaison, le jeton ne s'attachait jamais en prod.
+test("a tile url under the core API's base path carries the session bearer token", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        tilesUrl: "https://hote.test/api/collections/communes/tiles/{z}/{x}/{y}.mvt",
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "https://hote.test/api"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("https://hote.test/api/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "https://hote.test/api/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
+test("a same-origin url outside the core API's base path gets no token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "https://hote.test/api"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  // Même origine que le cœur, mais hors du chemin de base "/api" — un autre
+  // service sur le même hôte, pas la route tuiles authentifiée.
+  expect(t("https://hote.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "https://hote.test/collections/communes/tiles/1/2/3.mvt",
+  });
+});
+
+const clickPayload = {
+  features: [{ id: 7, properties: { nom: "Tulle", population: 14000 } }],
+  lngLat: { lng: 12, lat: 34 },
+};
+
+// `fireOnLayer` invoque le handler de clic hors du système d'événements React
+// (c'est un appel JS direct sur le mock, pas un dispatch DOM) : le setState
+// qu'il déclenche doit être enveloppé dans `act` pour être flush avant
+// l'assertion, sans quoi React 18 le bufferise en dehors du test.
+test("clicking a feature of a layer with a popup opens it", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByText("Tulle")).toBeInTheDocument();
+  expect(screen.getByText("population")).toBeInTheDocument();
+});
+
+test("the popup is positioned at the projected click point", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  const popup = screen.getByRole("dialog");
+  expect(popup.style.left).toBe("12px");
+  expect(popup.style.top).toBe("34px");
+});
+
+test("no popup opens for a layer that does not declare one", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the click stays additive: onFeatureClick still fires with a popup configured", () => {
+  const onFeatureClick = vi.fn();
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })}
+      onFeatureClick={onFeatureClick}
+    />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(onFeatureClick).toHaveBeenCalledOnce();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+test("the popup closes on its close button", async () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  await userEvent.click(screen.getByRole("button", { name: "Fermer" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the popup follows the map when it moves", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  const map = mapInstances[0];
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  map.project = (ll: { lng: number; lat: number }) => ({ x: ll.lng + 100, y: ll.lat + 100 });
+  act(() => map.fire("move"));
+  expect(screen.getByRole("dialog").style.left).toBe("112px");
+});
+
+test("the popup closes when the layer that opened it disappears from the config", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  rerender(<MapView config={config} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the popup closes when its layer keeps its id but loses its popup config", () => {
+  // Le popup ne doit pas seulement figer son affichage : `resolvePopupContent`
+  // se réévalue à chaque rendu, donc un `popup` retiré de la config sans
+  // fermer le popup ferait retomber sur la branche "pas de config → tout
+  // afficher", exposant un champ que l'auteur avait explicitement exclu.
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { fields: [{ name: "nom" }] } })} />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { nom: "Tulle", secret: "ne-pas-afficher" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByText("secret")).not.toBeInTheDocument();
+  rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("a template popup renders its sanitized html", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { template: "**${record.nom}**" } })}
+    />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByText("Tulle").tagName).toBe("STRONG");
+});
+
+test("clicking a second feature replaces the popup instead of stacking it", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 8, properties: { nom: "Brive", population: 47000 } }],
+      lngLat: { lng: 20, lat: 40 },
+    }),
+  );
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(screen.getByText("Brive")).toBeInTheDocument();
+  expect(screen.queryByText("Tulle")).not.toBeInTheDocument();
+});
+
+test("the move listener that reprojects the popup is detached when the popup closes", async () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  const map = mapInstances[0];
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  expect(map.handlers.move ?? []).toHaveLength(1);
+  act(() => map.fire("move"));
+  screen.getByRole("dialog");
+  await userEvent.click(screen.getByRole("button", { name: "Fermer" }));
+  expect(map.handlers.move ?? []).toHaveLength(0);
+});
+
+test("the popup survives a config change that keeps the layer but changes something else", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  rerender(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" }, title: "Communes 2" })}
+    />,
+  );
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+// I5 de la revue finale SP-24 : avant `layersKey`, chaque frappe dans
+// PopupEditor produisait un nouveau tableau `config.layers` (même contenu
+// pertinent) qui détruisait puis recréait TOUTES les sources/couches
+// MapLibre — scintillement, re-requêtes de tuiles, refetch GeoJSON complet
+// pour une couche `feature`. `popup` n'affecte que le rendu React d'un clic
+// déjà survenu, jamais ce que MapLibre doit dessiner.
+test("editing only a layer's popup config does not tear down and rebuild its MapLibre source/layer", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />,
+  );
+  const map = mapInstances[0];
+  const addSource = vi.spyOn(map, "addSource");
+  const addLayer = vi.spyOn(map, "addLayer");
+  const removeSource = vi.spyOn(map, "removeSource");
+  rerender(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom", template: "**x**" } })}
+    />,
+  );
+  expect(addSource).not.toHaveBeenCalled();
+  expect(addLayer).not.toHaveBeenCalled();
+  expect(removeSource).not.toHaveBeenCalled();
+});
+
+test("editing a layer's geometry-relevant property does still rebuild its MapLibre source/layer", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "point" })} />);
+  const map = mapInstances[0];
+  const addSource = vi.spyOn(map, "addSource");
+  rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  expect(addSource).toHaveBeenCalledTimes(1);
 });

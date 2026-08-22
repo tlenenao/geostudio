@@ -96,6 +96,15 @@ export type MapViewport = {
   bearing?: number;
 };
 export type BaseMap = { style: string };
+export type PopupField = { name: string; label?: string };
+// Le popup d'une couche, déclaratif (règle 2 de CLAUDE.md). `template` non
+// vide l'emporte sur titleField/fields. L'absence de `popup` sur la couche EST
+// l'état désactivé : il n'y a pas de drapeau `enabled`.
+export type PopupConfig = {
+  titleField?: string;
+  fields?: PopupField[];
+  template?: string;
+};
 export type MapLayer =
   | {
       id: string;
@@ -105,6 +114,10 @@ export type MapLayer =
       tilesUrl: string;
       sourceLayer: string;
       paint?: Record<string, unknown>;
+      collectionId?: string;
+      geometryKind?: "point" | "line" | "polygon";
+      pkColumn?: string;
+      popup?: PopupConfig;
     }
   | {
       id: string;
@@ -122,6 +135,7 @@ export type MapLayer =
       url: string;
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
+      popup?: PopupConfig;
     }
   | {
       id: string;
@@ -155,12 +169,15 @@ export type MapConfig = {
 export type LayerSource = {
   id: string;
   title: string;
-  service: "martin" | "core" | "external" | "tileset3d";
+  service: "core" | "external" | "tileset3d";
   kind: "vector" | "feature" | "raster" | "tiles3d";
   tilesUrl?: string;
   sourceLayer?: string;
   url?: string;
   featureCount?: number | null;
+  collectionId?: string;
+  geometryKind?: "point" | "line" | "polygon";
+  pkColumn?: string;
 };
 
 export type CollectionFieldType =
