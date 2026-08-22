@@ -2,6 +2,7 @@
 import type { DataSource } from "../api/types";
 import type { BucketGranularity } from "../lib/comparisonWindow";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
+import { PercentileInput } from "./PercentileInput";
 
 type Measure = { field?: string; agg: string; label?: string; p?: number };
 
@@ -190,19 +191,12 @@ export function DataSourcePanel({
                   />
                 </div>
                 {aggregateNeedsP(String(s.query.agg ?? "count")) && (
-                  <input
-                    aria-label={`Centile (source ${s.id})`}
-                    type="number"
-                    min={1}
-                    max={99}
-                    placeholder="centile (1–99)"
+                  <PercentileInput
+                    label={`Centile (source ${s.id})`}
+                    value={Number(s.query.p ?? DEFAULT_PERCENTILE)}
                     className={inputCls}
-                    value={String(s.query.p ?? "")}
-                    onChange={(e) =>
-                      patchQuery(s.id, {
-                        p: e.target.value ? Number(e.target.value) : undefined,
-                      })
-                    }
+                    placeholder="centile (1–99)"
+                    onCommit={(p) => patchQuery(s.id, { p })}
                   />
                 )}
                 <input
@@ -263,25 +257,15 @@ export function DataSourcePanel({
                           }
                         />
                         {aggregateNeedsP(m.agg) && (
-                          <input
-                            aria-label={`Centile mesure ${mi + 1} (source ${s.id})`}
-                            type="number"
-                            min={1}
-                            max={99}
-                            placeholder="centile"
+                          <PercentileInput
+                            label={`Centile mesure ${mi + 1} (source ${s.id})`}
+                            value={Number(m.p ?? DEFAULT_PERCENTILE)}
                             className={inputCls}
-                            value={String(m.p ?? "")}
-                            onChange={(e) =>
+                            placeholder="centile"
+                            onCommit={(p) =>
                               setMeasures(
                                 s,
-                                measuresOf(s).map((x, i) =>
-                                  i === mi
-                                    ? {
-                                        ...x,
-                                        p: e.target.value ? Number(e.target.value) : undefined,
-                                      }
-                                    : x,
-                                ),
+                                measuresOf(s).map((x, i) => (i === mi ? { ...x, p } : x)),
                               )
                             }
                           />
