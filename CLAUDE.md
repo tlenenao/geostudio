@@ -1434,6 +1434,74 @@ deux (et un `--` côté entry).
     editable) et nécessite l'incantation réelle de `ci.yml`
     (`PYTHONPATH=.` + `CORE_SECRETS_MASTER_KEY` de test) — écart entre le
     texte du brief et le job CI réel, non documenté avant cette tâche.
+  - **Revue finale de branche (2026-08-22)** — 0 Critical, 4 Important, 14
+    Minor ; les quatre Important sont tous des **croisements entre les quatre
+    chantiers**, structurellement invisibles à une revue par tâche, et aucun
+    n'était une régression d'une tâche isolée. **I1** — `_measure_label` ne
+    connaissait pas `p` : deux mesures `percentile` sur le même champ (P50 +
+    P90 côte à côte, le cas d'usage canonique du centile, et exactement ce que
+    le nouveau `DataSourcePanel` invite à construire) dérivaient le même
+    libellé, le SQL calculait bien les deux et **le pivot en perdait une en
+    silence** (mesuré) — `p` entre désormais dans le libellé dérivé
+    (`percentile50_amount`), aux trois sites qui dupliquaient cette dérivation,
+    ramenés à une seule définition partagée. **I2** — le garde-fou de saisie du
+    centile (`PercentileInput`) avait été écrit par la tâche 10 en réaction à ce
+    défaut exact sur la surface de l'assistant de requête visuelle, et jamais
+    reporté sur les deux champs centile de `DataSourcePanel` : vider le champ y
+    laissait `agg: "percentile"` sans `p`, donc une config **enregistrable et
+    publiable** que le cœur refuse en 422 pour tous ses lecteurs (la tâche 5
+    était déjà committée quand la tâche 10 a trouvé le problème — aucune revue
+    par tâche ne pouvait recroiser les deux) ; le composant est désormais
+    partagé par les deux surfaces. **I3** — `rollbackConfig` n'invalidait pas la
+    clé react-query de sa config, là où les quatre `useSaveX` du dépôt le font
+    tous : sur les trois éditeurs à seed inconditionnel, le premier refetch
+    après restauration (un simple alt-tab, `refetchOnWindowFocus` étant à son
+    défaut) ramenait un contenu différent du cache et **écrasait le brouillon**
+    sans rien dire ; l'invalidation est désormais portée par la restauration
+    elle-même, dans le panneau, pas dupliquée sur les cinq pages. **I4** —
+    l'élargissement du jeu d'agrégats a ouvert deux trous jumeaux dans
+    `AlertRule` : `p` n'était pas validé à la sauvegarde (une règle
+    `percentile` sans `p` passait le 422 puis échouait **à chaque tick de son
+    cron, pour toujours** — le mode d'échec que le validateur voisin
+    `_require_valid_message_template` existe précisément pour supprimer), et
+    `float(None)` sur un agrégat légitimement `NULL` (`stddev` sur une ligne
+    unique, `median` sur une colonne texte — deux cas mesurés, impossibles
+    avant SP-23 où les cinq agrégats étaient tous `COALESCE(…, 0)`) sortait en
+    « erreur interne » opaque au lieu d'un `AlertEvaluationError` explicite,
+    contre la règle établie par SP-16b. Une seule passe de correction (6
+    commits, I1→I4 + trois corrections d'affirmations fausses de cette entrée
+    CLAUDE.md elle-même : le compte des validateurs de rollback, le nombre de
+    types de graphique, et le silence sur le fait que le nouveau
+    `resolveFlatValue` d'`indicator.tsx` **change la valeur affichée** de toute
+    source `statistics` et ne fait pas que rendre « — »), puis **re-revue
+    complète : 0 Critical, 0 Important, 5 Minor** — les huit points fermés,
+    vérifiés un par un contre le code plutôt que sur parole (OpenAPI/TS
+    régénérés et `diff` vide, mesuré ; site d'appel SP-14o du composant partagé
+    inchangé et ses tests pré-existants verts ; surplus du prédicat
+    d'invalidation audité clé par clé).
+  - **Test instable de CI corrigé au passage** (hors périmètre SP-23, mais il
+    bloquait le merge) : `test_copilot_routes.py::test_synchronous_provider_call_does_not_block_the_event_loop`
+    (SP-20) bornait la durée du bloc concurrent à 1,8 × le délai du faux
+    fournisseur, ce qui **mesure la vitesse de la machine** et non la propriété
+    visée. Rouge deux fois de suite en CI (0,87 s puis 0,79 s contre un seuil de
+    0,72 s), vert sur les runs précédents. L'arithmétique tranche : une vraie
+    sérialisation coûterait au moins 2 × 0,4 s = 0,8 s, donc les appels se
+    recouvraient bel et bien — ce qui échouait, c'était la marge face au surcoût
+    CPU sérialisé des trois requêtes sous instrumentation de couverture sur un
+    runner partagé. Le faux fournisseur enregistre désormais l'intervalle
+    monotone de chaque appel abouti et le test assère leur **recouvrement** :
+    assertion strictement plus forte et insensible à la charge, vérifiée dans
+    les deux sens (une attente remplacée par un `time.sleep` bloquant la fait
+    échouer). **Leçon transférable** : une assertion de durée totale ne prouve
+    jamais une propriété de concurrence, elle mesure la machine ; mesurer le
+    recouvrement des intervalles, lui, la prouve.
+  - **Preuves de sortie après correction** (2026-08-22, contrôleur) : core
+    `uv run pytest` → **1675 passed, 154 skipped, 0 failed**, couverture
+    **85,16 %** (seuil 85) ; `ruff check`/`ruff format --check`/`mypy --strict`
+    (4 modules)/`lint-imports` verts. Shell `npm run test` → **155 fichiers /
+    1302 tests**, couverture **89,24 %** (seuil 88) ; `npm run lint`/
+    `format:check`/`build` verts ; `npm run e2e` → **105 passed, 4 skipped, 0
+    failed**. `uvx pre-commit run --all-files` : 5/5 hooks verts.
 
 ### À venir
 
@@ -1726,3 +1794,56 @@ deux (et un `--` côté entry).
   coup. L'auteur d'une révision reste absent (`config_revisions` n'a pas
   d'`actor_id`) — relève du chantier 4.20 (journal d'audit consultable),
   hors périmètre assumé de SP-23.
+  **Ajouts de la revue finale de branche** (triés non bloquants, hors les
+  quatre Important corrigés) : `ConfigHistoryPanel` n'a **pas d'état de
+  chargement** (un historique en cours de chargement est visuellement
+  indiscernable d'un historique vide — l'état d'erreur, lui, est traité et
+  testé) et pas de bouton « Réessayer » ; `ItemCard` a perdu son repli
+  `?? item.resourceType`, donc un 13ᵉ `kind` livré côté cœur avant le shell
+  rendrait une pastille **vide** au lieu de la valeur brute ; le chemin
+  ArcGIS **accepte et ignore** un `p` posé sur un `stddev` là où le chemin
+  DuckDB le refuse en 400 (incohérence déclarative, aucune donnée exposée ni
+  faussée) ; le `throw` de `metricExpr` remonte un message développeur
+  **anglais** à l'utilisateur (`VisualQueryWizardPage` fait
+  `setError(e.message)`), et dans la branche création il survient après
+  `createEmptyCollection`/`createDatasetItem`, laissant collection et item
+  orphelins (classe pré-existante, nouvelle façon de l'atteindre) ; les
+  champs centile portent `min={1} max={99}` sans `step` là où le serveur
+  accepte tout réel de `]0, 100[` ; `resolveFlatValue` rend « — » dès qu'une
+  source porte des `measures`, y compris pour une mesure unique dont le
+  `label` est justement `value` (un indicateur lisible affiche « — ») ; le
+  round-trip du centile n'est réciproque **qu'à 4 décimales**
+  (`decompileMetrics` arrondit à 1e-4, atteignable par MCP, pas par l'UI) —
+  l'affirmation « réciproques au caractère près » est donc légèrement
+  surévaluée ; la spec §6 demandait un test de rollback par famille
+  sensible, **`pipeline` n'en a pas** (seul `alert` et la portée d'extension
+  sont couverts ; code partagé, risque résiduel faible, mais la preuve
+  demandée manque) ; le grain `hour` étiquette ses catégories en `datetime`
+  brut (`2026-05-17 13:00:00`, pré-existant mais visible pour la première
+  fois sur un axe dense) ; et le grain choisi par l'auteur est **ignoré en
+  mode comparaison** (`chart.tsx`/`indicator.tsx` recalculent `bucketFor()`,
+  trois valeurs, donc une série en « Année » se compare en mois) —
+  conséquence directe et documentée de la décision de ne pas toucher
+  `bucketFor()`, mais c'est l'incohérence que le prochain rapport de bug
+  utilisateur nommera.
+  **Ajouts de la re-revue de la passe de correction** : le format de libellé
+  `f"{agg}{p:g}_{field}"` retenu pour fermer I1 tronque à 6 chiffres
+  significatifs, donc la collision revient à l'identique pour
+  `p=33.333333333` vs `p=33.33333`, et `p=99.9999999` produit un
+  `percentile100_…` qui annonce une valeur que le serveur refuse (non
+  atteignable par l'UI, atteignable par MCP — l'option de repli « refuser
+  deux mesures dont le libellé collisionne » aurait fermé le cas
+  entièrement) ; la garde `Number.isFinite` du site d'appel jumeau
+  (`QuerySummaryBuilder`, avec le commentaire qui explique que `??` ne
+  remplace pas `NaN`) n'a pas été reportée dans `DataSourcePanel`, où
+  `DataSource.query` est un `Record<string, unknown>` — un `p` non numérique
+  y est type-légal et rend le champ vide (aucun commit invalide possible,
+  la garde du composant tient) ; pour une source écrite hors UI en
+  `{agg: "percentile"}` sans `p`, le champ **affiche « 50 » sans jamais le
+  committer**, là où il était vide avant le correctif (l'absence était au
+  moins signalée) ; la docstring du test copilote affirme encore que
+  `provider.chat` est synchrone, faux depuis la clôture de la vague 0 de
+  SP-20 ; et l'un des quatre cas invalides du nouveau test de
+  `DataSourcePanel` est un doublon silencieux (jsdom normalise `"abc"` en
+  `""` dans un `input type="number"`, donc la branche `Number.isFinite` de
+  `PercentileInput` n'est en réalité exercée par aucun test).
