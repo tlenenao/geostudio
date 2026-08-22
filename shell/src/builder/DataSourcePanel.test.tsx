@@ -267,3 +267,35 @@ test("élargir le groupBy à plusieurs champs efface un bucket devenu invalide",
     { ...source, query: { groupBy: ["region", "city"], agg: "count", bucket: undefined } },
   ]);
 });
+
+test("vider ou sortir des bornes le champ centile ne produit jamais une requête percentile sans p", () => {
+  // Revue finale SP-23 (I2) : `p: e.target.value ? Number(...) : undefined`
+  // laissait partir `{agg: "percentile"}` sans `p`, que le cœur refuse
+  // systématiquement en 422 — et la config restait enregistrable dans cet
+  // état. Les deux champs centile (requête simple et par mesure) réutilisent
+  // désormais PercentileInput, qui ne remonte que des valeurs valides.
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: {
+      groupBy: "region",
+      agg: "percentile",
+      p: 90,
+      measures: [{ field: "pop", agg: "percentile", p: 75 }],
+    },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  for (const label of ["Centile (source s1)", "Centile mesure 1 (source s1)"]) {
+    const input = screen.getByLabelText(label);
+    for (const value of ["", "0", "100", "abc"]) {
+      fireEvent.change(input, { target: { value } });
+    }
+  }
+
+  expect(onChange).not.toHaveBeenCalled();
+
+  // Une valeur valide, elle, remonte bien.
+  fireEvent.change(screen.getByLabelText("Centile (source s1)"), { target: { value: "99" } });
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.p).toBe(99);
+});
