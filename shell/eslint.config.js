@@ -86,7 +86,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/builder/widgets/richSection.tsx"],
+    // Deux consommateurs légitimes de sanitizeMarkdown() : le widget
+    // RichSection et le popup de carte (SP-24). Tout autre fichier reste
+    // interdit par la règle no-restricted-syntax ci-dessus.
+    files: ["src/builder/widgets/richSection.tsx", "src/map/MapPopup.tsx"],
     rules: { "no-restricted-syntax": "off" },
   },
   {
