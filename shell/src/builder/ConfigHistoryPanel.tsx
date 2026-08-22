@@ -9,6 +9,7 @@
 // Pas de sondage, contrairement à PipelineRunPanel/ReportRunPanel : un
 // historique de versions ne bouge que quand CET utilisateur enregistre ou
 // restaure. On charge au montage et après chaque restauration.
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
@@ -29,6 +30,7 @@ export function ConfigHistoryPanel({
   onRestored: () => void | Promise<void>;
 }) {
   const client = useItemClient();
+  const queryClient = useQueryClient();
   const [revisions, setRevisions] = useState<ConfigRevisionInfo[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [restoreError, setRestoreError] = useState(false);
@@ -70,6 +72,23 @@ export function ConfigHistoryPanel({
     setRestoreError(false);
     try {
       await client.rollbackConfig(pk, version);
+      // Une restauration est une écriture, et toute écriture de ce dépôt
+      // invalide la clé de requête de sa config (useSaveApp/useSaveMap/
+      // useSaveDataset/useSavePipeline). Sans ça, le cache garde le contenu
+      // d'avant le rollback : le premier refetch (staleTime: 0 et
+      // refetchOnWindowFocus par défaut, App.tsx) ramène alors un contenu
+      // différent, donc une nouvelle référence, et réécrase le brouillon sur
+      // les éditeurs dont l'effet de seed est inconditionnel.
+      //
+      // L'invalidation est portée ici plutôt que dans les cinq pages : leurs
+      // clés diffèrent (["app", pk, mode], ["map", pk], ["dataset", pk],
+      // ["pipeline", pk], ["report-schedule", pk]), et un prédicat sur le pk
+      // les couvre toutes — y compris un sixième éditeur futur — sans liste à
+      // tenir synchronisée. Tout ce qui est mis en cache pour CET item est de
+      // fait périmé par la restauration. `void`, comme les mutations de
+      // hooks.ts : un refetch en échec ne doit pas se faire passer pour un
+      // échec de restauration.
+      void queryClient.invalidateQueries({ predicate: (q) => q.queryKey.includes(pk) });
       await load();
       await onRestored();
     } catch {
