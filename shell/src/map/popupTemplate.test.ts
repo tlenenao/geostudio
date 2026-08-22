@@ -37,6 +37,42 @@ test("serializes an object value as JSON", () => {
   expect(interpolatePopupTemplate("${record.o}", ctx({ o: { a: 1 } }))).toBe('{"a":1}');
 });
 
+test("serializes an array value as JSON", () => {
+  expect(interpolatePopupTemplate("${record.a}", ctx({ a: [1, "x", true] }))).toBe('[1,"x",true]');
+});
+
+test("degrades a circular object to a neutral placeholder instead of throwing", () => {
+  const circ: Record<string, unknown> = {};
+  circ.self = circ;
+  expect(interpolatePopupTemplate("${record.self}", ctx({ self: circ }))).toBe("[objet]");
+});
+
+test("a CEL string literal containing a closing brace does not close the placeholder early", () => {
+  expect(interpolatePopupTemplate('${ "}" }', ctx({}))).toBe("}");
+});
+
+test("a single-quoted CEL string literal containing a closing brace does not close the placeholder early", () => {
+  expect(interpolatePopupTemplate("${ '}' }", ctx({}))).toBe("}");
+});
+
+test("an escaped quote inside a CEL string literal does not end the literal early", () => {
+  // cel-js ne décode pas les séquences d'échappement (visitor.ts fait un simple
+  // `.slice(1, -1)` sur l'image du token) : la barre oblique inverse survit
+  // littéralement dans la valeur. Le point testé ici est que le scanner ne
+  // referme pas le placeholder sur le "}" tout de suite après le "\"" échappé —
+  // pas la décodification de l'échappement, qui n'est pas de son ressort.
+  expect(interpolatePopupTemplate('${ "a\\"}" }', ctx({}))).toBe('a\\"}');
+});
+
+test("an unclosed placeholder earlier in the template swallows a later well-formed one literally", () => {
+  // Comportement documenté et volontairement conservé (SP-24 Task 8, revue) :
+  // laisser tout le reliquat littéral est plus sûr que d'évaluer un fragment
+  // de gabarit tronqué en garbage CEL.
+  expect(interpolatePopupTemplate("${oops ${record.nom} tail", ctx({ nom: "Tulle" }))).toBe(
+    "${oops ${record.nom} tail",
+  );
+});
+
 test("keeps several placeholders on one line", () => {
   expect(interpolatePopupTemplate("${record.a} / ${record.b}", ctx({ a: "x", b: "y" }))).toBe(
     "x / y",
