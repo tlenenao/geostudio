@@ -117,7 +117,7 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   await page.goto("/");
   await expect(page.getByText("Bâtiments (STAC distant)")).toBeVisible();
   // .last(), not the default first match: the catalog's "Type" <select>
-  // (SP-23, chantier 4.15) always renders an <option value="external">Externe</option>
+  // (SP-23, chantier 4.6) always renders an <option value="external">Externe</option>
   // ahead of the item grid in DOM order — .last() lands on the item's own
   // badge instead.
   await expect(page.getByText("Externe").last()).toBeVisible();
