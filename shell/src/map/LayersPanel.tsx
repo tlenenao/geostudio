@@ -1,6 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useQuery } from "@tanstack/react-query";
+import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
 import { LayerPicker } from "./LayerPicker";
+import { PopupEditor } from "./PopupEditor";
+
+// Charge le schéma de la collection sous-jacente pour offrir la liste des
+// champs à l'auteur — patron déjà établi par CrossFilterLinkEditor.tsx:28-34
+// (useQuery inline, pas de hook dédié dans api/hooks.ts pour ce besoin).
+function LayerPopupEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const client = useItemClient();
+  const collectionId = layer.kind === "vector" ? layer.collectionId : undefined;
+  const schema = useQuery({
+    queryKey: ["collection-schema", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId!),
+    enabled: Boolean(collectionId),
+  });
+  return (
+    <PopupEditor
+      value={layer.popup}
+      // Sans collectionId (tuiles externes, couche GeoJSON), la liste est
+      // vide et l'auteur saisit les noms de champs à la main : PopupEditor
+      // gère les deux cas avec le même contrôle.
+      availableFields={schema.data?.fields.map((f) => f.name) ?? []}
+      onChange={(popup) => onChangeLayer({ ...layer, popup })}
+    />
+  );
+}
 
 export function LayersPanel({
   layers,
@@ -62,6 +94,16 @@ export function LayersPanel({
             >
               ✕
             </button>
+            {(layer.kind === "vector" || layer.kind === "feature") && (
+              <div className="basis-full pl-2">
+                <LayerPopupEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
+              </div>
+            )}
           </li>
         ))}
         {layers.length === 0 && <li className="text-xs text-slate-400">Aucune couche.</li>}

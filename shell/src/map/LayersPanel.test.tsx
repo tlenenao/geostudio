@@ -13,7 +13,10 @@ const layers: MapLayer[] = [
 ];
 
 function renderPanel(current: MapLayer[], onChange: (l: MapLayer[]) => void) {
-  const client = { listLayerSources: vi.fn().mockResolvedValue([]) } as unknown as ItemClient;
+  const client = {
+    listLayerSources: vi.fn().mockResolvedValue([]),
+    getCollectionSchema: vi.fn().mockResolvedValue({ fields: [] }),
+  } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -43,4 +46,34 @@ test("moves a layer down", async () => {
   renderPanel(layers, onChange);
   await userEvent.click(screen.getByRole("button", { name: "Descendre A" }));
   expect(onChange).toHaveBeenCalledWith([layers[1], layers[0]]);
+});
+
+test("the layers panel exposes the popup editor of each layer", async () => {
+  const onChange = vi.fn();
+  const vectorLayer: MapLayer = {
+    id: "l1",
+    title: "Communes",
+    visible: true,
+    kind: "vector",
+    tilesUrl: "u",
+    sourceLayer: "communes",
+    collectionId: "communes",
+  };
+  renderPanel([vectorLayer], onChange);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Afficher les attributs au clic" }));
+  expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ popup: {} })]);
+});
+
+test("a raster layer has no popup editor", () => {
+  const rasterLayer: MapLayer = {
+    id: "r",
+    title: "Fond",
+    visible: true,
+    kind: "raster",
+    tilesUrl: "u",
+  };
+  renderPanel([rasterLayer], () => {});
+  expect(
+    screen.queryByRole("checkbox", { name: "Afficher les attributs au clic" }),
+  ).not.toBeInTheDocument();
 });

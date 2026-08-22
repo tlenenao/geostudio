@@ -52,7 +52,7 @@ function stringify(value: unknown): string {
 // entier à partir de `start` est alors laissé littéral par l'appelant, qui
 // avale aussi tout placeholder ${...} imbriqué plus loin dans ce reliquat
 // (cf. test "un ${ non fermé avale un placeholder bien formé plus loin").
-function closingBrace(template: string, start: number): number {
+export function closingBrace(template: string, start: number): number {
   let depth = 0;
   let quote: '"' | "'" | null = null;
   for (let i = start + 2; i < template.length; i += 1) {
