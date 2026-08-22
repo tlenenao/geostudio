@@ -249,6 +249,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection Tile */
+        get: operations["get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/configs": {
         parameters: {
             query?: never;
@@ -1834,10 +1851,14 @@ export interface components {
         };
         /** MapLayer */
         MapLayer: {
+            /** Collectionid */
+            collectionId?: string | null;
             /** Dataurl */
             dataUrl?: string | null;
             /** Decktype */
             deckType?: string | null;
+            /** Geometrykind */
+            geometryKind?: ("point" | "line" | "polygon") | null;
             /** Id */
             id: string;
             /**
@@ -1851,6 +1872,9 @@ export interface components {
             paint?: {
                 [key: string]: unknown;
             } | null;
+            /** Pkcolumn */
+            pkColumn?: string | null;
+            popup?: components["schemas"]["PopupConfig"] | null;
             /** Props */
             props?: {
                 [key: string]: unknown;
@@ -2019,6 +2043,26 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+        };
+        /**
+         * PopupConfig
+         * @description Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur
+         *     titleField/fields — un seul mode s'applique à la fois.
+         */
+        PopupConfig: {
+            /** Fields */
+            fields?: components["schemas"]["PopupField"][] | null;
+            /** Template */
+            template?: string | null;
+            /** Titlefield */
+            titleField?: string | null;
+        };
+        /** PopupField */
+        PopupField: {
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
         };
         /** PostgresDsnPayload */
         PostgresDsnPayload: {
@@ -2957,6 +3001,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sharing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
