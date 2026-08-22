@@ -87,14 +87,20 @@ class CapturingLLMProvider:
         # Nombre d'appels ayant **abouti** : un appel annulé par l'échéance
         # du tour ne doit jamais l'incrémenter.
         self.completed = 0
+        # (début, fin) monotone de chaque appel abouti : c'est le
+        # recouvrement de ces intervalles qui prouve qu'un appel ne gèle pas
+        # la boucle d'événements, indépendamment de la vitesse de la machine.
+        self.intervals: list[tuple[float, float]] = []
 
     async def chat(self, messages: list[dict], tools: list[dict]) -> LLMTurn:
         self.calls.append(copy.deepcopy(messages))
+        started = time.monotonic()
         if self._delay:
             await asyncio.sleep(self._delay)
         turn = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         self.completed += 1
+        self.intervals.append((started, time.monotonic()))
         return turn
 
 
@@ -326,11 +332,8 @@ async def test_synchronous_provider_call_does_not_block_the_event_loop(monkeypat
     import app.copilot.routes as routes_module
 
     delay = 0.4
-    monkeypatch.setattr(
-        routes_module,
-        "get_llm_provider",
-        lambda: CapturingLLMProvider([LLMTurn(text="ok")], delay=delay),
-    )
+    provider = CapturingLLMProvider([LLMTurn(text="ok")], delay=delay)
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
@@ -352,15 +355,23 @@ async def test_synchronous_provider_call_does_not_block_the_event_loop(monkeypat
             warmup = await http_client.post("/copilot/turn", json=body)
             assert warmup.status_code == 200
 
-            started = time.monotonic()
             responses = await asyncio.gather(
                 http_client.post("/copilot/turn", json=body),
                 http_client.post("/copilot/turn", json=body),
             )
-            elapsed = time.monotonic() - started
     assert [r.status_code for r in responses] == [200, 200]
-    assert elapsed < delay * 1.8, (
-        f"les deux tours se sont sérialisés ({elapsed:.2f}s pour 2×{delay}s)"
+    # On mesure le **recouvrement** des deux appels, pas la durée totale du
+    # bloc : un appel bloquant force `start_b >= end_a`, un appel annulable
+    # les fait se chevaucher. Une borne sur la durée totale (`elapsed <
+    # delay * 1.8`) mesurerait la vitesse de la machine — sous
+    # l'instrumentation de couverture d'un runner CI partagé, le surcoût CPU
+    # sérialisé des trois requêtes la fait échouer alors que les appels se
+    # recouvrent bel et bien (mesuré deux fois : 0,79 s et 0,87 s, quand une
+    # vraie sérialisation coûterait au moins 2×0,4 s).
+    (start_a, end_a), (start_b, end_b) = provider.intervals[-2:]
+    assert max(start_a, start_b) < min(end_a, end_b), (
+        "les deux tours se sont sérialisés : "
+        f"[{start_a:.3f}, {end_a:.3f}] et [{start_b:.3f}, {end_b:.3f}]"
     )
 
 
