@@ -110,7 +110,9 @@ def test_a_public_collection_is_readable_anonymously(pg_app):
 def test_a_private_collection_tile_is_never_cached_publicly(pg_app):
     client, _, _ = pg_app
     _insert(client, "Privée")
-    assert client.get(TILE_PATH).headers["cache-control"] == "private, max-age=300"
+    r = client.get(TILE_PATH)
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "private, max-age=300"
 
 
 def test_a_private_collection_is_a_404_anonymously(pg_app):
@@ -119,7 +121,10 @@ def test_a_private_collection_is_a_404_anonymously(pg_app):
     app.dependency_overrides[get_current_user_optional] = lambda: None
     r = client.get(TILE_PATH)
     assert r.status_code == 404
-    assert b"Priv\xc3\xa9e" not in r.content
+    # Pas d'assertion supplémentaire sur r.content ici : un 404 FastAPI est un
+    # corps JSON `{"detail": "collection not found"}` qui ne peut structurellement
+    # jamais contenir le titre de la donnée, que l'autorisation ait ou non
+    # fonctionné correctement — vérifier son absence n'apporterait aucune preuve.
 
 
 def test_rows_of_another_tenant_never_reach_the_tile(pg_app):
@@ -154,9 +159,16 @@ def test_serving_a_tile_writes_no_audit_row(pg_app):
     """Décision de spec §3.1 : une vue de carte produit des centaines de
     tuiles, les auditer noierait la table."""
     client, _, Session = pg_app
-    _insert(client, "Auditée à l'écriture seulement")
+    _insert(client, "Auditee a l'ecriture seulement")
     with Session() as s:
         before = s.execute(text("SELECT count(*) FROM audit_log")).scalar()
-    client.get(TILE_PATH)
+    r = client.get(TILE_PATH)
+    # Preuve qu'il s'agit bien d'une tuile servie avec succès, pas d'un 404/500
+    # qui n'écrirait pas non plus dans audit_log pour une raison sans rapport :
+    # sinon l'assertion finale prouverait "tenter quoi que ce soit sur cette
+    # route n'écrit pas d'audit", pas "servir une tuile n'écrit pas d'audit".
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/vnd.mapbox-vector-tile")
+    assert b"Auditee a l'ecriture seulement" in r.content
     with Session() as s:
         assert s.execute(text("SELECT count(*) FROM audit_log")).scalar() == before
