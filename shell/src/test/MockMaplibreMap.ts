@@ -45,9 +45,14 @@ export class MockMap {
     }
     return this;
   }
-  off(event: string, layerId: string, cb: (e: unknown) => void) {
-    const key = `${event}:${layerId}`;
+  off(event: string, arg2: string | ((e: unknown) => void), cb?: (e: unknown) => void) {
+    if (typeof arg2 === "function") {
+      this.handlers[event] = (this.handlers[event] ?? []).filter((h) => h !== arg2);
+      return this;
+    }
+    const key = `${event}:${arg2}`;
     this.layerHandlers[key] = (this.layerHandlers[key] ?? []).filter((h) => h !== cb);
+    return this;
   }
   once(event: string, cb: () => void) {
     const wrapped = () => {

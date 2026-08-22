@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
@@ -8,7 +8,10 @@ import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
 import type { DataRecord, MapConfig } from "../api/types";
+import type { ExprContext } from "../builder/expr";
 import { MapLegend } from "./MapLegend";
+import { MapPopup } from "./MapPopup";
+import { resolvePopupContent } from "./popupContent";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -81,11 +84,16 @@ function layerTypeFor(geometryKind: "point" | "line" | "polygon" | undefined) {
 function makeFeatureClickHandler(
   pkColumn: string | undefined,
   onFeatureClick: (record: DataRecord) => void,
+  onPopup: (properties: Record<string, unknown>, lngLat: { lng: number; lat: number }) => void,
 ) {
   return (e: maplibregl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) return;
     const properties = (f.properties ?? {}) as Record<string, unknown>;
+    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
+    // c'est la seule chose dont il a besoin. Le repli d'id ne conditionne que
+    // la sélection et le cross-filter.
+    onPopup(properties, e.lngLat);
     const fallback = pkColumn ? properties[pkColumn] : undefined;
     const id = (f.id ?? fallback) as string | number | undefined;
     if (id == null) return;
@@ -99,6 +107,11 @@ function applyLayers(
   applied: Set<string>,
   clickHandlers: Map<string, (e: maplibregl.MapLayerMouseEvent) => void>,
   onFeatureClick: (record: DataRecord) => void,
+  onPopup: (
+    layerId: string,
+    properties: Record<string, unknown>,
+    lngLat: { lng: number; lat: number },
+  ) => void,
 ) {
   applied.forEach((id) => {
     if (map.getLayer(id)) map.removeLayer(id);
@@ -150,7 +163,13 @@ function applyLayers(
             });
             break;
         }
-        const handler = makeFeatureClickHandler(layer.pkColumn, onFeatureClick);
+        const handler = makeFeatureClickHandler(
+          layer.pkColumn,
+          onFeatureClick,
+          (properties, lngLat) => {
+            if (layer.popup) onPopup(layer.id, properties, lngLat);
+          },
+        );
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
       } else if (layer.kind === "raster") {
@@ -189,7 +208,9 @@ function applyLayers(
             });
             break;
         }
-        const handler = makeFeatureClickHandler(undefined, onFeatureClick);
+        const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) => {
+          if (layer.popup) onPopup(layer.id, properties, lngLat);
+        });
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
       }
@@ -321,9 +342,23 @@ export const MapView = forwardRef<
     // (origin+path check) before attaching a bearer token — see
     // isHostedTilesetUrl. Absent by default, same as getAuthToken.
     getCoreUrl?: () => string;
+    // Variables/utilisateur pour l'interpolation CEL d'un popup à gabarit
+    // (Task 8/9) : `record` en est délibérément exclu, il vient toujours des
+    // propriétés de l'entité cliquée, jamais de l'appelant. Défaut neutre :
+    // un MapView sans popup à gabarit n'a besoin de rien fournir.
+    exprContext?: Omit<ExprContext, "record">;
   }
 >(function MapView(
-  { config, onViewChange, onFeatureClick, onReady, hideLegend, getAuthToken, getCoreUrl },
+  {
+    config,
+    onViewChange,
+    onFeatureClick,
+    onReady,
+    hideLegend,
+    getAuthToken,
+    getCoreUrl,
+    exprContext,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -345,6 +380,14 @@ export const MapView = forwardRef<
   const idleRef = useRef(false);
   const readyFiredRef = useRef(false);
   const loadedTilesetsRef = useRef<Set<string>>(new Set());
+  // Popup ouvert : la couche qui l'a ouvert, les propriétés de l'entité, et le
+  // point géographique cliqué (reprojeté à chaque déplacement de la carte).
+  const [popup, setPopup] = useState<{
+    layerId: string;
+    properties: Record<string, unknown>;
+    lngLat: { lng: number; lat: number };
+  } | null>(null);
+  const [popupPoint, setPopupPoint] = useState<{ x: number; y: number } | null>(null);
   // Keep the latest callback/layers reachable from the mount-time closures so
   // the async "load" and "moveend" handlers never read stale values.
   const onViewChangeRef = useRef(onViewChange);
@@ -394,6 +437,19 @@ export const MapView = forwardRef<
     [maybeFireReady],
   );
 
+  // Un seul clic ouvre au plus un popup : une deuxième entité cliquée
+  // remplace l'état plutôt que de l'empiler (setPopup, pas un tableau).
+  const handlePopup = useCallback(
+    (
+      layerId: string,
+      properties: Record<string, unknown>,
+      lngLat: { lng: number; lat: number },
+    ) => {
+      setPopup({ layerId, properties, lngLat });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
@@ -431,8 +487,13 @@ export const MapView = forwardRef<
         source: HIGHLIGHT_ID,
         paint: { "line-color": "#ef4444", "line-width": 3 },
       });
-      applyLayers(map, layersRef.current, appliedRef.current, clickHandlersRef.current, (r) =>
-        onFeatureClickRef.current?.(r),
+      applyLayers(
+        map,
+        layersRef.current,
+        appliedRef.current,
+        clickHandlersRef.current,
+        (r) => onFeatureClickRef.current?.(r),
+        handlePopup,
       );
       applyDeckLayers(
         overlay,
@@ -490,8 +551,13 @@ export const MapView = forwardRef<
     const map = mapRef.current;
     const overlay = overlayRef.current;
     if (!map || !styleLoadedRef.current || !overlay) return;
-    applyLayers(map, config.layers, appliedRef.current, clickHandlersRef.current, (r) =>
-      onFeatureClickRef.current?.(r),
+    applyLayers(
+      map,
+      config.layers,
+      appliedRef.current,
+      clickHandlersRef.current,
+      (r) => onFeatureClickRef.current?.(r),
+      handlePopup,
     );
     applyDeckLayers(
       overlay,
@@ -500,13 +566,39 @@ export const MapView = forwardRef<
       getAuthTokenRef.current,
       getCoreUrlRef.current,
     );
-  }, [config.layers, handleTilesetLoad]);
+  }, [config.layers, handleTilesetLoad, handlePopup]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
     applyTerrain(map, config.terrain);
   }, [config.terrain]);
+
+  // Reprojection du point cliqué à chaque déplacement de la carte : sans ce
+  // listener, un popup ouvert resterait figé au pixel de l'ouverture pendant
+  // qu'on pan/zoom la carte sous lui. Un seul listener à la fois — le nettoyage
+  // le retire avant que l'effet ne s'exécute à nouveau (nouveau popup ou
+  // fermeture), jamais accumulé au clic.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !popup) {
+      setPopupPoint(null);
+      return;
+    }
+    const reproject = () => setPopupPoint(map.project(popup.lngLat));
+    reproject();
+    map.on("move", reproject);
+    return () => {
+      map.off("move", reproject);
+    };
+  }, [popup]);
+
+  // Ferme le popup quand la couche qui l'a ouvert disparaît de la config
+  // (suppression de la couche, ou de tout MapLayer partageant cet id) — un
+  // popup ne doit jamais survivre à sa propre source de données.
+  useEffect(() => {
+    if (popup && !config.layers.some((l) => l.id === popup.layerId)) setPopup(null);
+  }, [config.layers, popup]);
 
   useImperativeHandle(
     ref,
@@ -527,10 +619,29 @@ export const MapView = forwardRef<
     [],
   );
 
+  const popupLayer = popup ? config.layers.find((l) => l.id === popup.layerId) : undefined;
+  // `popup` n'est porté que par les variantes "vector"/"feature" de l'union
+  // discriminée `MapLayer` — un accès défensif plutôt qu'un cast reste
+  // compilable sur l'union complète (les variantes "raster"/"deck"/"tiles3d"
+  // n'ont pas de champ `popup` du tout).
+  const popupConfig = popupLayer && "popup" in popupLayer ? popupLayer.popup : undefined;
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
       {!hideLegend && <MapLegend layers={config.layers} />}
+      {popup && popupPoint && (
+        <MapPopup
+          content={resolvePopupContent(
+            popupConfig,
+            popup.properties,
+            exprContext ?? { vars: {}, user: { name: "" } },
+          )}
+          x={popupPoint.x}
+          y={popupPoint.y}
+          onClose={() => setPopup(null)}
+        />
+      )}
     </div>
   );
 });
