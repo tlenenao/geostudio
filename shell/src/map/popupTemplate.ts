@@ -15,21 +15,27 @@ import { sanitizeMarkdown } from "../builder/widgets/sanitizeMarkdown";
 //    une valeur de propriété est traitée comme du markdown et DOMPurify est
 //    ce qui rend l'opération sûre.
 
+// Partagé avec popupContent.ts's `display()` : seule la sérialisation d'un
+// objet (branche à risque — structure circulaire, toJSON qui lève…) est
+// commune, pas la sémantique de null/undefined, qui diverge légitimement
+// entre les deux appelants (chaîne vide ici, "—" dans popupContent.ts).
+export function stringifyObject(value: object): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    // Structure circulaire (ex. record.self = record) ou toute autre valeur
+    // que JSON.stringify refuse (BigInt imbriqué…) : on dégrade vers un
+    // texte neutre plutôt que de laisser l'exception remonter. Délibérément
+    // PAS une chaîne vide : "" signifie déjà "champ absent/null" ailleurs
+    // dans ce module (cf. tests), et confondre les deux cacherait qu'une
+    // valeur existait bel et bien mais n'a pas pu être affichée.
+    return "[objet]";
+  }
+}
+
 function stringify(value: unknown): string {
   if (value === null || value === undefined) return "";
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      // Structure circulaire (ex. record.self = record) ou toute autre valeur
-      // que JSON.stringify refuse (BigInt imbriqué…) : on dégrade vers un
-      // texte neutre plutôt que de laisser l'exception remonter. Délibérément
-      // PAS une chaîne vide : "" signifie déjà "champ absent/null" ailleurs
-      // dans ce module (cf. tests), et confondre les deux cacherait qu'une
-      // valeur existait bel et bien mais n'a pas pu être affichée.
-      return "[objet]";
-    }
-  }
+  if (typeof value === "object") return stringifyObject(value);
   return String(value);
 }
 
