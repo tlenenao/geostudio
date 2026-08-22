@@ -150,3 +150,152 @@ test("edits the histogram bin count on a statistics source", async () => {
   await userEvent.type(screen.getByLabelText("Nombre de classes (source d1)"), "8");
   expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.bins).toBe(8);
 });
+
+const STATS_SOURCE: DataSource = {
+  id: "s1",
+  type: "statistics",
+  service: "core",
+  layer: "villes",
+  query: { groupBy: "region", agg: "count" },
+};
+
+test("propose les neuf agrégats analytiques", () => {
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={() => {}} />);
+
+  const select = screen.getByLabelText("Agrégation (source s1)");
+  const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+  expect(values).toEqual([
+    "count",
+    "countDistinct",
+    "sum",
+    "avg",
+    "median",
+    "percentile",
+    "stddev",
+    "min",
+    "max",
+  ]);
+});
+
+test("le champ centile n'apparaît que pour percentile et se patche avec un centile par défaut de 50", async () => {
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={onChange} />);
+
+  expect(screen.queryByLabelText("Centile (source s1)")).toBeNull();
+
+  await userEvent.selectOptions(screen.getByLabelText("Agrégation (source s1)"), "percentile");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...STATS_SOURCE, query: { groupBy: "region", agg: "percentile", p: 50 } },
+  ]);
+});
+
+test("affiche le champ centile quand la source est déjà en percentile", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "percentile", p: 90 },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  const p = screen.getByLabelText("Centile (source s1)");
+  expect((p as HTMLInputElement).value).toBe("90");
+
+  // fireEvent.change plutôt que clear()+type() : onChange est un espion sans
+  // rerender ici, donc React restaure la valeur DOM contrôlée ("90") après
+  // chaque frappe individuelle — clear()+type("95") produirait un dernier
+  // événement à "905" (même piège que le champ "Grouper par" plus haut dans
+  // ce fichier, qui utilise déjà fireEvent.change pour la même raison).
+  fireEvent.change(p, { target: { value: "95" } });
+  expect(onChange).toHaveBeenLastCalledWith([
+    { ...source, query: { groupBy: "region", agg: "percentile", p: 95 } },
+  ]);
+});
+
+test("repasser d'un agrégat percentile à un autre efface le centile p", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "percentile", p: 90 },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  await userEvent.selectOptions(screen.getByLabelText("Agrégation (source s1)"), "avg");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...source, query: { groupBy: "region", agg: "avg", p: undefined } },
+  ]);
+});
+
+test("propose les six grains temporels, plus l'absence de grain", async () => {
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={onChange} />);
+
+  const select = screen.getByLabelText("Grain temporel (source s1)");
+  const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+  expect(values).toEqual(["", "hour", "day", "week", "month", "quarter", "year"]);
+
+  await userEvent.selectOptions(select, "year");
+  expect(onChange).toHaveBeenCalledWith([
+    { ...STATS_SOURCE, query: { groupBy: "region", agg: "count", bucket: "year" } },
+  ]);
+});
+
+test("le grain temporel est désactivé sans groupBy à un seul champ", () => {
+  const multi: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: ["region", "annee"], agg: "count" },
+  };
+  render(<DataSourcePanel sources={[multi]} onChange={() => {}} />);
+
+  expect(screen.getByLabelText("Grain temporel (source s1)")).toBeDisabled();
+});
+
+test("élargir le groupBy à plusieurs champs efface un bucket devenu invalide", () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "count", bucket: "month" },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  // fireEvent.change plutôt que userEvent.type : onChange est un espion sans
+  // rerender ici, donc React restaure la valeur DOM contrôlée après chaque
+  // frappe (même piège que les autres champs "Grouper par" de ce fichier).
+  fireEvent.change(screen.getByLabelText("Grouper par (source s1)"), {
+    target: { value: "region,city" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith([
+    { ...source, query: { groupBy: ["region", "city"], agg: "count", bucket: undefined } },
+  ]);
+});
+
+test("vider ou sortir des bornes le champ centile ne produit jamais une requête percentile sans p", () => {
+  // Revue finale SP-23 (I2) : `p: e.target.value ? Number(...) : undefined`
+  // laissait partir `{agg: "percentile"}` sans `p`, que le cœur refuse
+  // systématiquement en 422 — et la config restait enregistrable dans cet
+  // état. Les deux champs centile (requête simple et par mesure) réutilisent
+  // désormais PercentileInput, qui ne remonte que des valeurs valides.
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: {
+      groupBy: "region",
+      agg: "percentile",
+      p: 90,
+      measures: [{ field: "pop", agg: "percentile", p: 75 }],
+    },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+
+  for (const label of ["Centile (source s1)", "Centile mesure 1 (source s1)"]) {
+    const input = screen.getByLabelText(label);
+    for (const value of ["", "0", "100", "abc"]) {
+      fireEvent.change(input, { target: { value } });
+    }
+  }
+
+  expect(onChange).not.toHaveBeenCalled();
+
+  // Une valeur valide, elle, remonte bien.
+  fireEvent.change(screen.getByLabelText("Centile (source s1)"), { target: { value: "99" } });
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.p).toBe(99);
+});

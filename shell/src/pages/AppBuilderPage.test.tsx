@@ -450,3 +450,42 @@ test("Annuler and Rétablir start disabled and stay disabled with no edits", asy
   expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
 });
+
+test("affiche le panneau d'historique", async () => {
+  renderPage({
+    getAppConfig: vi.fn().mockResolvedValue(config),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Historique")).toBeInTheDocument();
+});
+
+// SP-23 Task 17: rollbackConfig résout, puis getAppConfig est rechargé avec
+// une config différente. resetDraft (pas setDraft) doit vider toute la pile
+// undo — la pile ne peut pas défaire une écriture serveur (Task 15,
+// useUndoableDraft.resetDraft).
+test("restaurer une version recharge le brouillon et vide l'undo", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const restoredConfig: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: { type: "grid", breakpoints: {}, items: [] },
+  };
+  const getAppConfig = vi.fn().mockResolvedValueOnce(config).mockResolvedValue(restoredConfig);
+  renderPage({
+    getAppConfig,
+    listConfigRevisions: vi.fn().mockResolvedValue([
+      { version: 1, createdAt: "2026-08-01T10:00:00" },
+      { version: 2, createdAt: "2026-08-02T11:00:00" },
+    ]),
+    rollbackConfig: vi.fn().mockResolvedValue(undefined),
+  });
+
+  // On fait un edit avant : canUndo doit être vrai avant la restauration.
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+
+  await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
+});

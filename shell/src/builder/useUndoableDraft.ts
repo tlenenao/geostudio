@@ -38,6 +38,7 @@ export type UndoableDraft = {
   draft: AppConfig | null;
   setDraft: (update: AppConfig | null | ((prev: AppConfig | null) => AppConfig | null)) => void;
   seedDraft: (value: AppConfig) => void;
+  resetDraft: (value: AppConfig) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -106,6 +107,26 @@ export function useUndoableDraft(): UndoableDraft {
     setDraftState(value);
   }, []);
 
+  // Remplace le brouillon par une valeur qui vient du SERVEUR (restauration
+  // d'une version antérieure, SP-23) et vide l'historique. La pile ne peut
+  // pas défaire une écriture serveur : la laisser pleine ferait croire à
+  // l'auteur qu'un Ctrl+Z annule la restauration, alors qu'il ne toucherait
+  // que son brouillon local pendant que le serveur porte déjà la version
+  // N+1. Tout le bookkeeping se fait ici, jamais dans un updater passé à
+  // setDraftState (<StrictMode> l'invoquerait deux fois — SP-19, C1).
+  const resetDraft = useCallback((value: AppConfig) => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    pendingBaselineRef.current = null;
+    stackRef.current = createUndoStack();
+    draftRef.current = value;
+    setCanUndo(false);
+    setCanRedo(false);
+    setDraftState(value);
+  }, []);
+
   const undo = useCallback(() => {
     flush();
     const prev = draftRef.current;
@@ -132,5 +153,5 @@ export function useUndoableDraft(): UndoableDraft {
     setDraftState(result.value);
   }, [flush]);
 
-  return { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo };
+  return { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo };
 }

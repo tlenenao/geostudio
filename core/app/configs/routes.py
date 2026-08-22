@@ -223,6 +223,36 @@ def rollback_config(
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
 
+    # Le rollback écrit une nouvelle version comme le ferait un PUT, mais
+    # sans repasser par aucun validateur de payload — un trou théorique tant
+    # que rien n'appelait cette route, réel depuis que le panneau
+    # « Historique » (SP-23) la câble sur les cinq éditeurs. Une vieille
+    # version peut référencer une collection supprimée depuis, ou une
+    # capacité éteinte depuis. On valide donc la config restaurée AVANT de
+    # l'écrire, avec exactement la même séquence que update_config.
+    candidate = repo.get_revision_config(session, config_id, request.version)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="config or version not found")
+    try:
+        _require_etl_enabled_for_pipeline(candidate)
+        _require_export_enabled_for_report(candidate)
+        _validate_extension_scope(session, candidate, tenant_id=user.tenant_id)
+        _validate_dataset_payload(session, candidate, user=user)
+        _validate_bookmark_payload(session, candidate, user=user)
+        _validate_pipeline_payload(session, candidate, user=user)
+        _validate_alert_payload(session, candidate, user=user)
+        _validate_report_payload(session, candidate, user=user)
+        _validate_tileset3d_payload(session, candidate, user=user)
+        _validate_terrain3d_payload(session, candidate, user=user)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"la version {request.version} n'est plus valide et ne peut pas "
+                f"être restaurée : {exc.detail}"
+            ),
+        ) from exc
+
     result = repo.rollback_config(session, config_id, request.version, tenant_id=user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config or version not found")

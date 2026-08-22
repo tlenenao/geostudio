@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchema } from "../../api/types";
+import { DEFAULT_PERCENTILE } from "../aggregates";
+import { PercentileInput } from "../PercentileInput";
 import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
 import { Button } from "../../ui/button";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
   count: "Compter",
+  countDistinct: "Compter les valeurs distinctes",
   sum: "Somme",
   avg: "Moyenne",
+  median: "Médiane",
+  percentile: "Centile",
+  stddev: "Écart-type",
   min: "Minimum",
   max: "Maximum",
 };
@@ -42,6 +48,11 @@ export function QuerySummaryBuilder({
       const next = { ...m, ...patch };
       if (next.function === "count") next.sourceColumn = null;
       else if (next.sourceColumn === null) next.sourceColumn = firstNumericField(schema);
+      if (next.function === "percentile") {
+        if (next.p === null) next.p = DEFAULT_PERCENTILE;
+      } else {
+        next.p = null;
+      }
       return next;
     });
     onChange({ ...value, metrics });
@@ -51,7 +62,12 @@ export function QuerySummaryBuilder({
       ...value,
       metrics: [
         ...value.metrics,
-        { alias: `metrique_${value.metrics.length + 1}`, function: "count", sourceColumn: null },
+        {
+          alias: `metrique_${value.metrics.length + 1}`,
+          function: "count",
+          sourceColumn: null,
+          p: null,
+        },
       ],
     });
   }
@@ -98,6 +114,15 @@ export function QuerySummaryBuilder({
                 </option>
               ))}
             </select>
+          )}
+          {metric.function === "percentile" && (
+            <PercentileInput
+              label={`Centile de la métrique ${i + 1}`}
+              // `??` ne remplace pas NaN (seulement null/undefined) — Number.isFinite
+              // couvre aussi ce cas, en plus de null.
+              value={Number.isFinite(metric.p) ? (metric.p as number) : DEFAULT_PERCENTILE}
+              onCommit={(p) => updateMetric(i, { p })}
+            />
           )}
         </div>
       ))}

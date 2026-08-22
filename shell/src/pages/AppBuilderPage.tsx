@@ -9,9 +9,11 @@ import {
   useSaveApp,
   useUploadThumbnail,
 } from "../api/hooks";
+import { useItemClient } from "../api/ItemClientProvider";
 import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
+import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { CopilotPanel } from "../builder/copilot/CopilotPanel";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { AppRenderer } from "../builder/AppRenderer";
@@ -40,6 +42,7 @@ registerCounterExampleWidget();
 registerCounterWcExampleWidget();
 
 export function AppBuilderPage({ pk }: { pk: string }) {
+  const client = useItemClient();
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
   const thumbnail = useUploadThumbnail(pk);
@@ -50,7 +53,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const createDataset = useCreateDataset();
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const { draft, setDraft, seedDraft, undo, redo, canUndo, canRedo } = useUndoableDraft();
+  const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
+    useUndoableDraft();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
@@ -385,6 +389,21 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               <ThemePanel theme={draft.theme} onChange={setTheme} />
               <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Impression</p>
               <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+              <div className="mt-3">
+                <ConfigHistoryPanel
+                  pk={pk}
+                  currentVersion={null}
+                  onRestored={async () => {
+                    const restored = await client.getAppConfig(pk);
+                    // resetDraft, pas setDraft : la pile undo ne peut pas défaire
+                    // une écriture serveur (cf. useUndoableDraft.resetDraft).
+                    // Pas de query.refetch() ici : ConfigHistoryPanel invalide
+                    // désormais lui-même la clé de la config (elle est active,
+                    // donc react-query la refetch), pour les cinq éditeurs.
+                    resetDraft(restored);
+                  }}
+                />
+              </div>
               {appExportEnabled && (
                 <>
                   <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Export standalone</p>

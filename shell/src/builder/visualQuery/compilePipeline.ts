@@ -13,7 +13,13 @@ import {
   decompileSqlToFilterRows,
   quoteIdent,
 } from "./compileFilter";
-import { JoinConfig, MetricConfig, SummaryConfig, inferOutputColumns } from "./inferSchema";
+import {
+  JoinConfig,
+  MetricConfig,
+  MetricFunction,
+  SummaryConfig,
+  inferOutputColumns,
+} from "./inferSchema";
 
 export type VisualQueryState = {
   title: string;
@@ -24,9 +30,31 @@ export type VisualQueryState = {
   refreshPolicy: PipelineRefreshPolicy | null;
 };
 
-function metricExpr(metric: MetricConfig): string {
+// Les formes produites ici sont le contrat que decompileMetrics doit savoir
+// relire au caractère près : c'est ce round-trip qui permet de rouvrir une
+// requête visuelle (« Modifier la requête »). Toute divergence fait
+// silencieusement retomber l'auteur sur PipelineBuilderPage.
+export function metricExpr(metric: MetricConfig): string {
   if (metric.function === "count") return "count(*)";
-  return `${metric.function}(${quoteIdent(metric.sourceColumn!)})`;
+  const col = quoteIdent(metric.sourceColumn!);
+  if (metric.function === "countDistinct") return `count(distinct ${col})`;
+  if (metric.function === "stddev") return `stddev_samp(${col})`;
+  if (metric.function === "percentile") {
+    // Garde-fou d'exécution : le contrat `0 < p < 100` (inferSchema.ts) vit
+    // dans un commentaire, pas dans le type — rien ne force un futur
+    // appelant (nouveau panneau, écriture MCP, fixture de test) à le
+    // respecter. Sans ce contrôle, un `p` absent ou `null` émettrait
+    // silencieusement du SQL faux (NaN, ou la borne minimale 0 au lieu du
+    // centile voulu) au lieu d'échouer bruyamment. Même patron que les
+    // erreurs "fonction: message" d'itemClient.ts.
+    if (typeof metric.p !== "number" || !(metric.p > 0 && metric.p < 100)) {
+      throw new Error(
+        `metricExpr: percentile metric requires a numeric p with 0 < p < 100 (got ${JSON.stringify(metric.p)})`,
+      );
+    }
+    return `quantile_cont(${col}, ${metric.p / 100})`;
+  }
+  return `${metric.function}(${col})`;
 }
 
 export function compileVisualQueryToPipeline(
@@ -129,19 +157,68 @@ export function compileVisualQueryToPipeline(
   return { nodes, edges, refreshPolicy: state.refreshPolicy };
 }
 
-function decompileMetrics(metrics: Record<string, string>): MetricConfig[] | null {
+const SIMPLE_FN_RE = /^(sum|avg|min|max|median|stddev_samp)\("((?:[^"]|"")+)"\)$/;
+const COUNT_DISTINCT_RE = /^count\(distinct "((?:[^"]|"")+)"\)$/;
+// `p` est un pourcentage en état applicatif (0 < p < 100, inferSchema.ts) mais
+// une fraction en SQL : metricExpr ne peut donc émettre qu'une fraction
+// strictement comprise entre 0 et 1, que JS rend toujours sous la forme
+// "0.<chiffres>" (jamais "90", jamais "1", jamais sans point décimal). Le
+// motif ci-dessous impose ce préfixe "0." ; le contrôle de plage explicite
+// juste après (0 < p < 100) reste robuste même si ce motif est retouché plus
+// tard.
+const QUANTILE_RE = /^quantile_cont\("((?:[^"]|"")+)", (0\.\d+)\)$/;
+
+const SIMPLE_FN_TO_METRIC: Record<string, MetricFunction> = {
+  sum: "sum",
+  avg: "avg",
+  min: "min",
+  max: "max",
+  median: "median",
+  stddev_samp: "stddev",
+};
+
+export function decompileMetrics(metrics: Record<string, string>): MetricConfig[] | null {
   const result: MetricConfig[] = [];
   for (const [alias, expr] of Object.entries(metrics)) {
     if (expr === "count(*)") {
-      result.push({ alias, function: "count", sourceColumn: null });
+      result.push({ alias, function: "count", sourceColumn: null, p: null });
       continue;
     }
-    const match = expr.match(/^(sum|avg|min|max)\("((?:[^"]|"")+)"\)$/);
-    if (!match) return null;
+    const distinct = COUNT_DISTINCT_RE.exec(expr);
+    if (distinct) {
+      result.push({
+        alias,
+        function: "countDistinct",
+        sourceColumn: distinct[1].replace(/""/g, '"'),
+        p: null,
+      });
+      continue;
+    }
+    const quantile = QUANTILE_RE.exec(expr);
+    if (quantile) {
+      // Le SQL porte une fraction, l'état de l'assistant un pourcentage.
+      // Arrondi à 4 décimales : 0.995 * 100 vaut 99.50000000000001 en
+      // flottant IEEE-754, ce qui casserait l'égalité du round-trip.
+      const p = Math.round(Number(quantile[2]) * 100 * 1e4) / 1e4;
+      // Garde-fou explicite en plus du motif QUANTILE_RE ci-dessus : rejette
+      // toute forme qui ne correspond à aucun p valide (0 < p < 100), par
+      // exemple "0.0" (jamais produit par metricExpr, p ne peut pas être 0).
+      if (!(p > 0 && p < 100)) return null;
+      result.push({
+        alias,
+        function: "percentile",
+        sourceColumn: quantile[1].replace(/""/g, '"'),
+        p,
+      });
+      continue;
+    }
+    const simple = SIMPLE_FN_RE.exec(expr);
+    if (!simple) return null;
     result.push({
       alias,
-      function: match[1] as MetricConfig["function"],
-      sourceColumn: match[2].replace(/""/g, '"'),
+      function: SIMPLE_FN_TO_METRIC[simple[1]],
+      sourceColumn: simple[2].replace(/""/g, '"'),
+      p: null,
     });
   }
   return result;

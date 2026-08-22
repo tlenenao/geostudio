@@ -208,6 +208,20 @@ def rollback_config(
     return _to_read(record, revision)
 
 
+def get_revision_config(session: Session, config_id: str, version: int) -> BuilderConfig | None:
+    """Lit les données d'une révision sans rien écrire — utilisé par la
+    route de rollback pour valider la config restaurée AVANT de créer la
+    version N+1 (SP-23, chantier 4.18)."""
+    source = session.scalar(
+        select(ConfigRevision).where(
+            ConfigRevision.config_id == config_id, ConfigRevision.version == version
+        )
+    )
+    if source is None:
+        return None
+    return BuilderConfig.model_validate(source.data)
+
+
 def delete_config(session: Session, config_id: str) -> bool:
     record = session.get(Config, config_id)
     if record is None:

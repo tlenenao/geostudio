@@ -1,7 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { DataSource } from "../api/types";
+import type { BucketGranularity } from "../lib/comparisonWindow";
+import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
+import { PercentileInput } from "./PercentileInput";
 
-type Measure = { field?: string; agg: string; label?: string };
+type Measure = { field?: string; agg: string; label?: string; p?: number };
+
+const BUCKET_OPTIONS: { value: BucketGranularity; label: string }[] = [
+  { value: "hour", label: "Heure" },
+  { value: "day", label: "Jour" },
+  { value: "week", label: "Semaine" },
+  { value: "month", label: "Mois" },
+  { value: "quarter", label: "Trimestre" },
+  { value: "year", label: "Année" },
+];
+
+// Le cœur refuse un bucket sans groupBy à un seul champ
+// (_validate_fields: "bucket requires a single-field groupBy"). L'UI
+// reflète cet invariant au lieu de laisser construire une requête que le
+// serveur rejettera.
+function bucketAllowed(groupBy: unknown): boolean {
+  if (Array.isArray(groupBy)) return groupBy.length === 1;
+  return typeof groupBy === "string" && groupBy.trim() !== "";
+}
 
 // A single field ("region") is passed through unchanged; a comma-separated
 // value ("origin,destination") becomes a string[] — the multi-field tidy
@@ -111,7 +132,16 @@ export function DataSourcePanel({
                   placeholder="grouper par (axe X, virgule = plusieurs niveaux)"
                   className={inputCls}
                   value={groupByDisplayValue(s.query.groupBy)}
-                  onChange={(e) => patchQuery(s.id, { groupBy: parseGroupBy(e.target.value) })}
+                  onChange={(e) => {
+                    const groupBy = parseGroupBy(e.target.value);
+                    // Un bucket devenu invalide (groupBy élargi à plusieurs champs) doit
+                    // être effacé ici même : c'est le seul select qui pourrait sinon le
+                    // faire, et il est justement désactivé quand bucketAllowed est faux.
+                    patchQuery(s.id, {
+                      groupBy,
+                      bucket: bucketAllowed(groupBy) ? s.query.bucket : undefined,
+                    });
+                  }}
                 />
                 <input
                   aria-label={`Séparer par (source ${s.id})`}
@@ -120,18 +150,37 @@ export function DataSourcePanel({
                   value={String(s.query.split ?? "")}
                   onChange={(e) => patchQuery(s.id, { split: e.target.value })}
                 />
+                <select
+                  aria-label={`Grain temporel (source ${s.id})`}
+                  className={selectCls}
+                  disabled={!bucketAllowed(s.query.groupBy)}
+                  value={String(s.query.bucket ?? "")}
+                  onChange={(e) => patchQuery(s.id, { bucket: e.target.value || undefined })}
+                >
+                  <option value="">Aucun grain temporel</option>
+                  {BUCKET_OPTIONS.map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
                 <div className="flex gap-1">
                   <select
                     aria-label={`Agrégation (source ${s.id})`}
                     className={selectCls}
                     value={String(s.query.agg ?? "count")}
-                    onChange={(e) => patchQuery(s.id, { agg: e.target.value })}
+                    onChange={(e) =>
+                      patchQuery(s.id, {
+                        agg: e.target.value,
+                        p: aggregateNeedsP(e.target.value) ? DEFAULT_PERCENTILE : undefined,
+                      })
+                    }
                   >
-                    <option value="count">Nombre</option>
-                    <option value="sum">Somme</option>
-                    <option value="avg">Moyenne</option>
-                    <option value="min">Min</option>
-                    <option value="max">Max</option>
+                    {ANALYTICS_AGGREGATES.map((a) => (
+                      <option key={a.value} value={a.value}>
+                        {a.label}
+                      </option>
+                    ))}
                   </select>
                   <input
                     aria-label={`Champ agrégé (source ${s.id})`}
@@ -141,6 +190,15 @@ export function DataSourcePanel({
                     onChange={(e) => patchQuery(s.id, { field: e.target.value })}
                   />
                 </div>
+                {aggregateNeedsP(String(s.query.agg ?? "count")) && (
+                  <PercentileInput
+                    label={`Centile (source ${s.id})`}
+                    value={Number(s.query.p ?? DEFAULT_PERCENTILE)}
+                    className={inputCls}
+                    placeholder="centile (1–99)"
+                    onCommit={(p) => patchQuery(s.id, { p })}
+                  />
+                )}
                 <input
                   aria-label={`Nombre de classes (source ${s.id})`}
                   type="number"
@@ -165,16 +223,24 @@ export function DataSourcePanel({
                             setMeasures(
                               s,
                               measuresOf(s).map((x, i) =>
-                                i === mi ? { ...x, agg: e.target.value } : x,
+                                i === mi
+                                  ? {
+                                      ...x,
+                                      agg: e.target.value,
+                                      p: aggregateNeedsP(e.target.value)
+                                        ? DEFAULT_PERCENTILE
+                                        : undefined,
+                                    }
+                                  : x,
                               ),
                             )
                           }
                         >
-                          <option value="count">Nombre</option>
-                          <option value="sum">Somme</option>
-                          <option value="avg">Moyenne</option>
-                          <option value="min">Min</option>
-                          <option value="max">Max</option>
+                          {ANALYTICS_AGGREGATES.map((a) => (
+                            <option key={a.value} value={a.value}>
+                              {a.label}
+                            </option>
+                          ))}
                         </select>
                         <input
                           aria-label={`Champ mesure ${mi + 1} (source ${s.id})`}
@@ -190,6 +256,20 @@ export function DataSourcePanel({
                             )
                           }
                         />
+                        {aggregateNeedsP(m.agg) && (
+                          <PercentileInput
+                            label={`Centile mesure ${mi + 1} (source ${s.id})`}
+                            value={Number(m.p ?? DEFAULT_PERCENTILE)}
+                            className={inputCls}
+                            placeholder="centile"
+                            onCommit={(p) =>
+                              setMeasures(
+                                s,
+                                measuresOf(s).map((x, i) => (i === mi ? { ...x, p } : x)),
+                              )
+                            }
+                          />
+                        )}
                         <button
                           type="button"
                           aria-label={`Retirer la mesure ${mi + 1} de ${s.id}`}

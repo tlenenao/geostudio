@@ -168,3 +168,33 @@ test("undo/redo remain correct under <StrictMode> double-invocation of state upd
   expect(result.current.draft).toEqual(config("C"));
   expect(result.current.canRedo).toBe(false);
 });
+
+test("resetDraft remplace le brouillon et vide la pile", () => {
+  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
+
+  act(() => result.current.seedDraft(config("A")));
+  act(() => result.current.setDraft(config("B")));
+  void act(() => vi.advanceTimersByTime(500));
+  expect(result.current.canUndo).toBe(true);
+
+  act(() => result.current.resetDraft(config("C")));
+
+  expect(result.current.draft).toEqual(config("C"));
+  expect(result.current.canUndo).toBe(false);
+  expect(result.current.canRedo).toBe(false);
+
+  // Un undo après reset ne doit rien faire, pas revenir à CONFIG_B.
+  act(() => result.current.undo());
+  expect(result.current.draft).toEqual(config("C"));
+});
+
+test("resetDraft annule un burst d'édition encore en attente", () => {
+  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
+
+  act(() => result.current.seedDraft(config("A")));
+  act(() => result.current.setDraft(config("B"))); // burst armé, pas encore flushé
+  act(() => result.current.resetDraft(config("C")));
+  void act(() => vi.advanceTimersByTime(500)); // le timer ne doit rien flusher
+
+  expect(result.current.canUndo).toBe(false);
+});

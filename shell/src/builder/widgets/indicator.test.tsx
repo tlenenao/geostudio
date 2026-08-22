@@ -189,6 +189,52 @@ test("shows a delta badge computed from the server value/reference when referenc
   expect(await screen.findByText(/\+20 % vs période précédente/)).toBeInTheDocument();
 });
 
+test("affiche un tiret plutôt que zéro quand l'agrégat de comparaison est indéfini", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  // Un agrégat serveur indéfini (médiane d'un ensemble vide, écart-type d'une
+  // ligne unique — Task 1) renvoie `properties: { value: null }`, pas 0.
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { value: null } }]);
+  renderIndicator(
+    { dataSourceId: "src-1", label: "Total", agg: "stddev", referencePeriod: "previous" },
+    { data: state({ datasetId: "ds-1", records: [] }) },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-31" },
+  );
+  expect(await screen.findByText("—")).toBeInTheDocument();
+  expect(screen.queryByText("0")).toBeNull();
+});
+
+test("affiche 0 quand l'agrégat de comparaison est réellement zéro (pas indéfini)", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "Total", properties: { value: 0 } }]);
+  renderIndicator(
+    {
+      dataSourceId: "src-1",
+      label: "Total",
+      agg: "sum",
+      field: "amount",
+      referencePeriod: "previous",
+    },
+    { data: state({ datasetId: "ds-1", records: [] }) },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-31" },
+  );
+  expect(await screen.findByText("0")).toBeInTheDocument();
+  expect(screen.queryByText("—")).toBeNull();
+});
+
 test("two indicator widgets on the same dataset and metric do not collide on cache when a cross-filter singles one of them out", async () => {
   const getDatasetConfig = vi.fn().mockResolvedValue({
     source: "collection",
@@ -321,4 +367,146 @@ test("shows no pastille when threshold expressions are absent", () => {
   );
   expect(screen.queryByLabelText("Seuil critique atteint")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Seuil d'alerte atteint")).not.toBeInTheDocument();
+});
+
+// SP-23 Task 7b : sur une source `statistics`, le serveur a déjà agrégé —
+// une seule ligne porte le résultat dans `properties.value` (single-measure
+// path, cf. AggregateMeasure(..., label="value")). Le flatValue historique
+// (count/sum côté client) ne doit s'appliquer qu'aux sources
+// `features`/`static`.
+test("statistics + median : affiche l'agrégat serveur, pas le nombre de lignes", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Médiane", agg: "median", field: "amount" },
+    {
+      data: state({
+        records: [{ id: "row", properties: { value: 42 } }],
+        resolvedSource: {
+          id: "d",
+          type: "statistics",
+          service: "core",
+          layer: "ventes",
+          query: { agg: "median", field: "amount" },
+        },
+      }),
+    },
+  );
+  expect(screen.getByText("42")).toBeInTheDocument();
+  expect(screen.queryByText("1")).not.toBeInTheDocument();
+});
+
+test("statistics + agrégat null : affiche un tiret", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Écart-type", agg: "stddev", field: "amount" },
+    {
+      data: state({
+        records: [{ id: "row", properties: { value: null } }],
+        resolvedSource: {
+          id: "d",
+          type: "statistics",
+          service: "core",
+          layer: "ventes",
+          query: { agg: "stddev", field: "amount" },
+        },
+      }),
+    },
+  );
+  expect(screen.getByText("—")).toBeInTheDocument();
+});
+
+test("statistics + agrégat réellement zéro : affiche 0, pas un tiret", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Somme", agg: "sum", field: "amount" },
+    {
+      data: state({
+        records: [{ id: "row", properties: { value: 0 } }],
+        resolvedSource: {
+          id: "d",
+          type: "statistics",
+          service: "core",
+          layer: "ventes",
+          query: { agg: "sum", field: "amount" },
+        },
+      }),
+    },
+  );
+  expect(screen.getByText("0")).toBeInTheDocument();
+  expect(screen.queryByText("—")).not.toBeInTheDocument();
+});
+
+test("statistics + mesures explicites nommées : affiche un tiret plutôt qu'une valeur devinée", () => {
+  // Quand l'auteur configure des `measures` avec des libellés personnalisés
+  // (DataSourcePanel), aucune clé `value` n'existe forcément dans la ligne —
+  // deviner laquelle des mesures afficher serait arbitraire.
+  renderIndicator(
+    { dataSourceId: "d", label: "Total" },
+    {
+      data: state({
+        records: [{ id: "row", properties: { ca_median: 42, ca_max: 99 } }],
+        resolvedSource: {
+          id: "d",
+          type: "statistics",
+          service: "core",
+          layer: "ventes",
+          query: { measures: [{ agg: "median", field: "amount", label: "ca_median" }] },
+        },
+      }),
+    },
+  );
+  expect(screen.getByText("—")).toBeInTheDocument();
+  expect(screen.queryByText("42")).not.toBeInTheDocument();
+});
+
+test("statistics groupé : affiche la première ligne (même convention que useKpiComparison)", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Total", agg: "sum", field: "amount" },
+    {
+      data: state({
+        records: [
+          { id: "Nord", properties: { region: "Nord", value: 7 } },
+          { id: "Sud", properties: { region: "Sud", value: 99 } },
+        ],
+        resolvedSource: {
+          id: "d",
+          type: "statistics",
+          service: "core",
+          layer: "ventes",
+          query: { agg: "sum", field: "amount", groupBy: "region" },
+        },
+      }),
+    },
+  );
+  expect(screen.getByText("7")).toBeInTheDocument();
+  expect(screen.queryByText("99")).not.toBeInTheDocument();
+});
+
+test("features + count reste inchangé (garde de non-régression) même avec resolvedSource renseigné", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Total", agg: "count" },
+    {
+      data: state({
+        records: [
+          { id: 1, properties: { pop: 10 } },
+          { id: 2, properties: { pop: 30 } },
+        ],
+        resolvedSource: { id: "d", type: "features", service: "core", layer: "villes", query: {} },
+      }),
+    },
+  );
+  expect(screen.getByText("2")).toBeInTheDocument();
+});
+
+test("features + sum reste inchangé (garde de non-régression) même avec resolvedSource renseigné", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Total", agg: "sum", field: "pop" },
+    {
+      data: state({
+        records: [
+          { id: 1, properties: { pop: 10 } },
+          { id: 2, properties: { pop: 30 } },
+        ],
+        resolvedSource: { id: "d", type: "features", service: "core", layer: "villes", query: {} },
+      }),
+    },
+  );
+  expect(screen.getByText("40")).toBeInTheDocument();
 });

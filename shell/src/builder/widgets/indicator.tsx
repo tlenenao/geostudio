@@ -14,18 +14,28 @@ import {
   windowedStatisticsSource,
   type ReferenceMode,
 } from "../../lib/comparisonWindow";
-import type { DataSource, DatasetConfig } from "../../api/types";
+import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
 type KpiComparison = {
   active: boolean;
   loading: boolean;
+  hasResolvedValue: boolean;
   value: number | null;
   delta: number | null;
   deltaPct: number | null;
   sparklinePoints: { bucket: string; value: number }[];
 };
+
+// Un agrégat serveur indéfini (médiane d'un ensemble vide, écart-type d'une
+// ligne unique) vaut `null` côté serveur depuis SP-23 Task 1, jamais 0 —
+// `null`/`undefined` restent `null` ici plutôt que d'être coalescés à 0.
+function parseAggregateValue(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : n;
+}
 
 // Shared mechanic (Task 3, spec §3): fetches the dataset config (needed to
 // know `timeField`), then — only once referencePeriod/sparkline is actually
@@ -114,11 +124,13 @@ function useKpiComparison(
     enabled: Boolean(active && sparklineEnabled),
   });
 
-  const value =
-    referencePeriod && valueQuery.data ? Number(valueQuery.data[0]?.properties.value ?? 0) : null;
+  const hasResolvedValue = Boolean(referencePeriod && valueQuery.data);
+  const value = hasResolvedValue
+    ? parseAggregateValue(valueQuery.data?.[0]?.properties.value)
+    : null;
   const reference =
     referencePeriod && referenceQuery.data
-      ? Number(referenceQuery.data[0]?.properties.value ?? 0)
+      ? parseAggregateValue(referenceQuery.data[0]?.properties.value)
       : null;
   const delta = value !== null && reference !== null ? value - reference : null;
   const deltaPct =
@@ -136,7 +148,43 @@ function useKpiComparison(
     ((Boolean(referencePeriod) && (valueQuery.isLoading || referenceQuery.isLoading)) ||
       (sparklineEnabled && sparklineQuery.isLoading));
 
-  return { active, loading, value, delta, deltaPct, sparklinePoints };
+  return { active, loading, hasResolvedValue, value, delta, deltaPct, sparklinePoints };
+}
+
+// SP-23 Task 7b : pour une source `type: "statistics"`, le serveur a déjà
+// agrégé — compter les lignes de la réponse (typiquement 1) n'a aucun sens.
+// Le comptage/somme côté client ne s'applique qu'aux sources `features`/
+// `static`, dont chaque ligne est une feature brute.
+function resolveFlatValue(
+  data: Pick<DataSourceState, "records" | "resolvedSource">,
+  agg: string,
+  field: string,
+): number | null {
+  if (data.resolvedSource?.type === "statistics") {
+    const measures = data.resolvedSource.query?.measures;
+    if (Array.isArray(measures) && measures.length > 0) {
+      // Mesures explicites à libellés personnalisés (DataSourcePanel) : rien
+      // ne garantit une clé `value` dans la ligne, et deviner laquelle des
+      // mesures afficher serait arbitraire — tiret honnête plutôt qu'une
+      // valeur devinée.
+      return null;
+    }
+    // Chemin mesure unique (agg+field du panneau de l'indicateur) : le cœur
+    // émet toujours le libellé littéral "value"
+    // (AggregateMeasure(field=…, agg=…, label="value"), core/app/analytics/
+    // aggregate.py). Une source groupée renvoie plusieurs lignes ; on prend
+    // la première, comme le fait déjà useKpiComparison ci-dessus pour le
+    // chemin de comparaison — un indicateur sur une source groupée affiche
+    // donc le premier groupe.
+    return parseAggregateValue(data.records[0]?.properties.value);
+  }
+  return agg === "sum"
+    ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
+    : data.records.length;
+}
+
+function displayValue(value: number | null | undefined): string {
+  return value === null || value === undefined || Number.isNaN(value) ? "—" : String(value);
 }
 
 function deltaLabel(delta: number, deltaPct: number | null, mode: ReferenceMode): string {
@@ -290,12 +338,9 @@ export function registerIndicatorWidget(): void {
         return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
       if (data.error) return <p className="text-xs text-red-600">Erreur</p>;
 
-      const flatValue =
-        agg === "sum"
-          ? data.records.reduce((acc, r) => acc + (Number(r.properties[field]) || 0), 0)
-          : data.records.length;
+      const flatValue = resolveFlatValue(data, agg, field);
       const value =
-        comparison.active && referencePeriod && comparison.value !== null
+        comparison.active && referencePeriod && comparison.hasResolvedValue
           ? comparison.value
           : flatValue;
 
@@ -322,7 +367,9 @@ export function registerIndicatorWidget(): void {
             hasGeometry={data.hasGeometry}
           />
           <div className="flex items-center gap-1">
-            <span className="text-2xl font-semibold text-[var(--gs-color-text)]">{value}</span>
+            <span className="text-2xl font-semibold text-[var(--gs-color-text)]">
+              {displayValue(value)}
+            </span>
             {level && (
               <span
                 aria-label={

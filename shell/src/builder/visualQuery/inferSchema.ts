@@ -2,8 +2,17 @@
 import type { CollectionFieldType, CollectionSchema } from "../../api/types";
 
 export type JoinConfig = { collectionId: string; on: string; how: "inner" | "left" };
-export type MetricFunction = "count" | "sum" | "avg" | "min" | "max";
-export type MetricConfig = { alias: string; function: MetricFunction; sourceColumn: string | null };
+export type MetricFunction =
+  "count" | "countDistinct" | "sum" | "avg" | "median" | "percentile" | "stddev" | "min" | "max";
+// `p` est le centile demandé, en POURCENTAGE (0 < p < 100), et n'a de sens
+// que pour function === "percentile". Nullable et non optionnel, comme
+// sourceColumn : chaque site de construction doit trancher explicitement.
+export type MetricConfig = {
+  alias: string;
+  function: MetricFunction;
+  sourceColumn: string | null;
+  p: number | null;
+};
 export type SummaryConfig = { groupBy: string[]; metrics: MetricConfig[] };
 
 export type InferredColumn = { name: string; sqlType: string };
@@ -46,9 +55,13 @@ export function inferOutputColumns(
     }
     for (const metric of summary.metrics) {
       const sqlType =
-        metric.function === "count"
+        metric.function === "count" || metric.function === "countDistinct"
           ? "integer"
-          : metric.function === "sum" || metric.function === "avg"
+          : metric.function === "sum" ||
+              metric.function === "avg" ||
+              metric.function === "median" ||
+              metric.function === "percentile" ||
+              metric.function === "stddev"
             ? "double precision"
             : sqlTypeOf(base, metric.sourceColumn ?? "");
       columns.push({ name: metric.alias, sqlType });

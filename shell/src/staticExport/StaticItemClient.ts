@@ -162,6 +162,12 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async saveMapConfig(..._args: unknown[]) {
       return unsupported();
     },
+    async listConfigRevisions(..._args: unknown[]) {
+      return unsupported();
+    },
+    async rollbackConfig(..._args: unknown[]) {
+      return unsupported();
+    },
     async createDatasetItem(..._args: unknown[]) {
       return unsupported();
     },

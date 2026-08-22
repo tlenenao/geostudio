@@ -10,6 +10,7 @@ import { TerrainPanel } from "../map/TerrainPanel";
 import { CameraControls } from "../map/CameraControls";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { ExportPanel } from "../builder/print/ExportPanel";
+import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { Button } from "../ui/button";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
@@ -114,6 +115,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
           onChange={setCamera}
         />
         <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+        <ConfigHistoryPanel
+          pk={pk}
+          currentVersion={null}
+          onRestored={async () => setDraft(await client.getMapConfig(pk))}
+        />
         {exportEnabled && <ExportPanel itemId={pk} />}
         <Button
           size="sm"

@@ -1134,6 +1134,8 @@ export interface components {
             field?: string | null;
             /** Label */
             label?: string | null;
+            /** P */
+            p?: number | null;
         };
         /** AggregateRequestBody */
         AggregateRequestBody: {
@@ -1152,7 +1154,7 @@ export interface components {
             /** Bins */
             bins?: number | null;
             /** Bucket */
-            bucket?: ("day" | "week" | "month") | null;
+            bucket?: ("hour" | "day" | "week" | "month" | "quarter" | "year") | null;
             /** Field */
             field?: string | null;
             /**
@@ -1170,6 +1172,8 @@ export interface components {
             groupBy?: string | string[] | null;
             /** Measures */
             measures?: components["schemas"]["AggregateMeasure"][] | null;
+            /** P */
+            p?: number | null;
             /** Split */
             split?: string | null;
         };
