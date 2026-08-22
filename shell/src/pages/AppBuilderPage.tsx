@@ -397,8 +397,10 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     const restored = await client.getAppConfig(pk);
                     // resetDraft, pas setDraft : la pile undo ne peut pas défaire
                     // une écriture serveur (cf. useUndoableDraft.resetDraft).
+                    // Pas de query.refetch() ici : ConfigHistoryPanel invalide
+                    // désormais lui-même la clé de la config (elle est active,
+                    // donc react-query la refetch), pour les cinq éditeurs.
                     resetDraft(restored);
-                    await query.refetch();
                   }}
                 />
               </div>
