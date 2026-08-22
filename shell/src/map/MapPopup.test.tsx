@@ -48,6 +48,16 @@ test("closes on the close button", async () => {
   expect(onClose).toHaveBeenCalledOnce();
 });
 
+test("a template that interpolates to an empty string is treated as no html, not an empty bubble", () => {
+  const { container } = render(
+    <MapPopup content={{ title: null, rows: [], html: "" }} x={0} y={0} onClose={() => {}} />,
+  );
+  expect(screen.getByText("Aucun attribut")).toBeInTheDocument();
+  // La branche rendue est celle des lignes (une `<dl>`, ici vide), jamais
+  // le `<div>` injecté par `dangerouslySetInnerHTML`.
+  expect(container.querySelector("dl")).not.toBeNull();
+});
+
 test("shows an explicit message when the feature carries no attribute", () => {
   render(
     <MapPopup content={{ title: null, rows: [], html: null }} x={0} y={0} onClose={() => {}} />,

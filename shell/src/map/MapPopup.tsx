@@ -19,7 +19,14 @@ export function MapPopup({
   y: number;
   onClose: () => void;
 }) {
-  const empty = !content.html && content.rows.length === 0 && !content.title;
+  // Un gabarit qui s'interpole en chaîne vide (`marked.parse("")` → `""`)
+  // est traité comme « pas de html » : la chaîne vide n'a rien à afficher,
+  // donc le même message « Aucun attribut » qu'une entité sans propriété
+  // plutôt qu'une bulle avec un `<div>` vide. Un seul prédicat de vérité
+  // pilote à la fois le choix de branche de rendu et le calcul de `empty`,
+  // pour qu'ils ne puissent plus diverger sur ce cas.
+  const hasHtml = Boolean(content.html);
+  const empty = !hasHtml && content.rows.length === 0 && !content.title;
   return (
     <div
       role="dialog"
@@ -36,7 +43,7 @@ export function MapPopup({
         ✕
       </button>
       {content.title && <p className="mb-1 pr-4 font-medium">{content.title}</p>}
-      {content.html !== null ? (
+      {content.html ? (
         <div dangerouslySetInnerHTML={{ __html: content.html }} />
       ) : (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2">

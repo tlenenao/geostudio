@@ -33,7 +33,12 @@ export function resolvePopupContent(
       html: renderPopupTemplate(template, { ...ctx, record: properties }),
     };
   }
-  const names = config?.fields?.length
+  // Présence de `fields`, pas sa longueur : `fields: []` est un choix
+  // délibéré de l'auteur (« aucun champ »), à distinguer de l'absence de
+  // clé (« pas encore configuré, tout afficher »). Une confusion des deux
+  // ferait ressortir des propriétés internes qu'un auteur a explicitement
+  // voulu masquer sur une carte ou un site publics.
+  const names = config?.fields
     ? config.fields.filter((f) => f.name in properties).map((f) => f.name)
     : Object.keys(properties);
   const labels = new Map((config?.fields ?? []).map((f) => [f.name, f.label]));
