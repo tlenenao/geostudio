@@ -116,13 +116,40 @@ function applyLayers(
     try {
       if (layer.kind === "vector") {
         map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
-        map.addLayer({
-          id: layer.id,
-          type: layerTypeFor(layer.geometryKind),
-          source: layer.id,
-          "source-layer": layer.sourceLayer,
-          paint: layer.paint ?? {},
-        } as maplibregl.AddLayerObject);
+        // `type` est réduit branche par branche (comme la branche `feature`
+        // ci-dessous) plutôt que castée : un `type` littéral suffit à
+        // TypeScript pour choisir le bon membre de l'union discriminée
+        // `AddLayerObject`, sans perdre la vérification si `layerTypeFor`
+        // oublie un jour un quatrième `geometryKind`.
+        switch (layerTypeFor(layer.geometryKind)) {
+          case "circle":
+            map.addLayer({
+              id: layer.id,
+              type: "circle",
+              source: layer.id,
+              "source-layer": layer.sourceLayer,
+              paint: layer.paint ?? {},
+            });
+            break;
+          case "line":
+            map.addLayer({
+              id: layer.id,
+              type: "line",
+              source: layer.id,
+              "source-layer": layer.sourceLayer,
+              paint: layer.paint ?? {},
+            });
+            break;
+          default:
+            map.addLayer({
+              id: layer.id,
+              type: "fill",
+              source: layer.id,
+              "source-layer": layer.sourceLayer,
+              paint: layer.paint ?? {},
+            });
+            break;
+        }
         const handler = makeFeatureClickHandler(layer.pkColumn, onFeatureClick);
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
