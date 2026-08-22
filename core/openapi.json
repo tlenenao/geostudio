@@ -2235,6 +2235,17 @@
       },
       "MapLayer": {
         "properties": {
+          "collectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionid"
+          },
           "dataUrl": {
             "anyOf": [
               {
@@ -2256,6 +2267,22 @@
               }
             ],
             "title": "Decktype"
+          },
+          "geometryKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "point",
+                  "line",
+                  "polygon"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometrykind"
           },
           "id": {
             "title": "Id",
@@ -2294,6 +2321,27 @@
               }
             ],
             "title": "Paint"
+          },
+          "pkColumn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pkcolumn"
+          },
+          "popup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PopupConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "props": {
             "anyOf": [
@@ -2752,6 +2800,73 @@
           "cron"
         ],
         "title": "PipelineRefreshPolicy",
+        "type": "object"
+      },
+      "PopupConfig": {
+        "description": "Contenu du popup d'une couche (SP-24). `template` non vide l'emporte sur\ntitleField/fields \u2014 un seul mode s'applique \u00e0 la fois.",
+        "properties": {
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PopupField"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "titleField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titlefield"
+          }
+        },
+        "title": "PopupConfig",
+        "type": "object"
+      },
+      "PopupField": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PopupField",
         "type": "object"
       },
       "PostgresDsnPayload": {
@@ -4518,6 +4633,80 @@
           }
         },
         "summary": "Put Sharing"
+      }
+    },
+    "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
+      "get": {
+        "operationId": "get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "z",
+            "required": true,
+            "schema": {
+              "title": "Z",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "x",
+            "required": true,
+            "schema": {
+              "title": "X",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "y",
+            "required": true,
+            "schema": {
+              "title": "Y",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection Tile"
       }
     },
     "/configs": {
