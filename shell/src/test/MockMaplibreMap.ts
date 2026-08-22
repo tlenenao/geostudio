@@ -124,6 +124,11 @@ export class MockMap {
   isStyleLoaded() {
     return this.styleSettled;
   }
+  // MapView projette le point cliqué pour positionner le popup ; la valeur
+  // exacte n'a pas de sens en test, seule sa propagation compte.
+  project(lngLat: { lng: number; lat: number }) {
+    return { x: Math.round(lngLat.lng), y: Math.round(lngLat.lat) };
+  }
   addControl(control: unknown) {
     this.controls.push(control);
     return this;

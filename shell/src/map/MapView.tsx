@@ -17,6 +17,7 @@ const TERRAIN_SOURCE_ID = "__terrain__";
 // looking path — the latter must never receive our session's bearer token.
 const HOSTED_TILESET3D_PATH = "/tileset3d/";
 const HOSTED_TERRAIN3D_PATH = "/terrain3d/";
+const HOSTED_COLLECTION_PATH = "/collections/";
 
 // Real "is this hosted by us" check: a substring match on the URL is not
 // enough — layer/terrain URLs are freeform (an author can type any external
@@ -47,6 +48,14 @@ function isHostedTerrainUrl(url: string, coreUrl: string | undefined): boolean {
   return isHostedCoreUrl(url, coreUrl, HOSTED_TERRAIN3D_PATH);
 }
 
+// Les tuiles MVT d'une collection (SP-24) et le GeoJSON /items sont servis par
+// le cœur sous can() : ils doivent porter le jeton de session, sinon une
+// collection non publique n'est pas lisible du tout. Même vérification
+// d'origine réelle que pour tileset3d/terrain3d — jamais un includes().
+function isHostedCollectionUrl(url: string, coreUrl: string | undefined): boolean {
+  return isHostedCoreUrl(url, coreUrl, HOSTED_COLLECTION_PATH);
+}
+
 export type MapViewHandle = {
   flyTo: (opts: {
     center: [number, number];
@@ -56,6 +65,33 @@ export type MapViewHandle = {
   }) => void;
   highlight: (geometry: unknown | null) => void;
 };
+
+// Une couche tuilée était jusqu'ici ajoutée en "fill" quel que soit son
+// contenu : une collection de points ne s'affichait donc pas du tout. Le type
+// MapLibre suit désormais la géométrie déclarée par la couche.
+function layerTypeFor(geometryKind: "point" | "line" | "polygon" | undefined) {
+  if (geometryKind === "point") return "circle" as const;
+  if (geometryKind === "line") return "line" as const;
+  return "fill" as const;
+}
+
+// Partagé par les couches tuilées et GeoJSON : une seule définition du "que
+// vaut l'identité d'une entité cliquée". ST_AsMVT ne pose un feature id que
+// sur une PK entière, d'où le repli sur la propriété de PK.
+function makeFeatureClickHandler(
+  pkColumn: string | undefined,
+  onFeatureClick: (record: DataRecord) => void,
+) {
+  return (e: maplibregl.MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    if (!f) return;
+    const properties = (f.properties ?? {}) as Record<string, unknown>;
+    const fallback = pkColumn ? properties[pkColumn] : undefined;
+    const id = (f.id ?? fallback) as string | number | undefined;
+    if (id == null) return;
+    onFeatureClick({ id, properties, geometry: f.geometry });
+  };
+}
 
 function applyLayers(
   map: maplibregl.Map,
@@ -82,11 +118,14 @@ function applyLayers(
         map.addSource(layer.id, { type: "vector", tiles: [layer.tilesUrl] });
         map.addLayer({
           id: layer.id,
-          type: "fill",
+          type: layerTypeFor(layer.geometryKind),
           source: layer.id,
           "source-layer": layer.sourceLayer,
           paint: layer.paint ?? {},
-        });
+        } as maplibregl.AddLayerObject);
+        const handler = makeFeatureClickHandler(layer.pkColumn, onFeatureClick);
+        map.on("click", layer.id, handler);
+        clickHandlers.set(layer.id, handler);
       } else if (layer.kind === "raster") {
         map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
         map.addLayer({
@@ -123,15 +162,7 @@ function applyLayers(
             });
             break;
         }
-        const handler = (e: maplibregl.MapLayerMouseEvent) => {
-          const f = e.features?.[0];
-          if (!f || f.id == null) return;
-          onFeatureClick({
-            id: f.id as string | number,
-            properties: f.properties ?? {},
-            geometry: f.geometry,
-          });
-        };
+        const handler = makeFeatureClickHandler(undefined, onFeatureClick);
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
       }
@@ -346,7 +377,8 @@ export const MapView = forwardRef<
       pitch: config.view.pitch ?? 0,
       bearing: config.view.bearing ?? 0,
       transformRequest: (url: string) => {
-        if (isHostedTerrainUrl(url, getCoreUrlRef.current?.())) {
+        const coreUrl = getCoreUrlRef.current?.();
+        if (isHostedTerrainUrl(url, coreUrl) || isHostedCollectionUrl(url, coreUrl)) {
           const token = getAuthTokenRef.current?.();
           if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
         }

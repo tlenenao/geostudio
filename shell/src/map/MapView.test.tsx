@@ -930,3 +930,98 @@ test("transformRequest does not leak the token when the URL merely contains /ter
   const result = transformRequest("https://attacker.test/x/terrain3d/y/tiles/5/10/12.png", "Tile");
   expect(result).toEqual({ url: "https://attacker.test/x/terrain3d/y/tiles/5/10/12.png" });
 });
+
+const tiled = (extra: Partial<Extract<MapLayer, { kind: "vector" }>> = {}) => ({
+  ...config,
+  layers: [
+    {
+      id: "communes",
+      title: "Communes",
+      visible: true,
+      kind: "vector" as const,
+      tilesUrl: "http://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+      sourceLayer: "communes",
+      collectionId: "communes",
+      ...extra,
+    },
+  ],
+});
+
+test("a tiled point collection is rendered as circles, not as a fill", () => {
+  render(<MapView config={tiled({ geometryKind: "point" })} />);
+  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "circle" });
+});
+
+test("a tiled line collection is rendered as lines", () => {
+  render(<MapView config={tiled({ geometryKind: "line" })} />);
+  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "line" });
+});
+
+test("a tiled layer without geometryKind still falls back to a fill", () => {
+  render(<MapView config={tiled()} />);
+  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "fill" });
+});
+
+test("clicking a tiled feature reports it, like a geojson one", () => {
+  const onFeatureClick = vi.fn();
+  render(<MapView config={tiled({ geometryKind: "polygon" })} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "communes", {
+    features: [{ id: 7, properties: { nom: "Tulle" }, geometry: { type: "Point" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 7, properties: { nom: "Tulle" } }),
+  );
+});
+
+test("a tiled feature with a text primary key falls back to the pk property", () => {
+  // ST_AsMVT ne pose un feature id que sur une PK entière (core/app/features/
+  // tiles.py) : sans repli, une collection à PK texte serait inerte.
+  const onFeatureClick = vi.fn();
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code" })}
+      onFeatureClick={onFeatureClick}
+    />,
+  );
+  mapInstances[0].fireOnLayer("click", "communes", {
+    features: [{ id: null, properties: { code: "19272", nom: "Tulle" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(expect.objectContaining({ id: "19272" }));
+});
+
+test("the click handler of a removed tiled layer is detached", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  rerender(<MapView config={config} />);
+  expect(mapInstances[0].layerHandlers["click:communes"] ?? []).toHaveLength(0);
+});
+
+test("core collection tile requests carry the session bearer token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("http://core.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "http://core.test/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
+test("an external url that merely looks like ours gets no token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("https://attacker.test/collections/x/tiles/1/2/3.mvt")).toEqual({
+    url: "https://attacker.test/collections/x/tiles/1/2/3.mvt",
+  });
+});
