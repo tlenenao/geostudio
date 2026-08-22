@@ -305,7 +305,6 @@ function buildArcgisItemsUrl(
 
 export function createItemClient(opts: {
   coreUrl: string;
-  martinUrl?: string;
   getToken: () => string | undefined;
 }): ItemClient {
   const { coreUrl, getToken } = opts;
