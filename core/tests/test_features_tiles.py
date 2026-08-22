@@ -85,3 +85,65 @@ def test_sql_quotes_every_identifier_and_carries_the_columns():
 
 def test_sql_drops_rows_whose_tile_geometry_is_null():
     assert "IS NOT NULL" in build_mvt_sql(_quote, _info())
+
+
+def test_the_tile_route_is_mounted_unconditionally():
+    from app.main import create_app
+
+    # FastAPI >=0.130 n'expose plus les routes incluses comme des APIRoute
+    # aplaties dans app.routes (nouvelle classe interne _IncludedRouter, sans
+    # attribut .path) : le schéma OpenAPI généré reste la façon stable et
+    # publique de vérifier qu'un chemin est monté, indépendamment de la
+    # représentation interne du routage.
+    paths = set(create_app().openapi()["paths"])
+    assert "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt" in paths
+
+
+def _client(monkeypatch, info: TableInfo | None = None, collection=None):
+    """App réelle, session et collection substituées : ces cas-là échouent
+    AVANT tout SQL, donc aucune base n'est nécessaire."""
+    from types import SimpleNamespace
+
+    from fastapi.testclient import TestClient
+
+    from app import db
+    from app.auth.dependency import get_current_user_optional
+    from app.collections.introspection import TableNotFound
+    from app.collections.routes import get_introspector
+    from app.features import tiles as tiles_module
+    from app.main import create_app
+
+    app = create_app()
+    col = collection or SimpleNamespace(
+        id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
+    )
+    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c: col)
+    app.dependency_overrides[db.get_session] = lambda: None
+    app.dependency_overrides[get_current_user_optional] = lambda: None
+    app.dependency_overrides[get_introspector] = lambda: (
+        lambda s, t: info if info is not None else (_ for _ in ()).throw(TableNotFound(t))
+    )
+    return TestClient(app)
+
+
+def test_zoom_out_of_range_is_a_400(monkeypatch):
+    r = _client(monkeypatch, _info()).get("/collections/demo_incidents/tiles/99/0/0.mvt")
+    assert r.status_code == 400
+    assert "z must be within" in r.json()["detail"]
+
+
+def test_x_out_of_range_for_the_zoom_is_a_400(monkeypatch):
+    r = _client(monkeypatch, _info()).get("/collections/demo_incidents/tiles/1/9/0.mvt")
+    assert r.status_code == 400
+
+
+def test_collection_without_geometry_is_a_400(monkeypatch):
+    info = _info(geometry_column=None, geometry_type=None, srid=None)
+    r = _client(monkeypatch, info).get("/collections/demo_incidents/tiles/0/0/0.mvt")
+    assert r.status_code == 400
+    assert "geometry" in r.json()["detail"]
+
+
+def test_unknown_table_is_a_404(monkeypatch):
+    r = _client(monkeypatch, None).get("/collections/demo_incidents/tiles/0/0/0.mvt")
+    assert r.status_code == 404

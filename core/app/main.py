@@ -30,6 +30,7 @@ from app.dcat import routes as dcat_routes
 from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
+from app.features import tiles as tiles_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
@@ -179,6 +180,7 @@ def create_app() -> FastAPI:
     app.include_router(schemas_router)
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
+    app.include_router(tiles_routes.router)
     app.include_router(ingestion_routes.router)
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)

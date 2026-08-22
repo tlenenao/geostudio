@@ -9,13 +9,26 @@ un `collectionId` sur la couche.
 Ce module est volontairement coupé en deux : des helpers purs (testés sans
 base) et une route mince qui les assemble."""
 
+import functools
 from collections.abc import Callable
 
-from app.collections.introspection import TableInfo
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.auth.dependency import get_current_user_optional
+from app.collections.ddl import quote_ident
+from app.collections.introspection import TableInfo, TableNotFound
+from app.collections.routes import get_introspector, get_readable_collection
+from app.db import get_session
+from app.features.routes import get_rls_scope
 
 MVT_EXTENT = 4096
 MVT_BUFFER = 64
 MAX_TILE_ZOOM = 24
+MVT_MEDIA_TYPE = "application/vnd.mapbox-vector-tile"
+
+router = APIRouter()
 
 # tenant_id est une colonne réelle de toute table de collection (ddl.py) et
 # TableInfo.columns la contient : elle ne doit jamais partir dans une tuile.
@@ -66,4 +79,57 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
         # rendrait inutilisable.
         f"WHERE {geom} && ST_Transform(ST_TileEnvelope(:z, :x, :y), :srid)"
         ") AS tile WHERE tile.geom IS NOT NULL"
+    )
+
+
+@router.get("/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt")
+def get_collection_tile(
+    collection_id: str,
+    z: int,
+    x: int,
+    y: int,
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+    introspect=Depends(get_introspector),
+    rls=Depends(get_rls_scope),
+) -> Response:
+    # Même porte que GET /items : 404 avant 403, anonyme accepté sur une
+    # collection publique. Aucune variante — la garde est réutilisée verbatim.
+    col = get_readable_collection(session, user, collection_id)
+    try:
+        validate_tile_coords(z, x, y)
+    except InvalidTileCoords as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        info = introspect(session, col.table_name)
+    except TableNotFound as exc:
+        raise HTTPException(status_code=404, detail="collection not found") from exc
+    if info.geometry_column is None:
+        raise HTTPException(status_code=400, detail="collection has no geometry column")
+
+    quote = functools.partial(quote_ident, session)
+    sql = build_mvt_sql(quote, info)
+    # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
+    # jamais d'un WHERE applicatif.
+    with rls(session, col.tenant_id):
+        tile = session.execute(
+            text(sql),
+            {
+                "z": z,
+                "x": x,
+                "y": y,
+                "layer": col.id,
+                "extent": MVT_EXTENT,
+                "buffer": MVT_BUFFER,
+                "srid": info.srid or 4326,
+                "fid": mvt_feature_id_column(info),
+            },
+        ).scalar()
+    if not tile:
+        return Response(status_code=204)
+    visibility = "public" if col.is_public else "private"
+    return Response(
+        content=bytes(tile),
+        media_type=MVT_MEDIA_TYPE,
+        headers={"Cache-Control": f"{visibility}, max-age=300"},
     )
