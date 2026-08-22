@@ -40,14 +40,14 @@ def _client_and_user(monkeypatch, tmp_path):
     return client, tenant, user, Session
 
 
-def _alert_body(dataset_item_id: str) -> dict:
+def _alert_body(dataset_item_id: str, *, query: dict | None = None) -> dict:
     return {
         "title": "High counts",
         "config": {
             "kind": "alert",
             "alert": {
                 "datasetItemId": dataset_item_id,
-                "query": {"agg": "count"},
+                "query": query or {"agg": "count"},
                 "condition": {"expr": "value > 100"},
                 "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
                 "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
@@ -95,3 +95,41 @@ def test_create_alert_rule_succeeds_against_a_readable_dataset(monkeypatch, tmp_
     resp = client.post("/configs", json=_alert_body(dataset_item_id))
     assert resp.status_code == 201
     assert resp.json()["kind"] == "alert"
+
+
+def test_create_alert_rule_rejects_a_percentile_query_without_p(monkeypatch, tmp_path):
+    """Sans validation de `p` à la sauvegarde, la règle s'enregistre puis
+    échoue à chaque tick de son cron, pour toujours (revue finale SP-23, I4)."""
+    client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
+    with Session() as s:
+        item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            resource_type="dataset",
+            title="My dataset",
+        )
+        s.commit()
+        dataset_item_id = item.id
+
+    resp = client.post(
+        "/configs",
+        json=_alert_body(dataset_item_id, query={"agg": "percentile", "field": "amount"}),
+    )
+    assert resp.status_code == 422
+
+    resp = client.post(
+        "/configs",
+        json=_alert_body(
+            dataset_item_id,
+            query={"measures": [{"agg": "percentile", "field": "amount", "label": "value"}]},
+        ),
+    )
+    assert resp.status_code == 422
+
+    # Le même agrégat avec un `p` valide reste acceptable.
+    resp = client.post(
+        "/configs",
+        json=_alert_body(dataset_item_id, query={"agg": "percentile", "field": "amount", "p": 90}),
+    )
+    assert resp.status_code == 201
