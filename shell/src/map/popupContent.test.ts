@@ -26,6 +26,22 @@ test("the configured field list drives the order and the labels", () => {
   ]);
 });
 
+test("a config without a fields key at all still falls back to every property", () => {
+  const c = resolvePopupContent({ titleField: "nom" }, props, ctx);
+  expect(c.title).toBe("Tulle");
+  expect(c.rows.map((r) => r.label)).toEqual(["id", "population"]);
+});
+
+test("an empty fields array means no field at all, not a fallback to every property", () => {
+  const c = resolvePopupContent(
+    { titleField: "nom", fields: [] },
+    { id: 1, nom: "Tulle", population: 14000, internal_secret_code: "XYZ" },
+    ctx,
+  );
+  expect(c.title).toBe("Tulle");
+  expect(c.rows).toEqual([]);
+});
+
 test("a configured field absent from the properties is dropped, not rendered empty", () => {
   const c = resolvePopupContent({ fields: [{ name: "absent" }, { name: "nom" }] }, props, ctx);
   expect(c.rows).toEqual([{ label: "nom", value: "Tulle" }]);
