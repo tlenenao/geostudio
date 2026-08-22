@@ -169,12 +169,15 @@ export type MapConfig = {
 export type LayerSource = {
   id: string;
   title: string;
-  service: "martin" | "core" | "external" | "tileset3d";
+  service: "core" | "external" | "tileset3d";
   kind: "vector" | "feature" | "raster" | "tiles3d";
   tilesUrl?: string;
   sourceLayer?: string;
   url?: string;
   featureCount?: number | null;
+  collectionId?: string;
+  geometryKind?: "point" | "line" | "polygon";
+  pkColumn?: string;
 };
 
 export type CollectionFieldType =

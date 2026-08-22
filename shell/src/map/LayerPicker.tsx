@@ -14,6 +14,9 @@ function toMapLayer(source: LayerSource): MapLayer {
       kind: "vector",
       tilesUrl: source.tilesUrl ?? "",
       sourceLayer: source.sourceLayer ?? "",
+      collectionId: source.collectionId,
+      geometryKind: source.geometryKind,
+      pkColumn: source.pkColumn,
     };
   }
   if (source.kind === "raster") {

@@ -192,45 +192,61 @@ test("setSharing PUTs the sharing object as-is", async () => {
   expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
 });
 
-test("listLayerSources aggregates Martin vector sources and core collections", async () => {
+test("listLayerSources returns one tiled entry per core collection, and no Martin source", async () => {
+  // Martin sort du sélecteur (spec SP-24 §3.7) : il se connecte en
+  // propriétaire des tables, donc hors RLS, et n'a aucune notion de
+  // collection. Une même collection n'apparaît plus qu'une fois.
   let auth: string | null = null;
   server.use(
-    http.get("https://martin.test/catalog", () =>
-      HttpResponse.json({
-        tiles: {
-          communes: { content_type: "application/x-protobuf", description: "Communes" },
-          routes: { content_type: "application/x-protobuf" },
-        },
-      }),
-    ),
     http.get("https://core.test/collections", ({ request }) => {
       auth = request.headers.get("authorization");
       return HttpResponse.json({
-        collections: [{ id: "public.parcs", title: "Parcs", featureCount: 42 }],
+        collections: [
+          { id: "communes", title: "Communes", geometryType: "Polygon", pkColumn: "id" },
+          { id: "sans_geom", title: "Sans géométrie", geometryType: null, pkColumn: "id" },
+        ],
       });
     }),
+    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const sources = await makeClient("abc").listLayerSources();
   expect(auth).toBe("Bearer abc");
-  const martin = sources.find((s) => s.id === "communes");
-  expect(martin).toMatchObject({
-    title: "Communes",
-    service: "martin",
-    kind: "vector",
-    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
-    sourceLayer: "communes",
-  });
-  expect(martin?.featureCount).toBeUndefined();
-  // Martin source without a description falls back to its id for the title.
-  expect(sources.find((s) => s.id === "routes")?.title).toBe("routes");
-  const feature = sources.find((s) => s.id === "public.parcs");
-  expect(feature).toMatchObject({
-    title: "Parcs",
+  expect(sources.map((s) => s.service)).not.toContain("martin");
+  const communes = sources.find((s) => s.id === "communes")!;
+  expect(communes).toMatchObject({
     service: "core",
-    kind: "feature",
-    url: "https://core.test/collections/public.parcs/items",
-    featureCount: 42,
+    kind: "vector",
+    collectionId: "communes",
+    geometryKind: "polygon",
+    pkColumn: "id",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
   });
+  expect(communes.sourceLayer).toBe("communes");
+});
+
+test("a collection without geometry type yields no geometryKind rather than a wrong one", async () => {
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({
+        collections: [{ id: "sans_geom", title: "Sans géométrie", geometryType: null }],
+      }),
+    ),
+    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+  );
+  const sources = await makeClient().listLayerSources();
+  expect(sources.find((s) => s.id === "sans_geom")?.geometryKind).toBeUndefined();
+});
+
+test("the Martin catalog is never fetched any more", async () => {
+  server.use(
+    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+  );
+  const fetchSpy = vi.spyOn(globalThis, "fetch");
+  await makeClient().listLayerSources();
+  const urls = fetchSpy.mock.calls.map(([u]) => String(u));
+  fetchSpy.mockRestore();
+  expect(urls.some((u) => u.includes("/catalog"))).toBe(false);
 });
 
 test("listActiveExtensions maps the core's /extensions response to ExtensionManifest[]", async () => {
@@ -272,44 +288,34 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
   ]);
 });
 
-test("listLayerSources still returns one service when the other fails", async () => {
+test("listLayerSources still returns core collections when another layer service fails", async () => {
   server.use(
-    http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/collections", () =>
       HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
     ),
+    http.get("https://core.test/harvest/layers", () => new HttpResponse(null, { status: 500 })),
   );
   const sources = await makeClient().listLayerSources();
   expect(sources).toHaveLength(1);
   expect(sources[0].service).toBe("core");
 });
 
-test("listLayerSources passes q to /collections and filters Martin sources client-side", async () => {
+test("listLayerSources passes q to /collections", async () => {
   let collectionsUrl: string | null = null;
   server.use(
-    http.get("https://martin.test/catalog", () =>
-      HttpResponse.json({
-        tiles: {
-          communes: { description: "Communes" },
-          routes: { description: "Routes" },
-        },
-      }),
-    ),
     http.get("https://core.test/collections", ({ request }) => {
       collectionsUrl = request.url;
       return HttpResponse.json({ collections: [{ id: "c1", title: "Communes" }] });
     }),
+    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const sources = await makeClient().listLayerSources({ q: "commun" });
   expect(collectionsUrl).toContain("q=commun");
-  expect(sources.find((s) => s.id === "communes")).toBeDefined();
-  expect(sources.find((s) => s.id === "routes")).toBeUndefined();
   expect(sources.find((s) => s.id === "c1")).toBeDefined();
 });
 
 test("listLayerSources throws when all services fail", async () => {
   server.use(
-    http.get("https://martin.test/catalog", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/collections", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/harvest/layers", () => new HttpResponse(null, { status: 500 })),
     http.get("https://core.test/items", () => new HttpResponse(null, { status: 500 })),

@@ -11,10 +11,13 @@ const sources: LayerSource[] = [
   {
     id: "communes",
     title: "Communes",
-    service: "martin",
+    service: "core",
     kind: "vector",
-    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
     sourceLayer: "communes",
+    collectionId: "communes",
+    geometryKind: "polygon",
+    pkColumn: "id",
   },
   {
     id: "public.parcs",
@@ -71,11 +74,26 @@ test("lists sources and emits a vector MapLayer on click", async () => {
     kind: "vector",
     title: "Communes",
     visible: true,
-    tilesUrl: "https://martin.test/communes/{z}/{x}/{y}",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
     sourceLayer: "communes",
   });
   expect(typeof layer.id).toBe("string");
   expect(layer.id.length).toBeGreaterThan(0);
+});
+
+test("adding a collection produces a tiled layer bound to it", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const btn = await screen.findByRole("button", { name: /Communes/ });
+  await userEvent.click(btn);
+  expect(onAdd).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: "vector",
+      collectionId: "communes",
+      geometryKind: "polygon",
+      pkColumn: "id",
+    }),
+  );
 });
 
 test("emits a feature MapLayer for a core source", async () => {
@@ -135,10 +153,10 @@ test("shows a feature-count badge for a core source with a known count", async (
   expect(item).toHaveTextContent("128 entités");
 });
 
-test("shows no feature-count badge for a martin source or an unknown count", async () => {
+test("shows no feature-count badge for a tiled vector source or an unknown count", async () => {
   renderPicker(vi.fn());
-  const martinItem = (await screen.findByRole("button", { name: /Communes/ })).closest("li")!;
-  expect(martinItem).not.toHaveTextContent(/entités/);
+  const communesItem = (await screen.findByRole("button", { name: /Communes/ })).closest("li")!;
+  expect(communesItem).not.toHaveTextContent(/entités/);
   const legacyItem = (await screen.findByRole("button", { name: /Legacy/ })).closest("li")!;
   expect(legacyItem).not.toHaveTextContent(/entités/);
 });
