@@ -381,6 +381,95 @@ test("getMapConfig reads and maps the builder map config", async () => {
   });
 });
 
+// SP-24 Task 16 regression: getMapConfig used to drop popup/collectionId/
+// geometryKind/pkColumn on load (toFrontLayer never read them off the raw
+// server JSON), even though the server round-trips them fine and MapView
+// requires layer.popup to be truthy to ever open a popup on click — a
+// freshly-loaded map with a saved popup config could never show one.
+test("getMapConfig reads popup/collectionId/geometryKind/pkColumn on a vector layer", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "communes",
+                title: "Communes",
+                visible: true,
+                kind: "vector",
+                tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+                sourceLayer: "communes",
+                collectionId: "communes",
+                geometryKind: "polygon",
+                pkColumn: "id",
+                popup: { titleField: "nom", fields: [{ name: "population", label: "Habitants" }] },
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "communes",
+    title: "Communes",
+    visible: true,
+    kind: "vector",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+    sourceLayer: "communes",
+    collectionId: "communes",
+    geometryKind: "polygon",
+    pkColumn: "id",
+    popup: { titleField: "nom", fields: [{ name: "population", label: "Habitants" }] },
+  });
+});
+
+test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "a",
+                title: "A",
+                visible: true,
+                kind: "feature",
+                url: "https://fs/a",
+                popup: { titleField: "nom" },
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "a",
+    title: "A",
+    visible: true,
+    kind: "feature",
+    url: "https://fs/a",
+    popup: { titleField: "nom" },
+  });
+});
+
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>

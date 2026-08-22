@@ -48,6 +48,7 @@ import type {
   PipelineOpsCatalog,
   PipelinePayload,
   PipelineRun,
+  PopupConfig,
   PrintLayoutConfig,
   ReportRunStatus,
   ReportSchedulePayload,
@@ -73,6 +74,10 @@ type RawMapLayer = {
   dataUrl?: string | null;
   paint?: Record<string, unknown> | null;
   props?: Record<string, unknown> | null;
+  popup?: PopupConfig | null;
+  collectionId?: string | null;
+  geometryKind?: "point" | "line" | "polygon" | null;
+  pkColumn?: string | null;
 };
 
 function toFrontLayer(l: RawMapLayer): MapLayer {
@@ -85,6 +90,10 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         tilesUrl: l.tilesUrl ?? "",
         sourceLayer: l.sourceLayer ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.collectionId ? { collectionId: l.collectionId } : {}),
+        ...(l.geometryKind ? { geometryKind: l.geometryKind } : {}),
+        ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
       };
     case "raster":
       return {
@@ -105,7 +114,13 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
       return { ...base, kind: "tiles3d", url: l.url ?? "" };
     case "feature":
     default:
-      return { ...base, kind: "feature", url: l.url ?? "", ...(l.paint ? { paint: l.paint } : {}) };
+      return {
+        ...base,
+        kind: "feature",
+        url: l.url ?? "",
+        ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
+      };
   }
 }
 
