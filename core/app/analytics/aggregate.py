@@ -179,7 +179,21 @@ def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
 
 
 def _measure_label(m: AggregateMeasure) -> str:
-    return m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)
+    """Libellé de colonne d'une mesure, dérivé quand l'auteur n'en donne pas.
+
+    `p` fait partie de l'identité d'une mesure `percentile` : sans lui dans le
+    libellé, deux centiles du même champ collisionnent et le pivot en perd un
+    silencieusement (revue finale SP-23, I1). Les huit autres agrégats gardent
+    le libellé historique `{agg}_{field}`.
+
+    Site unique : `app.harvest.routes` et `app.mcp.tools` importent cette
+    fonction plutôt que de redériver le libellé, pour que les trois surfaces
+    d'agrégat produisent exactement la même clé de ligne.
+    """
+    if m.label:
+        return m.label
+    agg = f"{m.agg}{m.p:g}" if m.agg == "percentile" and m.p is not None else m.agg
+    return f"{agg}_{m.field}" if m.field else agg
 
 
 def _measures_for(request: AggregateRequestBody) -> list[AggregateMeasure]:

@@ -987,6 +987,40 @@ def test_measure_level_p_is_validated_independently(tmp_path, conn):
     assert exc.value.field == "measures[0].p"
 
 
+def test_two_percentile_measures_on_the_same_field_produce_two_columns(tmp_path, conn):
+    """Le libellé dérivé d'une mesure `percentile` doit porter `p` : sans lui,
+    deux centiles du même champ collisionnent et le pivot en perd un
+    silencieusement (le dernier gagne)."""
+    _write_partition(
+        tmp_path,
+        rows=[_row(i, "Nord", "2025", i * 10, lsn=1) for i in range(1, 11)],
+    )
+    request = AggregateRequestBody(
+        groupBy="region",
+        measures=[
+            AggregateMeasure(agg="percentile", field="pop", p=50),
+            AggregateMeasure(agg="percentile", field="pop", p=90),
+        ],
+    )
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert len(rows) == 1
+    assert sorted(k for k in rows[0] if k != "region") == [
+        "percentile50_pop",
+        "percentile90_pop",
+    ]
+    assert rows[0]["percentile50_pop"] == pytest.approx(55.0, abs=1e-6)
+    assert rows[0]["percentile90_pop"] == pytest.approx(91.0, abs=1e-6)
+
+
 def test_bucket_groups_rows_by_year(tmp_path, conn):
     _write_partition(
         tmp_path,
