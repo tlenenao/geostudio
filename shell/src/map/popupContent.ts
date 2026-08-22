@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ExprContext } from "../builder/expr";
 import type { PopupConfig } from "../api/types";
 import { renderPopupTemplate, stringifyObject } from "./popupTemplate";
 
@@ -20,17 +19,22 @@ function display(value: unknown): string {
 // Résolution d'un PopupConfig contre les propriétés de l'entité cliquée.
 // Deux modes exclusifs : gabarit (s'il est non vide) ou liste de champs.
 // Sans configuration du tout : tous les champs présents, dans leur ordre.
+//
+// Pas de paramètre de contexte CEL (`vars`/`user`) : I4 de la revue finale
+// SP-24 — la prop `exprContext` de MapView existait mais aucun site de
+// montage réel n'avait de quoi la remplir (ni variables ni contexte d'app
+// dans MapEditorPage, ni ExprContext de l'ActionBus exposé par mapWidget ou
+// ExplorerDrawer). Le seul vocabulaire d'un gabarit de popup est `record.*`.
 export function resolvePopupContent(
   config: PopupConfig | undefined,
   properties: Record<string, unknown>,
-  ctx: Omit<ExprContext, "record">,
 ): PopupContent {
   const template = config?.template?.trim();
   if (template) {
     return {
       title: null,
       rows: [],
-      html: renderPopupTemplate(template, { ...ctx, record: properties }),
+      html: renderPopupTemplate(template, { vars: {}, user: { name: "" }, record: properties }),
     };
   }
   // Présence de `fields`, pas sa longueur : `fields: []` est un choix

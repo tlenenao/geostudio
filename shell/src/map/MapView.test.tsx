@@ -73,6 +73,7 @@ test("adds a vector source and fill layer for a vector layer", () => {
         kind: "vector",
         tilesUrl: "https://martin/communes/{z}/{x}/{y}",
         sourceLayer: "communes",
+        geometryKind: "polygon",
       },
     ],
   };
@@ -958,9 +959,85 @@ test("a tiled line collection is rendered as lines", () => {
   expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "line" });
 });
 
-test("a tiled layer without geometryKind still falls back to a fill", () => {
+// I1 de la revue finale SP-24 : `geometryKind` absent (géométrie inconnue ou
+// mixte côté PostGIS, ex. Point + MultiPoint dans la même colonne) posait un
+// unique layer "fill" — une couche de points ou de lignes ne rendait alors
+// RIEN, silencieusement. La couche pose désormais trois sous-couches
+// typées, chacune filtrée par type de géométrie réel de l'entité.
+test("a tiled layer without geometryKind renders three typed sub-layers, not a single fill", () => {
   render(<MapView config={tiled()} />);
-  expect(mapInstances[0].getLayer("communes")).toMatchObject({ type: "fill" });
+  const map = mapInstances[0];
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getLayer("communes__point")).toMatchObject({
+    type: "circle",
+    source: "communes",
+    "source-layer": "communes",
+    filter: ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false],
+  });
+  expect(map.getLayer("communes__line")).toMatchObject({
+    type: "line",
+    filter: ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false],
+  });
+  expect(map.getLayer("communes__polygon")).toMatchObject({
+    type: "fill",
+    filter: ["match", ["geometry-type"], ["Polygon", "MultiPolygon"], true, false],
+  });
+});
+
+test("a mixed-geometry layer's paint is split by prefix across its sub-layers", () => {
+  render(
+    <MapView
+      config={tiled({
+        paint: { "circle-color": "red", "line-color": "blue", "fill-color": "green", stray: "x" },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__point")).toMatchObject({ paint: { "circle-color": "red" } });
+  expect(map.getLayer("communes__line")).toMatchObject({ paint: { "line-color": "blue" } });
+  expect(map.getLayer("communes__polygon")).toMatchObject({ paint: { "fill-color": "green" } });
+});
+
+test("clicking any mixed-geometry sub-layer reports the same feature, keyed by the layer's own id", () => {
+  const onFeatureClick = vi.fn();
+  render(<MapView config={tiled()} onFeatureClick={onFeatureClick} />);
+  mapInstances[0].fireOnLayer("click", "communes__point", {
+    features: [{ id: 7, properties: { nom: "Tulle" }, geometry: { type: "Point" } }],
+    lngLat: { lng: 1, lat: 2 },
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 7, properties: { nom: "Tulle" } }),
+  );
+});
+
+test("clicking a mixed-geometry sub-layer opens the popup declared on the layer, not on the sub-layer", () => {
+  render(<MapView config={tiled({ popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes__polygon", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByText("Tulle")).toBeInTheDocument();
+});
+
+test("removing a mixed-geometry layer detaches all three sub-layer click handlers", () => {
+  const { rerender } = render(<MapView config={tiled()} />);
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.layerHandlers["click:communes__point"] ?? []).toHaveLength(0);
+  expect(map.layerHandlers["click:communes__line"] ?? []).toHaveLength(0);
+  expect(map.layerHandlers["click:communes__polygon"] ?? []).toHaveLength(0);
+  expect(map.getLayer("communes__point")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("a failing mixed-geometry sub-layer rolls back its siblings instead of orphaning the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__line");
+  rerender(<MapView config={{ ...config, layers: [good, ...tiled().layers] }} />);
+  expect(map.getLayer("communes__point")).toBeUndefined();
+  expect(map.getLayer("communes__polygon")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
 });
 
 test("clicking a tiled feature reports it, like a geojson one", () => {
@@ -1024,6 +1101,44 @@ test("an external url that merely looks like ours gets no token", () => {
   const t = mapInstances[0].opts.transformRequest!;
   expect(t("https://attacker.test/collections/x/tiles/1/2/3.mvt")).toEqual({
     url: "https://attacker.test/collections/x/tiles/1/2/3.mvt",
+  });
+});
+
+// C1 de la revue finale SP-24 : docker-compose.prod.yml pose
+// VITE_CORE_URL="https://hôte/api" — une vraie URL de tuile en production est
+// donc "/api/collections/…", jamais "/collections/…" tout court. Sans le
+// chemin de base dans la comparaison, le jeton ne s'attachait jamais en prod.
+test("a tile url under the core API's base path carries the session bearer token", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        tilesUrl: "https://hote.test/api/collections/communes/tiles/{z}/{x}/{y}.mvt",
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "https://hote.test/api"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("https://hote.test/api/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "https://hote.test/api/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
+test("a same-origin url outside the core API's base path gets no token", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "https://hote.test/api"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  // Même origine que le cœur, mais hors du chemin de base "/api" — un autre
+  // service sur le même hôte, pas la route tuiles authentifiée.
+  expect(t("https://hote.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "https://hote.test/collections/communes/tiles/1/2/3.mvt",
   });
 });
 
@@ -1161,4 +1276,36 @@ test("the popup survives a config change that keeps the layer but changes someth
     />,
   );
   expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+// I5 de la revue finale SP-24 : avant `layersKey`, chaque frappe dans
+// PopupEditor produisait un nouveau tableau `config.layers` (même contenu
+// pertinent) qui détruisait puis recréait TOUTES les sources/couches
+// MapLibre — scintillement, re-requêtes de tuiles, refetch GeoJSON complet
+// pour une couche `feature`. `popup` n'affecte que le rendu React d'un clic
+// déjà survenu, jamais ce que MapLibre doit dessiner.
+test("editing only a layer's popup config does not tear down and rebuild its MapLibre source/layer", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />,
+  );
+  const map = mapInstances[0];
+  const addSource = vi.spyOn(map, "addSource");
+  const addLayer = vi.spyOn(map, "addLayer");
+  const removeSource = vi.spyOn(map, "removeSource");
+  rerender(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom", template: "**x**" } })}
+    />,
+  );
+  expect(addSource).not.toHaveBeenCalled();
+  expect(addLayer).not.toHaveBeenCalled();
+  expect(removeSource).not.toHaveBeenCalled();
+});
+
+test("editing a layer's geometry-relevant property does still rebuild its MapLibre source/layer", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "point" })} />);
+  const map = mapInstances[0];
+  const addSource = vi.spyOn(map, "addSource");
+  rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  expect(addSource).toHaveBeenCalledTimes(1);
 });
