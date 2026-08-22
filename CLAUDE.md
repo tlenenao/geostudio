@@ -1502,6 +1502,111 @@ deux (et un `--` côté entry).
     1302 tests**, couverture **89,24 %** (seuil 88) ; `npm run lint`/
     `format:check`/`build` verts ; `npm run e2e` → **105 passed, 4 skipped, 0
     failed**. `uvx pre-commit run --all-files` : 5/5 hooks verts.
+- **SP-24** — Carte interrogeable (chantier **4.1** du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` §6, vague 4 ;
+  constats **D1** — aucun popup, nulle part — et **D2** — interactivité et
+  passage à l'échelle mutuellement exclusifs — de la spec §7) : un lecteur
+  peut cliquer une entité sur une carte publiée et voir ses attributs, y
+  compris quand le jeu de données est assez gros pour être tuilé. **Deux
+  élargissements de périmètre assumés et tranchés en session** (spec §2/§4) :
+  (1) les tuiles vectorielles passent désormais par le cœur
+  (`GET /collections/{id}/tiles/{z}/{x}/{y}.mvt`, `ST_AsMVT` sous
+  `rls_scope`+`can()`) plutôt que par Martin — pas un détour : c'est ce qui
+  donne à une couche tuilée un `collectionId`, donc un schéma de champs pour
+  le popup, une porte d'autorisation, et le socle dont SP-25 (symbologie)
+  aura besoin ; (2) **changement cassant assumé** : la route publique Martin
+  (labels Traefik `/tiles`) est retirée dans ce SP même, pas en suivi —
+  Martin se connecte en propriétaire des tables (donc hors RLS) et n'a
+  aucune notion de collection ni de `can()`, le trou se ferme dans le même
+  chantier que la capacité qui le rendait tentant.
+  - **Cœur** : `core/app/features/tiles.py` (helpers purs de validation
+    z/x/y + construction du SQL MVT, route montée inconditionnellement,
+    **aucune entrée `audit_log` par tuile** — décision de spec assumée, une
+    vue de carte produit des centaines de tuiles) ; index GiST idempotent
+    dans `apply_collection_ddl` + migration **0028** (rattrapage des
+    collections déjà enregistrées — downgrade vérifié non destructif par le
+    contrôleur sur une base jetable à 500 lignes réelles, précisément le
+    mode d'échec que la migration 0024/SP-17b avait laissé passer faute
+    d'être testée sur base non vide) ; `PopupConfig`/`PopupField` sur
+    `MapLayer`, des deux côtés du fil ; OpenAPI/types TS régénérés.
+  - **Shell** : `popupTemplate.ts` (module pur, interpolation `${expression}`
+    CEL dans un gabarit markdown — seconde syntaxe d'expression du dépôt,
+    divergence assumée par la spec — scanner de `}` fermante conscient des
+    guillemets CEL, sans quoi une expression telle que `${ "}" }` referme le
+    placeholder trop tôt et laisse fuiter le reste littéralement) ;
+    `popupContent.ts` (résout `PopupConfig`+propriétés → titre/lignes,
+    distingue `fields: []` — l'auteur a tout retiré — de l'absence de
+    `fields` — montrer tout : un défaut trouvé en revue, `PopupEditor`
+    produisant justement `fields: []` en décochant le dernier champ,
+    exposait sinon toutes les propriétés y compris internes) ; `MapPopup.tsx`
+    (composant présentationnel) branché dans `MapView` (clic sur couche
+    `vector`/`feature`, jeton de session sur `transformRequest` pour toute
+    requête `/collections/`) ; `PopupEditor.tsx`, éditeur d'auteur **partagé
+    par les deux surfaces** — `LayersPanel` de l'éditeur de cartes ET
+    `PropsPanel` du widget carte des apps/dashboards/sites — le partage
+    referme explicitement l'écart I2 de la revue finale SP-23, où un
+    garde-fou écrit pour une surface n'avait jamais été reporté sur sa
+    jumelle ; son scanner de gabarit réutilise `closingBrace` exporté de
+    `popupTemplate.ts` plutôt que de le redupliquer (même classe de bug que
+    la trouvaille I2 ci-dessus, fermée avant même d'exister sur cette
+    seconde surface). `configSchema`/`WidgetPropDescriptor` délibérément non
+    touchés : le copilote SP-20 ne peut pas écrire `popup` sur le widget
+    carte (`applyClientOp` filtre par schéma, aucune forme n'existe pour un
+    objet imbriqué) — décision assumée de la tâche 13.
+  - **Sélecteur de couches** : Martin totalement retiré de
+    `listLayerSources`/`LayerPicker` (`fetchMartinSources` supprimé, une
+    seule entrée tuilée `service: "core"` par collection, portant
+    `collectionId`/`geometryKind`/`pkColumn`) ; route publique et
+    `VITE_MARTIN_URL`/`martinUrl` retirés du compose de prod et du shell
+    (garde-fou de déployabilité SP-21 resté vert, 31/31).
+  - **Preuve de sortie E2E réelle, pas simulée** : `core/scripts/
+    dump_mvt_fixture.py` exécuté une fois contre PostGIS réel produit une
+    fixture MVT binaire committée (`shell/e2e/fixtures/world-tile.mvt`),
+    `map-popup.spec.ts` clique un vrai canvas MapLibre WebGL (patron déjà
+    prouvé par `analytics-context.spec.ts`) et vérifie popup renseigné +
+    jeton de session sur la requête de tuile — précédent SP-15d (5 tests
+    qgis jamais exécutés pour de vrai) explicitement non rejoué.
+  - **2 défauts réels cross-tâches trouvés et corrigés par la preuve E2E**
+    (tâche 16), tous deux invisibles à une revue par tâche : le chemin de
+    LECTURE d'une carte enregistrée (`toFrontLayer`/`RawMapLayer` dans
+    `itemClient.ts`) ne relisait jamais `popup`/`collectionId`/
+    `geometryKind`/`pkColumn` — toute carte rechargée avec un popup
+    configuré ne pouvait jamais l'afficher (le cœur round-trippe déjà ces
+    champs correctement ; bug de lecture seul côté shell, corrigé + 2 tests
+    de régression) ; le mock E2E `**/collections*` renvoyait `[]` par défaut,
+    périmé depuis le retrait du repli catalogue Martin (tâche 15, commit
+    57fc36c) sans mise à jour du mock ni E2E complet lancé à l'époque —
+    cassait une spec pré-existante (`map-editor.spec.ts`), corrigé pour
+    miroiter le vrai comportement serveur.
+  - Exécution en subagent-driven-development, 17 tâches, revue par tâche
+    systématique. Défauts Important trouvés et corrigés en cours de route
+    (aucun Critical sur l'ensemble des 17 tâches) : I2-T8 (`stringify` non
+    total sur une valeur circulaire) et I2-T8bis (scanner d'accolade non
+    conscient des guillemets CEL, cf. ci-dessus) ; I1-T9 (fields:[] vs
+    absence, exposition d'information — cf. ci-dessus) ; I1-T10 (cast
+    `AddLayerObject` inerte retiré, typage affiné par branche, restauration
+    prouvée sur les 3 branches par injection d'un champ bidon) ; I1-T11 (un
+    popup figé au lieu de fermé quand une couche perd sa config popup —
+    fermé par anticipation du scénario que la tâche 12 allait rendre
+    atteignable) ; un Important étiqueté **plan-mandated** en tâche 13 (2
+    tests du widget carte asseraient sur un état posé par un composant
+    chargé en `lazy()` sans l'attendre — ne passaient que par dépendance à
+    l'ordre d'exécution dans le fichier, rouges en isolation ; texte du
+    brief lui-même, corrigé sans repasser par l'utilisateur, cohérent avec
+    le précédent établi tout du long de ce SP de corriger sans re-demander
+    une trouvaille contre le texte du plan).
+  - Preuves de sortie (2026-08-22) : core `uv run pytest` (PostGIS réel,
+    conteneur `postgis-test`) → **1863 passed, 5 skipped** — les 5 skips
+    sont tous le marqueur `qgis` (`CORE_TEST_QGIS_WORKER_URL` non défini),
+    **aucun skip `postgis`** : les preuves des tâches 3/4/5 ont bien tourné
+    pour de vrai, précédent SP-15d non rejoué ; `ruff check`/`ruff format
+    --check`/`mypy --strict` (4 modules)/`lint-imports` verts ; couverture
+    **92,77 %** (seuil 85). Shell `npm run lint`/`format:check` verts,
+    `npm run test` → **159 fichiers / 1377 tests**, couverture **89,53 %**
+    (seuil 88) ; `npm run build` vert ; `npm run e2e` → **107 passed, 4
+    skipped, 0 failed**. `uvx pre-commit run --all-files` : 5/5 hooks
+    verts. OpenAPI/types TS confirmés synchronisés (`git status
+    --porcelain` vide sur les deux).
 
 ### À venir
 
@@ -1556,6 +1661,12 @@ deux (et un `--` côté entry).
   `ratelimit` uniforme de Traefik — vague 3.4 du plan d'action) ; garde
   d'egress sur l'appel LLM sortant (4e surface, les trois autres en ont
   une — vague 6.2).
+- **SP-24** — clos, chantier **4.1** du plan d'action fermé (cf. `### Fait`).
+  Le lot Carte continue en **SP-25** (chantiers **4.2/4.3**, symbologie —
+  bornes de classes calculées sur le `collectionId` désormais posé par
+  chaque couche tuilée) ; **4.4** et **4.5** (mesure et croquis) restent
+  hors périmètre de SP-24, non planifiés, non numérotés au-delà de leur
+  identifiant de plan d'action.
 
 ### Suivis non bloquants ouverts
 
@@ -1847,3 +1958,30 @@ deux (et un `--` côté entry).
   `DataSourcePanel` est un doublon silencieux (jsdom normalise `"abc"` en
   `""` dans un `input type="number"`, donc la branche `Number.isFinite` de
   `PercentileInput` n'est en réalité exercée par aucun test).
+- SP-24, suivis non bloquants : **D2 reste vrai dans le widget carte d'app**
+  — il reste sur une couche `kind: "feature"` alimentée par sa `DataSource`
+  (son filtrage/cross-filter côté client en dépendent), avec son plafond
+  silencieux de 100 entités (`core/app/features/routes.py:181`) ; le widget
+  gagne le popup, pas le tuilage — décision de spec assumée, pas un oubli.
+  Aucune entrée `audit_log` par tuile (décision de spec §3.1), donc aucune
+  trace d'une lecture massive par le chemin tuilé. Une valeur de propriété
+  est interprétée comme du markdown dans un popup à gabarit — surface
+  DOMPurify-assainie, mais à garder en tête si un futur besoin de
+  désactiver le rendu markdown émerge. La seconde syntaxe d'expression
+  (`${…}`) coexiste avec le binding JSON `{ $expr }` existant — divergence
+  assumée par la spec, seule la forme gabarit donne une mise en forme
+  libre. Le copilote SP-20 ne peut pas écrire `popup` sur le widget carte
+  (`WidgetPropDescriptor.type` n'a pas de forme pour un objet imbriqué, et
+  `applyClientOp` filtre par `configSchema`) — décision assumée de la
+  tâche 13. Une table PostGIS ajoutée à la main hors registre de
+  collections n'a plus aucun chemin de service depuis le retrait de la
+  route publique `/tiles` de Martin — un besoin qui existait, même informel,
+  perd son chemin de contournement. Aucune mesure de latence par tuile n'a
+  été produite (pas de comparatif avant/après Martin→cœur). Ajout de la
+  revue par tâche 12 : aucun test direct de `templateError` sur un cas
+  guillemet CEL à travers `PopupEditor` (couverture transitive seulement
+  via `popupTemplate.test.ts`). Ajout de la revue par tâche 16 : les 2
+  défauts cross-tâches corrigés par la preuve E2E ont été committés dans le
+  même commit que la preuve elle-même plutôt qu'en `fix(shell)` séparé —
+  contraire au précédent explicitement consigné par SP-23 tâche 18, sans
+  conséquence fonctionnelle.
