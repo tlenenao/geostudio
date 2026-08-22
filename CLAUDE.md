@@ -1299,8 +1299,19 @@ deux (et un `--` côté entry).
     `median`/`percentile`/`stddev` → `null`, jamais `0` (une médiane
     d'ensemble vide ou un écart-type d'une ligne unique n'existent pas —
     l'indicateur (`indicator.tsx`) affiche désormais `—`, `chartOption.ts`'s
-    `num()` continue de convertir `null` en `0` pour les onze types de
-    graphique ECharts, limite acceptée en suivi non bloquant). `stddev`
+    `num()` continue de convertir `null` en `0` pour tous les types de
+    graphique ECharts qu'il traite — `chartType` est un `string` libre, il
+    n'y a pas de liste fermée à compter —, limite acceptée en suivi non
+    bloquant). Le nouveau `resolveFlatValue` d'`indicator.tsx` ne fait pas
+    que rendre « — » : il **change la valeur affichée** par l'indicateur
+    pour toute source `type: "statistics"` — il lit désormais l'agrégat
+    calculé par le serveur (`properties.value` de la première ligne) au lieu
+    de compter les lignes de la réponse, ce qui n'avait pas de sens sur une
+    réponse déjà agrégée — et rend « — » dès que la source porte des
+    `measures` explicites, dont les libellés personnalisés ne garantissent
+    aucune clé `value` (tiret honnête plutôt qu'une valeur devinée). Le
+    comptage/somme côté client ne subsiste que pour les sources
+    `features`/`static`, dont chaque ligne est une feature brute. `stddev`
     ajouté au chemin ArcGIS (`_STAT_TYPES`, `live_query.py`, natif via
     `statisticType`), les trois autres refusés proprement
     (`ArcgisQueryError`) plutôt que mal-évalués en silence — précédent
@@ -1348,9 +1359,10 @@ deux (et un `--` côté entry).
     (restaurer une vieille version de pipeline ou d'alerte pouvait
     ressusciter une référence vers une collection supprimée depuis, ou
     réactiver une capacité éteinte). Corrigé par
-    `repo.get_revision_config` (lecture seule) + la même séquence de huit
-    `_validate_*`/`_require_*` qu'`update_config`, appelée **avant**
-    l'écriture (422 si invalide, aucune version écrite). Sans
+    `repo.get_revision_config` (lecture seule) + la même séquence de dix
+    appels qu'`update_config` (huit `_validate_*` plus les deux
+    `_require_*_enabled`, `core/app/configs/routes.py:237-246`), appelée
+    **avant** l'écriture (422 si invalide, aucune version écrite). Sans
     `actor_id` sur `config_revisions` (relève du chantier 4.20, hors
     périmètre assumé). Aucune migration sur les quatre chantiers.
   - Exécution en subagent-driven-development, 19 tâches, revue par tâche
@@ -1703,8 +1715,10 @@ deux (et un `--` côté entry).
   toujours `null` en `0` pour les séries ECharts — un agrégat indéfini
   (écart-type d'un groupe d'une seule ligne) s'affiche « 0 » dans un
   graphique, alors que l'indicateur (`indicator.tsx`) affiche « — ».
-  Limite acceptée en SP-23 : changer `num()` toucherait les onze types de
-  graphique, dont boxplot/radar/sankey qui n'acceptent pas `null`. La
+  Limite acceptée en SP-23 : changer `num()` toucherait toutes les branches
+  de rendu de `chartOption.ts` (au moins quatorze types nommés, et
+  `chartType` est un `string` libre — pas de liste fermée), dont
+  boxplot/radar/sankey qui n'acceptent pas `null`. La
   parité `STDDEV_SAMP`/`statisticType: "stddev"` d'ArcGIS est affirmée
   d'après la documentation du service, jamais mesurée contre un service
   réel. `GET /configs/{id}/revisions` n'est pas paginée : une config
