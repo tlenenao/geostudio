@@ -8,6 +8,8 @@ import pytest
 
 from app.collections.introspection import ColumnInfo, TableInfo
 from app.features.tiles import (
+    MAX_TILE_FEATURES,
+    TILE_STATEMENT_TIMEOUT_MS,
     InvalidTileCoords,
     build_mvt_sql,
     mvt_feature_id_column,
@@ -87,6 +89,16 @@ def test_sql_drops_rows_whose_tile_geometry_is_null():
     assert "IS NOT NULL" in build_mvt_sql(_quote, _info())
 
 
+def test_sql_caps_the_number_of_features_read_per_tile():
+    # I3 de la revue finale SP-24 : sans plafond, un seul GET sur une
+    # collection dense agrège toute la table en une tuile en mémoire, par un
+    # appelant potentiellement anonyme et sans trace d'audit.
+    sql = build_mvt_sql(_quote, _info())
+    # DANS la sous-requête : c'est le nombre de lignes lues qu'on borne, pas
+    # la sortie de l'agrégat (toujours une ligne).
+    assert sql.index("LIMIT :max_features") < sql.index(") AS tile")
+
+
 def test_the_tile_route_is_mounted_unconditionally():
     from app.main import create_app
 
@@ -147,3 +159,68 @@ def test_collection_without_geometry_is_a_400(monkeypatch):
 def test_unknown_table_is_a_404(monkeypatch):
     r = _client(monkeypatch, None).get("/collections/demo_incidents/tiles/0/0/0.mvt")
     assert r.status_code == 404
+
+
+class _RecordingSession:
+    """Session enregistreuse : la route va jusqu'au bout de son chemin
+    nominal sans base, ce qui laisse observer les DEUX instructions qu'elle
+    émet (le garde de durée, puis la requête de tuile) et leurs paramètres."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def execute(self, statement, params=None):
+        from types import SimpleNamespace
+
+        self.calls.append((str(statement), params))
+        return SimpleNamespace(scalar=lambda: b"\x1a\x02")
+
+
+def _recording_client(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from fastapi.testclient import TestClient
+
+    from app import db
+    from app.auth.dependency import get_current_user_optional
+    from app.collections.routes import get_introspector
+    from app.features import tiles as tiles_module
+    from app.features.routes import get_rls_scope
+    from app.main import create_app
+
+    @contextmanager
+    def null_scope(session, tenant_id):
+        yield
+
+    app = create_app()
+    session = _RecordingSession()
+    col = SimpleNamespace(
+        id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
+    )
+    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c: col)
+    monkeypatch.setattr(tiles_module, "quote_ident", lambda s, name: f'"{name}"')
+    app.dependency_overrides[db.get_session] = lambda: session
+    app.dependency_overrides[get_current_user_optional] = lambda: None
+    app.dependency_overrides[get_introspector] = lambda: lambda s, t: _info()
+    app.dependency_overrides[get_rls_scope] = lambda: null_scope
+    return TestClient(app), session
+
+
+def test_the_tile_query_runs_under_a_statement_timeout(monkeypatch):
+    client, session = _recording_client(monkeypatch)
+    assert client.get("/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
+    timeout_sql, timeout_params = session.calls[0]
+    # Posé AVANT la requête de tuile, et transaction-local (set_config(...,
+    # true)) : rien ne fuit sur la connexion suivante à travers PgBouncer.
+    assert "set_config('statement_timeout'" in timeout_sql
+    assert timeout_params == {"ms": str(TILE_STATEMENT_TIMEOUT_MS)}
+    assert "ST_AsMVT(" in session.calls[1][0]
+
+
+def test_the_tile_query_binds_the_feature_cap(monkeypatch):
+    client, session = _recording_client(monkeypatch)
+    assert client.get("/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
+    tile_sql, tile_params = session.calls[1]
+    assert "LIMIT :max_features" in tile_sql
+    assert tile_params["max_features"] == MAX_TILE_FEATURES
