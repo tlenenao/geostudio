@@ -8,9 +8,10 @@ import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { buildLegend, buildMapPaint, detectGeometryKind } from "./mapSymbology";
 import type { ColorDomain, LegendSpec, MapEncodings, SizeDomain } from "./mapSymbology";
-import type { ItemClient, MapConfig } from "../../api/types";
+import type { ItemClient, MapConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
+import { PopupEditor } from "../../map/PopupEditor";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -175,6 +176,15 @@ export function registerMapWidget(): void {
               onChange={(e) => setEncodings({ size: { field: e.target.value } })}
             />
           </label>
+          <PopupEditor
+            value={props.popup as PopupConfig | undefined}
+            // PropsPanel ne reçoit ni schéma ni enregistrements
+            // (registry.ts:33-37) : la liste proposée est vide et l'auteur
+            // saisit les noms de champs, exactement comme pour « Champ
+            // couleur » juste au-dessus. Aucun appel réseau ajouté ici.
+            availableFields={[]}
+            onChange={(popup) => onChange({ ...props, popup })}
+          />
         </div>
       );
     },
@@ -250,6 +260,7 @@ export function registerMapWidget(): void {
                 url,
                 renderAs,
                 paint,
+                popup: props.popup as PopupConfig | undefined,
               },
             ]
           : [],
