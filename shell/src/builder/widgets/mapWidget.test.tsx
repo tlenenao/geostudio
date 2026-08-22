@@ -78,6 +78,7 @@ beforeEach(() => {
   registerBuiltinWidgets();
   flyToSpy.mockClear();
   highlightSpy.mockClear();
+  lastConfig = null;
 });
 const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
   loading: false,
@@ -484,14 +485,16 @@ test("the popup editor accepts a hand-typed field name", async () => {
   );
 });
 
-test("the configured popup reaches the layer the widget builds", () => {
+test("the configured popup reaches the layer the widget builds", async () => {
   renderWidget({ props: { dataSourceId: "ds1", popup: { titleField: "nom" } } });
 
+  await screen.findByTestId("mapview");
   expect((lastMapConfig().layers[0] as any).popup).toEqual({ titleField: "nom" });
 });
 
-test("no popup configured means no popup on the layer", () => {
+test("no popup configured means no popup on the layer", async () => {
   renderWidget({ props: { dataSourceId: "ds1" } });
 
+  await screen.findByTestId("mapview");
   expect((lastMapConfig().layers[0] as any).popup).toBeUndefined();
 });
