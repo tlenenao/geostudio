@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig, MapLayer } from "../api/types";
@@ -1024,4 +1025,120 @@ test("an external url that merely looks like ours gets no token", () => {
   expect(t("https://attacker.test/collections/x/tiles/1/2/3.mvt")).toEqual({
     url: "https://attacker.test/collections/x/tiles/1/2/3.mvt",
   });
+});
+
+const clickPayload = {
+  features: [{ id: 7, properties: { nom: "Tulle", population: 14000 } }],
+  lngLat: { lng: 12, lat: 34 },
+};
+
+// `fireOnLayer` invoque le handler de clic hors du système d'événements React
+// (c'est un appel JS direct sur le mock, pas un dispatch DOM) : le setState
+// qu'il déclenche doit être enveloppé dans `act` pour être flush avant
+// l'assertion, sans quoi React 18 le bufferise en dehors du test.
+test("clicking a feature of a layer with a popup opens it", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByText("Tulle")).toBeInTheDocument();
+  expect(screen.getByText("population")).toBeInTheDocument();
+});
+
+test("the popup is positioned at the projected click point", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  const popup = screen.getByRole("dialog");
+  expect(popup.style.left).toBe("12px");
+  expect(popup.style.top).toBe("34px");
+});
+
+test("no popup opens for a layer that does not declare one", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon" })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the click stays additive: onFeatureClick still fires with a popup configured", () => {
+  const onFeatureClick = vi.fn();
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })}
+      onFeatureClick={onFeatureClick}
+    />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(onFeatureClick).toHaveBeenCalledOnce();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+test("the popup closes on its close button", async () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  await userEvent.click(screen.getByRole("button", { name: "Fermer" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the popup follows the map when it moves", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  const map = mapInstances[0];
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  map.project = (ll: { lng: number; lat: number }) => ({ x: ll.lng + 100, y: ll.lat + 100 });
+  act(() => map.fire("move"));
+  expect(screen.getByRole("dialog").style.left).toBe("112px");
+});
+
+test("the popup closes when the layer that opened it disappears from the config", () => {
+  const { rerender } = render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  rerender(<MapView config={config} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("a template popup renders its sanitized html", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { template: "**${record.nom}**" } })}
+    />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByText("Tulle").tagName).toBe("STRONG");
+});
+
+test("clicking a second feature replaces the popup instead of stacking it", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />);
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 8, properties: { nom: "Brive", population: 47000 } }],
+      lngLat: { lng: 20, lat: 40 },
+    }),
+  );
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(screen.getByText("Brive")).toBeInTheDocument();
+  expect(screen.queryByText("Tulle")).not.toBeInTheDocument();
+});
+
+test("the move listener that reprojects the popup is detached when the popup closes", async () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", popup: {} })} />);
+  const map = mapInstances[0];
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  expect(map.handlers.move ?? []).toHaveLength(1);
+  act(() => map.fire("move"));
+  screen.getByRole("dialog");
+  await userEvent.click(screen.getByRole("button", { name: "Fermer" }));
+  expect(map.handlers.move ?? []).toHaveLength(0);
+});
+
+test("the popup survives a config change that keeps the layer but changes something else", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })} />,
+  );
+  act(() => mapInstances[0].fireOnLayer("click", "communes", clickPayload));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  rerender(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" }, title: "Communes 2" })}
+    />,
+  );
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
