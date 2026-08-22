@@ -5,7 +5,11 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
-from app.analytics.aggregate import AggregateMeasure, AggregateRequestBody
+from app.analytics.aggregate import (
+    AggregateMeasure,
+    AggregateRequestBody,
+    _measure_label,
+)
 from app.analytics.duckdb_conn import open_spatial_connection
 from app.analytics.export import (
     EXPORT_MEDIA_TYPES,
@@ -84,10 +88,6 @@ def _groupby_fields(raw: str | list[str] | None) -> list[str]:
     if not raw:
         return []
     return raw if isinstance(raw, list) else [raw]
-
-
-def _measure_label(m: AggregateMeasure) -> str:
-    return m.label or (f"{m.agg}_{m.field}" if m.field else m.agg)
 
 
 def _source_json(source) -> dict:

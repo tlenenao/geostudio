@@ -11,6 +11,7 @@ from app.analytics.aggregate import (
     AggregateMeasure,
     AggregateRequestBody,
     UnknownAggregateField,
+    _measure_label,
     run_collection_aggregate,
 )
 from app.audit.writer import write_audit
@@ -673,10 +674,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             measures_in = query.measures or [
                 AggregateMeasure(field=query.field, agg=query.agg, label="value")
             ]
-            measures = [
-                (m.agg, m.field, m.label or (f"{m.agg}_{m.field}" if m.field else m.agg))
-                for m in measures_in
-            ]
+            measures = [(m.agg, m.field, _measure_label(m)) for m in measures_in]
             try:
                 params = live_query.translate_aggregate_query(
                     group_by=group_by,
