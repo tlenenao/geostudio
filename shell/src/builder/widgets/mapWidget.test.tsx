@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { WidgetContext } from "../registry";
-import type { DataSourceState, ItemClient, MapConfig } from "../../api/types";
+import type { DataSourceState, ItemClient, MapConfig, Theme } from "../../api/types";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
@@ -87,12 +87,13 @@ const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
   ...over,
 });
 
-// Every Component test now needs QueryClientProvider + ItemClientProvider —
-// the widget calls useItemClient()/useQuery() unconditionally to fetch a
-// color/size domain, same as sliderFilter.tsx/selectFilter.tsx already do.
-// Pre-existing tests never configure `encodings`, so those two domain
-// queries stay `enabled: false` and `queryDataSource` is never actually
-// invoked for them — a bare vi.fn() default is safe.
+// Every Component test needs QueryClientProvider + ItemClientProvider —
+// the widget calls useItemClient() to get getAuthToken/getCoreUrl for
+// MapView, and PropsPanel's MapSymbologyEditor/DataSourceSelect need the
+// same providers. Component itself no longer performs any live domain
+// query: paint/legend are derived from the frozen `props.symbology` at
+// render time (Task 11) — a bare vi.fn() default for queryDataSource is
+// safe everywhere it isn't explicitly asserted against.
 function withClient(
   children: React.ReactNode,
   queryDataSource: ReturnType<typeof vi.fn> = vi.fn(),
@@ -110,18 +111,20 @@ function renderPropsPanel({
   props,
   onChange,
   dataSources = [],
+  theme,
 }: {
   props: Record<string, unknown>;
   onChange: ReturnType<typeof vi.fn>;
 
   dataSources?: any[];
+  theme?: Theme;
 }) {
   const Panel = getWidget("map")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={{} as unknown as ItemClient}>
-        <Panel props={props} dataSources={dataSources} onChange={onChange} />
+        <Panel props={props} dataSources={dataSources} onChange={onChange} theme={theme} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -158,33 +161,42 @@ test("registers with a 6x6 default size", () => {
   expect(getWidget("map")!.defaultSize).toEqual({ w: 6, h: 6 });
 });
 
-test("PropsPanel edits the color and size encodings", async () => {
+test("PropsPanel mounts MapSymbologyEditor with theme from props", () => {
   const onChange = vi.fn();
-  const Panel = getWidget("map")!.PropsPanel;
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={{} as unknown as ItemClient}>
-        <Panel props={{}} dataSources={[]} onChange={onChange} />
-      </ItemClientProvider>
-    </QueryClientProvider>,
+  renderPropsPanel({
+    props: { dataSourceId: "ds1" },
+    onChange,
+    theme: { colors: { primary: "#2563eb" } },
+  });
+  const select = screen.getByLabelText("Palette") as HTMLSelectElement;
+  expect(Array.from(select.options).some((o) => o.value === "theme-primary")).toBe(true);
+});
+
+test("choosing Jenks from the widget's PropsPanel surfaces an error instead of hanging", async () => {
+  const onChange = vi.fn();
+  renderPropsPanel({
+    props: {
+      dataSourceId: "ds1",
+      symbology: {
+        color: {
+          field: "pop",
+          mode: "numeric",
+          classification: { method: "jenks", classes: 5 },
+          palette: "sequential-blue",
+          domain: { kind: "numeric", min: 0, max: 0 },
+          computedAt: "",
+        },
+      },
+    },
+    onChange,
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
   );
-  // Single characters only: props never gets fed back between keystrokes in
-  // this test (same convention as pivot.test.tsx's PropsPanel test), so each
-  // assertion reflects setEncodings() merging against the still-empty base
-  // `props={{}}`, not an accumulated string.
-  await userEvent.type(screen.getByLabelText("Champ couleur"), "r");
-  expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({ encodings: { color: { field: "r", mode: "categorical" } } }),
-  );
-  await userEvent.selectOptions(screen.getByLabelText("Type de couleur"), "numeric");
-  expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({ encodings: { color: { field: "", mode: "numeric" } } }),
-  );
-  await userEvent.type(screen.getByLabelText("Champ taille"), "m");
-  expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({ encodings: { size: { field: "m" } } }),
-  );
+  // The button re-enables afterwards (busy reset in MapSymbologyEditor's
+  // `finally`) instead of hanging forever on "Calcul…".
+  expect(screen.getByRole("button", { name: "Recalculer les classes" })).not.toBeDisabled();
 });
 
 test("map widget builds a feature layer from the bound source url", async () => {
@@ -347,21 +359,12 @@ test("shows an explorer menu when bound to a dataset and interactions are auto",
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });
 
-test("colors features by a categorical field once the domain query resolves", async () => {
-  const queryDataSource = vi.fn(async (source: { query?: { groupBy?: string } }) => {
-    if (source.query?.groupBy === "region") {
-      return [
-        { id: "Nord", properties: { value: 2 } },
-        { id: "Sud", properties: { value: 1 } },
-      ];
-    }
-    return [];
-  });
+test("Component renders paint from frozen props.symbology, without querying any domain", async () => {
+  const queryDataSource = vi.fn();
   const ctx = {
     mode: "runtime",
     data: state({
       url: "https://fs/communes/items.json",
-      datasetId: "ds-1",
       records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
     }),
   } as WidgetContext;
@@ -371,7 +374,15 @@ test("colors features by a categorical field once the domain query resolves", as
       <Map
         props={{
           dataSourceId: "d",
-          encodings: { color: { field: "region", mode: "categorical" } },
+          symbology: {
+            color: {
+              field: "region",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Nord", "Sud"] },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+          },
         }}
         ctx={ctx}
       />,
@@ -379,24 +390,19 @@ test("colors features by a categorical field once the domain query resolves", as
     ),
   );
   const view = await screen.findByTestId("mapview");
-  await waitFor(() => expect(view.textContent).toContain('"fill-color"'));
+  expect(view.textContent).toContain('"fill-color"');
   expect(view.textContent).toContain("renderAs:fill");
   expect(view.textContent).toContain("#2563eb");
   expect(view.textContent).toContain("#dc2626");
+  expect(queryDataSource).not.toHaveBeenCalled();
 });
 
-test("colors and sizes point features by numeric fields once both domain queries resolve", async () => {
-  const queryDataSource = vi.fn(async (source: { query?: { measures?: { field: string }[] } }) => {
-    const field = source.query?.measures?.[0]?.field;
-    if (field === "valeur") return [{ id: "s", properties: { min: 0, max: 100 } }];
-    if (field === "montant") return [{ id: "s", properties: { min: 5, max: 25 } }];
-    return [];
-  });
+test("colors and sizes point features from frozen size/color symbology, without querying any domain", async () => {
+  const queryDataSource = vi.fn();
   const ctx = {
     mode: "runtime",
     data: state({
       url: "https://fs/points/items.json",
-      datasetId: "ds-1",
       records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } }],
     }),
   } as WidgetContext;
@@ -406,7 +412,20 @@ test("colors and sizes point features by numeric fields once both domain queries
       <Map
         props={{
           dataSourceId: "d",
-          encodings: { color: { field: "valeur", mode: "numeric" }, size: { field: "montant" } },
+          symbology: {
+            color: {
+              field: "valeur",
+              mode: "numeric",
+              palette: "sequential-blue",
+              domain: { kind: "numeric", min: 0, max: 100 },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+            size: {
+              field: "montant",
+              domain: { min: 5, max: 25 },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+          },
         }}
         ctx={ctx}
       />,
@@ -414,14 +433,50 @@ test("colors and sizes point features by numeric fields once both domain queries
     ),
   );
   const view = await screen.findByTestId("mapview");
-  // Both domain queries (color, size) resolve independently — wait for both
-  // paint keys inside the same waitFor so a flush of just one doesn't pass
-  // the assertion prematurely.
-  await waitFor(() => {
-    expect(view.textContent).toContain('"circle-radius"');
-    expect(view.textContent).toContain('"circle-color"');
-  });
+  expect(view.textContent).toContain('"circle-radius"');
+  expect(view.textContent).toContain('"circle-color"');
   expect(view.textContent).toContain("renderAs:circle");
+  expect(queryDataSource).not.toHaveBeenCalled();
+});
+
+test("Component resolves the theme-primary palette from ctx.theme at render time", async () => {
+  const ctx = {
+    mode: "runtime",
+    theme: { colors: { primary: "#2563eb" } },
+    data: state({
+      url: "https://fs/points/items.json",
+      records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } }],
+    }),
+  } as WidgetContext;
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            color: {
+              field: "valeur",
+              mode: "numeric",
+              palette: "theme-primary",
+              domain: { kind: "numeric", min: 0, max: 100 },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+          },
+        }}
+        ctx={ctx}
+      />,
+    ),
+  );
+  const view = await screen.findByTestId("mapview");
+  // The interpolate expression's high stop must be the resolved
+  // theme-primary color, not one of the hardcoded palette defaults
+  // (sequential-blue's "#1e3a8a" or the raw NUMERIC_COLOR_HIGH default) —
+  // this is exactly the bug this plan's Task 10 self-review caught: without
+  // ctx.theme threaded through symbologyToPaintInputs, this would silently
+  // render the wrong colors instead.
+  expect(view.textContent).toContain('"#2563eb"]}');
+  expect(view.textContent).not.toContain("#1e3a8a");
 });
 
 test("shows no symbology legend when no encoding is configured", () => {
@@ -434,16 +489,11 @@ test("shows no symbology legend when no encoding is configured", () => {
   expect(screen.queryByText("Nord")).not.toBeInTheDocument();
 });
 
-test("shows a categorical symbology legend once the color domain resolves", async () => {
-  const queryDataSource = vi.fn(async () => [
-    { id: "Nord", properties: { value: 1 } },
-    { id: "Sud", properties: { value: 1 } },
-  ]);
+test("shows a categorical symbology legend from frozen props.symbology", async () => {
   const ctx = {
     mode: "runtime",
     data: state({
       url: "https://fs/communes/items.json",
-      datasetId: "ds-1",
       records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
     }),
   } as WidgetContext;
@@ -453,11 +503,18 @@ test("shows a categorical symbology legend once the color domain resolves", asyn
       <Map
         props={{
           dataSourceId: "d",
-          encodings: { color: { field: "region", mode: "categorical" } },
+          symbology: {
+            color: {
+              field: "region",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Nord", "Sud"] },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+          },
         }}
         ctx={ctx}
       />,
-      queryDataSource,
     ),
   );
   expect(await screen.findByText("Nord")).toBeInTheDocument();
