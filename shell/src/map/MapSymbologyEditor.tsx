@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   computeColorDomain,
   computeSizeDomain,
@@ -41,6 +41,7 @@ export function MapSymbologyEditor({
   themeColors,
   runStatistics,
   sampleField,
+  jenksAvailable = true,
   onChange,
 }: {
   value: LayerSymbology | undefined;
@@ -48,10 +49,24 @@ export function MapSymbologyEditor({
   themeColors: ThemeColors | undefined;
   runStatistics: StatQueryFn;
   sampleField: SampleFieldFn;
+  // Certains hôtes (mapWidget.tsx) n'ont pas de collectionId résolu pour
+  // échantillonner un champ : `sampleField` y lève systématiquement, donc
+  // Jenks ne peut jamais fonctionner. Même précédent que l'option
+  // "theme-primary" de la palette, conditionnelle sur `themeColors` : on
+  // n'offre pas une méthode vouée à l'échec plutôt que de laisser l'auteur
+  // la découvrir en cliquant "Recalculer" (I5 de la revue finale SP-25).
+  jenksAvailable?: boolean;
   onChange: (value: LayerSymbology | undefined) => void;
 }) {
   const [busy, setBusy] = useState<"color" | "size" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [colorError, setColorError] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
+  // Id de datalist unique par instance : avec un id global, deux couches
+  // stylées sur la même carte partageaient le même <datalist>, et le
+  // navigateur résolvait toujours le `list=` de la 2e+ instance contre les
+  // champs de la 1re (I2 de la revue finale SP-25). Même patron que
+  // PopupEditor.tsx.
+  const listId = useId();
   const color = value?.color;
   const size = value?.size;
 
@@ -70,10 +85,26 @@ export function MapSymbologyEditor({
     });
   }
 
+  // Seul chemin qui retire complètement l'encodage couleur — avant ce fix,
+  // aucun code n'appelait jamais `onChange` avec `color` absent : vider le
+  // champ texte laissait un objet `color` orphelin (`field: ""`) avec un
+  // domaine périmé (C1 de la revue finale SP-25, déclencheur 2). Repasse
+  // `symbology` à `undefined` plutôt qu'à `{}` si plus aucun encodage
+  // n'est actif.
+  function clearColor() {
+    const { color: _color, ...rest } = value ?? {};
+    onChange(rest.size ? rest : undefined);
+  }
+
+  function clearSize() {
+    const { size: _size, ...rest } = value ?? {};
+    onChange(rest.color ? rest : undefined);
+  }
+
   async function recomputeColor() {
     if (!color?.field) return;
     setBusy("color");
-    setError(null);
+    setColorError(null);
     try {
       const domain = await computeColorDomain(
         { field: color.field, mode: color.mode, classification: color.classification },
@@ -81,7 +112,7 @@ export function MapSymbologyEditor({
       );
       onChange({ ...value, color: { ...color, domain, computedAt: new Date().toISOString() } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setColorError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -90,9 +121,16 @@ export function MapSymbologyEditor({
   async function recomputeSize() {
     if (!size?.field) return;
     setBusy("size");
+    setSizeError(null);
     try {
       const domain = await computeSizeDomain(size.field, { runStatistics });
       onChange({ ...value, size: { ...size, domain, computedAt: new Date().toISOString() } });
+    } catch (e) {
+      // Miroir exact de recomputeColor : sans ce catch, une requête en échec
+      // (réseau, champ inconnu, ou le bug I5 "layer: ''" côté widget carte)
+      // devenait une rejection non gérée sans aucun signal visible (I3 de
+      // la revue finale SP-25).
+      setSizeError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -104,17 +142,26 @@ export function MapSymbologyEditor({
         Champ couleur
         <input
           aria-label="Champ couleur"
-          list="map-symbology-fields"
+          list={`${listId}-fields`}
           className={inputCls}
           value={color?.field ?? ""}
           onChange={(e) => setColorField({ field: e.target.value })}
         />
       </label>
-      <datalist id="map-symbology-fields">
+      <datalist id={`${listId}-fields`}>
         {availableFields.map((f) => (
           <option key={f} value={f} />
         ))}
       </datalist>
+      {color && (
+        <button
+          type="button"
+          className="self-start text-xs text-red-700 underline"
+          onClick={clearColor}
+        >
+          Retirer la couleur
+        </button>
+      )}
       {/* La palette est visible indépendamment d'un champ couleur choisi :
           un auteur peut préparer sa palette avant de sélectionner le champ,
           contrairement à la classification (qui, elle, n'a de sens que
@@ -179,7 +226,7 @@ export function MapSymbologyEditor({
                   <option value="continuous">Continu (dégradé)</option>
                   <option value="quantile">Quantiles</option>
                   <option value="equalInterval">Intervalles égaux</option>
-                  <option value="jenks">Seuils naturels (Jenks)</option>
+                  {jenksAvailable && <option value="jenks">Seuils naturels (Jenks)</option>}
                 </select>
               </label>
               {color.classification && (
@@ -213,9 +260,14 @@ export function MapSymbologyEditor({
           >
             {busy === "color" ? "Calcul…" : "Recalculer les classes"}
           </button>
-          {error && (
+          {colorError && (
             <p role="alert" className="text-xs text-red-600">
-              {error}
+              {colorError}
+            </p>
+          )}
+          {!color.computedAt && (
+            <p className="text-xs text-amber-600">
+              Classes non calculées — cliquez sur « Recalculer les classes ».
             </p>
           )}
           {color.computedAt && (
@@ -230,7 +282,7 @@ export function MapSymbologyEditor({
         Champ taille
         <input
           aria-label="Champ taille"
-          list="map-symbology-fields"
+          list={`${listId}-fields`}
           className={inputCls}
           value={size?.field ?? ""}
           onChange={(e) =>
@@ -245,6 +297,15 @@ export function MapSymbologyEditor({
           }
         />
       </label>
+      {size && (
+        <button
+          type="button"
+          className="self-start text-xs text-red-700 underline"
+          onClick={clearSize}
+        >
+          Retirer la taille
+        </button>
+      )}
       {size?.field && (
         <>
           <button
@@ -255,6 +316,16 @@ export function MapSymbologyEditor({
           >
             {busy === "size" ? "Calcul…" : "Recalculer la taille"}
           </button>
+          {sizeError && (
+            <p role="alert" className="text-xs text-red-600">
+              {sizeError}
+            </p>
+          )}
+          {!size.computedAt && (
+            <p className="text-xs text-amber-600">
+              Taille non calculée — cliquez sur « Recalculer la taille ».
+            </p>
+          )}
           {size.computedAt && (
             <p className="text-xs text-slate-500">
               Taille calculée le {new Date(size.computedAt).toLocaleString()} : {size.domain.min} –{" "}

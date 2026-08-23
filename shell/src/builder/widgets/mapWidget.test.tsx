@@ -199,6 +199,83 @@ test("choosing Jenks from the widget's PropsPanel surfaces an error instead of h
   expect(screen.getByRole("button", { name: "Recalculer les classes" })).not.toBeDisabled();
 });
 
+// I5 de la revue finale SP-25 : Jenks ne peut jamais fonctionner sur cet
+// hôte (sampleField y lève systématiquement, cf. le test ci-dessus) —
+// l'option ne doit donc pas être offerte du tout dans le select, même
+// précédent que "theme-primary" (conditionnel sur themeColors).
+test("Jenks option is absent from the widget's PropsPanel classification select", () => {
+  renderPropsPanel({
+    props: {
+      dataSourceId: "ds1",
+      symbology: {
+        color: {
+          field: "pop",
+          mode: "numeric",
+          palette: "sequential-blue",
+          domain: { kind: "numeric", min: 0, max: 0 },
+          computedAt: "",
+        },
+      },
+    },
+    onChange: vi.fn(),
+  });
+  const select = screen.getByLabelText("Méthode de classification") as HTMLSelectElement;
+  expect(Array.from(select.options).some((o) => o.value === "jenks")).toBe(false);
+});
+
+// I5 de la revue finale SP-25 : `runStatistics` hardcodait `layer: ""` et ne
+// résolvait qu'à travers `datasetId` — une source "features" branchée
+// directement sur une collection (pas de datasetId, cas valide et
+// sélectionnable, cf. DataSourceSelect qui filtre sur `type === "features"`)
+// postait alors vers `/collections//aggregate`. Le repli doit utiliser
+// `dataSource.layer`, qui porte l'id de collection dans ce cas.
+test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
+  const queryDataSource = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
+  const onChange = vi.fn();
+  const Panel = getWidget("map")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{ queryDataSource } as unknown as ItemClient}>
+        <Panel
+          props={{
+            dataSourceId: "src1",
+            symbology: {
+              color: {
+                field: "pop",
+                mode: "numeric",
+                classification: { method: "equalInterval", classes: 4 },
+                palette: "sequential-blue",
+                domain: { kind: "numeric", min: 0, max: 0 },
+                computedAt: "",
+              },
+            },
+          }}
+          dataSources={[
+            { id: "src1", type: "features", service: "core", layer: "communes", query: {} },
+          ]}
+          onChange={onChange}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
+  expect(queryDataSource).toHaveBeenCalledWith(
+    expect.objectContaining({ layer: "communes", datasetId: undefined }),
+  );
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbology: expect.objectContaining({
+          color: expect.objectContaining({
+            domain: { kind: "numeric-classed", breaks: [0, 25, 50, 75, 100] },
+          }),
+        }),
+      }),
+    ),
+  );
+});
+
 test("map widget builds a feature layer from the bound source url", async () => {
   const Map = getWidget("map")!.Component;
   const ctx = {
