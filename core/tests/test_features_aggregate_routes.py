@@ -187,3 +187,33 @@ def test_aggregate_unknown_group_by_field_returns_400(env):
     )
     response = client.post(f"/collections/{col['id']}/aggregate", json={"groupBy": "inconnu"})
     assert response.status_code == 400
+
+
+def test_aggregate_sample_returns_bare_values(env):
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin, public=True)
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 42,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            },
+        ],
+    )
+
+    response = client.post(
+        f"/collections/{col['id']}/aggregate", json={"field": "pop", "sample": 10}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["categoryKey"] == "value"
+    assert body["rows"] == [{"value": 42.0}]
