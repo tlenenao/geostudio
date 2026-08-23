@@ -349,6 +349,7 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
         "paint": None,
         "props": None,
         "popup": None,
+        "symbology": None,
         "collectionId": None,
         "geometryKind": None,
         "pkColumn": None,
