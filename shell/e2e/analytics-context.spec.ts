@@ -2437,6 +2437,12 @@ test("a map with a categorical color encoding shows a legend built from a groupB
   await page.getByRole("button", { name: "Carte" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ couleur").fill("region");
+  // Depuis SP-25 Task 11, le widget carte des apps ne fait plus aucune
+  // requête réseau au rendu : le domaine doit être explicitement calculé et
+  // gelé dans la config via ce bouton avant l'enregistrement (même geste
+  // que map-symbology.spec.ts pour l'éditeur de cartes, Task 12).
+  await page.getByRole("button", { name: "Recalculer les classes" }).click();
+  await expect(page.getByText(/Nord, Sud/)).toBeVisible();
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
   await page.goto("/apps/9");
@@ -2524,7 +2530,18 @@ test("a map with numeric color and size encodings shows a legend with both domai
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ couleur").fill("valeur");
   await page.getByLabel("Type de couleur").selectOption("numeric");
+  // Depuis SP-25 Task 11, chaque domaine (couleur, taille) doit être
+  // explicitement recalculé et gelé dans la config — le rendu ne déclenche
+  // plus aucune requête réseau (même geste que map-symbology.spec.ts).
+  await page.getByRole("button", { name: "Recalculer les classes" }).click();
+  // Ancré sur le libellé du panneau d'auteur (`MapSymbologyEditor`), pas
+  // sur "10 – 90" seul : l'aperçu live de l'app dans le builder rend déjà
+  // le widget (donc parfois sa légende) à côté du panneau, ce qui rendrait
+  // un texte aussi générique ambigu (mode strict Playwright, 2 éléments).
+  await expect(page.getByText(/Classes calculées le .* : 10 – 90/)).toBeVisible();
   await page.getByLabel("Champ taille").fill("montant");
+  await page.getByRole("button", { name: "Recalculer la taille" }).click();
+  await expect(page.getByText(/Taille calculée le .* : 2 – 18/)).toBeVisible();
   await page.getByRole("button", { name: "Enregistrer" }).click();
 
   await page.goto("/apps/9");
@@ -2636,6 +2653,12 @@ test("a click on a styled map feature still cross-filters a sibling table by pk 
   await page.getByRole("button", { name: "Carte" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Champ couleur").fill("region");
+  // Depuis SP-25 Task 11, le fill-color n'est rendu que si le domaine a été
+  // explicitement calculé — sans ce clic, la couche polygonale ne peint
+  // aucune feature (paint dégénéré), donc le clic de cross-filter ci-dessous
+  // ne toucherait jamais rien.
+  await page.getByRole("button", { name: "Recalculer les classes" }).click();
+  await expect(page.getByText(/Nord, Sud/)).toBeVisible();
 
   await page.getByRole("button", { name: "Table" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
