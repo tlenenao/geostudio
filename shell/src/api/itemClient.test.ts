@@ -1609,6 +1609,19 @@ test("queryDataSource carries a per-measure p into body.measures[i].p", async ()
   expect(posted!.measures).toEqual([{ field: "pop", agg: "percentile", label: undefined, p: 90 }]);
 });
 
+test("sampleCollectionField posts sample+field and returns bare numeric values", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/communes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2.5 }] });
+    }),
+  );
+  const values = await makeClient().sampleCollectionField("communes", "population", 500);
+  expect(values).toEqual([1, 2.5]);
+  expect(posted).toEqual({ field: "population", sample: 500 });
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s",

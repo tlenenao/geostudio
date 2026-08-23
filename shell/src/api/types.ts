@@ -253,6 +253,7 @@ export interface ItemClient {
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
+  sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
