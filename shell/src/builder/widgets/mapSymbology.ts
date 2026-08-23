@@ -1,14 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
+import { colorsForClasses, resolvePalette } from "./palette";
+import type { PaletteId, ResolvedPalette } from "./palette";
+import type { DataRecord, ThemeColors } from "../../api/types";
+
 export type GeometryKind = "point" | "line" | "polygon";
 
+export type { PaletteId, ResolvedPalette };
+
+export type ColorClassification =
+  | { method: "quantile"; classes: number }
+  | { method: "equalInterval"; classes: number }
+  | { method: "jenks"; classes: number };
+
 export type ColorDomain =
-  { kind: "categorical"; values: string[] } | { kind: "numeric"; min: number; max: number };
+  | { kind: "categorical"; values: string[] }
+  | { kind: "numeric"; min: number; max: number }
+  | { kind: "numeric-classed"; breaks: number[] };
 
 export type SizeDomain = { min: number; max: number };
 
 export type MapEncodings = {
-  color?: { field: string; mode: "categorical" | "numeric" };
+  color?: { field: string; mode: "categorical" | "numeric"; classification?: ColorClassification };
   size?: { field: string };
+};
+
+// L'enveloppe de stockage/édition d'une symbologie de couche : la version
+// figée (domaine + palette résolus au moment du calcul, `computedAt` pour un
+// futur affichage "recalculer ?") que `symbologyToPaintInputs` adapte vers
+// les entrées existantes de `buildMapPaint`/`buildLegend`.
+export type LayerSymbology = {
+  color?: NonNullable<MapEncodings["color"]> & {
+    palette: PaletteId;
+    domain: ColorDomain;
+    computedAt: string;
+  };
+  size?: NonNullable<MapEncodings["size"]> & { domain: SizeDomain; computedAt: string };
 };
 
 export type MapPaintResult = {
@@ -19,6 +45,7 @@ export type MapPaintResult = {
 export type LegendSpec = {
   color?:
     | { kind: "categorical"; field: string; entries: { value: string; color: string }[] }
+    | { kind: "classed"; field: string; classes: { color: string; from: number; to: number }[] }
     | {
         kind: "numeric";
         field: string;
@@ -67,11 +94,140 @@ function colorPaintProperty(renderAs: "fill" | "circle" | "line"): string {
   return "fill-color";
 }
 
+export function equalIntervalBreaks(min: number, max: number, classes: number): number[] {
+  return Array.from({ length: classes + 1 }, (_, i) => min + (i * (max - min)) / classes);
+}
+
+export function quantileMeasures(
+  field: string,
+  classes: number,
+): { field: string; agg: string; label: string; p?: number }[] {
+  const measures: { field: string; agg: string; label: string; p?: number }[] = [
+    { field, agg: "min", label: "min" },
+  ];
+  for (let i = 1; i < classes; i++) {
+    measures.push({ field, agg: "percentile", label: `q${i}`, p: (100 * i) / classes });
+  }
+  measures.push({ field, agg: "max", label: "max" });
+  return measures;
+}
+
+export function quantileBreaksFromRow(row: Record<string, unknown>, classes: number): number[] {
+  const breaks = [Number(row.min)];
+  for (let i = 1; i < classes; i++) breaks.push(Number(row[`q${i}`]));
+  breaks.push(Number(row.max));
+  return breaks;
+}
+
+// Fisher-Jenks natural breaks, classic dynamic-programming form. O(n^2 * k) —
+// deliberately not the SMAWK-accelerated variant: bounded to a 2000-point
+// sample and ≤ 9 classes (spec §4 decision 2), well within budget (~36M ops).
+export function jenksBreaks(data: number[], classes: number): number[] {
+  const sorted = [...data].sort((a, b) => a - b);
+  const n = sorted.length;
+  const mat1: number[][] = Array.from({ length: n + 1 }, () => new Array(classes + 1).fill(0));
+  const mat2: number[][] = Array.from({ length: n + 1 }, () => new Array(classes + 1).fill(0));
+  for (let i = 1; i <= classes; i++) {
+    mat1[1][i] = 1;
+    mat2[1][i] = 0;
+    for (let j = 2; j <= n; j++) mat2[j][i] = Infinity;
+  }
+  let v = 0;
+  for (let l = 2; l <= n; l++) {
+    let s1 = 0;
+    let s2 = 0;
+    let w = 0;
+    for (let m = 1; m <= l; m++) {
+      const i3 = l - m + 1;
+      const val = sorted[i3 - 1];
+      s2 += val * val;
+      s1 += val;
+      w++;
+      v = s2 - (s1 * s1) / w;
+      const i4 = i3 - 1;
+      if (i4 !== 0) {
+        for (let j = 2; j <= classes; j++) {
+          if (mat2[l][j] >= v + mat2[i4][j - 1]) {
+            mat1[l][j] = i3;
+            mat2[l][j] = v + mat2[i4][j - 1];
+          }
+        }
+      }
+    }
+    mat1[l][1] = 1;
+    mat2[l][1] = v;
+  }
+  const kClass = new Array(classes + 1).fill(0);
+  kClass[classes] = sorted[n - 1];
+  kClass[0] = sorted[0];
+  let k = n;
+  for (let j = classes; j >= 2; j--) {
+    const id = mat1[k][j] - 2;
+    kClass[j - 1] = sorted[id];
+    k = mat1[k][j] - 1;
+  }
+  return kClass;
+}
+
+export type StatQueryFn = (query: Record<string, unknown>) => Promise<DataRecord[]>;
+export type SampleFieldFn = (field: string, limit: number) => Promise<number[]>;
+
+export async function computeColorDomain(
+  params: { field: string; mode: "categorical" | "numeric"; classification?: ColorClassification },
+  deps: { runStatistics: StatQueryFn; sampleField: SampleFieldFn },
+): Promise<ColorDomain> {
+  if (params.mode === "categorical") {
+    const rows = await deps.runStatistics({ groupBy: params.field });
+    return { kind: "categorical", values: rows.map((r) => String(r.id)) };
+  }
+  const classification = params.classification;
+  if (!classification || classification.method === "equalInterval") {
+    const rows = await deps.runStatistics({
+      measures: [
+        { field: params.field, agg: "min", label: "min" },
+        { field: params.field, agg: "max", label: "max" },
+      ],
+    });
+    const p = rows[0]?.properties ?? {};
+    const min = Number(p.min ?? 0);
+    const max = Number(p.max ?? 0);
+    if (!classification) return { kind: "numeric", min, max };
+    return {
+      kind: "numeric-classed",
+      breaks: equalIntervalBreaks(min, max, classification.classes),
+    };
+  }
+  if (classification.method === "quantile") {
+    const rows = await deps.runStatistics({
+      measures: quantileMeasures(params.field, classification.classes),
+    });
+    const p = rows[0]?.properties ?? {};
+    return { kind: "numeric-classed", breaks: quantileBreaksFromRow(p, classification.classes) };
+  }
+  const sample = await deps.sampleField(params.field, 2000);
+  return { kind: "numeric-classed", breaks: jenksBreaks(sample, classification.classes) };
+}
+
+export async function computeSizeDomain(
+  field: string,
+  deps: { runStatistics: StatQueryFn },
+): Promise<SizeDomain> {
+  const rows = await deps.runStatistics({
+    measures: [
+      { field, agg: "min", label: "min" },
+      { field, agg: "max", label: "max" },
+    ],
+  });
+  const p = rows[0]?.properties ?? {};
+  return { min: Number(p.min ?? 0), max: Number(p.max ?? 0) };
+}
+
 export function buildMapPaint(
   encodings: MapEncodings | undefined,
   colorDomain: ColorDomain | null,
   sizeDomain: SizeDomain | null,
   geometryKind: GeometryKind,
+  palette?: ResolvedPalette,
 ): MapPaintResult {
   const renderAs: "fill" | "circle" | "line" =
     geometryKind === "point" ? "circle" : geometryKind === "line" ? "line" : "fill";
@@ -80,21 +236,34 @@ export function buildMapPaint(
   if (encodings?.color && colorDomain) {
     const prop = colorPaintProperty(renderAs);
     if (colorDomain.kind === "categorical") {
+      const colors = palette
+        ? colorsForClasses(palette, colorDomain.values.length)
+        : colorDomain.values.map((_, i) => paletteColor(i));
       const match: unknown[] = ["match", ["get", encodings.color.field]];
-      colorDomain.values.forEach((value, i) => match.push(value, paletteColor(i)));
-      match.push(paletteColor(0)); // default color for a value outside the observed domain
+      colorDomain.values.forEach((value, i) => match.push(value, colors[i]));
+      match.push(colors[0]); // default color for a value outside the observed domain
       paint[prop] = match;
+    } else if (colorDomain.kind === "numeric-classed") {
+      const nClasses = colorDomain.breaks.length - 1;
+      const colors = palette
+        ? colorsForClasses(palette, nClasses)
+        : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
+      const step: unknown[] = ["step", ["get", encodings.color.field], colors[0]];
+      for (let i = 1; i < nClasses; i++) step.push(colorDomain.breaks[i], colors[i]);
+      paint[prop] = step;
     } else if (colorDomain.min === colorDomain.max) {
-      paint[prop] = NUMERIC_COLOR_LOW;
+      paint[prop] = palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW;
     } else {
+      const low = palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW;
+      const high = palette?.kind === "sequential" ? palette.high : NUMERIC_COLOR_HIGH;
       paint[prop] = [
         "interpolate",
         ["linear"],
         ["get", encodings.color.field],
         colorDomain.min,
-        NUMERIC_COLOR_LOW,
+        low,
         colorDomain.max,
-        NUMERIC_COLOR_HIGH,
+        high,
       ];
     }
   }
@@ -122,25 +291,44 @@ export function buildLegend(
   colorDomain: ColorDomain | null,
   sizeDomain: SizeDomain | null,
   geometryKind: GeometryKind,
+  palette?: ResolvedPalette,
 ): LegendSpec | null {
   const legend: LegendSpec = {};
 
   if (encodings?.color && colorDomain) {
-    legend.color =
-      colorDomain.kind === "categorical"
-        ? {
-            kind: "categorical",
-            field: encodings.color.field,
-            entries: colorDomain.values.map((value, i) => ({ value, color: paletteColor(i) })),
-          }
-        : {
-            kind: "numeric",
-            field: encodings.color.field,
-            min: colorDomain.min,
-            max: colorDomain.max,
-            colorLow: NUMERIC_COLOR_LOW,
-            colorHigh: NUMERIC_COLOR_HIGH,
-          };
+    if (colorDomain.kind === "categorical") {
+      const colors = palette
+        ? colorsForClasses(palette, colorDomain.values.length)
+        : colorDomain.values.map((_, i) => paletteColor(i));
+      legend.color = {
+        kind: "categorical",
+        field: encodings.color.field,
+        entries: colorDomain.values.map((value, i) => ({ value, color: colors[i] })),
+      };
+    } else if (colorDomain.kind === "numeric-classed") {
+      const nClasses = colorDomain.breaks.length - 1;
+      const colors = palette
+        ? colorsForClasses(palette, nClasses)
+        : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
+      legend.color = {
+        kind: "classed",
+        field: encodings.color.field,
+        classes: Array.from({ length: nClasses }, (_, i) => ({
+          color: colors[i],
+          from: colorDomain.breaks[i],
+          to: colorDomain.breaks[i + 1],
+        })),
+      };
+    } else {
+      legend.color = {
+        kind: "numeric",
+        field: encodings.color.field,
+        min: colorDomain.min,
+        max: colorDomain.max,
+        colorLow: palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW,
+        colorHigh: palette?.kind === "sequential" ? palette.high : NUMERIC_COLOR_HIGH,
+      };
+    }
   }
 
   // Size legend only makes sense where size is actually rendered (points).
@@ -155,4 +343,35 @@ export function buildLegend(
   }
 
   return legend.color || legend.size ? legend : null;
+}
+
+// Adaptateur pur : `LayerSymbology` est l'enveloppe de stockage/édition
+// (domaine + palette déjà calculés, `computedAt`) ; `buildMapPaint`/
+// `buildLegend` attendent des entrées séparées (encodings/domain/palette).
+// Ce pont évite de dupliquer la logique de rendu pour la forme figée.
+export function symbologyToPaintInputs(
+  symbology: LayerSymbology | undefined,
+  themeColors: ThemeColors | undefined,
+): {
+  encodings: MapEncodings;
+  colorDomain: ColorDomain | null;
+  sizeDomain: SizeDomain | null;
+  palette: ResolvedPalette | undefined;
+} {
+  if (!symbology) return { encodings: {}, colorDomain: null, sizeDomain: null, palette: undefined };
+  const encodings: MapEncodings = {};
+  let colorDomain: ColorDomain | null = null;
+  let palette: ResolvedPalette | undefined;
+  if (symbology.color) {
+    encodings.color = {
+      field: symbology.color.field,
+      mode: symbology.color.mode,
+      classification: symbology.color.classification,
+    };
+    colorDomain = symbology.color.domain;
+    palette = resolvePalette(symbology.color.palette, themeColors) ?? undefined;
+  }
+  if (symbology.size) encodings.size = { field: symbology.size.field };
+  const sizeDomain = symbology.size?.domain ?? null;
+  return { encodings, colorDomain, sizeDomain, palette };
 }
