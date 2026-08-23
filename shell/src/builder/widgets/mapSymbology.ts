@@ -253,11 +253,19 @@ export async function computeSizeDomain(
 // domaine à classes (breaks) est rejeté s'il a moins de 2 breaks, si l'un
 // d'eux n'est pas fini (NaN/undefined — cf. I1, `quantileBreaksFromRow`/
 // `jenksBreaks`), ou si — après avoir fusionné les breaks adjacents
-// identiques — il reste moins de 2 valeurs distinctes ou une valeur qui ne
-// croît pas strictement (un doublon non adjacent, ou une régression). Un
-// domaine numérique continu (min/max) n'a pas cette classe de bug (un
-// `interpolate` à deux stops égaux est déjà géré par un rendu constant plus
-// bas) et n'est donc pas concerné par ce garde.
+// identiques — il reste moins de 3 valeurs distinctes (moins de 2 classes)
+// ou une valeur qui ne croît pas strictement (un doublon non adjacent, ou
+// une régression). Le seuil de 3 (pas 2) est délibéré — C-new de la
+// re-revue finale SP-25 : un domaine dédupliqué à exactement 2 breaks (1
+// seule classe) passait le garde d'origine, et `buildMapPaint` le
+// transformait en expression MapLibre `step` avec seulement 2 arguments
+// (`["step", get, color0]`), que MapLibre rejette ("Expected at least 4
+// arguments") — couche entière invisible sans signal, sur un cas de données
+// réaliste (colonne à égalités, ex. `quantileBreaksFromRow` sur une
+// distribution où le premier quartile vaut déjà le minimum). Un domaine
+// numérique continu (min/max) n'a pas cette classe de bug (un `interpolate`
+// à deux stops égaux est déjà géré par un rendu constant plus bas) et n'est
+// donc pas concerné par ce garde.
 export function normalizeDomain(domain: ColorDomain | null): ColorDomain | null {
   if (!domain) return null;
   if (domain.kind === "categorical") {
@@ -272,7 +280,7 @@ export function normalizeDomain(domain: ColorDomain | null): ColorDomain | null 
     if (!Number.isFinite(b)) return null;
     if (deduped.length === 0 || deduped[deduped.length - 1] !== b) deduped.push(b);
   }
-  if (deduped.length < 2) return null;
+  if (deduped.length < 3) return null;
   for (let i = 1; i < deduped.length; i++) {
     if (deduped[i] <= deduped[i - 1]) return null;
   }
