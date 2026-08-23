@@ -441,6 +441,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
               <PropsPanel
                 item={selected}
                 dataSources={draft.dataSources}
+                theme={draft.theme}
                 onChange={updateSelectedProps}
                 onVisibleWhenChange={updateSelectedVisibleWhen}
               />

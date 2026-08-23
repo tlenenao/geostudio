@@ -213,6 +213,7 @@ export function AppRenderer({
                         pages={pages}
                         navigate={handleNavigate}
                         breakpoint={bp}
+                        theme={config.theme}
                       />
                     )}
                   />

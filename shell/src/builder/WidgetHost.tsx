@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Component, type ReactNode } from "react";
-import type { Page, RenderMode, WidgetItem } from "../api/types";
+import type { Page, RenderMode, Theme, WidgetItem } from "../api/types";
 import type { Breakpoint } from "./grid";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
@@ -37,12 +37,14 @@ export function WidgetHost({
   pages = [],
   navigate,
   breakpoint,
+  theme,
 }: {
   item: WidgetItem;
   mode: RenderMode;
   pages?: Page[];
   navigate?: (pageId: string) => void;
   breakpoint?: Breakpoint;
+  theme?: Theme;
 }) {
   const states = useDataStates();
   const bus = useActionBus();
@@ -94,6 +96,7 @@ export function WidgetHost({
           variables,
           user,
           breakpoint,
+          theme,
         }}
       />
     </WidgetErrorBoundary>
