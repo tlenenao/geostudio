@@ -44,6 +44,7 @@ class AggregateRequestBody(BaseModel):
     geomIntersects: dict[str, Any] | None = None
     bucket: Literal["hour", "day", "week", "month", "quarter", "year"] | None = None
     bins: int | None = None
+    sample: int | None = None
 
 
 class UnknownAggregateField(Exception):
@@ -139,6 +140,16 @@ def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> No
             raise UnknownAggregateField("bins", "bins cannot combine with groupBy")
         if not (1 <= request.bins <= 100):
             raise UnknownAggregateField("bins", "bins must be between 1 and 100")
+
+    if request.sample is not None:
+        if request.field is None:
+            raise UnknownAggregateField("sample", "sample requires a field")
+        if fields:
+            raise UnknownAggregateField("sample", "sample cannot combine with groupBy")
+        if request.bins is not None:
+            raise UnknownAggregateField("sample", "sample cannot combine with bins")
+        if not (1 <= request.sample <= 2000):
+            raise UnknownAggregateField("sample", "sample must be between 1 and 2000")
 
 
 def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
@@ -334,6 +345,25 @@ def _run_binned_histogram(
     ]
 
 
+def _run_sample(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    dedup_cte: str,
+    where_sql: str,
+    where_params: list[Any],
+    field: str,
+    sample: int,
+) -> list[dict[str, Any]]:
+    field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    not_null_clause = f"{field_expr} IS NOT NULL"
+    full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
+    sql = (
+        f"{dedup_cte} SELECT {field_expr} AS value FROM live {full_where} "
+        f"USING SAMPLE {int(sample)} ROWS"
+    )
+    return _fetch_rows(conn, sql, where_params)
+
+
 def _dedup_cte(table_info: TableInfo, base_uri: str, tenant_id: str, collection_id: str) -> str:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     pk = _qi(table_info.pk_column)
@@ -371,10 +401,16 @@ def run_collection_aggregate(
     request: AggregateRequestBody,
 ) -> tuple[str | list[str], list[dict[str, Any]]]:
     fields = _groupby_fields(request)
-    category_key: str | list[str] = (
-        fields if len(fields) > 1 else (fields[0] if fields else "group")
-    )
     _validate_fields(request, table_info)
+
+    # Déterminer le category_key à retourner en cas de collection vide.
+    # Ce choix doit refléter le chemin d'exécution choisi par la validation.
+    if request.sample is not None:
+        category_key: str | list[str] = "value"
+    elif request.bins is not None:
+        category_key = "bucketIndex"
+    else:
+        category_key = fields if len(fields) > 1 else (fields[0] if fields else "group")
 
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
         return category_key, []
@@ -396,6 +432,18 @@ def run_collection_aggregate(
             bins=request.bins,
         )
         return "bucketIndex", rows
+
+    if request.sample is not None:
+        assert request.field is not None
+        rows = _run_sample(
+            conn,
+            dedup_cte=dedup_cte,
+            where_sql=where_sql,
+            where_params=where_params,
+            field=request.field,
+            sample=request.sample,
+        )
+        return "value", rows
 
     if len(fields) > 1:
         measures = _measures_for(request)
