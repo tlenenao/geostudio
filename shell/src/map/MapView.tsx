@@ -15,10 +15,11 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type { DataRecord, MapConfig } from "../api/types";
+import type { DataRecord, MapConfig, MapLayer } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
+import { buildMapPaint, symbologyToPaintInputs } from "../builder/widgets/mapSymbology";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -126,6 +127,37 @@ function paintFor(paint: Record<string, unknown> | undefined, prefix: string) {
   return Object.fromEntries(Object.entries(paint ?? {}).filter(([k]) => k.startsWith(prefix)));
 }
 
+// `symbology`, quand présent, l'emporte sur `paint` : le domaine/la palette
+// sont déjà figés dans la config (Task 6, mapSymbology.ts), donc ce calcul
+// est pur et synchrone, sans appel réseau. `paint` reste le chemin manuel
+// pour toute couche sans symbology (branche inchangée ci-dessous). Pour une
+// couche "feature", `buildMapPaint` doit recevoir le `geometryKind` qui
+// produit la même clé de paint que le type de layer MapLibre réellement posé
+// par le switch existant sur `layer.renderAs ?? "fill"` juste plus bas
+// (circle→"point", line→"line", fill→"polygon") : jamais une géométrie
+// détectée, toujours celle qu'implique le choix d'auteur `renderAs`, sous
+// peine de poser par ex. "fill-color" sur un layer MapLibre de type
+// "circle" (rejeté par MapLibre, la couche entière serait alors avalée par
+// le garde-fou try/catch d'applyLayers).
+function effectivePaint(
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>,
+): Record<string, unknown> {
+  if (!layer.symbology) return layer.paint ?? {};
+  const geometryKind =
+    layer.kind === "vector"
+      ? (layer.geometryKind ?? "polygon")
+      : layer.renderAs === "circle"
+        ? "point"
+        : layer.renderAs === "line"
+          ? "line"
+          : "polygon";
+  const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
+    layer.symbology,
+    undefined,
+  );
+  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette).paint;
+}
+
 // `AddLayerObject` est une union discriminée par `type` : un `type` calculé ne
 // la réduit pas, d'où le switch — même raison que la branche `feature`
 // ci-dessous, et jamais un cast (cf. commentaire de la branche `vector`).
@@ -224,6 +256,7 @@ function applyLayers(
         // Une couche = une source, mais pas forcément un seul layer : une
         // géométrie inconnue/mixte en pose trois (MIXED_GEOMETRY_SUBLAYERS).
         const layerIds: string[] = [];
+        const vectorPaint = effectivePaint(layer);
         if (layer.geometryKind === undefined) {
           for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
             const id = `${layer.id}__${sub.suffix}`;
@@ -233,7 +266,7 @@ function applyLayers(
               source: layer.id,
               sourceLayer: layer.sourceLayer,
               filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-              paint: paintFor(layer.paint, sub.paintPrefix),
+              paint: paintFor(vectorPaint, sub.paintPrefix),
             });
             layerIds.push(id);
           }
@@ -243,7 +276,7 @@ function applyLayers(
             type: layerTypeFor(layer.geometryKind),
             source: layer.id,
             sourceLayer: layer.sourceLayer,
-            paint: layer.paint ?? {},
+            paint: vectorPaint,
           });
           layerIds.push(layer.id);
         }
@@ -270,13 +303,14 @@ function applyLayers(
         });
       } else if (layer.kind === "feature") {
         map.addSource(layer.id, { type: "geojson", data: layer.url });
+        const featurePaint = effectivePaint(layer);
         switch (layer.renderAs ?? "fill") {
           case "circle":
             map.addLayer({
               id: layer.id,
               type: "circle",
               source: layer.id,
-              paint: layer.paint ?? {},
+              paint: featurePaint,
             });
             break;
           case "line":
@@ -284,7 +318,7 @@ function applyLayers(
               id: layer.id,
               type: "line",
               source: layer.id,
-              paint: layer.paint ?? {},
+              paint: featurePaint,
             });
             break;
           default:
@@ -292,7 +326,7 @@ function applyLayers(
               id: layer.id,
               type: "fill",
               source: layer.id,
-              paint: layer.paint ?? {},
+              paint: featurePaint,
             });
             break;
         }
