@@ -432,6 +432,66 @@ test("getMapConfig reads popup/collectionId/geometryKind/pkColumn on a vector la
   });
 });
 
+// SP-25 Task 12 regression: same class of bug as the popup one above
+// (SP-24 Task 16) — toFrontLayer never read symbology off the raw server
+// JSON either, so a map saved with a configured symbology silently lost it
+// back to empty/default on reload.
+test("getMapConfig reads symbology on a vector layer", async () => {
+  const symbology = {
+    color: {
+      field: "population",
+      mode: "numeric" as const,
+      classification: { method: "quantile" as const, classes: 5 },
+      palette: "sequential-blue" as const,
+      domain: { kind: "numeric-classed" as const, breaks: [10, 20, 30, 40, 50] },
+      computedAt: "2026-08-23T00:00:00.000Z",
+    },
+  };
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "communes",
+                title: "Communes",
+                visible: true,
+                kind: "vector",
+                tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+                sourceLayer: "communes",
+                collectionId: "communes",
+                geometryKind: "polygon",
+                pkColumn: "id",
+                symbology,
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "communes",
+    title: "Communes",
+    visible: true,
+    kind: "vector",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+    sourceLayer: "communes",
+    collectionId: "communes",
+    geometryKind: "polygon",
+    pkColumn: "id",
+    symbology,
+  });
+});
+
 test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
