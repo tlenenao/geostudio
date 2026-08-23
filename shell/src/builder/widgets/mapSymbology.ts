@@ -112,10 +112,19 @@ export function quantileMeasures(
   return measures;
 }
 
+// Défendu comme le chemin min/max voisin (computeSizeDomain, la branche
+// equalInterval de computeColorDomain) : `?? 0` sur chaque lecture plutôt que
+// `Number(undefined)` → NaN. Sur une collection vide, l'agrégat ne renvoie
+// aucune ligne (`rows[0]?.properties ?? {}` → `{}`), donc AVANT ce fix
+// chaque break devenait NaN — silencieusement sérialisé en `null` par
+// `JSON.stringify`, persistant une config cassée (I1 de la revue finale
+// SP-25). Un `[0, 0, …]` dégénéré reste défendu en aval par
+// `normalizeDomain` (C1) plutôt que de fuiter un NaN dans une expression
+// MapLibre.
 export function quantileBreaksFromRow(row: Record<string, unknown>, classes: number): number[] {
-  const breaks = [Number(row.min)];
-  for (let i = 1; i < classes; i++) breaks.push(Number(row[`q${i}`]));
-  breaks.push(Number(row.max));
+  const breaks = [Number(row.min ?? 0)];
+  for (let i = 1; i < classes; i++) breaks.push(Number(row[`q${i}`] ?? 0));
+  breaks.push(Number(row.max ?? 0));
   return breaks;
 }
 
@@ -123,6 +132,12 @@ export function quantileBreaksFromRow(row: Record<string, unknown>, classes: num
 // deliberately not the SMAWK-accelerated variant: bounded to a 2000-point
 // sample and ≤ 9 classes (spec §4 decision 2), well within budget (~36M ops).
 export function jenksBreaks(data: number[], classes: number): number[] {
+  // Un échantillon vide, ou plus court que le nombre de classes demandé,
+  // ferait lire l'algorithme hors-limites plus bas et renvoyer un tableau
+  // rempli d'`undefined` (I1 de la revue finale SP-25) — jamais matérialisé
+  // comme domaine utilisable : `[]` est rejeté par `normalizeDomain` (C1)
+  // exactement comme un domaine catégoriel vide.
+  if (data.length === 0 || data.length < classes) return [];
   const sorted = [...data].sort((a, b) => a - b);
   const n = sorted.length;
   const mat1: number[][] = Array.from({ length: n + 1 }, () => new Array(classes + 1).fill(0));
@@ -222,6 +237,48 @@ export async function computeSizeDomain(
   return { min: Number(p.min ?? 0), max: Number(p.max ?? 0) };
 }
 
+// C1 de la revue finale SP-25 : un domaine jamais recalculé (`values: []` par
+// défaut à la création de l'encodage, cf. setColorField dans
+// MapSymbologyEditor.tsx) ou dégénéré (`equalIntervalBreaks(10, 10, 3)` →
+// `[10,10,10,10]`, un `quantile` sur des données à égalités répétées) produit
+// une expression `match`/`step` MapLibre invalide — trop peu d'arguments, ou
+// des stops non strictement croissants. `map.addLayer` lève alors à
+// l'analyse, et le `try/catch` d'`applyLayers` (MapView.tsx) retire la
+// source ET la couche avec un simple `console.error` : la couche disparaît
+// sans aucun signal utilisateur. Ce garde pur retourne `null` — "pas
+// utilisable, comme si aucun domaine n'était configuré" — plutôt que de
+// laisser `buildMapPaint`/`buildLegend` émettre une expression cassée.
+//
+// Un domaine catégoriel est rejeté s'il n'a aucune valeur observée. Un
+// domaine à classes (breaks) est rejeté s'il a moins de 2 breaks, si l'un
+// d'eux n'est pas fini (NaN/undefined — cf. I1, `quantileBreaksFromRow`/
+// `jenksBreaks`), ou si — après avoir fusionné les breaks adjacents
+// identiques — il reste moins de 2 valeurs distinctes ou une valeur qui ne
+// croît pas strictement (un doublon non adjacent, ou une régression). Un
+// domaine numérique continu (min/max) n'a pas cette classe de bug (un
+// `interpolate` à deux stops égaux est déjà géré par un rendu constant plus
+// bas) et n'est donc pas concerné par ce garde.
+export function normalizeDomain(domain: ColorDomain | null): ColorDomain | null {
+  if (!domain) return null;
+  if (domain.kind === "categorical") {
+    return domain.values.length === 0 ? null : domain;
+  }
+  if (domain.kind === "numeric") {
+    return domain;
+  }
+  if (domain.breaks.length < 2) return null;
+  const deduped: number[] = [];
+  for (const b of domain.breaks) {
+    if (!Number.isFinite(b)) return null;
+    if (deduped.length === 0 || deduped[deduped.length - 1] !== b) deduped.push(b);
+  }
+  if (deduped.length < 2) return null;
+  for (let i = 1; i < deduped.length; i++) {
+    if (deduped[i] <= deduped[i - 1]) return null;
+  }
+  return { kind: "numeric-classed", breaks: deduped };
+}
+
 export function buildMapPaint(
   encodings: MapEncodings | undefined,
   colorDomain: ColorDomain | null,
@@ -232,8 +289,10 @@ export function buildMapPaint(
   const renderAs: "fill" | "circle" | "line" =
     geometryKind === "point" ? "circle" : geometryKind === "line" ? "line" : "fill";
   const paint: Record<string, unknown> = {};
+  const normalizedColorDomain = normalizeDomain(colorDomain);
 
-  if (encodings?.color && colorDomain) {
+  if (encodings?.color && normalizedColorDomain) {
+    const colorDomain = normalizedColorDomain;
     const prop = colorPaintProperty(renderAs);
     if (colorDomain.kind === "categorical") {
       const colors = palette
@@ -294,8 +353,10 @@ export function buildLegend(
   palette?: ResolvedPalette,
 ): LegendSpec | null {
   const legend: LegendSpec = {};
+  const normalizedColorDomain = normalizeDomain(colorDomain);
 
-  if (encodings?.color && colorDomain) {
+  if (encodings?.color && normalizedColorDomain) {
+    const colorDomain = normalizedColorDomain;
     if (colorDomain.kind === "categorical") {
       const colors = palette
         ? colorsForClasses(palette, colorDomain.values.length)

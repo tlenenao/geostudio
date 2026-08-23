@@ -128,11 +128,25 @@ export function registerMapWidget(): void {
                 id: `map-domain-${datasetId}`,
                 type: "statistics",
                 service: "core",
-                layer: "",
+                // `datasetId` se résout automatiquement côté queryDataSource
+                // (types.ts:438) ; sans lui (source "features" branchée
+                // directement sur une collection, cas valide et
+                // sélectionnable — DataSourceSelect ne filtre que sur
+                // `type === "features"`), c'est `dataSource.layer` qui porte
+                // l'id de collection. Le hardcode précédent à "" produisait
+                // un POST vers `/collections//aggregate` (I5 de la revue
+                // finale SP-25) — la garde `enabled: Boolean(datasetId &&
+                // field)` d'avant SP-25 avait été retirée sans repli.
+                layer: dataSource?.layer ?? "",
                 datasetId,
                 query,
               })
             }
+            // Jenks a besoin d'un collectionId résolu pour échantillonner un
+            // champ ; ce host n'en a pas (portée volontairement non
+            // élargie ici, cf. brief I5) — l'option est masquée plutôt que
+            // de laisser l'auteur la choisir puis échouer au clic.
+            jenksAvailable={false}
             sampleField={async () => {
               throw new Error(
                 "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",

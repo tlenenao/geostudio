@@ -8,11 +8,12 @@ import {
   detectGeometryKind,
   equalIntervalBreaks,
   jenksBreaks,
+  normalizeDomain,
   quantileBreaksFromRow,
   quantileMeasures,
   symbologyToPaintInputs,
 } from "./mapSymbology";
-import type { LayerSymbology } from "./mapSymbology";
+import type { ColorDomain, LayerSymbology } from "./mapSymbology";
 
 test("detectGeometryKind maps GeoJSON types to a rendering kind", () => {
   expect(detectGeometryKind({ type: "Point" })).toBe("point");
@@ -395,4 +396,117 @@ test("symbologyToPaintInputs on undefined symbology returns empty/null inputs", 
     sizeDomain: null,
     palette: undefined,
   });
+});
+
+// C1 de la revue finale SP-25 : normalizeDomain (+ son intégration dans
+// buildMapPaint/buildLegend) — un domaine jamais recalculé ou dégénéré ne
+// doit plus jamais atteindre une expression MapLibre `match`/`step` cassée.
+
+test("normalizeDomain rejects an empty categorical domain (never-recomputed encoding)", () => {
+  expect(normalizeDomain({ kind: "categorical", values: [] })).toBeNull();
+});
+
+test("normalizeDomain keeps a non-empty categorical domain unchanged", () => {
+  const domain: ColorDomain = { kind: "categorical", values: ["Nord"] };
+  expect(normalizeDomain(domain)).toEqual(domain);
+});
+
+test("normalizeDomain passes a continuous numeric domain through unchanged", () => {
+  const domain: ColorDomain = { kind: "numeric", min: 0, max: 10 };
+  expect(normalizeDomain(domain)).toEqual(domain);
+});
+
+test("normalizeDomain rejects a single-break numeric-classed domain", () => {
+  expect(normalizeDomain({ kind: "numeric-classed", breaks: [10] })).toBeNull();
+});
+
+test("normalizeDomain rejects fully collapsed breaks (equalIntervalBreaks(10, 10, 3))", () => {
+  expect(
+    normalizeDomain({ kind: "numeric-classed", breaks: equalIntervalBreaks(10, 10, 3) }),
+  ).toBeNull();
+});
+
+test("normalizeDomain rejects a non-finite break", () => {
+  expect(normalizeDomain({ kind: "numeric-classed", breaks: [0, NaN, 20] })).toBeNull();
+  expect(
+    normalizeDomain({
+      kind: "numeric-classed",
+      breaks: [0, undefined as unknown as number, 20],
+    }),
+  ).toBeNull();
+});
+
+test("normalizeDomain rejects breaks that regress after a duplicate (not strictly ascending)", () => {
+  expect(normalizeDomain({ kind: "numeric-classed", breaks: [0, 10, 5, 20] })).toBeNull();
+});
+
+test("normalizeDomain collapses an adjacent duplicate break into fewer, still-usable classes", () => {
+  expect(normalizeDomain({ kind: "numeric-classed", breaks: [0, 10, 10, 20] })).toEqual({
+    kind: "numeric-classed",
+    breaks: [0, 10, 20],
+  });
+});
+
+test("normalizeDomain of null is null", () => {
+  expect(normalizeDomain(null)).toBeNull();
+});
+
+test("buildMapPaint silently renders unstyled (no color paint key) instead of throwing on an empty categorical domain", () => {
+  const { paint } = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: [] },
+    null,
+    "polygon",
+  );
+  expect(paint["fill-color"]).toBeUndefined();
+});
+
+test("buildMapPaint silently renders unstyled instead of throwing on collapsed breaks", () => {
+  const { paint } = buildMapPaint(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks: equalIntervalBreaks(10, 10, 3) },
+    null,
+    "polygon",
+  );
+  expect(paint["fill-color"]).toBeUndefined();
+});
+
+test("buildLegend returns no color section (not a broken one) for an empty categorical domain", () => {
+  const legend = buildLegend(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: [] },
+    null,
+    "polygon",
+  );
+  expect(legend).toBeNull();
+});
+
+test("buildLegend returns no color section for collapsed breaks", () => {
+  const legend = buildLegend(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks: equalIntervalBreaks(10, 10, 3) },
+    null,
+    "polygon",
+  );
+  expect(legend).toBeNull();
+});
+
+// I1 de la revue finale SP-25 : quantileBreaksFromRow/jenksBreaks ne
+// doivent jamais émettre de NaN/undefined, y compris sur une collection
+// vide ou un échantillon plus court que le nombre de classes demandé.
+
+test("quantileBreaksFromRow never emits NaN on a missing/empty row", () => {
+  expect(quantileBreaksFromRow({}, 4)).toEqual([0, 0, 0, 0, 0]);
+});
+
+test("quantileBreaksFromRow defends each field independently (partial row)", () => {
+  expect(quantileBreaksFromRow({ min: 0, max: 40 }, 4)).toEqual([0, 0, 0, 0, 40]);
+});
+
+test("jenksBreaks on an empty sample returns [] rather than a run of undefined", () => {
+  expect(jenksBreaks([], 3)).toEqual([]);
+});
+
+test("jenksBreaks with more classes than data points returns [] rather than out-of-bounds reads", () => {
+  expect(jenksBreaks([1, 2], 5)).toEqual([]);
 });

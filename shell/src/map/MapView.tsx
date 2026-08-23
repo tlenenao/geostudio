@@ -19,7 +19,11 @@ import type { DataRecord, MapConfig, MapLayer } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
-import { buildMapPaint, symbologyToPaintInputs } from "../builder/widgets/mapSymbology";
+import {
+  buildMapPaint,
+  symbologyToPaintInputs,
+  type GeometryKind,
+} from "../builder/widgets/mapSymbology";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -130,27 +134,32 @@ function paintFor(paint: Record<string, unknown> | undefined, prefix: string) {
 // `symbology`, quand présent, l'emporte sur `paint` : le domaine/la palette
 // sont déjà figés dans la config (Task 6, mapSymbology.ts), donc ce calcul
 // est pur et synchrone, sans appel réseau. `paint` reste le chemin manuel
-// pour toute couche sans symbology (branche inchangée ci-dessous). Pour une
-// couche "feature", `buildMapPaint` doit recevoir le `geometryKind` qui
-// produit la même clé de paint que le type de layer MapLibre réellement posé
-// par le switch existant sur `layer.renderAs ?? "fill"` juste plus bas
-// (circle→"point", line→"line", fill→"polygon") : jamais une géométrie
-// détectée, toujours celle qu'implique le choix d'auteur `renderAs`, sous
-// peine de poser par ex. "fill-color" sur un layer MapLibre de type
-// "circle" (rejeté par MapLibre, la couche entière serait alors avalée par
-// le garde-fou try/catch d'applyLayers).
+// pour toute couche sans symbology (branche inchangée ci-dessous).
+//
+// Le `geometryKind` est désormais un paramètre explicite, jamais dérivé en
+// interne : une couche tuilée de géométrie mixte/inconnue (I1 de la revue
+// finale SP-24) pose TROIS sous-couches (MIXED_GEOMETRY_SUBLAYERS), chacune
+// d'une géométrie réelle différente. Avant ce fix, `effectivePaint`
+// calculait un seul paint pour `layer.geometryKind ?? "polygon"` — la
+// géométrie mixte tombait donc toujours sur "polygon", et `buildMapPaint` ne
+// produisait que des clés `fill-*` : les sous-couches point/ligne recevaient
+// un paint vide (non stylé), sans aucune indication qu'un encodage avait été
+// perdu (I4 de la revue finale SP-25). Chaque appelant fournit maintenant la
+// géométrie réelle de la sous-couche qu'il pose — un appel de
+// `buildMapPaint` par géométrie présente sur la couche, jamais un seul calcul
+// partagé. Pour une couche "feature", le `geometryKind` doit produire la même
+// clé de paint que le type de layer MapLibre réellement posé par le switch
+// existant sur `layer.renderAs ?? "fill"` juste plus bas (circle→"point",
+// line→"line", fill→"polygon") : jamais une géométrie détectée, toujours
+// celle qu'implique le choix d'auteur `renderAs`, sous peine de poser par ex.
+// "fill-color" sur un layer MapLibre de type "circle" (rejeté par MapLibre,
+// la couche entière serait alors avalée par le garde-fou try/catch
+// d'applyLayers).
 function effectivePaint(
   layer: Extract<MapLayer, { kind: "vector" | "feature" }>,
+  geometryKind: GeometryKind,
 ): Record<string, unknown> {
   if (!layer.symbology) return layer.paint ?? {};
-  const geometryKind =
-    layer.kind === "vector"
-      ? (layer.geometryKind ?? "polygon")
-      : layer.renderAs === "circle"
-        ? "point"
-        : layer.renderAs === "line"
-          ? "line"
-          : "polygon";
   const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
     layer.symbology,
     undefined,
@@ -256,8 +265,15 @@ function applyLayers(
         // Une couche = une source, mais pas forcément un seul layer : une
         // géométrie inconnue/mixte en pose trois (MIXED_GEOMETRY_SUBLAYERS).
         const layerIds: string[] = [];
-        const vectorPaint = effectivePaint(layer);
         if (layer.geometryKind === undefined) {
+          // Un paint par sous-couche, calculé pour SA géométrie réelle (I4
+          // de la revue finale SP-25) — jamais un unique `vectorPaint`
+          // calculé pour "polygon" puis filtré par préfixe, qui ne stylait
+          // jamais les sous-couches point/ligne. `paintFor` reste
+          // nécessaire même ici : pour le chemin `layer.paint` manuel (sans
+          // symbology), le même objet brut peut porter des clés de
+          // plusieurs préfixes à la fois (cf. test "paint is split by
+          // prefix").
           for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
             const id = `${layer.id}__${sub.suffix}`;
             addTypedLayer(map, {
@@ -266,7 +282,7 @@ function applyLayers(
               source: layer.id,
               sourceLayer: layer.sourceLayer,
               filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-              paint: paintFor(vectorPaint, sub.paintPrefix),
+              paint: paintFor(effectivePaint(layer, sub.suffix), sub.paintPrefix),
             });
             layerIds.push(id);
           }
@@ -276,7 +292,7 @@ function applyLayers(
             type: layerTypeFor(layer.geometryKind),
             source: layer.id,
             sourceLayer: layer.sourceLayer,
-            paint: vectorPaint,
+            paint: effectivePaint(layer, layer.geometryKind),
           });
           layerIds.push(layer.id);
         }
@@ -303,7 +319,9 @@ function applyLayers(
         });
       } else if (layer.kind === "feature") {
         map.addSource(layer.id, { type: "geojson", data: layer.url });
-        const featurePaint = effectivePaint(layer);
+        const featureGeometryKind: GeometryKind =
+          layer.renderAs === "circle" ? "point" : layer.renderAs === "line" ? "line" : "polygon";
+        const featurePaint = effectivePaint(layer, featureGeometryKind);
         switch (layer.renderAs ?? "fill") {
           case "circle":
             map.addLayer({

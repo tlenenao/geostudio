@@ -1046,6 +1046,40 @@ test("clicking a mixed-geometry sub-layer opens the popup declared on the layer,
   expect(screen.getByText("Tulle")).toBeInTheDocument();
 });
 
+// I4 de la revue finale SP-25 : `effectivePaint` calculait un seul paint
+// pour "polygon" puis le filtrait par préfixe — les sous-couches
+// point/ligne d'une géométrie mixte/inconnue recevaient donc un paint vide
+// (non stylé) au lieu de leur propre expression compilée pour LEUR
+// géométrie réelle.
+test("a mixed-geometry symbologized layer compiles distinct paint per sub-layer geometry, not just polygon", () => {
+  render(
+    <MapView
+      config={tiled({
+        symbology: {
+          color: {
+            field: "categorie",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A", "B"] },
+            computedAt: "2026-08-23T00:00:00Z",
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  const expectedMatch = ["match", ["get", "categorie"], "A", "#2563eb", "B", "#dc2626", "#2563eb"];
+  expect(map.getLayer("communes__point")).toMatchObject({
+    paint: { "circle-color": expectedMatch },
+  });
+  expect(map.getLayer("communes__line")).toMatchObject({
+    paint: { "line-color": expectedMatch },
+  });
+  expect(map.getLayer("communes__polygon")).toMatchObject({
+    paint: { "fill-color": expectedMatch },
+  });
+});
+
 test("removing a mixed-geometry layer detaches all three sub-layer click handlers", () => {
   const { rerender } = render(<MapView config={tiled()} />);
   rerender(<MapView config={config} />);
