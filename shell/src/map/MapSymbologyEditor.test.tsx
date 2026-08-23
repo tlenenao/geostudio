@@ -172,6 +172,30 @@ test("recompute button for the size field calls runStatistics and writes size do
   );
 });
 
+test("a failing recompute surfaces an error instead of hanging silently", async () => {
+  const runStatistics = vi.fn().mockRejectedValue(new Error("boom"));
+  render(
+    <MapSymbologyEditor
+      value={{
+        color: {
+          field: "pop",
+          mode: "numeric",
+          palette: "sequential-blue",
+          domain: { kind: "numeric", min: 0, max: 0 },
+          computedAt: "",
+        },
+      }}
+      availableFields={["pop"]}
+      themeColors={undefined}
+      runStatistics={runStatistics}
+      sampleField={vi.fn()}
+      onChange={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+});
+
 test("computed breaks are shown as text", () => {
   render(
     <MapSymbologyEditor

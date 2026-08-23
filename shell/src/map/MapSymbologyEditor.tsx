@@ -51,6 +51,7 @@ export function MapSymbologyEditor({
   onChange: (value: LayerSymbology | undefined) => void;
 }) {
   const [busy, setBusy] = useState<"color" | "size" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const color = value?.color;
   const size = value?.size;
 
@@ -72,12 +73,15 @@ export function MapSymbologyEditor({
   async function recomputeColor() {
     if (!color?.field) return;
     setBusy("color");
+    setError(null);
     try {
       const domain = await computeColorDomain(
         { field: color.field, mode: color.mode, classification: color.classification },
         { runStatistics, sampleField },
       );
       onChange({ ...value, color: { ...color, domain, computedAt: new Date().toISOString() } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -209,6 +213,11 @@ export function MapSymbologyEditor({
           >
             {busy === "color" ? "Calcul…" : "Recalculer les classes"}
           </button>
+          {error && (
+            <p role="alert" className="text-xs text-red-600">
+              {error}
+            </p>
+          )}
           {color.computedAt && (
             <p className="text-xs text-slate-500">
               Classes calculées le {new Date(color.computedAt).toLocaleString()} :{" "}
