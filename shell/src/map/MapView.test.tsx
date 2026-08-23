@@ -204,6 +204,35 @@ test("defaults a feature layer to fill when renderAs is not set", () => {
   expect(mapInstances[0].getLayer("poly")).toMatchObject({ type: "fill", source: "poly" });
 });
 
+test("a layer with symbology renders paint compiled from its frozen domain, ignoring any stale raw paint", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Communes",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    paint: { "fill-color": "#000000" }, // stale/irrelevant once symbology is present
+    symbology: {
+      color: {
+        field: "pop",
+        mode: "numeric",
+        palette: "sequential-blue",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        computedAt: "2026-08-23T00:00:00Z",
+      },
+    },
+  };
+  const cfg: MapConfig = { ...config, layers: [layer] };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].getLayer("l1")).toMatchObject({
+    type: "fill",
+    source: "l1",
+    paint: {
+      "fill-color": ["interpolate", ["linear"], ["get", "pop"], 0, "#dbeafe", 100, "#1e3a8a"],
+    },
+  });
+});
+
 test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
